@@ -82,23 +82,6 @@ def fetch_company_metadata(cik):
         print("Metadata error for", cik, e)
         return None, None, None
 
-#%%
-def collect_recent_s1(max_results=MAX_RESULTS):
-    all=[]
-    for y,q in quarter_list(2):
-        all+=fetch_quarter(y,q); time.sleep(0.25)
-    df=pd.DataFrame(all).drop_duplicates(["cik","filing_date","form_type"])
-    df["filing_date"]=pd.to_datetime(df["filing_date"],errors="coerce")
-    df=df.sort_values("filing_date",ascending=False).head(max_results)
-    df["edgar_html"]=[get_s1_html(u) for u in df["edgar_index_page"]]
-    return df[["company","cik","filing_date","form_type",
-               "edgar_txt","edgar_index_page","edgar_html"]]
-
-if __name__=="__main__":
-    df=collect_recent_s1()
-    print(df)
-    df.to_csv("s1_fetch_records.csv",index=False)
-
 # %%
 def collect_recent_s1(max_results=MAX_RESULTS):
     all=[]
@@ -238,7 +221,7 @@ from openai import OpenAI
 
 #%%
 # ------------------------- CONFIG -------------------------
-os.environ["OPENAI_API_KEY"] = "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" 
+load_dotenv()  # Load environment variables from .env file
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 OPENAI_MODEL = "gpt-4o" 
@@ -319,31 +302,6 @@ def fetch_clean_text(url: str) -> str:
 
 def chunk_text(text, size=CHUNK_SIZE):
     return [text[i:i+size] for i in range(0, len(text), size)]
-
-
-#%%
-# =================== KEYWORD EXPANSION ===================
-
-CUSTOMER_SYNONYMS = [
-    "customer", "customers", "user", "users", "client", "clients", "subscriber", "subscribers",
-    "member", "members", "account", "accounts", "buyer", "buyers", "consumer", "consumers",
-    "organization", "organizations", "merchant", "merchants", "host", "hosts", "driver", "drivers",
-    "partner", "partners", "vendor", "vendors", "tenant", "tenants", "seller", "sellers", "creator", "creators"
-]
-
-METRIC_KEYWORDS = [
-    "active", "paying", "total", "registered", "new", "gross adds", "net adds",
-    "churn", "retention", "renewal", "lifetime value", "ltv", "clv", "cac",
-    "payback period", "nrr", "mrr", "arpu", "arppu", "purchase frequency",
-    "repeat purchase rate", "orders per", "average order value", "aov",
-    "transaction", "cohort", "engagement", "subscription", "conversion"
-]
-
-DEFINITION_CUES = [
-    "defined as", "we define", "means", "refers to", "calculated as",
-    "computed as", "determined by", "measured by", "formula", "represents",
-    "derived from", "we measure"
-]
 
 #%%
 # =================== IMPROVED LLM PROMPT ===================
