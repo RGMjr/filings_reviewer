@@ -126,32 +126,56 @@ python examples/build_universe_example.py --mode real
 
 ## Testing
 
-### Run All Tests
+### Unit Tests
+
+Run fast tests without external dependencies:
 
 ```bash
-pytest
-```
+# All unit tests
+pytest tests/unit/ -v
 
-### Run Specific Test Suites
+# Specific test file
+pytest tests/unit/universe/test_classifiers.py -v
 
-```bash
-# Unit tests only
-pytest tests/unit/
-
-# Classification tests
-pytest tests/unit/universe/test_classifiers.py
-
-# UniverseBuilder tests
-pytest tests/unit/universe/test_universe_builder.py
-```
-
-### Run with Coverage
-
-```bash
-pytest --cov=src --cov-report=html
+# With coverage
+pytest tests/unit/ --cov=src --cov-report=html
 ```
 
 Coverage report will be in `htmlcov/index.html`.
+
+### Integration Tests
+
+Integration tests require PostgreSQL. See [Integration Test README](tests/integration/README.md) for setup.
+
+**Setup:**
+```bash
+# Install PostgreSQL (macOS)
+brew install postgresql@16
+brew services start postgresql@16
+
+# Create test database
+./scripts/setup_test_db.sh
+
+# Set environment variable
+export TEST_DATABASE_URL=postgresql://localhost/filings_analysis_test
+```
+
+**Run:**
+```bash
+# All integration tests
+pytest tests/integration/ -v
+
+# Specific integration test
+pytest tests/integration/universe/test_universe_builder_integration.py -v
+```
+
+### Run All Tests
+
+```bash
+pytest -v
+```
+
+**Note:** Integration tests will be skipped if PostgreSQL is not available.
 
 ## Project Structure
 
