@@ -264,8 +264,8 @@ class SECClient:
         """
         Extract accession number from filename.
 
-        Filename format: edgar/data/####/##########-##-######/filename.txt
-        Accession is the ##########-##-###### part
+        Filename format: edgar/data/1234567/0001193125-19-163007.txt
+        Accession is the 0001193125-19-163007 part (filename without extension)
 
         Args:
             filename: Filename from index
@@ -274,8 +274,12 @@ class SECClient:
             Accession number
         """
         parts = filename.strip().split('/')
-        if len(parts) >= 3:
-            return parts[-2]  # Accession number is second-to-last part
+        if len(parts) >= 4:
+            # Last part is the filename with extension (e.g., "0001193125-19-163007.txt")
+            filename_with_ext = parts[-1]
+            # Remove extension to get accession number
+            accession = filename_with_ext.rsplit('.', 1)[0]
+            return accession
         return ""
 
     def get_filing_by_accession(
