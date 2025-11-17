@@ -1,0 +1,31 @@
+2025-11-17 14:52:37,821 - INFO - Processing single filing: 36694
+2025-11-17 14:52:37,821 - INFO - Processing filing 36694
+2025-11-17 14:52:37,857 - INFO -   Stage 1: Segmenting HTML
+2025-11-17 14:52:37,857 - INFO - Segmenting filing 36694 from data/filings/0002030763/000149315224028706/primary.htm
+2025-11-17 14:52:49,682 - INFO - Extracted 1094 segments from filing 36694
+2025-11-17 14:52:49,682 - INFO -   Stage 2: Classifying 1094 segments
+2025-11-17 14:52:50,027 - INFO - Classified 1094 segments
+2025-11-17 14:52:50,027 - INFO -   Stage 3: Extracting values
+2025-11-17 14:52:50,029 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,030 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,031 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,031 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,032 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,032 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,033 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,033 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,034 - INFO - Extracted 0 values from table segment None
+2025-11-17 14:52:50,034 - INFO -   Stage 4: Extracting definitions
+2025-11-17 14:52:50,034 - INFO - Extracted 0 metric definitions
+2025-11-17 14:52:50,034 - INFO -   Stage 5: Computing quality scores
+2025-11-17 14:52:50,035 - INFO - Scored 4 filing-metric pairs
+2025-11-17 14:52:50,035 - INFO -   Stage 6: Writing to database
+2025-11-17 14:52:50,035 - ERROR - ✗ Error processing filing 36694: DatabaseAdapter.execute() got an unexpected keyword argument 'fetch'
+Traceback (most recent call last):
+  File "/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/src/extraction/extraction_pipeline.py", line 151, in process_filing
+    self._write_results(
+  File "/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/src/extraction/extraction_pipeline.py", line 276, in _write_results
+    segment_id = self.db.execute("""
+                 ^^^^^^^^^^^^^^^^^^^
+TypeError: DatabaseAdapter.execute() got an unexpected keyword argument 'fetch'
+2025-11-17 14:52:50,035 - ERROR - ✗ Extraction failed: DatabaseAdapter.execute() got an unexpected keyword argument 'fetch'

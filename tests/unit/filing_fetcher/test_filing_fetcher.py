@@ -1,0 +1,497 @@
+"""
+Unit tests for FilingFetcher core functionality.
+"""
+
+import pytest
+from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime
+
+from src.filing_fetcher.filing_fetcher import FilingFetcher, FilingContent
+from src.infra.sec_client import FilingMetadata
+
+
+class TestStoragePathGeneration:
+    """Test suite for storage path generation."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a FilingFetcher with temporary storage."""
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+
+    def test_get_storage_dir_format(self, fetcher):
+        """Test that storage directory has correct format."""
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+
+        assert "0001234567" in str(storage_dir)
+        assert "000123456712123456" in str(storage_dir)  # Accession without dashes
+
+    def test_get_storage_dir_removes_dashes(self, fetcher):
+        """Test that dashes are removed from accession number in path."""
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+
+        # Path should not contain dashes in accession number
+        assert "-12-" not in str(storage_dir)
+
+    def test_get_storage_dir_creates_nested_structure(self, fetcher):
+        """Test that directory structure is nested by CIK."""
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+
+        # Should be: storage_root/CIK/accession_no_dashes
+        path_parts = storage_dir.parts
+        assert path_parts[-2] == "0001234567"  # CIK
+        assert path_parts[-1] == "000123456712123456"  # Accession
+
+
+class TestGetFilingContent:
+    """Test suite for get_filing_content method."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a FilingFetcher with temporary storage."""
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+
+    def test_get_existing_filing(self, fetcher, tmp_path):
+        """Test retrieving existing cached filing."""
+        # Create fake cached filing
+        cik = "0001234567"
+        accession = "0001234567-12-123456"
+        storage_dir = fetcher._get_storage_dir(cik, accession)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = storage_dir / "primary.htm"
+        html_path.write_text("<html>Test filing</html>")
+
+        # Retrieve filing content
+        content = fetcher.get_filing_content(cik, accession)
+
+        assert content is not None
+        assert content.cik == cik
+        assert content.accession_number == accession
+        assert str(html_path) in content.html_path
+        assert content.txt_path is None  # No TXT file created
+
+    def test_get_nonexistent_filing(self, fetcher):
+        """Test that None is returned for nonexistent filing."""
+        content = fetcher.get_filing_content("0001234567", "0001234567-12-123456")
+
+        assert content is None
+
+    def test_get_filing_with_txt(self, fetcher, tmp_path):
+        """Test retrieving filing with both HTML and TXT files."""
+        # Create fake cached filing with both files
+        cik = "0001234567"
+        accession = "0001234567-12-123456"
+        storage_dir = fetcher._get_storage_dir(cik, accession)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = storage_dir / "primary.htm"
+        txt_path = storage_dir / "complete.txt"
+        html_path.write_text("<html>Test filing</html>")
+        txt_path.write_text("Complete text filing")
+
+        # Retrieve filing content
+        content = fetcher.get_filing_content(cik, accession)
+
+        assert content is not None
+        assert content.txt_path is not None
+        assert str(txt_path) in content.txt_path
+
+
+class TestFetchFiling:
+    """Test suite for fetch_filing method."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a FilingFetcher with temporary storage."""
+        mock_sec_client = Mock()
+        return FilingFetcher(
+            storage_root=str(tmp_path / "test_filings"),
+            sec_client=mock_sec_client
+        )
+
+    @pytest.fixture
+    def valid_filing_html(self):
+        """Create valid filing HTML content."""
+        return """
+<DOCUMENT>
+<TYPE>S-1
+<TEXT>
+<HTML>
+<HEAD><TITLE>S-1</TITLE></HEAD>
+<BODY>
+<P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
+<P>FORM S-1</P>
+<P>REGISTRATION STATEMENT</P>
+""" + "X" * 20000  # Pad to meet size requirement
+
+    def test_fetch_filing_success(self, fetcher, valid_filing_html):
+        """Test successful filing fetch."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt"
+        )
+
+        # Mock HTTP responses
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is not None
+        assert content.cik == "0001234567"
+        assert content.accession_number == "0001234567-12-123456"
+        assert Path(content.html_path).exists()
+
+    def test_fetch_filing_with_directory_url(self, fetcher, valid_filing_html):
+        """Test fetching filing with directory URL that needs resolution."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",  # Directory URL
+            txt_url=None
+        )
+
+        # Mock SEC client to resolve URL
+        fetcher.sec_client.resolve_primary_document_url.return_value = \
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+
+        # Mock HTTP response
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is not None
+        fetcher.sec_client.resolve_primary_document_url.assert_called_once_with(
+            "0001234567", "0001234567-12-123456"
+        )
+
+    def test_fetch_filing_invalid_content(self, fetcher):
+        """Test that invalid content is rejected."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+        )
+
+        # Mock response with invalid content (too small)
+        mock_response = Mock()
+        mock_response.text = "<html>Error page</html>"
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        # Should return None because content validation failed
+        assert content is None
+
+    def test_fetch_filing_http_error(self, fetcher):
+        """Test handling of HTTP errors."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+        )
+
+        # Mock HTTP error
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = Exception("404 Not Found")
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is None
+
+    def test_fetch_filing_already_cached(self, fetcher, valid_filing_html, tmp_path):
+        """Test that cached filings are not re-downloaded."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+        )
+
+        # Pre-create cached file
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        html_path = storage_dir / "primary.htm"
+        html_path.write_text(valid_filing_html)
+
+        # Mock session.get to track calls
+        mock_get = Mock()
+        with patch.object(fetcher.session, 'get', mock_get):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        # Should not make any HTTP requests because file is cached
+        mock_get.assert_not_called()
+        assert content is not None
+
+    def test_fetch_filing_with_txt(self, fetcher, valid_filing_html):
+        """Test fetching both HTML and TXT files."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt"
+        )
+
+        # Mock HTTP responses
+        mock_html_response = Mock()
+        mock_html_response.text = valid_filing_html
+        mock_html_response.raise_for_status = Mock()
+
+        mock_txt_response = Mock()
+        mock_txt_response.text = "Complete text filing content"
+        mock_txt_response.raise_for_status = Mock()
+
+        call_count = [0]
+        def get_side_effect(url):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_html_response
+            else:
+                return mock_txt_response
+
+        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+            content = fetcher.fetch_filing(metadata, fetch_txt=True)
+
+        assert content is not None
+        assert content.txt_path is not None
+        assert Path(content.txt_path).exists()
+
+
+class TestFetchBatch:
+    """Test suite for fetch_batch method."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a FilingFetcher with temporary storage."""
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+
+    def test_fetch_batch_empty(self, fetcher):
+        """Test fetching empty batch."""
+        stats = fetcher.fetch_batch([], fetch_txt=False)
+
+        assert stats['total'] == 0
+        assert stats['fetched'] == 0
+        assert stats['failed'] == 0
+        assert stats['skipped'] == 0
+
+    def test_fetch_batch_success(self, fetcher):
+        """Test successful batch fetch."""
+        valid_html = """
+<DOCUMENT>
+<TYPE>S-1
+<TEXT>
+<HTML>
+<HEAD><TITLE>S-1</TITLE></HEAD>
+<BODY>
+<P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
+<P>FORM S-1</P>
+""" + "X" * 20000
+
+        filings = [
+            FilingMetadata(
+                cik="0001234567",
+                company_name="Test Corp 1",
+                form_type="S-1",
+                filing_date="2024-01-15",
+                accession_number="0001234567-12-123456",
+                primary_doc_url="https://www.sec.gov/test1.htm",
+            ),
+            FilingMetadata(
+                cik="0007654321",
+                company_name="Test Corp 2",
+                form_type="S-1",
+                filing_date="2024-01-16",
+                accession_number="0007654321-12-654321",
+                primary_doc_url="https://www.sec.gov/test2.htm",
+            ),
+        ]
+
+        # Mock HTTP responses
+        mock_response = Mock()
+        mock_response.text = valid_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            stats = fetcher.fetch_batch(filings, fetch_txt=False)
+
+        assert stats['total'] == 2
+        assert stats['fetched'] == 2
+        assert stats['failed'] == 0
+        assert stats['skipped'] == 0
+
+    def test_fetch_batch_with_failures(self, fetcher):
+        """Test batch fetch with some failures."""
+        valid_html = """
+<DOCUMENT>
+<TYPE>S-1
+<TEXT>
+<HTML>
+<HEAD><TITLE>S-1</TITLE></HEAD>
+<BODY>
+<P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
+<P>FORM S-1</P>
+""" + "X" * 20000
+
+        filings = [
+            FilingMetadata(
+                cik="0001234567",
+                company_name="Test Corp 1",
+                form_type="S-1",
+                filing_date="2024-01-15",
+                accession_number="0001234567-12-123456",
+                primary_doc_url="https://www.sec.gov/test1.htm",
+            ),
+            FilingMetadata(
+                cik="0007654321",
+                company_name="Test Corp 2",
+                form_type="S-1",
+                filing_date="2024-01-16",
+                accession_number="0007654321-12-654321",
+                primary_doc_url="https://www.sec.gov/test2.htm",
+            ),
+        ]
+
+        # Mock responses: first succeeds, second fails
+        call_count = [0]
+        def get_side_effect(url):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                response = Mock()
+                response.text = valid_html
+                response.raise_for_status = Mock()
+                return response
+            else:
+                response = Mock()
+                response.raise_for_status.side_effect = Exception("404")
+                return response
+
+        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+            stats = fetcher.fetch_batch(filings, fetch_txt=False)
+
+        assert stats['total'] == 2
+        assert stats['fetched'] == 1
+        assert stats['failed'] == 1
+        assert stats['skipped'] == 0
+
+    def test_fetch_batch_stops_on_max_failures(self, fetcher):
+        """Test that batch fetch stops after max consecutive failures."""
+        filings = [
+            FilingMetadata(
+                cik=f"{i:010d}",
+                company_name=f"Test Corp {i}",
+                form_type="S-1",
+                filing_date="2024-01-15",
+                accession_number=f"{i:010d}-12-123456",
+                primary_doc_url=f"https://www.sec.gov/test{i}.htm",
+            )
+            for i in range(20)
+        ]
+
+        # Mock all requests to fail
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = Exception("Error")
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            stats = fetcher.fetch_batch(filings, fetch_txt=False, max_failures=5)
+
+        # Should stop after 5 consecutive failures
+        assert stats['failed'] <= 5
+        assert stats['total'] == 20  # Total count is still full list
+
+    def test_fetch_batch_skips_cached(self, fetcher, tmp_path):
+        """Test that batch fetch skips already cached filings."""
+        valid_html = """
+<DOCUMENT>
+<TYPE>S-1
+<TEXT>
+<HTML>
+<HEAD><TITLE>S-1</TITLE></HEAD>
+<BODY>
+<P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
+<P>FORM S-1</P>
+""" + "X" * 20000
+
+        # Pre-cache first filing
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        (storage_dir / "primary.htm").write_text(valid_html)
+
+        filings = [
+            FilingMetadata(
+                cik="0001234567",
+                company_name="Test Corp 1",
+                form_type="S-1",
+                filing_date="2024-01-15",
+                accession_number="0001234567-12-123456",
+                primary_doc_url="https://www.sec.gov/test1.htm",
+            ),
+            FilingMetadata(
+                cik="0007654321",
+                company_name="Test Corp 2",
+                form_type="S-1",
+                filing_date="2024-01-16",
+                accession_number="0007654321-12-654321",
+                primary_doc_url="https://www.sec.gov/test2.htm",
+            ),
+        ]
+
+        # Mock HTTP response for second filing only
+        mock_response = Mock()
+        mock_response.text = valid_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, 'get', return_value=mock_response):
+            stats = fetcher.fetch_batch(filings, fetch_txt=False)
+
+        assert stats['total'] == 2
+        assert stats['fetched'] == 1  # Only second filing
+        assert stats['skipped'] == 1  # First filing was cached
+        assert stats['failed'] == 0
+
+
+class TestRateLimiting:
+    """Test suite for rate limiting in FilingFetcher."""
+
+    @pytest.fixture
+    def fetcher(self, tmp_path):
+        """Create a FilingFetcher with temporary storage."""
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+
+    def test_rate_limit_enforced(self, fetcher):
+        """Test that rate limiting delays are enforced."""
+        import time
+
+        start = time.time()
+        fetcher._rate_limit()
+        fetcher._rate_limit()
+        elapsed = time.time() - start
+
+        # Should have delayed at least MIN_REQUEST_INTERVAL
+        assert elapsed >= fetcher.MIN_REQUEST_INTERVAL
