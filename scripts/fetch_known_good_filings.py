@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import FilingMetadata
+from src.infra.sec_client import FilingMetadata, SECClient
 from src.filing_fetcher.filing_fetcher import FilingFetcher
 
 logging.basicConfig(
@@ -40,7 +40,8 @@ def main():
     logger.info("=" * 80)
 
     db = DatabaseAdapter(db_url)
-    fetcher = FilingFetcher(storage_root="data/filings", db=db)
+    sec_client = SECClient(user_agent="CMASB Filings Analyzer rgmarkey@gmail.com")
+    fetcher = FilingFetcher(storage_root="data/filings", db=db, sec_client=sec_client)
 
     # Query for these specific companies
     query = """
