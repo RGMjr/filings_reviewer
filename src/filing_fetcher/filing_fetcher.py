@@ -60,6 +60,7 @@ class FilingFetcher:
         storage_root: str = "data/filings",
         user_agent: str = "CMASB Filings Analyzer rgmarkey@gmail.com",
         db=None,
+        sec_client=None,
     ):
         """
         Initialize FilingFetcher.
@@ -68,6 +69,7 @@ class FilingFetcher:
             storage_root: Root directory for storing filings
             user_agent: User agent for SEC requests (must include contact email)
             db: DatabaseAdapter instance (optional, for tracking fetched filings)
+            sec_client: SECClient instance (optional, for resolving primary doc URLs)
         """
         self.storage_root = Path(storage_root)
         self.storage_root.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,7 @@ class FilingFetcher:
         self.session.headers.update({"User-Agent": user_agent})
 
         self.db = db
+        self.sec_client = sec_client
         self._last_request_time = 0.0
 
     def _rate_limit(self):
@@ -129,9 +132,21 @@ class FilingFetcher:
         try:
             # Fetch HTML filing
             if not html_path.exists():
+                # Resolve primary document URL if it's a directory URL
+                primary_doc_url = filing_metadata.primary_doc_url
+                if primary_doc_url.endswith('/') and self.sec_client:
+                    logger.debug(f"Resolving primary doc URL for {cik}/{accession_number}")
+                    resolved_url = self.sec_client.resolve_primary_document_url(
+                        cik, accession_number
+                    )
+                    if resolved_url:
+                        primary_doc_url = resolved_url
+                    else:
+                        raise ValueError(f"Could not resolve primary document URL")
+
                 self._rate_limit()
-                logger.debug(f"Downloading HTML: {filing_metadata.primary_doc_url}")
-                response = self.session.get(filing_metadata.primary_doc_url)
+                logger.debug(f"Downloading HTML: {primary_doc_url}")
+                response = self.session.get(primary_doc_url)
                 response.raise_for_status()
 
                 html_path.write_text(response.text, encoding='utf-8')

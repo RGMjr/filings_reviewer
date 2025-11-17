@@ -235,15 +235,15 @@ class SECClient:
             cik = cik.strip()
             accession_number = self._extract_accession_from_filename(filename)
 
-            # Use SEC's filing viewer endpoint for primary document
-            # This provides the complete filing in HTML format
-            primary_doc_url = (
-                f"{self.BASE_URL}/cgi-bin/viewer?action=view"
-                f"&cik={cik}&accession_number={accession_number}&xbrl_type=v"
-            )
-
             # The raw text file URL from the index
             txt_url = f"{self.BASE_URL}/{filename.strip()}"
+
+            # Primary doc URL needs to be resolved from the filing's index
+            # We store a placeholder directory URL that FilingFetcher will resolve
+            accession_no_dashes = accession_number.replace('-', '')
+            primary_doc_url = (
+                f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/"
+            )
 
             filings.append(
                 FilingMetadata(
@@ -281,6 +281,66 @@ class SECClient:
             accession = filename_with_ext.rsplit('.', 1)[0]
             return accession
         return ""
+
+    def resolve_primary_document_url(
+        self, cik: str, accession_number: str
+    ) -> Optional[str]:
+        """
+        Resolve the primary HTML document URL for a filing by fetching its index.
+
+        Args:
+            cik: SEC Central Index Key
+            accession_number: SEC accession number (with dashes)
+
+        Returns:
+            Full URL to primary HTML document, or None if not found
+        """
+        accession_no_dashes = accession_number.replace('-', '')
+        index_url = (
+            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+            f"{accession_no_dashes}/index.json"
+        )
+
+        try:
+            self._rate_limit()
+            response = self.session.get(index_url)
+            response.raise_for_status()
+
+            data = response.json()
+            directory = data.get('directory', {})
+            items = directory.get('item', [])
+
+            # Look for primary HTML document
+            htm_files = [
+                item for item in items
+                if item['name'].endswith(('.htm', '.html'))
+                and not item['name'].startswith('R')  # Exclude XBRL
+            ]
+
+            if not htm_files:
+                logger.warning(f"No HTML files found for {cik}/{accession_number}")
+                return None
+
+            # Find primary doc (matches form type pattern like 's-1', 'f-1', 'ds1')
+            for item in htm_files:
+                name = item['name'].lower()
+                if 's-1' in name or 'f-1' in name or 'ds1' in name or 'df1' in name:
+                    primary_doc = item['name']
+                    return (
+                        f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+                        f"{accession_no_dashes}/{primary_doc}"
+                    )
+
+            # If no pattern match, use first HTML file
+            primary_doc = htm_files[0]['name']
+            return (
+                f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+                f"{accession_no_dashes}/{primary_doc}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error resolving primary doc for {cik}/{accession_number}: {e}")
+            return None
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
