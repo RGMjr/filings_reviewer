@@ -321,18 +321,52 @@ class SECClient:
                 logger.warning(f"No HTML files found for {cik}/{accession_number}")
                 return None
 
-            # Find primary doc (matches form type pattern like 's-1', 'f-1', 'ds1')
+            # Find primary doc (matches form type pattern)
+            # Try multiple pattern matching strategies in order of preference
+
+            # Strategy 1: Look for explicit form type patterns
+            form_patterns = [
+                's-1', 'f-1',           # Standard patterns with dashes
+                'ds1', 'df1',           # Document patterns
+                'forms1', 'formf1',     # Form prefix patterns
+                'form_s-1', 'form_f-1', # Form with underscore
+                'ss1', 'ff1',           # Compact patterns (no separator)
+                's1a', 'f1a',           # Amendment patterns
+                'filing',               # Generic filing
+                'mainbody',             # Common main document naming
+                'prospectus',           # Prospectus filings
+                'registration',         # Registration statements
+            ]
+
             for item in htm_files:
                 name = item['name'].lower()
-                if 's-1' in name or 'f-1' in name or 'ds1' in name or 'df1' in name:
+                if any(pattern in name for pattern in form_patterns):
                     primary_doc = item['name']
+                    logger.debug(f"Found primary doc by pattern: {primary_doc}")
                     return (
                         f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
                         f"{accession_no_dashes}/{primary_doc}"
                     )
 
-            # If no pattern match, use first HTML file
-            primary_doc = htm_files[0]['name']
+            # Strategy 2: Use largest HTML file (likely the main document)
+            # Exclude exhibit files (typically have 'exhibit' or 'ex' in name)
+            non_exhibit_files = [
+                item for item in htm_files
+                if 'exhibit' not in item['name'].lower()
+                and not item['name'].lower().startswith('ex')
+            ]
+
+            files_to_consider = non_exhibit_files if non_exhibit_files else htm_files
+
+            # Get file with largest size
+            largest_file = max(files_to_consider, key=lambda x: x.get('size', 0))
+            primary_doc = largest_file['name']
+
+            logger.debug(
+                f"Using largest file as primary doc: {primary_doc} "
+                f"({largest_file.get('size', 0)} bytes)"
+            )
+
             return (
                 f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
                 f"{accession_no_dashes}/{primary_doc}"

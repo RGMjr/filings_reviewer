@@ -104,6 +104,96 @@ class FilingFetcher:
         accession_clean = accession_number.replace('-', '')
         return self.storage_root / cik / accession_clean
 
+    def _validate_filing_content(self, html: str, cik: str, accession_number: str) -> tuple[bool, Optional[str]]:
+        """
+        Validate that HTML content is a real SEC filing, not an error page.
+
+        Supports both SGML-wrapped filings (older, with <DOCUMENT> tag) and
+        modern pure HTML filings (2022+, without SGML wrapper).
+
+        Args:
+            html: HTML content to validate
+            cik: Expected CIK for additional validation
+            accession_number: Expected accession number
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        # Check 1: Minimum size - SEC filings are typically > 15KB
+        # Lowered from 20KB to capture small legitimate filings (amendments, etc.)
+        if len(html) < 15_000:
+            return False, f"Content too small ({len(html):,} bytes, expected > 15KB) - likely an error page"
+
+        # Check 2: Must NOT contain error indicators (check early to fail fast)
+        error_markers = [
+            'No rendered XBRL documents',
+            'No documents were found',
+            '404 Not Found',
+            'Page Not Found',
+            'Error processing request',
+            'The requested URL was not found',
+            'Access Denied',
+            'Service Unavailable',
+            'NoSuchKey',  # S3 error
+            '<Error>',    # XML error response
+        ]
+
+        for marker in error_markers:
+            if marker in html:
+                return False, f"Error page detected: contains '{marker}'"
+
+        # Check 3: Detect filing format (SGML vs modern HTML)
+        has_document_tag = '<DOCUMENT>' in html
+        has_html_structure = any(tag in html for tag in ['<!DOCTYPE', '<HTML>', '<html>'])
+        has_sgml_structure = '<TEXT>' in html
+
+        is_sgml_format = has_document_tag and has_sgml_structure
+        is_modern_html = has_html_structure and not has_document_tag
+
+        # Must be one of the two supported formats
+        if not (is_sgml_format or is_modern_html or has_document_tag):
+            # Lenient: If it has <DOCUMENT> tag OR proper HTML structure, allow it
+            if not (has_document_tag or has_html_structure):
+                return False, "Missing valid filing structure (neither SGML nor HTML format)"
+
+        # Check 4: Must contain SEC filing indicators
+        # At least one of these should be present in a real filing
+        sec_indicators = [
+            'SECURITIES AND EXCHANGE COMMISSION',
+            'Securities and Exchange Commission',
+            'UNITED STATES SECURITIES AND EXCHANGE COMMISSION',
+            'U.S. SECURITIES AND EXCHANGE COMMISSION',
+            'FORM S-1',
+            'FORM F-1',
+            'REGISTRATION STATEMENT',
+        ]
+
+        has_sec_reference = any(indicator in html for indicator in sec_indicators)
+
+        if not has_sec_reference:
+            return False, "Missing SEC filing indicators - content may not be a filing"
+
+        # Check 5: Additional validation for modern HTML format
+        if is_modern_html:
+            # Modern HTML filings should have more structured content
+            html_lower = html.lower()
+
+            # Should contain typical filing elements
+            filing_elements = [
+                '<title>',
+                '<body',
+                '<div',
+                '<table',
+            ]
+
+            has_filing_elements = sum(1 for elem in filing_elements if elem in html_lower) >= 2
+
+            if not has_filing_elements:
+                return False, "Modern HTML filing missing expected structural elements"
+
+        # All checks passed
+        return True, None
+
     def fetch_filing(
         self, filing_metadata: FilingMetadata, fetch_txt: bool = True
     ) -> Optional[FilingContent]:
@@ -148,6 +238,13 @@ class FilingFetcher:
                 logger.debug(f"Downloading HTML: {primary_doc_url}")
                 response = self.session.get(primary_doc_url)
                 response.raise_for_status()
+
+                # Validate content before saving
+                is_valid, error_msg = self._validate_filing_content(
+                    response.text, cik, accession_number
+                )
+                if not is_valid:
+                    raise ValueError(f"Invalid filing content: {error_msg}")
 
                 html_path.write_text(response.text, encoding='utf-8')
                 logger.info(f"Saved HTML to {html_path}")
