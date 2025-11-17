@@ -105,10 +105,10 @@ class SECClient:
         form_types: Optional[List[str]] = None,
     ) -> List[FilingMetadata]:
         """
-        Search for filings in a date range.
+        Search for filings in a date range using SEC daily index files.
 
-        Note: This is a simplified implementation for v0.1. For production use,
-        consider using the SEC's bulk data or RSS feeds for better performance.
+        This implementation parses SEC's daily master index files to discover filings.
+        See: https://www.sec.gov/Archives/edgar/daily-index/
 
         Args:
             start_date: Start date (ISO format: YYYY-MM-DD)
@@ -120,36 +120,163 @@ class SECClient:
             List of FilingMetadata objects
 
         Note:
-            This implementation uses the company search endpoint which may not
-            be ideal for large date ranges. Consider implementing a more robust
-            solution using SEC's RSS feeds or bulk data for production.
+            This queries daily index files which can be slow for large date ranges.
+            For production, consider caching index files or using bulk downloads.
         """
         if form_types is None:
             form_types = ['S-1', 'S-1/A', 'F-1', 'F-1/A']
-
-        # For v0.1, we'll use a simplified approach
-        # In production, you'd want to use SEC's RSS feeds or bulk downloads
-        logger.warning(
-            "search_filings uses a simplified implementation. "
-            "For large date ranges, consider using SEC RSS feeds or bulk data."
-        )
-
-        # This is a placeholder that demonstrates the interface
-        # Real implementation would query SEC's company search or RSS feeds
-        filings = []
-
-        # TODO: Implement actual EDGAR querying
-        # Options:
-        # 1. Use SEC's RSS feeds: https://www.sec.gov/cgi-bin/browse-edgar
-        # 2. Use SEC's full text search API
-        # 3. Parse daily index files from https://www.sec.gov/Archives/edgar/daily-index/
 
         logger.info(
             f"Searching for filings: {start_date} to {end_date}, "
             f"form_types={form_types}"
         )
 
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+
+        filings = []
+        current_date = start
+
+        while current_date <= end:
+            try:
+                daily_filings = self._get_daily_filings(current_date, form_types)
+                filings.extend(daily_filings)
+                logger.info(
+                    f"Found {len(daily_filings)} filings on {current_date.date()}"
+                )
+            except requests.HTTPError as e:
+                if e.response.status_code == 404:
+                    logger.debug(f"No index file for {current_date.date()}")
+                else:
+                    logger.warning(f"Error fetching {current_date.date()}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error for {current_date.date()}: {e}")
+
+            # Move to next day
+            from datetime import timedelta
+            current_date += timedelta(days=1)
+
+        logger.info(f"Total filings found: {len(filings)}")
         return filings
+
+    def _get_daily_filings(
+        self, date: datetime, form_types: List[str]
+    ) -> List[FilingMetadata]:
+        """
+        Get filings from a single day's master index file.
+
+        Args:
+            date: Date to fetch
+            form_types: List of form types to include
+
+        Returns:
+            List of FilingMetadata for that day
+        """
+        # Construct URL to daily master index
+        # Format: https://www.sec.gov/Archives/edgar/daily-index/2024/QTR1/master.20240115.idx
+        quarter = (date.month - 1) // 3 + 1
+        year = date.year
+        date_str = date.strftime("%Y%m%d")
+
+        url = (
+            f"{self.BASE_URL}/Archives/edgar/daily-index/"
+            f"{year}/QTR{quarter}/master.{date_str}.idx"
+        )
+
+        # Fetch and parse index file
+        self._rate_limit()
+        response = self.session.get(url)
+        response.raise_for_status()
+
+        return self._parse_master_index(response.text, form_types)
+
+    def _parse_master_index(
+        self, index_text: str, form_types: List[str]
+    ) -> List[FilingMetadata]:
+        """
+        Parse SEC master index file format.
+
+        Format:
+        CIK|Company Name|Form Type|Date Filed|Filename
+
+        Args:
+            index_text: Raw index file text
+            form_types: List of form types to include
+
+        Returns:
+            List of FilingMetadata objects
+        """
+        filings = []
+
+        # Skip header lines (first ~10 lines are header)
+        lines = index_text.strip().split('\n')
+        data_start = 0
+        for i, line in enumerate(lines):
+            if line.startswith('---'):
+                data_start = i + 1
+                break
+
+        # Parse data lines
+        for line in lines[data_start:]:
+            if not line.strip():
+                continue
+
+            parts = line.split('|')
+            if len(parts) < 5:
+                continue
+
+            cik, company_name, form_type, filing_date, filename = parts[:5]
+
+            # Filter by form type
+            if form_type not in form_types:
+                continue
+
+            # Construct URLs
+            cik = cik.strip()
+            accession_number = self._extract_accession_from_filename(filename)
+
+            # Use SEC's filing viewer endpoint for primary document
+            # This provides the complete filing in HTML format
+            primary_doc_url = (
+                f"{self.BASE_URL}/cgi-bin/viewer?action=view"
+                f"&cik={cik}&accession_number={accession_number}&xbrl_type=v"
+            )
+
+            # The raw text file URL from the index
+            txt_url = f"{self.BASE_URL}/{filename.strip()}"
+
+            filings.append(
+                FilingMetadata(
+                    cik=cik.zfill(10),  # Pad CIK to 10 digits
+                    company_name=company_name.strip(),
+                    form_type=form_type.strip(),
+                    filing_date=filing_date.strip(),
+                    accession_number=accession_number,
+                    primary_doc_url=primary_doc_url,
+                    txt_url=txt_url,
+                    ticker=None,  # Not available in index files
+                )
+            )
+
+        return filings
+
+    def _extract_accession_from_filename(self, filename: str) -> str:
+        """
+        Extract accession number from filename.
+
+        Filename format: edgar/data/####/##########-##-######/filename.txt
+        Accession is the ##########-##-###### part
+
+        Args:
+            filename: Filename from index
+
+        Returns:
+            Accession number
+        """
+        parts = filename.strip().split('/')
+        if len(parts) >= 3:
+            return parts[-2]  # Accession number is second-to-last part
+        return ""
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str

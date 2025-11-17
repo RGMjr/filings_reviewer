@@ -223,6 +223,19 @@ class DatabaseAdapter:
         )
         return filing_id
 
+    def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Execute a SQL statement (UPDATE, DELETE, etc.) without returning results.
+
+        Args:
+            sql: SQL statement
+            params: Query parameters
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or {})
+                conn.commit()
+
     def query(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """
         Execute a SELECT query and return results as list of dicts.
