@@ -85,7 +85,7 @@ class QualityScorer:
 
         # From segments
         for seg in segments:
-            metrics.update(seg.candidate_metric_ids)
+            metrics.update(seg.candidate_metric_ids or [])
 
         # From values
         for val in values:
@@ -121,7 +121,9 @@ class QualityScorer:
             FilingMetricIncidence object
         """
         # Filter to this metric
-        metric_segments = [s for s in segments if metric_id in s.candidate_metric_ids]
+        metric_segments = [
+            s for s in segments if metric_id in (s.candidate_metric_ids or [])
+        ]
         metric_values = [v for v in values if v.metric_id == metric_id]
         metric_definitions = [d for d in definitions if d.metric_id == metric_id]
 

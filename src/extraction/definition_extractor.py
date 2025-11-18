@@ -90,7 +90,7 @@ class DefinitionExtractor:
         metric_segments = {}
 
         for seg in segments:
-            for metric_id in seg.candidate_metric_ids:
+            for metric_id in (seg.candidate_metric_ids or []):
                 if metric_id not in metric_segments:
                     metric_segments[metric_id] = []
                 metric_segments[metric_id].append(seg)

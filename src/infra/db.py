@@ -223,18 +223,30 @@ class DatabaseAdapter:
         )
         return filing_id
 
-    def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> None:
+    def execute(
+        self,
+        sql: str,
+        params: Optional[Dict[str, Any]] = None,
+        *,
+        fetch: bool = False,
+    ) -> Optional[List[Dict[str, Any]]]:
         """
-        Execute a SQL statement (UPDATE, DELETE, etc.) without returning results.
+        Execute a SQL statement.
 
         Args:
             sql: SQL statement
             params: Query parameters
+            fetch: If True, return fetched rows (for statements with RETURNING)
+
+        Returns:
+            List of rows when fetch=True, otherwise None.
         """
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params or {})
-                conn.commit()
+                if fetch:
+                    return cur.fetchall()
+        return None
 
     def query(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """
@@ -247,10 +259,8 @@ class DatabaseAdapter:
         Returns:
             List of result rows as dictionaries
         """
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params or {})
-                return cur.fetchall()
+        result = self.execute(sql, params, fetch=True)
+        return result or []
 
     def get_company_by_cik(self, cik: str) -> Optional[Dict]:
         """

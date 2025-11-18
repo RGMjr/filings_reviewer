@@ -270,128 +270,164 @@ class ExtractionPipeline:
         # Use database transaction for atomicity
         # If any insert fails, everything rolls back
 
-        # Insert source segments
-        segment_id_map = {}  # Map temp ID to DB ID
-        for seg in segments:
-            result = self.db.query("""
-                INSERT INTO source_segments (
-                    filing_id, segment_type, section_path, section_heading,
-                    sequence_index, raw_text, raw_html,
-                    candidate_metric_ids,
-                    contains_definition_flag,
-                    contains_methodology_flag,
-                    contains_numeric_disclosure_flag,
-                    classifier_confidence
-                ) VALUES (
-                    %(filing_id)s, %(segment_type)s, %(section_path)s, %(section_heading)s,
-                    %(sequence_index)s, %(raw_text)s, %(raw_html)s,
-                    %(candidate_metric_ids)s,
-                    %(contains_definition_flag)s,
-                    %(contains_methodology_flag)s,
-                    %(contains_numeric_disclosure_flag)s,
-                    %(classifier_confidence)s
-                )
-                RETURNING source_segment_id
-            """, seg.to_dict())
+        cleanup_sql = [
+            "DELETE FROM filing_metric_incidence WHERE filing_id = %(filing_id)s",
+            "DELETE FROM metric_definitions WHERE filing_id = %(filing_id)s",
+            "DELETE FROM metric_values WHERE filing_id = %(filing_id)s",
+            "DELETE FROM source_segments WHERE filing_id = %(filing_id)s",
+        ]
 
-            if result:
-                segment_id_map[seg.sequence_index] = result[0]['source_segment_id']
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Remove any prior extraction artifacts for this filing so re-runs are idempotent.
+                for statement in cleanup_sql:
+                    cur.execute(statement, {"filing_id": filing_id})
+
+                # Insert source segments
+                segment_id_map: Dict[int, int] = {}
+                for seg in segments:
+                    cur.execute(
+                        """
+                        INSERT INTO source_segments (
+                            filing_id, segment_type, section_path, section_heading,
+                            sequence_index, raw_text, raw_html,
+                            candidate_metric_ids,
+                            contains_definition_flag,
+                            contains_methodology_flag,
+                            contains_numeric_disclosure_flag,
+                            classifier_confidence
+                        ) VALUES (
+                            %(filing_id)s, %(segment_type)s, %(section_path)s, %(section_heading)s,
+                            %(sequence_index)s, %(raw_text)s, %(raw_html)s,
+                            %(candidate_metric_ids)s,
+                            %(contains_definition_flag)s,
+                            %(contains_methodology_flag)s,
+                            %(contains_numeric_disclosure_flag)s,
+                            %(classifier_confidence)s
+                        )
+                        RETURNING source_segment_id
+                        """,
+                        seg.to_dict(),
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        db_id = result["source_segment_id"]
+                        segment_id_map[seg.sequence_index] = db_id
+                        seg.source_segment_id = db_id
+
+                # Update values with actual segment IDs
+                valid_values: List[MetricValue] = []
+                for val in values:
+                    if val.source_segment_id in segment_id_map:
+                        val.source_segment_id = segment_id_map[val.source_segment_id]
+                        valid_values.append(val)
+                    else:
+                        logger.warning(
+                            "Skipping metric value for filing %s because segment %s was not persisted",
+                            filing_id,
+                            val.source_segment_id,
+                        )
+
+                # Insert metric values
+                for val in valid_values:
+                    cur.execute(
+                        """
+                        INSERT INTO metric_values (
+                            filing_id, company_id, metric_id, source_segment_id,
+                            source_type, extraction_method,
+                            value_numeric, value_text, unit, currency,
+                            period_start, period_end, period_type,
+                            cohort_type, cohort_bucket_raw, cohort_bucket_normalized,
+                            segment_dimension, segment_value,
+                            qa_status, qa_notes, alignment_flag
+                        ) VALUES (
+                            %(filing_id)s, %(company_id)s, %(metric_id)s, %(source_segment_id)s,
+                            %(source_type)s, %(extraction_method)s,
+                            %(value_numeric)s, %(value_text)s, %(unit)s, %(currency)s,
+                            %(period_start)s, %(period_end)s, %(period_type)s,
+                            %(cohort_type)s, %(cohort_bucket_raw)s, %(cohort_bucket_normalized)s,
+                            %(segment_dimension)s, %(segment_value)s,
+                            %(qa_status)s, %(qa_notes)s, %(alignment_flag)s
+                        )
+                        """,
+                        val.to_dict(),
+                    )
+
+                # Update definitions with actual segment IDs
+                valid_definitions: List[MetricDefinition] = []
+                for defn in definitions:
+                    if (
+                        defn.definition_segment_id is not None
+                        and defn.definition_segment_id in segment_id_map
+                    ):
+                        defn.definition_segment_id = segment_id_map[
+                            defn.definition_segment_id
+                        ]
+
+                    if (
+                        defn.methodology_segment_id is not None
+                        and defn.methodology_segment_id in segment_id_map
+                    ):
+                        defn.methodology_segment_id = segment_id_map[
+                            defn.methodology_segment_id
+                        ]
+                    valid_definitions.append(defn)
+
+                # Insert metric definitions
+                for defn in valid_definitions:
+                    cur.execute(
+                        """
+                        INSERT INTO metric_definitions (
+                            filing_id, company_id, metric_id,
+                            definition_version_in_filing,
+                            definition_text_normalized, methodology_text_normalized,
+                            definition_raw_text, methodology_raw_text,
+                            definition_segment_id, methodology_segment_id,
+                            alignment_flag, alignment_notes
+                        ) VALUES (
+                            %(filing_id)s, %(company_id)s, %(metric_id)s,
+                            %(definition_version_in_filing)s,
+                            %(definition_text_normalized)s, %(methodology_text_normalized)s,
+                            %(definition_raw_text)s, %(methodology_raw_text)s,
+                            %(definition_segment_id)s, %(methodology_segment_id)s,
+                            %(alignment_flag)s, %(alignment_notes)s
+                        )
+                        """,
+                        defn.to_dict(),
+                    )
+
+                # Insert filing-metric incidences
+                for inc in incidences:
+                    cur.execute(
+                        """
+                        INSERT INTO filing_metric_incidence (
+                            filing_id, company_id, metric_id,
+                            metric_disclosed_flag,
+                            num_numeric_segments, num_definition_segments, num_methodology_segments,
+                            primary_definition_segment_id, primary_methodology_segment_id,
+                            quality_overall_score, quality_definition_score,
+                            quality_methodology_score, quality_completeness_score,
+                            quality_comparability_score,
+                            alignment_flag, quality_notes,
+                            has_cohort_breakdown_flag, has_tenure_breakdown_flag,
+                            has_acquisition_cohort_flag
+                        ) VALUES (
+                            %(filing_id)s, %(company_id)s, %(metric_id)s,
+                            %(metric_disclosed_flag)s,
+                            %(num_numeric_segments)s, %(num_definition_segments)s, %(num_methodology_segments)s,
+                            %(primary_definition_segment_id)s, %(primary_methodology_segment_id)s,
+                            %(quality_overall_score)s, %(quality_definition_score)s,
+                            %(quality_methodology_score)s, %(quality_completeness_score)s,
+                            %(quality_comparability_score)s,
+                            %(alignment_flag)s, %(quality_notes)s,
+                            %(has_cohort_breakdown_flag)s, %(has_tenure_breakdown_flag)s,
+                            %(has_acquisition_cohort_flag)s
+                        )
+                        """,
+                        inc.to_dict(),
+                    )
 
         logger.info(f"    Inserted {len(segments)} source segments")
-
-        # Update values with actual segment IDs
-        # Values store the segment's sequence_index temporarily, map to DB ID
-        for val in values:
-            if val.source_segment_id in segment_id_map:
-                val.source_segment_id = segment_id_map[val.source_segment_id]
-            else:
-                val.source_segment_id = 0  # Fallback if not found
-
-        # Insert metric values
-        for val in values:
-            self.db.execute("""
-                INSERT INTO metric_values (
-                    filing_id, company_id, metric_id, source_segment_id,
-                    source_type, extraction_method,
-                    value_numeric, value_text, unit, currency,
-                    period_start, period_end, period_type,
-                    cohort_type, cohort_bucket_raw, cohort_bucket_normalized,
-                    segment_dimension, segment_value,
-                    qa_status, qa_notes, alignment_flag
-                ) VALUES (
-                    %(filing_id)s, %(company_id)s, %(metric_id)s, %(source_segment_id)s,
-                    %(source_type)s, %(extraction_method)s,
-                    %(value_numeric)s, %(value_text)s, %(unit)s, %(currency)s,
-                    %(period_start)s, %(period_end)s, %(period_type)s,
-                    %(cohort_type)s, %(cohort_bucket_raw)s, %(cohort_bucket_normalized)s,
-                    %(segment_dimension)s, %(segment_value)s,
-                    %(qa_status)s, %(qa_notes)s, %(alignment_flag)s
-                )
-            """, val.to_dict())
-
-        logger.info(f"    Inserted {len(values)} metric values")
-
-        # Update definitions with actual segment IDs
-        # Definitions store sequence_index temporarily, map to DB ID
-        for defn in definitions:
-            if defn.definition_segment_id is not None and defn.definition_segment_id in segment_id_map:
-                defn.definition_segment_id = segment_id_map[defn.definition_segment_id]
-
-            if defn.methodology_segment_id is not None and defn.methodology_segment_id in segment_id_map:
-                defn.methodology_segment_id = segment_id_map[defn.methodology_segment_id]
-
-        # Insert metric definitions
-        for defn in definitions:
-            self.db.execute("""
-                INSERT INTO metric_definitions (
-                    filing_id, company_id, metric_id,
-                    definition_version_in_filing,
-                    definition_text_normalized, methodology_text_normalized,
-                    definition_raw_text, methodology_raw_text,
-                    definition_segment_id, methodology_segment_id,
-                    alignment_flag, alignment_notes
-                ) VALUES (
-                    %(filing_id)s, %(company_id)s, %(metric_id)s,
-                    %(definition_version_in_filing)s,
-                    %(definition_text_normalized)s, %(methodology_text_normalized)s,
-                    %(definition_raw_text)s, %(methodology_raw_text)s,
-                    %(definition_segment_id)s, %(methodology_segment_id)s,
-                    %(alignment_flag)s, %(alignment_notes)s
-                )
-            """, defn.to_dict())
-
-        logger.info(f"    Inserted {len(definitions)} metric definitions")
-
-        # Update incidences with actual segment IDs
-        # Incidences get segment IDs from definitions, which already mapped them
-        # So no additional mapping needed - they should already have DB IDs
-
-        # Insert filing-metric incidences
-        for inc in incidences:
-            self.db.execute("""
-                INSERT INTO filing_metric_incidence (
-                    filing_id, company_id, metric_id,
-                    metric_disclosed_flag,
-                    num_numeric_segments, num_definition_segments, num_methodology_segments,
-                    primary_definition_segment_id, primary_methodology_segment_id,
-                    quality_overall_score, quality_definition_score,
-                    quality_methodology_score, quality_completeness_score,
-                    quality_comparability_score,
-                    alignment_flag, quality_notes,
-                    has_cohort_breakdown_flag, has_tenure_breakdown_flag,
-                    has_acquisition_cohort_flag
-                ) VALUES (
-                    %(filing_id)s, %(company_id)s, %(metric_id)s,
-                    %(metric_disclosed_flag)s,
-                    %(num_numeric_segments)s, %(num_definition_segments)s, %(num_methodology_segments)s,
-                    %(primary_definition_segment_id)s, %(primary_methodology_segment_id)s,
-                    %(quality_overall_score)s, %(quality_definition_score)s,
-                    %(quality_methodology_score)s, %(quality_completeness_score)s,
-                    %(quality_comparability_score)s,
-                    %(alignment_flag)s, %(quality_notes)s,
-                    %(has_cohort_breakdown_flag)s, %(has_tenure_breakdown_flag)s,
-                    %(has_acquisition_cohort_flag)s
-                )
-            """, inc.to_dict())
-
+        logger.info(f"    Inserted {len(valid_values)} metric values")
+        logger.info(f"    Inserted {len(valid_definitions)} metric definitions")
         logger.info(f"    Inserted {len(incidences)} filing-metric incidences")

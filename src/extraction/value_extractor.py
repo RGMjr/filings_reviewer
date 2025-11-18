@@ -149,9 +149,10 @@ class ValueExtractor:
             List of MetricValue objects
         """
         values = []
+        candidate_metrics = segment.candidate_metric_ids or []
 
         # For each candidate metric, look for associated numbers
-        for metric_id in segment.candidate_metric_ids:
+        for metric_id in candidate_metrics:
             # Find numbers in the text
             numbers = self._number_regex.findall(segment.raw_text)
 
@@ -171,7 +172,7 @@ class ValueExtractor:
                         metric_id=metric_id,
                         source_segment_id=segment.sequence_index,  # Store sequence_index temporarily
                         source_type='text',
-                        extraction_method='rule_text',
+                        extraction_method='llm_text',  # Using rule-based text extraction
                         value_numeric=numeric_value,
                         value_text=value_str,
                         period_end=period_end,
@@ -301,29 +302,31 @@ class ValueExtractor:
         Returns:
             Metric ID or None
         """
+        candidate_metrics = segment.candidate_metric_ids or []
+
         # If only one candidate metric, use it
-        if len(segment.candidate_metric_ids) == 1:
-            return segment.candidate_metric_ids[0]
+        if len(candidate_metrics) == 1:
+            return candidate_metrics[0]
 
         # Check header text for metric keywords
         if column_index < len(headers):
             header = headers[column_index].lower()
 
             # Revenue keywords
-            if 'revenue' in header and 'cm_revenue_by_cohort' in segment.candidate_metric_ids:
+            if 'revenue' in header and 'cm_revenue_by_cohort' in candidate_metrics:
                 return 'cm_revenue_by_cohort'
 
             # Transaction keywords
-            if 'transaction' in header and 'cm_transactions_by_cohort' in segment.candidate_metric_ids:
+            if 'transaction' in header and 'cm_transactions_by_cohort' in candidate_metrics:
                 return 'cm_transactions_by_cohort'
 
             # Customer count keywords
-            if any(kw in header for kw in ['customers', 'users']) and 'cm_customers_period_end_by_tenure' in segment.candidate_metric_ids:
+            if any(kw in header for kw in ['customers', 'users']) and 'cm_customers_period_end_by_tenure' in candidate_metrics:
                 return 'cm_customers_period_end_by_tenure'
 
         # Fall back to first candidate metric
-        if segment.candidate_metric_ids:
-            return segment.candidate_metric_ids[0]
+        if candidate_metrics:
+            return candidate_metrics[0]
 
         return None
 
