@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 
-from infra.db import DatabaseAdapter
+from src.infra.db import DatabaseAdapter
 from .html_segmenter import HTMLSegmenter
 from .metric_classifier import MetricClassifier
 from .value_extractor import ValueExtractor
