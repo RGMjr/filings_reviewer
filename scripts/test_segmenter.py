@@ -6,6 +6,7 @@ This script demonstrates the segmentation of a filing and displays results.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,8 @@ logger = logging.getLogger(__name__)
 def test_segmenter_on_filing(cik: str, accession_number: str):
     """Test segmenter on a specific filing."""
     # Connect to database
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
 
     # Find the filing
     filing = db.query(

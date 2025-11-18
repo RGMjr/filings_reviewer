@@ -83,7 +83,8 @@ def validate_filing_file(file_path: str, cik: str, accession_number: str, fetche
 
 
 def main():
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
     fetcher = FilingFetcher(storage_root="data/filings")
 
     logger.info("=" * 80)

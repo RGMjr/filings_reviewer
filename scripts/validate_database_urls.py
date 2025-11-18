@@ -131,7 +131,8 @@ def validate_url_format(url: str, cik: str, accession_number: str) -> dict:
 
 
 def main():
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
 
     logger.info("=" * 80)
     logger.info("Database URL Validation")
