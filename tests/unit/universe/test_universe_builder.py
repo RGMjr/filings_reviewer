@@ -1,0 +1,266 @@
+"""
+Unit tests for UniverseBuilder component.
+
+Uses mocks to test the build_universe logic without requiring a real database or SEC API.
+"""
+
+from unittest.mock import Mock, MagicMock
+import pytest
+
+from src.infra.sec_client import FilingMetadata, MockSECClient
+from src.infra.db import DatabaseAdapter
+from src.universe.universe_builder import UniverseBuilder
+
+
+@pytest.fixture
+def mock_db():
+    """Create a mock database adapter."""
+    db = Mock(spec=DatabaseAdapter)
+
+    # Mock company upsert to return company_id
+    db.upsert_company = Mock(return_value=1)
+
+    # Mock filing upsert to return filing_id
+    db.upsert_filing = Mock(return_value=100)
+
+    # Mock queries
+    db.get_first_ipo_filing_date = Mock(return_value=None)
+    db.get_in_scope_filing_count = Mock(return_value=0)
+    db.query = Mock(return_value=[])
+
+    return db
+
+
+@pytest.fixture
+def sample_filings():
+    """Create sample filing metadata for testing."""
+    return [
+        # First-time issuer, non-SPAC - should be in scope
+        FilingMetadata(
+            cik="0001234567",
+            company_name="Shopify Inc.",
+            form_type="S-1",
+            filing_date="2015-04-14",
+            accession_number="0001234567-15-000001",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456715000001/shop-s1.htm",
+            ticker="SHOP",
+        ),
+        # SPAC - should be out of scope
+        FilingMetadata(
+            cik="0009876543",
+            company_name="ABC Acquisition Corp.",
+            form_type="S-1",
+            filing_date="2020-06-01",
+            accession_number="0009876543-20-000001",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/9876543/000987654320000001/abc-s1.htm",
+            ticker="ABCAU",
+        ),
+        # Another first-time issuer - in scope
+        FilingMetadata(
+            cik="0005555555",
+            company_name="Datadog, Inc.",
+            form_type="F-1",
+            filing_date="2019-08-19",
+            accession_number="0005555555-19-000001",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/5555555/000555555519000001/ddog-f1.htm",
+            ticker="DDOG",
+        ),
+    ]
+
+
+class TestUniverseBuilderBasic:
+    """Basic tests for UniverseBuilder."""
+
+    def test_initialization(self, mock_db):
+        """UniverseBuilder can be initialized."""
+        sec_client = MockSECClient()
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        assert builder.sec_client is sec_client
+        assert builder.db is mock_db
+
+    def test_build_universe_empty_results(self, mock_db):
+        """build_universe handles empty results from SEC."""
+        sec_client = MockSECClient(mock_filings=[])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2020-01-01", "2020-12-31")
+
+        assert count == 0
+        mock_db.upsert_company.assert_not_called()
+        mock_db.upsert_filing.assert_not_called()
+
+    def test_build_universe_single_filing(self, mock_db, sample_filings):
+        """build_universe processes a single filing correctly."""
+        # Use only the first (non-SPAC) filing
+        sec_client = MockSECClient(mock_filings=sample_filings[:1])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2015-01-01", "2015-12-31")
+
+        # Should have 1 in-scope filing (Shopify)
+        assert count == 1
+
+        # Company should be upserted
+        mock_db.upsert_company.assert_called_once()
+        call_args = mock_db.upsert_company.call_args[1]
+        assert call_args['cik'] == "0001234567"
+        assert call_args['company_name'] == "Shopify Inc."
+        assert call_args['ticker'] == "SHOP"
+
+        # Filing should be upserted
+        mock_db.upsert_filing.assert_called_once()
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args['cik'] == "0001234567"
+        assert filing_args['accession_number'] == "0001234567-15-000001"
+        assert filing_args['is_in_scope_phase1'] is True
+        assert filing_args['is_spac'] is False
+        assert filing_args['is_first_time_issuer'] is True
+
+
+class TestUniverseBuilderClassification:
+    """Tests for classification logic in UniverseBuilder."""
+
+    def test_spac_exclusion(self, mock_db, sample_filings):
+        """SPACs are correctly excluded from Phase 1 scope."""
+        # Use only the SPAC filing
+        spac_filing = [f for f in sample_filings if "Acquisition" in f.company_name]
+        sec_client = MockSECClient(mock_filings=spac_filing)
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2020-01-01", "2020-12-31")
+
+        # SPAC should not be in scope
+        assert count == 0
+
+        # But it should still be recorded in database
+        mock_db.upsert_filing.assert_called_once()
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args['is_spac'] is True
+        assert filing_args['is_in_scope_phase1'] is False
+
+    def test_first_time_issuer_detection(self, mock_db, sample_filings):
+        """First-time issuer is correctly detected."""
+        sec_client = MockSECClient(mock_filings=sample_filings[:1])
+
+        # Mock: no prior IPO filings
+        mock_db.get_first_ipo_filing_date = Mock(return_value=None)
+
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        count = builder.build_universe("2015-01-01", "2015-12-31")
+
+        assert count == 1
+
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args['is_first_time_issuer'] is True
+
+    def test_not_first_time_issuer(self, mock_db, sample_filings):
+        """Subsequent filings are correctly classified as not first-time."""
+        sec_client = MockSECClient(mock_filings=sample_filings[:1])
+
+        # Mock: prior IPO filing exists
+        mock_db.get_first_ipo_filing_date = Mock(return_value="2014-01-01")
+
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        count = builder.build_universe("2015-01-01", "2015-12-31")
+
+        # Should be excluded (not first-time)
+        assert count == 0
+
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args['is_first_time_issuer'] is False
+        assert filing_args['is_in_scope_phase1'] is False
+
+
+class TestUniverseBuilderMultipleFilings:
+    """Tests for processing multiple filings."""
+
+    def test_multiple_filings_mixed_scope(self, mock_db, sample_filings):
+        """Multiple filings with mixed scope are processed correctly."""
+        sec_client = MockSECClient(mock_filings=sample_filings)
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2015-01-01", "2025-12-31")
+
+        # Should have 2 in-scope filings (Shopify + Datadog)
+        # SPAC should be excluded
+        assert count == 2
+
+        # Should have 3 companies upserted
+        assert mock_db.upsert_company.call_count == 3
+
+        # Should have 3 filings upserted
+        assert mock_db.upsert_filing.call_count == 3
+
+    def test_idempotency(self, mock_db, sample_filings):
+        """Running build_universe twice doesn't create duplicates."""
+        sec_client = MockSECClient(mock_filings=sample_filings[:1])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        # Run twice
+        count1 = builder.build_universe("2015-01-01", "2015-12-31")
+        count2 = builder.build_universe("2015-01-01", "2015-12-31")
+
+        assert count1 == 1
+        assert count2 == 1
+
+        # Upsert should handle duplicates
+        # Each run calls upsert once
+        assert mock_db.upsert_company.call_count == 2
+        assert mock_db.upsert_filing.call_count == 2
+
+
+class TestUniverseBuilderCoverageStats:
+    """Tests for coverage statistics."""
+
+    def test_coverage_stats_empty(self, mock_db):
+        """Coverage stats work with empty database."""
+        sec_client = MockSECClient()
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        # Mock empty database
+        mock_db.query = Mock(
+            side_effect=[
+                [{"count": 0}],  # total companies
+                [{"count": 0}],  # total filings
+                [{"count": 0}],  # SPACs
+                [{"count": 0}],  # first-time issuers
+                [],  # by year
+            ]
+        )
+        mock_db.get_in_scope_filing_count = Mock(return_value=0)
+
+        stats = builder.get_coverage_stats()
+
+        assert stats["total_companies"] == 0
+        assert stats["total_filings"] == 0
+        assert stats["in_scope_filings"] == 0
+        assert stats["spac_count"] == 0
+        assert stats["first_time_issuer_count"] == 0
+        assert stats["by_year"] == {}
+
+    def test_coverage_stats_with_data(self, mock_db):
+        """Coverage stats work with populated database."""
+        sec_client = MockSECClient()
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        # Mock database with data
+        mock_db.query = Mock(
+            side_effect=[
+                [{"count": 10}],  # total companies
+                [{"count": 15}],  # total filings
+                [{"count": 3}],  # SPACs
+                [{"count": 12}],  # first-time issuers
+                [{"year": 2020, "count": 8}, {"year": 2021, "count": 7}],  # by year
+            ]
+        )
+        mock_db.get_in_scope_filing_count = Mock(return_value=12)
+
+        stats = builder.get_coverage_stats()
+
+        assert stats["total_companies"] == 10
+        assert stats["total_filings"] == 15
+        assert stats["in_scope_filings"] == 12
+        assert stats["spac_count"] == 3
+        assert stats["first_time_issuer_count"] == 12
+        assert stats["by_year"] == {2020: 8, 2021: 7}
