@@ -4,6 +4,7 @@ Apply SQL migrations to the database.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -36,7 +37,8 @@ def apply_migration(db: DatabaseAdapter, sql_file: Path):
 
 
 def main():
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
 
     sql_dir = Path(__file__).parent.parent / "sql"
 

@@ -7,6 +7,7 @@ from SEC filing HTML and write results to the analysis database.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -26,7 +27,8 @@ logger = logging.getLogger(__name__)
 def main():
     """Main entry point."""
     # Connect to database
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
 
     # Create pipeline
     pipeline = ExtractionPipeline(db)

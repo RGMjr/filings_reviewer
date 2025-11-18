@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    db = DatabaseAdapter("postgresql://localhost/filings_analysis")
+    db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
+    db = DatabaseAdapter(db_url)
     sec_client = SECClient(user_agent="CMASB Filings Analyzer rgmarkey@gmail.com")
     fetcher = FilingFetcher(
         storage_root="data/filings",

@@ -99,9 +99,27 @@ class FilingFetcher:
 
         Returns:
             Path to storage directory
+
+        Raises:
+            ValueError: If CIK or accession number contains path traversal sequences
         """
+        # Security: Validate inputs to prevent path traversal attacks
+        if '..' in cik or '/' in cik or '\\' in cik:
+            raise ValueError(f"Invalid CIK: contains path traversal characters")
+        if '..' in accession_number or '/' in accession_number.replace('-', '') or '\\' in accession_number:
+            raise ValueError(f"Invalid accession number: contains path traversal characters")
+
+        # Additional validation: CIK should be numeric
+        if not cik.isdigit():
+            raise ValueError(f"Invalid CIK: must be numeric")
+
         # Remove dashes from accession number for directory name
         accession_clean = accession_number.replace('-', '')
+
+        # Validate accession format (should be alphanumeric after removing dashes)
+        if not accession_clean.replace('-', '').isalnum():
+            raise ValueError(f"Invalid accession number: must be alphanumeric")
+
         return self.storage_root / cik / accession_clean
 
     def _validate_filing_content(self, html: str, cik: str, accession_number: str) -> tuple[bool, Optional[str]]:
