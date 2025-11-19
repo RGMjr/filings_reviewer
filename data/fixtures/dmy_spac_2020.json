@@ -1,0 +1,19 @@
+{
+  "cik": "0001772757",
+  "company_name": "dMY Technology Group, Inc. Acquisition Corp",
+  "form_type": "S-1",
+  "filing_date": "2020-06-16",
+  "accession_number": "0001193125-20-170226",
+  "ticker": "DMYT",
+  "primary_doc_url": "https://www.sec.gov/Archives/edgar/data/1772757/000119312520170226/d917755ds1.htm",
+  "expected_classification": {
+    "is_spac": true,
+    "is_first_time_issuer": true,
+    "offering_type": null,
+    "is_in_scope_phase1": false,
+    "classification_method": "heuristic"
+  },
+  "notes": "SPAC example - should be excluded from Phase 1 scope due to SPAC classification",
+  "fixture_type": "synthetic",
+  "created_for_testing": "2025-11-16"
+}

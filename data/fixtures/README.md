@@ -61,15 +61,53 @@ filing_html, metadata = load_fixture("shopify_s1_2015")
 assert metadata["expected_classification"]["is_spac"] == False
 ```
 
-## Downloading Fixtures
+## Downloading Full Filings
 
-Use the fixture downloader script:
+**Important**: Full HTML filings (~175MB) are NOT stored in Git to keep repository size small.
+
+### Download All Filings
+
+To download all filings from the manifest:
 
 ```bash
 python scripts/download_fixtures.py
 ```
 
-This will fetch the latest versions and update metadata files.
+This downloads all 78 filings listed in `filings_manifest.json` from SEC EDGAR.
+
+### Download Specific Filing
+
+```bash
+python scripts/download_fixtures.py --cik 0001419612 --accession 0001193125-15-140667
+```
+
+### Download First N Filings (for testing)
+
+```bash
+python scripts/download_fixtures.py --max 10
+```
+
+### Clean Downloaded Filings
+
+To remove all downloaded filings:
+
+```bash
+python scripts/download_fixtures.py --clean
+```
+
+### How It Works
+
+1. `filings_manifest.json` contains a list of all filings with CIK and accession numbers
+2. `download_fixtures.py` fetches filings directly from SEC EDGAR
+3. Filings are cached in `data/filings/` (which is gitignored)
+4. Tests that need real filings will auto-download them if missing
+
+### Why Download On-Demand?
+
+- **Smaller Repository**: Reduces repo from 200MB → 25MB
+- **Zero Ongoing Costs**: No Git LFS bandwidth charges
+- **Always Fresh**: Can re-download latest versions from SEC
+- **Selective Downloads**: Download only what you need
 
 ## License and Attribution
 

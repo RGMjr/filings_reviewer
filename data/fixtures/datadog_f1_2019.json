@@ -1,0 +1,19 @@
+{
+  "cik": "0001561550",
+  "company_name": "Datadog, Inc.",
+  "form_type": "F-1",
+  "filing_date": "2019-08-19",
+  "accession_number": "0001193125-19-222862",
+  "ticker": "DDOG",
+  "primary_doc_url": "https://www.sec.gov/Archives/edgar/data/1561550/000119312519222862/d735281df1.htm",
+  "expected_classification": {
+    "is_spac": false,
+    "is_first_time_issuer": true,
+    "offering_type": null,
+    "is_in_scope_phase1": true,
+    "classification_method": "uncertain"
+  },
+  "notes": "Foreign private issuer (F-1) with strong customer cohort disclosures",
+  "fixture_type": "synthetic",
+  "created_for_testing": "2025-11-16"
+}

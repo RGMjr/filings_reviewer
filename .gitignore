@@ -24,6 +24,12 @@ env/
 *.json
 *.xlsx
 
+# Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
+data/filings/
+
+# But keep fixture metadata
+!data/fixtures/*.json
+
 # Jupyter
 .ipynb_checkpoints/
 
