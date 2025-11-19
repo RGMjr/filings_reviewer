@@ -1,0 +1,19 @@
+{
+  "cik": "0001419612",
+  "company_name": "Shopify Inc.",
+  "form_type": "S-1",
+  "filing_date": "2015-04-14",
+  "accession_number": "0001193125-15-140667",
+  "ticker": "SHOP",
+  "primary_doc_url": "https://www.sec.gov/Archives/edgar/data/1419612/000119312515140667/d893971ds1.htm",
+  "expected_classification": {
+    "is_spac": false,
+    "is_first_time_issuer": true,
+    "offering_type": null,
+    "is_in_scope_phase1": true,
+    "classification_method": "uncertain"
+  },
+  "notes": "Canonical example of tech SaaS IPO - offering_type uncertain without full filing text",
+  "fixture_type": "synthetic",
+  "created_for_testing": "2025-11-16"
+}

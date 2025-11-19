@@ -1,283 +1,336 @@
+#!/usr/bin/env python3
 """
-Download real SEC filings to use as test fixtures.
+Download SEC filing fixtures on-demand.
 
-This script downloads specific S-1/F-1 filings from EDGAR and saves them locally
-along with metadata for integration testing.
+This script downloads SEC filings from EDGAR when needed, rather than
+storing them in Git. This keeps the repository size small.
+
+Usage:
+    # Download all fixtures from manifest
+    python scripts/download_fixtures.py
+
+    # Download specific filing
+    python scripts/download_fixtures.py --cik 0001234567 --accession 0001234567-20-000001
+
+    # Download from custom manifest
+    python scripts/download_fixtures.py --manifest path/to/manifest.json
+
+    # Clean/delete all downloaded fixtures
+    python scripts/download_fixtures.py --clean
 """
 
+import argparse
 import json
 import logging
-import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import List, Dict, Optional
 
 import requests
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(levelname)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# SEC requires User-Agent with company name and contact
-USER_AGENT = "CMASB Filings Analyzer research@cmasb.org"
-
-# Fixtures directory
-FIXTURES_DIR = Path(__file__).parent.parent / "data" / "fixtures"
-
-
-# Define fixtures to download
-FIXTURES = [
-    {
-        "name": "shopify_s1_2015",
-        "cik": "0001419612",
-        "company_name": "Shopify Inc.",
-        "form_type": "S-1",
-        "filing_date": "2015-04-14",
-        "accession_number": "0001193125-15-140667",
-        "ticker": "SHOP",
-        "primary_doc": "d893971ds1.htm",
-        "expected_classification": {
-            "is_spac": False,
-            "is_first_time_issuer": True,
-            "offering_type": "primary",  # Will be uncertain without full text analysis
-            "is_in_scope_phase1": True,
-            "classification_method": "heuristic",
-        },
-        "notes": "Canonical example of tech SaaS IPO with excellent customer metrics disclosure",
-    },
-    {
-        "name": "datadog_f1_2019",
-        "cik": "0001561550",
-        "company_name": "Datadog, Inc.",
-        "form_type": "F-1",
-        "filing_date": "2019-08-19",
-        "accession_number": "0001193125-19-222862",
-        "ticker": "DDOG",
-        "primary_doc": "d735281df1.htm",
-        "expected_classification": {
-            "is_spac": False,
-            "is_first_time_issuer": True,
-            "offering_type": "primary",
-            "is_in_scope_phase1": True,
-            "classification_method": "heuristic",
-        },
-        "notes": "Foreign private issuer (F-1) with strong customer cohort disclosures",
-    },
-    {
-        "name": "draft_kings_spac_2020",
-        "cik": "0001772757",
-        "company_name": "dMY Technology Group, Inc.",
-        "form_type": "S-1",
-        "filing_date": "2020-06-16",
-        "accession_number": "0001193125-20-170226",
-        "ticker": "DMYT",
-        "primary_doc": "d917755ds1.htm",
-        "expected_classification": {
-            "is_spac": True,
-            "is_first_time_issuer": True,
-            "offering_type": None,  # SPACs excluded before offering type matters
-            "is_in_scope_phase1": False,  # Excluded due to SPAC
-            "classification_method": "heuristic",
-        },
-        "notes": "SPAC example - should be excluded from Phase 1 scope",
-    },
-]
+# Constants
+DEFAULT_MANIFEST = Path("data/fixtures/filings_manifest.json")
+FILINGS_DIR = Path("data/filings")
+USER_AGENT = "CMASB Filings Analyzer rgmarkey@gmail.com"
+SEC_EDGAR_BASE = "https://www.sec.gov/Archives/edgar/data"
+RATE_LIMIT_DELAY = 0.11  # SEC allows ~10 requests/second
 
 
-def construct_edgar_url(cik: str, accession_number: str, primary_doc: str) -> str:
-    """
-    Construct the EDGAR URL for a filing.
+class FixtureDownloader:
+    """Download SEC filings on-demand."""
 
-    Args:
-        cik: SEC Central Index Key (with leading zeros)
-        accession_number: SEC accession number (format: 0000000000-00-000000)
-        primary_doc: Primary document filename
+    def __init__(self, user_agent: str = USER_AGENT):
+        """
+        Initialize downloader.
 
-    Returns:
-        Full EDGAR URL
-    """
-    # Remove dashes from accession number for URL path
-    accession_no_dashes = accession_number.replace("-", "")
+        Args:
+            user_agent: User-Agent header for SEC requests
+        """
+        self.user_agent = user_agent
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": user_agent})
+        self._last_request_time = 0.0
 
-    # Remove leading zeros from CIK for URL
-    cik_no_zeros = str(int(cik))
+    def _rate_limit(self):
+        """Enforce rate limiting for SEC requests."""
+        elapsed = time.time() - self._last_request_time
+        if elapsed < RATE_LIMIT_DELAY:
+            time.sleep(RATE_LIMIT_DELAY - elapsed)
+        self._last_request_time = time.time()
 
-    url = (
-        f"https://www.sec.gov/Archives/edgar/data/{cik_no_zeros}/"
-        f"{accession_no_dashes}/{primary_doc}"
-    )
+    def construct_sec_url(self, cik: str, accession_number: str) -> str:
+        """
+        Construct SEC EDGAR URL for a filing.
 
-    return url
+        Args:
+            cik: SEC Central Index Key (with leading zeros)
+            accession_number: SEC accession number (with or without dashes)
 
+        Returns:
+            URL to primary HTML document
+        """
+        # Remove leading zeros from CIK for URL
+        cik_numeric = str(int(cik))
 
-def download_filing(
-    url: str, output_path: Path, rate_limit_delay: float = 0.11
-) -> bool:
-    """
-    Download a filing from EDGAR.
+        # Remove dashes from accession number
+        accession_clean = accession_number.replace("-", "")
 
-    Args:
-        url: URL to download
-        output_path: Where to save the file
-        rate_limit_delay: Delay between requests (SEC limit: 10/sec)
+        # Try common primary document patterns
+        # Pattern 1: accession-index.htm
+        primary_doc = f"{accession_number}-index.htm"
 
-    Returns:
-        True if successful, False otherwise
-    """
-    logger.info(f"Downloading: {url}")
+        url = f"{SEC_EDGAR_BASE}/{cik_numeric}/{accession_clean}/{primary_doc}"
+        return url
 
-    try:
-        time.sleep(rate_limit_delay)  # Rate limiting
+    def download_filing(
+        self,
+        cik: str,
+        accession_number: str,
+        force: bool = False
+    ) -> Optional[Path]:
+        """
+        Download a single filing from SEC EDGAR.
 
-        response = requests.get(url, headers={"User-Agent": USER_AGENT})
-        response.raise_for_status()
+        Args:
+            cik: SEC Central Index Key
+            accession_number: SEC accession number
+            force: If True, re-download even if file exists
 
-        # Save to file
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(response.text)
+        Returns:
+            Path to downloaded file, or None if failed
+        """
+        # Create storage directory
+        accession_clean = accession_number.replace("-", "")
+        storage_dir = FILINGS_DIR / cik / accession_clean
+        output_file = storage_dir / "primary.htm"
 
-        logger.info(f"Saved to: {output_path}")
-        return True
+        # Skip if already exists
+        if output_file.exists() and not force:
+            logger.debug(f"Already cached: {cik}/{accession_number}")
+            return output_file
 
-    except requests.HTTPError as e:
-        logger.error(f"HTTP error downloading {url}: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Error downloading {url}: {e}")
-        return False
-
-
-def save_metadata(fixture: Dict, output_path: Path) -> None:
-    """
-    Save fixture metadata as JSON.
-
-    Args:
-        fixture: Fixture definition dict
-        output_path: Where to save the metadata JSON
-    """
-    # Build metadata
-    metadata = {
-        "cik": fixture["cik"],
-        "company_name": fixture["company_name"],
-        "form_type": fixture["form_type"],
-        "filing_date": fixture["filing_date"],
-        "accession_number": fixture["accession_number"],
-        "ticker": fixture["ticker"],
-        "primary_doc_url": construct_edgar_url(
-            fixture["cik"], fixture["accession_number"], fixture["primary_doc"]
-        ),
-        "expected_classification": fixture["expected_classification"],
-        "notes": fixture["notes"],
-        "downloaded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-
-    # Save
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
-
-    logger.info(f"Saved metadata to: {output_path}")
-
-
-def download_all_fixtures(force: bool = False) -> None:
-    """
-    Download all defined fixtures.
-
-    Args:
-        force: If True, re-download even if files exist
-    """
-    logger.info(f"Downloading {len(FIXTURES)} fixtures to {FIXTURES_DIR}")
-
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
-
-    success_count = 0
-    skip_count = 0
-
-    for fixture in FIXTURES:
-        name = fixture["name"]
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Processing: {name}")
-        logger.info(f"{'='*60}")
-
-        # Output paths
-        html_path = FIXTURES_DIR / f"{name}.html"
-        json_path = FIXTURES_DIR / f"{name}.json"
-
-        # Check if already exists
-        if html_path.exists() and not force:
-            logger.info(f"Fixture already exists: {html_path}")
-            logger.info("Use --force to re-download")
-            skip_count += 1
-
-            # Still update metadata in case expected classifications changed
-            save_metadata(fixture, json_path)
-            continue
+        storage_dir.mkdir(parents=True, exist_ok=True)
 
         # Construct URL
-        url = construct_edgar_url(
-            fixture["cik"], fixture["accession_number"], fixture["primary_doc"]
-        )
+        url = self.construct_sec_url(cik, accession_number)
 
-        # Download
-        success = download_filing(url, html_path)
+        # Download with rate limiting
+        try:
+            self._rate_limit()
+            logger.info(f"Downloading: {cik}/{accession_number}")
+            logger.debug(f"  URL: {url}")
 
-        if success:
-            # Save metadata
-            save_metadata(fixture, json_path)
-            success_count += 1
-        else:
-            logger.error(f"Failed to download: {name}")
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
 
-    logger.info(f"\n{'='*60}")
-    logger.info("Download Summary")
-    logger.info(f"{'='*60}")
-    logger.info(f"Successfully downloaded: {success_count}")
-    logger.info(f"Skipped (already exist): {skip_count}")
-    logger.info(f"Failed: {len(FIXTURES) - success_count - skip_count}")
-    logger.info(f"Total fixtures: {len(FIXTURES)}")
+            # Basic validation
+            if len(response.text) < 1000:
+                logger.warning(f"  File seems too small ({len(response.text)} bytes), might be an error page")
+
+            # Save to disk
+            output_file.write_text(response.text, encoding="utf-8")
+            logger.info(f"  ✓ Saved to {output_file}")
+
+            return output_file
+
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.error(f"  ✗ Not found (404): {url}")
+            else:
+                logger.error(f"  ✗ HTTP error {e.response.status_code}: {url}")
+            return None
+
+        except Exception as e:
+            logger.error(f"  ✗ Error downloading: {e}")
+            return None
+
+    def download_from_manifest(
+        self,
+        manifest_path: Path = DEFAULT_MANIFEST,
+        max_downloads: Optional[int] = None
+    ) -> Dict[str, int]:
+        """
+        Download all filings listed in manifest.
+
+        Args:
+            manifest_path: Path to manifest JSON file
+            max_downloads: Maximum number of filings to download (None = all)
+
+        Returns:
+            Statistics dict with counts
+        """
+        if not manifest_path.exists():
+            logger.error(f"Manifest not found: {manifest_path}")
+            return {"total": 0, "success": 0, "failed": 0, "skipped": 0}
+
+        # Load manifest
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+
+        logger.info(f"Loading manifest: {manifest_path}")
+        logger.info(f"Found {len(manifest)} filings")
+
+        if max_downloads:
+            manifest = manifest[:max_downloads]
+            logger.info(f"Limiting to {max_downloads} downloads")
+
+        # Download each filing
+        stats = {
+            "total": len(manifest),
+            "success": 0,
+            "failed": 0,
+            "skipped": 0
+        }
+
+        for i, filing in enumerate(manifest, 1):
+            cik = filing["cik"]
+            accession = filing["accession_number"]
+
+            logger.info(f"[{i}/{len(manifest)}] Processing {cik}/{accession}")
+
+            # Check if already exists
+            accession_clean = accession.replace("-", "")
+            output_file = FILINGS_DIR / cik / accession_clean / "primary.htm"
+
+            if output_file.exists():
+                logger.info(f"  Already cached, skipping")
+                stats["skipped"] += 1
+                continue
+
+            # Download
+            result = self.download_filing(cik, accession)
+
+            if result:
+                stats["success"] += 1
+            else:
+                stats["failed"] += 1
+
+        # Summary
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("Download Summary")
+        logger.info("=" * 60)
+        logger.info(f"Total filings:        {stats['total']}")
+        logger.info(f"Successfully downloaded: {stats['success']}")
+        logger.info(f"Failed:               {stats['failed']}")
+        logger.info(f"Already cached:       {stats['skipped']}")
+        logger.info("=" * 60)
+
+        return stats
+
+    def clean_fixtures(self):
+        """Remove all downloaded fixtures."""
+        if not FILINGS_DIR.exists():
+            logger.info("No filings directory to clean")
+            return
+
+        import shutil
+        shutil.rmtree(FILINGS_DIR)
+        logger.info(f"✓ Removed {FILINGS_DIR}")
 
 
 def main():
-    """Main entry point."""
-    import argparse
-
+    """Command-line interface."""
     parser = argparse.ArgumentParser(
-        description="Download real SEC filings as test fixtures"
+        description="Download SEC filing fixtures on-demand",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Download all fixtures from manifest
+  python scripts/download_fixtures.py
+
+  # Download specific filing
+  python scripts/download_fixtures.py --cik 0001234567 --accession 0001234567-20-000001
+
+  # Download first 10 from manifest (for testing)
+  python scripts/download_fixtures.py --max 10
+
+  # Clean all downloaded fixtures
+  python scripts/download_fixtures.py --clean
+        """
     )
+
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST,
+        help="Path to filings manifest JSON file"
+    )
+
+    parser.add_argument(
+        "--cik",
+        help="Download specific CIK (requires --accession)"
+    )
+
+    parser.add_argument(
+        "--accession",
+        help="Download specific accession number (requires --cik)"
+    )
+
+    parser.add_argument(
+        "--max",
+        type=int,
+        help="Maximum number of filings to download"
+    )
+
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Remove all downloaded fixtures"
+    )
+
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Re-download even if files already exist",
+        help="Re-download even if file exists"
     )
+
     parser.add_argument(
-        "--list",
+        "-v", "--verbose",
         action="store_true",
-        help="List fixtures without downloading",
+        help="Enable verbose logging"
     )
 
     args = parser.parse_args()
 
-    if args.list:
-        logger.info("Defined fixtures:")
-        for fixture in FIXTURES:
-            logger.info(f"\n{fixture['name']}:")
-            logger.info(f"  Company: {fixture['company_name']}")
-            logger.info(f"  Form: {fixture['form_type']}")
-            logger.info(f"  Date: {fixture['filing_date']}")
-            logger.info(f"  CIK: {fixture['cik']}")
-            logger.info(
-                f"  In scope: {fixture['expected_classification']['is_in_scope_phase1']}"
-            )
-        return
+    # Configure logging
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
 
-    download_all_fixtures(force=args.force)
+    # Create downloader
+    downloader = FixtureDownloader()
+
+    # Handle clean operation
+    if args.clean:
+        downloader.clean_fixtures()
+        return 0
+
+    # Handle specific filing download
+    if args.cik and args.accession:
+        result = downloader.download_filing(args.cik, args.accession, force=args.force)
+        return 0 if result else 1
+
+    # Handle manifest download
+    if args.cik or args.accession:
+        parser.error("Both --cik and --accession are required for specific filing download")
+        return 1
+
+    # Download from manifest
+    stats = downloader.download_from_manifest(args.manifest, max_downloads=args.max)
+
+    # Exit code based on results
+    if stats["failed"] > 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
