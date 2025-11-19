@@ -234,8 +234,8 @@ class ExtractionPipeline:
         result = self.db.query("""
             SELECT filing_id, company_id, cik, accession_number, html_storage_path
             FROM filings
-            WHERE filing_id = %s
-        """, (filing_id,))
+            WHERE filing_id = %(filing_id)s
+        """, {"filing_id": filing_id})
 
         if not result:
             return None
