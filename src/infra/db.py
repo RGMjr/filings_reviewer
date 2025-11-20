@@ -165,6 +165,7 @@ class DatabaseAdapter:
         is_in_scope_phase1: bool = False,
         is_first_time_issuer: Optional[bool] = None,
         is_spac: Optional[bool] = None,
+        is_post_combination: Optional[bool] = None,
         offering_type: Optional[str] = None,
         classification_method: Optional[str] = None,
         processing_status: str = "pending",
@@ -184,6 +185,7 @@ class DatabaseAdapter:
             is_in_scope_phase1: Whether filing is in Phase 1 scope
             is_first_time_issuer: Whether this is a first-time issuer
             is_spac: Whether issuer is a SPAC
+            is_post_combination: Whether this is a post-combination SPAC (de-SPAC)
             offering_type: Type of offering ('primary', 'secondary', 'mixed')
             classification_method: How flags were determined
             processing_status: Current processing status
@@ -195,13 +197,13 @@ class DatabaseAdapter:
             INSERT INTO filings (
                 company_id, cik, accession_number, form_type, filing_date,
                 period_end_date, sec_html_url, sec_txt_url,
-                is_in_scope_phase1, is_first_time_issuer, is_spac,
+                is_in_scope_phase1, is_first_time_issuer, is_spac, is_post_combination,
                 offering_type, classification_method, processing_status, updated_at
             )
             VALUES (
                 %(company_id)s, %(cik)s, %(accession_number)s, %(form_type)s, %(filing_date)s,
                 %(period_end_date)s, %(sec_html_url)s, %(sec_txt_url)s,
-                %(is_in_scope_phase1)s, %(is_first_time_issuer)s, %(is_spac)s,
+                %(is_in_scope_phase1)s, %(is_first_time_issuer)s, %(is_spac)s, %(is_post_combination)s,
                 %(offering_type)s, %(classification_method)s, %(processing_status)s, now()
             )
             ON CONFLICT (company_id, accession_number) DO UPDATE SET
@@ -213,6 +215,7 @@ class DatabaseAdapter:
                 is_in_scope_phase1 = EXCLUDED.is_in_scope_phase1,
                 is_first_time_issuer = COALESCE(EXCLUDED.is_first_time_issuer, filings.is_first_time_issuer),
                 is_spac = COALESCE(EXCLUDED.is_spac, filings.is_spac),
+                is_post_combination = COALESCE(EXCLUDED.is_post_combination, filings.is_post_combination),
                 offering_type = COALESCE(EXCLUDED.offering_type, filings.offering_type),
                 classification_method = COALESCE(EXCLUDED.classification_method, filings.classification_method),
                 processing_status = EXCLUDED.processing_status,
@@ -236,6 +239,7 @@ class DatabaseAdapter:
                         "is_in_scope_phase1": is_in_scope_phase1,
                         "is_first_time_issuer": is_first_time_issuer,
                         "is_spac": is_spac,
+                        "is_post_combination": is_post_combination,
                         "offering_type": offering_type,
                         "classification_method": classification_method,
                         "processing_status": processing_status,
@@ -324,6 +328,30 @@ class DatabaseAdapter:
         if results and results[0]["first_filing_date"]:
             return str(results[0]["first_filing_date"])
         return None
+
+    def has_prior_spac_filing(self, cik: str, filing_date: str) -> bool:
+        """
+        Check if a CIK has any prior SPAC filings before the given date.
+
+        This is used to detect post-combination SPACs (de-SPACs) where the
+        same CIK was previously used for a blank check SPAC entity.
+
+        Args:
+            cik: SEC Central Index Key
+            filing_date: ISO date string to check before
+
+        Returns:
+            True if CIK has prior SPAC filings, False otherwise
+        """
+        sql = """
+            SELECT COUNT(*) as count
+            FROM filings
+            WHERE cik = %(cik)s
+              AND is_spac = true
+              AND filing_date < %(filing_date)s
+        """
+        results = self.query(sql, {"cik": cik, "filing_date": filing_date})
+        return bool(results and results[0]["count"] > 0)
 
     def get_in_scope_filing_count(self) -> int:
         """

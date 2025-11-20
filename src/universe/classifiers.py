@@ -170,19 +170,95 @@ def classify_offering_type(
     return None, 'uncertain'
 
 
+def detect_post_combination(
+    company_name: str,
+    filing_text: Optional[str],
+    is_spac: bool,
+    has_prior_spac_filing: bool,
+) -> Tuple[bool, str]:
+    """
+    Detect if this is a post-business-combination SPAC filing (de-SPAC).
+
+    Post-combination SPACs are operating companies that went public via SPAC merger
+    and should be included in analysis despite having prior SPAC filings under the same CIK.
+
+    Args:
+        company_name: Company/issuer name
+        filing_text: Optional filing text content for detection
+        is_spac: Whether current filing is classified as SPAC
+        has_prior_spac_filing: Whether this CIK has prior SPAC filings
+
+    Returns:
+        Tuple of (is_post_combination: bool, method: str)
+
+    Detection strategy:
+        1. Strong signal: CIK has prior SPAC filing, but current filing is NOT a SPAC
+           (name changed from "Acquisition Corp" to real business name)
+        2. Moderate signal: Filing text contains business combination language + operating metrics
+        3. Weak signal: Company name doesn't match typical SPAC patterns despite is_spac=True
+
+    Examples:
+        >>> # Rover Group - was "Nebula Caravel Acquisition Corp", now "Rover Group"
+        >>> detect_post_combination("ROVER GROUP, INC.", None, False, True)
+        (True, 'name_change')
+    """
+    if not has_prior_spac_filing:
+        # Can't be post-combination if no prior SPAC filing exists
+        return False, 'no_prior_spac'
+
+    # STRONG SIGNAL: CIK had SPAC filing, but current filing is NOT classified as SPAC
+    # This happens when company name changed from "X Acquisition Corp" to real business name
+    if not is_spac:
+        logger.debug(f"Post-combination detected via name change: {company_name}")
+        return True, 'name_change'
+
+    # MODERATE SIGNAL: Check filing text for combination + operating business indicators
+    if filing_text:
+        text_sample = filing_text[:20000].lower()
+
+        # Check for business combination language
+        has_combination_language = (
+            'business combination' in text_sample
+            or 'de-spac' in text_sample
+            or 'merger agreement' in text_sample
+        )
+
+        # Check for operating business indicators (vs blank check)
+        has_financial_statements = (
+            'consolidated statements of operations' in text_sample
+            or 'consolidated balance sheets' in text_sample
+        )
+
+        has_operating_metrics = (
+            text_sample.count('revenue') > 5
+            and ('cost of revenue' in text_sample or 'cost of sales' in text_sample)
+        )
+
+        # If we see combination language + real financials/operations, likely post-combination
+        if has_combination_language and (has_financial_statements or has_operating_metrics):
+            logger.debug(
+                f"Probable post-combination detected via filing content: {company_name}"
+            )
+            return True, 'content_analysis'
+
+    # Default: Not post-combination
+    return False, 'pre_combination'
+
+
 def is_in_scope_phase1(
     is_spac: bool,
     is_first_time_issuer: bool,
     offering_type: Optional[str],
     form_type: str,
+    is_post_combination: bool = False,
 ) -> bool:
     """
     Determine if a filing is in scope for Phase 1 analysis.
 
-    Phase 1 scope:
+    Phase 1 scope (updated to include de-SPACs):
     - S-1 or F-1 filings (including amendments)
-    - First-time issuers only
-    - Exclude SPACs
+    - First-time issuers OR post-combination SPACs (de-SPACs)
+    - Exclude pre-combination SPACs (blank check companies)
     - Exclude secondary-only offerings
 
     Args:
@@ -190,20 +266,31 @@ def is_in_scope_phase1(
         is_first_time_issuer: Whether this is a first-time issuer
         offering_type: Type of offering ('primary', 'secondary', 'mixed', or None)
         form_type: SEC form type
+        is_post_combination: Whether this is a post-combination SPAC (de-SPAC)
 
     Returns:
         True if in scope for Phase 1, False otherwise
+
+    Rationale for including post-combination SPACs:
+        When a SPAC completes a business combination, the resulting company is an
+        operating business making its public debut. Even though the CIK has prior
+        SPAC filings, the operating business itself is a first-time public issuer
+        and should be analyzed for customer metrics disclosure.
+
+        Example: Rover Group (pet sitting) went public via Nebula Caravel SPAC.
+        The Rover business is a first-time issuer even though the CIK has prior
+        SPAC filings under "Nebula Caravel Acquisition Corp."
     """
     # Must be S-1 or F-1 (including amendments)
     if form_type not in ['S-1', 'S-1/A', 'F-1', 'F-1/A']:
         return False
 
-    # Must be first-time issuer
-    if not is_first_time_issuer:
+    # Must be first-time issuer OR post-combination SPAC
+    if not (is_first_time_issuer or is_post_combination):
         return False
 
-    # Exclude SPACs
-    if is_spac:
+    # Exclude pre-combination SPACs (blank check companies with no operations)
+    if is_spac and not is_post_combination:
         return False
 
     # Exclude secondary-only offerings

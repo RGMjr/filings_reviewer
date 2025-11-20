@@ -16,6 +16,7 @@ from src.universe.classifiers import (
     classify_spac,
     classify_first_time_issuer,
     classify_offering_type,
+    detect_post_combination,
     is_in_scope_phase1,
 )
 
@@ -131,12 +132,22 @@ class UniverseBuilder:
         # For v0.1, we don't have filing text yet, so this will be uncertain
         offering_type, offering_method = classify_offering_type(filing_text=None)
 
-        # 5. Determine if in scope
+        # 5. Detect post-combination SPAC (de-SPAC)
+        has_prior_spac = self.db.has_prior_spac_filing(filing.cik, filing.filing_date)
+        is_post_combination, post_comb_method = detect_post_combination(
+            company_name=filing.company_name,
+            filing_text=None,  # v0.1: no filing text yet
+            is_spac=is_spac,
+            has_prior_spac_filing=has_prior_spac,
+        )
+
+        # 6. Determine if in scope
         in_scope = is_in_scope_phase1(
             is_spac=is_spac,
             is_first_time_issuer=is_first_time,
             offering_type=offering_type,
             form_type=filing.form_type,
+            is_post_combination=is_post_combination,
         )
 
         # 6. Determine overall classification method
@@ -156,6 +167,7 @@ class UniverseBuilder:
             is_in_scope_phase1=in_scope,
             is_first_time_issuer=is_first_time,
             is_spac=is_spac,
+            is_post_combination=is_post_combination,
             offering_type=offering_type,
             classification_method=classification_method,
             processing_status='pending',
