@@ -44,3 +44,6 @@ htmlcov/
 # Archives and logs
 Archive/
 *.log
+
+# Claude setup
+.claude.json
