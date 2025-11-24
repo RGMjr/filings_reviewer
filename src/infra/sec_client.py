@@ -376,6 +376,53 @@ class SECClient:
             logger.error(f"Error resolving primary doc for {cik}/{accession_number}: {e}")
             return None
 
+    def get_company_info(self, cik: str) -> Optional[dict]:
+        """
+        Get company information including SIC code from SEC submissions API.
+
+        Args:
+            cik: SEC Central Index Key (can be any length, will be padded)
+
+        Returns:
+            Dictionary with company info:
+            {
+                'cik': str,
+                'name': str,
+                'sic': str (4-digit code),
+                'sic_description': str,
+                'tickers': List[str],
+                'ein': str (employer identification number),
+                'state_of_incorporation': str,
+            }
+            Returns None if company not found or error occurs.
+        """
+        # Normalize CIK to 10 digits with leading zeros
+        cik_padded = cik.zfill(10)
+
+        try:
+            url = self.SUBMISSIONS_URL.format(cik=cik_padded)
+            data = self._make_request(url)
+
+            return {
+                'cik': cik_padded,
+                'name': data.get('name', ''),
+                'sic': data.get('sic', ''),
+                'sic_description': data.get('sicDescription', ''),
+                'tickers': data.get('tickers', []),
+                'ein': data.get('ein', ''),
+                'state_of_incorporation': data.get('stateOfIncorporation', ''),
+            }
+
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.debug(f"Company not found for CIK {cik}")
+            else:
+                logger.error(f"HTTP error fetching company info for CIK {cik}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching company info for CIK {cik}: {e}")
+            return None
+
     def get_filing_by_accession(
         self, cik: str, accession_number: str
     ) -> Optional[FilingMetadata]:

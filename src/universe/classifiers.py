@@ -245,21 +245,144 @@ def detect_post_combination(
     return False, 'pre_combination'
 
 
+def classify_investment_vehicle(
+    company_name: str,
+    sic_code: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is an investment vehicle (ETF, REIT, closed-end fund).
+
+    These entities are excluded because they don't have "customers" in the traditional
+    sense - they hold financial assets and report on assets under management, not
+    customer acquisition/retention metrics.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+
+    Returns:
+        Tuple of (is_investment_vehicle: bool, method: str)
+        where method describes the detection method used
+
+    Detection Strategy (Conservative - requires BOTH SIC code AND name pattern):
+        - SIC 6722 OR 6726 (investment trusts, closed-end funds)
+        - AND name contains: ETF, REIT, or "Trust" as standalone word
+    """
+    # SIC code check
+    has_investment_sic = sic_code in ['6722', '6726']
+
+    if not has_investment_sic:
+        return False, 'no_matching_sic'
+
+    # Name pattern check (require BOTH SIC and name pattern)
+    name_lower = company_name.lower()
+
+    # Check for ETF
+    if 'etf' in name_lower:
+        logger.debug(f"Investment vehicle detected (ETF): {company_name}")
+        return True, 'sic_and_name_etf'
+
+    # Check for REIT
+    if 'reit' in name_lower:
+        logger.debug(f"Investment vehicle detected (REIT): {company_name}")
+        return True, 'sic_and_name_reit'
+
+    # Check for "Trust" as standalone word (not part of "TrustBank" etc.)
+    # Match "Trust" at word boundaries or end of string
+    if re.search(r'\bTrust\b', company_name, re.IGNORECASE):
+        logger.debug(f"Investment vehicle detected (Trust): {company_name}")
+        return True, 'sic_and_name_trust'
+
+    # Has investment SIC but no confirming name pattern
+    logger.debug(
+        f"Has investment SIC ({sic_code}) but no matching name pattern: {company_name}"
+    )
+    return False, 'sic_only_no_name_match'
+
+
+def classify_resource_extraction(
+    company_name: str,
+    sic_code: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is in resource extraction (oil, gas, mining).
+
+    These companies are excluded because they are asset-heavy, commodity-based
+    businesses focused on exploration, production, and extraction rather than
+    customer-metric-driven models. They report on reserves, production volumes,
+    and commodity prices - not customer acquisition costs or retention rates.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+
+    Returns:
+        Tuple of (is_resource_extraction: bool, method: str)
+        where method describes the detection method used
+
+    Detection Strategy (Conservative - requires BOTH SIC code AND name pattern):
+        - SIC 1311 OR 1381 (oil/gas extraction/drilling)
+        - SIC 1040 OR 1220 (metal/coal mining)
+        - AND name contains: Oil, Gas, Petroleum, Mining, Gold, Silver, Copper,
+          Coal, Drilling, Rare Earth
+    """
+    # SIC code check
+    has_extraction_sic = sic_code in ['1311', '1381', '1040', '1220']
+
+    if not has_extraction_sic:
+        return False, 'no_matching_sic'
+
+    # Name pattern check (require BOTH SIC and name pattern)
+    name_lower = company_name.lower()
+
+    # Oil & Gas keywords
+    oil_gas_keywords = [
+        'oil', 'gas', 'petroleum', 'drilling', 'energy partners',
+        'offshore drilling', 'onshore drilling',
+    ]
+
+    # Mining keywords
+    mining_keywords = [
+        'mining', 'gold', 'silver', 'copper', 'coal',
+        'mineral', 'rare earth', 'minerals',
+    ]
+
+    all_keywords = oil_gas_keywords + mining_keywords
+
+    for keyword in all_keywords:
+        if keyword in name_lower:
+            logger.debug(
+                f"Resource extraction detected ({keyword}): {company_name}"
+            )
+            return True, f'sic_and_name_{keyword.replace(" ", "_")}'
+
+    # Has extraction SIC but no confirming name pattern
+    logger.debug(
+        f"Has resource extraction SIC ({sic_code}) but no matching name pattern: "
+        f"{company_name}"
+    )
+    return False, 'sic_only_no_name_match'
+
+
 def is_in_scope_phase1(
     is_spac: bool,
     is_first_time_issuer: bool,
     offering_type: Optional[str],
     form_type: str,
     is_post_combination: bool = False,
+    is_investment_vehicle: bool = False,
+    is_resource_extraction: bool = False,
 ) -> bool:
     """
     Determine if a filing is in scope for Phase 1 analysis.
 
-    Phase 1 scope (updated to include de-SPACs):
+    Phase 1 scope (updated to exclude investment vehicles and resource extraction):
     - S-1 or F-1 filings (including amendments)
     - First-time issuers OR post-combination SPACs (de-SPACs)
     - Exclude pre-combination SPACs (blank check companies)
     - Exclude secondary-only offerings
+    - Exclude investment vehicles (ETFs, REITs, closed-end funds)
+    - Exclude resource extraction companies (oil, gas, mining)
 
     Args:
         is_spac: Whether issuer is a SPAC
@@ -267,6 +390,8 @@ def is_in_scope_phase1(
         offering_type: Type of offering ('primary', 'secondary', 'mixed', or None)
         form_type: SEC form type
         is_post_combination: Whether this is a post-combination SPAC (de-SPAC)
+        is_investment_vehicle: Whether company is an investment vehicle
+        is_resource_extraction: Whether company is in resource extraction
 
     Returns:
         True if in scope for Phase 1, False otherwise
@@ -280,6 +405,12 @@ def is_in_scope_phase1(
         Example: Rover Group (pet sitting) went public via Nebula Caravel SPAC.
         The Rover business is a first-time issuer even though the CIK has prior
         SPAC filings under "Nebula Caravel Acquisition Corp."
+
+    Rationale for excluding investment vehicles and resource extraction:
+        - Investment vehicles (ETFs, REITs, etc.) don't have traditional customers;
+          they report assets under management, not customer metrics
+        - Resource extraction companies are commodity-focused and report on reserves,
+          production volumes, not customer acquisition/retention metrics
     """
     # Must be S-1 or F-1 (including amendments)
     if form_type not in ['S-1', 'S-1/A', 'F-1', 'F-1/A']:
@@ -291,6 +422,14 @@ def is_in_scope_phase1(
 
     # Exclude pre-combination SPACs (blank check companies with no operations)
     if is_spac and not is_post_combination:
+        return False
+
+    # Exclude investment vehicles (ETFs, REITs, closed-end funds)
+    if is_investment_vehicle:
+        return False
+
+    # Exclude resource extraction companies (oil, gas, mining)
+    if is_resource_extraction:
         return False
 
     # Exclude secondary-only offerings

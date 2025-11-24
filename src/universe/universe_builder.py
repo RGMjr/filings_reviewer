@@ -16,6 +16,8 @@ from src.universe.classifiers import (
     classify_spac,
     classify_first_time_issuer,
     classify_offering_type,
+    classify_investment_vehicle,
+    classify_resource_extraction,
     detect_post_combination,
     is_in_scope_phase1,
 )
@@ -116,6 +118,10 @@ class UniverseBuilder:
             ticker=filing.ticker,
         )
 
+        # Get company info including SIC code
+        company = self.db.get_company_by_cik(filing.cik)
+        sic_code = company.get('industry_code') if company else None
+
         # 2. Classify SPAC
         # For v0.1, we use company name only (no filing text yet)
         is_spac, spac_method = classify_spac(filing.company_name)
@@ -141,13 +147,27 @@ class UniverseBuilder:
             has_prior_spac_filing=has_prior_spac,
         )
 
-        # 6. Determine if in scope
+        # 6. Classify investment vehicle
+        is_investment_vehicle, investment_method = classify_investment_vehicle(
+            company_name=filing.company_name,
+            sic_code=sic_code,
+        )
+
+        # 7. Classify resource extraction
+        is_resource_extraction, resource_method = classify_resource_extraction(
+            company_name=filing.company_name,
+            sic_code=sic_code,
+        )
+
+        # 8. Determine if in scope
         in_scope = is_in_scope_phase1(
             is_spac=is_spac,
             is_first_time_issuer=is_first_time,
             offering_type=offering_type,
             form_type=filing.form_type,
             is_post_combination=is_post_combination,
+            is_investment_vehicle=is_investment_vehicle,
+            is_resource_extraction=is_resource_extraction,
         )
 
         # 6. Determine overall classification method
@@ -155,7 +175,7 @@ class UniverseBuilder:
             spac_method, fti_method, offering_method
         )
 
-        # 7. Upsert filing
+        # 9. Upsert filing
         filing_id = self.db.upsert_filing(
             company_id=company_id,
             cik=filing.cik,
@@ -168,6 +188,8 @@ class UniverseBuilder:
             is_first_time_issuer=is_first_time,
             is_spac=is_spac,
             is_post_combination=is_post_combination,
+            is_investment_vehicle=is_investment_vehicle,
+            is_resource_extraction=is_resource_extraction,
             offering_type=offering_type,
             classification_method=classification_method,
             processing_status='pending',
