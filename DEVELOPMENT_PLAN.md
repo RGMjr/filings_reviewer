@@ -1,5 +1,5 @@
 # Development Plan - SEC Filings Reviewer
-**Last Updated:** 2025-11-19
+**Last Updated:** 2025-11-23
 **Current Phase:** Phase 2a - Foundation Hardening
 
 ---
@@ -9,7 +9,7 @@
 This document tracks the development roadmap for the SEC Filings Reviewer project. The project is currently transitioning from Phase 1 (UniverseBuilder - complete) to Phase 2 (Extraction Pipeline - 40% complete).
 
 **Current Status:**
-- ✅ Phase 1: UniverseBuilder (6,304 filings identified) - PRODUCTION READY
+- ✅ Phase 1: UniverseBuilder (7,304 filings identified) - PRODUCTION READY
 - 🟡 Phase 2: Extraction pipeline - 70% designed, 40% implemented
 - 📊 Overall Test Coverage: 76% (target: 75% minimum)
 
@@ -40,40 +40,53 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 **Files Modified:**
 - `tests/unit/extraction/test_value_extractor.py` (+700 lines)
 
+### ✅ **COMPLETED: Business Type Exclusions (Phase 1 Enhancement)**
+**Status:** DONE (2025-11-23)
+- [x] Added SIC code fetching to SEC client
+- [x] Populated SIC codes for 7,275 companies (95.5% coverage)
+- [x] Implemented conservative "require BOTH" detection (SIC code + name pattern)
+- [x] Created investment vehicle classifier (ETFs, REITs, closed-end funds)
+- [x] Created resource extraction classifier (oil, gas, mining)
+- [x] Re-classified all 40,174 filings with new criteria
+- [x] Updated database schema with new fields
+- [x] Updated documentation (PHASE1_UNIVERSE_BUILD_REPORT.md)
+
+**Results:**
+- 275 resource extraction companies excluded (62 in-scope filings removed)
+- 0 investment vehicles excluded (conservative criteria worked)
+- Updated in-scope count: 7,366 → 7,304 filings
+
+**Files Modified:**
+- `src/infra/sec_client.py` - Added `get_company_info()` method
+- `src/universe/classifiers.py` - Added business type classifiers
+- `src/universe/universe_builder.py` - Integrated new classifiers
+- `src/infra/db.py` - Updated `upsert_filing()` signature
+- `sql/05_add_business_type_exclusions.sql` - Database migration
+- `scripts/populate_sic_codes.py` - SIC code population script
+- `scripts/reclassify_business_types.py` - Re-classification script
+- `scripts/analyze_exclusion_candidates.py` - Analysis tool
+- `PHASE1_UNIVERSE_BUILD_REPORT.md` - Documentation updates
+
+### ✅ **COMPLETED: quality_scorer.py Testing**
+**Status:** DONE (already complete, verified 2025-11-23)
+- [x] 43 comprehensive tests already in place
+- [x] Coverage: 100% (108/108 statements)
+- [x] All quality scoring methods tested:
+  - Overall quality (0-3 scale)
+  - Definition quality (0-3 scale)
+  - Methodology quality (0-3 scale)
+  - Completeness quality (0-3 scale)
+  - Comparability quality (0-3 scale)
+- [x] Integration tests for filing-metric scoring
+- [x] Edge case coverage complete
+
+**Note:** Development plan was out of date - this module was already at 100% coverage.
+
 ---
 
 ## Current Sprint: Extraction Module Testing (Days 1-7)
 
-### 🔄 **IN PROGRESS: quality_scorer.py Testing**
-**Status:** NOT STARTED
-**Current Coverage:** 2% (1 test)
-**Target Coverage:** 90%+ (15+ tests)
-**Estimated Time:** 8-12 hours
-
-**Scope:**
-- [ ] Test quality score computation (0-3 scale)
-- [ ] Test alignment assessment algorithm
-- [ ] Test keyword overlap ratio calculation
-- [ ] Test edge cases (missing definitions, conflicting data)
-- [ ] Test aggregation logic (filing-level scores)
-- [ ] Test QA status transitions
-- [ ] Test alignment flag logic
-
-**Key Functions to Test:**
-- `compute_quality_score()`
-- `assess_alignment()`
-- `calculate_keyword_overlap()`
-- `aggregate_filing_scores()`
-
-**Definition of Done:**
-- 15+ new tests added
-- 90%+ coverage achieved
-- All tests passing
-- Edge cases documented
-
----
-
-### ⏳ **PENDING: filing_fetcher.py Testing**
+### 🔄 **IN PROGRESS: filing_fetcher.py Testing**
 **Status:** NOT STARTED
 **Current Coverage:** 0% (0 tests)
 **Target Coverage:** 90%+ (25+ tests)
@@ -359,12 +372,10 @@ tests/
 
 ### Week 1 Progress (Nov 18-24, 2025)
 - [x] **Day 1:** Security assessment + value_extractor.py testing (97% coverage) ✅
-- [ ] **Day 2:** quality_scorer.py testing (target: 90% coverage)
-- [ ] **Day 3:** quality_scorer.py testing (complete)
-- [ ] **Day 4:** filing_fetcher.py testing (start)
-- [ ] **Day 5:** filing_fetcher.py testing (continue)
-- [ ] **Day 6:** filing_fetcher.py testing (complete)
-- [ ] **Day 7:** Overall test suite validation + documentation
+- [x] **Day 2-5:** Business type exclusions (SIC codes, investment vehicles, resource extraction) ✅
+- [x] **Day 5:** Verified quality_scorer.py already at 100% coverage ✅
+- [ ] **Day 6:** filing_fetcher.py testing (start)
+- [ ] **Day 7:** filing_fetcher.py testing (continue) + documentation
 
 ### Metrics to Track
 - Total tests: 133 → Target: 200+
@@ -410,6 +421,27 @@ open htmlcov/index.html
 
 ## Notes & Observations
 
+### 2025-11-23: Business Type Exclusions Complete
+- Implemented conservative "require BOTH" detection (SIC code + name pattern)
+- Successfully populated SIC codes for 7,275 companies (95.5% coverage)
+- 275 resource extraction companies excluded (oil, gas, mining)
+- 0 investment vehicles excluded (conservative criteria prevented false positives)
+- Updated in-scope count from 7,366 → 7,304 filings
+- Database migration and full re-classification completed successfully
+- Documentation updated in PHASE1_UNIVERSE_BUILD_REPORT.md
+
+**Key Learnings:**
+- Multi-signal detection (authoritative + heuristic) minimizes false positives
+- Word boundary regex crucial for name pattern matching (\bTrust\b vs substring)
+- SEC submissions API provides reliable SIC code data
+- Conservative approach (<1% false positive rate) validated through manual sampling
+
+### 2025-11-23: quality_scorer.py Already Complete
+- Discovered existing tests already provide 100% coverage (43 tests, 108/108 statements)
+- Development plan was out of date
+- All quality scoring methods comprehensively tested
+- No additional work needed - ready for production
+
 ### 2025-11-19: value_extractor.py Testing Complete
 - Added 46 tests in ~2 hours
 - Improved coverage from 5% → 97%
@@ -418,7 +450,7 @@ open htmlcov/index.html
 - Cohort label parsing handles multiple formats well
 
 **Next Steps:**
-- Apply same testing pattern to quality_scorer.py
+- Test filing_fetcher.py (0% → 90%+ coverage)
 - Consider generating tests using Python Testing MCP for remaining modules
 
 ---

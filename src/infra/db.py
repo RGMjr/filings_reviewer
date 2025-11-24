@@ -166,6 +166,8 @@ class DatabaseAdapter:
         is_first_time_issuer: Optional[bool] = None,
         is_spac: Optional[bool] = None,
         is_post_combination: Optional[bool] = None,
+        is_investment_vehicle: Optional[bool] = None,
+        is_resource_extraction: Optional[bool] = None,
         offering_type: Optional[str] = None,
         classification_method: Optional[str] = None,
         processing_status: str = "pending",
@@ -186,6 +188,8 @@ class DatabaseAdapter:
             is_first_time_issuer: Whether this is a first-time issuer
             is_spac: Whether issuer is a SPAC
             is_post_combination: Whether this is a post-combination SPAC (de-SPAC)
+            is_investment_vehicle: Whether company is an investment vehicle
+            is_resource_extraction: Whether company is in resource extraction
             offering_type: Type of offering ('primary', 'secondary', 'mixed')
             classification_method: How flags were determined
             processing_status: Current processing status
@@ -198,12 +202,14 @@ class DatabaseAdapter:
                 company_id, cik, accession_number, form_type, filing_date,
                 period_end_date, sec_html_url, sec_txt_url,
                 is_in_scope_phase1, is_first_time_issuer, is_spac, is_post_combination,
+                is_investment_vehicle, is_resource_extraction,
                 offering_type, classification_method, processing_status, updated_at
             )
             VALUES (
                 %(company_id)s, %(cik)s, %(accession_number)s, %(form_type)s, %(filing_date)s,
                 %(period_end_date)s, %(sec_html_url)s, %(sec_txt_url)s,
                 %(is_in_scope_phase1)s, %(is_first_time_issuer)s, %(is_spac)s, %(is_post_combination)s,
+                %(is_investment_vehicle)s, %(is_resource_extraction)s,
                 %(offering_type)s, %(classification_method)s, %(processing_status)s, now()
             )
             ON CONFLICT (company_id, accession_number) DO UPDATE SET
@@ -216,6 +222,8 @@ class DatabaseAdapter:
                 is_first_time_issuer = COALESCE(EXCLUDED.is_first_time_issuer, filings.is_first_time_issuer),
                 is_spac = COALESCE(EXCLUDED.is_spac, filings.is_spac),
                 is_post_combination = COALESCE(EXCLUDED.is_post_combination, filings.is_post_combination),
+                is_investment_vehicle = COALESCE(EXCLUDED.is_investment_vehicle, filings.is_investment_vehicle),
+                is_resource_extraction = COALESCE(EXCLUDED.is_resource_extraction, filings.is_resource_extraction),
                 offering_type = COALESCE(EXCLUDED.offering_type, filings.offering_type),
                 classification_method = COALESCE(EXCLUDED.classification_method, filings.classification_method),
                 processing_status = EXCLUDED.processing_status,
@@ -240,6 +248,8 @@ class DatabaseAdapter:
                         "is_first_time_issuer": is_first_time_issuer,
                         "is_spac": is_spac,
                         "is_post_combination": is_post_combination,
+                        "is_investment_vehicle": is_investment_vehicle,
+                        "is_resource_extraction": is_resource_extraction,
                         "offering_type": offering_type,
                         "classification_method": classification_method,
                         "processing_status": processing_status,
