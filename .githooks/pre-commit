@@ -1,0 +1,57 @@
+#!/bin/bash
+#
+# Pre-commit hook for filings_reviewer
+#
+# Checks documentation freshness before allowing commits.
+# Install with: git config core.hooksPath .githooks
+#
+# This hook runs quickly (~1-2s) and only warns - it won't block commits
+# unless there are critical errors.
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Get the repo root
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Check if docs sync script exists
+if [ -f "scripts/check_docs_sync.py" ]; then
+    # Run docs check (quiet mode, don't fail on warnings)
+    python scripts/check_docs_sync.py --quiet 2>/dev/null || {
+        echo ""
+        echo "⚠️  Documentation may be stale. Run 'make docs-check' for details."
+        echo "   (Commit continues - this is just a warning)"
+        echo ""
+    }
+fi
+
+# Check for common issues in staged files
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+
+if [ -n "$STAGED_PY" ]; then
+    # Check for hardcoded secrets (basic patterns)
+    if git diff --cached | grep -E "(api_key|API_KEY|secret|password)\s*=\s*['\"][^'\"]+['\"]" | grep -v "example\|template\|placeholder" > /dev/null 2>&1; then
+        echo "❌ Possible hardcoded secret detected. Please use environment variables."
+        exit 1
+    fi
+
+    # Check for debug prints left in
+    if git diff --cached | grep -E "^\+.*print\(" | grep -v "# DEBUG OK" > /dev/null 2>&1; then
+        echo "⚠️  Found print() statements in staged changes (add '# DEBUG OK' to suppress)"
+    fi
+fi
+
+# If we modified src/, remind about CLAUDE.md
+STAGED_SRC=$(git diff --cached --name-only | grep '^src/' || true)
+if [ -n "$STAGED_SRC" ]; then
+    # Check if CLAUDE.md or README.md are also being updated
+    STAGED_DOCS=$(git diff --cached --name-only | grep -E '(CLAUDE|README)\.md' || true)
+    if [ -z "$STAGED_DOCS" ]; then
+        echo "💡 Tip: You modified src/ - consider updating CLAUDE.md or README.md if architecture changed"
+    fi
+fi
+
+echo "✅ Pre-commit checks passed"
+exit 0
