@@ -269,6 +269,24 @@ All operations are idempotent:
 
 3. **No real-time updates**: System processes filings in batch mode, not streaming.
 
+## Development Workflow
+
+Common commands via Makefile:
+
+```bash
+make help           # Show all available commands
+make test           # Run tests
+make coverage       # Run tests with coverage report
+make lint           # Run linter (ruff)
+make format         # Format code (black)
+make docs-check     # Verify documentation is in sync with code
+```
+
+**Git hooks** (install once with `make hooks-install`):
+- Pre-commit hook validates docs freshness and warns about potential issues
+
+**CI/CD**: GitHub Actions automatically validates documentation on PRs and updates coverage on merge to main.
+
 ## Documentation
 
 **Project tracking:**
