@@ -7,12 +7,15 @@ particularly focusing on table data with cohort breakdowns.
 
 import logging
 import re
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 from bs4 import BeautifulSoup
 
 from .models import SourceSegment, MetricValue
+
+if TYPE_CHECKING:
+    from ..llm.openai_client import OpenAIClient
 
 logger = logging.getLogger(__name__)
 
@@ -29,35 +32,47 @@ class ValueExtractor:
     """
 
     # Number patterns
-    NUMBER_PATTERN = r'[-]?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:million|billion|thousand|%)?'
+    NUMBER_PATTERN = (
+        r"[-]?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:million|billion|thousand|%)?"
+    )
 
     # Period patterns
-    QUARTER_PATTERN = r'[qQ]([1-4])\s+(\d{4})'
-    YEAR_PATTERN = r'(?:FY|fy)?\s*(\d{4})'
+    QUARTER_PATTERN = r"[qQ]([1-4])\s+(\d{4})"
+    YEAR_PATTERN = r"(?:FY|fy)?\s*(\d{4})"
 
     # Cohort patterns
-    ACQUISITION_COHORT_PATTERN = r'(\d{4})\s+[Cc]ohort'
+    ACQUISITION_COHORT_PATTERN = r"(\d{4})\s+[Cc]ohort"
     TENURE_COHORT_PATTERNS = [
-        (r'(\d+)\s*-\s*(\d+)\s+(?:months?|mos?)', 'months'),
-        (r'(\d+)\s*-\s*(\d+)\s+years?', 'years'),
-        (r'(\d+)\+\s+years?', 'years_plus'),
-        (r'<\s*(\d+)\s+(?:months?|years?)', 'less_than'),
+        (r"(\d+)\s*-\s*(\d+)\s+(?:months?|mos?)", "months"),
+        (r"(\d+)\s*-\s*(\d+)\s+years?", "years"),
+        (r"(\d+)\+\s+years?", "years_plus"),
+        (r"<\s*(\d+)\s+(?:months?|years?)", "less_than"),
     ]
 
-    def __init__(self):
-        """Initialize the value extractor."""
+    def __init__(self, llm_client: Optional["OpenAIClient"] = None):
+        """
+        Initialize the value extractor.
+
+        Args:
+            llm_client: Optional OpenAI client for LLM-enhanced extraction.
+                       If provided, LLM extraction will be tried first before
+                       falling back to rule-based extraction.
+        """
         self._number_regex = re.compile(self.NUMBER_PATTERN, re.IGNORECASE)
         self._quarter_regex = re.compile(self.QUARTER_PATTERN)
         self._year_regex = re.compile(self.YEAR_PATTERN)
         self._acquisition_cohort_regex = re.compile(self.ACQUISITION_COHORT_PATTERN)
+        self.llm_client = llm_client
 
     def extract_from_segment(
-        self,
-        segment: SourceSegment,
-        company_id: int
+        self, segment: SourceSegment, company_id: int
     ) -> List[MetricValue]:
         """
         Extract all metric values from a segment.
+
+        Uses hybrid extraction strategy:
+        1. Try LLM extraction if LLM client is available
+        2. Fall back to rule-based extraction if LLM fails or not available
 
         Args:
             segment: Classified source segment
@@ -70,16 +85,42 @@ class ValueExtractor:
         if not segment.contains_numeric_disclosure_flag:
             return []
 
-        # Route to appropriate extractor
-        if segment.segment_type == 'table':
+        # Try LLM extraction first if available
+        if self.llm_client:
+            try:
+                logger.info(
+                    f"Attempting LLM extraction for segment {segment.source_segment_id or segment.sequence_index}"
+                )
+                if segment.segment_type == "table":
+                    values = self.extract_from_table_with_llm(segment, company_id)
+                else:
+                    values = self.extract_from_text_with_llm(segment, company_id)
+
+                if values:  # LLM extraction succeeded
+                    logger.info(
+                        f"LLM extraction succeeded: {len(values)} values extracted"
+                    )
+                    return values
+                else:
+                    logger.info(
+                        "LLM extraction returned no values, falling back to rules"
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    f"LLM extraction failed for segment {segment.source_segment_id or segment.sequence_index}: {e}"
+                )
+                logger.info("Falling back to rule-based extraction")
+
+        # Fall back to rule-based extraction
+        logger.debug("Using rule-based extraction")
+        if segment.segment_type == "table":
             return self.extract_from_table(segment, company_id)
         else:
             return self.extract_from_text(segment, company_id)
 
     def extract_from_table(
-        self,
-        segment: SourceSegment,
-        company_id: int
+        self, segment: SourceSegment, company_id: int
     ) -> List[MetricValue]:
         """
         Extract structured data from table segments.
@@ -96,20 +137,23 @@ class ValueExtractor:
             return []
 
         # Parse table with BeautifulSoup
-        soup = BeautifulSoup(segment.raw_html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(segment.raw_html, "html.parser")
+        table = soup.find("table")
         if not table:
             logger.warning(f"No table found in segment {segment.source_segment_id}")
             return []
 
         # Extract table structure
-        rows = table.find_all('tr')
+        rows = table.find_all("tr")
         if len(rows) < 2:  # Need at least header + 1 data row
             return []
 
         # Parse header row to identify columns
         header_row = rows[0]
-        headers = [self._clean_text(cell.get_text()) for cell in header_row.find_all(['th', 'td'])]
+        headers = [
+            self._clean_text(cell.get_text())
+            for cell in header_row.find_all(["th", "td"])
+        ]
 
         # Identify column types
         column_info = self._identify_columns(headers)
@@ -117,26 +161,22 @@ class ValueExtractor:
         # Parse data rows
         values = []
         for row in rows[1:]:
-            cells = row.find_all(['td', 'th'])
+            cells = row.find_all(["td", "th"])
             if len(cells) != len(headers):
                 continue  # Skip malformed rows
 
             row_values = self._parse_table_row(
-                cells,
-                headers,
-                column_info,
-                segment,
-                company_id
+                cells, headers, column_info, segment, company_id
             )
             values.extend(row_values)
 
-        logger.info(f"Extracted {len(values)} values from table segment {segment.source_segment_id}")
+        logger.info(
+            f"Extracted {len(values)} values from table segment {segment.source_segment_id}"
+        )
         return values
 
     def extract_from_text(
-        self,
-        segment: SourceSegment,
-        company_id: int
+        self, segment: SourceSegment, company_id: int
     ) -> List[MetricValue]:
         """
         Extract values from text segments using pattern matching.
@@ -171,17 +211,217 @@ class ValueExtractor:
                         company_id=company_id,
                         metric_id=metric_id,
                         source_segment_id=segment.sequence_index,  # Store sequence_index temporarily
-                        source_type='text',
-                        extraction_method='llm_text',  # Using rule-based text extraction
+                        source_type="text",
+                        extraction_method="llm_text",  # Using rule-based text extraction
                         value_numeric=numeric_value,
                         value_text=value_str,
                         period_end=period_end,
-                        qa_status='unreviewed',
+                        qa_status="unreviewed",
                     )
                     values.append(value)
                     break  # Only extract one value per segment for now
 
         return values
+
+    def extract_from_text_with_llm(
+        self, segment: SourceSegment, company_id: int
+    ) -> List[MetricValue]:
+        """
+        Extract values from text segments using LLM.
+
+        Args:
+            segment: Text segment
+            company_id: Company ID
+
+        Returns:
+            List of MetricValue objects
+        """
+        if not self.llm_client:
+            raise ValueError("LLM client not available")
+
+        # Import here to avoid circular imports
+        from ..llm.prompts import PromptTemplates
+
+        # Get metric names to look for
+        metric_names = ", ".join(segment.candidate_metric_ids or [])
+        if not metric_names:
+            metric_names = "active_users, customer_count, revenue_retention, churn_rate"
+
+        # Create prompt
+        prompt = PromptTemplates.value_extraction_from_text(
+            segment_text=segment.raw_text[:8000],  # Limit to 8000 chars
+            metric_names=metric_names,
+        )
+
+        # Get LLM response
+        response = self.llm_client.complete(
+            prompt, system_message=PromptTemplates.SYSTEM_VALUE_EXTRACTION
+        )
+
+        # Parse response
+        try:
+            data = PromptTemplates.parse_json_response(response.content)
+
+            if not PromptTemplates.validate_value_extraction_response(data):
+                logger.warning("LLM response failed validation")
+                return []
+
+            # Convert LLM response to MetricValue objects
+            values = []
+            for item in data:
+                # Parse the numeric value
+                numeric_value = self._parse_number(item["value"])
+                if numeric_value is None:
+                    continue
+
+                # Parse period if available
+                period_end = None
+                if item.get("period"):
+                    period_end = self._extract_period_from_text(item["period"])
+
+                # Determine metric_id
+                metric_id = item.get("metric_name")
+                if not metric_id or metric_id not in (
+                    segment.candidate_metric_ids or []
+                ):
+                    # Try to match to candidate metrics
+                    if segment.candidate_metric_ids:
+                        metric_id = segment.candidate_metric_ids[0]
+                    else:
+                        continue  # Skip if no metric ID
+
+                value = MetricValue(
+                    filing_id=segment.filing_id,
+                    company_id=company_id,
+                    metric_id=metric_id,
+                    source_segment_id=segment.source_segment_id
+                    or segment.sequence_index,
+                    source_type="text",
+                    extraction_method="llm_text",
+                    value_numeric=numeric_value,
+                    value_text=item["value"],
+                    unit=item.get("units"),
+                    period_end=period_end,
+                    cohort_bucket_raw=item.get("cohort_label"),
+                    qa_status="unreviewed",
+                    qa_notes=item.get("quote"),  # Store quote in qa_notes field
+                )
+                values.append(value)
+
+            logger.info(f"LLM extracted {len(values)} values from text segment")
+            return values
+
+        except Exception as e:
+            logger.error(f"Failed to parse LLM response: {e}")
+            return []
+
+    def extract_from_table_with_llm(
+        self, segment: SourceSegment, company_id: int
+    ) -> List[MetricValue]:
+        """
+        Extract values from table segments using LLM.
+
+        Args:
+            segment: Table segment
+            company_id: Company ID
+
+        Returns:
+            List of MetricValue objects
+        """
+        if not self.llm_client:
+            raise ValueError("LLM client not available")
+
+        if not segment.raw_html:
+            logger.warning(f"No raw HTML for table segment {segment.source_segment_id}")
+            return []
+
+        # Import here to avoid circular imports
+        from ..llm.prompts import PromptTemplates
+
+        # Get metric names to look for
+        metric_names = ", ".join(segment.candidate_metric_ids or [])
+        if not metric_names:
+            metric_names = "revenue_by_cohort, customers_by_tenure, retention_rate"
+
+        # Create prompt with both text and HTML
+        table_text = segment.raw_text[:4000]  # Limit text
+        table_html = segment.raw_html[:4000]  # Limit HTML
+
+        prompt = PromptTemplates.value_extraction_from_table(
+            table_text=table_text, table_html=table_html, metric_names=metric_names
+        )
+
+        # Get LLM response
+        response = self.llm_client.complete(
+            prompt, system_message=PromptTemplates.SYSTEM_VALUE_EXTRACTION
+        )
+
+        # Parse response
+        try:
+            data = PromptTemplates.parse_json_response(response.content)
+
+            if not PromptTemplates.validate_value_extraction_response(data):
+                logger.warning("LLM response failed validation")
+                return []
+
+            # Convert LLM response to MetricValue objects
+            values = []
+            for item in data:
+                # Parse the numeric value
+                numeric_value = self._parse_number(item["value"])
+                if numeric_value is None:
+                    continue
+
+                # Parse period if available
+                period_end = None
+                if item.get("period"):
+                    period_end = self._extract_period_from_text(item["period"])
+
+                # Parse cohort if available
+                cohort_type = None
+                cohort_normalized = None
+                cohort_label = item.get("cohort_label") or item.get("row_label")
+                if cohort_label:
+                    cohort_type, cohort_normalized = self.parse_cohort_label(
+                        cohort_label
+                    )
+
+                # Determine metric_id
+                metric_id = item.get("metric_name")
+                if not metric_id or metric_id not in (
+                    segment.candidate_metric_ids or []
+                ):
+                    # Try to match to candidate metrics
+                    if segment.candidate_metric_ids:
+                        metric_id = segment.candidate_metric_ids[0]
+                    else:
+                        continue  # Skip if no metric ID
+
+                value = MetricValue(
+                    filing_id=segment.filing_id,
+                    company_id=company_id,
+                    metric_id=metric_id,
+                    source_segment_id=segment.source_segment_id
+                    or segment.sequence_index,
+                    source_type="table",
+                    extraction_method="llm_table",
+                    value_numeric=numeric_value,
+                    value_text=item["value"],
+                    unit=item.get("units"),
+                    period_end=period_end,
+                    cohort_type=cohort_type,
+                    cohort_bucket_raw=cohort_label,
+                    cohort_bucket_normalized=cohort_normalized,
+                    qa_status="unreviewed",
+                )
+                values.append(value)
+
+            logger.info(f"LLM extracted {len(values)} values from table segment")
+            return values
+
+        except Exception as e:
+            logger.error(f"Failed to parse LLM response: {e}")
+            return []
 
     def _identify_columns(self, headers: List[str]) -> dict:
         """
@@ -199,17 +439,17 @@ class ValueExtractor:
             header_lower = header.lower()
 
             # Cohort column indicators
-            if any(kw in header_lower for kw in ['cohort', 'vintage', 'year acquired']):
-                column_info[i] = {'type': 'cohort'}
+            if any(kw in header_lower for kw in ["cohort", "vintage", "year acquired"]):
+                column_info[i] = {"type": "cohort"}
 
             # Period column indicators (Q1 2024, FY 2023, etc.)
-            elif re.search(r'[qQ]\d|FY|20\d{2}', header):
+            elif re.search(r"[qQ]\d|FY|20\d{2}", header):
                 period_end = self._extract_period_from_text(header)
-                column_info[i] = {'type': 'value', 'period_end': period_end}
+                column_info[i] = {"type": "value", "period_end": period_end}
 
             # Default to value column
             else:
-                column_info[i] = {'type': 'value', 'period_end': None}
+                column_info[i] = {"type": "value", "period_end": None}
 
         return column_info
 
@@ -219,7 +459,7 @@ class ValueExtractor:
         headers: List[str],
         column_info: dict,
         segment: SourceSegment,
-        company_id: int
+        company_id: int,
     ) -> List[MetricValue]:
         """
         Parse a single table row to extract metric values.
@@ -242,14 +482,14 @@ class ValueExtractor:
         cohort_normalized = None
 
         for i, info in column_info.items():
-            if info['type'] == 'cohort' and i < len(cells):
+            if info["type"] == "cohort" and i < len(cells):
                 cohort_label = self._clean_text(cells[i].get_text())
                 cohort_type, cohort_normalized = self.parse_cohort_label(cohort_label)
                 break
 
         # Extract values from value columns
         for i, info in column_info.items():
-            if info['type'] != 'value' or i >= len(cells):
+            if info["type"] != "value" or i >= len(cells):
                 continue
 
             cell_text = self._clean_text(cells[i].get_text())
@@ -269,16 +509,16 @@ class ValueExtractor:
                 company_id=company_id,
                 metric_id=metric_id,
                 source_segment_id=segment.source_segment_id or 0,
-                source_type='table',
-                extraction_method='rule_table',
+                source_type="table",
+                extraction_method="rule_table",
                 value_numeric=numeric_value,
                 value_text=cell_text,
                 unit=self._infer_unit(cell_text, metric_id),
-                period_end=info.get('period_end'),
+                period_end=info.get("period_end"),
                 cohort_type=cohort_type,
                 cohort_bucket_raw=cohort_label,
                 cohort_bucket_normalized=cohort_normalized,
-                qa_status='unreviewed',
+                qa_status="unreviewed",
             )
 
             values.append(value)
@@ -286,10 +526,7 @@ class ValueExtractor:
         return values
 
     def _infer_metric_from_context(
-        self,
-        segment: SourceSegment,
-        headers: List[str],
-        column_index: int
+        self, segment: SourceSegment, headers: List[str], column_index: int
     ) -> Optional[str]:
         """
         Infer which metric a value belongs to based on context.
@@ -313,16 +550,22 @@ class ValueExtractor:
             header = headers[column_index].lower()
 
             # Revenue keywords
-            if 'revenue' in header and 'cm_revenue_by_cohort' in candidate_metrics:
-                return 'cm_revenue_by_cohort'
+            if "revenue" in header and "cm_revenue_by_cohort" in candidate_metrics:
+                return "cm_revenue_by_cohort"
 
             # Transaction keywords
-            if 'transaction' in header and 'cm_transactions_by_cohort' in candidate_metrics:
-                return 'cm_transactions_by_cohort'
+            if (
+                "transaction" in header
+                and "cm_transactions_by_cohort" in candidate_metrics
+            ):
+                return "cm_transactions_by_cohort"
 
             # Customer count keywords
-            if any(kw in header for kw in ['customers', 'users']) and 'cm_customers_period_end_by_tenure' in candidate_metrics:
-                return 'cm_customers_period_end_by_tenure'
+            if (
+                any(kw in header for kw in ["customers", "users"])
+                and "cm_customers_period_end_by_tenure" in candidate_metrics
+            ):
+                return "cm_customers_period_end_by_tenure"
 
         # Fall back to first candidate metric
         if candidate_metrics:
@@ -335,23 +578,23 @@ class ValueExtractor:
         value_lower = value_text.lower()
 
         # Currency
-        if '$' in value_text or 'usd' in value_lower:
-            return 'usd'
+        if "$" in value_text or "usd" in value_lower:
+            return "usd"
 
         # Percentage
-        if '%' in value_text or 'percent' in value_lower:
-            return 'percent'
+        if "%" in value_text or "percent" in value_lower:
+            return "percent"
 
         # From metric type
-        if 'revenue' in metric_id or 'cost' in metric_id or 'value' in metric_id:
-            return 'usd'
+        if "revenue" in metric_id or "cost" in metric_id or "value" in metric_id:
+            return "usd"
 
-        if 'rate' in metric_id:
-            return 'percent'
+        if "rate" in metric_id:
+            return "percent"
 
         # Default to count for customer/user metrics
-        if 'customer' in metric_id or 'user' in metric_id or 'transaction' in metric_id:
-            return 'count'
+        if "customer" in metric_id or "user" in metric_id or "transaction" in metric_id:
+            return "count"
 
         return None
 
@@ -377,37 +620,37 @@ class ValueExtractor:
         match = self._acquisition_cohort_regex.search(raw_label)
         if match:
             year = match.group(1)
-            return 'acquisition', year
+            return "acquisition", year
 
         # Check for tenure cohorts
         for pattern, cohort_subtype in self.TENURE_COHORT_PATTERNS:
             match = re.search(pattern, raw_label, re.IGNORECASE)
             if match:
-                if cohort_subtype == 'months':
+                if cohort_subtype == "months":
                     start, end = match.groups()
                     # Convert to year buckets
                     start_years = int(start) // 12
                     end_years = int(end) // 12
-                    return 'tenure', f"{start_years}-{end_years}y"
+                    return "tenure", f"{start_years}-{end_years}y"
 
-                elif cohort_subtype == 'years':
+                elif cohort_subtype == "years":
                     start, end = match.groups()
-                    return 'tenure', f"{start}-{end}y"
+                    return "tenure", f"{start}-{end}y"
 
-                elif cohort_subtype == 'years_plus':
+                elif cohort_subtype == "years_plus":
                     years = match.group(1)
-                    return 'tenure', f"{years}y+"
+                    return "tenure", f"{years}y+"
 
-                elif cohort_subtype == 'less_than':
+                elif cohort_subtype == "less_than":
                     value = match.group(1)
-                    if 'month' in raw_label.lower():
+                    if "month" in raw_label.lower():
                         years = int(value) // 12
-                        return 'tenure', f"<{years}y"
+                        return "tenure", f"<{years}y"
                     else:
-                        return 'tenure', f"<{value}y"
+                        return "tenure", f"<{value}y"
 
         # Could not parse
-        return 'other', raw_label
+        return "other", raw_label
 
     def _parse_number(self, text: str) -> Optional[Decimal]:
         """
@@ -423,22 +666,22 @@ class ValueExtractor:
             Decimal value or None if unparseable
         """
         # Remove currency symbols and whitespace
-        cleaned = text.replace('$', '').replace(',', '').strip()
+        cleaned = text.replace("$", "").replace(",", "").strip()
 
         # Check for scale indicators
         scale = 1
-        if 'billion' in cleaned.lower():
+        if "billion" in cleaned.lower():
             scale = 1_000_000_000
-            cleaned = re.sub(r'billion', '', cleaned, flags=re.IGNORECASE).strip()
-        elif 'million' in cleaned.lower():
+            cleaned = re.sub(r"billion", "", cleaned, flags=re.IGNORECASE).strip()
+        elif "million" in cleaned.lower():
             scale = 1_000_000
-            cleaned = re.sub(r'million', '', cleaned, flags=re.IGNORECASE).strip()
-        elif 'thousand' in cleaned.lower():
+            cleaned = re.sub(r"million", "", cleaned, flags=re.IGNORECASE).strip()
+        elif "thousand" in cleaned.lower():
             scale = 1_000
-            cleaned = re.sub(r'thousand', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r"thousand", "", cleaned, flags=re.IGNORECASE).strip()
 
         # Remove percentage signs
-        cleaned = cleaned.replace('%', '').strip()
+        cleaned = cleaned.replace("%", "").strip()
 
         # Try to convert to Decimal
         try:
@@ -490,7 +733,7 @@ class ValueExtractor:
 
     def _clean_text(self, text: str) -> str:
         """Clean text content."""
-        return re.sub(r'\s+', ' ', text).strip()
+        return re.sub(r"\s+", " ", text).strip()
 
 
 # Convenience function

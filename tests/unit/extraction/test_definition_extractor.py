@@ -7,7 +7,7 @@ Tests the extraction of metric definitions and methodologies from segments.
 import pytest
 
 from src.extraction.definition_extractor import DefinitionExtractor, extract_definitions
-from src.extraction.models import SourceSegment, MetricDefinition
+from src.extraction.models import SourceSegment
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def sample_segments_new_customers():
 def test_extractor_initialization(extractor):
     """Test that extractor initializes properly."""
     assert extractor is not None
-    assert hasattr(extractor, 'CANONICAL_DEFINITIONS')
+    assert hasattr(extractor, "CANONICAL_DEFINITIONS")
     assert len(extractor.CANONICAL_DEFINITIONS) > 0
 
 
@@ -87,7 +87,9 @@ def test_extract_definitions_no_metrics(extractor):
 
 def test_extract_single_definition(extractor, sample_segments_with_definition):
     """Test extraction of a single definition."""
-    definitions = extractor.extract_definitions(sample_segments_with_definition, company_id=1)
+    definitions = extractor.extract_definitions(
+        sample_segments_with_definition, company_id=1
+    )
 
     assert len(definitions) == 1
     definition = definitions[0]
@@ -101,7 +103,9 @@ def test_extract_single_definition(extractor, sample_segments_with_definition):
 
 def test_extract_definition_and_methodology(extractor, sample_segments_with_definition):
     """Test extraction of both definition and methodology."""
-    definitions = extractor.extract_definitions(sample_segments_with_definition, company_id=1)
+    definitions = extractor.extract_definitions(
+        sample_segments_with_definition, company_id=1
+    )
 
     definition = definitions[0]
     assert definition.definition_text_normalized is not None
@@ -205,7 +209,9 @@ def test_assess_alignment_aligned(extractor, sample_segments_new_customers):
 def test_assess_alignment_partial(extractor):
     """Test alignment assessment for partially aligned definition."""
     # Has some keywords but not all
-    definition_text = "New customers are those making their first purchase in the period."
+    definition_text = (
+        "New customers are those making their first purchase in the period."
+    )
     alignment = extractor.assess_alignment("cm_new_customers_acquired", definition_text)
 
     # Should be partial alignment
@@ -283,7 +289,9 @@ def test_no_definition_or_methodology_returns_none(extractor):
 
 def test_definition_stores_segment_ids(extractor, sample_segments_with_definition):
     """Test that definition stores segment IDs properly."""
-    definitions = extractor.extract_definitions(sample_segments_with_definition, company_id=1)
+    definitions = extractor.extract_definitions(
+        sample_segments_with_definition, company_id=1
+    )
 
     definition = definitions[0]
     assert definition.definition_segment_id == 0  # First segment
@@ -292,11 +300,15 @@ def test_definition_stores_segment_ids(extractor, sample_segments_with_definitio
 
 def test_definition_stores_raw_text(extractor, sample_segments_with_definition):
     """Test that raw text is stored."""
-    definitions = extractor.extract_definitions(sample_segments_with_definition, company_id=1)
+    definitions = extractor.extract_definitions(
+        sample_segments_with_definition, company_id=1
+    )
 
     definition = definitions[0]
     assert definition.definition_raw_text == sample_segments_with_definition[0].raw_text
-    assert definition.methodology_raw_text == sample_segments_with_definition[1].raw_text
+    assert (
+        definition.methodology_raw_text == sample_segments_with_definition[1].raw_text
+    )
 
 
 def test_only_definition_no_methodology(extractor):
@@ -373,9 +385,9 @@ def test_canonical_definitions_coverage(extractor):
     for metric_id in expected_metrics:
         assert metric_id in extractor.CANONICAL_DEFINITIONS
         canonical = extractor.CANONICAL_DEFINITIONS[metric_id]
-        assert 'keywords' in canonical
-        assert 'definition' in canonical
-        assert len(canonical['keywords']) > 0
+        assert "keywords" in canonical
+        assert "definition" in canonical
+        assert len(canonical["keywords"]) > 0
 
 
 def test_alignment_keyword_overlap_ratio(extractor):

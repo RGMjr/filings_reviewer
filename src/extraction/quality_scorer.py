@@ -6,8 +6,7 @@ and computes quality scores across multiple dimensions.
 """
 
 import logging
-from typing import List, Dict
-from collections import defaultdict
+from typing import List
 
 from .models import (
     SourceSegment,
@@ -41,7 +40,7 @@ class QualityScorer:
         company_id: int,
         segments: List[SourceSegment],
         values: List[MetricValue],
-        definitions: List[MetricDefinition]
+        definitions: List[MetricDefinition],
     ) -> List[FilingMetricIncidence]:
         """
         Compute incidence and quality scores for all metrics in a filing.
@@ -62,12 +61,7 @@ class QualityScorer:
         incidences = []
         for metric_id in all_metrics:
             incidence = self._score_filing_metric(
-                filing_id,
-                company_id,
-                metric_id,
-                segments,
-                values,
-                definitions
+                filing_id, company_id, metric_id, segments, values, definitions
             )
             incidences.append(incidence)
 
@@ -78,7 +72,7 @@ class QualityScorer:
         self,
         segments: List[SourceSegment],
         values: List[MetricValue],
-        definitions: List[MetricDefinition]
+        definitions: List[MetricDefinition],
     ) -> set:
         """Get set of all metrics mentioned in filing."""
         metrics = set()
@@ -104,7 +98,7 @@ class QualityScorer:
         metric_id: str,
         segments: List[SourceSegment],
         values: List[MetricValue],
-        definitions: List[MetricDefinition]
+        definitions: List[MetricDefinition],
     ) -> FilingMetricIncidence:
         """
         Compute incidence and quality for a specific filing × metric pair.
@@ -128,9 +122,15 @@ class QualityScorer:
         metric_definitions = [d for d in definitions if d.metric_id == metric_id]
 
         # Count segments by type
-        num_numeric_segments = sum(1 for s in metric_segments if s.contains_numeric_disclosure_flag)
-        num_definition_segments = sum(1 for s in metric_segments if s.contains_definition_flag)
-        num_methodology_segments = sum(1 for s in metric_segments if s.contains_methodology_flag)
+        num_numeric_segments = sum(
+            1 for s in metric_segments if s.contains_numeric_disclosure_flag
+        )
+        num_definition_segments = sum(
+            1 for s in metric_segments if s.contains_definition_flag
+        )
+        num_methodology_segments = sum(
+            1 for s in metric_segments if s.contains_methodology_flag
+        )
 
         # Identify primary segments
         primary_definition_segment_id = None
@@ -142,27 +142,36 @@ class QualityScorer:
             primary_methodology_segment_id = defn.methodology_segment_id
 
         # Check for cohort breakdowns
-        has_cohort_breakdown_flag = any(v.cohort_type is not None for v in metric_values)
-        has_tenure_breakdown_flag = any(v.cohort_type == 'tenure' for v in metric_values)
-        has_acquisition_cohort_flag = any(v.cohort_type == 'acquisition' for v in metric_values)
+        has_cohort_breakdown_flag = any(
+            v.cohort_type is not None for v in metric_values
+        )
+        has_tenure_breakdown_flag = any(
+            v.cohort_type == "tenure" for v in metric_values
+        )
+        has_acquisition_cohort_flag = any(
+            v.cohort_type == "acquisition" for v in metric_values
+        )
 
         # Compute quality scores
         quality_overall_score = self._compute_overall_quality(
-            metric_values,
-            metric_definitions,
-            has_cohort_breakdown_flag
+            metric_values, metric_definitions, has_cohort_breakdown_flag
         )
 
         quality_definition_score = self._compute_definition_quality(metric_definitions)
-        quality_methodology_score = self._compute_methodology_quality(metric_definitions)
-        quality_completeness_score = self._compute_completeness_quality(
-            metric_values,
-            has_cohort_breakdown_flag
+        quality_methodology_score = self._compute_methodology_quality(
+            metric_definitions
         )
-        quality_comparability_score = self._compute_comparability_quality(metric_definitions)
+        quality_completeness_score = self._compute_completeness_quality(
+            metric_values, has_cohort_breakdown_flag
+        )
+        quality_comparability_score = self._compute_comparability_quality(
+            metric_definitions
+        )
 
         # Alignment flag (from definition)
-        alignment_flag = metric_definitions[0].alignment_flag if metric_definitions else None
+        alignment_flag = (
+            metric_definitions[0].alignment_flag if metric_definitions else None
+        )
 
         # Disclosed if we have any values or definitions
         metric_disclosed_flag = len(metric_values) > 0 or len(metric_definitions) > 0
@@ -194,7 +203,7 @@ class QualityScorer:
         self,
         values: List[MetricValue],
         definitions: List[MetricDefinition],
-        has_cohort_breakdown: bool
+        has_cohort_breakdown: bool,
     ) -> int:
         """
         Compute overall quality score (0-3).
@@ -239,13 +248,13 @@ class QualityScorer:
             return 0
 
         # Check alignment
-        if defn.alignment_flag == 'aligned':
+        if defn.alignment_flag == "aligned":
             # Check length/completeness
             if len(defn.definition_text_normalized) > 100:
                 return 3  # Comprehensive and aligned
             else:
                 return 2  # Aligned but brief
-        elif defn.alignment_flag == 'partial':
+        elif defn.alignment_flag == "partial":
             return 2  # Clear but not fully aligned
         else:
             return 1  # Vague or not aligned
@@ -271,8 +280,12 @@ class QualityScorer:
         methodology = defn.methodology_text_normalized.lower()
 
         # Look for calculation keywords
-        has_formula_keywords = any(kw in methodology for kw in ['formula', 'divided by', 'equals', '='])
-        has_example = any(kw in methodology for kw in ['example', 'for instance', 'such as'])
+        has_formula_keywords = any(
+            kw in methodology for kw in ["formula", "divided by", "equals", "="]
+        )
+        has_example = any(
+            kw in methodology for kw in ["example", "for instance", "such as"]
+        )
 
         if has_formula_keywords and has_example:
             return 3
@@ -282,9 +295,7 @@ class QualityScorer:
             return 1
 
     def _compute_completeness_quality(
-        self,
-        values: List[MetricValue],
-        has_cohort_breakdown: bool
+        self, values: List[MetricValue], has_cohort_breakdown: bool
     ) -> int:
         """
         Compute completeness quality score (0-3).
@@ -309,7 +320,9 @@ class QualityScorer:
         else:
             return 1
 
-    def _compute_comparability_quality(self, definitions: List[MetricDefinition]) -> int:
+    def _compute_comparability_quality(
+        self, definitions: List[MetricDefinition]
+    ) -> int:
         """
         Compute comparability quality score (0-3).
 
@@ -325,13 +338,13 @@ class QualityScorer:
         defn = definitions[0]
 
         alignment_scores = {
-            'aligned': 3,
-            'partial': 2,
-            'not_aligned': 1,
-            'unknown': 0,
+            "aligned": 3,
+            "partial": 2,
+            "not_aligned": 1,
+            "unknown": 0,
         }
 
-        return alignment_scores.get(defn.alignment_flag or 'unknown', 0)
+        return alignment_scores.get(defn.alignment_flag or "unknown", 0)
 
 
 # Convenience function
@@ -340,7 +353,7 @@ def score_filing(
     company_id: int,
     segments: List[SourceSegment],
     values: List[MetricValue],
-    definitions: List[MetricDefinition]
+    definitions: List[MetricDefinition],
 ) -> List[FilingMetricIncidence]:
     """
     Convenience function to score a filing.

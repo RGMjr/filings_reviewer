@@ -20,14 +20,14 @@ class TestRealWorldEdgeCases:
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
         return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            sec_client=sec_client
+            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
         )
 
     @pytest.fixture
     def valid_filing_html(self):
         """Create valid filing HTML."""
-        return """
+        return (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -37,7 +37,9 @@ class TestRealWorldEdgeCases:
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
 <P>REGISTRATION STATEMENT</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
     def test_unusual_filename_mainbody(self, fetcher, valid_filing_html):
         """Test handling filing with 'mainbody.htm' as primary document."""
@@ -51,7 +53,7 @@ class TestRealWorldEdgeCases:
         )
 
         # Mock SEC client to resolve URL with unusual filename
-        with patch.object(fetcher.sec_client, 'session') as mock_session:
+        with patch.object(fetcher.sec_client, "session") as mock_session:
             # First call: get index.json
             mock_index_response = Mock()
             mock_index_response.json.return_value = {
@@ -72,7 +74,9 @@ class TestRealWorldEdgeCases:
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
             # Also patch fetcher's session for the actual filing download
-            with patch.object(fetcher.session, 'get', return_value=mock_filing_response):
+            with patch.object(
+                fetcher.session, "get", return_value=mock_filing_response
+            ):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -89,7 +93,7 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, 'session') as mock_session:
+        with patch.object(fetcher.sec_client, "session") as mock_session:
             mock_index_response = Mock()
             mock_index_response.json.return_value = {
                 "directory": {
@@ -107,14 +111,17 @@ class TestRealWorldEdgeCases:
 
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
-            with patch.object(fetcher.session, 'get', return_value=mock_filing_response):
+            with patch.object(
+                fetcher.session, "get", return_value=mock_filing_response
+            ):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
 
     def test_modern_html_format(self, fetcher):
         """Test handling modern HTML format (2022+) without SGML wrapper."""
-        modern_html = """
+        modern_html = (
+            """
 <!DOCTYPE html>
 <HTML>
 <HEAD><TITLE>SEC Filing</TITLE></HEAD>
@@ -124,7 +131,9 @@ class TestRealWorldEdgeCases:
 <P>REGISTRATION STATEMENT</P>
 <TABLE><TR><TD>Company info</TD></TR></TABLE>
 <DIV>Additional filing content</DIV>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -139,7 +148,7 @@ class TestRealWorldEdgeCases:
         mock_response.text = modern_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -147,8 +156,8 @@ class TestRealWorldEdgeCases:
 
         # Verify file content
         saved_content = Path(content.html_path).read_text()
-        assert 'DOCTYPE html' in saved_content
-        assert '<DOCUMENT>' not in saved_content  # No SGML wrapper
+        assert "DOCTYPE html" in saved_content
+        assert "<DOCUMENT>" not in saved_content  # No SGML wrapper
 
     def test_largest_file_fallback(self, fetcher, valid_filing_html):
         """Test fallback to largest file when no pattern matches."""
@@ -161,7 +170,7 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, 'session') as mock_session:
+        with patch.object(fetcher.sec_client, "session") as mock_session:
             mock_index_response = Mock()
             mock_index_response.json.return_value = {
                 "directory": {
@@ -180,7 +189,9 @@ class TestRealWorldEdgeCases:
 
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
-            with patch.object(fetcher.session, 'get', return_value=mock_filing_response):
+            with patch.object(
+                fetcher.session, "get", return_value=mock_filing_response
+            ):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -194,8 +205,7 @@ class TestErrorRecovery:
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
         return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            sec_client=sec_client
+            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
         )
 
     def test_retry_after_validation_failure(self, fetcher):
@@ -223,7 +233,7 @@ class TestErrorRecovery:
         mock_response.text = invalid_content
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         # Should return None because content is invalid
@@ -248,14 +258,15 @@ class TestErrorRecovery:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("404 Not Found")
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is None
 
     def test_partial_download_recovery(self, fetcher):
         """Test recovery from partial/interrupted downloads."""
-        valid_html = """
+        (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -264,7 +275,9 @@ class TestErrorRecovery:
 <BODY>
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -283,7 +296,7 @@ class TestErrorRecovery:
 
         # Now try to fetch again - should skip because file exists
         mock_get = Mock()
-        with patch.object(fetcher.session, 'get', mock_get):
+        with patch.object(fetcher.session, "get", mock_get):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         # Should not make HTTP request because file exists
@@ -299,14 +312,14 @@ class TestBatchProcessing:
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
         return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            sec_client=sec_client
+            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
         )
 
     @pytest.fixture
     def valid_filing_html(self):
         """Create valid filing HTML."""
-        return """
+        return (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -315,7 +328,9 @@ class TestBatchProcessing:
 <BODY>
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
     def test_mixed_success_failure_batch(self, fetcher, valid_filing_html):
         """Test batch processing with mixed successes and failures."""
@@ -347,6 +362,7 @@ class TestBatchProcessing:
         ]
 
         call_count = [0]
+
         def get_side_effect(url):
             call_count[0] += 1
             response = Mock()
@@ -359,13 +375,13 @@ class TestBatchProcessing:
                 response.raise_for_status = Mock()
                 return response
 
-        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+        with patch.object(fetcher.session, "get", side_effect=get_side_effect):
             stats = fetcher.fetch_batch(filings, fetch_txt=False, max_failures=10)
 
-        assert stats['total'] == 3
-        assert stats['fetched'] == 2
-        assert stats['failed'] == 1
-        assert stats['skipped'] == 0
+        assert stats["total"] == 3
+        assert stats["fetched"] == 2
+        assert stats["failed"] == 1
+        assert stats["skipped"] == 0
 
     def test_batch_stops_on_consecutive_failures(self, fetcher):
         """Test that batch processing stops after max consecutive failures."""
@@ -385,12 +401,12 @@ class TestBatchProcessing:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("Error")
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             stats = fetcher.fetch_batch(filings, fetch_txt=False, max_failures=3)
 
         # Should stop after 3 consecutive failures
-        assert stats['failed'] == 3
-        assert stats['fetched'] == 0
+        assert stats["failed"] == 3
+        assert stats["fetched"] == 0
 
     def test_batch_resumes_after_success(self, fetcher, valid_filing_html):
         """Test that consecutive failure counter resets after a success."""
@@ -407,6 +423,7 @@ class TestBatchProcessing:
         ]
 
         call_count = [0]
+
         def get_side_effect(url):
             call_count[0] += 1
             response = Mock()
@@ -420,10 +437,10 @@ class TestBatchProcessing:
 
             return response
 
-        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+        with patch.object(fetcher.session, "get", side_effect=get_side_effect):
             stats = fetcher.fetch_batch(filings, fetch_txt=False, max_failures=3)
 
         # Should process all 10 because successes reset the counter
-        assert stats['total'] == 10
-        assert stats['fetched'] > 0
-        assert stats['failed'] < 10  # Some failures but not all
+        assert stats["total"] == 10
+        assert stats["fetched"] > 0
+        assert stats["failed"] < 10  # Some failures but not all

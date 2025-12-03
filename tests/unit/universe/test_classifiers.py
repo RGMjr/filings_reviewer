@@ -4,8 +4,6 @@ Unit tests for classification logic.
 Tests SPAC detection, first-time issuer classification, and offering type classification.
 """
 
-import pytest
-
 from src.universe.classifiers import (
     classify_spac,
     classify_first_time_issuer,
@@ -22,37 +20,37 @@ class TestClassifySPAC:
         """SPAC detected by 'Acquisition Corp' in name."""
         is_spac, method = classify_spac("ABC Acquisition Corp.")
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_spac_by_name_acquisition_corporation(self):
         """SPAC detected by 'Acquisition Corporation' in name."""
         is_spac, method = classify_spac("XYZ Acquisition Corporation")
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_spac_by_name_blank_check(self):
         """SPAC detected by 'Blank Check' in name."""
         is_spac, method = classify_spac("Some Blank Check Company")
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_spac_by_name_spac_keyword(self):
         """SPAC detected by 'SPAC' keyword."""
         is_spac, method = classify_spac("Example SPAC I")
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_non_spac_regular_company(self):
         """Regular company not classified as SPAC."""
         is_spac, method = classify_spac("Shopify Inc.")
         assert is_spac is False
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_non_spac_saas_company(self):
         """SaaS company not classified as SPAC."""
         is_spac, method = classify_spac("Datadog, Inc.")
         assert is_spac is False
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_spac_by_filing_text_blank_check(self):
         """SPAC detected by 'blank check company' in filing text."""
@@ -62,7 +60,7 @@ class TestClassifySPAC:
         """
         is_spac, method = classify_spac("Generic Corp", filing_text)
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_spac_by_filing_text_special_purpose(self):
         """SPAC detected by 'special purpose acquisition' in filing text."""
@@ -72,7 +70,7 @@ class TestClassifySPAC:
         """
         is_spac, method = classify_spac("Target Finder Inc", filing_text)
         assert is_spac is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_probable_spac_by_filing_indicators(self):
         """Probable SPAC detected by multiple weak indicators."""
@@ -83,7 +81,7 @@ class TestClassifySPAC:
         """
         is_spac, method = classify_spac("Business Finder LLC", filing_text)
         assert is_spac is True
-        assert method == 'uncertain'  # Weak indicators = uncertain
+        assert method == "uncertain"  # Weak indicators = uncertain
 
 
 class TestClassifyFirstTimeIssuer:
@@ -95,7 +93,7 @@ class TestClassifyFirstTimeIssuer:
             cik="0001234567", filing_date="2020-05-15", previous_ipo_date=None
         )
         assert is_first_time is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_first_time_issuer_same_date(self):
         """Filing on same date as first IPO is first-time issuer."""
@@ -103,7 +101,7 @@ class TestClassifyFirstTimeIssuer:
             cik="0001234567", filing_date="2020-05-15", previous_ipo_date="2020-05-15"
         )
         assert is_first_time is True
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
     def test_not_first_time_issuer_prior_filing(self):
         """Company with prior IPO filing is not first-time issuer."""
@@ -111,7 +109,7 @@ class TestClassifyFirstTimeIssuer:
             cik="0001234567", filing_date="2021-06-01", previous_ipo_date="2020-05-15"
         )
         assert is_first_time is False
-        assert method == 'heuristic'
+        assert method == "heuristic"
 
 
 class TestClassifyOfferingType:
@@ -124,8 +122,8 @@ class TestClassifyOfferingType:
         The shares being offered by us represent newly issued shares.
         """
         offering_type, method = classify_offering_type(filing_text)
-        assert offering_type == 'primary'
-        assert method == 'heuristic'
+        assert offering_type == "primary"
+        assert method == "heuristic"
 
     def test_secondary_offering(self):
         """Secondary offering detected."""
@@ -134,8 +132,8 @@ class TestClassifyOfferingType:
         5,000,000 shares owned by our founders and early investors.
         """
         offering_type, method = classify_offering_type(filing_text)
-        assert offering_type == 'secondary'
-        assert method == 'heuristic'
+        assert offering_type == "secondary"
+        assert method == "heuristic"
 
     def test_mixed_offering(self):
         """Mixed offering detected."""
@@ -144,14 +142,14 @@ class TestClassifyOfferingType:
         the selling shareholders are offering an additional 3,000,000 shares.
         """
         offering_type, method = classify_offering_type(filing_text)
-        assert offering_type == 'mixed'
-        assert method == 'heuristic'
+        assert offering_type == "mixed"
+        assert method == "heuristic"
 
     def test_no_filing_text_uncertain(self):
         """No filing text results in uncertain classification."""
         offering_type, method = classify_offering_type(None)
         assert offering_type is None
-        assert method == 'uncertain'
+        assert method == "uncertain"
 
     def test_ambiguous_text_uncertain(self):
         """Ambiguous filing text results in uncertain classification."""
@@ -160,7 +158,7 @@ class TestClassifyOfferingType:
         """
         offering_type, method = classify_offering_type(filing_text)
         assert offering_type is None
-        assert method == 'uncertain'
+        assert method == "uncertain"
 
 
 class TestDetectPostCombination:
@@ -175,7 +173,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=False,
         )
         assert is_post_comb is False
-        assert method == 'no_prior_spac'
+        assert method == "no_prior_spac"
 
     def test_name_change_detection_strong_signal(self):
         """Strong signal: Has prior SPAC, but current filing NOT classified as SPAC."""
@@ -188,7 +186,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,  # But CIK has prior SPAC filings
         )
         assert is_post_comb is True
-        assert method == 'name_change'
+        assert method == "name_change"
 
     def test_content_analysis_business_combination_with_financials(self):
         """Moderate signal: Business combination language + financial statements."""
@@ -213,7 +211,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is True
-        assert method == 'content_analysis'
+        assert method == "content_analysis"
 
     def test_content_analysis_business_combination_with_balance_sheet(self):
         """Moderate signal: Business combination + consolidated balance sheets."""
@@ -235,7 +233,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is True
-        assert method == 'content_analysis'
+        assert method == "content_analysis"
 
     def test_content_analysis_merger_with_operating_metrics(self):
         """Moderate signal: Merger agreement + extensive revenue discussion."""
@@ -257,7 +255,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is True
-        assert method == 'content_analysis'
+        assert method == "content_analysis"
 
     def test_pre_combination_spac_no_signals(self):
         """No clear signals = pre-combination SPAC."""
@@ -275,7 +273,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is False
-        assert method == 'pre_combination'
+        assert method == "pre_combination"
 
     def test_pre_combination_spac_no_filing_text(self):
         """SPAC with no filing text = pre-combination (default)."""
@@ -286,7 +284,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is False
-        assert method == 'pre_combination'
+        assert method == "pre_combination"
 
     def test_business_combination_language_alone_insufficient(self):
         """Business combination language alone (no financials) = insufficient."""
@@ -302,7 +300,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is False
-        assert method == 'pre_combination'
+        assert method == "pre_combination"
 
     def test_operating_metrics_alone_insufficient(self):
         """Operating metrics without combination language = insufficient."""
@@ -319,7 +317,7 @@ class TestDetectPostCombination:
             has_prior_spac_filing=True,
         )
         assert is_post_comb is False
-        assert method == 'pre_combination'
+        assert method == "pre_combination"
 
 
 class TestIsInScopePhase1:
@@ -331,8 +329,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=True,
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
             )
             is True
         )
@@ -343,8 +341,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=True,
-                offering_type='mixed',
-                form_type='F-1',
+                offering_type="mixed",
+                form_type="F-1",
             )
             is True
         )
@@ -356,7 +354,7 @@ class TestIsInScopePhase1:
                 is_spac=False,
                 is_first_time_issuer=True,
                 offering_type=None,
-                form_type='S-1',
+                form_type="S-1",
             )
             is True
         )
@@ -367,8 +365,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=True,
                 is_first_time_issuer=True,
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
             )
             is False
         )
@@ -379,8 +377,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=False,
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
             )
             is False
         )
@@ -391,8 +389,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=True,
-                offering_type='secondary',
-                form_type='S-1',
+                offering_type="secondary",
+                form_type="S-1",
             )
             is False
         )
@@ -403,8 +401,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=True,
-                offering_type='primary',
-                form_type='10-K',
+                offering_type="primary",
+                form_type="10-K",
             )
             is False
         )
@@ -415,8 +413,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=True,
-                offering_type='primary',
-                form_type='S-1/A',
+                offering_type="primary",
+                form_type="S-1/A",
             )
             is True
         )
@@ -429,8 +427,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,  # Name changed from SPAC to operating company
                 is_first_time_issuer=False,  # CIK has prior filings
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
                 is_post_combination=True,
             )
             is True
@@ -442,8 +440,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=False,
-                offering_type='mixed',
-                form_type='F-1',
+                offering_type="mixed",
+                form_type="F-1",
                 is_post_combination=True,
             )
             is True
@@ -456,7 +454,7 @@ class TestIsInScopePhase1:
                 is_spac=False,
                 is_first_time_issuer=False,
                 offering_type=None,
-                form_type='S-1',
+                form_type="S-1",
                 is_post_combination=True,
             )
             is True
@@ -468,8 +466,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=False,
-                offering_type='secondary',
-                form_type='S-1',
+                offering_type="secondary",
+                form_type="S-1",
                 is_post_combination=True,
             )
             is False
@@ -481,8 +479,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=True,
                 is_first_time_issuer=True,
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
                 is_post_combination=False,  # Pre-combination
             )
             is False
@@ -495,8 +493,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,
                 is_first_time_issuer=False,
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
                 is_post_combination=False,
             )
             is False
@@ -513,8 +511,8 @@ class TestIsInScopePhase1:
             is_in_scope_phase1(
                 is_spac=False,  # Not classified as SPAC (name changed)
                 is_first_time_issuer=False,  # Has prior filing under CIK
-                offering_type='primary',
-                form_type='S-1',
+                offering_type="primary",
+                form_type="S-1",
                 is_post_combination=True,  # Detected as post-combination
             )
             is True
