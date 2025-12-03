@@ -10,37 +10,18 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 - Assessing disclosure quality and comparability
 - Demonstrating the need for standardized customer metrics disclosure
 
-## Current Status: UniverseBuilder v0.1
+## Current Status
 
-The first component, **UniverseBuilder**, is now implemented. It discovers and classifies S-1/F-1 filings for Phase 1 analysis.
+| Phase | Component | Status |
+|-------|-----------|--------|
+| 1 | UniverseBuilder | ✅ Complete (7,304 in-scope filings identified) |
+| 2a | FilingFetcher | ✅ Complete |
+| 2b | Extraction Pipeline | ✅ Complete (rule-based) |
+| 3 | LLM Integration | 🔲 Not started |
 
-### What's Implemented
+**Test Coverage:** 76% overall (target: 75%)
 
-✅ **Database Schema**
-- `companies` table: Issuer metadata
-- `filings` table: SEC filing documents with classification flags
-
-✅ **SEC Client Abstraction**
-- Interface for querying EDGAR
-- Mock client for testing
-- Rate limiting and polite access
-
-✅ **Classification Logic**
-- SPAC detection (by company name and filing text)
-- First-time issuer detection
-- Offering type classification (primary/secondary/mixed)
-- Phase 1 scope determination
-
-✅ **UniverseBuilder Component**
-- Discovers filings in date ranges
-- Classifies and stores in database
-- Idempotent operations
-- Coverage statistics
-
-✅ **Tests**
-- Unit tests for classification logic
-- Unit tests for UniverseBuilder
-- Example scripts
+For detailed progress tracking and sprint planning, see **[DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)**.
 
 ## Installation
 
@@ -224,17 +205,18 @@ filings_reviewer/
 
 ### Components
 
-**UniverseBuilder** (✅ Implemented)
-- Discovers S-1/F-1 filings from EDGAR
-- Classifies filings (SPAC, first-time issuer, offering type)
-- Populates `companies` and `filings` tables
+| Component | Status | Description |
+|-----------|--------|-------------|
+| UniverseBuilder | ✅ | Discovers S-1/F-1 filings, classifies SPACs and first-time issuers |
+| FilingFetcher | ✅ | Downloads and caches filing HTML from SEC EDGAR |
+| HTMLSegmenter | ✅ | Splits filings into paragraphs, tables, sections |
+| MetricClassifier | ✅ | Identifies segments containing customer metrics |
+| ValueExtractor | ✅ | Extracts numeric values from segments |
+| DefinitionExtractor | ✅ | Extracts metric definitions and methodologies |
+| QualityScorer | ✅ | Scores disclosure quality (0-3 scale) |
+| LLM Integration | 🔲 | Enhanced extraction using OpenAI (planned) |
 
-**Future Components** (Planned)
-- FilingFetcher: Download and cache raw filings
-- Segmenter: Split filings into structured segments
-- TableExtractor: Extract metrics from tables
-- TextMetricExtractor: Extract metrics from narrative text
-- QAEngine: Assess disclosure quality
+See [docs/04_SYSTEM_ARCHITECTURE.md](docs/04_SYSTEM_ARCHITECTURE.md) for detailed architecture diagrams.
 
 ### Data Model
 
@@ -279,33 +261,25 @@ All operations are idempotent:
 - Companies and filings are upserted (INSERT ... ON CONFLICT UPDATE)
 - Re-running does not create duplicates
 
-## Known Limitations (v0.1)
+## Known Limitations
 
-1. **SEC Client**: Simplified implementation. For production, use SEC RSS feeds or bulk downloads for better performance.
+1. **Rule-based extraction**: Current extraction uses pattern matching. LLM integration (Phase 3) will improve accuracy for complex disclosures.
 
-2. **Offering Type Classification**: Without fetching full filing text, offering type may be `uncertain` and require manual review.
+2. **SPAC Detection**: Heuristic-based. Uses conservative "require BOTH" signals (SIC code + name pattern) to minimize false positives.
 
-3. **SPAC Detection**: Heuristic-based. Some edge cases may need manual review.
-
-4. **Industry Classification**: Stubbed in v0.1. Future versions will add SIC/GICS codes.
-
-## Next Steps
-
-Per the GitHub issue roadmap:
-
-1. **Integration Tests**: Add tests using cached real EDGAR fixtures
-2. **SEC Client Enhancement**: Implement RSS feed or bulk download approach
-3. **Filing Text Fetching**: Enhance offering type classification
-4. **Manual Review Workflow**: Add tooling for uncertain classifications
+3. **No real-time updates**: System processes filings in batch mode, not streaming.
 
 ## Documentation
 
-Full design documentation is in the `docs/` directory:
+**Project tracking:**
+- [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) - Sprint tracking, progress, and roadmap
+- [PHASE1_UNIVERSE_BUILD_REPORT.md](PHASE1_UNIVERSE_BUILD_REPORT.md) - Universe statistics and analysis
 
+**Design documentation** (in `docs/`):
 - [Analytic Requirements](docs/01_ANALYTIC_REQUIREMENTS.md)
 - [Metric Taxonomy](docs/02_METRIC_TAXONOMY_AND_DEFINITIONS.md)
 - [Data Model](docs/03_DATA_MODEL_SPEC.md)
-- [System Architecture](docs/04_SYSTEM_ARCHITECTURE.md)
+- [System Architecture](docs/04_SYSTEM_ARCHITECTURE.md) - Includes architecture diagram
 - [Component Interfaces](docs/05_COMPONENT_INTERFACE_SPECS.md)
 - [Quality Model](docs/06_QA_AND_QUALITY_MODEL.md)
 - [Test Strategy](docs/07_TEST_STRATEGY_AND_FIX_PROCESS.md)

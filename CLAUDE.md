@@ -4,116 +4,157 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based tool for extracting and analyzing customer metrics from SEC S-1 and S-1/A filings. The project fetches filings from the SEC EDGAR database, parses them, and uses LLM-powered extraction to identify customer-related metrics, definitions, and calculations.
+This is a Python-based system for analyzing SEC S-1/F-1 filings to assess how companies disclose customer-related metrics. The project supports the Customer Metrics Accounting Standards Board (CMASB) initiative by:
 
-## Core Architecture
+- Discovering and classifying IPO filings from SEC EDGAR
+- Extracting customer metrics, definitions, and methodologies
+- Assessing disclosure quality and comparability
+- Demonstrating the need for standardized customer metrics disclosure
 
-The project consists of two main modules:
+## Architecture Overview
 
-### 1. `data_preprocessing.py` - Main Analysis Pipeline
-This is the primary working file containing the complete S-1 filings analysis pipeline. It includes:
+The system uses a modular pipeline architecture with components in `src/`:
 
-- **SEC EDGAR Data Fetching** (lines 1-131): Functions to fetch recent S-1/S-1/A filings from SEC EDGAR, including metadata like CIK, ticker, SIC codes, and filing URLs
-- **Text Parsing & Keyword Search** (lines 133-196): Basic keyword-based paragraph extraction from filings
-- **LLM-Powered Metric Extraction** (lines 199-449): The core extraction system that uses OpenAI's GPT-4o to identify and structure customer metrics data
-
-### 2. `main.py` - Placeholder
-This is a PyCharm template file and is not currently used in the project.
-
-## Key Technical Details
-
-### SEC EDGAR Integration
-- **User-Agent Header**: Required for all SEC requests. Currently set to `"Jacki Huang (xinwenh@mit.edu)"` or `"MetricsExtractor/1.0 (contact: xinwenh@mit.edu)"`
-- **Rate Limiting**: Includes polite delays (0.1-0.6 seconds) between requests to comply with SEC guidelines
-- **Data Sources**:
-  - Quarterly index files: `https://www.sec.gov/Archives/edgar/full-index/{year}/QTR{quarter}/form.idx`
-  - Company metadata: `https://data.sec.gov/submissions/CIK{cik}.json`
-
-### LLM Extraction System
-The system extracts three types of data from filings:
-1. **Metric Values**: Actual numbers for customer metrics (e.g., "10M active users")
-2. **Definitions**: How companies define their metrics (e.g., "We define MAU as...")
-3. **Calculations**: Formulas or methods used to compute metrics
-
-**Key Configuration**:
-- Model: GPT-4o (`gpt-4o`)
-- Chunk size: 8,000 characters per API call
-- Text limit: First 100,000 characters of each filing (relevant sections)
-- Timeout: 90 seconds per chunk
-- Delay between chunks: 0.6 seconds
-
-**Customer Synonyms**: The system recognizes 30+ customer-related terms (customer, user, client, subscriber, member, account, buyer, consumer, organization, merchant, host, driver, partner, vendor, tenant, seller, creator, etc.)
-
-**Metric Keywords**: Covers key SaaS and ecommerce metrics including active users, churn, retention, LTV, CAC, MRR, ARPU, cohort analysis, etc.
-
-### Output Schema
-Extracted data follows this structure:
-- `company`: Company name from filing
-- `metric_name`: Name of customer metric
-- `value`: Numeric or textual value
-- `period`: Time period/date
-- `source_type`: "text" | "table" | "graph"
-- `source_details`: Section context
-- `url`: Source filing URL
-- `missing_data_note`: Data availability notes
-- `extracted_type`: "value" | "definition" | "calculation"
-
-## Running the Code
-
-### Prerequisites
-```bash
-pip install openai requests beautifulsoup4 lxml python-dotenv pandas ftfy
+```
+src/
+├── infra/                    # Infrastructure layer
+│   ├── db.py                 # PostgreSQL adapter (psycopg3)
+│   └── sec_client.py         # SEC EDGAR API client
+│
+├── universe/                 # Phase 1: Filing Discovery
+│   ├── classifiers.py        # SPAC, first-time issuer, business type detection
+│   └── universe_builder.py   # Discovers and classifies S-1/F-1 filings
+│
+├── filing_fetcher/           # Phase 2a: Document Retrieval
+│   └── filing_fetcher.py     # Downloads and caches filing HTML
+│
+└── extraction/               # Phase 2b: Metric Extraction
+    ├── models.py             # Data classes (SourceSegment, MetricValue, etc.)
+    ├── html_segmenter.py     # Splits HTML into sections/paragraphs/tables
+    ├── metric_classifier.py  # Identifies segments containing metrics
+    ├── value_extractor.py    # Extracts numeric values from segments
+    ├── definition_extractor.py # Extracts metric definitions
+    ├── quality_scorer.py     # Scores disclosure quality (0-3 scale)
+    └── extraction_pipeline.py # Orchestrates full extraction flow
 ```
 
-### Environment Setup
-Set your OpenAI API key:
-```bash
-export OPENAI_API_KEY="sk-..."
+## Pipeline Flow
+
+```
+UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
+                                        ↓
+                              ValueExtractor + DefinitionExtractor
+                                        ↓
+                                  QualityScorer → Database
 ```
 
-### Execution
-The code in `data_preprocessing.py` is organized in Jupyter-style cells (`#%%`). Run sections sequentially:
+**Stage 1: Universe Building** (Complete)
+- Queries SEC EDGAR for S-1/F-1 filings (2015-2025)
+- Classifies: SPACs, first-time issuers, business types
+- Result: 7,304 in-scope filings identified
 
-1. **Fetch recent S-1 filings and metadata**:
-   ```python
-   python -c "from data_preprocessing import collect_recent_s1; df=collect_recent_s1(); df.to_csv('s1_fetch_records.csv', index=False)"
-   ```
+**Stage 2: Extraction** (40% implemented)
+- Downloads filing HTML from SEC
+- Segments into paragraphs, tables, sections
+- Extracts metric values and definitions
+- Scores disclosure quality
 
-2. **Extract metrics using LLM**:
-   ```python
-   python data_preprocessing.py
-   ```
-   This processes the hardcoded `S1_URLS` list and outputs `s1_customer_metrics_extracted.csv`
+## Database Schema
 
-### Output Files
-- `s1_fetch_records.csv`: List of fetched filings with metadata
-- `s1_keyword_paragraphs.csv`: Keyword-based paragraph matches
-- `s1_customer_metrics_extracted.csv`: Final structured metrics data
+PostgreSQL with key tables:
+- `companies` - Issuer metadata (CIK, name, ticker, SIC code)
+- `filings` - Filing documents with classification flags
+- `source_segments` - Parsed sections from filings
+- `metric_values` - Extracted numeric values
+- `metric_definitions` - Extracted definitions/methodologies
+- `filing_metric_incidence` - Quality scores per filing/metric
 
-## Important Notes
+Schema files in `sql/`:
+- `01_create_schema.sql` - Core tables
+- `03_create_analysis_schema.sql` - Extraction tables
+- `04_seed_metrics_taxonomy.sql` - Metric definitions
 
-### Security
-- **API Key Exposure**: Line 241 of `data_preprocessing.py` contains a hardcoded OpenAI API key. This should be removed and replaced with environment variable loading: `os.getenv("OPENAI_API_KEY")`
+## Key Commands
 
-### Code Structure Issues
-- **Duplicate Functions**: The `collect_recent_s1()` function is defined twice (lines 86-95 and 103-125). The second version adds company metadata fetching
-- **Cell-Based Execution**: The file uses Jupyter notebook cell markers (`#%%`) suggesting it's meant for interactive development in IDEs like PyCharm or VS Code
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-### Dependencies
-The code requires:
-- `requests`: HTTP requests to SEC EDGAR
-- `beautifulsoup4` + `lxml`: HTML parsing
-- `pandas`: Data manipulation
-- `openai`: OpenAI API client
-- `python-dotenv`: Environment variable management
-- `ftfy`: Text encoding normalization
+# Run all tests
+pytest -v
 
-## Development Workflow
+# Run with coverage
+pytest --cov=src --cov-report=html
 
-When extending this codebase:
+# Run specific test module
+pytest tests/unit/extraction/test_value_extractor.py -v
 
-1. **Test with sample data first**: Use `urls[:3]` or similar limits when testing new extraction logic
-2. **Respect SEC rate limits**: Always include delays and proper User-Agent headers
-3. **Monitor API costs**: Each S-1 filing can generate 10-15 API calls depending on document length
-4. **Validate extraction quality**: Check JSON parsing from LLM responses handles edge cases
-5. **Update synonyms/keywords**: Add industry-specific terms to `CUSTOMER_SYNONYMS` or `METRIC_KEYWORDS` as needed
+# Format code
+black src/ tests/
+
+# Lint code
+ruff check src/ tests/
+
+# Build universe (requires database)
+python scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
+
+# Fetch sample filings
+python scripts/fetch_curated_sample.py
+```
+
+## Environment Setup
+
+Create a `.env` file (see `.env.template`):
+```bash
+DATABASE_URL=postgresql://user:password@localhost/filings_analysis
+SEC_USER_AGENT="YourName contact@example.com"
+```
+
+## SEC EDGAR Integration
+
+**Rate Limiting**: The `SECClient` class enforces 100ms minimum between requests per SEC guidelines.
+
+**User-Agent**: All SEC requests require a User-Agent header with contact info. Set via `SEC_USER_AGENT` env var.
+
+**Data Sources**:
+- Submissions API: `https://data.sec.gov/submissions/CIK{cik}.json`
+- Filing documents: `https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/`
+
+## Testing Standards
+
+- **Minimum coverage**: 75% (enforced in pytest.ini)
+- **Current coverage**: 76%
+- **Test structure**: `tests/unit/` for fast isolated tests, `tests/integration/` for database tests
+
+Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variable.
+
+## Key Design Decisions
+
+1. **Rule-based first, LLM second**: Keyword matching and pattern detection before expensive LLM calls
+2. **Provenance tracking**: Every extracted value links back to source segment
+3. **Idempotent operations**: Re-running any stage is safe (upserts, not inserts)
+4. **Conservative classification**: "Require BOTH" signals for business type exclusions to minimize false positives
+
+## Current Implementation Status
+
+| Component | Status | Coverage |
+|-----------|--------|----------|
+| UniverseBuilder | Complete | 98% |
+| FilingFetcher | Complete | 99% |
+| HTMLSegmenter | Complete | 92% |
+| MetricClassifier | Complete | 95% |
+| ValueExtractor | Complete | 97% |
+| DefinitionExtractor | Complete | 90% |
+| QualityScorer | Complete | 100% |
+| ExtractionPipeline | Complete | 85% |
+| LLM Integration | Not started | - |
+
+## Documentation
+
+- `docs/01_ANALYTIC_REQUIREMENTS.md` - Business requirements
+- `docs/02_METRIC_TAXONOMY_AND_DEFINITIONS.md` - Metric definitions
+- `docs/03_DATA_MODEL_SPEC.md` - Database schema details
+- `docs/04_SYSTEM_ARCHITECTURE.md` - Component design
+- `docs/05_COMPONENT_INTERFACE_SPECS.md` - Python interfaces
+- `docs/06_QA_AND_QUALITY_MODEL.md` - Quality scoring framework
+- `DEVELOPMENT_PLAN.md` - Sprint tracking and roadmap
