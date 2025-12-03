@@ -27,8 +27,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "d123456ds1.htm" in url
@@ -46,8 +48,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "forms1_company.htm" in url
@@ -64,8 +68,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "mainbody.htm" in url
@@ -82,8 +88,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "prospectus.htm" in url
@@ -100,8 +108,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "registration_statement.htm" in url
@@ -119,8 +129,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "document.htm" in url  # Should select largest file
@@ -132,17 +144,27 @@ class TestResolveRimary_documentUrl:
             "directory": {
                 "item": [
                     {"name": "document.htm", "size": 300000},
-                    {"name": "exhibit_99_1.htm", "size": 500000},  # Larger but is exhibit
-                    {"name": "ex10_1.htm", "size": 400000},  # Larger but starts with 'ex'
+                    {
+                        "name": "exhibit_99_1.htm",
+                        "size": 500000,
+                    },  # Larger but is exhibit
+                    {
+                        "name": "ex10_1.htm",
+                        "size": 400000,
+                    },  # Larger but starts with 'ex'
                 ]
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
-        assert "document.htm" in url  # Should exclude exhibits and select largest non-exhibit
+        assert (
+            "document.htm" in url
+        )  # Should exclude exhibits and select largest non-exhibit
 
     def test_exclude_xbrl_files(self, sec_client):
         """Test that XBRL files (starting with R) are excluded."""
@@ -157,8 +179,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "document.htm" in url  # Should exclude R*.htm files
@@ -175,8 +199,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is None
 
@@ -185,8 +211,10 @@ class TestResolveRimary_documentUrl:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("404 Not Found")
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is None
 
@@ -201,8 +229,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         # URL should have format: https://www.sec.gov/Archives/edgar/data/{cik}/{accession_no_dashes}/{filename}
         assert url.startswith("https://www.sec.gov/Archives/edgar/data/")
@@ -222,8 +252,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "ff12014a1_biondvax.htm" in url
@@ -240,8 +272,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "d123456ds1a.htm" in url
@@ -258,8 +292,10 @@ class TestResolveRimary_documentUrl:
             }
         }
 
-        with patch.object(sec_client.session, 'get', return_value=mock_response):
-            url = sec_client.resolve_primary_document_url("0001234567", "0001234567-12-123456")
+        with patch.object(sec_client.session, "get", return_value=mock_response):
+            url = sec_client.resolve_primary_document_url(
+                "0001234567", "0001234567-12-123456"
+            )
 
         assert url is not None
         assert "FORM_S-1.htm" in url
@@ -356,7 +392,7 @@ CIK|Company Name|Form Type|Date Filed|Filename
 1234567|Example Corp|S-1|2024-01-15|edgar/data/1234567/0001193125-24-000001.txt
 7654321|Test Inc|F-1|2024-01-15|edgar/data/7654321/0001193125-24-000002.txt
 """
-        filings = sec_client._parse_master_index(index_text, ['S-1', 'F-1'])
+        filings = sec_client._parse_master_index(index_text, ["S-1", "F-1"])
 
         assert len(filings) == 2
         assert filings[0].cik == "0001234567"  # Should be zero-padded to 10 digits
@@ -372,7 +408,7 @@ CIK|Company Name|Form Type|Date Filed|Filename
 1234567|Example Corp|S-1|2024-01-15|edgar/data/1234567/0001193125-24-000001.txt
 7654321|Test Inc|10-K|2024-01-15|edgar/data/7654321/0001193125-24-000002.txt
 """
-        filings = sec_client._parse_master_index(index_text, ['S-1'])
+        filings = sec_client._parse_master_index(index_text, ["S-1"])
 
         assert len(filings) == 1
         assert filings[0].form_type == "S-1"
@@ -386,7 +422,7 @@ CIK|Company Name|Form Type|Date Filed|Filename
 invalid line
 7654321|Test Inc|S-1|2024-01-15|edgar/data/7654321/0001193125-24-000002.txt
 """
-        filings = sec_client._parse_master_index(index_text, ['S-1'])
+        filings = sec_client._parse_master_index(index_text, ["S-1"])
 
         assert len(filings) == 2  # Should skip malformed line
 
@@ -396,6 +432,6 @@ invalid line
 ------------------------------------------------------------
 CIK|Company Name|Form Type|Date Filed|Filename
 """
-        filings = sec_client._parse_master_index(index_text, ['S-1'])
+        filings = sec_client._parse_master_index(index_text, ["S-1"])
 
         assert len(filings) == 0

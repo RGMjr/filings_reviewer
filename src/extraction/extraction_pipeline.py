@@ -12,7 +12,7 @@ This module orchestrates the complete extraction pipeline:
 
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 
 from src.infra.db import DatabaseAdapter
@@ -28,12 +28,16 @@ from .models import (
     FilingMetricIncidence,
 )
 
+if TYPE_CHECKING:
+    from ..llm.openai_client import OpenAIClient
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ExtractionResult:
     """Result of processing a single filing."""
+
     filing_id: int
     success: bool
     error: Optional[str] = None
@@ -56,19 +60,30 @@ class ExtractionPipeline:
     6. Write all results to database
     """
 
-    def __init__(self, db: DatabaseAdapter):
+    def __init__(
+        self, db: DatabaseAdapter, llm_client: Optional["OpenAIClient"] = None
+    ):
         """
         Initialize the extraction pipeline.
 
         Args:
             db: Database adapter
+            llm_client: Optional OpenAI client for LLM-enhanced extraction.
+                       If provided, extractors will use LLM with rule-based fallback.
+                       If not provided, only rule-based extraction will be used.
         """
         self.db = db
+        self.llm_client = llm_client
         self.segmenter = HTMLSegmenter()
         self.classifier = MetricClassifier()
-        self.value_extractor = ValueExtractor()
-        self.definition_extractor = DefinitionExtractor()
+        self.value_extractor = ValueExtractor(llm_client=llm_client)
+        self.definition_extractor = DefinitionExtractor(llm_client=llm_client)
         self.quality_scorer = QualityScorer()
+
+        if llm_client:
+            logger.info("✓ Pipeline initialized with LLM-enhanced extraction")
+        else:
+            logger.info("✓ Pipeline initialized with rule-based extraction only")
 
     def process_filing(self, filing_id: int) -> ExtractionResult:
         """
@@ -98,84 +113,102 @@ class ExtractionPipeline:
                 return ExtractionResult(
                     filing_id=filing_id,
                     success=False,
-                    error="Filing not found in database"
+                    error="Filing not found in database",
                 )
 
             # Step 1: Segment HTML
-            logger.info(f"  Stage 1: Segmenting HTML")
+            logger.info("  Stage 1: Segmenting HTML")
             segments = self.segmenter.segment_filing(
-                filing_id=filing_id,
-                html_path=filing['html_storage_path']
+                filing_id=filing_id, html_path=filing["html_storage_path"]
             )
 
             if not segments:
                 return ExtractionResult(
                     filing_id=filing_id,
                     success=False,
-                    error="No segments extracted from HTML"
+                    error="No segments extracted from HTML",
                 )
 
             # Step 2: Classify segments
             logger.info(f"  Stage 2: Classifying {len(segments)} segments")
             classified_segments = self.classifier.classify_batch(segments)
 
-            # Step 3: Extract values
-            logger.info(f"  Stage 3: Extracting values")
+            # Step 2b: Filter to high-confidence segments for LLM processing
+            # Keep segments that have:
+            # - High confidence score (≥0.5) OR
+            # - Definition/methodology flags (important content markers)
+            # Also cap at MAX_SEGMENTS to prevent timeout on very large filings
+            CONFIDENCE_THRESHOLD = 0.5
+            MAX_SEGMENTS = 50
+            high_confidence_segments = [
+                seg for seg in classified_segments
+                if (seg.classifier_confidence and seg.classifier_confidence >= CONFIDENCE_THRESHOLD)
+                or seg.contains_definition_flag
+                or seg.contains_methodology_flag
+            ]
+            # Sort by confidence and take top MAX_SEGMENTS
+            high_confidence_segments.sort(
+                key=lambda s: s.classifier_confidence or 0, reverse=True
+            )
+            if len(high_confidence_segments) > MAX_SEGMENTS:
+                logger.info(
+                    f"  Stage 2b: Capping segments from {len(high_confidence_segments)} to {MAX_SEGMENTS}"
+                )
+                high_confidence_segments = high_confidence_segments[:MAX_SEGMENTS]
+            logger.info(
+                f"  Stage 2b: Filtered to {len(high_confidence_segments)} high-confidence segments "
+                f"(from {len(classified_segments)} total, threshold={CONFIDENCE_THRESHOLD}, max={MAX_SEGMENTS})"
+            )
+
+            # Step 3: Extract values (only from high-confidence segments)
+            logger.info(f"  Stage 3: Extracting values from {len(high_confidence_segments)} segments")
             all_values = []
-            for seg in classified_segments:
+            for seg in high_confidence_segments:
                 values = self.value_extractor.extract_from_segment(
-                    seg,
-                    company_id=filing['company_id']
+                    seg, company_id=filing["company_id"]
                 )
                 all_values.extend(values)
 
-            # Step 4: Extract definitions
-            logger.info(f"  Stage 4: Extracting definitions")
+            # Step 4: Extract definitions (only from high-confidence segments)
+            logger.info(f"  Stage 4: Extracting definitions from {len(high_confidence_segments)} segments")
             definitions = self.definition_extractor.extract_definitions(
-                classified_segments,
-                company_id=filing['company_id']
+                high_confidence_segments, company_id=filing["company_id"]
             )
 
-            # Step 5: Compute quality scores
-            logger.info(f"  Stage 5: Computing quality scores")
+            # Step 5: Compute quality scores (based on high-confidence segments)
+            logger.info("  Stage 5: Computing quality scores")
             incidences = self.quality_scorer.score_filing(
                 filing_id=filing_id,
-                company_id=filing['company_id'],
-                segments=classified_segments,
+                company_id=filing["company_id"],
+                segments=high_confidence_segments,
                 values=all_values,
-                definitions=definitions
+                definitions=definitions,
             )
 
             # Step 6: Write to database
-            logger.info(f"  Stage 6: Writing to database")
+            logger.info("  Stage 6: Writing to database")
             self._write_results(
-                filing_id,
-                classified_segments,
-                all_values,
-                definitions,
-                incidences
+                filing_id, high_confidence_segments, all_values, definitions, incidences
             )
 
             logger.info(f"✓ Successfully processed filing {filing_id}")
-            logger.info(f"    Segments: {len(classified_segments)}, Values: {len(all_values)}, " +
-                       f"Definitions: {len(definitions)}, Incidences: {len(incidences)}")
+            logger.info(
+                f"    Total segments: {len(classified_segments)}, High-confidence: {len(high_confidence_segments)}, "
+                + f"Values: {len(all_values)}, Definitions: {len(definitions)}, Incidences: {len(incidences)}"
+            )
 
             return ExtractionResult(
                 filing_id=filing_id,
                 success=True,
-                num_segments=len(classified_segments),
+                num_segments=len(high_confidence_segments),
                 num_values=len(all_values),
                 num_definitions=len(definitions),
-                num_incidences=len(incidences)
+                num_incidences=len(incidences),
             )
 
         except Exception as e:
             logger.error(f"✗ Error processing filing {filing_id}: {e}", exc_info=True)
-            return ExtractionResult(
-                filing_id=filing_id,
-                success=False,
-                error=str(e)
-            )
+            return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
     def process_batch(self, filing_ids: List[int]) -> Dict[str, int]:
         """
@@ -190,13 +223,13 @@ class ExtractionPipeline:
         logger.info(f"Processing batch of {len(filing_ids)} filings")
 
         stats = {
-            'total': len(filing_ids),
-            'success': 0,
-            'failed': 0,
-            'total_segments': 0,
-            'total_values': 0,
-            'total_definitions': 0,
-            'total_incidences': 0,
+            "total": len(filing_ids),
+            "success": 0,
+            "failed": 0,
+            "total_segments": 0,
+            "total_values": 0,
+            "total_definitions": 0,
+            "total_incidences": 0,
         }
 
         for i, filing_id in enumerate(filing_ids):
@@ -205,13 +238,13 @@ class ExtractionPipeline:
             result = self.process_filing(filing_id)
 
             if result.success:
-                stats['success'] += 1
-                stats['total_segments'] += result.num_segments
-                stats['total_values'] += result.num_values
-                stats['total_definitions'] += result.num_definitions
-                stats['total_incidences'] += result.num_incidences
+                stats["success"] += 1
+                stats["total_segments"] += result.num_segments
+                stats["total_values"] += result.num_values
+                stats["total_definitions"] += result.num_definitions
+                stats["total_incidences"] += result.num_incidences
             else:
-                stats['failed'] += 1
+                stats["failed"] += 1
                 logger.error(f"  Failed: {result.error}")
 
         logger.info("")
@@ -231,11 +264,14 @@ class ExtractionPipeline:
 
     def _get_filing_metadata(self, filing_id: int) -> Optional[dict]:
         """Fetch filing metadata from database."""
-        result = self.db.query("""
+        result = self.db.query(
+            """
             SELECT filing_id, company_id, cik, accession_number, html_storage_path
             FROM filings
             WHERE filing_id = %(filing_id)s
-        """, {"filing_id": filing_id})
+        """,
+            {"filing_id": filing_id},
+        )
 
         if not result:
             return None
@@ -243,7 +279,10 @@ class ExtractionPipeline:
         filing = result[0]
 
         # Check if HTML file exists
-        if not filing['html_storage_path'] or not Path(filing['html_storage_path']).exists():
+        if (
+            not filing["html_storage_path"]
+            or not Path(filing["html_storage_path"]).exists()
+        ):
             logger.error(f"HTML file not found: {filing['html_storage_path']}")
             return None
 
@@ -255,7 +294,7 @@ class ExtractionPipeline:
         segments: List[SourceSegment],
         values: List[MetricValue],
         definitions: List[MetricDefinition],
-        incidences: List[FilingMetricIncidence]
+        incidences: List[FilingMetricIncidence],
     ):
         """
         Write all extraction results to database in a transaction.

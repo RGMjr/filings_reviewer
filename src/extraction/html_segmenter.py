@@ -9,7 +9,7 @@ import logging
 import re
 from pathlib import Path
 from typing import List, Optional, Tuple
-from bs4 import BeautifulSoup, Tag, NavigableString
+from bs4 import BeautifulSoup, Tag
 
 from .models import SourceSegment
 
@@ -37,16 +37,18 @@ class HTMLSegmenter:
 
     # Patterns that indicate definition or methodology blocks
     DEFINITION_PATTERNS = [
-        r'\b(we\s+define|defined\s+as|definition\s+of|refers\s+to)\b',
-        r'\b(means|meaning|metric\s+definitions)\b',
+        r"\b(we\s+define|defined\s+as|definition\s+of|refers\s+to)\b",
+        r"\b(means|meaning|metric\s+definitions)\b",
     ]
 
     METHODOLOGY_PATTERNS = [
-        r'\b(calculated\s+as|calculated\s+by|calculation|computed\s+as)\b',
-        r'\b(determined\s+by|formula|methodology)\b',
+        r"\b(calculated\s+as|calculated\s+by|calculation|computed\s+as)\b",
+        r"\b(determined\s+by|formula|methodology)\b",
     ]
 
-    def __init__(self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH):
+    def __init__(
+        self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH
+    ):
         """
         Initialize the HTML segmenter.
 
@@ -77,7 +79,7 @@ class HTMLSegmenter:
             return []
 
         # Parse with BeautifulSoup
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
 
         # Extract segments
         segments = []
@@ -90,9 +92,9 @@ class HTMLSegmenter:
             return []
 
         # Extract all segments
-        for element in main_content.find_all(['p', 'table', 'div'], recursive=True):
+        for element in main_content.find_all(["p", "table", "div"], recursive=True):
             # Skip if element is nested inside a table (we'll capture the whole table)
-            if element.name == 'p' and element.find_parent('table'):
+            if element.name == "p" and element.find_parent("table"):
                 continue
 
             segment = self._extract_segment(element, filing_id, sequence_index)
@@ -113,10 +115,10 @@ class HTMLSegmenter:
 
             # Try UTF-8 first, fall back to latin-1
             try:
-                return path.read_text(encoding='utf-8')
+                return path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 logger.warning(f"UTF-8 decode failed, trying latin-1: {html_path}")
-                return path.read_text(encoding='latin-1')
+                return path.read_text(encoding="latin-1")
 
         except Exception as e:
             logger.error(f"Error reading HTML file {html_path}: {e}")
@@ -131,12 +133,12 @@ class HTMLSegmenter:
         - Modern HTML: <!DOCTYPE html><HTML>...</HTML>
         """
         # Try to find <TEXT> tag (SGML format)
-        text_tag = soup.find('text')
+        text_tag = soup.find("text")
         if text_tag:
             return text_tag
 
         # Fall back to <BODY> tag
-        body_tag = soup.find('body')
+        body_tag = soup.find("body")
         if body_tag:
             return body_tag
 
@@ -144,10 +146,7 @@ class HTMLSegmenter:
         return soup
 
     def _extract_segment(
-        self,
-        element: Tag,
-        filing_id: int,
-        sequence_index: int
+        self, element: Tag, filing_id: int, sequence_index: int
     ) -> Optional[SourceSegment]:
         """
         Extract a single segment from an HTML element.
@@ -172,11 +171,13 @@ class HTMLSegmenter:
 
         # Truncate segments that are too long
         if len(raw_text) > self.max_length:
-            logger.debug(f"Truncating segment from {len(raw_text)} to {self.max_length} chars")
-            raw_text = raw_text[:self.max_length]
+            logger.debug(
+                f"Truncating segment from {len(raw_text)} to {self.max_length} chars"
+            )
+            raw_text = raw_text[: self.max_length]
 
         # Extract raw HTML (limited to avoid huge storage)
-        raw_html = str(element)[:self.max_length]
+        raw_html = str(element)[: self.max_length]
 
         # Extract section path and heading
         section_path, section_heading = self._extract_section_info(element)
@@ -196,38 +197,38 @@ class HTMLSegmenter:
 
     def _get_segment_type(self, element: Tag) -> str:
         """Determine segment type from HTML element."""
-        if element.name == 'table':
-            return 'table'
+        if element.name == "table":
+            return "table"
 
         # Check for footnote indicators
         if self._is_footnote(element):
-            return 'footnote'
+            return "footnote"
 
         # Check for definition blocks
         text = element.get_text()
         if self._matches_patterns(text, self.DEFINITION_PATTERNS):
-            return 'definition_block'
+            return "definition_block"
 
         # Check for methodology blocks
         if self._matches_patterns(text, self.METHODOLOGY_PATTERNS):
-            return 'methodology_block'
+            return "methodology_block"
 
         # Default to paragraph
-        return 'paragraph'
+        return "paragraph"
 
     def _is_footnote(self, element: Tag) -> bool:
         """Check if element is a footnote."""
         # Check for common footnote class names
-        classes = element.get('class', [])
-        footnote_classes = ['footnote', 'endnote', 'fn', 'note']
+        classes = element.get("class", [])
+        footnote_classes = ["footnote", "endnote", "fn", "note"]
 
         for cls in classes:
             if any(fn_class in str(cls).lower() for fn_class in footnote_classes):
                 return True
 
         # Check for footnote IDs
-        element_id = element.get('id', '')
-        if 'footnote' in str(element_id).lower() or 'fn' in str(element_id).lower():
+        element_id = element.get("id", "")
+        if "footnote" in str(element_id).lower() or "fn" in str(element_id).lower():
             return True
 
         return False
@@ -249,14 +250,16 @@ class HTMLSegmenter:
         - Decode HTML entities (handled by BeautifulSoup)
         """
         # Replace multiple whitespace with single space
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Strip leading/trailing whitespace
         text = text.strip()
 
         return text
 
-    def _extract_section_info(self, element: Tag) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_section_info(
+        self, element: Tag
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Extract section path and heading from element's position in DOM.
 
@@ -279,7 +282,9 @@ class HTMLSegmenter:
         # Traverse up the tree looking for headings
         while current:
             # Look for heading elements before this element
-            for sibling in current.find_all_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+            for sibling in current.find_all_previous(
+                ["h1", "h2", "h3", "h4", "h5", "h6"]
+            ):
                 heading_text = self._normalize_text(sibling.get_text())
                 if heading_text and heading_text not in headings:
                     headings.insert(0, heading_text)
@@ -288,14 +293,14 @@ class HTMLSegmenter:
 
             # Move up one level
             current = current.parent
-            if current and current.name in ['html', 'body', 'text']:
+            if current and current.name in ["html", "body", "text"]:
                 break
 
         if not headings:
             return None, None
 
         # Build section path from headings
-        section_path = ' > '.join(headings)
+        section_path = " > ".join(headings)
         section_heading = headings[-1] if headings else None
 
         return section_path, section_heading
@@ -315,7 +320,7 @@ class HTMLSegmenter:
 
         Public method for testing and external use.
         """
-        soup = BeautifulSoup(raw_html, 'html.parser')
+        soup = BeautifulSoup(raw_html, "html.parser")
         text = soup.get_text()
         return self._normalize_text(text)
 

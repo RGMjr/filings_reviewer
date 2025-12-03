@@ -14,11 +14,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from urllib.parse import urlparse
 
 import requests
 
-from src.infra.sec_client import FilingMetadata, SECClient
+from src.infra.sec_client import FilingMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ class FilingContent:
         txt_path: Local path to complete text filing
         fetched_at: Timestamp when fetched
     """
+
     cik: str
     accession_number: str
     html_path: str
@@ -104,30 +104,40 @@ class FilingFetcher:
             ValueError: If CIK or accession number contains path traversal sequences
         """
         # Security: Validate inputs to prevent path traversal attacks
-        if '..' in cik or '/' in cik or '\\' in cik:
-            raise ValueError(f"Invalid CIK: contains path traversal characters")
-        if '..' in accession_number or '/' in accession_number.replace('-', '') or '\\' in accession_number:
-            raise ValueError(f"Invalid accession number: contains path traversal characters")
+        if ".." in cik or "/" in cik or "\\" in cik:
+            raise ValueError("Invalid CIK: contains path traversal characters")
+        if (
+            ".." in accession_number
+            or "/" in accession_number.replace("-", "")
+            or "\\" in accession_number
+        ):
+            raise ValueError(
+                "Invalid accession number: contains path traversal characters"
+            )
 
         # Additional validation: CIK should be numeric
         if not cik.isdigit():
-            raise ValueError(f"Invalid CIK: must be numeric")
+            raise ValueError("Invalid CIK: must be numeric")
 
         # Remove dashes from accession number for directory name
-        accession_clean = accession_number.replace('-', '')
+        accession_clean = accession_number.replace("-", "")
 
         # Validate accession format (should be alphanumeric after removing dashes)
-        if not accession_clean.replace('-', '').isalnum():
-            raise ValueError(f"Invalid accession number: must be alphanumeric")
+        if not accession_clean.replace("-", "").isalnum():
+            raise ValueError("Invalid accession number: must be alphanumeric")
 
         return self.storage_root / cik / accession_clean
 
-    def _validate_filing_content(self, html: str, cik: str, accession_number: str) -> tuple[bool, Optional[str]]:
+    def _validate_filing_content(
+        self, html: str, cik: str, accession_number: str
+    ) -> tuple[bool, Optional[str]]:
         """
         Validate that HTML content is a real SEC filing, not an error page.
 
-        Supports both SGML-wrapped filings (older, with <DOCUMENT> tag) and
-        modern pure HTML filings (2022+, without SGML wrapper).
+        Supports three filing formats:
+        - SGML-wrapped filings (older, with <DOCUMENT> tag)
+        - Modern pure HTML filings (2022+, without SGML wrapper)
+        - iXBRL filings (2021+, XML+HTML with XBRL namespaces)
 
         Args:
             html: HTML content to validate
@@ -140,30 +150,63 @@ class FilingFetcher:
         # Check 1: Minimum size - SEC filings are typically > 15KB
         # Lowered from 20KB to capture small legitimate filings (amendments, etc.)
         if len(html) < 15_000:
-            return False, f"Content too small ({len(html):,} bytes, expected > 15KB) - likely an error page"
+            return (
+                False,
+                f"Content too small ({len(html):,} bytes, expected > 15KB) - likely an error page",
+            )
 
         # Check 2: Must NOT contain error indicators (check early to fail fast)
         error_markers = [
-            'No rendered XBRL documents',
-            'No documents were found',
-            '404 Not Found',
-            'Page Not Found',
-            'Error processing request',
-            'The requested URL was not found',
-            'Access Denied',
-            'Service Unavailable',
-            'NoSuchKey',  # S3 error
-            '<Error>',    # XML error response
+            "No rendered XBRL documents",
+            "No documents were found",
+            "404 Not Found",
+            "Page Not Found",
+            "Error processing request",
+            "The requested URL was not found",
+            "Access Denied",
+            "Service Unavailable",
+            "NoSuchKey",  # S3 error
+            "<Error>",  # XML error response
         ]
 
         for marker in error_markers:
             if marker in html:
                 return False, f"Error page detected: contains '{marker}'"
 
-        # Check 3: Detect filing format (SGML vs modern HTML)
-        has_document_tag = '<DOCUMENT>' in html
-        has_html_structure = any(tag in html for tag in ['<!DOCTYPE', '<HTML>', '<html>'])
-        has_sgml_structure = '<TEXT>' in html
+        # Check 3: Detect iXBRL format (XML-based HTML with XBRL namespaces)
+        # iXBRL filings start with XML declaration and contain XBRL namespaces
+        # These are inline XBRL documents adopted by SEC around 2021
+        content_start = html[:3000].strip()  # Check first 3KB for performance
+
+        if content_start.startswith("<?xml"):
+            # This appears to be an iXBRL filing
+            # Verify it contains XBRL namespace
+            has_ixbrl_namespace = (
+                'xmlns:ix="http://www.xbrl.org' in html[:5000]
+                or "xmlns:ix='http://www.xbrl.org" in html[:5000]
+            )
+
+            if has_ixbrl_namespace:
+                # Verify it's still HTML-based (not pure XML)
+                if "<html" not in html[:5000].lower():
+                    return False, "iXBRL file missing HTML structure"
+
+                # Verify it has body content
+                if "<body" not in html[:10000].lower():
+                    return False, "iXBRL file missing body content"
+
+                # iXBRL format validated - return success early
+                logger.debug(
+                    f"Detected iXBRL format for {cik}/{accession_number}"
+                )
+                return True, None
+
+        # Check 4: Detect filing format (SGML vs modern HTML)
+        has_document_tag = "<DOCUMENT>" in html
+        has_html_structure = any(
+            tag in html for tag in ["<!DOCTYPE", "<HTML>", "<html>"]
+        )
+        has_sgml_structure = "<TEXT>" in html
 
         is_sgml_format = has_document_tag and has_sgml_structure
         is_modern_html = has_html_structure and not has_document_tag
@@ -172,18 +215,21 @@ class FilingFetcher:
         if not (is_sgml_format or is_modern_html or has_document_tag):
             # Lenient: If it has <DOCUMENT> tag OR proper HTML structure, allow it
             if not (has_document_tag or has_html_structure):
-                return False, "Missing valid filing structure (neither SGML nor HTML format)"
+                return (
+                    False,
+                    "Missing valid filing structure (neither SGML nor HTML format)",
+                )
 
-        # Check 4: Must contain SEC filing indicators
+        # Check 5: Must contain SEC filing indicators
         # At least one of these should be present in a real filing
         sec_indicators = [
-            'SECURITIES AND EXCHANGE COMMISSION',
-            'Securities and Exchange Commission',
-            'UNITED STATES SECURITIES AND EXCHANGE COMMISSION',
-            'U.S. SECURITIES AND EXCHANGE COMMISSION',
-            'FORM S-1',
-            'FORM F-1',
-            'REGISTRATION STATEMENT',
+            "SECURITIES AND EXCHANGE COMMISSION",
+            "Securities and Exchange Commission",
+            "UNITED STATES SECURITIES AND EXCHANGE COMMISSION",
+            "U.S. SECURITIES AND EXCHANGE COMMISSION",
+            "FORM S-1",
+            "FORM F-1",
+            "REGISTRATION STATEMENT",
         ]
 
         has_sec_reference = any(indicator in html for indicator in sec_indicators)
@@ -191,20 +237,22 @@ class FilingFetcher:
         if not has_sec_reference:
             return False, "Missing SEC filing indicators - content may not be a filing"
 
-        # Check 5: Additional validation for modern HTML format
+        # Check 6: Additional validation for modern HTML format
         if is_modern_html:
             # Modern HTML filings should have more structured content
             html_lower = html.lower()
 
             # Should contain typical filing elements
             filing_elements = [
-                '<title>',
-                '<body',
-                '<div',
-                '<table',
+                "<title>",
+                "<body",
+                "<div",
+                "<table",
             ]
 
-            has_filing_elements = sum(1 for elem in filing_elements if elem in html_lower) >= 2
+            has_filing_elements = (
+                sum(1 for elem in filing_elements if elem in html_lower) >= 2
+            )
 
             if not has_filing_elements:
                 return False, "Modern HTML filing missing expected structural elements"
@@ -242,15 +290,17 @@ class FilingFetcher:
             if not html_path.exists():
                 # Resolve primary document URL if it's a directory URL
                 primary_doc_url = filing_metadata.primary_doc_url
-                if primary_doc_url.endswith('/') and self.sec_client:
-                    logger.debug(f"Resolving primary doc URL for {cik}/{accession_number}")
+                if primary_doc_url.endswith("/") and self.sec_client:
+                    logger.debug(
+                        f"Resolving primary doc URL for {cik}/{accession_number}"
+                    )
                     resolved_url = self.sec_client.resolve_primary_document_url(
                         cik, accession_number
                     )
                     if resolved_url:
                         primary_doc_url = resolved_url
                     else:
-                        raise ValueError(f"Could not resolve primary document URL")
+                        raise ValueError("Could not resolve primary document URL")
 
                 self._rate_limit()
                 logger.debug(f"Downloading HTML: {primary_doc_url}")
@@ -264,26 +314,38 @@ class FilingFetcher:
                 if not is_valid:
                     raise ValueError(f"Invalid filing content: {error_msg}")
 
-                html_path.write_text(response.text, encoding='utf-8')
+                html_path.write_text(response.text, encoding="utf-8")
                 logger.info(f"Saved HTML to {html_path}")
             else:
                 logger.debug(f"HTML already cached: {html_path}")
 
             # Fetch TXT filing (if requested and URL available)
+            # TXT files are optional - don't fail entire fetch if unavailable
             txt_path_str = None
             if fetch_txt and filing_metadata.txt_url:
-                if not txt_path.exists():
-                    self._rate_limit()
-                    logger.debug(f"Downloading TXT: {filing_metadata.txt_url}")
-                    response = self.session.get(filing_metadata.txt_url)
-                    response.raise_for_status()
+                try:
+                    if not txt_path.exists():
+                        self._rate_limit()
+                        logger.debug(f"Downloading TXT: {filing_metadata.txt_url}")
+                        response = self.session.get(filing_metadata.txt_url)
+                        response.raise_for_status()
 
-                    txt_path.write_text(response.text, encoding='utf-8')
-                    logger.info(f"Saved TXT to {txt_path}")
-                    txt_path_str = str(txt_path)
-                else:
-                    logger.debug(f"TXT already cached: {txt_path}")
-                    txt_path_str = str(txt_path)
+                        txt_path.write_text(response.text, encoding="utf-8")
+                        logger.info(f"Saved TXT to {txt_path}")
+                        txt_path_str = str(txt_path)
+                    else:
+                        logger.debug(f"TXT already cached: {txt_path}")
+                        txt_path_str = str(txt_path)
+                except requests.HTTPError as e:
+                    # TXT file not available (404) - this is OK, HTML is sufficient
+                    logger.warning(
+                        f"TXT file not available for {cik}/{accession_number}: {e}"
+                    )
+                except Exception as e:
+                    # Other TXT errors - log but don't fail entire fetch
+                    logger.warning(
+                        f"Error fetching TXT for {cik}/{accession_number}: {e}"
+                    )
 
             # Create FilingContent result
             content = FilingContent(
@@ -345,9 +407,7 @@ class FilingFetcher:
         except Exception as e:
             logger.error(f"Error updating database: {e}")
 
-    def _update_database_error(
-        self, cik: str, accession_number: str, error_msg: str
-    ):
+    def _update_database_error(self, cik: str, accession_number: str, error_msg: str):
         """Update database to record fetch error."""
         try:
             query = """
@@ -414,10 +474,10 @@ class FilingFetcher:
             }
         """
         stats = {
-            'total': len(filings),
-            'fetched': 0,
-            'failed': 0,
-            'skipped': 0,
+            "total": len(filings),
+            "fetched": 0,
+            "failed": 0,
+            "skipped": 0,
         }
 
         consecutive_failures = 0
@@ -428,8 +488,8 @@ class FilingFetcher:
             # Check if already cached
             existing = self.get_filing_content(filing.cik, filing.accession_number)
             if existing:
-                logger.debug(f"Already cached, skipping")
-                stats['skipped'] += 1
+                logger.debug("Already cached, skipping")
+                stats["skipped"] += 1
                 consecutive_failures = 0
                 continue
 
@@ -437,16 +497,14 @@ class FilingFetcher:
             result = self.fetch_filing(filing, fetch_txt=fetch_txt)
 
             if result:
-                stats['fetched'] += 1
+                stats["fetched"] += 1
                 consecutive_failures = 0
             else:
-                stats['failed'] += 1
+                stats["failed"] += 1
                 consecutive_failures += 1
 
                 if consecutive_failures >= max_failures:
-                    logger.error(
-                        f"Stopping after {max_failures} consecutive failures"
-                    )
+                    logger.error(f"Stopping after {max_failures} consecutive failures")
                     break
 
         logger.info(f"Batch fetch complete: {stats}")
@@ -467,20 +525,24 @@ class FilingFetcher:
 
         query = """
             SELECT
-                filing_id,
-                company_id,
-                cik,
-                accession_number,
-                form_type,
-                filing_date,
-                sec_html_url as primary_doc_url,
-                sec_txt_url as txt_url
-            FROM filings
+                f.filing_id,
+                f.company_id,
+                c.company_name,
+                f.cik,
+                f.accession_number,
+                f.form_type,
+                f.filing_date,
+                f.sec_html_url as primary_doc_url,
+                f.sec_txt_url as txt_url,
+                f.processing_status,
+                f.created_at
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
             WHERE
-                is_in_scope_phase1 = true
-                AND html_fetched_at IS NULL
-                AND (html_fetch_error IS NULL OR html_fetch_error = '')
-            ORDER BY filing_date DESC
+                f.is_in_scope_phase1 = true
+                AND f.html_fetched_at IS NULL
+                AND (f.html_fetch_error IS NULL OR f.html_fetch_error = '')
+            ORDER BY RANDOM()
             LIMIT %(limit)s
         """
 

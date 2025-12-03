@@ -9,7 +9,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
-from urllib.parse import urljoin
 
 import requests
 
@@ -124,7 +123,7 @@ class SECClient:
             For production, consider caching index files or using bulk downloads.
         """
         if form_types is None:
-            form_types = ['S-1', 'S-1/A', 'F-1', 'F-1/A']
+            form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
 
         logger.info(
             f"Searching for filings: {start_date} to {end_date}, "
@@ -154,6 +153,7 @@ class SECClient:
 
             # Move to next day
             from datetime import timedelta
+
             current_date += timedelta(days=1)
 
         logger.info(f"Total filings found: {len(filings)}")
@@ -209,10 +209,10 @@ class SECClient:
         filings = []
 
         # Skip header lines (first ~10 lines are header)
-        lines = index_text.strip().split('\n')
+        lines = index_text.strip().split("\n")
         data_start = 0
         for i, line in enumerate(lines):
-            if line.startswith('---'):
+            if line.startswith("---"):
                 data_start = i + 1
                 break
 
@@ -221,7 +221,7 @@ class SECClient:
             if not line.strip():
                 continue
 
-            parts = line.split('|')
+            parts = line.split("|")
             if len(parts) < 5:
                 continue
 
@@ -240,7 +240,7 @@ class SECClient:
 
             # Primary doc URL needs to be resolved from the filing's index
             # We store a placeholder directory URL that FilingFetcher will resolve
-            accession_no_dashes = accession_number.replace('-', '')
+            accession_no_dashes = accession_number.replace("-", "")
             primary_doc_url = (
                 f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/"
             )
@@ -273,12 +273,12 @@ class SECClient:
         Returns:
             Accession number
         """
-        parts = filename.strip().split('/')
+        parts = filename.strip().split("/")
         if len(parts) >= 4:
             # Last part is the filename with extension (e.g., "0001193125-19-163007.txt")
             filename_with_ext = parts[-1]
             # Remove extension to get accession number
-            accession = filename_with_ext.rsplit('.', 1)[0]
+            accession = filename_with_ext.rsplit(".", 1)[0]
             return accession
         return ""
 
@@ -295,7 +295,7 @@ class SECClient:
         Returns:
             Full URL to primary HTML document, or None if not found
         """
-        accession_no_dashes = accession_number.replace('-', '')
+        accession_no_dashes = accession_number.replace("-", "")
         index_url = (
             f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
             f"{accession_no_dashes}/index.json"
@@ -307,14 +307,15 @@ class SECClient:
             response.raise_for_status()
 
             data = response.json()
-            directory = data.get('directory', {})
-            items = directory.get('item', [])
+            directory = data.get("directory", {})
+            items = directory.get("item", [])
 
             # Look for primary HTML document
             htm_files = [
-                item for item in items
-                if item['name'].endswith(('.htm', '.html'))
-                and not item['name'].startswith('R')  # Exclude XBRL
+                item
+                for item in items
+                if item["name"].endswith((".htm", ".html"))
+                and not item["name"].startswith("R")  # Exclude XBRL
             ]
 
             if not htm_files:
@@ -326,22 +327,28 @@ class SECClient:
 
             # Strategy 1: Look for explicit form type patterns
             form_patterns = [
-                's-1', 'f-1',           # Standard patterns with dashes
-                'ds1', 'df1',           # Document patterns
-                'forms1', 'formf1',     # Form prefix patterns
-                'form_s-1', 'form_f-1', # Form with underscore
-                'ss1', 'ff1',           # Compact patterns (no separator)
-                's1a', 'f1a',           # Amendment patterns
-                'filing',               # Generic filing
-                'mainbody',             # Common main document naming
-                'prospectus',           # Prospectus filings
-                'registration',         # Registration statements
+                "s-1",
+                "f-1",  # Standard patterns with dashes
+                "ds1",
+                "df1",  # Document patterns
+                "forms1",
+                "formf1",  # Form prefix patterns
+                "form_s-1",
+                "form_f-1",  # Form with underscore
+                "ss1",
+                "ff1",  # Compact patterns (no separator)
+                "s1a",
+                "f1a",  # Amendment patterns
+                "filing",  # Generic filing
+                "mainbody",  # Common main document naming
+                "prospectus",  # Prospectus filings
+                "registration",  # Registration statements
             ]
 
             for item in htm_files:
-                name = item['name'].lower()
+                name = item["name"].lower()
                 if any(pattern in name for pattern in form_patterns):
-                    primary_doc = item['name']
+                    primary_doc = item["name"]
                     logger.debug(f"Found primary doc by pattern: {primary_doc}")
                     return (
                         f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
@@ -351,16 +358,17 @@ class SECClient:
             # Strategy 2: Use largest HTML file (likely the main document)
             # Exclude exhibit files (typically have 'exhibit' or 'ex' in name)
             non_exhibit_files = [
-                item for item in htm_files
-                if 'exhibit' not in item['name'].lower()
-                and not item['name'].lower().startswith('ex')
+                item
+                for item in htm_files
+                if "exhibit" not in item["name"].lower()
+                and not item["name"].lower().startswith("ex")
             ]
 
             files_to_consider = non_exhibit_files if non_exhibit_files else htm_files
 
             # Get file with largest size
-            largest_file = max(files_to_consider, key=lambda x: x.get('size', 0))
-            primary_doc = largest_file['name']
+            largest_file = max(files_to_consider, key=lambda x: x.get("size", 0))
+            primary_doc = largest_file["name"]
 
             logger.debug(
                 f"Using largest file as primary doc: {primary_doc} "
@@ -373,7 +381,9 @@ class SECClient:
             )
 
         except Exception as e:
-            logger.error(f"Error resolving primary doc for {cik}/{accession_number}: {e}")
+            logger.error(
+                f"Error resolving primary doc for {cik}/{accession_number}: {e}"
+            )
             return None
 
     def get_company_info(self, cik: str) -> Optional[dict]:
@@ -404,13 +414,13 @@ class SECClient:
             data = self._make_request(url)
 
             return {
-                'cik': cik_padded,
-                'name': data.get('name', ''),
-                'sic': data.get('sic', ''),
-                'sic_description': data.get('sicDescription', ''),
-                'tickers': data.get('tickers', []),
-                'ein': data.get('ein', ''),
-                'state_of_incorporation': data.get('stateOfIncorporation', ''),
+                "cik": cik_padded,
+                "name": data.get("name", ""),
+                "sic": data.get("sic", ""),
+                "sic_description": data.get("sicDescription", ""),
+                "tickers": data.get("tickers", []),
+                "ein": data.get("ein", ""),
+                "state_of_incorporation": data.get("stateOfIncorporation", ""),
             }
 
         except requests.HTTPError as e:
@@ -516,7 +526,7 @@ class MockSECClient(SECClient):
     ) -> List[FilingMetadata]:
         """Return mock filings filtered by date and form type."""
         if form_types is None:
-            form_types = ['S-1', 'S-1/A', 'F-1', 'F-1/A']
+            form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
 
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)

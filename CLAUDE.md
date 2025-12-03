@@ -93,7 +93,8 @@ The code in `data_preprocessing.py` is organized in Jupyter-style cells (`#%%`).
 ## Important Notes
 
 ### Security
-- **API Key Exposure**: Line 241 of `data_preprocessing.py` contains a hardcoded OpenAI API key. This should be removed and replaced with environment variable loading: `os.getenv("OPENAI_API_KEY")`
+- **API Key Management**: All API keys are managed through environment variables in `.env` file (which is gitignored). Never commit API keys to the repository.
+- The `.env.template` file provides a template with placeholders for all required API keys.
 
 ### Code Structure Issues
 - **Duplicate Functions**: The `collect_recent_s1()` function is defined twice (lines 86-95 and 103-125). The second version adds company metadata fetching

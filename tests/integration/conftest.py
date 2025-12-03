@@ -7,7 +7,7 @@ Provides database setup/teardown and fixture loading utilities.
 import json
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 from dotenv import load_dotenv
@@ -30,7 +30,9 @@ def test_db_url():
     Set TEST_DATABASE_URL environment variable to a test database.
     Default: postgresql://localhost/filings_analysis_test
     """
-    return os.getenv("TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test")
+    return os.getenv(
+        "TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test"
+    )
 
 
 @pytest.fixture(scope="session")
