@@ -4,10 +4,9 @@ Unit tests for FilingFetcher core functionality.
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
-from src.filing_fetcher.filing_fetcher import FilingFetcher, FilingContent
+from src.filing_fetcher.filing_fetcher import FilingFetcher
 from src.infra.sec_client import FilingMetadata
 
 
@@ -106,14 +105,14 @@ class TestFetchFiling:
         """Create a FilingFetcher with temporary storage."""
         mock_sec_client = Mock()
         return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            sec_client=mock_sec_client
+            storage_root=str(tmp_path / "test_filings"), sec_client=mock_sec_client
         )
 
     @pytest.fixture
     def valid_filing_html(self):
         """Create valid filing HTML content."""
-        return """
+        return (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -123,7 +122,9 @@ class TestFetchFiling:
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
 <P>REGISTRATION STATEMENT</P>
-""" + "X" * 20000  # Pad to meet size requirement
+"""
+            + "X" * 20000
+        )  # Pad to meet size requirement
 
     def test_fetch_filing_success(self, fetcher, valid_filing_html):
         """Test successful filing fetch."""
@@ -134,7 +135,7 @@ class TestFetchFiling:
             filing_date="2024-01-15",
             accession_number="0001234567-12-123456",
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
-            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt"
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt",
         )
 
         # Mock HTTP responses
@@ -142,7 +143,7 @@ class TestFetchFiling:
         mock_response.text = valid_filing_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -159,19 +160,18 @@ class TestFetchFiling:
             filing_date="2024-01-15",
             accession_number="0001234567-12-123456",
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",  # Directory URL
-            txt_url=None
+            txt_url=None,
         )
 
         # Mock SEC client to resolve URL
-        fetcher.sec_client.resolve_primary_document_url.return_value = \
-            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        fetcher.sec_client.resolve_primary_document_url.return_value = "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
 
         # Mock HTTP response
         mock_response = Mock()
         mock_response.text = valid_filing_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -195,7 +195,7 @@ class TestFetchFiling:
         mock_response.text = "<html>Error page</html>"
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         # Should return None because content validation failed
@@ -216,7 +216,7 @@ class TestFetchFiling:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("404 Not Found")
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is None
@@ -240,7 +240,7 @@ class TestFetchFiling:
 
         # Mock session.get to track calls
         mock_get = Mock()
-        with patch.object(fetcher.session, 'get', mock_get):
+        with patch.object(fetcher.session, "get", mock_get):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         # Should not make any HTTP requests because file is cached
@@ -256,7 +256,7 @@ class TestFetchFiling:
             filing_date="2024-01-15",
             accession_number="0001234567-12-123456",
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
-            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt"
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456.txt",
         )
 
         # Mock HTTP responses
@@ -269,6 +269,7 @@ class TestFetchFiling:
         mock_txt_response.raise_for_status = Mock()
 
         call_count = [0]
+
         def get_side_effect(url):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -276,7 +277,7 @@ class TestFetchFiling:
             else:
                 return mock_txt_response
 
-        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+        with patch.object(fetcher.session, "get", side_effect=get_side_effect):
             content = fetcher.fetch_filing(metadata, fetch_txt=True)
 
         assert content is not None
@@ -296,14 +297,15 @@ class TestFetchBatch:
         """Test fetching empty batch."""
         stats = fetcher.fetch_batch([], fetch_txt=False)
 
-        assert stats['total'] == 0
-        assert stats['fetched'] == 0
-        assert stats['failed'] == 0
-        assert stats['skipped'] == 0
+        assert stats["total"] == 0
+        assert stats["fetched"] == 0
+        assert stats["failed"] == 0
+        assert stats["skipped"] == 0
 
     def test_fetch_batch_success(self, fetcher):
         """Test successful batch fetch."""
-        valid_html = """
+        valid_html = (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -312,7 +314,9 @@ class TestFetchBatch:
 <BODY>
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
         filings = [
             FilingMetadata(
@@ -338,17 +342,18 @@ class TestFetchBatch:
         mock_response.text = valid_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             stats = fetcher.fetch_batch(filings, fetch_txt=False)
 
-        assert stats['total'] == 2
-        assert stats['fetched'] == 2
-        assert stats['failed'] == 0
-        assert stats['skipped'] == 0
+        assert stats["total"] == 2
+        assert stats["fetched"] == 2
+        assert stats["failed"] == 0
+        assert stats["skipped"] == 0
 
     def test_fetch_batch_with_failures(self, fetcher):
         """Test batch fetch with some failures."""
-        valid_html = """
+        valid_html = (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -357,7 +362,9 @@ class TestFetchBatch:
 <BODY>
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
         filings = [
             FilingMetadata(
@@ -380,6 +387,7 @@ class TestFetchBatch:
 
         # Mock responses: first succeeds, second fails
         call_count = [0]
+
         def get_side_effect(url):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -392,13 +400,13 @@ class TestFetchBatch:
                 response.raise_for_status.side_effect = Exception("404")
                 return response
 
-        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+        with patch.object(fetcher.session, "get", side_effect=get_side_effect):
             stats = fetcher.fetch_batch(filings, fetch_txt=False)
 
-        assert stats['total'] == 2
-        assert stats['fetched'] == 1
-        assert stats['failed'] == 1
-        assert stats['skipped'] == 0
+        assert stats["total"] == 2
+        assert stats["fetched"] == 1
+        assert stats["failed"] == 1
+        assert stats["skipped"] == 0
 
     def test_fetch_batch_stops_on_max_failures(self, fetcher):
         """Test that batch fetch stops after max consecutive failures."""
@@ -418,16 +426,17 @@ class TestFetchBatch:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("Error")
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             stats = fetcher.fetch_batch(filings, fetch_txt=False, max_failures=5)
 
         # Should stop after 5 consecutive failures
-        assert stats['failed'] <= 5
-        assert stats['total'] == 20  # Total count is still full list
+        assert stats["failed"] <= 5
+        assert stats["total"] == 20  # Total count is still full list
 
     def test_fetch_batch_skips_cached(self, fetcher, tmp_path):
         """Test that batch fetch skips already cached filings."""
-        valid_html = """
+        valid_html = (
+            """
 <DOCUMENT>
 <TYPE>S-1
 <TEXT>
@@ -436,7 +445,9 @@ class TestFetchBatch:
 <BODY>
 <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
 <P>FORM S-1</P>
-""" + "X" * 20000
+"""
+            + "X" * 20000
+        )
 
         # Pre-cache first filing
         storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
@@ -467,13 +478,13 @@ class TestFetchBatch:
         mock_response.text = valid_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             stats = fetcher.fetch_batch(filings, fetch_txt=False)
 
-        assert stats['total'] == 2
-        assert stats['fetched'] == 1  # Only second filing
-        assert stats['skipped'] == 1  # First filing was cached
-        assert stats['failed'] == 0
+        assert stats["total"] == 2
+        assert stats["fetched"] == 1  # Only second filing
+        assert stats["skipped"] == 1  # First filing was cached
+        assert stats["failed"] == 0
 
 
 class TestRateLimiting:
@@ -563,75 +574,103 @@ class TestValidateFilingContent:
     def test_reject_too_small_content(self, fetcher):
         """Test that content smaller than 15KB is rejected."""
         small_html = "<html>Small content</html>"
-        is_valid, error = fetcher._validate_filing_content(small_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            small_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "too small" in error.lower()
 
     def test_reject_404_error_page(self, fetcher):
         """Test that 404 error pages are rejected."""
-        error_html = """
+        error_html = (
+            """
         <html><body>
         <h1>404 Not Found</h1>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(error_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            error_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "404 Not Found" in error
 
     def test_reject_no_documents_found_error(self, fetcher):
         """Test that 'No documents were found' error pages are rejected."""
-        error_html = """
+        error_html = (
+            """
         <html><body>
         <p>No documents were found for this request.</p>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(error_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            error_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "No documents were found" in error
 
     def test_reject_access_denied_error(self, fetcher):
         """Test that 'Access Denied' error pages are rejected."""
-        error_html = """
+        error_html = (
+            """
         <html><body>
         <h1>Access Denied</h1>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(error_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            error_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "Access Denied" in error
 
     def test_reject_service_unavailable_error(self, fetcher):
         """Test that 'Service Unavailable' error pages are rejected."""
-        error_html = """
+        error_html = (
+            """
         <html><body>
         <h1>Service Unavailable</h1>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(error_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            error_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "Service Unavailable" in error
 
     def test_reject_xml_error_response(self, fetcher):
         """Test that XML error responses are rejected."""
-        error_html = """
+        error_html = (
+            """
         <Error>
         <Code>NoSuchKey</Code>
         <Message>The specified key does not exist.</Message>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(error_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            error_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "Error page detected" in error
 
     def test_reject_missing_sec_indicators(self, fetcher):
         """Test that content without SEC indicators is rejected."""
-        html_without_sec = """
+        html_without_sec = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -639,27 +678,37 @@ class TestValidateFilingContent:
         <HEAD><TITLE>Some Document</TITLE></HEAD>
         <BODY>
         <P>This is a document but not an SEC filing.</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(html_without_sec, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            html_without_sec, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "Missing SEC filing indicators" in error
 
     def test_reject_missing_filing_structure(self, fetcher):
         """Test that content without proper structure is rejected."""
-        html_without_structure = """
+        html_without_structure = (
+            """
         Just plain text without any HTML or SGML structure.
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(html_without_structure, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            html_without_structure, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "Missing valid filing structure" in error
 
     def test_accept_valid_sgml_filing(self, fetcher):
         """Test that valid SGML-wrapped filing is accepted."""
-        valid_sgml = """
+        valid_sgml = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -669,16 +718,21 @@ class TestValidateFilingContent:
         <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
         <P>FORM S-1</P>
         <P>REGISTRATION STATEMENT</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(valid_sgml, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            valid_sgml, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is True
         assert error is None
 
     def test_accept_modern_html_filing(self, fetcher):
         """Test that modern HTML filing (without SGML wrapper) is accepted."""
-        modern_html = """
+        modern_html = (
+            """
         <!DOCTYPE html>
         <html>
         <head><title>Form S-1</title></head>
@@ -690,16 +744,21 @@ class TestValidateFilingContent:
         </div>
         </body>
         </html>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(modern_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            modern_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is True
         assert error is None
 
     def test_reject_modern_html_missing_elements(self, fetcher):
         """Test that modern HTML without expected elements is rejected."""
-        incomplete_html = """
+        incomplete_html = (
+            """
         <!DOCTYPE html>
         <html>
         <head></head>
@@ -707,9 +766,13 @@ class TestValidateFilingContent:
         SECURITIES AND EXCHANGE COMMISSION
         </body>
         </html>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
-        is_valid, error = fetcher._validate_filing_content(incomplete_html, "0001234567", "0001234567-12-123456")
+        is_valid, error = fetcher._validate_filing_content(
+            incomplete_html, "0001234567", "0001234567-12-123456"
+        )
 
         assert is_valid is False
         assert "missing expected structural elements" in error.lower()
@@ -723,8 +786,7 @@ class TestFetchFilingErrorHandling:
         """Create a FilingFetcher with temporary storage."""
         mock_sec_client = Mock()
         return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            sec_client=mock_sec_client
+            storage_root=str(tmp_path / "test_filings"), sec_client=mock_sec_client
         )
 
     def test_handle_url_resolution_failure(self, fetcher):
@@ -748,7 +810,8 @@ class TestFetchFilingErrorHandling:
 
     def test_handle_txt_fetch_error(self, fetcher):
         """Test that entire operation fails if TXT fetch fails."""
-        valid_html = """
+        valid_html = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -757,7 +820,9 @@ class TestFetchFilingErrorHandling:
         <BODY>
         <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
         <P>FORM S-1</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -766,11 +831,12 @@ class TestFetchFilingErrorHandling:
             filing_date="2024-01-15",
             accession_number="0001234567-12-123456",
             primary_doc_url="https://www.sec.gov/test.htm",
-            txt_url="https://www.sec.gov/test.txt"
+            txt_url="https://www.sec.gov/test.txt",
         )
 
         # Mock responses: HTML succeeds, TXT fails
         call_count = [0]
+
         def get_side_effect(url):
             call_count[0] += 1
             response = Mock()
@@ -781,15 +847,18 @@ class TestFetchFilingErrorHandling:
                 response.raise_for_status.side_effect = Exception("404")
             return response
 
-        with patch.object(fetcher.session, 'get', side_effect=get_side_effect):
+        with patch.object(fetcher.session, "get", side_effect=get_side_effect):
             content = fetcher.fetch_filing(metadata, fetch_txt=True)
 
-        # Current behavior: entire operation fails if TXT fetch fails
-        assert content is None
+        # Current behavior: HTML succeeds, TXT failure is logged as warning
+        assert content is not None
+        assert content.html_path is not None
+        assert content.txt_path is None  # TXT fetch failed
 
     def test_txt_already_cached(self, fetcher, tmp_path):
         """Test that cached TXT files are not re-downloaded."""
-        valid_html = """
+        valid_html = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -798,7 +867,9 @@ class TestFetchFilingErrorHandling:
         <BODY>
         <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
         <P>FORM S-1</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -807,7 +878,7 @@ class TestFetchFilingErrorHandling:
             filing_date="2024-01-15",
             accession_number="0001234567-12-123456",
             primary_doc_url="https://www.sec.gov/test.htm",
-            txt_url="https://www.sec.gov/test.txt"
+            txt_url="https://www.sec.gov/test.txt",
         )
 
         # Pre-cache both HTML and TXT files
@@ -818,7 +889,7 @@ class TestFetchFilingErrorHandling:
 
         # Mock session.get to track calls
         mock_get = Mock()
-        with patch.object(fetcher.session, 'get', mock_get):
+        with patch.object(fetcher.session, "get", mock_get):
             content = fetcher.fetch_filing(metadata, fetch_txt=True)
 
         # Should not make any HTTP requests because both files are cached
@@ -835,14 +906,12 @@ class TestDatabaseIntegration:
     def fetcher(self, tmp_path):
         """Create a FilingFetcher with mocked database."""
         mock_db = Mock()
-        return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"),
-            db=mock_db
-        )
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"), db=mock_db)
 
     def test_update_database_on_success(self, fetcher):
         """Test that database is updated after successful fetch."""
-        valid_html = """
+        valid_html = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -850,7 +919,9 @@ class TestDatabaseIntegration:
         <BODY>
         <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
         <P>FORM S-1</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -865,7 +936,7 @@ class TestDatabaseIntegration:
         mock_response.text = valid_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         # Verify database was updated
@@ -891,7 +962,7 @@ class TestDatabaseIntegration:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is None
@@ -916,7 +987,7 @@ class TestDatabaseIntegration:
         mock_response.text = "<html>Too small</html>"
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is None
@@ -925,7 +996,8 @@ class TestDatabaseIntegration:
 
     def test_database_update_error_handling(self, fetcher):
         """Test that database update errors are logged but don't crash."""
-        valid_html = """
+        valid_html = (
+            """
         <DOCUMENT>
         <TYPE>S-1
         <TEXT>
@@ -933,7 +1005,9 @@ class TestDatabaseIntegration:
         <BODY>
         <P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
         <P>FORM S-1</P>
-        """ + "X" * 20000
+        """
+            + "X" * 20000
+        )
 
         metadata = FilingMetadata(
             cik="0001234567",
@@ -951,7 +1025,7 @@ class TestDatabaseIntegration:
         mock_response.text = valid_html
         mock_response.raise_for_status = Mock()
 
-        with patch.object(fetcher.session, 'get', return_value=mock_response):
+        with patch.object(fetcher.session, "get", return_value=mock_response):
             # Should not crash despite database error
             content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
@@ -963,25 +1037,25 @@ class TestDatabaseIntegration:
         """Test retrieving list of unfetched filings from database."""
         mock_results = [
             {
-                'filing_id': 1,
-                'company_id': 100,
-                'cik': '0001234567',
-                'accession_number': '0001234567-12-123456',
-                'form_type': 'S-1',
-                'filing_date': '2024-01-15',
-                'primary_doc_url': 'https://www.sec.gov/test1.htm',
-                'txt_url': 'https://www.sec.gov/test1.txt',
+                "filing_id": 1,
+                "company_id": 100,
+                "cik": "0001234567",
+                "accession_number": "0001234567-12-123456",
+                "form_type": "S-1",
+                "filing_date": "2024-01-15",
+                "primary_doc_url": "https://www.sec.gov/test1.htm",
+                "txt_url": "https://www.sec.gov/test1.txt",
             },
             {
-                'filing_id': 2,
-                'company_id': 101,
-                'cik': '0007654321',
-                'accession_number': '0007654321-12-654321',
-                'form_type': 'F-1',
-                'filing_date': '2024-01-16',
-                'primary_doc_url': 'https://www.sec.gov/test2.htm',
-                'txt_url': None,
-            }
+                "filing_id": 2,
+                "company_id": 101,
+                "cik": "0007654321",
+                "accession_number": "0007654321-12-654321",
+                "form_type": "F-1",
+                "filing_date": "2024-01-16",
+                "primary_doc_url": "https://www.sec.gov/test2.htm",
+                "txt_url": None,
+            },
         ]
 
         fetcher.db.query.return_value = mock_results
@@ -989,7 +1063,7 @@ class TestDatabaseIntegration:
         results = fetcher.get_unfetched_filings(limit=100)
 
         assert len(results) == 2
-        assert results[0]['cik'] == '0001234567'
+        assert results[0]["cik"] == "0001234567"
         fetcher.db.query.assert_called_once()
         call_args = fetcher.db.query.call_args
         assert "is_in_scope_phase1 = true" in call_args[0][0]
@@ -1001,3 +1075,31 @@ class TestDatabaseIntegration:
 
         with pytest.raises(ValueError, match="Database required"):
             fetcher.get_unfetched_filings()
+
+    def test_database_error_update_fails_gracefully(self, fetcher):
+        """Test that errors during database error recording are logged but don't crash."""
+        import requests
+
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/test.htm",
+        )
+
+        # Mock database to raise error when trying to record the error
+        fetcher.db.execute.side_effect = Exception("Database completely down")
+
+        # Mock HTTP to fail
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
+
+        with patch.object(fetcher.session, "get", return_value=mock_response):
+            # Should not crash even though both fetch AND error recording fail
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is None
+        # Verify that database.execute was called (even though it failed)
+        fetcher.db.execute.assert_called()

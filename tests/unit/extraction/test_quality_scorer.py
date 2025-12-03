@@ -55,6 +55,7 @@ def test_quality_scorer_counts_metric_with_values():
 
 # ===== Tests for _get_all_metrics =====
 
+
 def test_get_all_metrics_from_segments():
     """Should extract metrics from segment candidate_metric_ids."""
     scorer = QualityScorer()
@@ -118,19 +119,22 @@ def test_get_all_metrics_combines_all_sources():
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_dau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_dau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
         )
     ]
-    definitions = [
-        MetricDefinition(filing_id=1, company_id=1, metric_id="cm_arpu")
-    ]
+    definitions = [MetricDefinition(filing_id=1, company_id=1, metric_id="cm_arpu")]
 
     metrics = scorer._get_all_metrics(segments, values, definitions)
     assert metrics == {"cm_mau", "cm_dau", "cm_arpu"}
 
 
 # ===== Tests for _compute_overall_quality =====
+
 
 def test_compute_overall_quality_score_0_not_disclosed():
     """Score 0 when no values or definitions."""
@@ -144,8 +148,10 @@ def test_compute_overall_quality_score_1_definition_only():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            definition_text_normalized="Users who logged in during the month"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            definition_text_normalized="Users who logged in during the month",
         )
     ]
     score = scorer._compute_overall_quality([], definitions, False)
@@ -157,9 +163,13 @@ def test_compute_overall_quality_score_1_minimal():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("1000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("1000"),
         )
     ]
     score = scorer._compute_overall_quality(values, [], False)
@@ -171,15 +181,21 @@ def test_compute_overall_quality_score_2_with_definition():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("1000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("1000"),
         )
     ]
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            definition_text_normalized="Users who logged in during the month"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            definition_text_normalized="Users who logged in during the month",
         )
     ]
     score = scorer._compute_overall_quality(values, definitions, False)
@@ -191,15 +207,21 @@ def test_compute_overall_quality_score_2_with_methodology():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("1000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("1000"),
         )
     ]
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            methodology_text_normalized="Calculated by counting unique user IDs"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            methodology_text_normalized="Calculated by counting unique user IDs",
         )
     ]
     score = scorer._compute_overall_quality(values, definitions, False)
@@ -211,23 +233,32 @@ def test_compute_overall_quality_score_3_excellent():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_retention",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("95")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("95"),
         )
     ]
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_retention",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
             definition_text_normalized="Percentage of customers who remain active",
-            methodology_text_normalized="Calculated as (active end / active start) * 100"
+            methodology_text_normalized="Calculated as (active end / active start) * 100",
         )
     ]
-    score = scorer._compute_overall_quality(values, definitions, has_cohort_breakdown=True)
+    score = scorer._compute_overall_quality(
+        values, definitions, has_cohort_breakdown=True
+    )
     assert score == 3
 
 
 # ===== Tests for _compute_definition_quality =====
+
 
 def test_compute_definition_quality_score_0_no_definitions():
     """Score 0 when no definitions provided."""
@@ -241,8 +272,10 @@ def test_compute_definition_quality_score_0_empty_definition_text():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            definition_text_normalized=None
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            definition_text_normalized=None,
         )
     ]
     score = scorer._compute_definition_quality(definitions)
@@ -254,9 +287,11 @@ def test_compute_definition_quality_score_1_not_aligned():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Our users",
-            alignment_flag="not_aligned"
+            alignment_flag="not_aligned",
         )
     ]
     score = scorer._compute_definition_quality(definitions)
@@ -268,9 +303,11 @@ def test_compute_definition_quality_score_2_aligned_but_brief():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Active users in the month",
-            alignment_flag="aligned"
+            alignment_flag="aligned",
         )
     ]
     score = scorer._compute_definition_quality(definitions)
@@ -282,9 +319,11 @@ def test_compute_definition_quality_score_2_partial_alignment():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Users who accessed our platform in the month, with some custom criteria that differ from standard definitions",
-            alignment_flag="partial"
+            alignment_flag="partial",
         )
     ]
     score = scorer._compute_definition_quality(definitions)
@@ -296,9 +335,11 @@ def test_compute_definition_quality_score_3_comprehensive_and_aligned():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="We define monthly active users as the number of unique customer accounts that have logged in to our platform at least once during the calendar month, excluding test accounts and internal users.",
-            alignment_flag="aligned"
+            alignment_flag="aligned",
         )
     ]
     score = scorer._compute_definition_quality(definitions)
@@ -306,6 +347,7 @@ def test_compute_definition_quality_score_3_comprehensive_and_aligned():
 
 
 # ===== Tests for _compute_methodology_quality =====
+
 
 def test_compute_methodology_quality_score_0_no_definitions():
     """Score 0 when no definitions provided."""
@@ -319,8 +361,10 @@ def test_compute_methodology_quality_score_0_no_methodology_text():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            methodology_text_normalized=None
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            methodology_text_normalized=None,
         )
     ]
     score = scorer._compute_methodology_quality(definitions)
@@ -332,8 +376,10 @@ def test_compute_methodology_quality_score_1_vague():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_churn",
-            methodology_text_normalized="We count churned customers"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_churn",
+            methodology_text_normalized="We count churned customers",
         )
     ]
     score = scorer._compute_methodology_quality(definitions)
@@ -345,8 +391,10 @@ def test_compute_methodology_quality_score_2_has_formula():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_churn",
-            methodology_text_normalized="Churn rate equals churned customers divided by total customers"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_churn",
+            methodology_text_normalized="Churn rate equals churned customers divided by total customers",
         )
     ]
     score = scorer._compute_methodology_quality(definitions)
@@ -358,8 +406,10 @@ def test_compute_methodology_quality_score_2_detailed():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_ltv",
-            methodology_text_normalized="Customer lifetime value represents the total revenue we expect to generate from a customer over their entire relationship with our company, taking into account historical behavior patterns and trends"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_ltv",
+            methodology_text_normalized="Customer lifetime value represents the total revenue we expect to generate from a customer over their entire relationship with our company, taking into account historical behavior patterns and trends",
         )
     ]
     score = scorer._compute_methodology_quality(definitions)
@@ -371,8 +421,10 @@ def test_compute_methodology_quality_score_3_formula_with_example():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_nrr",
-            methodology_text_normalized="Net revenue retention equals (starting ARR + expansion - contraction - churn) divided by starting ARR. For example, if we start with $100M, add $20M expansion, lose $5M to contraction and $10M to churn, NRR = ($100M + $20M - $5M - $10M) / $100M = 105%"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_nrr",
+            methodology_text_normalized="Net revenue retention equals (starting ARR + expansion - contraction - churn) divided by starting ARR. For example, if we start with $100M, add $20M expansion, lose $5M to contraction and $10M to churn, NRR = ($100M + $20M - $5M - $10M) / $100M = 105%",
         )
     ]
     score = scorer._compute_methodology_quality(definitions)
@@ -380,6 +432,7 @@ def test_compute_methodology_quality_score_3_formula_with_example():
 
 
 # ===== Tests for _compute_completeness_quality =====
+
 
 def test_compute_completeness_quality_score_0_no_values():
     """Score 0 when no values provided."""
@@ -393,9 +446,13 @@ def test_compute_completeness_quality_score_1_single_aggregate():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("5000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("5000"),
         )
     ]
     score = scorer._compute_completeness_quality(values, has_cohort_breakdown=False)
@@ -407,17 +464,25 @@ def test_compute_completeness_quality_score_2_period_breakdown():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
             value_numeric=Decimal("5000"),
-            period_end=date(2023, 12, 31)
+            period_end=date(2023, 12, 31),
         ),
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
             value_numeric=Decimal("5500"),
-            period_end=date(2024, 3, 31)
-        )
+            period_end=date(2024, 3, 31),
+        ),
     ]
     score = scorer._compute_completeness_quality(values, has_cohort_breakdown=False)
     assert score == 2
@@ -428,9 +493,13 @@ def test_compute_completeness_quality_score_2_cohort_breakdown():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_retention",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("95")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("95"),
         )
     ]
     score = scorer._compute_completeness_quality(values, has_cohort_breakdown=True)
@@ -442,23 +511,32 @@ def test_compute_completeness_quality_score_3_period_and_cohort():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_retention",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
             value_numeric=Decimal("95"),
-            period_end=date(2023, 12, 31)
+            period_end=date(2023, 12, 31),
         ),
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_retention",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
             value_numeric=Decimal("97"),
-            period_end=date(2024, 3, 31)
-        )
+            period_end=date(2024, 3, 31),
+        ),
     ]
     score = scorer._compute_completeness_quality(values, has_cohort_breakdown=True)
     assert score == 3
 
 
 # ===== Tests for _compute_comparability_quality =====
+
 
 def test_compute_comparability_quality_score_0_no_definitions():
     """Score 0 when no definitions provided."""
@@ -472,9 +550,11 @@ def test_compute_comparability_quality_score_0_unknown_alignment():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Users in month",
-            alignment_flag="unknown"
+            alignment_flag="unknown",
         )
     ]
     score = scorer._compute_comparability_quality(definitions)
@@ -486,9 +566,11 @@ def test_compute_comparability_quality_score_0_null_alignment():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Users in month",
-            alignment_flag=None
+            alignment_flag=None,
         )
     ]
     score = scorer._compute_comparability_quality(definitions)
@@ -500,9 +582,11 @@ def test_compute_comparability_quality_score_1_not_aligned():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Our custom metric",
-            alignment_flag="not_aligned"
+            alignment_flag="not_aligned",
         )
     ]
     score = scorer._compute_comparability_quality(definitions)
@@ -514,9 +598,11 @@ def test_compute_comparability_quality_score_2_partial_alignment():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Active users with some custom criteria",
-            alignment_flag="partial"
+            alignment_flag="partial",
         )
     ]
     score = scorer._compute_comparability_quality(definitions)
@@ -528,9 +614,11 @@ def test_compute_comparability_quality_score_3_fully_aligned():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Monthly active users per CMASB standard",
-            alignment_flag="aligned"
+            alignment_flag="aligned",
         )
     ]
     score = scorer._compute_comparability_quality(definitions)
@@ -538,6 +626,7 @@ def test_compute_comparability_quality_score_3_fully_aligned():
 
 
 # ===== Tests for _score_filing_metric (integration) =====
+
 
 def test_score_filing_metric_with_all_data():
     """Test scoring a filing-metric pair with complete data."""
@@ -555,21 +644,27 @@ def test_score_filing_metric_with_all_data():
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
             value_numeric=Decimal("10000"),
             period_end=date(2023, 12, 31),
-            cohort_type="acquisition"
+            cohort_type="acquisition",
         )
     ]
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_mau",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
             definition_text_normalized="Monthly active users are unique accounts that logged in during the calendar month",
             methodology_text_normalized="Calculated by counting distinct user IDs with login events",
             definition_segment_id=0,
             methodology_segment_id=0,
-            alignment_flag="aligned"
+            alignment_flag="aligned",
         )
     ]
 
@@ -579,7 +674,7 @@ def test_score_filing_metric_with_all_data():
         metric_id="cm_mau",
         segments=segments,
         values=values,
-        definitions=definitions
+        definitions=definitions,
     )
 
     assert incidence.metric_id == "cm_mau"
@@ -598,9 +693,13 @@ def test_score_filing_metric_with_tenure_cohort():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_retention",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            cohort_type="tenure"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_retention",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            cohort_type="tenure",
         )
     ]
 
@@ -610,7 +709,7 @@ def test_score_filing_metric_with_tenure_cohort():
         metric_id="cm_retention",
         segments=[],
         values=values,
-        definitions=[]
+        definitions=[],
     )
 
     assert incidence.has_tenure_breakdown_flag is True
@@ -622,9 +721,13 @@ def test_score_filing_metric_minimal():
     scorer = QualityScorer()
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_arpu",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("25.50")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_arpu",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("25.50"),
         )
     ]
 
@@ -634,7 +737,7 @@ def test_score_filing_metric_minimal():
         metric_id="cm_arpu",
         segments=[],
         values=values,
-        definitions=[]
+        definitions=[],
     )
 
     assert incidence.metric_disclosed_flag is True
@@ -649,8 +752,10 @@ def test_score_filing_metric_definition_only():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_ltv",
-            definition_text_normalized="Customer lifetime value represents total expected revenue from a customer"
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_ltv",
+            definition_text_normalized="Customer lifetime value represents total expected revenue from a customer",
         )
     ]
 
@@ -660,7 +765,7 @@ def test_score_filing_metric_definition_only():
         metric_id="cm_ltv",
         segments=[],
         values=[],
-        definitions=definitions
+        definitions=definitions,
     )
 
     assert incidence.metric_disclosed_flag is True
@@ -668,6 +773,7 @@ def test_score_filing_metric_definition_only():
 
 
 # ===== Tests for score_filing (convenience function) =====
+
 
 def test_score_filing_convenience_function():
     """Test the module-level convenience function."""
@@ -683,9 +789,13 @@ def test_score_filing_convenience_function():
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_dau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("2000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_dau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("2000"),
         )
     ]
 
@@ -697,27 +807,37 @@ def test_score_filing_convenience_function():
 
 # ===== Edge case tests =====
 
+
 def test_score_filing_multiple_metrics():
     """Test scoring when filing contains multiple different metrics."""
     scorer = QualityScorer()
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="paragraph",
+            filing_id=1,
+            segment_type="paragraph",
             candidate_metric_ids=["cm_mau", "cm_dau"],
             sequence_index=0,
         )
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_mau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("10000")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_mau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("10000"),
         ),
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_dau",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("3000")
-        )
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_dau",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("3000"),
+        ),
     ]
 
     incidences = scorer.score_filing(1, 1, segments, values, definitions=[])
@@ -739,24 +859,34 @@ def test_score_filing_metric_with_methodology_segment():
     scorer = QualityScorer()
     definitions = [
         MetricDefinition(
-            filing_id=1, company_id=1, metric_id="cm_nrr",
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_nrr",
             definition_text_normalized="Net revenue retention",
             methodology_text_normalized="Calculated as renewal revenue divided by starting revenue",
             definition_segment_id=5,
-            methodology_segment_id=7
+            methodology_segment_id=7,
         )
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_nrr",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("120")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_nrr",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("120"),
         )
     ]
 
     incidence = scorer._score_filing_metric(
-        filing_id=1, company_id=1, metric_id="cm_nrr",
-        segments=[], values=values, definitions=definitions
+        filing_id=1,
+        company_id=1,
+        metric_id="cm_nrr",
+        segments=[],
+        values=values,
+        definitions=definitions,
     )
 
     assert incidence.primary_definition_segment_id == 5
@@ -768,42 +898,54 @@ def test_score_filing_counts_segment_types():
     scorer = QualityScorer()
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="paragraph",
+            filing_id=1,
+            segment_type="paragraph",
             candidate_metric_ids=["cm_churn"],
             contains_numeric_disclosure_flag=True,
             sequence_index=0,
         ),
         SourceSegment(
-            filing_id=1, segment_type="paragraph",
+            filing_id=1,
+            segment_type="paragraph",
             candidate_metric_ids=["cm_churn"],
             contains_definition_flag=True,
             sequence_index=1,
         ),
         SourceSegment(
-            filing_id=1, segment_type="paragraph",
+            filing_id=1,
+            segment_type="paragraph",
             candidate_metric_ids=["cm_churn"],
             contains_methodology_flag=True,
             sequence_index=2,
         ),
         SourceSegment(
-            filing_id=1, segment_type="paragraph",
+            filing_id=1,
+            segment_type="paragraph",
             candidate_metric_ids=["cm_churn"],
             contains_numeric_disclosure_flag=True,
             contains_definition_flag=True,
             sequence_index=3,
-        )
+        ),
     ]
     values = [
         MetricValue(
-            filing_id=1, company_id=1, metric_id="cm_churn",
-            source_segment_id=0, source_type="text", extraction_method="llm_text",
-            value_numeric=Decimal("5.2")
+            filing_id=1,
+            company_id=1,
+            metric_id="cm_churn",
+            source_segment_id=0,
+            source_type="text",
+            extraction_method="llm_text",
+            value_numeric=Decimal("5.2"),
         )
     ]
 
     incidence = scorer._score_filing_metric(
-        filing_id=1, company_id=1, metric_id="cm_churn",
-        segments=segments, values=values, definitions=[]
+        filing_id=1,
+        company_id=1,
+        metric_id="cm_churn",
+        segments=segments,
+        values=values,
+        definitions=[],
     )
 
     assert incidence.num_numeric_segments == 2

@@ -69,22 +69,22 @@ class DatabaseAdapter:
         # Check for path traversal
         try:
             # Resolve to absolute path and check it doesn't escape expected directories
-            resolved = path.resolve()
+            path.resolve()
             # Ensure the path is within the project directory or is an absolute path to a .sql file
-            if '..' in sql_file_path:
+            if ".." in sql_file_path:
                 raise ValueError("Path traversal not allowed in SQL script paths")
         except (ValueError, OSError) as e:
             raise ValueError(f"Invalid SQL script path: {e}")
 
         # Validate file extension
-        if not sql_file_path.endswith('.sql'):
+        if not sql_file_path.endswith(".sql"):
             raise ValueError("SQL script files must have .sql extension")
 
         # Validate file exists
         if not path.exists():
             raise ValueError(f"SQL script file not found: {sql_file_path}")
 
-        with open(sql_file_path, 'r') as f:
+        with open(sql_file_path, "r") as f:
             sql = f.read()
 
         with self.get_connection() as conn:

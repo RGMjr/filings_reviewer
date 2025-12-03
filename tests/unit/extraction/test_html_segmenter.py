@@ -58,10 +58,12 @@ def sample_html_sgml():
 @pytest.fixture
 def temp_html_file():
     """Create a temporary HTML file for testing."""
+
     def _create_file(content):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
             f.write(content)
             return f.name
+
     return _create_file
 
 
@@ -78,7 +80,7 @@ def test_segment_simple_html(sample_html_simple, temp_html_file):
 
         # Check segment types
         segment_types = [s.segment_type for s in segments]
-        assert 'paragraph' in segment_types or 'other' in segment_types
+        assert "paragraph" in segment_types or "other" in segment_types
 
         # Check all segments have required fields
         for segment in segments:
@@ -103,8 +105,11 @@ def test_segment_sgml_format(sample_html_sgml, temp_html_file):
         assert len(segments) > 0
 
         # Check that text was extracted
-        all_text = ' '.join(s.raw_text for s in segments)
-        assert 'prospectus' in all_text.lower() or 'monthly active users' in all_text.lower()
+        all_text = " ".join(s.raw_text for s in segments)
+        assert (
+            "prospectus" in all_text.lower()
+            or "monthly active users" in all_text.lower()
+        )
 
     finally:
         Path(html_path).unlink()
@@ -119,7 +124,7 @@ def test_min_segment_length_filter():
     </body></html>
     """
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         html_path = f.name
 
@@ -141,7 +146,7 @@ def test_max_segment_length_truncation():
     long_text = "A" * 12000  # Longer than default max_length of 10000
     html = f"<html><body><p>{long_text}</p></body></html>"
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         html_path = f.name
 
@@ -206,7 +211,7 @@ def test_normalize_text_removes_extra_whitespace():
     </body></html>
     """
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         html_path = f.name
 
@@ -217,8 +222,8 @@ def test_normalize_text_removes_extra_whitespace():
         if segments:
             # Check that text doesn't have excessive whitespace
             for segment in segments:
-                assert '    ' not in segment.raw_text  # No quad spaces
-                assert '\n\n\n' not in segment.raw_text  # No triple newlines
+                assert "    " not in segment.raw_text  # No quad spaces
+                assert "\n\n\n" not in segment.raw_text  # No triple newlines
 
     finally:
         Path(html_path).unlink()
@@ -237,7 +242,7 @@ def test_table_extraction():
     </body></html>
     """
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         html_path = f.name
 
@@ -249,8 +254,8 @@ def test_table_extraction():
         assert len(segments) > 0
 
         # At least one segment should contain table data
-        all_text = ' '.join(s.raw_text for s in segments)
-        assert 'Q1 2024' in all_text or 'Revenue' in all_text
+        all_text = " ".join(s.raw_text for s in segments)
+        assert "Q1 2024" in all_text or "Revenue" in all_text
 
     finally:
         Path(html_path).unlink()
@@ -266,7 +271,7 @@ def test_custom_min_and_max_lengths():
     </body></html>
     """
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(html)
         html_path = f.name
 

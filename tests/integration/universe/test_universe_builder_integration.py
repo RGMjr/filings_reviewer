@@ -30,9 +30,7 @@ class TestUniverseBuilderIntegration:
         This is the main end-to-end integration test.
         """
         # Create UniverseBuilder
-        builder = UniverseBuilder(
-            sec_client=mock_sec_client_with_fixtures, db=clean_db
-        )
+        builder = UniverseBuilder(sec_client=mock_sec_client_with_fixtures, db=clean_db)
 
         # Build universe
         in_scope_count = builder.build_universe("2015-01-01", "2025-12-31")
@@ -82,9 +80,7 @@ class TestUniverseBuilderIntegration:
 
     def test_coverage_stats(self, clean_db, mock_sec_client_with_fixtures):
         """Test coverage statistics after building universe."""
-        builder = UniverseBuilder(
-            sec_client=mock_sec_client_with_fixtures, db=clean_db
-        )
+        builder = UniverseBuilder(sec_client=mock_sec_client_with_fixtures, db=clean_db)
 
         builder.build_universe("2015-01-01", "2025-12-31")
 
@@ -105,9 +101,7 @@ class TestUniverseBuilderIntegration:
 
     def test_idempotency(self, clean_db, mock_sec_client_with_fixtures):
         """Test that re-running build_universe doesn't create duplicates."""
-        builder = UniverseBuilder(
-            sec_client=mock_sec_client_with_fixtures, db=clean_db
-        )
+        builder = UniverseBuilder(sec_client=mock_sec_client_with_fixtures, db=clean_db)
 
         # Run twice
         count1 = builder.build_universe("2015-01-01", "2025-12-31")
@@ -134,9 +128,9 @@ class TestIndividualFixtures:
         from tests.integration.conftest import metadata_to_filing_metadata
 
         filing_metadata = metadata_to_filing_metadata(fixture_shopify)
-        mock_client = pytest.importorskip(
-            "src.infra.sec_client"
-        ).MockSECClient(mock_filings=[filing_metadata])
+        mock_client = pytest.importorskip("src.infra.sec_client").MockSECClient(
+            mock_filings=[filing_metadata]
+        )
 
         builder = UniverseBuilder(sec_client=mock_client, db=clean_db)
         in_scope_count = builder.build_universe("2015-01-01", "2015-12-31")
@@ -160,9 +154,9 @@ class TestIndividualFixtures:
         from tests.integration.conftest import metadata_to_filing_metadata
 
         filing_metadata = metadata_to_filing_metadata(fixture_datadog)
-        mock_client = pytest.importorskip(
-            "src.infra.sec_client"
-        ).MockSECClient(mock_filings=[filing_metadata])
+        mock_client = pytest.importorskip("src.infra.sec_client").MockSECClient(
+            mock_filings=[filing_metadata]
+        )
 
         builder = UniverseBuilder(sec_client=mock_client, db=clean_db)
         in_scope_count = builder.build_universe("2019-01-01", "2019-12-31")
@@ -184,9 +178,9 @@ class TestIndividualFixtures:
         from tests.integration.conftest import metadata_to_filing_metadata
 
         filing_metadata = metadata_to_filing_metadata(fixture_spac)
-        mock_client = pytest.importorskip(
-            "src.infra.sec_client"
-        ).MockSECClient(mock_filings=[filing_metadata])
+        mock_client = pytest.importorskip("src.infra.sec_client").MockSECClient(
+            mock_filings=[filing_metadata]
+        )
 
         builder = UniverseBuilder(sec_client=mock_client, db=clean_db)
         in_scope_count = builder.build_universe("2020-01-01", "2020-12-31")
@@ -213,14 +207,12 @@ class TestDatabaseConstraints:
         clean_db.upsert_company(cik="0001234567", company_name="Test Company 1")
 
         # Upsert with same CIK but different name should update
-        company_id = clean_db.upsert_company(
+        clean_db.upsert_company(
             cik="0001234567", company_name="Test Company Updated"
         )
 
         # Should still be only one company
-        companies = clean_db.query(
-            "SELECT * FROM companies WHERE cik = '0001234567'"
-        )
+        companies = clean_db.query("SELECT * FROM companies WHERE cik = '0001234567'")
         assert len(companies) == 1
         assert companies[0]["company_name"] == "Test Company Updated"
 
@@ -239,6 +231,9 @@ class TestDatabaseConstraints:
             form_type="S-1",
             filing_date="2020-01-01",
             sec_html_url="https://example.com/filing1.htm",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
         )
 
         # Upsert with same company_id and accession should update
@@ -249,6 +244,9 @@ class TestDatabaseConstraints:
             form_type="S-1/A",  # Changed to amendment
             filing_date="2020-01-15",
             sec_html_url="https://example.com/filing1a.htm",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
         )
 
         # Should be same filing (updated)

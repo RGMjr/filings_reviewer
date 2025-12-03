@@ -8,7 +8,7 @@ extraction_method flag expected by the analysis schema.
 from decimal import Decimal
 from datetime import date
 
-from src.extraction.models import SourceSegment, MetricValue
+from src.extraction.models import SourceSegment
 from src.extraction.value_extractor import ValueExtractor
 
 
@@ -29,6 +29,7 @@ def build_segment(**overrides) -> SourceSegment:
 # =============================================================================
 # Text Extraction Tests (existing + new)
 # =============================================================================
+
 
 def test_extract_from_text_returns_llm_text_method():
     """Text extraction should populate values with the allowed extraction method."""
@@ -78,6 +79,7 @@ def test_extract_from_segment_skips_non_numeric_segments():
 # =============================================================================
 # Number Parsing Tests (_parse_number)
 # =============================================================================
+
 
 def test_parse_number_basic():
     """Parse simple numbers without formatting."""
@@ -157,6 +159,7 @@ def test_parse_number_invalid():
 # Period Extraction Tests (_extract_period_from_text)
 # =============================================================================
 
+
 def test_extract_period_quarter_pattern():
     """Extract period from quarter patterns like Q1 2024."""
     extractor = ValueExtractor()
@@ -207,6 +210,7 @@ def test_extract_period_no_match():
 # =============================================================================
 # Cohort Label Parsing Tests (parse_cohort_label)
 # =============================================================================
+
 
 def test_parse_cohort_label_acquisition():
     """Parse acquisition cohort labels (year-based)."""
@@ -294,6 +298,7 @@ def test_parse_cohort_label_empty():
 # Unit Inference Tests (_infer_unit)
 # =============================================================================
 
+
 def test_infer_unit_currency():
     """Infer USD unit from currency symbols."""
     extractor = ValueExtractor()
@@ -331,6 +336,7 @@ def test_infer_unit_default_count():
 # Column Identification Tests (_identify_columns)
 # =============================================================================
 
+
 def test_identify_columns_cohort():
     """Identify cohort columns from headers."""
     extractor = ValueExtractor()
@@ -338,7 +344,7 @@ def test_identify_columns_cohort():
     headers = ["Cohort", "Q1 2024", "Q2 2024"]
     column_info = extractor._identify_columns(headers)
 
-    assert column_info[0]['type'] == 'cohort'
+    assert column_info[0]["type"] == "cohort"
 
 
 def test_identify_columns_period():
@@ -348,10 +354,10 @@ def test_identify_columns_period():
     headers = ["Metric", "Q1 2024", "Q2 2024", "FY 2023"]
     column_info = extractor._identify_columns(headers)
 
-    assert column_info[1]['type'] == 'value'
-    assert column_info[1]['period_end'] == date(2024, 3, 31)
-    assert column_info[2]['type'] == 'value'
-    assert column_info[2]['period_end'] == date(2024, 6, 30)
+    assert column_info[1]["type"] == "value"
+    assert column_info[1]["period_end"] == date(2024, 3, 31)
+    assert column_info[2]["type"] == "value"
+    assert column_info[2]["period_end"] == date(2024, 6, 30)
 
 
 def test_identify_columns_default_value():
@@ -361,14 +367,15 @@ def test_identify_columns_default_value():
     headers = ["Metric Name", "Amount", "Count"]
     column_info = extractor._identify_columns(headers)
 
-    assert column_info[0]['type'] == 'value'
-    assert column_info[1]['type'] == 'value'
-    assert column_info[2]['type'] == 'value'
+    assert column_info[0]["type"] == "value"
+    assert column_info[1]["type"] == "value"
+    assert column_info[2]["type"] == "value"
 
 
 # =============================================================================
 # Metric Inference Tests (_infer_metric_from_context)
 # =============================================================================
+
 
 def test_infer_metric_single_candidate():
     """Use the only candidate metric if only one exists."""
@@ -407,7 +414,10 @@ def test_infer_metric_from_header_customers():
     """Infer customer metric from header text."""
     extractor = ValueExtractor()
     segment = build_segment(
-        candidate_metric_ids=["cm_customers_period_end_by_tenure", "cm_revenue_by_cohort"]
+        candidate_metric_ids=[
+            "cm_customers_period_end_by_tenure",
+            "cm_revenue_by_cohort",
+        ]
     )
     headers = ["Tenure", "Customers"]
 
@@ -440,6 +450,7 @@ def test_infer_metric_no_candidates():
 # Text Cleaning Tests (_clean_text)
 # =============================================================================
 
+
 def test_clean_text_whitespace():
     """Clean multiple whitespace characters."""
     extractor = ValueExtractor()
@@ -452,6 +463,7 @@ def test_clean_text_whitespace():
 # =============================================================================
 # Table Extraction Tests (extract_from_table, _parse_table_row)
 # =============================================================================
+
 
 def test_extract_from_table_basic():
     """Extract values from a simple table."""
@@ -744,6 +756,7 @@ def test_extract_from_segment_routes_to_text():
 # =============================================================================
 # Convenience Function Tests
 # =============================================================================
+
 
 def test_convenience_function_extract_values():
     """Test the convenience function extract_values()."""

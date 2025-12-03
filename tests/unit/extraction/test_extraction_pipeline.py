@@ -6,12 +6,17 @@ Tests the end-to-end orchestration of the extraction pipeline.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
 from src.extraction.extraction_pipeline import ExtractionPipeline, ExtractionResult
-from src.extraction.models import SourceSegment, MetricValue, MetricDefinition, FilingMetricIncidence
+from src.extraction.models import (
+    SourceSegment,
+    MetricValue,
+    MetricDefinition,
+    FilingMetricIncidence,
+)
 from decimal import Decimal
 
 
@@ -35,11 +40,11 @@ def pipeline(mock_db):
 def sample_filing_metadata():
     """Sample filing metadata from database."""
     return {
-        'filing_id': 1,
-        'company_id': 100,
-        'cik': '0001234567',
-        'accession_number': '0001234567-20-000001',
-        'html_storage_path': '/tmp/test.html',
+        "filing_id": 1,
+        "company_id": 100,
+        "cik": "0001234567",
+        "accession_number": "0001234567-20-000001",
+        "html_storage_path": "/tmp/test.html",
     }
 
 
@@ -47,7 +52,7 @@ def sample_filing_metadata():
 def temp_html_file():
     """Create a temporary HTML file."""
     content = "<html><body><p>Test filing content with 1,000 customers and daily active users.</p></body></html>"
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
         f.write(content)
         return f.name
 
@@ -111,7 +116,7 @@ def test_process_filing_not_found(pipeline, mock_db):
 def test_process_filing_html_file_not_found(pipeline, mock_db, sample_filing_metadata):
     """Test processing when HTML file doesn't exist."""
     # Return filing metadata but with non-existent file
-    sample_filing_metadata['html_storage_path'] = '/nonexistent/path.html'
+    sample_filing_metadata["html_storage_path"] = "/nonexistent/path.html"
     mock_db.query.return_value = [sample_filing_metadata]
 
     result = pipeline.process_filing(filing_id=1)
@@ -120,9 +125,11 @@ def test_process_filing_html_file_not_found(pipeline, mock_db, sample_filing_met
     assert result.error == "Filing not found in database"
 
 
-def test_process_filing_no_segments_extracted(pipeline, mock_db, sample_filing_metadata, temp_html_file):
+def test_process_filing_no_segments_extracted(
+    pipeline, mock_db, sample_filing_metadata, temp_html_file
+):
     """Test processing when no segments are extracted."""
-    sample_filing_metadata['html_storage_path'] = temp_html_file
+    sample_filing_metadata["html_storage_path"] = temp_html_file
     mock_db.query.return_value = [sample_filing_metadata]
 
     # Mock segmenter to return empty list
@@ -138,9 +145,11 @@ def test_process_filing_no_segments_extracted(pipeline, mock_db, sample_filing_m
     Path(temp_html_file).unlink()
 
 
-def test_process_filing_successful(pipeline, mock_db, sample_filing_metadata, temp_html_file):
+def test_process_filing_successful(
+    pipeline, mock_db, sample_filing_metadata, temp_html_file
+):
     """Test successful filing processing."""
-    sample_filing_metadata['html_storage_path'] = temp_html_file
+    sample_filing_metadata["html_storage_path"] = temp_html_file
     mock_db.query.return_value = [sample_filing_metadata]
 
     # Mock all pipeline components
@@ -188,7 +197,9 @@ def test_process_filing_successful(pipeline, mock_db, sample_filing_metadata, te
     pipeline.segmenter.segment_filing = Mock(return_value=mock_segments)
     pipeline.classifier.classify_batch = Mock(return_value=mock_segments)
     pipeline.value_extractor.extract_from_segment = Mock(return_value=mock_values)
-    pipeline.definition_extractor.extract_definitions = Mock(return_value=mock_definitions)
+    pipeline.definition_extractor.extract_definitions = Mock(
+        return_value=mock_definitions
+    )
     pipeline.quality_scorer.score_filing = Mock(return_value=mock_incidences)
 
     # Mock database transaction
@@ -233,9 +244,9 @@ def test_process_batch_empty_list(pipeline):
     """Test batch processing with empty filing list."""
     stats = pipeline.process_batch(filing_ids=[])
 
-    assert stats['total'] == 0
-    assert stats['success'] == 0
-    assert stats['failed'] == 0
+    assert stats["total"] == 0
+    assert stats["success"] == 0
+    assert stats["failed"] == 0
 
 
 def test_process_batch_multiple_filings(pipeline, mock_db):
@@ -260,13 +271,13 @@ def test_process_batch_multiple_filings(pipeline, mock_db):
 
     stats = pipeline.process_batch(filing_ids=[1, 2])
 
-    assert stats['total'] == 2
-    assert stats['success'] == 1
-    assert stats['failed'] == 1
-    assert stats['total_segments'] == 10
-    assert stats['total_values'] == 5
-    assert stats['total_definitions'] == 2
-    assert stats['total_incidences'] == 3
+    assert stats["total"] == 2
+    assert stats["success"] == 1
+    assert stats["failed"] == 1
+    assert stats["total_segments"] == 10
+    assert stats["total_values"] == 5
+    assert stats["total_definitions"] == 2
+    assert stats["total_incidences"] == 3
 
 
 def test_process_batch_all_successful(pipeline):
@@ -284,13 +295,13 @@ def test_process_batch_all_successful(pipeline):
 
     stats = pipeline.process_batch(filing_ids=[1, 2, 3])
 
-    assert stats['total'] == 3
-    assert stats['success'] == 3
-    assert stats['failed'] == 0
-    assert stats['total_segments'] == 15
-    assert stats['total_values'] == 6
-    assert stats['total_definitions'] == 3
-    assert stats['total_incidences'] == 3
+    assert stats["total"] == 3
+    assert stats["success"] == 3
+    assert stats["failed"] == 0
+    assert stats["total_segments"] == 15
+    assert stats["total_values"] == 6
+    assert stats["total_definitions"] == 3
+    assert stats["total_incidences"] == 3
 
 
 def test_process_batch_all_failed(pipeline):
@@ -305,23 +316,23 @@ def test_process_batch_all_failed(pipeline):
 
     stats = pipeline.process_batch(filing_ids=[1, 2, 3])
 
-    assert stats['total'] == 3
-    assert stats['success'] == 0
-    assert stats['failed'] == 3
-    assert stats['total_segments'] == 0
+    assert stats["total"] == 3
+    assert stats["success"] == 0
+    assert stats["failed"] == 3
+    assert stats["total_segments"] == 0
 
 
 def test_get_filing_metadata(pipeline, mock_db, sample_filing_metadata, temp_html_file):
     """Test _get_filing_metadata method."""
-    sample_filing_metadata['html_storage_path'] = temp_html_file
+    sample_filing_metadata["html_storage_path"] = temp_html_file
     mock_db.query.return_value = [sample_filing_metadata]
 
     filing = pipeline._get_filing_metadata(filing_id=1)
 
     assert filing is not None
-    assert filing['filing_id'] == 1
-    assert filing['company_id'] == 100
-    assert filing['html_storage_path'] == temp_html_file
+    assert filing["filing_id"] == 1
+    assert filing["company_id"] == 100
+    assert filing["html_storage_path"] == temp_html_file
 
     # Verify query was called correctly
     assert mock_db.query.called
@@ -344,7 +355,7 @@ def test_get_filing_metadata_not_found(pipeline, mock_db):
 
 def test_get_filing_metadata_file_missing(pipeline, mock_db, sample_filing_metadata):
     """Test _get_filing_metadata when HTML file is missing."""
-    sample_filing_metadata['html_storage_path'] = '/nonexistent/file.html'
+    sample_filing_metadata["html_storage_path"] = "/nonexistent/file.html"
     mock_db.query.return_value = [sample_filing_metadata]
 
     filing = pipeline._get_filing_metadata(filing_id=1)
@@ -354,7 +365,7 @@ def test_get_filing_metadata_file_missing(pipeline, mock_db, sample_filing_metad
 
 def test_get_filing_metadata_null_path(pipeline, mock_db, sample_filing_metadata):
     """Test _get_filing_metadata when html_storage_path is None."""
-    sample_filing_metadata['html_storage_path'] = None
+    sample_filing_metadata["html_storage_path"] = None
     mock_db.query.return_value = [sample_filing_metadata]
 
     filing = pipeline._get_filing_metadata(filing_id=1)
@@ -382,11 +393,7 @@ def test_write_results_transaction(pipeline, mock_db):
     ]
 
     pipeline._write_results(
-        filing_id=1,
-        segments=segments,
-        values=[],
-        definitions=[],
-        incidences=[]
+        filing_id=1, segments=segments, values=[], definitions=[], incidences=[]
     )
 
     # Verify connection was used

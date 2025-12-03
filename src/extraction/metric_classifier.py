@@ -10,7 +10,7 @@ This module scans source segments to identify:
 
 import logging
 import re
-from typing import List, Set, Tuple
+from typing import List
 
 from .models import SourceSegment
 
@@ -30,152 +30,217 @@ class MetricClassifier:
 
     # Definition indicators
     DEFINITION_PATTERNS = [
-        r'\bwe\s+define\b',
-        r'\bdefined\s+as\b',
-        r'\bdefinition\s+of\b',
-        r'\brefers\s+to\b',
-        r'\bmeans\b',
-        r'\bmeaning\b',
-        r'\bmetric\s+definitions?\b',
-        r'\bis\s+defined\b',
+        r"\bwe\s+define\b",
+        r"\bdefined\s+as\b",
+        r"\bdefinition\s+of\b",
+        r"\brefers\s+to\b",
+        r"\bmeans\b",
+        r"\bmeaning\b",
+        r"\bmetric\s+definitions?\b",
+        r"\bis\s+defined\b",
     ]
 
     # Methodology/calculation indicators
     METHODOLOGY_PATTERNS = [
-        r'\bcalculated\s+as\b',
-        r'\bcalculated\s+by\b',
-        r'\bcalculation\b',
-        r'\bcomputed\s+as\b',
-        r'\bdetermined\s+by\b',
-        r'\bformula\b',
-        r'\bmethodology\b',
-        r'\bcompute[ds]?\b',
+        r"\bcalculated\s+as\b",
+        r"\bcalculated\s+by\b",
+        r"\bcalculation\b",
+        r"\bcomputed\s+as\b",
+        r"\bdetermined\s+by\b",
+        r"\bformula\b",
+        r"\bmethodology\b",
+        r"\bcompute[ds]?\b",
     ]
 
     # Metric-specific keyword patterns
     # Format: metric_id -> list of keyword patterns
     METRIC_KEYWORDS = {
         # Core Metrics
-        'cm_new_customers_acquired': [
-            r'\bnew\s+customers?\b',
-            r'\bcustomers?\s+acquired\b',
-            r'\bcustomer\s+acquisition[s]?\b',
-            r'\bacquired\s+customers?\b',
-            r'\bnewly\s+acquired\b',
+        "cm_new_customers_acquired": [
+            r"\bnew\s+customers?\b",
+            r"\bcustomers?\s+acquired\b",
+            r"\bcustomer\s+acquisition[s]?\b",
+            r"\bacquired\s+customers?\b",
+            r"\bnewly\s+acquired\b",
+            r"\bnew\s+customer\s+additions?\b",
+            r"\bnet\s+new\s+customers?\b",
+            r"\bcustomers?\s+added\b",
+            r"\bcustomer\s+growth\b",
+            r"\bacquisition\s+of\s+customers?\b",
+            r"\bnew\s+users?\s+acquired\b",
+            r"\bacquired\s+users?\b",
         ],
-        'cm_customers_period_end_by_tenure': [
-            r'\bcustomers?\s+by\s+tenure\b',
-            r'\btenure\s+cohort\b',
-            r'\bcustomers?\s+at\s+period\s+end\b',
-            r'\bby\s+age\b',
-            r'\btime\s+since\b',
+        "cm_customers_period_end_by_tenure": [
+            r"\bcustomers?\s+by\s+tenure\b",
+            r"\btenure\s+cohort\b",
+            r"\bcustomers?\s+at\s+period\s+end\b",
+            r"\bby\s+age\b",
+            r"\btime\s+since\b",
         ],
-        'cm_revenue_by_cohort': [
-            r'\brevenue\s+by\s+cohort\b',
-            r'\bcohort\s+revenue\b',
-            r'\brevenue.*cohort\b',
-            r'\bcohort.*revenue\b',
+        "cm_revenue_by_cohort": [
+            r"\brevenue\s+by\s+cohort\b",
+            r"\bcohort\s+revenue\b",
+            r"\brevenue.*cohort\b",
+            r"\bcohort.*revenue\b",
         ],
-        'cm_transactions_by_cohort': [
-            r'\btransactions?\s+by\s+cohort\b',
-            r'\bcohort\s+transactions?\b',
-            r'\bpurchase\s+transactions?\b',
-            r'\btransactions?.*cohort\b',
+        "cm_transactions_by_cohort": [
+            r"\btransactions?\s+by\s+cohort\b",
+            r"\bcohort\s+transactions?\b",
+            r"\bpurchase\s+transactions?\b",
+            r"\btransactions?.*cohort\b",
         ],
-
         # Extended Metrics
-        'cm_active_customers_total': [
-            r'\bactive\s+customers?\b',
-            r'\btotal\s+customers?\b',
-            r'\bcustomer\s+base\b',
+        "cm_active_customers_total": [
+            r"\bactive\s+customers?\b",
+            r"\btotal\s+customers?\b",
+            r"\bcustomer\s+base\b",
         ],
-        'cm_revenue_per_customer': [
-            r'\barpu\b',
-            r'\baverage\s+revenue\s+per\s+user\b',
-            r'\brevenue\s+per\s+customer\b',
-            r'\brevenue\s+per\s+user\b',
-            r'\bper\s+customer\s+revenue\b',
+        "cm_revenue_per_customer": [
+            r"\barpu\b",
+            r"\baverage\s+revenue\s+per\s+user\b",
+            r"\brevenue\s+per\s+customer\b",
+            r"\brevenue\s+per\s+user\b",
+            r"\bper\s+customer\s+revenue\b",
         ],
-        'cm_customer_acquisition_cost': [
-            r'\bcac\b',
-            r'\bcustomer\s+acquisition\s+cost\b',
-            r'\bacquisition\s+cost\b',
-            r'\bcost\s+to\s+acquire\b',
+        "cm_customer_acquisition_cost": [
+            r"\bcac\b",
+            r"\bcustomer\s+acquisition\s+cost\b",
+            r"\bacquisition\s+cost\b",
+            r"\bcost\s+to\s+acquire\b",
         ],
-        'cm_cac_payback_period': [
-            r'\bcac\s+payback\b',
-            r'\bpayback\s+period\b',
-            r'\btime\s+to\s+recover\b',
+        "cm_cac_payback_period": [
+            r"\bcac\s+payback\b",
+            r"\bpayback\s+period\b",
+            r"\btime\s+to\s+recover\b",
         ],
-        'cm_customer_retention_rate': [
-            r'\bretention\s+rate\b',
-            r'\bcustomer\s+retention\b',
-            r'\bretained\s+customers?\b',
+        "cm_customer_retention_rate": [
+            r"\bretention\s+rate\b",
+            r"\bcustomer\s+retention\b",
+            r"\bretained\s+customers?\b",
         ],
-        'cm_customer_churn_rate': [
-            r'\bchurn\s+rate\b',
-            r'\bcustomer\s+churn\b',
-            r'\battrition\s+rate\b',
+        "cm_customer_churn_rate": [
+            r"\bchurn\s+rate\b",
+            r"\bcustomer\s+churn\b",
+            r"\battrition\s+rate\b",
         ],
-        'cm_net_revenue_retention': [
-            r'\bnrr\b',
-            r'\bnet\s+revenue\s+retention\b',
-            r'\bnet\s+retention\b',
+        "cm_net_revenue_retention": [
+            r"\bnrr\b",
+            r"\bnet\s+revenue\s+retention\b",
+            r"\bnet\s+retention\b",
+            r"\bnet\s+dollar\s+retention\b",
+            r"\bndr\b",
+            r"\bretention\s+rate.*\d+%",
+            r"\bnet\s+retention\s+rate\b",
         ],
-        'cm_gross_revenue_retention': [
-            r'\bgrr\b',
-            r'\bgross\s+revenue\s+retention\b',
-            r'\bgross\s+retention\b',
+        "cm_gross_revenue_retention": [
+            r"\bgrr\b",
+            r"\bgross\s+revenue\s+retention\b",
+            r"\bgross\s+retention\b",
         ],
-        'cm_monthly_active_users': [
-            r'\bmau\b',
-            r'\bmonthly\s+active\s+users?\b',
+        "cm_monthly_active_users": [
+            r"\bmau\b",
+            r"\bmonthly\s+active\s+users?\b",
         ],
-        'cm_daily_active_users': [
-            r'\bdau\b',
-            r'\bdaily\s+active\s+users?\b',
+        "cm_daily_active_users": [
+            r"\bdau\b",
+            r"\bdaily\s+active\s+users?\b",
         ],
-
+        "cm_gross_margin_by_cohort": [
+            r"\bgross\s+margin\b",
+            r"\bgross\s+profit\b",
+            r"\bmargin\s+by\s+cohort\b",
+            r"\bcohort\s+margin\b",
+            r"\bgross\s+margin\s+%\b",
+            r"\bgross\s+profit\s+margin\b",
+        ],
+        "cm_expansion_revenue": [
+            r"\bexpansion\s+revenue\b",
+            r"\bcross[- ]sell\b",
+            r"\bupsell\b",
+            r"\bproducts?\s+per\s+customer\b",
+            r"\baverage\s+products?\s+owned\b",
+            r"\bexpand\b.*\brevenue\b",
+            r"\badditional\s+products?\b",
+            r"\bmulti[- ]product\b",
+        ],
+        "cm_revenue_concentration": [
+            r"\brevenue\s+concentration\b",
+            r"\bcustomer\s+concentration\b",
+            r"\btop\s+\d+\s+customers?\b",
+            r"\blargest\s+customers?\b",
+            r"\b\d+%\s+of\s+revenue\b",
+            r"\bconcentration\s+risk\b",
+            r"\bconcentration\s+of\s+revenue\b",
+            r"\bmajor\s+customers?\b",
+        ],
         # Future Metrics
-        'cm_lifetime_value_per_customer': [
-            r'\bltv\b',
-            r'\blifetime\s+value\b',
-            r'\bcustomer\s+lifetime\s+value\b',
-            r'\bclv\b',
+        "cm_lifetime_value_per_customer": [
+            r"\bltv\b",
+            r"\blifetime\s+value\b",
+            r"\bcustomer\s+lifetime\s+value\b",
+            r"\bclv\b",
         ],
-        'cm_ltv_to_cac_ratio': [
-            r'\bltv\s*[:/]\s*cac\b',
-            r'\bltv\s+to\s+cac\b',
-            r'\blifetime\s+value\s+to\s+acquisition\s+cost\b',
+        "cm_ltv_to_cac_ratio": [
+            r"\bltv\s*[:/]\s*cac\b",
+            r"\bltv\s+to\s+cac\b",
+            r"\blifetime\s+value\s+to\s+acquisition\s+cost\b",
         ],
+    }
+
+    # CMASB Priority Metrics (for confidence boosting)
+    CMASB_CORE_METRICS = {
+        'cm_new_customers_acquired',
+        'cm_customers_period_end_by_tenure',
+        'cm_revenue_by_cohort',
+        'cm_transactions_by_cohort',
+    }
+
+    CMASB_EXTENDED_METRICS = {
+        'cm_customer_acquisition_cost',
+        'cm_active_customers_total',
+        'cm_revenue_per_customer',
+        'cm_gross_margin_by_cohort',
+        'cm_revenue_concentration',
+        'cm_customer_churn_rate',
+        'cm_customer_retention_rate',
+        'cm_net_revenue_retention',
+        'cm_expansion_revenue',
     }
 
     # General customer/metric keywords (for numeric disclosure detection)
     GENERAL_METRIC_KEYWORDS = [
-        r'\bcustomers?\b',
-        r'\busers?\b',
-        r'\bsubscribers?\b',
-        r'\bcohort[s]?\b',
-        r'\brevenue\b',
-        r'\btransactions?\b',
-        r'\bmetrics?\b',
+        r"\bcustomers?\b",
+        r"\busers?\b",
+        r"\bsubscribers?\b",
+        r"\bcohort[s]?\b",
+        r"\brevenue\b",
+        r"\btransactions?\b",
+        r"\bmetrics?\b",
     ]
 
     # Number patterns
-    NUMBER_PATTERN = r'\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b'
+    NUMBER_PATTERN = r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
 
     def __init__(self):
         """Initialize the metric classifier."""
         # Compile all patterns for performance
-        self._definition_regex = [re.compile(p, re.IGNORECASE) for p in self.DEFINITION_PATTERNS]
-        self._methodology_regex = [re.compile(p, re.IGNORECASE) for p in self.METHODOLOGY_PATTERNS]
-        self._general_metric_regex = [re.compile(p, re.IGNORECASE) for p in self.GENERAL_METRIC_KEYWORDS]
+        self._definition_regex = [
+            re.compile(p, re.IGNORECASE) for p in self.DEFINITION_PATTERNS
+        ]
+        self._methodology_regex = [
+            re.compile(p, re.IGNORECASE) for p in self.METHODOLOGY_PATTERNS
+        ]
+        self._general_metric_regex = [
+            re.compile(p, re.IGNORECASE) for p in self.GENERAL_METRIC_KEYWORDS
+        ]
         self._number_regex = re.compile(self.NUMBER_PATTERN, re.IGNORECASE)
 
         # Compile metric-specific patterns
         self._metric_patterns = {}
         for metric_id, patterns in self.METRIC_KEYWORDS.items():
-            self._metric_patterns[metric_id] = [re.compile(p, re.IGNORECASE) for p in patterns]
+            self._metric_patterns[metric_id] = [
+                re.compile(p, re.IGNORECASE) for p in patterns
+            ]
 
     def classify_segment(self, segment: SourceSegment) -> SourceSegment:
         """
@@ -283,6 +348,7 @@ class MetricClassifier:
         - Presence of strong signals (definition + numeric + specific metric keywords)
         - Length of text (longer text generally more reliable)
         - Number of candidate metrics (too many suggests generic text)
+        - CMASB priority boost (Core > Extended > Other)
         """
         confidence = 0.0
 
@@ -304,6 +370,20 @@ class MetricClassifier:
             confidence += 0.2  # Moderately specific
         elif num_candidates >= 3:
             confidence += 0.1  # Less specific (generic discussion)
+
+        # CMASB PRIORITY BOOST - Ensure priority metrics aren't filtered out
+        has_core_metric = False
+        has_extended_metric = False
+        for metric_id in segment.candidate_metric_ids:
+            if metric_id in self.CMASB_CORE_METRICS:
+                has_core_metric = True
+            elif metric_id in self.CMASB_EXTENDED_METRICS:
+                has_extended_metric = True
+
+        if has_core_metric:
+            confidence += 0.2  # Strong boost for CMASB Core Metrics
+        elif has_extended_metric:
+            confidence += 0.1  # Moderate boost for CMASB Extended Metrics
 
         # Penalize very short segments
         if len(segment.raw_text) < 100:

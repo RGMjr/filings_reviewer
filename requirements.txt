@@ -27,6 +27,16 @@ beautifulsoup4>=4.12.0
 # lxml>=4.9.0
 
 # -----------------------------------------------------------------------------
+# LLM Integration
+# -----------------------------------------------------------------------------
+
+# OpenAI API - For metric extraction and quality scoring
+openai>=1.0.0
+
+# Token counting - For cost tracking and context management
+tiktoken>=0.5.0
+
+# -----------------------------------------------------------------------------
 # Testing Dependencies
 # -----------------------------------------------------------------------------
 
@@ -45,11 +55,3 @@ black>=23.0.0
 
 # Linter - Fast Python linter for code quality
 ruff>=0.1.0
-
-# -----------------------------------------------------------------------------
-# Future Dependencies (Not Yet Required)
-# -----------------------------------------------------------------------------
-# These will be added when LLM extraction is implemented:
-#
-# openai>=1.0.0        # LLM API for metric extraction and quality scoring
-# tiktoken>=0.5.0      # Token counting for cost tracking

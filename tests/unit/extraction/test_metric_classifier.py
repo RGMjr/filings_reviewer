@@ -38,7 +38,9 @@ def test_classifier_initialization(classifier):
 def test_has_definition_flag(classifier, sample_segment):
     """Test definition detection."""
     # Text with definition indicator
-    sample_segment.raw_text = "We define daily active users as users who log in once per day."
+    sample_segment.raw_text = (
+        "We define daily active users as users who log in once per day."
+    )
     result = classifier.classify_segment(sample_segment)
     assert result.contains_definition_flag is True
 
@@ -84,7 +86,7 @@ def test_identify_candidate_metrics_dau(classifier, sample_segment):
     sample_segment.raw_text = "Our DAU grew to 10,000 users."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_daily_active_users' in result.candidate_metric_ids
+    assert "cm_daily_active_users" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_mau(classifier, sample_segment):
@@ -92,7 +94,7 @@ def test_identify_candidate_metrics_mau(classifier, sample_segment):
     sample_segment.raw_text = "We had 50,000 monthly active users in December."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_monthly_active_users' in result.candidate_metric_ids
+    assert "cm_monthly_active_users" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_cac(classifier, sample_segment):
@@ -100,7 +102,7 @@ def test_identify_candidate_metrics_cac(classifier, sample_segment):
     sample_segment.raw_text = "Our customer acquisition cost is $100 per user."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_customer_acquisition_cost' in result.candidate_metric_ids
+    assert "cm_customer_acquisition_cost" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_arpu(classifier, sample_segment):
@@ -108,7 +110,7 @@ def test_identify_candidate_metrics_arpu(classifier, sample_segment):
     sample_segment.raw_text = "Average revenue per user (ARPU) was $25 per month."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_revenue_per_customer' in result.candidate_metric_ids
+    assert "cm_revenue_per_customer" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_retention(classifier, sample_segment):
@@ -116,7 +118,7 @@ def test_identify_candidate_metrics_retention(classifier, sample_segment):
     sample_segment.raw_text = "Customer retention rate improved to 95%."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_customer_retention_rate' in result.candidate_metric_ids
+    assert "cm_customer_retention_rate" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_churn(classifier, sample_segment):
@@ -124,7 +126,7 @@ def test_identify_candidate_metrics_churn(classifier, sample_segment):
     sample_segment.raw_text = "Our churn rate decreased to 5% annually."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_customer_churn_rate' in result.candidate_metric_ids
+    assert "cm_customer_churn_rate" in result.candidate_metric_ids
 
 
 def test_identify_candidate_metrics_nrr(classifier, sample_segment):
@@ -132,7 +134,7 @@ def test_identify_candidate_metrics_nrr(classifier, sample_segment):
     sample_segment.raw_text = "Net revenue retention (NRR) was 120%."
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_net_revenue_retention' in result.candidate_metric_ids
+    assert "cm_net_revenue_retention" in result.candidate_metric_ids
 
 
 def test_identify_multiple_candidate_metrics(classifier, sample_segment):
@@ -141,9 +143,9 @@ def test_identify_multiple_candidate_metrics(classifier, sample_segment):
     result = classifier.classify_segment(sample_segment)
 
     # Should identify multiple metrics
-    assert 'cm_daily_active_users' in result.candidate_metric_ids
-    assert 'cm_monthly_active_users' in result.candidate_metric_ids
-    assert 'cm_revenue_per_customer' in result.candidate_metric_ids
+    assert "cm_daily_active_users" in result.candidate_metric_ids
+    assert "cm_monthly_active_users" in result.candidate_metric_ids
+    assert "cm_revenue_per_customer" in result.candidate_metric_ids
     assert len(result.candidate_metric_ids) >= 3
 
 
@@ -212,7 +214,7 @@ def test_classify_batch(classifier):
 
     assert len(results) == 3
     # First segment should have DAU metric
-    assert 'cm_daily_active_users' in results[0].candidate_metric_ids
+    assert "cm_daily_active_users" in results[0].candidate_metric_ids
     # Third segment should have no metrics
     assert results[2].candidate_metric_ids == []
 
@@ -232,19 +234,19 @@ def test_case_insensitive_matching(classifier, sample_segment):
     result3 = classifier.classify_segment(sample_segment)
 
     # All should identify the same metric
-    assert 'cm_daily_active_users' in result1.candidate_metric_ids
-    assert 'cm_daily_active_users' in result2.candidate_metric_ids
-    assert 'cm_daily_active_users' in result3.candidate_metric_ids
+    assert "cm_daily_active_users" in result1.candidate_metric_ids
+    assert "cm_daily_active_users" in result2.candidate_metric_ids
+    assert "cm_daily_active_users" in result3.candidate_metric_ids
 
 
 def test_number_pattern_matching(classifier, sample_segment):
     """Test various number formats are detected."""
     test_cases = [
-        "We had 500 customers.",                    # Simple number (no comma needed under 1000)
-        "We had 1,000 customers.",                  # Comma-separated
-        "We had 1.5 million customers.",            # Decimal with word
+        "We had 500 customers.",  # Simple number (no comma needed under 1000)
+        "We had 1,000 customers.",  # Comma-separated
+        "We had 1.5 million customers.",  # Decimal with word
         "Customer growth was 25% year over year.",  # Percentage with metric keyword
-        "Revenue was 100,000 from users.",          # Larger number with metric
+        "Revenue was 100,000 from users.",  # Larger number with metric
     ]
 
     for text in test_cases:
@@ -299,15 +301,19 @@ def test_segment_with_no_text(classifier, sample_segment):
 
 def test_cohort_metrics(classifier, sample_segment):
     """Test identification of cohort-based metrics."""
-    sample_segment.raw_text = "Revenue by cohort shows strong growth in the 2024 cohort."
+    sample_segment.raw_text = (
+        "Revenue by cohort shows strong growth in the 2024 cohort."
+    )
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_revenue_by_cohort' in result.candidate_metric_ids
+    assert "cm_revenue_by_cohort" in result.candidate_metric_ids
 
 
 def test_ltv_cac_ratio(classifier, sample_segment):
     """Test identification of LTV:CAC ratio."""
-    sample_segment.raw_text = "Our LTV:CAC ratio is 3:1, indicating healthy unit economics."
+    sample_segment.raw_text = (
+        "Our LTV:CAC ratio is 3:1, indicating healthy unit economics."
+    )
     result = classifier.classify_segment(sample_segment)
 
-    assert 'cm_ltv_to_cac_ratio' in result.candidate_metric_ids
+    assert "cm_ltv_to_cac_ratio" in result.candidate_metric_ids

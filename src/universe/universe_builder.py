@@ -8,7 +8,6 @@ Per 05_COMPONENT_INTERFACE_SPECS.md Section 3.
 """
 
 import logging
-from typing import Optional
 
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import SECClient, FilingMetadata
@@ -71,7 +70,7 @@ class UniverseBuilder:
         logger.info(f"Building universe for {start_date} to {end_date}")
 
         # Query SEC for S-1 and F-1 filings
-        form_types = ['S-1', 'S-1/A', 'F-1', 'F-1/A']
+        form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
         filings = self.sec_client.search_filings(start_date, end_date, form_types)
 
         logger.info(f"Found {len(filings)} filings from EDGAR")
@@ -120,7 +119,7 @@ class UniverseBuilder:
 
         # Get company info including SIC code
         company = self.db.get_company_by_cik(filing.cik)
-        sic_code = company.get('industry_code') if company else None
+        sic_code = company.get("industry_code") if company else None
 
         # 2. Classify SPAC
         # For v0.1, we use company name only (no filing text yet)
@@ -176,7 +175,7 @@ class UniverseBuilder:
         )
 
         # 9. Upsert filing
-        filing_id = self.db.upsert_filing(
+        self.db.upsert_filing(
             company_id=company_id,
             cik=filing.cik,
             accession_number=filing.accession_number,
@@ -192,7 +191,7 @@ class UniverseBuilder:
             is_resource_extraction=is_resource_extraction,
             offering_type=offering_type,
             classification_method=classification_method,
-            processing_status='pending',
+            processing_status="pending",
         )
 
         # Log classification results
@@ -204,7 +203,7 @@ class UniverseBuilder:
             f"method={classification_method}"
         )
 
-        if classification_method == 'uncertain':
+        if classification_method == "uncertain":
             logger.warning(
                 f"Filing {filing.accession_number} ({filing.company_name}) "
                 f"requires manual review"
@@ -229,12 +228,12 @@ class UniverseBuilder:
         """
         methods = {spac_method, fti_method, offering_method}
 
-        if 'manual_review' in methods:
-            return 'manual_review'
-        elif 'uncertain' in methods:
-            return 'uncertain'
+        if "manual_review" in methods:
+            return "manual_review"
+        elif "uncertain" in methods:
+            return "uncertain"
         else:
-            return 'heuristic'
+            return "heuristic"
 
     def get_coverage_stats(self) -> dict:
         """

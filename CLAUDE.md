@@ -74,6 +74,10 @@ Schema files in `sql/`:
 - `03_create_analysis_schema.sql` - Extraction tables
 - `04_seed_metrics_taxonomy.sql` - Metric definitions
 
+### Security
+- **API Key Management**: All API keys are managed through environment variables in `.env` file (which is gitignored). Never commit API keys to the repository.
+- The `.env.template` file provides a template with placeholders for all required API keys.
+
 ## Key Commands
 
 ```bash

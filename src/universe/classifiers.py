@@ -15,17 +15,19 @@ logger = logging.getLogger(__name__)
 
 # SPAC indicators in company names or filing text
 SPAC_NAME_PATTERNS = [
-    r'\bacquisition\s+corp(oration)?\b',
-    r'\bblank\s+check\b',
-    r'\bspac\b',
-    r'\bspecial\s+purpose\s+acquisition\b',
+    r"\bacquisition\s+corp(oration)?\b",
+    r"\bblank\s+check\b",
+    r"\bspac\b",
+    r"\bspecial\s+purpose\s+acquisition\b",
 ]
 
 # Compile regex patterns
 SPAC_REGEXES = [re.compile(pattern, re.IGNORECASE) for pattern in SPAC_NAME_PATTERNS]
 
 
-def classify_spac(company_name: str, filing_text: Optional[str] = None) -> Tuple[bool, str]:
+def classify_spac(
+    company_name: str, filing_text: Optional[str] = None
+) -> Tuple[bool, str]:
     """
     Classify whether a company is a SPAC based on name and filing content.
 
@@ -47,7 +49,7 @@ def classify_spac(company_name: str, filing_text: Optional[str] = None) -> Tuple
     for pattern in SPAC_REGEXES:
         if pattern.search(company_name):
             logger.debug(f"SPAC detected in company name: {company_name}")
-            return True, 'heuristic'
+            return True, "heuristic"
 
     # Check filing text if provided
     if filing_text:
@@ -55,26 +57,26 @@ def classify_spac(company_name: str, filing_text: Optional[str] = None) -> Tuple
         sample = filing_text[:10000].lower()
 
         # Strong indicators
-        if 'blank check company' in sample or 'special purpose acquisition' in sample:
+        if "blank check company" in sample or "special purpose acquisition" in sample:
             logger.debug(f"SPAC detected in filing text for: {company_name}")
-            return True, 'heuristic'
+            return True, "heuristic"
 
         # Weaker indicators that might need manual review
         spac_score = 0
-        if 'initial business combination' in sample:
+        if "initial business combination" in sample:
             spac_score += 1
-        if 'target business' in sample and 'acquisition' in sample:
+        if "target business" in sample and "acquisition" in sample:
             spac_score += 1
-        if 'sponsor' in sample and 'founder shares' in sample:
+        if "sponsor" in sample and "founder shares" in sample:
             spac_score += 1
 
         if spac_score >= 2:
             logger.debug(
                 f"Probable SPAC detected (score={spac_score}) for: {company_name}"
             )
-            return True, 'uncertain'
+            return True, "uncertain"
 
-    return False, 'heuristic'
+    return False, "heuristic"
 
 
 def classify_first_time_issuer(
@@ -102,18 +104,18 @@ def classify_first_time_issuer(
     """
     if previous_ipo_date is None:
         # No prior IPO filings found in our database
-        return True, 'heuristic'
+        return True, "heuristic"
 
     if previous_ipo_date == filing_date:
         # This IS the first IPO filing
-        return True, 'heuristic'
+        return True, "heuristic"
 
     # There's an earlier IPO filing
     logger.debug(
         f"CIK {cik} has prior IPO filing on {previous_ipo_date}, "
         f"current filing on {filing_date}"
     )
-    return False, 'heuristic'
+    return False, "heuristic"
 
 
 def classify_offering_type(
@@ -139,35 +141,35 @@ def classify_offering_type(
     """
     if not filing_text:
         # Without filing text, we can't classify
-        return None, 'uncertain'
+        return None, "uncertain"
 
     # Look at first 5000 chars (typically includes cover page/summary)
     sample = filing_text[:5000].lower()
 
     # Simple keyword-based heuristic
     has_primary_language = (
-        'shares being offered by us' in sample
-        or 'shares being offered by the company' in sample
-        or 'primary offering' in sample
-        or 'we are offering' in sample
+        "shares being offered by us" in sample
+        or "shares being offered by the company" in sample
+        or "primary offering" in sample
+        or "we are offering" in sample
     )
 
     has_secondary_language = (
-        'selling stockholders' in sample
-        or 'selling shareholders' in sample
-        or 'secondary offering' in sample
+        "selling stockholders" in sample
+        or "selling shareholders" in sample
+        or "secondary offering" in sample
     )
 
     if has_primary_language and has_secondary_language:
-        return 'mixed', 'heuristic'
+        return "mixed", "heuristic"
     elif has_primary_language:
-        return 'primary', 'heuristic'
+        return "primary", "heuristic"
     elif has_secondary_language:
-        return 'secondary', 'heuristic'
+        return "secondary", "heuristic"
 
     # Default to uncertain if we can't determine
     logger.debug("Could not determine offering type from filing text")
-    return None, 'uncertain'
+    return None, "uncertain"
 
 
 def detect_post_combination(
@@ -204,13 +206,13 @@ def detect_post_combination(
     """
     if not has_prior_spac_filing:
         # Can't be post-combination if no prior SPAC filing exists
-        return False, 'no_prior_spac'
+        return False, "no_prior_spac"
 
     # STRONG SIGNAL: CIK had SPAC filing, but current filing is NOT classified as SPAC
     # This happens when company name changed from "X Acquisition Corp" to real business name
     if not is_spac:
         logger.debug(f"Post-combination detected via name change: {company_name}")
-        return True, 'name_change'
+        return True, "name_change"
 
     # MODERATE SIGNAL: Check filing text for combination + operating business indicators
     if filing_text:
@@ -218,31 +220,32 @@ def detect_post_combination(
 
         # Check for business combination language
         has_combination_language = (
-            'business combination' in text_sample
-            or 'de-spac' in text_sample
-            or 'merger agreement' in text_sample
+            "business combination" in text_sample
+            or "de-spac" in text_sample
+            or "merger agreement" in text_sample
         )
 
         # Check for operating business indicators (vs blank check)
         has_financial_statements = (
-            'consolidated statements of operations' in text_sample
-            or 'consolidated balance sheets' in text_sample
+            "consolidated statements of operations" in text_sample
+            or "consolidated balance sheets" in text_sample
         )
 
-        has_operating_metrics = (
-            text_sample.count('revenue') > 5
-            and ('cost of revenue' in text_sample or 'cost of sales' in text_sample)
+        has_operating_metrics = text_sample.count("revenue") > 5 and (
+            "cost of revenue" in text_sample or "cost of sales" in text_sample
         )
 
         # If we see combination language + real financials/operations, likely post-combination
-        if has_combination_language and (has_financial_statements or has_operating_metrics):
+        if has_combination_language and (
+            has_financial_statements or has_operating_metrics
+        ):
             logger.debug(
                 f"Probable post-combination detected via filing content: {company_name}"
             )
-            return True, 'content_analysis'
+            return True, "content_analysis"
 
     # Default: Not post-combination
-    return False, 'pre_combination'
+    return False, "pre_combination"
 
 
 def classify_investment_vehicle(
@@ -269,35 +272,35 @@ def classify_investment_vehicle(
         - AND name contains: ETF, REIT, or "Trust" as standalone word
     """
     # SIC code check
-    has_investment_sic = sic_code in ['6722', '6726']
+    has_investment_sic = sic_code in ["6722", "6726"]
 
     if not has_investment_sic:
-        return False, 'no_matching_sic'
+        return False, "no_matching_sic"
 
     # Name pattern check (require BOTH SIC and name pattern)
     name_lower = company_name.lower()
 
     # Check for ETF
-    if 'etf' in name_lower:
+    if "etf" in name_lower:
         logger.debug(f"Investment vehicle detected (ETF): {company_name}")
-        return True, 'sic_and_name_etf'
+        return True, "sic_and_name_etf"
 
     # Check for REIT
-    if 'reit' in name_lower:
+    if "reit" in name_lower:
         logger.debug(f"Investment vehicle detected (REIT): {company_name}")
-        return True, 'sic_and_name_reit'
+        return True, "sic_and_name_reit"
 
     # Check for "Trust" as standalone word (not part of "TrustBank" etc.)
     # Match "Trust" at word boundaries or end of string
-    if re.search(r'\bTrust\b', company_name, re.IGNORECASE):
+    if re.search(r"\bTrust\b", company_name, re.IGNORECASE):
         logger.debug(f"Investment vehicle detected (Trust): {company_name}")
-        return True, 'sic_and_name_trust'
+        return True, "sic_and_name_trust"
 
     # Has investment SIC but no confirming name pattern
     logger.debug(
         f"Has investment SIC ({sic_code}) but no matching name pattern: {company_name}"
     )
-    return False, 'sic_only_no_name_match'
+    return False, "sic_only_no_name_match"
 
 
 def classify_resource_extraction(
@@ -327,33 +330,42 @@ def classify_resource_extraction(
           Coal, Drilling, Rare Earth
     """
     # SIC code check
-    has_extraction_sic = sic_code in ['1311', '1381', '1040', '1220']
+    has_extraction_sic = sic_code in ["1311", "1381", "1040", "1220"]
 
     if not has_extraction_sic:
-        return False, 'no_matching_sic'
+        return False, "no_matching_sic"
 
     # Name pattern check (require BOTH SIC and name pattern)
     name_lower = company_name.lower()
 
     # Oil & Gas keywords
     oil_gas_keywords = [
-        'oil', 'gas', 'petroleum', 'drilling', 'energy partners',
-        'offshore drilling', 'onshore drilling',
+        "oil",
+        "gas",
+        "petroleum",
+        "drilling",
+        "energy partners",
+        "offshore drilling",
+        "onshore drilling",
     ]
 
     # Mining keywords
     mining_keywords = [
-        'mining', 'gold', 'silver', 'copper', 'coal',
-        'mineral', 'rare earth', 'minerals',
+        "mining",
+        "gold",
+        "silver",
+        "copper",
+        "coal",
+        "mineral",
+        "rare earth",
+        "minerals",
     ]
 
     all_keywords = oil_gas_keywords + mining_keywords
 
     for keyword in all_keywords:
         if keyword in name_lower:
-            logger.debug(
-                f"Resource extraction detected ({keyword}): {company_name}"
-            )
+            logger.debug(f"Resource extraction detected ({keyword}): {company_name}")
             return True, f'sic_and_name_{keyword.replace(" ", "_")}'
 
     # Has extraction SIC but no confirming name pattern
@@ -361,7 +373,403 @@ def classify_resource_extraction(
         f"Has resource extraction SIC ({sic_code}) but no matching name pattern: "
         f"{company_name}"
     )
-    return False, 'sic_only_no_name_match'
+    return False, "sic_only_no_name_match"
+
+
+def classify_saas_software(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is SaaS or enterprise software.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_saas_software: bool, method: str)
+
+    Detection Strategy:
+        - Primary: SIC 7372, 7371, 7370, 7373, 7374 (software services)
+        - Secondary: Name contains SaaS/software/cloud AND SIC is tech-related (73xx or 74xx)
+        - Tertiary: Filing text mentions "software as a service" with subscription indicators
+
+    Note: Removed broad keywords like "technologies", "ai", "data" to prevent false positives
+    from manufacturing companies. Name-based matching now requires SIC validation.
+    """
+    # High-yield SaaS SIC codes from Phase 1 analysis
+    saas_sic_codes = ["7372", "7371", "7370", "7373", "7374"]
+
+    # Primary detection: Exact SIC match
+    if sic_code in saas_sic_codes:
+        logger.debug(f"SaaS/Software detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Secondary detection: Name-based ONLY if SIC is tech-related
+    # This prevents false positives from manufacturing companies with "Technologies" in name
+    if sic_code and sic_code.startswith('7'):  # Services sector (73xx, 74xx, etc.)
+        name_lower = company_name.lower()
+        # Use stricter keywords - removed broad terms like "technologies", "ai", "data"
+        strict_saas_keywords = ["saas", "software", "cloud"]
+
+        for keyword in strict_saas_keywords:
+            if keyword in name_lower:
+                logger.debug(f"SaaS/Software detected via validated name ({keyword}): {company_name}")
+                return True, f"name_{keyword}_sic_validated"
+
+    # Tertiary detection: Filing text (if provided)
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("software as a service" in text_sample or "saas" in text_sample)
+            and ("subscription" in text_sample or "recurring revenue" in text_sample)
+        ):
+            logger.debug(f"SaaS detected via filing text: {company_name}")
+            return True, "filing_text_saas"
+
+    return False, "no_match"
+
+
+def classify_ecommerce_marketplace(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is e-commerce or marketplace business.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_ecommerce: bool, method: str)
+
+    Detection Strategy:
+        - SIC 5961, 5940, 5900 (e-commerce retail)
+        - OR name/text contains marketplace, e-commerce, retail platform indicators
+    """
+    # E-commerce SIC codes
+    ecommerce_sic_codes = ["5961", "5940", "5900"]
+
+    if sic_code in ecommerce_sic_codes:
+        logger.debug(f"E-commerce detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Name-based detection
+    name_lower = company_name.lower()
+    ecommerce_keywords = [
+        "marketplace", "commerce", "retail", "shop", "store",
+        "merchant", "seller", "buyer", "trading"
+    ]
+
+    for keyword in ecommerce_keywords:
+        if keyword in name_lower:
+            logger.debug(f"E-commerce detected via name ({keyword}): {company_name}")
+            return True, f"name_{keyword}"
+
+    # Filing text detection
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("gross merchandise value" in text_sample or "gmv" in text_sample)
+            or ("marketplace" in text_sample and "commission" in text_sample)
+            or ("take rate" in text_sample)
+        ):
+            logger.debug(f"E-commerce/Marketplace detected via filing text: {company_name}")
+            return True, "filing_text_marketplace"
+
+    return False, "no_match"
+
+
+def classify_fintech_crypto(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is fintech or cryptocurrency platform.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_fintech: bool, method: str)
+
+    Detection Strategy:
+        - Primary: SIC 6199 (financial services) with business model validation
+        - Secondary: Name contains fintech/crypto/blockchain AND SIC is finance-related (6xxx)
+        - Excludes: Investment vehicles (ETFs, funds), crypto hardware manufacturers
+
+    Note: Added exclusion logic to prevent false positives from ETFs and hardware manufacturers.
+    Similar to SaaS fix, name-based matching now requires SIC validation.
+    """
+    name_lower = company_name.lower()
+
+    # EXCLUSION 1: Investment vehicles (ETFs, funds, trusts)
+    # These report AUM/NAV, not customer metrics
+    investment_vehicle_keywords = ["etf", "fund", "trust"]
+    investment_vehicle_sics = ["6221", "6726", "6722"]  # Investment advisors, unit trusts, etc.
+
+    for keyword in investment_vehicle_keywords:
+        if keyword in name_lower:
+            # ETF, fund, trust → exclude even with finance SICs
+            # Exception: "funding" (as in crowdfunding, funding platform)
+            if "funding" not in name_lower:
+                logger.debug(f"Excluded investment vehicle: {company_name}")
+                return False, "excluded_investment_vehicle"
+
+    # EXCLUSION 2: Crypto hardware manufacturers
+    # Similar to manufacturing companies in SaaS (e.g., Canaan Inc. makes mining equipment)
+    # Known hardware manufacturers or companies with "mining" + "canaan" in name
+    if "canaan" in name_lower or ("mining" in name_lower and sic_code and not sic_code.startswith('6')):
+        logger.debug(f"Excluded crypto hardware manufacturer: {company_name}")
+        return False, "excluded_hardware"
+
+    # EXCLUSION 3: Crypto hardware from filing text (if available)
+    hardware_keywords = ["mining equipment", "asic manufacturer", "hardware manufacturer"]
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if any(kw in text_sample for kw in hardware_keywords):
+            logger.debug(f"Excluded crypto hardware manufacturer: {company_name}")
+            return False, "excluded_hardware_filing"
+
+    # Primary detection: SIC 6199 (Finance Services, NEC)
+    fintech_sic_codes = ["6199"]
+
+    if sic_code in fintech_sic_codes:
+        logger.debug(f"Fintech detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Secondary detection: Name-based ONLY if SIC is finance-related
+    # This prevents false positives from non-financial companies
+    if sic_code and sic_code.startswith('6'):  # Finance, insurance, real estate (6xxx)
+        # Use stricter keywords - focus on platform/service indicators
+        fintech_keywords = [
+            "fintech", "financial technology", "payment", "wallet",
+            "exchange", "blockchain", "crypto"
+        ]
+
+        for keyword in fintech_keywords:
+            if keyword in name_lower:
+                logger.debug(f"Fintech/Crypto detected via validated name ({keyword}): {company_name}")
+                return True, f"name_{keyword}_sic_validated"
+
+    # Tertiary detection: Filing text (if provided)
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("cryptocurrency" in text_sample or "blockchain" in text_sample)
+            and ("payment processing" in text_sample or "digital wallet" in text_sample)
+        ):
+            logger.debug(f"Fintech/Crypto detected via filing text: {company_name}")
+            return True, "filing_text_fintech"
+
+    return False, "no_match"
+
+
+def classify_healthcare_tech(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is healthcare technology.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_healthtech: bool, method: str)
+
+    Detection Strategy:
+        - SIC 8071, 8090, 8000 (healthcare services)
+        - OR name/text contains health tech, telemedicine, digital health indicators
+    """
+    # Healthcare tech SIC codes
+    healthtech_sic_codes = ["8071", "8090", "8000"]
+
+    if sic_code in healthtech_sic_codes:
+        logger.debug(f"Healthcare Tech detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Name-based detection
+    name_lower = company_name.lower()
+    healthtech_keywords = [
+        "health", "medical", "telehealth", "telemedicine",
+        "healthcare", "patient", "clinical", "therapeutics"
+    ]
+
+    for keyword in healthtech_keywords:
+        if keyword in name_lower:
+            # Check if it's technology-focused (not pharma/biotech)
+            if any(tech in name_lower for tech in ["tech", "digital", "platform", "software", "data"]):
+                logger.debug(f"Healthcare Tech detected via name ({keyword}): {company_name}")
+                return True, f"name_{keyword}_tech"
+
+    # Filing text detection
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("digital health" in text_sample or "health technology" in text_sample)
+            or ("telemedicine" in text_sample or "telehealth" in text_sample)
+            or ("patient platform" in text_sample)
+        ):
+            logger.debug(f"Healthcare Tech detected via filing text: {company_name}")
+            return True, "filing_text_healthtech"
+
+    return False, "no_match"
+
+
+def classify_media_subscription(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is media or subscription services.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_media: bool, method: str)
+
+    Detection Strategy:
+        - SIC 7372, 7380 (subscription services, entertainment)
+        - OR name/text contains streaming, media, content, subscription indicators
+    """
+    # Media/subscription SIC codes
+    media_sic_codes = ["7380", "4899"]  # Business services, communications
+
+    if sic_code in media_sic_codes:
+        logger.debug(f"Media/Subscription detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Name-based detection
+    name_lower = company_name.lower()
+    media_keywords = [
+        "media", "streaming", "content", "entertainment",
+        "publishing", "video", "music", "podcast"
+    ]
+
+    for keyword in media_keywords:
+        if keyword in name_lower:
+            logger.debug(f"Media/Subscription detected via name ({keyword}): {company_name}")
+            return True, f"name_{keyword}"
+
+    # Filing text detection
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("streaming" in text_sample and "subscribers" in text_sample)
+            or ("content platform" in text_sample)
+            or ("subscription revenue" in text_sample and "viewers" in text_sample)
+        ):
+            logger.debug(f"Media/Subscription detected via filing text: {company_name}")
+            return True, "filing_text_media"
+
+    return False, "no_match"
+
+
+def classify_telecom(
+    company_name: str,
+    sic_code: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is telecommunications.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+
+    Returns:
+        Tuple of (is_telecom: bool, method: str)
+
+    Detection Strategy:
+        - SIC 4813, 4899, 4833 (telecom services)
+        - OR name contains wireless, telecom, communications indicators
+    """
+    # Telecom SIC codes
+    telecom_sic_codes = ["4813", "4899", "4833"]
+
+    if sic_code in telecom_sic_codes:
+        logger.debug(f"Telecom detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Name-based detection
+    name_lower = company_name.lower()
+    telecom_keywords = [
+        "telecom", "wireless", "communications", "network",
+        "broadband", "cellular", "mobile"
+    ]
+
+    for keyword in telecom_keywords:
+        if keyword in name_lower:
+            logger.debug(f"Telecom detected via name ({keyword}): {company_name}")
+            return True, f"name_{keyword}"
+
+    return False, "no_match"
+
+
+def classify_platform_network(
+    company_name: str,
+    sic_code: Optional[str] = None,
+    filing_text: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Classify whether a company is a platform or network business.
+
+    Args:
+        company_name: Company/issuer name
+        sic_code: SEC SIC code (4-digit string)
+        filing_text: Optional filing text for enhanced detection
+
+    Returns:
+        Tuple of (is_platform: bool, method: str)
+
+    Detection Strategy:
+        - SIC 7389, 7380 (business services, platforms)
+        - OR name/text contains platform, network, marketplace with network effects
+    """
+    # Platform SIC codes
+    platform_sic_codes = ["7389", "7380"]
+
+    if sic_code in platform_sic_codes:
+        logger.debug(f"Platform detected via SIC {sic_code}: {company_name}")
+        return True, f"sic_{sic_code}"
+
+    # Name-based detection
+    name_lower = company_name.lower()
+    platform_keywords = ["platform", "network", "connect", "marketplace"]
+
+    for keyword in platform_keywords:
+        if keyword in name_lower:
+            logger.debug(f"Platform detected via name ({keyword}): {company_name}")
+            return True, f"name_{keyword}"
+
+    # Filing text detection for network effects
+    if filing_text:
+        text_sample = filing_text[:10000].lower()
+        if (
+            ("network effects" in text_sample)
+            or ("two-sided market" in text_sample or "multi-sided platform" in text_sample)
+            or ("platform business" in text_sample)
+        ):
+            logger.debug(f"Platform/Network detected via filing text: {company_name}")
+            return True, "filing_text_platform"
+
+    return False, "no_match"
 
 
 def is_in_scope_phase1(
@@ -413,7 +821,7 @@ def is_in_scope_phase1(
           production volumes, not customer acquisition/retention metrics
     """
     # Must be S-1 or F-1 (including amendments)
-    if form_type not in ['S-1', 'S-1/A', 'F-1', 'F-1/A']:
+    if form_type not in ["S-1", "S-1/A", "F-1", "F-1/A"]:
         return False
 
     # Must be first-time issuer OR post-combination SPAC
@@ -433,7 +841,7 @@ def is_in_scope_phase1(
         return False
 
     # Exclude secondary-only offerings
-    if offering_type == 'secondary':
+    if offering_type == "secondary":
         return False
 
     # Include primary and mixed offerings
