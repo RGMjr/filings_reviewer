@@ -1,17 +1,57 @@
-# Core dependencies
+# SEC Filings Reviewer - Python Dependencies
+# ==========================================
+#
+# Install with: pip install -r requirements.txt
+#
+# For development: pip install -r requirements.txt && pip install -e .
+
+# -----------------------------------------------------------------------------
+# Core Runtime Dependencies
+# -----------------------------------------------------------------------------
+
+# PostgreSQL adapter (psycopg3) - Database connectivity for storing filings,
+# companies, metrics, and extraction results. Uses binary package for faster install.
 psycopg[binary]>=3.1.0
+
+# Environment variable management - Loads DATABASE_URL, API keys from .env files
 python-dotenv>=1.0.0
+
+# HTTP client - Used for SEC EDGAR API requests (rate-limited, polite access)
 requests>=2.31.0
+
+# HTML parsing - Extracts text and tables from SEC filing HTML documents
 beautifulsoup4>=4.12.0
 
+# Optional: Faster HTML/XML parser for BeautifulSoup (fallback: html.parser)
+# Uncomment if processing speed becomes a bottleneck
+# lxml>=4.9.0
+
+# -----------------------------------------------------------------------------
 # LLM Integration
+# -----------------------------------------------------------------------------
+
+# OpenAI API - For metric extraction and quality scoring
 openai>=1.0.0
+
+# Token counting - For cost tracking and context management
 tiktoken>=0.5.0
 
-# Testing
+# -----------------------------------------------------------------------------
+# Testing Dependencies
+# -----------------------------------------------------------------------------
+
+# Test framework - Unit and integration tests
 pytest>=7.4.0
+
+# Coverage reporting - Tracks code coverage (target: 75%+ overall)
 pytest-cov>=4.1.0
 
-# Development
+# -----------------------------------------------------------------------------
+# Development Dependencies
+# -----------------------------------------------------------------------------
+
+# Code formatter - Enforces consistent Python style
 black>=23.0.0
+
+# Linter - Fast Python linter for code quality
 ruff>=0.1.0

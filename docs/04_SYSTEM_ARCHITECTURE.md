@@ -112,6 +112,74 @@ At a high level, the system includes the following components/services:
 
 Each component is described in more detail below.
 
+### 3.3 Architecture diagram
+
+```mermaid
+flowchart TB
+    subgraph Layer1["Layer 1: Ingestion"]
+        SEC[(SEC EDGAR)]
+        UB[Universe Builder]
+        FF[Filing Fetcher]
+        SEC --> UB
+        UB --> FF
+    end
+
+    subgraph Layer2["Layer 2: Structuring"]
+        FN[Filing Normalizer]
+        SEG[Segmenter]
+        FF --> FN --> SEG
+    end
+
+    subgraph Layer3["Layer 3: Classification"]
+        CSC[Candidate Segment Classifier]
+        SEG --> CSC
+    end
+
+    subgraph Layer4["Layer 4: Extraction"]
+        TE[Table Extractor]
+        TME[Text Metric Extractor]
+        DE[Definition Extractor]
+        CSC --> TE
+        CSC --> TME
+        CSC --> DE
+    end
+
+    subgraph Layer5["Layer 5: Quality"]
+        QA[QA Engine]
+        TE --> QA
+        TME --> QA
+        DE --> QA
+    end
+
+    subgraph Layer6["Layer 6: Storage"]
+        LDR[Loader]
+        DB[(PostgreSQL)]
+        QA --> LDR --> DB
+    end
+
+    subgraph Orchestration["Cross-cutting"]
+        ORC[Orchestrator]
+        TEL[Telemetry & Cost Tracker]
+    end
+
+    ORC -.-> Layer1
+    ORC -.-> Layer2
+    ORC -.-> Layer3
+    ORC -.-> Layer4
+    ORC -.-> Layer5
+    ORC -.-> Layer6
+    TEL -.-> ORC
+```
+
+**Data flow summary:**
+1. **SEC EDGAR → Universe Builder**: Discover S-1/F-1 filings, classify (SPAC, first-time issuer)
+2. **Filing Fetcher**: Download and cache HTML documents
+3. **Normalizer → Segmenter**: Parse HTML into `source_segments` (paragraphs, tables)
+4. **Classifier**: Tag segments with metric candidates and flags
+5. **Extractors**: Pull values, definitions, methodologies from segments
+6. **QA Engine**: Score disclosure quality (0-3 scale)
+7. **Loader → PostgreSQL**: Persist all results with full provenance
+
 ---
 
 ## 4. Component responsibilities and interfaces
