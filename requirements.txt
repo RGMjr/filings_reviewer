@@ -55,3 +55,6 @@ black>=23.0.0
 
 # Linter - Fast Python linter for code quality
 ruff>=0.1.0
+
+# Pre-commit hooks - Runs linters/formatters before commits
+pre-commit>=3.6.0
