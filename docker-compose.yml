@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15
+    container_name: filings-postgres
+    environment:
+      POSTGRES_DB: filings_analysis          # main dev database
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5433:5432"                          # host:container
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro # auto-run SQL on first startup
+      - pgdata:/var/lib/postgresql/data      # persistent data
+
+volumes:
+  pgdata:
