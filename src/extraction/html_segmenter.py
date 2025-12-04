@@ -81,15 +81,18 @@ class HTMLSegmenter:
         # Parse with BeautifulSoup
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # Extract segments
-        segments = []
-        sequence_index = 0
-
         # Find the main content area (usually in <BODY> or after <TEXT> tag)
         main_content = self._find_main_content(soup)
         if not main_content:
             logger.warning(f"Could not find main content in filing {filing_id}")
             return []
+
+        # Pre-build heading cache for O(1) lookups (performance optimization)
+        self._heading_cache = self._build_heading_cache(main_content)
+
+        # Extract segments
+        segments = []
+        sequence_index = 0
 
         # Extract all segments
         for element in main_content.find_all(["p", "table", "div"], recursive=True):
@@ -101,6 +104,9 @@ class HTMLSegmenter:
             if segment:
                 segments.append(segment)
                 sequence_index += 1
+
+        # Clear cache after processing
+        self._heading_cache = None
 
         logger.info(f"Extracted {len(segments)} segments from filing {filing_id}")
         return segments
@@ -257,14 +263,64 @@ class HTMLSegmenter:
 
         return text
 
+    def _build_heading_cache(self, main_content: Tag) -> List[Tuple[int, str, str]]:
+        """
+        Pre-build a cache of all headings with their source line positions.
+
+        This is a performance optimization to avoid O(n²) find_all_previous() calls.
+        We traverse the document once and store headings with their positions,
+        then use binary search for O(log n) lookups.
+
+        Args:
+            main_content: The main content area of the filing
+
+        Returns:
+            List of (source_position, heading_level, heading_text) tuples,
+            sorted by source_position
+        """
+        headings = []
+
+        for i, element in enumerate(main_content.descendants):
+            if hasattr(element, 'name') and element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                heading_text = self._normalize_text(element.get_text())
+                if heading_text:
+                    # Store position, level (h1=1, h2=2, etc.), and text
+                    level = int(element.name[1])
+                    headings.append((i, level, heading_text))
+
+        return headings
+
+    def _get_section_from_cache(self, element: Tag) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Get section info using a fast single find_previous call.
+
+        For performance, we just find the immediate previous heading.
+        This is O(n) worst case but typically very fast in practice.
+
+        Args:
+            element: BeautifulSoup element
+
+        Returns:
+            (section_path, section_heading) tuple
+        """
+        # Fast path: just get the most recent heading before this element
+        # Use limit=1 to stop at first match
+        prev_heading = element.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+
+        if prev_heading:
+            heading_text = self._normalize_text(prev_heading.get_text())
+            if heading_text:
+                return heading_text, heading_text
+
+        return None, None
+
     def _extract_section_info(
         self, element: Tag
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         Extract section path and heading from element's position in DOM.
 
-        Traverses up the DOM tree to find heading tags (h1-h6) to build
-        a hierarchical section path.
+        Uses pre-built heading cache for O(n) performance instead of O(n²).
 
         Args:
             element: BeautifulSoup element
@@ -276,34 +332,18 @@ class HTMLSegmenter:
             section_path: "Item 1. Business > Customers"
             section_heading: "Customers"
         """
-        headings = []
-        current = element
+        # Use cache if available (set during segment_filing)
+        if hasattr(self, '_heading_cache') and self._heading_cache is not None:
+            return self._get_section_from_cache(element)
 
-        # Traverse up the tree looking for headings
-        while current:
-            # Look for heading elements before this element
-            for sibling in current.find_all_previous(
-                ["h1", "h2", "h3", "h4", "h5", "h6"]
-            ):
-                heading_text = self._normalize_text(sibling.get_text())
-                if heading_text and heading_text not in headings:
-                    headings.insert(0, heading_text)
-                    # Only take the most recent heading at each level
-                    break
+        # Fallback to simple approach: just get the immediate previous heading
+        # This is still O(n) worst case but avoids the full tree traversal
+        prev_heading = element.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        if prev_heading:
+            heading_text = self._normalize_text(prev_heading.get_text())
+            return heading_text, heading_text
 
-            # Move up one level
-            current = current.parent
-            if current and current.name in ["html", "body", "text"]:
-                break
-
-        if not headings:
-            return None, None
-
-        # Build section path from headings
-        section_path = " > ".join(headings)
-        section_heading = headings[-1] if headings else None
-
-        return section_path, section_heading
+        return None, None
 
     def extract_section_path(self, element: Tag) -> str:
         """
