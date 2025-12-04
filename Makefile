@@ -2,7 +2,7 @@
 #
 # Common commands for development, testing, and documentation maintenance.
 
-.PHONY: help install test coverage lint format docs-check docs-update hooks-install clean
+.PHONY: help install test coverage lint format docs-check docs-update hooks-install clean db-up db-down db-reset db-shell session-check
 
 # Default target
 help:
@@ -17,6 +17,13 @@ help:
 	@echo "  make coverage       Run tests with coverage report"
 	@echo "  make lint           Run linter (ruff)"
 	@echo "  make format         Format code (black)"
+	@echo "  make session-check  Check development environment status"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-up          Start PostgreSQL container"
+	@echo "  make db-down        Stop PostgreSQL container"
+	@echo "  make db-reset       Reset database (destroy + recreate)"
+	@echo "  make db-shell       Open psql shell to dev database"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-check     Check if docs are in sync with code"
@@ -87,3 +94,31 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@echo "✅ Cleaned build artifacts"
+
+# -----------------------------------------------------------------------------
+# Database (Docker)
+# -----------------------------------------------------------------------------
+
+db-up:
+	docker compose up -d
+	@echo "✅ PostgreSQL starting on localhost:5433"
+	@echo "   Connection: postgresql://dev:dev@localhost:5433/filings_analysis"
+
+db-down:
+	docker compose down
+	@echo "✅ PostgreSQL stopped"
+
+db-reset:
+	docker compose down -v
+	docker compose up -d
+	@echo "✅ Database reset complete. Fresh schema applied."
+
+db-shell:
+	docker compose exec db psql -U dev -d filings_analysis
+
+# -----------------------------------------------------------------------------
+# Session Check
+# -----------------------------------------------------------------------------
+
+session-check:
+	@python scripts/session_check.py
