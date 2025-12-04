@@ -14,10 +14,10 @@ ruff check . && black .                 # lint + format
 Use `.env` (see README) to point `DATABASE_URL` or `TEST_DATABASE_URL` at a disposable Postgres instance before running real SEC pulls.
 
 ## Coding Style & Naming Conventions
-Use Python 3.11 features (type hints, dataclasses). Keep modules small and prefer functional helpers in `src/universe/classifiers.py`. Follow Black’s defaults (88 chars, double quotes) and run Ruff before committing; fix warnings rather than silencing them. Name async tasks, SQL files, and scripts with snake_case, e.g., `scripts/setup_test_db.py`. When adding markers, register them in `pytest.ini`.
+Use Python 3.11 features (type hints, dataclasses). Keep modules small and prefer functional helpers in `src/universe/classifiers.py`. Follow Black's defaults (88 chars, double quotes) and run Ruff before committing; fix warnings rather than silencing them. Name async tasks, SQL files, and scripts with snake_case, e.g., `scripts/setup_test_db.py`. When adding markers, register them in `pyproject.toml` under `[tool.pytest.ini_options]`.
 
 ## Testing Guidelines
-Pytest is configured in `pytest.ini` with strict markers and coverage gates (`--cov=src`). Keep unit tests fast and deterministic; long-running or DB-backed scenarios belong under `tests/integration` and should use the `integration` marker plus `TEST_DATABASE_URL`. Name tests `test_<feature>_<condition>` to document behavior. Generate coverage locally (`htmlcov/index.html`) before opening a PR and include regression fixtures when classifiers change.
+Pytest is configured in `pyproject.toml` with strict markers and coverage gates (`--cov=src`). Keep unit tests fast and deterministic; long-running or DB-backed scenarios belong under `tests/integration` and should use the `integration` marker plus `TEST_DATABASE_URL`. Name tests `test_<feature>_<condition>` to document behavior. Generate coverage locally (`htmlcov/index.html`) before opening a PR and include regression fixtures when classifiers change.
 
 ## Commit & Pull Request Guidelines
 Commits are squashed regularly, so keep messages imperative and scoped (“Add SPAC keyword audit”). Reference Jira/GitHub issues in the body if applicable. PRs must summarize scope, note schema/ETL impacts, and confirm `pytest`, `ruff`, and `black` output. Attach screenshots or log excerpts when you change extraction rules, and mention any manual data cleanup steps in the PR checklist.

@@ -347,7 +347,7 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 ## Testing Standards
 
 ### Coverage Requirements
-- **Minimum:** 75% (enforced by pytest.ini)
+- **Minimum:** 75% (enforced by pyproject.toml)
 - **Target:** 90%+ for new modules
 - **Current:** 76% overall
 
