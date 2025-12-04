@@ -6,6 +6,25 @@ Integration tests validate UniverseBuilder with a real PostgreSQL database and f
 
 ### 1. PostgreSQL Database
 
+**Option A: Docker (Recommended)**
+
+The project includes `docker-compose.yml` for easy PostgreSQL setup:
+
+```bash
+# Start PostgreSQL container
+docker compose up -d
+
+# Set environment variable for tests
+export TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
+
+# Run integration tests
+pytest tests/integration/ -v
+```
+
+The test database is automatically created and schema applied on first startup.
+
+**Option B: Local PostgreSQL Installation**
+
 Install PostgreSQL if not already installed:
 
 **macOS (Homebrew):**
@@ -23,9 +42,9 @@ sudo systemctl start postgresql
 **Windows:**
 Download from https://www.postgresql.org/download/windows/
 
-### 2. Test Database Setup
+### 2. Test Database Setup (Local Installation Only)
 
-Run the setup script:
+If using local PostgreSQL (not Docker), run the setup script:
 
 ```bash
 ./scripts/setup_test_db.sh

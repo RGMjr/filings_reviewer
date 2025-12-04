@@ -120,6 +120,36 @@ DATABASE_URL=postgresql://user:password@localhost/filings_analysis
 SEC_USER_AGENT="YourName contact@example.com"
 ```
 
+## Docker Setup
+
+The project includes `docker-compose.yml` for running PostgreSQL locally:
+
+```bash
+# Start PostgreSQL container (port 5433)
+docker compose up -d
+
+# Connection details:
+# - Host: localhost
+# - Port: 5433
+# - User: dev
+# - Password: dev
+# - Database: filings_analysis
+
+# For Docker-based development:
+DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis
+
+# For integration tests:
+TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
+
+# Stop the container
+docker compose down
+
+# Stop and remove data volume
+docker compose down -v
+```
+
+The SQL files in `sql/` are automatically applied when the container first starts.
+
 ## SEC EDGAR Integration
 
 **Rate Limiting**: The `SECClient` class enforces 100ms minimum between requests per SEC guidelines.
