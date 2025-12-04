@@ -126,28 +126,30 @@ Coverage report will be in `htmlcov/index.html`.
 
 ### Integration Tests
 
-Integration tests require PostgreSQL. See [Integration Test README](tests/integration/README.md) for setup.
+Integration tests require PostgreSQL. You can run them against the Dockerized Postgres instance defined in `docker-compose.yml`.
+See [Integration Test README](tests/integration/README.md) for setup.
 
-**Setup:**
+**Setup (Docker-based):**
 ```bash
-# Install PostgreSQL (macOS)
-brew install postgresql@16
-brew services start postgresql@16
+# 1) Start Postgres via Docker
+docker compose up -d
 
-# Create test database
-./scripts/setup_test_db.sh
+# 2) Point tests at the Docker test database
+#    (user: dev, password: dev, port: 5433)
+export TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
 
-# Set environment variable
-export TEST_DATABASE_URL=postgresql://localhost/filings_analysis_test
-```
-
-**Run:**
-```bash
-# All integration tests
+# 3) Run integration tests
 pytest tests/integration/ -v
 
 # Specific integration test
 pytest tests/integration/universe/test_universe_builder_integration.py -v
+
+Notes:
+- The test database `filings_analysis_test` is created and initialized automatically
+  from the SQL files in the `sql/` directory when the Docker container is first started.
+- You do not need to install PostgreSQL locally with Homebrew or run `scripts/setup_test_db.sh`
+  when using the Docker setup.
+- Integration tests will still be skipped if `TEST_DATABASE_URL` is not set or the database is unreachable.
 ```
 
 ### Run All Tests
