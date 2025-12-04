@@ -47,3 +47,7 @@ Archive/
 
 # Claude setup
 .claude.json
+.claude/settings.local.json
+
+# But allow project-level Claude settings (MCP servers, hooks)
+!.claude/settings.json
