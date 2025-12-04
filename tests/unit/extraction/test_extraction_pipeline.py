@@ -160,6 +160,7 @@ def test_process_filing_successful(
             sequence_index=0,
             raw_text="Test segment",
             candidate_metric_ids=["cm_daily_active_users"],
+            classifier_confidence=0.8,  # Must be >= 0.5 to pass filtering
         )
     ]
 
