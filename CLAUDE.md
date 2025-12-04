@@ -162,11 +162,12 @@ The SQL files in `sql/` are automatically applied when the container first start
 
 ## Testing Standards
 
-- **Minimum coverage**: 75% (enforced in pytest.ini)
+- **Minimum coverage**: 75% (enforced in pyproject.toml)
 - **Current coverage**: 68% overall (323 tests passing)
   - Core extraction modules (excluding LLM): ~82% coverage
   - LLM modules: 0% (196 statements untested - manual testing only)
 - **Test structure**: `tests/unit/` for fast isolated tests, `tests/integration/` for database tests
+- **Configuration**: All pytest, coverage, black, and ruff settings in `pyproject.toml`
 
 **Coverage Status:**
 - Target of 75% not currently met due to untested LLM modules

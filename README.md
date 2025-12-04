@@ -203,7 +203,7 @@ filings_reviewer/
 │   └── build_universe_example.py
 │
 ├── requirements.txt              # Python dependencies
-├── pytest.ini                    # Pytest configuration
+├── pyproject.toml                # Project config (pytest, coverage, black, ruff)
 └── README.md                     # This file
 ```
 
