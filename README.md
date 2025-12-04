@@ -17,9 +17,13 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | 1 | UniverseBuilder | ✅ Complete (7,304 in-scope filings identified) |
 | 2a | FilingFetcher | ✅ Complete |
 | 2b | Extraction Pipeline | ✅ Complete (rule-based) |
-| 3 | LLM Integration | ✅ Complete (Phase 1B: 95.7% CMASB coverage) |
+| 3 | LLM Integration | ✅ Infrastructure Complete (GPT-4o-mini integrated) |
+| 4 | Production Extraction | 🟡 In Progress (CMASB Phase 1B deployed) |
 
-**Test Coverage:** 86% overall (target: 75%)
+**Test Coverage:** 68% overall (323 tests passing)
+- Core modules: ~82% (target met)
+- LLM modules: 0% (manual testing only)
+- Target: 75% minimum (below due to untested LLM code)
 
 For detailed progress tracking and sprint planning, see **[DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)**.
 

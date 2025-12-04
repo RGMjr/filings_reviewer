@@ -1,29 +1,44 @@
 # Development Plan - SEC Filings Reviewer
-**Last Updated:** 2025-11-23
-**Current Phase:** Phase 2a - Foundation Hardening
+**Last Updated:** 2025-12-03
+**Current Phase:** Phase 4 - Production Extraction (CMASB Phase 1B)
 
 ---
 
 ## Executive Summary
 
-This document tracks the development roadmap for the SEC Filings Reviewer project. The project is currently transitioning from Phase 1 (UniverseBuilder - complete) to Phase 2 (Extraction Pipeline - 40% complete).
+This document tracks the development roadmap for the SEC Filings Reviewer project. The core extraction pipeline is complete and deployed for production use. Current focus is on CMASB metric extraction and validation.
 
 **Current Status:**
 - ✅ Phase 1: UniverseBuilder (7,304 filings identified) - PRODUCTION READY
-- 🟡 Phase 2: Extraction pipeline - 70% designed, 40% implemented
-- 📊 Overall Test Coverage: 76% (target: 75% minimum)
+- ✅ Phase 2: Extraction pipeline - COMPLETE (rule-based + LLM hybrid)
+- ✅ Phase 3: LLM Integration - Infrastructure COMPLETE (GPT-4o-mini)
+- 🟡 Phase 4: Production Extraction - IN PROGRESS (CMASB Phase 1B deployed)
+- 📊 Overall Test Coverage: 68% (323 tests passing, target: 75% minimum)
+  - Core modules: ~82% (exceeds target)
+  - LLM modules: 0% (manual testing only, 196 untested statements)
 
 ---
 
-## Immediate Priorities (Next 7 Days)
+## Immediate Priorities (Current Week: Dec 2-8, 2025)
 
-### ✅ **COMPLETED: Security & .env Template**
-**Status:** DONE (2025-11-19)
-- [x] Created `.env.template` with placeholder values
-- [x] Verified `.env` is in `.gitignore`
-- [x] Confirmed `.env` never committed to git history
-- [x] Repository is private (no public exposure)
-- [x] **Decision:** Skip API key rotation (pragmatic approach - no actual exposure)
+### 🎯 **CURRENT FOCUS: CMASB Phase 1B Production Extraction**
+**Status:** IN PROGRESS
+- [x] Phase 1A completed: Enhanced CMASB metric patterns (+27 keywords)
+- [x] Priority weighting system implemented (+0.2 boost for CMASB core metrics)
+- [x] LLM prompts enhanced with CMASB guidance
+- [ ] **NEXT:** Extract and validate 5-10 high-quality companies
+- [ ] Measure CMASB coverage improvement (target: 30% → 60%)
+- [ ] Validate new customer acquisition metric detection
+
+**Target Companies for Validation:**
+1. Academy Sports & Outdoors (E-commerce)
+2. Savers Value Village (E-commerce)
+3. Sea Ltd (Platform)
+4. agilon health (HealthTech)
+5. Coinbase Global (Fintech)
+
+### ✅ **COMPLETED: Core Development (Nov 2025)**
+**Status:** ALL DONE
 
 ### ✅ **COMPLETED: value_extractor.py Testing**
 **Status:** DONE (2025-11-19)
@@ -391,10 +406,13 @@ tests/
 - [x] **Day 7:** Documentation updates + code quality checks ✅
 
 ### Metrics to Track
-- Total tests: 133 → 181 (48 new tests added) ✅
-- Overall coverage: 76% (verified 2025-11-24) ✅ Target: 80%+
-- Key modules at 100%: filing_fetcher, quality_scorer
-- Key modules at 97-98%: value_extractor, classifiers, universe_builder
+- Total tests: 323 tests ✅ (significant growth from initial 133)
+- Overall coverage: 68% (verified 2025-12-03) ⚠️ Below 75% target
+  - Core modules (excluding LLM): ~82% ✅ Exceeds target
+  - LLM modules (src/llm/): 0% ⚠️ Manual testing only (196 untested statements)
+- Key modules at 97-100%: filing_fetcher (99%), quality_scorer (100%), value_extractor (97%), metric_classifier (97%), extraction_pipeline (97%)
+- Key modules at 84-98%: html_segmenter (84%), classifiers (98%), universe_builder (93%)
+- Modules needing improvement: definition_extractor (65%), sec_client (58%), LLM modules (0%)
 
 ---
 
@@ -432,7 +450,38 @@ open htmlcov/index.html
 
 ---
 
-## Notes & Observations
+## Recent Major Milestones (December 2025)
+
+### 2025-12-03: Documentation Audit Complete
+- Updated CLAUDE.md, README.md, and DEVELOPMENT_PLAN.md with current status
+- Corrected test coverage figures (68% actual vs 76% previously reported)
+- Identified LLM modules as primary coverage gap (196 untested statements)
+- Documented production deployment status (CMASB Phase 1B)
+- All key documentation now accurately reflects project state
+
+### 2025-12-01: CMASB Phase 1B Deployment Approved
+- Enhanced CMASB metric detection patterns (+27 keywords)
+- Implemented priority weighting system for CMASB core metrics
+- Upgraded LLM prompts with CMASB-specific guidance
+- Expected improvement: 30% → 60% CMASB coverage
+- Target: Extract 5-10 high-quality companies for validation
+
+### 2025-11-25: LLM Integration Infrastructure Complete
+- OpenAI GPT-4o-mini client integrated (src/llm/openai_client.py)
+- Comprehensive prompt templates created (src/llm/prompts.py)
+- Cost tracking and token management operational
+- Manual testing successful (~$0.10 per filing estimated)
+- Hybrid approach: rule-based + LLM enhancement
+- **Gap:** No automated unit tests for LLM modules (196 untested LOC)
+
+### 2025-11-24: FilingFetcher Integration Complete
+- Batch download runner implemented (scripts/batch_download_filings.py)
+- Processing status workflow operational (pending → fetched → processed)
+- 100% test coverage for FilingFetcher module (48 tests)
+- Security hardening: path traversal protection validated
+- Ready for production filing downloads
+
+## Notes & Observations (November 2025)
 
 ### 2025-11-23: Business Type Exclusions Complete
 - Implemented conservative "require BOTH" detection (SIC code + name pattern)
