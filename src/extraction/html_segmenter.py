@@ -46,6 +46,19 @@ class HTMLSegmenter:
         r"\b(determined\s+by|formula|methodology)\b",
     ]
 
+    # Metadata headings to skip when determining section context
+    # These are navigation/structural elements, not content sections
+    METADATA_HEADINGS = frozenset({
+        'table of contents',
+        'index',
+        'cover page',
+        'prospectus cover',
+        'part of prospectus',
+        'explanatory note',
+        'forward-looking statements',
+        'about this prospectus',
+    })
+
     def __init__(
         self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH
     ):
@@ -292,10 +305,10 @@ class HTMLSegmenter:
 
     def _get_section_from_cache(self, element: Tag) -> Tuple[Optional[str], Optional[str]]:
         """
-        Get section info using a fast single find_previous call.
+        Get section info using find_previous, skipping metadata headings.
 
-        For performance, we just find the immediate previous heading.
-        This is O(n) worst case but typically very fast in practice.
+        For performance, we iterate through previous headings until we find
+        a meaningful content section (not 'Table of Contents', 'Index', etc.).
 
         Args:
             element: BeautifulSoup element
@@ -303,14 +316,16 @@ class HTMLSegmenter:
         Returns:
             (section_path, section_heading) tuple
         """
-        # Fast path: just get the most recent heading before this element
-        # Use limit=1 to stop at first match
         prev_heading = element.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
 
-        if prev_heading:
+        while prev_heading:
             heading_text = self._normalize_text(prev_heading.get_text())
             if heading_text:
-                return heading_text, heading_text
+                # Skip metadata headings (Table of Contents, Index, etc.)
+                if heading_text.lower() not in self.METADATA_HEADINGS:
+                    return heading_text, heading_text
+            # Keep searching backwards for a real content heading
+            prev_heading = prev_heading.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
 
         return None, None
 
@@ -321,6 +336,7 @@ class HTMLSegmenter:
         Extract section path and heading from element's position in DOM.
 
         Uses pre-built heading cache for O(n) performance instead of O(n²).
+        Skips metadata headings like 'Table of Contents'.
 
         Args:
             element: BeautifulSoup element
@@ -336,12 +352,13 @@ class HTMLSegmenter:
         if hasattr(self, '_heading_cache') and self._heading_cache is not None:
             return self._get_section_from_cache(element)
 
-        # Fallback to simple approach: just get the immediate previous heading
-        # This is still O(n) worst case but avoids the full tree traversal
+        # Fallback: iterate through previous headings, skipping metadata
         prev_heading = element.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-        if prev_heading:
+        while prev_heading:
             heading_text = self._normalize_text(prev_heading.get_text())
-            return heading_text, heading_text
+            if heading_text and heading_text.lower() not in self.METADATA_HEADINGS:
+                return heading_text, heading_text
+            prev_heading = prev_heading.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
 
         return None, None
 
