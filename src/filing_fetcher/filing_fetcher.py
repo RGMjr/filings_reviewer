@@ -363,6 +363,7 @@ class FilingFetcher:
             return content
 
         except requests.HTTPError as e:
+            # HTTP errors (4xx, 5xx) - may be transient, retryable
             error_msg = f"HTTP error fetching {cik}/{accession_number}: {e}"
             logger.error(error_msg)
 
@@ -371,8 +372,19 @@ class FilingFetcher:
 
             return None
 
-        except Exception as e:
-            error_msg = f"Unexpected error fetching {cik}/{accession_number}: {e}"
+        except ValueError as e:
+            # Validation errors - permanent, not retryable
+            error_msg = f"Validation error for {cik}/{accession_number}: {e}"
+            logger.error(error_msg)
+
+            if self.db:
+                self._update_database_error(cik, accession_number, error_msg)
+
+            return None
+
+        except requests.RequestException as e:
+            # Other network errors (timeout, connection) - transient, retryable
+            error_msg = f"Network error fetching {cik}/{accession_number}: {e}"
             logger.error(error_msg, exc_info=True)
 
             if self.db:
@@ -380,8 +392,40 @@ class FilingFetcher:
 
             return None
 
-    def _update_database(self, content: FilingContent, error: Optional[str]):
-        """Update database to mark filing as fetched."""
+        except (IOError, OSError) as e:
+            # File system errors - may be recoverable
+            error_msg = f"File system error for {cik}/{accession_number}: {e}"
+            logger.error(error_msg, exc_info=True)
+
+            if self.db:
+                self._update_database_error(cik, accession_number, error_msg)
+
+            return None
+
+        except Exception as e:
+            # Unexpected errors - log with full traceback for debugging
+            error_msg = (
+                f"Unexpected error fetching {cik}/{accession_number}: "
+                f"{type(e).__name__}: {e}"
+            )
+            logger.critical(error_msg, exc_info=True)
+
+            if self.db:
+                self._update_database_error(cik, accession_number, error_msg)
+
+            return None
+
+    def _update_database(self, content: FilingContent, error: Optional[str]) -> bool:
+        """
+        Update database to mark filing as fetched.
+
+        Args:
+            content: Filing content with paths and metadata
+            error: Error message if any (unused, kept for API compatibility)
+
+        Returns:
+            True if database update succeeded, False otherwise
+        """
         try:
             query = """
                 UPDATE filings
@@ -404,11 +448,28 @@ class FilingFetcher:
                 },
             )
             logger.debug(f"Updated database for {content.accession_number}")
+            return True
         except Exception as e:
-            logger.error(f"Error updating database: {e}")
+            logger.error(
+                f"Error updating database for {content.accession_number}: {e}",
+                exc_info=True,
+            )
+            return False
 
-    def _update_database_error(self, cik: str, accession_number: str, error_msg: str):
-        """Update database to record fetch error."""
+    def _update_database_error(
+        self, cik: str, accession_number: str, error_msg: str
+    ) -> bool:
+        """
+        Update database to record fetch error.
+
+        Args:
+            cik: SEC Central Index Key
+            accession_number: SEC accession number
+            error_msg: Error message describing the fetch failure
+
+        Returns:
+            True if database update succeeded, False otherwise
+        """
         try:
             query = """
                 UPDATE filings
@@ -421,8 +482,14 @@ class FilingFetcher:
                 query,
                 {"error": error_msg, "accession": accession_number},
             )
+            return True
         except Exception as e:
-            logger.error(f"Error updating database error: {e}")
+            logger.error(
+                f"Failed to record fetch error in database for {accession_number}. "
+                f"Original error: {error_msg}, DB error: {e}",
+                exc_info=True,
+            )
+            return False
 
     def get_filing_content(
         self, cik: str, accession_number: str

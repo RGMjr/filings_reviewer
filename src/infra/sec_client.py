@@ -12,6 +12,8 @@ from typing import List, Optional
 
 import requests
 
+from src.infra.validation import validate_date_range, validate_sic_code, ValidationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,13 +127,16 @@ class SECClient:
         if form_types is None:
             form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
 
+        # Validate date range at entry point
+        try:
+            start, end = validate_date_range(start_date, end_date)
+        except ValidationError as e:
+            raise ValueError(str(e)) from e
+
         logger.info(
             f"Searching for filings: {start_date} to {end_date}, "
             f"form_types={form_types}"
         )
-
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date)
 
         filings = []
         current_date = start
@@ -413,10 +418,23 @@ class SECClient:
             url = self.SUBMISSIONS_URL.format(cik=cik_padded)
             data = self._make_request(url)
 
+            # Validate and normalize SIC code if present
+            raw_sic = data.get("sic", "")
+            sic_code = ""
+            if raw_sic:
+                try:
+                    sic_code = validate_sic_code(str(raw_sic))
+                except ValidationError as e:
+                    logger.warning(
+                        f"Invalid SIC code '{raw_sic}' for CIK {cik}: {e}. "
+                        "Using raw value."
+                    )
+                    sic_code = str(raw_sic)
+
             return {
                 "cik": cik_padded,
                 "name": data.get("name", ""),
-                "sic": data.get("sic", ""),
+                "sic": sic_code,
                 "sic_description": data.get("sicDescription", ""),
                 "tickers": data.get("tickers", []),
                 "ein": data.get("ein", ""),
