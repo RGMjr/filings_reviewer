@@ -285,6 +285,9 @@ class FilingFetcher:
         html_path = storage_dir / "primary.htm"
         txt_path = storage_dir / "complete.txt"
 
+        # Track resolved URL to persist to database
+        resolved_url_for_db = None
+
         try:
             # Fetch HTML filing
             if not html_path.exists():
@@ -299,6 +302,7 @@ class FilingFetcher:
                     )
                     if resolved_url:
                         primary_doc_url = resolved_url
+                        resolved_url_for_db = resolved_url  # Save for database update
                     else:
                         raise ValueError("Could not resolve primary document URL")
 
@@ -358,7 +362,7 @@ class FilingFetcher:
 
             # Update database if available
             if self.db:
-                self._update_database(content, error=None)
+                self._update_database(content, error=None, resolved_url=resolved_url_for_db)
 
             return content
 
@@ -415,13 +419,19 @@ class FilingFetcher:
 
             return None
 
-    def _update_database(self, content: FilingContent, error: Optional[str]) -> bool:
+    def _update_database(
+        self,
+        content: FilingContent,
+        error: Optional[str],
+        resolved_url: Optional[str] = None,
+    ) -> bool:
         """
         Update database to mark filing as fetched.
 
         Args:
             content: Filing content with paths and metadata
             error: Error message if any (unused, kept for API compatibility)
+            resolved_url: Resolved SEC document URL (replaces directory URL)
 
         Returns:
             True if database update succeeded, False otherwise
@@ -435,6 +445,7 @@ class FilingFetcher:
                     html_fetched_at = %(fetched_at)s,
                     html_fetch_error = NULL,
                     processing_status = 'fetched',
+                    sec_html_url = COALESCE(%(resolved_url)s, sec_html_url),
                     updated_at = now()
                 WHERE accession_number = %(accession)s
             """
@@ -445,6 +456,7 @@ class FilingFetcher:
                     "txt_path": content.txt_path,
                     "fetched_at": content.fetched_at,
                     "accession": content.accession_number,
+                    "resolved_url": resolved_url,
                 },
             )
             logger.debug(f"Updated database for {content.accession_number}")
