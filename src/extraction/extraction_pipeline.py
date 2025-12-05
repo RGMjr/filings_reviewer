@@ -206,8 +206,27 @@ class ExtractionPipeline:
                 num_incidences=len(incidences),
             )
 
+        except (ValueError, KeyError) as e:
+            # Data/validation errors - filing data is invalid or missing expected fields
+            logger.error(
+                f"✗ Data error processing filing {filing_id}: {e}", exc_info=True
+            )
+            return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
+
+        except (IOError, OSError) as e:
+            # File system errors - HTML file not found or unreadable
+            logger.error(
+                f"✗ File error processing filing {filing_id}: {e}", exc_info=True
+            )
+            return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
+
         except Exception as e:
-            logger.error(f"✗ Error processing filing {filing_id}: {e}", exc_info=True)
+            # Unexpected errors - log with full details for debugging
+            logger.critical(
+                f"✗ Unexpected error processing filing {filing_id}: "
+                f"{type(e).__name__}: {e}",
+                exc_info=True,
+            )
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
     def process_batch(self, filing_ids: List[int]) -> Dict[str, int]:
@@ -434,6 +453,30 @@ class ExtractionPipeline:
                         """,
                         defn.to_dict(),
                     )
+
+                # Update incidences with actual segment IDs
+                for inc in incidences:
+                    if (
+                        inc.primary_definition_segment_id is not None
+                        and inc.primary_definition_segment_id in segment_id_map
+                    ):
+                        inc.primary_definition_segment_id = segment_id_map[
+                            inc.primary_definition_segment_id
+                        ]
+                    elif inc.primary_definition_segment_id is not None:
+                        # Segment not in map, set to None to avoid FK violation
+                        inc.primary_definition_segment_id = None
+
+                    if (
+                        inc.primary_methodology_segment_id is not None
+                        and inc.primary_methodology_segment_id in segment_id_map
+                    ):
+                        inc.primary_methodology_segment_id = segment_id_map[
+                            inc.primary_methodology_segment_id
+                        ]
+                    elif inc.primary_methodology_segment_id is not None:
+                        # Segment not in map, set to None to avoid FK violation
+                        inc.primary_methodology_segment_id = None
 
                 # Insert filing-metric incidences
                 for inc in incidences:
