@@ -287,3 +287,96 @@ def test_custom_min_and_max_lengths():
 
     finally:
         Path(html_path).unlink()
+
+
+def test_section_heading_skips_table_of_contents():
+    """Test that 'Table of Contents' is skipped as section heading."""
+    html = """
+    <html><body>
+        <h2>Table of Contents</h2>
+        <p>Navigation link to prospectus summary</p>
+        <h2>Item 1. Business</h2>
+        <p>We are a technology company providing innovative software solutions to enterprise customers worldwide.</p>
+        <p>Our business model focuses on subscription revenue and we have grown significantly over the past year.</p>
+    </body></html>
+    """
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+        f.write(html)
+        html_path = f.name
+
+    try:
+        segmenter = HTMLSegmenter(min_length=30)
+        segments = segmenter.segment_filing(filing_id=11, html_path=html_path)
+
+        # Find segments after the actual content heading
+        content_segments = [s for s in segments if "technology company" in s.raw_text.lower()]
+
+        if content_segments:
+            # Section heading should be "Item 1. Business", NOT "Table of Contents"
+            assert content_segments[0].section_heading != "Table of Contents"
+            assert content_segments[0].section_heading == "Item 1. Business"
+
+    finally:
+        Path(html_path).unlink()
+
+
+def test_section_heading_skips_multiple_metadata_headings():
+    """Test that multiple metadata headings are all skipped."""
+    html = """
+    <html><body>
+        <h1>Index</h1>
+        <h2>Table of Contents</h2>
+        <h3>Cover Page</h3>
+        <h2>Prospectus Summary</h2>
+        <p>We are a leading provider of cloud software with over one million active customers using our platform daily.</p>
+    </body></html>
+    """
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+        f.write(html)
+        html_path = f.name
+
+    try:
+        segmenter = HTMLSegmenter(min_length=30)
+        segments = segmenter.segment_filing(filing_id=12, html_path=html_path)
+
+        # Find segments with actual content
+        content_segments = [s for s in segments if "cloud software" in s.raw_text.lower()]
+
+        if content_segments:
+            # Section heading should be "Prospectus Summary"
+            # Should skip Index, Table of Contents, and Cover Page
+            assert content_segments[0].section_heading == "Prospectus Summary"
+            assert content_segments[0].section_heading not in [
+                "Index", "Table of Contents", "Cover Page"
+            ]
+
+    finally:
+        Path(html_path).unlink()
+
+
+def test_section_heading_returns_none_if_only_metadata():
+    """Test that section heading is None if only metadata headings exist."""
+    html = """
+    <html><body>
+        <h1>Table of Contents</h1>
+        <h2>Index</h2>
+        <p>This paragraph has no meaningful section heading because all preceding headings are metadata navigation elements.</p>
+    </body></html>
+    """
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+        f.write(html)
+        html_path = f.name
+
+    try:
+        segmenter = HTMLSegmenter(min_length=30)
+        segments = segmenter.segment_filing(filing_id=13, html_path=html_path)
+
+        if segments:
+            # All headings are metadata, so section_heading should be None
+            assert segments[0].section_heading is None
+
+    finally:
+        Path(html_path).unlink()
