@@ -34,12 +34,9 @@ from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import SECClient
 from src.universe.universe_builder import UniverseBuilder
+from src.infra.logging_config import configure_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
+configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 

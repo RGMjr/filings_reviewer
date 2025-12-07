@@ -34,11 +34,9 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.infra.db import DatabaseAdapter
+from src.infra.logging_config import configure_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 # Load environment

@@ -40,10 +40,12 @@ from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import SECClient, FilingMetadata
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.logging_config import configure_logging, get_timestamped_log_path
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Configure logging with file output for batch operations
+configure_logging(
+    level="INFO",
+    log_file=get_timestamped_log_path("batch_download"),
 )
 logger = logging.getLogger(__name__)
 

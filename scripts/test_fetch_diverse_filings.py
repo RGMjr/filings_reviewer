@@ -19,11 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import FilingMetadata, SECClient
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.logging_config import configure_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-)
+configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 
