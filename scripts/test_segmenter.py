@@ -11,15 +11,13 @@ import sys
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from extraction.html_segmenter import HTMLSegmenter
-from infra.db import DatabaseAdapter
+from src.extraction.html_segmenter import HTMLSegmenter
+from src.infra.db import DatabaseAdapter
+from src.infra.logging_config import configure_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-)
+configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 

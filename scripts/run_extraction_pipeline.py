@@ -38,10 +38,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.infra.db import DatabaseAdapter
+from src.infra.logging_config import configure_logging, get_timestamped_log_path
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Configure logging with file output for long-running extractions
+configure_logging(
+    level="INFO",
+    log_file=get_timestamped_log_path("extraction"),
 )
 logger = logging.getLogger(__name__)
 

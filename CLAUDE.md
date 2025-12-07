@@ -20,7 +20,8 @@ src/
 ├── infra/                    # Infrastructure layer
 │   ├── db.py                 # PostgreSQL adapter (psycopg3)
 │   ├── sec_client.py         # SEC EDGAR API client
-│   └── validation.py         # Input validation utilities (CIK, dates, SIC codes)
+│   ├── validation.py         # Input validation utilities (CIK, dates, SIC codes)
+│   └── logging_config.py     # Centralized logging configuration
 │
 ├── universe/                 # Phase 1: Filing Discovery
 │   ├── classifiers.py        # SPAC, first-time issuer, business type detection
@@ -168,7 +169,7 @@ The SQL files in `sql/` are automatically applied when the container first start
 ## Testing Standards
 
 - **Minimum coverage**: 75% (enforced in pyproject.toml)
-- **Current coverage**: 75% overall (422 tests passing)
+- **Current coverage**: 75% overall (440 tests passing)
   - Core extraction modules: 80-100% coverage
   - LLM modules: 88-95% coverage
   - Validation module: 100% coverage
@@ -211,6 +212,24 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 - SIC code validation (range 0100-9999)
 - Date and date range validation
 - Form type validation
+
+**Logging:** Centralized logging configuration (`src/infra/logging_config.py`) provides:
+- Consistent format across all scripts: `timestamp - module - level - message`
+- Optional file logging for long-running scripts (logs written to `logs/` directory)
+- All scripts use `configure_logging()` for setup
+
+```python
+from src.infra.logging_config import configure_logging, get_timestamped_log_path
+
+# Console only
+configure_logging(level="INFO")
+
+# Console + file logging
+configure_logging(level="INFO", log_file=get_timestamped_log_path("extraction"))
+
+# With line numbers for debugging
+configure_logging(level="DEBUG", include_debug_context=True)
+```
 
 ## Documentation
 
