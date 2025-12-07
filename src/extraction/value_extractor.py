@@ -20,6 +20,147 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Mapping from LLM-returned metric names to canonical metric IDs
+# The LLM returns free-form names; we need to map them to our taxonomy
+METRIC_NAME_MAPPING = {
+    # Core metrics
+    "new_customers_acquired": "cm_new_customers_acquired",
+    "new_customers": "cm_new_customers_acquired",
+    "customer_acquisition": "cm_new_customers_acquired",
+    "customers_acquired": "cm_new_customers_acquired",
+    "new_customer_additions": "cm_new_customers_acquired",
+
+    "customers_by_tenure": "cm_customers_period_end_by_tenure",
+    "customer_count_by_tenure": "cm_customers_period_end_by_tenure",
+    "customers_period_end": "cm_customers_period_end_by_tenure",
+    "customer_cohort_count": "cm_customers_period_end_by_tenure",
+
+    "revenue_by_cohort": "cm_revenue_by_cohort",
+    "cohort_revenue": "cm_revenue_by_cohort",
+    "revenue_by_customer_cohort": "cm_revenue_by_cohort",
+
+    "transactions_by_cohort": "cm_transactions_by_cohort",
+    "purchases_by_cohort": "cm_transactions_by_cohort",
+    "orders_by_cohort": "cm_transactions_by_cohort",
+
+    # Extended metrics - customer counts
+    "active_customers": "cm_active_customers_total",
+    "active_customers_total": "cm_active_customers_total",
+    "total_active_customers": "cm_active_customers_total",
+    "active_users": "cm_active_customers_total",
+    "customer_count": "cm_active_customers_total",
+    "total_customers": "cm_active_customers_total",
+
+    # Extended metrics - engagement
+    "monthly_active_users": "cm_monthly_active_users",
+    "mau": "cm_monthly_active_users",
+    "monthly_active": "cm_monthly_active_users",
+
+    "daily_active_users": "cm_daily_active_users",
+    "dau": "cm_daily_active_users",
+    "daily_active": "cm_daily_active_users",
+
+    # Extended metrics - unit economics
+    "revenue_per_customer": "cm_revenue_per_customer",
+    "arpu": "cm_revenue_per_customer",
+    "average_revenue_per_user": "cm_revenue_per_customer",
+    "revenue_per_user": "cm_revenue_per_customer",
+
+    "customer_acquisition_cost": "cm_customer_acquisition_cost",
+    "cac": "cm_customer_acquisition_cost",
+    "acquisition_cost": "cm_customer_acquisition_cost",
+
+    "cac_payback_period": "cm_cac_payback_period",
+    "cac_payback": "cm_cac_payback_period",
+    "payback_period": "cm_cac_payback_period",
+
+    "customer_lifetime_value": "cm_lifetime_value_per_customer",
+    "lifetime_value": "cm_lifetime_value_per_customer",
+    "ltv": "cm_lifetime_value_per_customer",
+    "clv": "cm_lifetime_value_per_customer",
+
+    "ltv_to_cac_ratio": "cm_ltv_to_cac_ratio",
+    "ltv_cac": "cm_ltv_to_cac_ratio",
+    "ltv_cac_ratio": "cm_ltv_to_cac_ratio",
+
+    # Extended metrics - retention
+    "customer_retention_rate": "cm_customer_retention_rate",
+    "retention_rate": "cm_customer_retention_rate",
+    "customer_retention": "cm_customer_retention_rate",
+
+    "customer_churn_rate": "cm_customer_churn_rate",
+    "churn_rate": "cm_customer_churn_rate",
+    "churn": "cm_customer_churn_rate",
+    "attrition_rate": "cm_customer_churn_rate",
+
+    "net_revenue_retention": "cm_net_revenue_retention",
+    "nrr": "cm_net_revenue_retention",
+    "net_dollar_retention": "cm_net_revenue_retention",
+    "ndr": "cm_net_revenue_retention",
+    "revenue_retention": "cm_net_revenue_retention",
+
+    "gross_revenue_retention": "cm_gross_revenue_retention",
+    "grr": "cm_gross_revenue_retention",
+}
+
+# Create reverse mapping for validation
+VALID_METRIC_IDS = set(METRIC_NAME_MAPPING.values())
+
+
+def map_llm_name_to_metric_id(
+    llm_name: str,
+    candidate_metric_ids: Optional[List[str]] = None
+) -> Optional[str]:
+    """
+    Map an LLM-returned metric name to a canonical metric ID.
+
+    Args:
+        llm_name: The metric name returned by the LLM (e.g., "monthly_active_users")
+        candidate_metric_ids: Optional list of candidate metric IDs to prefer
+
+    Returns:
+        Canonical metric ID (e.g., "cm_monthly_active_users") or None if no match
+    """
+    if not llm_name:
+        return None
+
+    # Normalize the LLM name: lowercase, replace spaces with underscores
+    normalized = llm_name.lower().strip().replace(" ", "_").replace("-", "_")
+
+    # 1. Check if it's already a valid metric ID
+    if normalized in VALID_METRIC_IDS:
+        return normalized
+
+    # 2. Check if it's a valid metric ID with cm_ prefix
+    if normalized.startswith("cm_") and normalized in VALID_METRIC_IDS:
+        return normalized
+
+    # 3. Try adding cm_ prefix
+    with_prefix = f"cm_{normalized}"
+    if with_prefix in VALID_METRIC_IDS:
+        return with_prefix
+
+    # 4. Check the mapping table
+    if normalized in METRIC_NAME_MAPPING:
+        mapped_id = METRIC_NAME_MAPPING[normalized]
+        # If we have candidates, prefer the mapped ID if it's in candidates
+        if candidate_metric_ids and mapped_id in candidate_metric_ids:
+            return mapped_id
+        return mapped_id
+
+    # 5. Try partial matching with candidates
+    if candidate_metric_ids:
+        for candidate in candidate_metric_ids:
+            # Check if the LLM name is a substring of the candidate (after removing cm_)
+            candidate_base = candidate.replace("cm_", "")
+            if normalized in candidate_base or candidate_base in normalized:
+                return candidate
+
+    # 6. No match found
+    logger.debug(f"No metric ID mapping found for LLM name: {llm_name}")
+    return None
+
+
 class ValueExtractor:
     """
     Extract metric values from source segments.
@@ -279,16 +420,19 @@ class ValueExtractor:
                 if item.get("period"):
                     period_end = self._extract_period_from_text(item["period"])
 
-                # Determine metric_id
-                metric_id = item.get("metric_name")
-                if not metric_id or metric_id not in (
-                    segment.candidate_metric_ids or []
-                ):
-                    # Try to match to candidate metrics
-                    if segment.candidate_metric_ids:
-                        metric_id = segment.candidate_metric_ids[0]
-                    else:
-                        continue  # Skip if no metric ID
+                # Determine metric_id using the mapping function
+                llm_metric_name = item.get("metric_name")
+                metric_id = map_llm_name_to_metric_id(
+                    llm_metric_name,
+                    segment.candidate_metric_ids
+                )
+                if not metric_id:
+                    # Log unmapped metric names for debugging
+                    logger.warning(
+                        f"Could not map LLM metric name '{llm_metric_name}' to canonical ID. "
+                        f"Candidates: {segment.candidate_metric_ids}"
+                    )
+                    continue  # Skip if we can't determine the metric type
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
@@ -386,16 +530,19 @@ class ValueExtractor:
                         cohort_label
                     )
 
-                # Determine metric_id
-                metric_id = item.get("metric_name")
-                if not metric_id or metric_id not in (
-                    segment.candidate_metric_ids or []
-                ):
-                    # Try to match to candidate metrics
-                    if segment.candidate_metric_ids:
-                        metric_id = segment.candidate_metric_ids[0]
-                    else:
-                        continue  # Skip if no metric ID
+                # Determine metric_id using the mapping function
+                llm_metric_name = item.get("metric_name")
+                metric_id = map_llm_name_to_metric_id(
+                    llm_metric_name,
+                    segment.candidate_metric_ids
+                )
+                if not metric_id:
+                    # Log unmapped metric names for debugging
+                    logger.warning(
+                        f"Could not map LLM metric name '{llm_metric_name}' to canonical ID. "
+                        f"Candidates: {segment.candidate_metric_ids}"
+                    )
+                    continue  # Skip if we can't determine the metric type
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
