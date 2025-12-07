@@ -10,6 +10,7 @@ import re
 from typing import List, Optional, TYPE_CHECKING
 
 from .models import SourceSegment, MetricDefinition
+from .value_extractor import map_llm_name_to_metric_id
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -267,7 +268,12 @@ class DefinitionExtractor:
 
             # Find the definition for our metric
             for item in data:
-                if item["metric_name"] == metric_id or metric_id in item["metric_name"]:
+                # Use metric name mapping to match LLM names to canonical IDs
+                llm_metric_name = item.get("metric_name")
+                mapped_id = map_llm_name_to_metric_id(llm_metric_name)
+
+                # Check if the mapped ID matches our target metric
+                if mapped_id == metric_id:
                     # Extract definition text
                     definition_text = item["definition_text"]
 
