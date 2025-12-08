@@ -45,7 +45,12 @@ PAY SPECIAL ATTENTION TO:
 - Tenure segmentation (e.g., "customers by age", "time since acquisition")
 - Tables with cohort structures (row/column headers showing vintages or time periods)
 
-Extract data precisely as disclosed. Do not infer or calculate values not explicitly stated."""
+Extract data precisely as disclosed. Do not infer or calculate values not explicitly stated.
+
+CRITICAL: Only extract HISTORICAL data explicitly stated in the filing.
+Do not extract: forward-looking projections, industry benchmarks, or hypothetical examples.
+
+Ensure metric_name matches the value type (counts for customer numbers, percentages for rates)."""
 
     SYSTEM_DEFINITION_EXTRACTION = """You are an expert at extracting metric definitions from SEC filings.
 
@@ -83,12 +88,15 @@ Extract all metric values you find. For each value, provide:
 3. units: The units (e.g., "millions", "thousands", "percent")
 4. period: The time period (e.g., "Q4 2023", "December 31, 2023", "FY 2022")
 5. cohort_label: If this is cohort-specific data (e.g., "2022 Cohort", "0-12 months", "Year 1")
-6. quote: The exact text containing this value
+6. quote: Copy the EXACT sentence(s) containing this value verbatim - must include the numeric value
 
 LOOK FOR COHORT INDICATORS:
 - Phrases like "customers acquired in 2021", "2022 cohort revenue", "first-year customers"
 - Tenure descriptions like "0-12 months", "Year 1", "customers by age"
 - Vintage labels like "FY2021 cohort", "2022 vintage"
+
+IMPORTANT: Do not extract projections ("we expect", "anticipated") or industry statistics.
+The quote must be copied exactly from the text - do not paraphrase.
 
 Return your response as a JSON array of objects. If no metrics found, return an empty array [].
 
@@ -147,6 +155,8 @@ Extract all metric values from the table. For each value, provide:
 5. cohort_label: If this is a cohort breakdown (look for patterns like "2021 Cohort", "FY2022 Cohort", "0-12 months", "Year 1")
 6. row_label: The row label from the table
 7. column_label: The column label from the table
+
+Do not extract totals when individual values are available. Do not extract pro forma figures when GAAP figures exist.
 
 COHORT TABLE INDICATORS:
 - Row headers containing years (e.g., "2021 Cohort", "2022 Cohort")
@@ -208,7 +218,7 @@ For each definition, provide:
 1. metric_name: The type of metric being defined
 2. definition_text: The exact definition as stated in the filing
 3. includes_calculation: true if it explains how the metric is calculated
-4. quote: The full relevant quote including context
+4. quote: The EXACT text from the filing containing the definition - copy verbatim, do not paraphrase
 
 Return your response as a JSON array of objects. If no definitions found, return an empty array [].
 

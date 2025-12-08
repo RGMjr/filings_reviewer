@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
 from collections import Counter, defaultdict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Per-filing timeout (5 minutes max)
 FILING_TIMEOUT_SECONDS = 300
