@@ -440,3 +440,119 @@ def test_uses_first_definition_segment(extractor):
     # Should use first segment
     assert definition.definition_segment_id == 0
     assert "First definition" in definition.definition_raw_text
+
+
+# =============================================================================
+# Quote Verification Tests for LLM Extraction
+# =============================================================================
+
+
+from unittest.mock import Mock
+
+
+def build_segment(**overrides) -> SourceSegment:
+    """Helper to construct a SourceSegment with sensible defaults."""
+    defaults = {
+        "filing_id": 1,
+        "segment_type": "paragraph",
+        "raw_text": "Placeholder",
+        "sequence_index": 0,
+        "candidate_metric_ids": [],
+        "contains_definition_flag": True,
+    }
+    defaults.update(overrides)
+    return SourceSegment(**defaults)
+
+
+class TestDefinitionQuoteVerification:
+    """Tests for quote verification in definition extraction."""
+
+    def test_verified_quote_is_extracted(self):
+        """Definition with verified quote should be extracted."""
+        # Create mock LLM client
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = """[{
+            "metric_name": "daily_active_users",
+            "definition_text": "Users who logged in within the last 24 hours",
+            "includes_calculation": false,
+            "quote": "We define daily active users as users who logged in"
+        }]"""
+        mock_llm.complete.return_value = mock_response
+
+        extractor = DefinitionExtractor(llm_client=mock_llm)
+
+        # Create segment with text that CONTAINS the quote
+        segment = build_segment(
+            raw_text="We define daily active users as users who logged in within the last 24 hours.",
+            candidate_metric_ids=["cm_daily_active_users"],
+            contains_definition_flag=True,
+        )
+
+        definitions = extractor.extract_definitions([segment], company_id=1)
+
+        # Quote is verified, so definition should be extracted with LLM result
+        assert len(definitions) == 1
+        assert (
+            definitions[0].definition_raw_text
+            == "We define daily active users as users who logged in"
+        )
+
+    def test_unverified_quote_falls_back_to_rule_based(self):
+        """Unverified quote should trigger fallback to rule-based extraction."""
+        # Create mock LLM client that returns a hallucinated quote
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = """[{
+            "metric_name": "daily_active_users",
+            "definition_text": "Users who logged in within the last 24 hours",
+            "includes_calculation": false,
+            "quote": "This quote does not exist in the source at all"
+        }]"""
+        mock_llm.complete.return_value = mock_response
+
+        extractor = DefinitionExtractor(llm_client=mock_llm)
+
+        # Create segment with text that does NOT contain the quote
+        segment = build_segment(
+            raw_text="We define daily active users as users who logged in within the last 24 hours.",
+            candidate_metric_ids=["cm_daily_active_users"],
+            contains_definition_flag=True,
+        )
+
+        definitions = extractor.extract_definitions([segment], company_id=1)
+
+        # Quote verification fails, should fall back to rule-based
+        # Rule-based will extract the definition from the segment text
+        # The key assertion: the LLM's hallucinated quote should NOT be in the result
+        for defn in definitions:
+            assert (
+                defn.definition_raw_text
+                != "This quote does not exist in the source at all"
+            )
+
+    def test_empty_quote_uses_llm_result(self):
+        """When LLM returns empty quote, should still use the definition."""
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = """[{
+            "metric_name": "daily_active_users",
+            "definition_text": "Users who logged in within the last 24 hours",
+            "includes_calculation": false,
+            "quote": ""
+        }]"""
+        mock_llm.complete.return_value = mock_response
+
+        extractor = DefinitionExtractor(llm_client=mock_llm)
+
+        segment = build_segment(
+            raw_text="We define daily active users as users who logged in within the last 24 hours.",
+            candidate_metric_ids=["cm_daily_active_users"],
+            contains_definition_flag=True,
+        )
+
+        definitions = extractor.extract_definitions([segment], company_id=1)
+
+        # Empty quote should not trigger verification, so LLM result is used
+        assert len(definitions) == 1
+        assert definitions[0].definition_raw_text == ""  # Empty quote stored as-is

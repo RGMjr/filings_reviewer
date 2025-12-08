@@ -5,6 +5,8 @@ This module extracts quantitative metric values from classified segments,
 particularly focusing on table data with cohort breakdowns.
 """
 
+import difflib
+import html
 import logging
 import re
 from datetime import date
@@ -159,6 +161,84 @@ def map_llm_name_to_metric_id(
     # 6. No match found
     logger.debug(f"No metric ID mapping found for LLM name: {llm_name}")
     return None
+
+
+def _normalize_text(text: str) -> str:
+    """
+    Normalize text for comparison.
+
+    - Decode HTML entities (&amp; -> &, &nbsp; -> space, etc.)
+    - Normalize whitespace (collapse multiple spaces, strip)
+    - Normalize quote characters (" " -> ")
+    """
+    if not text:
+        return ""
+
+    # Decode HTML entities
+    normalized = html.unescape(text)
+
+    # Normalize quote characters (curly to straight)
+    normalized = normalized.replace("\u201c", '"').replace("\u201d", '"')  # " and "
+    normalized = normalized.replace("\u2018", "'").replace("\u2019", "'")  # ' and '
+
+    # Normalize whitespace (including newlines)
+    normalized = " ".join(normalized.split())
+
+    return normalized
+
+
+def verify_quote_in_source(
+    quote: str, source_text: str, threshold: float = 0.8
+) -> bool:
+    """
+    Verify that an LLM-extracted quote exists in the source text.
+
+    Uses a sliding window approach with difflib.SequenceMatcher to find
+    the best matching substring in the source and checks if similarity
+    meets the threshold.
+
+    Args:
+        quote: The quote extracted by the LLM
+        source_text: The original source text to verify against
+        threshold: Minimum similarity ratio (default 0.8 = 80%)
+
+    Returns:
+        True if quote is verified, False otherwise
+    """
+    if not quote or not source_text:
+        return False
+
+    # Normalize both texts
+    quote_normalized = _normalize_text(quote)
+    source_normalized = _normalize_text(source_text)
+
+    if not quote_normalized or not source_normalized:
+        return False
+
+    # Fast path: exact substring match
+    if quote_normalized.lower() in source_normalized.lower():
+        return True
+
+    # Fuzzy matching: find best matching window in source
+    # Use a window slightly larger than the quote to allow for minor differences
+    quote_len = len(quote_normalized)
+    window_size = int(quote_len * 1.2)  # Allow 20% size variation
+
+    best_ratio = 0.0
+    source_lower = source_normalized.lower()
+    quote_lower = quote_normalized.lower()
+
+    # Slide window across source to find best match
+    for i in range(max(1, len(source_lower) - quote_len + 1)):
+        window = source_lower[i : i + window_size]
+        matcher = difflib.SequenceMatcher(None, quote_lower, window, autojunk=False)
+        ratio = matcher.ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            if best_ratio >= threshold:
+                return True  # Early exit on good match
+
+    return best_ratio >= threshold
 
 
 class ValueExtractor:
@@ -434,6 +514,24 @@ class ValueExtractor:
                     )
                     continue  # Skip if we can't determine the metric type
 
+                # Verify quote exists in source text
+                quote = item.get("quote")
+                qa_status = "unreviewed"
+
+                if quote:
+                    if verify_quote_in_source(quote, segment.raw_text):
+                        qa_status = "pass"  # Quote verified
+                    else:
+                        # Log with details for debugging (truncate long quotes)
+                        truncated_quote = (
+                            quote[:100] + "..." if len(quote) > 100 else quote
+                        )
+                        logger.warning(
+                            f"Quote verification failed for {metric_id}. "
+                            f"Rejecting extraction. Quote: '{truncated_quote}'"
+                        )
+                        continue  # Skip this extraction - reject unverified quotes
+
                 value = MetricValue(
                     filing_id=segment.filing_id,
                     company_id=company_id,
@@ -447,8 +545,8 @@ class ValueExtractor:
                     unit=item.get("units"),
                     period_end=period_end,
                     cohort_bucket_raw=item.get("cohort_label"),
-                    qa_status="unreviewed",
-                    qa_notes=item.get("quote"),  # Store quote in qa_notes field
+                    qa_status=qa_status,
+                    qa_notes=quote,
                 )
                 values.append(value)
 
@@ -544,6 +642,25 @@ class ValueExtractor:
                     )
                     continue  # Skip if we can't determine the metric type
 
+                # Verify quote exists in source text
+                quote = item.get("quote")
+                qa_status = "unreviewed"
+
+                if quote:
+                    # For tables, check against both raw_text and table_text
+                    source_for_verification = segment.raw_text or table_text
+                    if verify_quote_in_source(quote, source_for_verification):
+                        qa_status = "pass"  # Quote verified
+                    else:
+                        truncated_quote = (
+                            quote[:100] + "..." if len(quote) > 100 else quote
+                        )
+                        logger.warning(
+                            f"Quote verification failed for table extraction: {metric_id}. "
+                            f"Rejecting extraction. Quote: '{truncated_quote}'"
+                        )
+                        continue  # Reject unverified
+
                 value = MetricValue(
                     filing_id=segment.filing_id,
                     company_id=company_id,
@@ -559,7 +676,8 @@ class ValueExtractor:
                     cohort_type=cohort_type,
                     cohort_bucket_raw=cohort_label,
                     cohort_bucket_normalized=cohort_normalized,
-                    qa_status="unreviewed",
+                    qa_status=qa_status,
+                    qa_notes=quote,
                 )
                 values.append(value)
 

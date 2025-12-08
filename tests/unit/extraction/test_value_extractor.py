@@ -9,7 +9,11 @@ from decimal import Decimal
 from datetime import date
 
 from src.extraction.models import SourceSegment
-from src.extraction.value_extractor import ValueExtractor
+from src.extraction.value_extractor import (
+    ValueExtractor,
+    verify_quote_in_source,
+    _normalize_text,
+)
 
 
 def build_segment(**overrides) -> SourceSegment:
@@ -772,3 +776,112 @@ def test_convenience_function_extract_values():
     assert len(values) == 1
     assert values[0].value_numeric == Decimal("1500")
     assert values[0].company_id == 42
+
+
+# =============================================================================
+# Quote Verification Tests
+# =============================================================================
+
+
+class TestNormalizeText:
+    """Tests for _normalize_text helper function."""
+
+    def test_html_entity_decoding(self):
+        assert _normalize_text("Smith &amp; Co") == "Smith & Co"
+        assert _normalize_text("100&nbsp;million") == "100 million"
+        assert _normalize_text("It&#39;s working") == "It's working"
+
+    def test_smart_quote_normalization(self):
+        assert _normalize_text("\u201cquoted\u201d") == '"quoted"'
+        assert _normalize_text("it\u2019s") == "it's"
+
+    def test_whitespace_normalization(self):
+        assert _normalize_text("hello   world") == "hello world"
+        assert _normalize_text("hello\n\nworld") == "hello world"
+        assert _normalize_text("  trimmed  ") == "trimmed"
+
+    def test_empty_and_none(self):
+        assert _normalize_text("") == ""
+        assert _normalize_text(None) == ""
+
+
+class TestVerifyQuoteInSource:
+    """Tests for verify_quote_in_source function."""
+
+    def test_exact_substring_match(self):
+        quote = "We had 1.5 million users"
+        source = "As of December 2023, we had 1.5 million users on our platform."
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_short_quote_in_long_source(self):
+        """Critical test: short quote should be found in very long source."""
+        quote = "monthly active users"
+        source = (
+            "x" * 5000
+            + " We define monthly active users as unique visitors. "
+            + "y" * 5000
+        )
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_no_match_returns_false(self):
+        quote = "Completely different text that doesn't exist anywhere"
+        source = "We had 1.5 million users as of December 2023."
+        assert verify_quote_in_source(quote, source) is False
+
+    def test_fuzzy_match_minor_differences(self):
+        # LLM might add/remove minor words
+        quote = "We had approximately 1.5 million users"
+        source = "We had 1.5 million users"
+        # This should pass with 70% threshold (most words match)
+        assert verify_quote_in_source(quote, source, threshold=0.7) is True
+
+    def test_fuzzy_match_below_threshold(self):
+        # Significantly different numbers should fail
+        quote = "We had 10 million customers worldwide"
+        source = "We had 1.5 million users"
+        assert verify_quote_in_source(quote, source) is False
+
+    def test_html_entities_in_source(self):
+        """Source may have HTML entities that quote doesn't."""
+        quote = "Smith & Co had 5 million users"
+        source = "Smith &amp; Co had 5 million users as of 2023."
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_smart_quotes_mismatch(self):
+        """Quote may have straight quotes, source may have curly."""
+        quote = '"Daily active users" means unique visitors'
+        source = "\u201cDaily active users\u201d means unique visitors per day."
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_newline_vs_space(self):
+        """Source may have newlines where quote has spaces."""
+        quote = "We define customers as paying subscribers"
+        source = "We define customers\nas paying subscribers."
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_empty_quote_returns_false(self):
+        assert verify_quote_in_source("", "Some source text") is False
+
+    def test_empty_source_returns_false(self):
+        assert verify_quote_in_source("Some quote", "") is False
+
+    def test_none_values_returns_false(self):
+        assert verify_quote_in_source(None, "source") is False
+        assert verify_quote_in_source("quote", None) is False
+
+    def test_case_insensitive_matching(self):
+        quote = "We Had 1.5 MILLION Users"
+        source = "we had 1.5 million users"
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_custom_threshold(self):
+        quote = "We had many users"
+        source = "We had some users"
+        # Low threshold should pass
+        assert verify_quote_in_source(quote, source, threshold=0.5) is True
+        # High threshold should fail
+        assert verify_quote_in_source(quote, source, threshold=0.95) is False
+
+    def test_whitespace_only_after_normalization(self):
+        """Edge case: text that becomes empty after normalization."""
+        assert verify_quote_in_source("   ", "source") is False
