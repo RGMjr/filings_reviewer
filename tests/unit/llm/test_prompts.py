@@ -137,6 +137,21 @@ class TestPromptGeneration:
         assert "definitions" in system_msg.lower()
         assert "SEC filings" in system_msg
 
+    def test_system_value_extraction_excludes_projections(self):
+        """Test system prompt instructs to exclude forward-looking data."""
+        prompt = PromptTemplates.SYSTEM_VALUE_EXTRACTION
+        assert "forward-looking" in prompt.lower() or "projection" in prompt.lower()
+
+    def test_value_extraction_from_text_verbatim_quote(self):
+        """Test text extraction emphasizes verbatim quotes."""
+        prompt = PromptTemplates.value_extraction_from_text("sample", "metrics")
+        assert "verbatim" in prompt.lower() or "EXACT" in prompt
+
+    def test_value_extraction_from_text_excludes_projections(self):
+        """Test text extraction excludes projections."""
+        prompt = PromptTemplates.value_extraction_from_text("sample", "metrics")
+        assert "expect" in prompt.lower() or "projection" in prompt.lower()
+
 
 class TestParseJsonResponse:
     """Tests for JSON response parsing."""
