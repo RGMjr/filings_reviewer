@@ -284,15 +284,21 @@ class DefinitionExtractor:
                     quote = item.get("quote", "")
 
                     # Verify quote exists in source
-                    if quote and not verify_quote_in_source(quote, combined_text):
-                        truncated_quote = (
-                            quote[:100] + "..." if len(quote) > 100 else quote
+                    if quote:
+                        if not verify_quote_in_source(quote, combined_text):
+                            truncated_quote = (
+                                quote[:100] + "..." if len(quote) > 100 else quote
+                            )
+                            logger.warning(
+                                f"Quote verification failed for definition extraction: {metric_id}. "
+                                f"Falling back to rule-based. Quote: '{truncated_quote}'"
+                            )
+                            return None  # Fall back to rule-based extraction
+                    else:
+                        logger.info(
+                            f"LLM returned empty quote for definition extraction: {metric_id} - "
+                            "accepting without verification"
                         )
-                        logger.warning(
-                            f"Quote verification failed for definition extraction: {metric_id}. "
-                            f"Falling back to rule-based. Quote: '{truncated_quote}'"
-                        )
-                        return None  # Fall back to rule-based extraction
 
                     # Assess alignment with canonical definition
                     alignment_flag = self.assess_alignment(metric_id, definition_text)
