@@ -885,3 +885,31 @@ class TestVerifyQuoteInSource:
     def test_whitespace_only_after_normalization(self):
         """Edge case: text that becomes empty after normalization."""
         assert verify_quote_in_source("   ", "source") is False
+
+    def test_exact_length_match(self):
+        """Quote and source are exactly the same length."""
+        quote = "exact match test"
+        source = "exact match test"
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_quote_at_position_zero(self):
+        """Quote appears at the very start of source (tests off-by-one fix)."""
+        quote = "The company"
+        source = "The company reported revenue of $1M last quarter."
+        assert verify_quote_in_source(quote, source) is True
+
+    def test_large_document_performance(self):
+        """Verify performance doesn't degrade for large documents."""
+        import time
+
+        quote = "reported active users of approximately 1.5 million"
+        # Create a 100K+ character source document
+        source = "x" * 50000 + quote + "y" * 50000
+
+        start = time.time()
+        result = verify_quote_in_source(quote, source)
+        elapsed = time.time() - start
+
+        assert result is True
+        # Should complete quickly (under 1 second) due to stride optimization
+        assert elapsed < 1.0, f"Performance issue: took {elapsed:.2f}s"
