@@ -32,3 +32,16 @@
 **/values.dev.yaml
 LICENSE
 README.md
+
+# Python/pytest artifacts
+**/.coverage
+**/htmlcov
+**/.pytest_cache
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+
+# Data and cache directories (use volumes instead)
+**/filings_cache
+**/logs
+**/data
