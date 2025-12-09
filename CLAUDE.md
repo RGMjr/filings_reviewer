@@ -233,10 +233,29 @@ configure_logging(level="DEBUG", include_debug_context=True)
 
 ## Documentation
 
-- `docs/01_ANALYTIC_REQUIREMENTS.md` - Business requirements
-- `docs/02_METRIC_TAXONOMY_AND_DEFINITIONS.md` - Metric definitions
-- `docs/03_DATA_MODEL_SPEC.md` - Database schema details
-- `docs/04_SYSTEM_ARCHITECTURE.md` - Component design
-- `docs/05_COMPONENT_INTERFACE_SPECS.md` - Python interfaces
-- `docs/06_QA_AND_QUALITY_MODEL.md` - Quality scoring framework
+The documentation has been reorganized for clarity and ease of navigation. Start with `docs/README.md` for the complete index.
+
+### Quick Reference
+
+**Architecture (System Design):**
+- `docs/architecture/system-overview.md` - Complete system architecture (START HERE)
+- `docs/architecture/data-model.md` - Database schema and table specifications
+- `docs/architecture/extraction-pipeline.md` - Extraction pipeline components and flow
+- `docs/architecture/llm-integration.md` - OpenAI GPT-4o-mini integration details
+
+**Requirements (Business Needs):**
+- `docs/requirements/analytic-requirements.md` - Business requirements and research questions
+- `docs/requirements/CMASB_PRIORITY_METRICS_PHASE1.md` - Priority metrics
+
+**Development (Implementation):**
+- `docs/development/metrics-taxonomy.md` - Canonical metric definitions
+- `docs/development/quality-model.md` - Quality scoring framework (0-3 scale)
+- `docs/development/testing.md` - Test strategy and coverage requirements
+
+**Operations (Running the System):**
+- `docs/operations/setup-guide.md` - Environment setup and configuration
+- `docs/operations/08_DEPLOYMENT_GUIDE.md` - Deployment procedures
+
+**Other:**
 - `DEVELOPMENT_PLAN.md` - Sprint tracking and roadmap
+- `docs/archive/` - Historical phase summaries and fix documentation

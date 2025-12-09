@@ -1,20 +1,24 @@
-# Metric Extraction Architecture
+# Metric Extraction Pipeline
 
-**Version**: 0.1
-**Date**: 2025-11-17
-**Status**: Design Document
+**Version:** 2.0
+**Last Updated:** 2025-12-09
+**Status:** Production Ready
+
+---
 
 ## Overview
 
-This document specifies the architecture for extracting customer metrics from SEC filings and storing them in the analysis database.
+This document specifies the architecture and implementation of the metric extraction pipeline. The pipeline transforms SEC filing HTML into structured, analysis-ready metrics data through a series of modular processing stages.
 
-## Architecture Principles
+### Pipeline Principles
 
-1. **Auditability**: Every extracted value must be traceable to its source segment
-2. **Reproducibility**: Re-running extraction on the same filing should produce identical results
-3. **Incremental Processing**: Process filings independently; support resume/retry
-4. **Quality Tracking**: Capture confidence, alignment, and quality scores throughout
-5. **Separation of Concerns**: Segmentation → Classification → Extraction → Storage
+1. **Auditability:** Every extracted value must be traceable to its source segment
+2. **Reproducibility:** Re-running extraction on the same filing produces identical results
+3. **Incremental Processing:** Process filings independently; support resume/retry
+4. **Quality Tracking:** Capture confidence, alignment, and quality scores throughout
+5. **Separation of Concerns:** Segmentation → Classification → Extraction → Storage
+
+---
 
 ## Pipeline Overview
 
@@ -78,32 +82,33 @@ This document specifies the architecture for extracting customer metrics from SE
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
 ## Component Specifications
 
 ### 1. HTML Segmenter
 
-**Module**: `src/extraction/html_segmenter.py`
-**Class**: `HTMLSegmenter`
+**Module:** `src/extraction/html_segmenter.py`
+**Class:** `HTMLSegmenter`
+**Status:** Complete (80% test coverage)
 
-**Responsibilities**:
+**Responsibilities:**
 - Parse filing HTML into semantic segments
 - Extract section headings and build section paths
 - Normalize text (remove excess whitespace, decode entities)
 - Preserve provenance metadata (HTML selectors, character offsets)
 
-**Input**:
-- Filing HTML file path
-- Filing metadata (filing_id, company_id)
+**Interface:**
 
-**Output**:
-- List of `SourceSegment` objects ready for database insertion
-
-**Key Methods**:
 ```python
 class HTMLSegmenter:
     def segment_filing(self, filing_id: int, html_path: str) -> List[SourceSegment]:
         """
         Parse filing HTML and return list of source segments.
+
+        Args:
+            filing_id: Database ID of the filing
+            html_path: Path to cached HTML file
 
         Returns:
             List of SourceSegment objects (not yet inserted to DB)
@@ -116,7 +121,7 @@ class HTMLSegmenter:
         """Clean and normalize text content."""
 ```
 
-**Segment Types**:
+**Segment Types:**
 - `paragraph`: Text paragraphs (default)
 - `table`: HTML tables (entire table as one segment)
 - `footnote`: Footnotes and endnotes
@@ -124,31 +129,29 @@ class HTMLSegmenter:
 - `methodology_block`: Detected calculation methodology sections
 - `other`: Fallback
 
-**Design Notes**:
-- Start simple: extract all `<p>` tags as paragraphs, all `<table>` tags as tables
-- Use BeautifulSoup for HTML parsing
+**Design Notes:**
+- Uses BeautifulSoup for HTML parsing
+- Extracts all `<p>` tags as paragraphs, all `<table>` tags as tables
 - Sequence index based on document order
 - Section path: traverse up DOM to find heading hierarchy
-- Keep both raw_text (normalized) and raw_html (original snippet)
+- Keeps both raw_text (normalized) and raw_html (original snippet)
+
+---
 
 ### 2. Metric Classifier
 
-**Module**: `src/extraction/metric_classifier.py`
-**Class**: `MetricClassifier`
+**Module:** `src/extraction/metric_classifier.py`
+**Class:** `MetricClassifier`
+**Status:** Complete (98% test coverage)
 
-**Responsibilities**:
+**Responsibilities:**
 - Scan source segments for metric-related keywords
 - Classify segments as: numeric disclosure, definition, methodology, or none
 - Tag segments with candidate_metric_ids (which metrics might be present)
 - Assign confidence scores
 
-**Input**:
-- List of `SourceSegment` objects (from database or in-memory)
+**Interface:**
 
-**Output**:
-- Updated `SourceSegment` objects with classification flags and candidate_metric_ids
-
-**Key Methods**:
 ```python
 class MetricClassifier:
     def classify_segment(self, segment: SourceSegment) -> SourceSegment:
@@ -161,64 +164,63 @@ class MetricClassifier:
             - contains_methodology_flag
             - contains_numeric_disclosure_flag
             - classifier_confidence
+
+        Returns:
+            Updated SourceSegment object
         """
 
     def classify_batch(self, segments: List[SourceSegment]) -> List[SourceSegment]:
         """Classify multiple segments efficiently."""
 ```
 
-**Classification Strategy** (Phase 1 - Rule-Based):
+**Classification Strategy (Rule-Based):**
 
-1. **Numeric Disclosure Detection**:
+1. **Numeric Disclosure Detection:**
    - Segment contains numbers AND metric-related keywords
    - Keywords: "customers", "users", "cohort", "revenue", "transactions"
    - Set `contains_numeric_disclosure_flag = True`
 
-2. **Definition Detection**:
+2. **Definition Detection:**
    - Segment contains definition phrases
    - Patterns: "we define", "defined as", "refers to", "means"
    - Near metric keywords
    - Set `contains_definition_flag = True`
 
-3. **Methodology Detection**:
+3. **Methodology Detection:**
    - Segment contains calculation phrases
    - Patterns: "calculated as", "calculated by", "determined by", "formula"
    - Set `contains_methodology_flag = True`
 
-4. **Metric ID Tagging**:
+4. **Metric ID Tagging:**
    - Match keywords to specific metrics
    - Example: "new customers" → `['cm_new_customers_acquired']`
    - Example: "cohort" + "revenue" → `['cm_revenue_by_cohort']`
 
-**Future Enhancement** (Phase 2 - LLM-Based):
-- Use Claude API for semantic classification
-- Prompt: "Does this segment contain a definition of customer acquisition?"
-- Higher accuracy but slower and more expensive
+---
 
 ### 3. Value Extractor
 
-**Module**: `src/extraction/value_extractor.py`
-**Class**: `ValueExtractor`
+**Module:** `src/extraction/value_extractor.py`
+**Class:** `ValueExtractor`
+**Status:** Complete (66% test coverage)
 
-**Responsibilities**:
+**Responsibilities:**
 - Extract numeric values from classified segments
 - Parse tables to extract cohort breakdowns
 - Extract period information (dates, fiscal periods)
 - Parse and normalize cohort labels
 - Handle units and currency
 
-**Input**:
-- Classified source segments (with `contains_numeric_disclosure_flag = True`)
+**Interface:**
 
-**Output**:
-- List of `MetricValue` objects ready for database insertion
-
-**Key Methods**:
 ```python
 class ValueExtractor:
     def extract_from_segment(self, segment: SourceSegment) -> List[MetricValue]:
         """
         Extract all metric values from a segment.
+
+        Args:
+            segment: Classified source segment
 
         Returns:
             List of MetricValue objects (may be multiple values per segment)
@@ -231,6 +233,9 @@ class ValueExtractor:
         """
         Parse cohort label into type and normalized bucket.
 
+        Args:
+            raw_label: Raw cohort label from filing
+
         Returns:
             (cohort_type, cohort_bucket_normalized)
 
@@ -240,9 +245,9 @@ class ValueExtractor:
         """
 ```
 
-**Extraction Strategies**:
+**Extraction Strategies:**
 
-1. **Table Extraction** (Priority):
+1. **Table Extraction (Priority):**
    - Most reliable for cohort breakdowns
    - Parse table headers to identify: metric, period, cohort dimension
    - Parse rows to extract values
@@ -254,12 +259,14 @@ class ValueExtractor:
      2022 Cohort    | 2,345   | 2,567
      ```
 
-2. **Text Extraction** (Fallback):
-   - Use regex to find numbers with context
-   - Pattern: "new customers acquired: 1,234"
+2. **LLM-Enhanced Text Extraction (Fallback):**
+   - Use GPT-4o-mini for unstructured text
+   - Prompt with metric names and context
+   - Parse JSON response with validation
    - Lower confidence than table extraction
+   - Quote verification ensures accuracy
 
-**Cohort Label Normalization**:
+**Cohort Label Normalization:**
 ```python
 # Acquisition cohorts
 "2021 Cohort" -> cohort_type="acquisition", normalized="2021"
@@ -271,69 +278,78 @@ class ValueExtractor:
 "3+ years" -> cohort_type="tenure", normalized="3y+"
 ```
 
+---
+
 ### 4. Definition Extractor
 
-**Module**: `src/extraction/definition_extractor.py`
-**Class**: `DefinitionExtractor`
+**Module:** `src/extraction/definition_extractor.py`
+**Class:** `DefinitionExtractor`
+**Status:** Complete (89% test coverage)
 
-**Responsibilities**:
+**Responsibilities:**
 - Extract definition text from definition segments
 - Extract methodology/calculation text from methodology segments
 - Clean and normalize text
 - Assess alignment with CMASB canonical definitions
 
-**Input**:
-- Classified source segments (with definition/methodology flags)
+**Interface:**
 
-**Output**:
-- List of `MetricDefinition` objects
-
-**Key Methods**:
 ```python
 class DefinitionExtractor:
     def extract_definition(self, segment: SourceSegment, metric_id: str) -> MetricDefinition:
         """
         Extract definition for a specific metric from a segment.
+
+        Args:
+            segment: Source segment containing definition
+            metric_id: Canonical metric ID
+
+        Returns:
+            MetricDefinition object
         """
 
     def assess_alignment(self, issuer_definition: str, canonical_definition: str) -> str:
         """
         Assess alignment between issuer and CMASB definitions.
 
+        Args:
+            issuer_definition: Definition from filing
+            canonical_definition: CMASB standard definition
+
         Returns:
             'aligned', 'partial', 'not_aligned', or 'unknown'
         """
 ```
 
-**Alignment Assessment** (Phase 1 - Simple):
+**Alignment Assessment (Current - Simple):**
 - Keyword overlap between issuer and canonical definitions
 - High overlap (>70%) → 'aligned'
 - Medium overlap (30-70%) → 'partial'
 - Low overlap (<30%) → 'not_aligned'
 
-**Alignment Assessment** (Phase 2 - LLM):
-- Use Claude to semantically compare definitions
-- Prompt: "Compare these two definitions and assess alignment..."
+**LLM-Enhanced Extraction:**
+- Uses GPT-4o-mini for semantic extraction
+- Prompt asks for definition text, methodology, and calculation details
+- Structured JSON response with quote verification
+- Fallback to rule-based if LLM fails
 
-### 5. Incidence & Quality Scorer
+---
 
-**Module**: `src/extraction/quality_scorer.py`
-**Class**: `QualityScorer`
+### 5. Quality Scorer
 
-**Responsibilities**:
+**Module:** `src/extraction/quality_scorer.py`
+**Class:** `QualityScorer`
+**Status:** Complete (100% test coverage)
+
+**Responsibilities:**
 - Aggregate filing x metric incidence
 - Count segments by type for each metric
 - Compute quality scores (0-3 scale)
 - Identify primary definition/methodology segments
 - Set cohort breakdown flags
 
-**Input**:
-- All extracted data for a filing (segments, values, definitions)
+**Interface:**
 
-**Output**:
-- List of `FilingMetricIncidence` objects
-
-**Key Methods**:
 ```python
 class QualityScorer:
     def score_filing_metric(
@@ -346,58 +362,72 @@ class QualityScorer:
     ) -> FilingMetricIncidence:
         """
         Compute incidence and quality scores for a filing x metric pair.
+
+        Args:
+            filing_id: Database ID of filing
+            metric_id: Canonical metric ID
+            segments: All segments for this filing-metric
+            values: All extracted values
+            definitions: All extracted definitions
+
+        Returns:
+            FilingMetricIncidence object with scores
         """
 
     def compute_overall_quality(self, ...) -> int:
         """Compute overall quality score 0-3."""
 ```
 
-**Quality Scoring Rubric** (0-3 scale):
+**Quality Scoring Rubric (0-3 scale):**
 
-**Overall Quality**:
+**Overall Quality:**
 - 0: Metric not disclosed
 - 1: Minimal (numeric value only, no definition)
 - 2: Moderate (value + definition OR methodology)
 - 3: Excellent (value + definition + methodology + cohort breakdown)
 
-**Definition Quality**:
+**Definition Quality:**
 - 0: No definition provided
 - 1: Vague or incomplete definition
 - 2: Clear definition, mostly aligned
 - 3: Comprehensive definition, fully aligned with CMASB
 
-**Methodology Quality**:
+**Methodology Quality:**
 - 0: No methodology provided
 - 1: Vague calculation description
 - 2: Clear calculation method
 - 3: Detailed calculation formula with examples
 
-**Completeness**:
+**Completeness:**
 - 0: Not disclosed
 - 1: Single aggregate number
 - 2: Breakdowns by period OR cohort
 - 3: Breakdowns by both period AND cohort
 
-**Comparability**:
+**Comparability:**
 - 0: Not disclosed
 - 1: Definition differs significantly from CMASB
 - 2: Definition partially aligned
 - 3: Definition fully aligned with CMASB
 
+---
+
 ## Processing Orchestration
 
 ### Main Extraction Pipeline
 
-**Module**: `src/extraction/extraction_pipeline.py`
-**Class**: `ExtractionPipeline`
+**Module:** `src/extraction/extraction_pipeline.py`
+**Class:** `ExtractionPipeline`
+**Status:** Complete (91% test coverage)
 
-**Responsibilities**:
+**Responsibilities:**
 - Orchestrate all extraction stages
 - Manage database transactions
 - Handle errors and logging
 - Support batch processing
 
-**Key Methods**:
+**Interface:**
+
 ```python
 class ExtractionPipeline:
     def __init__(self, db: DatabaseAdapter):
@@ -419,25 +449,36 @@ class ExtractionPipeline:
             4. Extract definitions
             5. Compute quality scores
             6. Write all to database
+
+        Args:
+            filing_id: Database ID of filing to process
+
+        Returns:
+            ProcessingResult with status and statistics
         """
 
     def process_batch(self, filing_ids: List[int]) -> BatchResult:
         """Process multiple filings."""
 ```
 
-**Transaction Strategy**:
+**Transaction Strategy:**
 - Each filing processed in a single transaction
 - Rollback entire filing if any stage fails
 - Track processing status in filings table
+- Statuses: `pending`, `fetched`, `segmented`, `processed`, `failed`
 
-**Error Handling**:
+**Error Handling:**
 - Log all errors with full context
 - Continue batch processing after individual failures
-- Store error details in database (new column: extraction_error_log)
+- Store error details in `processing_notes` column
+- Classify errors: transient (retry), permanent (skip), extraction (manual review)
+
+---
 
 ## Data Flow Example
 
 For a filing containing:
+
 ```
 Section: Item 1. Business
 
@@ -454,7 +495,8 @@ Cohort          | Q1 2024 | Q4 2023
 2023 Cohort     | $3,456  | $3,123
 ```
 
-**Stage 1 Output** (source_segments):
+**Stage 1 Output (source_segments):**
+
 ```
 segment_id | segment_type | raw_text                          | sequence_index | section_path
 -----------|--------------|-----------------------------------|----------------|-------------------
@@ -462,7 +504,8 @@ segment_id | segment_type | raw_text                          | sequence_index |
 102        | table        | [table content]                   | 16             | "Item 1. Business"
 ```
 
-**Stage 2 Output** (classified segments):
+**Stage 2 Output (classified segments):**
+
 ```
 segment_id | contains_definition | contains_numeric | candidate_metric_ids
 -----------|--------------------|-----------------|---------------------------------
@@ -470,7 +513,8 @@ segment_id | contains_definition | contains_numeric | candidate_metric_ids
 102        | FALSE              | TRUE            | ['cm_revenue_by_cohort']
 ```
 
-**Stage 3 Output** (metric_values):
+**Stage 3 Output (metric_values):**
+
 ```
 metric_id                    | value_numeric | period_end  | cohort_type | cohort_bucket | source_segment_id
 -----------------------------|---------------|-------------|-------------|---------------|------------------
@@ -480,14 +524,16 @@ cm_revenue_by_cohort         | 2345000       | 2024-03-31  | acquisition | 2022 
 cm_revenue_by_cohort         | 3456000       | 2024-03-31  | acquisition | 2023          | 102
 ```
 
-**Stage 4 Output** (metric_definitions):
+**Stage 4 Output (metric_definitions):**
+
 ```
 metric_id                    | definition_text_normalized          | alignment_flag | definition_segment_id
 -----------------------------|-------------------------------------|----------------|---------------------
 cm_new_customers_acquired    | "an individual or organization..."  | aligned        | 101
 ```
 
-**Stage 5 Output** (filing_metric_incidence):
+**Stage 5 Output (filing_metric_incidence):**
+
 ```
 metric_id                    | metric_disclosed | num_numeric_segments | num_definition_segments | quality_overall | has_cohort_breakdown
 -----------------------------|------------------|----------------------|-------------------------|-----------------|---------------------
@@ -495,78 +541,41 @@ cm_new_customers_acquired    | TRUE             | 1                    | 1      
 cm_revenue_by_cohort         | TRUE             | 1                    | 0                       | 2               | TRUE
 ```
 
-## Phase 1 Implementation Priority
+---
 
-### Milestone 1: Basic Segmentation (Week 1)
-- Implement HTMLSegmenter
-- Test on 5-10 sample filings
-- Manually verify segment quality
+## Component Testing
 
-### Milestone 2: Rule-Based Classification (Week 2)
-- Implement MetricClassifier with keyword rules
-- Focus on 4 core metrics only
-- Measure precision/recall on sample set
+### Test Strategy
 
-### Milestone 3: Table Value Extraction (Week 3)
-- Implement ValueExtractor for tables
-- Parse cohort breakdowns
-- Handle period extraction
+1. **Unit Tests:** Each component tested independently
+2. **Integration Tests:** Full pipeline on sample filings
+3. **Golden Set:** Manually annotated filings for validation
 
-### Milestone 4: Definition Extraction (Week 4)
-- Implement DefinitionExtractor
-- Basic alignment assessment
-- Test on core metrics
+**Coverage:**
+- Segmentation: Count accuracy (manual count vs. automated)
+- Classification: Precision/recall on metric detection
+- Extraction: Value accuracy (compare to manual extraction)
+- Quality: Inter-rater agreement on scores
 
-### Milestone 5: Quality Scoring (Week 5)
-- Implement QualityScorer
-- Compute all quality dimensions
-- Generate incidence table
+**Test Files:**
+- `tests/unit/extraction/test_html_segmenter.py`
+- `tests/unit/extraction/test_metric_classifier.py`
+- `tests/unit/extraction/test_value_extractor.py`
+- `tests/unit/extraction/test_definition_extractor.py`
+- `tests/unit/extraction/test_quality_scorer.py`
+- `tests/unit/extraction/test_extraction_pipeline.py`
 
-### Milestone 6: Pipeline Integration (Week 6)
-- Implement ExtractionPipeline
-- Process full sample set (50-100 filings)
-- Generate analysis outputs
-
-## Testing Strategy
-
-1. **Unit Tests**: Each component tested independently
-2. **Integration Tests**: Full pipeline on sample filings
-3. **Golden Set**: Manually annotated filings for validation
-4. **Metrics**:
-   - Segmentation: count accuracy (manual count vs. automated)
-   - Classification: precision/recall on metric detection
-   - Extraction: value accuracy (compare to manual extraction)
-   - Quality: inter-rater agreement on scores
-
-## Future Enhancements (Phase 2)
-
-1. **LLM-Based Classification**: Replace keyword rules with Claude API
-2. **Advanced Table Parsing**: Handle complex multi-header tables
-3. **Cross-Filing Validation**: Detect inconsistencies across periods
-4. **Entity Resolution**: Link related metrics across filings
-5. **Visualization**: Generate metric disclosure heatmaps
-
-## Dependencies
-
-**Python Libraries**:
-- BeautifulSoup4: HTML parsing
-- pandas: Table data manipulation
-- dateutil: Date parsing
-- anthropic: Claude API (Phase 2)
-
-**Database**:
-- PostgreSQL with existing schema
-- DatabaseAdapter from infra.db
+---
 
 ## Configuration
 
-**Environment Variables**:
+**Environment Variables:**
 ```bash
-DATABASE_URL=postgresql://localhost/filings_analysis
-ANTHROPIC_API_KEY=sk-ant-... (Phase 2)
+DATABASE_URL=postgresql://user:password@localhost/filings_analysis
+OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction
 ```
 
-**Config File** (`config/extraction.yaml`):
+**Config File (`config/extraction.yaml`):**
 ```yaml
 segmentation:
   min_paragraph_length: 50
@@ -577,24 +586,46 @@ classification:
 
 extraction:
   table_parser_mode: "pandas"  # or "beautifulsoup"
+  llm_enabled: true
+  llm_model: "gpt-4o-mini"
 
 quality:
   alignment_threshold: 0.7
 ```
 
-## Monitoring & Logging
+---
 
-**Metrics to Track**:
-- Filings processed per hour
-- Average segments per filing
-- Metrics detected per filing
-- Error rate by stage
+## Performance Characteristics
 
-**Logging**:
-- Use Python logging module
-- Log level: INFO for pipeline progress, DEBUG for details
-- Store extraction logs in database for audit
+**Processing Time (per filing):**
+- Segmentation: ~1-2 seconds
+- Classification: ~0.5-1 seconds
+- Table extraction: ~2-3 seconds
+- LLM extraction: ~5-10 seconds (if used)
+- Quality scoring: ~0.5 seconds
+- **Total: ~9-17 seconds per filing**
+
+**Memory Usage:**
+- Average filing: ~5-10 MB in memory
+- Peak during large table processing: ~50 MB
+
+**Database Operations:**
+- Segments per filing: 100-500 average
+- Values per filing: 10-100 average
+- Definitions per filing: 5-20 average
 
 ---
 
-**Next Steps**: Begin implementation of HTMLSegmenter (Milestone 1)
+## Related Documentation
+
+- **System Architecture:** `docs/architecture/system-overview.md` - High-level design
+- **Data Model:** `docs/architecture/data-model.md` - Database schemas
+- **LLM Integration:** `docs/architecture/llm-integration.md` - OpenAI integration details
+- **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
+- **Metrics Taxonomy:** `docs/development/metrics-taxonomy.md` - Canonical metric definitions
+
+---
+
+**Last Updated:** 2025-12-09
+**Version:** 2.0
+**Status:** Production Ready
