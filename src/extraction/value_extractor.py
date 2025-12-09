@@ -168,7 +168,7 @@ def map_llm_name_to_metric_id(
     return None
 
 
-def _normalize_text(text: str) -> str:
+def _normalize_text(text: Optional[str]) -> str:
     """
     Normalize text for comparison.
 
@@ -541,6 +541,11 @@ class ValueExtractor:
                             f"Rejecting extraction. Quote: '{truncated_quote}'"
                         )
                         continue  # Skip this extraction - reject unverified quotes
+                else:
+                    logger.info(
+                        f"LLM returned empty quote for {metric_id} - "
+                        "accepting without verification"
+                    )
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
@@ -670,6 +675,11 @@ class ValueExtractor:
                             f"Rejecting extraction. Quote: '{truncated_quote}'"
                         )
                         continue  # Reject unverified
+                else:
+                    logger.info(
+                        f"LLM returned empty quote for table extraction: {metric_id} - "
+                        "accepting without verification"
+                    )
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
