@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Quote verification constants
+DEFAULT_SIMILARITY_THRESHOLD = 0.8  # Minimum similarity ratio for fuzzy matching
+WINDOW_SIZE_MULTIPLIER = 1.2  # Window size = quote length * this multiplier
+STRIDE_DIVISOR = 10  # Sample every quote_len / this value positions
+
 
 # Mapping from LLM-returned metric names to canonical metric IDs
 # The LLM returns free-form names; we need to map them to our taxonomy
@@ -188,7 +193,9 @@ def _normalize_text(text: str) -> str:
 
 
 def verify_quote_in_source(
-    quote: str, source_text: str, threshold: float = 0.8
+    quote: str,
+    source_text: str,
+    threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> bool:
     """
     Verify that an LLM-extracted quote exists in the source text.
@@ -222,14 +229,17 @@ def verify_quote_in_source(
     # Fuzzy matching: find best matching window in source
     # Use a window slightly larger than the quote to allow for minor differences
     quote_len = len(quote_normalized)
-    window_size = int(quote_len * 1.2)  # Allow 20% size variation
+    window_size = int(quote_len * WINDOW_SIZE_MULTIPLIER)
 
     best_ratio = 0.0
     source_lower = source_normalized.lower()
     quote_lower = quote_normalized.lower()
 
+    # Use stride to reduce iterations for large documents (O(n/stride) instead of O(n))
+    stride = max(1, quote_len // STRIDE_DIVISOR)
+
     # Slide window across source to find best match
-    for i in range(max(1, len(source_lower) - quote_len + 1)):
+    for i in range(0, max(1, len(source_lower) - quote_len + 1), stride):
         window = source_lower[i : i + window_size]
         matcher = difflib.SequenceMatcher(None, quote_lower, window, autojunk=False)
         ratio = matcher.ratio()
