@@ -3,12 +3,50 @@ Data models for human-in-the-loop review system.
 
 These models represent candidates for review, human decisions,
 and learned patterns before they're written to the database.
+
+Schema alignment: sql/07_create_review_schema.sql
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
+
+# =============================================================================
+# Enumeration Constants (aligned with SQL CHECK constraints)
+# =============================================================================
+
+# CandidateFeatures / ReviewCandidate
+KEYWORD_POSITIONS = ("before", "after")
+NUMBER_FORMATS = ("integer", "decimal", "percentage", "currency")
+
+# ReviewCandidate.review_status
+REVIEW_STATUSES = ("pending", "in_progress", "reviewed", "skipped")
+
+# ReviewDecision.decision
+DECISION_TYPES = ("accept", "reject", "reclassify")
+
+# ReviewDecision.rejection_category
+REJECTION_CATEGORIES = (
+    "wrong_metric",  # Number is a metric, but wrong type
+    "not_a_metric",  # Number is not a customer metric at all
+    "wrong_value",  # Right metric type but wrong value extracted
+    "wrong_period",  # Right metric but wrong time period
+    "duplicate",  # Already captured elsewhere
+    "other",  # Other reason (see rejection_reason)
+)
+
+# LearnedPattern.pattern_type
+PATTERN_TYPES = ("accept_rule", "reject_rule", "feature_weight")
+
+# LearnedPattern.status
+PATTERN_STATUSES = ("candidate", "approved", "rejected", "deprecated")
+
+
+# =============================================================================
+# CandidateFeatures
+# =============================================================================
 
 
 @dataclass
@@ -41,6 +79,19 @@ class CandidateFeatures:
     # Additional computed features
     context_word_count: int = 0
     sentence_position: Optional[int] = None  # Position of number in sentence
+
+    def __post_init__(self):
+        """Validate enumerated fields."""
+        if self.keyword_position not in KEYWORD_POSITIONS:
+            raise ValueError(
+                f"Invalid keyword_position '{self.keyword_position}'. "
+                f"Must be one of: {KEYWORD_POSITIONS}"
+            )
+        if self.number_format not in NUMBER_FORMATS:
+            raise ValueError(
+                f"Invalid number_format '{self.number_format}'. "
+                f"Must be one of: {NUMBER_FORMATS}"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSONB storage."""
@@ -80,6 +131,11 @@ class CandidateFeatures:
         )
 
 
+# =============================================================================
+# ReviewCandidate
+# =============================================================================
+
+
 @dataclass
 class ReviewCandidate:
     """
@@ -97,9 +153,10 @@ class ReviewCandidate:
     context_text: str  # 30-50 words each direction around number
     raw_number_text: str  # The raw text of the extracted number
 
-    # Keyword match info
+    # Keyword match info (required per schema)
     triggering_keyword: str  # The keyword that triggered this candidate
     keyword_distance: int  # Characters from number to keyword
+    keyword_position: str  # 'before' | 'after' (required per schema)
 
     # Optional foreign key
     source_segment_id: Optional[int] = None
@@ -107,9 +164,6 @@ class ReviewCandidate:
     # Parsed value (may fail to parse)
     parsed_value: Optional[Decimal] = None
     parsed_unit: Optional[str] = None  # 'count' | '%' | 'usd' | etc.
-
-    # Keyword position
-    keyword_position: Optional[str] = None  # 'before' | 'after'
 
     # Classification
     suggested_metric_id: Optional[str] = None
@@ -119,12 +173,32 @@ class ReviewCandidate:
     features: Optional[CandidateFeatures] = None
 
     # Status
-    review_status: str = "pending"  # 'pending' | 'reviewed' | 'skipped'
+    review_status: str = "pending"  # 'pending' | 'in_progress' | 'reviewed' | 'skipped'
     review_batch_id: Optional[int] = None
 
     # Database fields
     candidate_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def __post_init__(self):
+        """Validate enumerated fields."""
+        if self.keyword_position not in KEYWORD_POSITIONS:
+            raise ValueError(
+                f"Invalid keyword_position '{self.keyword_position}'. "
+                f"Must be one of: {KEYWORD_POSITIONS}"
+            )
+        if self.review_status not in REVIEW_STATUSES:
+            raise ValueError(
+                f"Invalid review_status '{self.review_status}'. "
+                f"Must be one of: {REVIEW_STATUSES}"
+            )
+        if self.suggestion_confidence is not None:
+            if not (0 <= self.suggestion_confidence <= 1):
+                raise ValueError(
+                    f"suggestion_confidence must be between 0 and 1, "
+                    f"got {self.suggestion_confidence}"
+                )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
@@ -152,9 +226,7 @@ class ReviewCandidate:
         """Create from database row."""
         features_data = row.get("features")
         features = (
-            CandidateFeatures.from_dict(features_data)
-            if features_data
-            else None
+            CandidateFeatures.from_dict(features_data) if features_data else None
         )
 
         return cls(
@@ -169,27 +241,20 @@ class ReviewCandidate:
             parsed_unit=row.get("parsed_unit"),
             triggering_keyword=row["triggering_keyword"],
             keyword_distance=row["keyword_distance"],
-            keyword_position=row.get("keyword_position"),
+            keyword_position=row["keyword_position"],
             suggested_metric_id=row.get("suggested_metric_id"),
             suggestion_confidence=row.get("suggestion_confidence"),
             features=features,
             review_status=row.get("review_status", "pending"),
             review_batch_id=row.get("review_batch_id"),
             created_at=row.get("created_at"),
+            updated_at=row.get("updated_at"),
         )
 
 
-# Valid decision types
-DECISION_TYPES = ("accept", "reject", "reclassify")
-
-# Valid rejection categories
-REJECTION_CATEGORIES = (
-    "wrong_metric",  # Number is a metric, but wrong type (e.g., CAC labeled as customer count)
-    "not_a_metric",  # Number is not a customer metric at all
-    "wrong_value",  # Right metric type but wrong value extracted
-    "duplicate",  # Already captured elsewhere
-    "uncertain",  # Reviewer unsure, needs more context
-)
+# =============================================================================
+# ReviewDecision
+# =============================================================================
 
 
 @dataclass
@@ -204,7 +269,7 @@ class ReviewDecision:
     candidate_id: int
     decision: str  # 'accept' | 'reject' | 'reclassify'
 
-    # Reclassification (when decision='reclassify' or 'accept')
+    # Metric assignment (required for accept/reclassify per schema)
     assigned_metric_id: Optional[str] = None
 
     # Rejection details (when decision='reject')
@@ -220,7 +285,7 @@ class ReviewDecision:
     created_at: Optional[datetime] = None
 
     def __post_init__(self):
-        """Validate decision type and rejection category."""
+        """Validate decision type, rejection category, and business rules."""
         if self.decision not in DECISION_TYPES:
             raise ValueError(
                 f"Invalid decision '{self.decision}'. "
@@ -233,6 +298,17 @@ class ReviewDecision:
             raise ValueError(
                 f"Invalid rejection_category '{self.rejection_category}'. "
                 f"Must be one of: {REJECTION_CATEGORIES}"
+            )
+        # Business rule: accept/reclassify require assigned_metric_id
+        if self.decision in ("accept", "reclassify") and not self.assigned_metric_id:
+            raise ValueError(
+                f"Decision '{self.decision}' requires assigned_metric_id"
+            )
+        # Business rule: rejection_category only makes sense for reject
+        if self.decision != "reject" and self.rejection_category:
+            raise ValueError(
+                f"rejection_category should only be set when decision='reject', "
+                f"got decision='{self.decision}'"
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -263,11 +339,9 @@ class ReviewDecision:
         )
 
 
-# Valid pattern types
-PATTERN_TYPES = ("accept_rule", "reject_rule")
-
-# Valid pattern statuses
-PATTERN_STATUSES = ("candidate", "active", "deprecated")
+# =============================================================================
+# LearnedPattern
+# =============================================================================
 
 
 @dataclass
@@ -280,24 +354,31 @@ class LearnedPattern:
     """
 
     # Required fields
-    pattern_type: str  # 'accept_rule' | 'reject_rule'
+    pattern_type: str  # 'accept_rule' | 'reject_rule' | 'feature_weight'
     pattern_name: str  # Human-readable name
     pattern_definition: Dict[str, Any]  # Rule definition as JSONB
 
     # Optional metric scope
     metric_id: Optional[str] = None  # If pattern is metric-specific
 
-    # Performance metrics
-    precision: Optional[float] = None  # Precision on training data
-    recall: Optional[float] = None  # Recall on training data
-    support: Optional[int] = None  # Number of examples matched
+    # Description
+    pattern_description: Optional[str] = None  # Longer description
 
-    # Status
-    status: str = "candidate"  # 'candidate' | 'active' | 'deprecated'
+    # Performance metrics (aligned with schema column names)
+    precision_score: Optional[float] = None  # Precision on training data
+    recall_score: Optional[float] = None  # Recall on training data
+    f1_score: Optional[float] = None  # F1 score
+    sample_count: Optional[int] = None  # Number of samples matched
+
+    # Status and approval
+    status: str = "candidate"  # 'candidate' | 'approved' | 'rejected' | 'deprecated'
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[str] = None
 
     # Database fields
     pattern_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     def __post_init__(self):
         """Validate pattern type and status."""
@@ -311,6 +392,16 @@ class LearnedPattern:
                 f"Invalid status '{self.status}'. "
                 f"Must be one of: {PATTERN_STATUSES}"
             )
+        # Validate score ranges
+        for score_name, score_val in [
+            ("precision_score", self.precision_score),
+            ("recall_score", self.recall_score),
+            ("f1_score", self.f1_score),
+        ]:
+            if score_val is not None and not (0 <= score_val <= 1):
+                raise ValueError(
+                    f"{score_name} must be between 0 and 1, got {score_val}"
+                )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
@@ -318,10 +409,15 @@ class LearnedPattern:
             "pattern_type": self.pattern_type,
             "metric_id": self.metric_id,
             "pattern_name": self.pattern_name,
+            "pattern_description": self.pattern_description,
             "pattern_definition": self.pattern_definition,
-            "precision": self.precision,
-            "recall": self.recall,
+            "precision_score": self.precision_score,
+            "recall_score": self.recall_score,
+            "f1_score": self.f1_score,
+            "sample_count": self.sample_count,
             "status": self.status,
+            "approved_at": self.approved_at,
+            "approved_by": self.approved_by,
         }
 
     @classmethod
@@ -332,12 +428,17 @@ class LearnedPattern:
             pattern_type=row["pattern_type"],
             metric_id=row.get("metric_id"),
             pattern_name=row["pattern_name"],
+            pattern_description=row.get("pattern_description"),
             pattern_definition=row["pattern_definition"],
-            precision=row.get("precision"),
-            recall=row.get("recall"),
-            support=row.get("support"),
+            precision_score=row.get("precision_score"),
+            recall_score=row.get("recall_score"),
+            f1_score=row.get("f1_score"),
+            sample_count=row.get("sample_count"),
             status=row.get("status", "candidate"),
+            approved_at=row.get("approved_at"),
+            approved_by=row.get("approved_by"),
             created_at=row.get("created_at"),
+            updated_at=row.get("updated_at"),
         )
 
     def matches(self, features: CandidateFeatures) -> bool:
@@ -352,6 +453,12 @@ class LearnedPattern:
             ],
             "logic": "and"  # or "or"
         }
+
+        Supported operators:
+        - eq, ne: equality/inequality
+        - gt, lt, gte, lte: numeric comparisons
+        - in: value in list
+        - contains: substring match (for strings)
         """
         definition = self.pattern_definition
         conditions = definition.get("conditions", [])
@@ -407,6 +514,7 @@ class LearnedPattern:
                     else False
                 )
             else:
+                # Unknown operator - treat as non-match
                 results.append(False)
 
         if logic == "and":
