@@ -42,6 +42,12 @@ src/
 ├── review/                   # Human-in-the-Loop Review System
 │   └── models.py             # Data classes (ReviewCandidate, ReviewDecision, etc.)
 │
+├── web/                      # Flask Web Application (In Progress)
+│   ├── app.py                # Flask application factory
+│   ├── routes/               # Route handlers (review, api)
+│   ├── templates/            # Jinja2 HTML templates
+│   └── static/               # CSS, JavaScript assets
+│
 └── llm/                      # LLM Integration
     ├── openai_client.py      # OpenAI API client with retry logic and cost tracking
     └── prompts.py            # Prompt templates for metric extraction
@@ -75,9 +81,9 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
 - Automated unit tests with 88-95% coverage
 
 **Stage 4: Human Review System** (In Progress)
-- Human-in-the-loop review interface for extraction validation
+- Flask-based web interface for human review of extraction candidates
 - Candidate generation with ML features for pattern analysis
-- Pattern learning from review decisions
+- Pattern learning from review decisions to improve extraction rules
 - See `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` for implementation roadmap
 
 ## Database Schema
@@ -216,6 +222,7 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | PromptTemplates | Complete | 95% |
 | Validation | Complete | 100% |
 | ReviewModels | In Progress | - |
+| FlaskApp | In Progress | - |
 
 **Input Validation:** Centralized validation module (`src/infra/validation.py`) provides:
 - CIK validation and normalization
