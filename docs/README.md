@@ -1,376 +1,323 @@
-# SEC Filings Analysis System - Complete Documentation
+# Customer Metrics Filings Analysis - Documentation
 
-**Version 2.0 - Stateless Agent Architecture**
+**Project:** SEC Filings Customer Metrics Extraction System
+**Version:** 2.0
+**Status:** Production Ready
+**Last Updated:** 2025-12-09
 
 ---
 
 ## Overview
 
-This system extracts structured customer and growth metrics from SEC filings (S-1, 10-K) at scale using a hybrid approach:
+This system analyzes SEC S-1/F-1 filings to assess how companies disclose customer-related metrics, supporting the Customer Metrics Accounting Standards Board (CMASB) initiative to establish standardized customer metrics disclosure practices.
 
-- **Rule-based table extraction** (50-70% of metrics, $0 cost)
-- **LLM text extraction** with GPT-4o-mini (30-50% of metrics, low cost)
-- **Selective re-extraction** with GPT-4o for low-confidence cases
-- **QA validation** with automated quality checks
+### Quick Links
 
-**Target Scale:** 20,500+ filings (10 years S-1, 3 years 10-K)
-**Target Cost:** $500-$1,000 (95% cheaper than naive LLM approach)
-**Target Quality:** >95% success rate, >90% precision, >80% recall
-
----
-
-## Quick Start
-
-### For Developers
-1. Read **01_ARCHITECTURE_OVERVIEW.md** - Understand the system design
-2. Read **06_IMPLEMENTATION_GUIDE.md** - Build the system step-by-step
-3. Follow **Phase 1** in the implementation guide
-4. Run tests as you build each component
-
-### For Project Managers
-1. Read **01_ARCHITECTURE_OVERVIEW.md** - High-level design and goals
-2. Review **Success Criteria** section
-3. Read **08_DEPLOYMENT_GUIDE.md** - Deployment phases and timeline
-4. Monitor progress using provided scripts
-
-### For QA/Analysts
-1. Read **07_TESTING_STRATEGY.md** - Quality validation approach
-2. Review **Manual QA Protocol** section
-3. Use provided validation scripts
-4. Report findings using QA templates
+| For... | Start Here |
+|--------|------------|
+| **New developers** | [System Architecture](architecture/system-overview.md) |
+| **Analysts/Researchers** | [Analytic Requirements](requirements/analytic-requirements.md) |
+| **Project managers** | [System Architecture](architecture/system-overview.md) → Success Criteria |
+| **Quality assurance** | [Testing Strategy](development/testing.md) → [Quality Model](development/quality-model.md) |
+| **Data users** | [Data Model](architecture/data-model.md) → Analysis Views |
 
 ---
 
-## Document Index
+## Documentation Structure
 
-### Core Architecture
+### Architecture (Technical Design)
+
+Core system architecture and design specifications.
+
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[01_ARCHITECTURE_OVERVIEW.md](01_ARCHITECTURE_OVERVIEW.md)** | System design, components, data flow | Everyone - Start Here |
-| **[02_SYSTEM_COMPONENTS.md](02_SYSTEM_COMPONENTS.md)** | Detailed component specifications | Developers |
-| **[03_DATA_MODELS.md](03_DATA_MODELS.md)** | Database schemas, CSV formats, API contracts | Developers |
+| **[system-overview.md](architecture/system-overview.md)** | Complete system architecture, components, data flow | Everyone - START HERE |
+| **[data-model.md](architecture/data-model.md)** | Database schema, table specifications, relationships | Developers, Analysts |
+| **[extraction-pipeline.md](architecture/extraction-pipeline.md)** | Extraction pipeline stages, components, interfaces | Developers |
+| **[llm-integration.md](architecture/llm-integration.md)** | OpenAI GPT-4o-mini integration, costs, prompts | Developers |
 
-### Implementation Details
+### Requirements (Business Needs)
+
+Business requirements and metric definitions.
+
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[04_TABLE_EXTRACTION.md](04_TABLE_EXTRACTION.md)** | Rule-based table parsing logic | Developers |
-| **[05_LLM_EXTRACTION.md](05_LLM_EXTRACTION.md)** | Prompt engineering, LLM integration | Developers |
-| **[06_IMPLEMENTATION_GUIDE.md](06_IMPLEMENTATION_GUIDE.md)** | Step-by-step build instructions | Developers |
+| **[analytic-requirements.md](requirements/analytic-requirements.md)** | Core business requirements, research questions, hypotheses | All stakeholders |
+| **[CMASB_PRIORITY_METRICS_PHASE1.md](requirements/CMASB_PRIORITY_METRICS_PHASE1.md)** | Priority metrics for initial analysis | Analysts, PMs |
 
-### Testing & Deployment
+### Development (Implementation Guidance)
+
+Guidance for developers implementing or extending the system.
+
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[07_TESTING_STRATEGY.md](07_TESTING_STRATEGY.md)** | Quality validation approach | QA, Developers |
-| **[08_DEPLOYMENT_GUIDE.md](08_DEPLOYMENT_GUIDE.md)** | Production deployment instructions | DevOps, PM |
+| **[metrics-taxonomy.md](development/metrics-taxonomy.md)** | Canonical metric definitions and taxonomy | Developers, Analysts |
+| **[quality-model.md](development/quality-model.md)** | Quality scoring framework (0-3 scale) | Developers, QA |
+| **[testing.md](development/testing.md)** | Test strategy, coverage requirements | Developers, QA |
+
+### Operations (Running the System)
+
+Instructions for setting up, running, and maintaining the system.
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
+| **[08_DEPLOYMENT_GUIDE.md](operations/08_DEPLOYMENT_GUIDE.md)** | Deployment procedures, monitoring | DevOps, PMs |
+
+### Archive (Historical Reference)
+
+Historical documents for reference only. Not part of current operations.
+
+| Category | Contents |
+|----------|----------|
+| **[archive/](archive/)** | Phase summaries (Phase 2-4, Phase 1 deployment) |
+| **[archive/fix-history/](archive/fix-history/)** | Historical bug fixes and optimizations |
 
 ---
 
-## Key Features
+## Key System Characteristics
 
-### 🚀 Performance
-- **Parallel processing:** 10 concurrent workers
-- **Smart rate limiting:** Respects OpenAI API limits
-- **Processing speed:** 5-10 filings/minute
-- **Total runtime:** 2-5 days for full dataset
+### Scale & Scope
 
-### 💰 Cost Optimization
-- **Table-first extraction:** 50-70% of metrics at $0 cost
-- **Keyword filtering:** Reduces LLM input by 90%
-- **GPT-4o-mini primary:** 94% cheaper than GPT-4o
-- **Selective fallback:** GPT-4o only when needed
+- **Corpus Size:** 7,304 in-scope S-1/F-1 filings (2015-2025)
+- **Processing Time:** ~9-17 seconds per filing
+- **Expected Runtime:** 2-5 days for full corpus (with parallelization)
+- **Database:** PostgreSQL with 7 core tables
 
-### ✅ Quality Assurance
-- **Inline QA validation:** Real-time quality checks
-- **Confidence scoring:** 0.0-1.0 for every metric
-- **Consistency checks:** DAU ≤ MAU, etc.
-- **Completeness checks:** Flag sparse extractions
+### Technology Stack
 
-### 🔧 Resilience
-- **HTML caching:** Avoid re-downloading from SEC
-- **Automatic retry:** Exponential backoff on failures
-- **Checkpointing:** Resume from interruptions
-- **Error tracking:** Dedicated retry mechanism
+- **Language:** Python 3.11+
+- **Database:** PostgreSQL (via psycopg3)
+- **LLM:** OpenAI GPT-4o-mini
+- **Parsing:** BeautifulSoup4, lxml
+- **Testing:** pytest (77% overall coverage)
+
+### Cost Profile
+
+- **Rule-based extraction:** $0 (50-70% of metrics)
+- **LLM extraction:** ~$0.10 per filing average
+- **Total projected cost:** $500-$1,000 for full corpus
 
 ---
 
-## Architecture Diagram
+## Implementation Status
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     USER COMMANDS                                │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │   CLI Interface       │
-                    └───────────┬───────────┘
-                                │
-            ┌───────────────────┼───────────────────┐
-            │                   │                   │
-    ┌───────▼────────┐  ┌──────▼──────┐  ┌────────▼────────┐
-    │   Discovery    │  │ Orchestrator │  │   Monitoring    │
-    │   Service      │  │   (Parallel) │  │   Dashboard     │
-    └───────┬────────┘  └──────┬───────┘  └─────────────────┘
-            │                  │
-            │          ┌───────▼────────┐
-            └──────────► Stateless Agent│
-                       │                 │
-                       │ 1. Cache HTML   │
-                       │ 2. Extract      │
-                       │    Tables       │
-                       │ 3. Filter       │
-                       │    Keywords     │
-                       │ 4. LLM Extract  │
-                       │ 5. QA Validate  │
-                       └────────┬────────┘
-                                │
-                       ┌────────▼────────┐
-                       │ SQLite Database │
-                       │ + CSV Exports   │
-                       └─────────────────┘
-```
+| Component | Status | Test Coverage | Documentation |
+|-----------|--------|---------------|---------------|
+| Universe Builder | ✅ Complete | 93% | [System Overview](architecture/system-overview.md) |
+| Filing Fetcher | ✅ Complete | 94% | [System Overview](architecture/system-overview.md) |
+| HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
+| Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
+| Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
+
+**Overall Status:** ✅ **Production Ready** (77% test coverage)
 
 ---
 
-## Technology Stack
-
-**Core:**
-- Python 3.11+
-- SQLite 3
-- OpenAI API (GPT-4o-mini, GPT-4o)
-
-**Key Libraries:**
-- `beautifulsoup4` - HTML parsing
-- `pandas` - Data manipulation
-- `openai` - LLM integration
-- `requests` - SEC API access
-- `tqdm` - Progress tracking
-
----
-
-## Development Workflow
-
-### Phase 1: Setup (Week 1)
-```bash
-# Clone/setup project
-cd filings_reviewer
-python3.11 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Configure
-cp .env.example .env
-# Edit .env with your OpenAI API key
-```
-
-### Phase 2: Build (Week 2)
-```bash
-# Build components in order
-# 1. Discovery service
-# 2. Cache layer
-# 3. Table extractor
-# 4. Keyword filter
-# 5. LLM extractor
-# 6. QA agent
-# 7. Storage layer
-
-# Test each component
-pytest tests/test_<component>.py -v
-```
-
-### Phase 3: Integration (Week 3)
-```bash
-# Build orchestrator
-# Add parallel processing
-# Add rate limiting
-# Add monitoring
-
-# Integration tests
-pytest tests/test_integration.py -v
-```
-
-### Phase 4: Deployment (Week 4)
-```bash
-# Pilot run
-python main.py --start-date 2024-01-01 --end-date 2024-12-31 --max-results 100
-
-# Production run
-python main.py --start-date 2015-01-01 --end-date 2024-12-31 --filing-type S-1
-```
-
----
-
-## Key Decisions & Rationale
-
-### Why Stateless Agent?
-- **Reproducibility:** Same input = same output
-- **Testability:** Easy to unit test
-- **Debuggability:** No hidden state
-- **Parallelization:** Safe concurrent processing
-
-### Why Hybrid Extraction?
-- **Cost:** Rule-based is free, LLM is expensive
-- **Quality:** Tables are more accurate than text
-- **Coverage:** LLM catches what rules miss
-
-### Why SQLite?
-- **Simple:** No server setup
-- **Fast:** Sufficient for this scale
-- **Portable:** Single file database
-- **Flexible:** Easy to export to CSV
-
-### Why GPT-4o-mini First?
-- **Cost:** 94% cheaper than GPT-4o
-- **Quality:** Sufficient for structured extraction
-- **Fallback:** Can use GPT-4o when needed
-
----
-
-## Success Metrics
-
-### Technical
-- ✅ Process 20,500+ filings
-- ✅ Success rate > 95%
-- ✅ Total cost < $1,500
-- ✅ Processing time < 5 days
-
-### Quality
-- ✅ Extract 300K-500K metrics
-- ✅ Precision > 90%
-- ✅ Recall > 80%
-- ✅ Average confidence > 0.7
-
----
-
-## Common Issues & Solutions
-
-### "OpenAI rate limit exceeded"
-→ System automatically retries with exponential backoff
-→ Check rate limiter settings in config
-
-### "SEC blocking requests"
-→ Ensure User-Agent header is set correctly
-→ HTML caching prevents re-downloads
-
-### "High cost per filing"
-→ Check keyword filtering is working
-→ Verify table extraction runs first
-→ Check if GPT-4o being used too much
-
-### "Low extraction quality"
-→ Review QA warnings
-→ Adjust metric patterns in config
-→ Test on sample filings
-→ Iterate on LLM prompts
-
----
-
-## Best Practices
-
-### During Development
-1. **Test with small samples** before full runs
-2. **Use mock data** for unit tests to avoid API costs
-3. **Commit often** with clear messages
-4. **Document changes** to extraction logic
-
-### During Deployment
-1. **Start with pilot** (100 filings)
-2. **Monitor costs** in real-time
-3. **Backup database** before major runs
-4. **Log everything** for debugging
-5. **Export frequently** to prevent data loss
-
-### After Deployment
-1. **Validate results** with manual QA
-2. **Review failures** and retry
-3. **Generate reports** for stakeholders
-4. **Archive codebase** snapshot
-5. **Document lessons learned**
-
----
-
-## Cost Breakdown
-
-### Expected Costs (Full Dataset)
-
-| Phase | Filings | Estimated Cost | Time |
-|-------|---------|---------------|------|
-| Pilot (2024 S-1) | 100 | $3-6 | 30 min |
-| Full 2024 S-1 | 250 | $8-15 | 1-2 hours |
-| 10-year S-1 | 2,500 | $75-150 | 6-10 hours |
-| 3-year 10-K | 18,000 | $540-1,080 | 24-48 hours |
-| **Total** | **~20,500** | **$615-$1,230** | **2-5 days** |
-
-*Note: Actual costs depend on filing complexity and LLM usage*
-
----
-
-## Data Outputs
-
-### Primary Output
-- **customer_metrics.csv** - All extracted metrics with metadata
-
-### Intermediate Outputs
-- **keyword_paragraphs.csv** - Filtered paragraphs (debugging)
-- **qa_warnings.csv** - Quality issues flagged
-
-### Tracking Outputs
-- **execution_log.csv** - Batch processing history
-- **failed_filings.csv** - Errors for retry
-- **cost_tracking.csv** - Detailed cost breakdown
-
-### Database
-- **filings_data.db** - SQLite database (all data)
-
----
-
-## Next Steps
+## Getting Started
 
 ### For New Team Members
-1. Read this README
-2. Read 01_ARCHITECTURE_OVERVIEW.md
-3. Set up development environment
-4. Run example on 1 filing
-5. Ask questions!
 
-### For Implementation
-1. Follow 06_IMPLEMENTATION_GUIDE.md
-2. Build Phase 1 (Setup)
-3. Build Phase 2 (Core Components)
-4. Build Phase 3 (Orchestration)
-5. Deploy Phase 4 (Production)
+1. **Read the Overview**
+   - Start with [System Overview](architecture/system-overview.md)
+   - Understand the problem: [Analytic Requirements](requirements/analytic-requirements.md)
 
-### For Questions
-- Technical questions → Review component docs (02-05)
-- Testing questions → Review 07_TESTING_STRATEGY.md
-- Deployment questions → Review 08_DEPLOYMENT_GUIDE.md
+2. **Understand the Data**
+   - Review [Data Model](architecture/data-model.md)
+   - Review [Metrics Taxonomy](development/metrics-taxonomy.md)
+
+3. **Learn the Pipeline**
+   - Study [Extraction Pipeline](architecture/extraction-pipeline.md)
+   - Review [LLM Integration](architecture/llm-integration.md)
+
+4. **Set Up Your Environment**
+   - Follow [Setup Guide](operations/setup-guide.md)
+   - Run tests: `pytest -v`
+
+### For Analysts
+
+1. **Understand the Data Model**
+   - Review [Data Model](architecture/data-model.md) - especially analysis views
+   - Review [Quality Model](development/quality-model.md) for scoring
+
+2. **Understand Metrics**
+   - [Metrics Taxonomy](development/metrics-taxonomy.md) - canonical definitions
+   - [Analytic Requirements](requirements/analytic-requirements.md) - research questions
+
+3. **Access the Data**
+   - Connect to PostgreSQL database
+   - Use analysis views: `v_filing_metric_incidence`, `v_metric_values_cohort`
+
+---
+
+## Common Tasks
+
+### Running Extraction on Sample Filings
+
+```bash
+# See setup-guide.md for detailed instructions
+python scripts/run_extraction_sample.py
+```
+
+### Running Tests
+
+```bash
+# All tests
+pytest -v
+
+# Specific module
+pytest tests/unit/extraction/test_value_extractor.py -v
+
+# With coverage
+pytest --cov=src --cov-report=html
+```
+
+### Building the Universe
+
+```bash
+# See setup-guide.md for database setup first
+python scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
+```
+
+### Querying Results
+
+```sql
+-- Filing-level incidence by year
+SELECT
+    EXTRACT(YEAR FROM filing_date) AS year,
+    metric_id,
+    COUNT(*) FILTER (WHERE metric_disclosed_flag) AS disclosed_count,
+    COUNT(*) AS total_filings
+FROM v_filing_metric_incidence
+WHERE is_in_scope_phase1
+GROUP BY year, metric_id
+ORDER BY year, metric_id;
+```
+
+---
+
+## Key Concepts
+
+### Metrics
+
+Standardized customer-related measurements (e.g., new customers acquired, revenue by cohort). See [Metrics Taxonomy](development/metrics-taxonomy.md).
+
+### Segments
+
+Atomic units of filing content (paragraphs, tables, footnotes) from which metrics are extracted. See [Extraction Pipeline](architecture/extraction-pipeline.md).
+
+### Incidence
+
+Whether a metric is disclosed in a filing (binary: yes/no). See [Analytic Requirements](requirements/analytic-requirements.md).
+
+### Quality Score
+
+0-3 scale assessment of disclosure quality. See [Quality Model](development/quality-model.md).
+
+### Alignment
+
+How closely an issuer's metric definition matches the CMASB canonical definition. See [Quality Model](development/quality-model.md).
+
+### Cohort
+
+Group of customers by acquisition period or tenure. See [Metrics Taxonomy](development/metrics-taxonomy.md).
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**"Module not found" errors**
+- Ensure you're in the project root directory
+- Verify virtual environment is activated: `source venv/bin/activate`
+- Install dependencies: `pip install -r requirements.txt`
+
+**Database connection errors**
+- Check `DATABASE_URL` in `.env` file
+- Ensure PostgreSQL is running (use Docker: `docker compose up -d`)
+- Verify connection: `psql $DATABASE_URL`
+
+**LLM extraction failures**
+- Check `OPENAI_API_KEY` in `.env` file
+- Verify API key is valid
+- Check rate limits and costs in OpenAI dashboard
+
+**Low extraction quality**
+- Review [Quality Model](development/quality-model.md)
+- Check QA warnings in database
+- Run sample extractions and compare to source
+
+### Getting Help
+
+1. **Check Documentation:** Start with [System Overview](architecture/system-overview.md)
+2. **Review Tests:** Look at test files for usage examples
+3. **Check Logs:** Review `logs/` directory for error details
+4. **Ask the Team:** Contact project maintainers
+
+---
+
+## Contributing
+
+### Documentation Updates
+
+When updating documentation:
+1. Keep this README.md synchronized
+2. Update version and date in modified files
+3. Ensure cross-references are valid
+4. Follow existing structure and style
+
+### Code Changes
+
+1. Write tests for new code
+2. Maintain >75% test coverage
+3. Update relevant documentation
+4. Follow existing code patterns
+
+### Adding New Metrics
+
+1. Add to `metrics` table
+2. Update [Metrics Taxonomy](development/metrics-taxonomy.md)
+3. Update classifier patterns
+4. Add tests
 
 ---
 
 ## Version History
 
-### Version 2.0 (Current)
-- Stateless agent architecture
-- Hybrid extraction (tables + LLM)
-- Cost optimized (GPT-4o-mini first)
-- Parallel processing with rate limiting
-- Comprehensive QA validation
+### Version 2.0 (Current - 2025-12-09)
+- ✅ Complete pipeline implementation
+- ✅ LLM integration (GPT-4o-mini)
+- ✅ Quote verification
+- ✅ 77% test coverage
+- ✅ Production-ready system
 
-### Version 1.0 (Legacy)
-- Monolithic script (data_preprocessing.py)
-- Full LLM extraction only
-- Sequential processing
-- Manual QA
+### Version 1.0 (2024-11)
+- Initial implementation
+- Universe building
+- Basic extraction
+- Database schema
+
+---
+
+## Project Team
+
+**Owner:** Rob Markey
+**Organization:** CMASB (Customer Metrics Accounting Standards Board)
 
 ---
 
 ## License & Contact
 
-**Contact:** Rob Markey
-
-**Documentation Created:** 2025-11-14
-
-**System Version:** 2.0
+For questions about this system or the CMASB initiative:
+- Contact: Rob Markey
 
 ---
 
-**Ready to get started? Begin with [01_ARCHITECTURE_OVERVIEW.md](01_ARCHITECTURE_OVERVIEW.md)!**
+**Quick Navigation:**
+[Architecture](architecture/) | [Requirements](requirements/) | [Development](development/) | [Operations](operations/) | [Archive](archive/)
