@@ -39,6 +39,9 @@ src/
 │   ├── quality_scorer.py     # Scores disclosure quality (0-3 scale)
 │   └── extraction_pipeline.py # Orchestrates full extraction flow
 │
+├── review/                   # Human-in-the-Loop Review System
+│   └── models.py             # Data classes (ReviewCandidate, ReviewDecision, etc.)
+│
 └── llm/                      # LLM Integration
     ├── openai_client.py      # OpenAI API client with retry logic and cost tracking
     └── prompts.py            # Prompt templates for metric extraction
@@ -71,6 +74,12 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
 - Cost tracking and token management
 - Automated unit tests with 88-95% coverage
 
+**Stage 4: Human Review System** (In Progress)
+- Human-in-the-loop review interface for extraction validation
+- Candidate generation with ML features for pattern analysis
+- Pattern learning from review decisions
+- See `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` for implementation roadmap
+
 ## Database Schema
 
 PostgreSQL with key tables:
@@ -85,6 +94,7 @@ Schema files in `sql/`:
 - `01_create_schema.sql` - Core tables
 - `03_create_analysis_schema.sql` - Extraction tables
 - `04_seed_metrics_taxonomy.sql` - Metric definitions
+- `07_create_review_schema.sql` - Human review tables (in progress)
 
 ### Security
 - **API Key Management**: All API keys are managed through environment variables in `.env` file (which is gitignored). Never commit API keys to the repository.
@@ -205,6 +215,7 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | OpenAIClient | Complete | 88% |
 | PromptTemplates | Complete | 95% |
 | Validation | Complete | 100% |
+| ReviewModels | In Progress | - |
 
 **Input Validation:** Centralized validation module (`src/infra/validation.py`) provides:
 - CIK validation and normalization
@@ -258,4 +269,5 @@ The documentation has been reorganized for clarity and ease of navigation. Start
 
 **Other:**
 - `DEVELOPMENT_PLAN.md` - Sprint tracking and roadmap
+- `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` - Human review system implementation plan
 - `docs/archive/` - Historical phase summaries and fix documentation

@@ -64,6 +64,14 @@ Instructions for setting up, running, and maintaining the system.
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
 | **[08_DEPLOYMENT_GUIDE.md](operations/08_DEPLOYMENT_GUIDE.md)** | Deployment procedures, monitoring | DevOps, PMs |
 
+### Human Review System (In Progress)
+
+Human-in-the-loop system for validating and improving extraction quality.
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| **[HUMAN_REVIEW_SYSTEM_PLAN.md](HUMAN_REVIEW_SYSTEM_PLAN.md)** | Implementation plan, task checklist, architecture | Developers |
+
 ### Archive (Historical Reference)
 
 Historical documents for reference only. Not part of current operations.
@@ -114,6 +122,7 @@ Historical documents for reference only. Not part of current operations.
 | Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
 | Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
+| Human Review System | 🔄 In Progress | - | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
 
 **Overall Status:** ✅ **Production Ready** (77% test coverage)
 
@@ -290,7 +299,11 @@ When updating documentation:
 
 ## Version History
 
-### Version 2.0 (Current - 2025-12-09)
+### Version 2.1 (Current - 2025-12-09)
+- 🔄 Human review system (in progress)
+- ✅ Review models: ReviewCandidate, ReviewDecision, LearnedPattern
+
+### Version 2.0 (2025-12-09)
 - ✅ Complete pipeline implementation
 - ✅ LLM integration (GPT-4o-mini)
 - ✅ Quote verification

@@ -278,7 +278,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 ### Phase 1: Foundation (Can run in parallel)
 - [ ] **A1** Create `sql/07_create_review_schema.sql`
 - [x] **A2** Create `src/review/models.py` (ReviewCandidate, ReviewDecision, CandidateFeatures)
-- [ ] **C1** Add `flask>=3.0.0` to requirements.txt
+- [x] **C1** Add `flask>=3.0.0` to requirements.txt
 - [ ] **C2** Create `src/web/app.py` (Flask factory)
 - [ ] **C3** Create `src/web/templates/base.html` (Bootstrap base)
 - [ ] **C4** Create `src/web/static/css/review.css`
