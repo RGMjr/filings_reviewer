@@ -276,7 +276,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 ## Task Checklist
 
 ### Phase 1: Foundation (Can run in parallel)
-- [ ] **A1** Create `sql/07_create_review_schema.sql`
+- [x] **A1** Create `sql/07_create_review_schema.sql`
 - [x] **A2** Create `src/review/models.py` (ReviewCandidate, ReviewDecision, CandidateFeatures)
 - [x] **C1** Add `flask>=3.0.0` to requirements.txt
 - [x] **C2** Create `src/web/app.py` (Flask factory)
