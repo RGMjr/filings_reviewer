@@ -169,7 +169,7 @@ The SQL files in `sql/` are automatically applied when the container first start
 ## Testing Standards
 
 - **Minimum coverage**: 75% (enforced in pyproject.toml)
-- **Current coverage**: 75% overall (440 tests passing)
+- **Current coverage**: 77% overall (467 tests passing)
   - Core extraction modules: 80-100% coverage
   - LLM modules: 88-95% coverage
   - Validation module: 100% coverage
@@ -198,8 +198,8 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | FilingFetcher | Complete | 94% |
 | HTMLSegmenter | Complete | 80% |
 | MetricClassifier | Complete | 98% |
-| ValueExtractor | Complete | 68% |
-| DefinitionExtractor | Complete | 65% |
+| ValueExtractor | Complete | 66% |
+| DefinitionExtractor | Complete | 89% |
 | QualityScorer | Complete | 100% |
 | ExtractionPipeline | Complete | 91% |
 | OpenAIClient | Complete | 88% |
