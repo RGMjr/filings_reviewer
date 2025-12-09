@@ -1,0 +1,314 @@
+# Human-in-the-Loop Metric Extraction Review System
+
+## Setup Tasks (Before Implementation)
+- [x] Create branch: `git checkout -b feature/human-review-system`
+- [x] Copy plan to: `docs/HUMAN_REVIEW_SYSTEM_PLAN.md`
+
+---
+
+## Problem Summary
+
+Automated extraction has **~0% precision** on reviewed samples:
+- Samsara: 0 correct, 10 partial, 45 incorrect out of 55 extractions
+- Farfetch: 0 correct out of 48 extractions
+- Root cause: LLM extracts numbers near keywords without understanding what they represent
+
+**Examples of failures:**
+- CAC=493 → Actually ARR ($493M)
+- New customers=125 → Partner integrations
+- Gross margin=119,865 → Revenue ($119,865k)
+
+Pure automation cannot solve this - we need human judgment to build training data.
+
+---
+
+## Solution: Iterative Human-in-the-Loop Learning
+
+1. Build Flask review interface showing candidate metrics in context
+2. Human reviews 5-10 filings, accepting/reclassifying/rejecting candidates
+3. System analyzes decisions to find patterns distinguishing good vs bad extractions
+4. Generate improved heuristics and statistical features
+5. Iterate until precision is acceptable while monitoring recall
+
+---
+
+## Implementation Plan
+
+### Sprint 1: Database Schema (Day 1)
+
+**Create:** `sql/07_create_review_schema.sql`
+
+```sql
+-- Candidate metrics awaiting review
+CREATE TABLE review_candidates (
+    candidate_id BIGSERIAL PRIMARY KEY,
+    filing_id BIGINT NOT NULL REFERENCES filings(filing_id),
+    company_id BIGINT NOT NULL REFERENCES companies(company_id),
+    source_segment_id BIGINT REFERENCES source_segments(source_segment_id),
+
+    -- Location and context
+    char_position INT NOT NULL,
+    context_text TEXT NOT NULL,           -- 30-50 words each direction
+    raw_number_text TEXT NOT NULL,
+    parsed_value NUMERIC,
+    parsed_unit TEXT,
+
+    -- Keyword match info
+    triggering_keyword TEXT NOT NULL,
+    keyword_distance INT NOT NULL,
+    keyword_position TEXT,                -- 'before' | 'after'
+
+    -- Classification
+    suggested_metric_id TEXT,
+    suggestion_confidence NUMERIC,
+    features JSONB,                       -- ML features
+
+    -- Status
+    review_status TEXT DEFAULT 'pending',
+    review_batch_id INT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Human review decisions
+CREATE TABLE review_decisions (
+    decision_id BIGSERIAL PRIMARY KEY,
+    candidate_id BIGINT NOT NULL REFERENCES review_candidates(candidate_id),
+    decision TEXT NOT NULL,               -- 'accept' | 'reject' | 'reclassify'
+    assigned_metric_id TEXT,
+    rejection_reason TEXT,
+    rejection_category TEXT,              -- 'wrong_metric' | 'not_a_metric' | 'wrong_value'
+    reviewer_notes TEXT,
+    review_time_seconds INT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Learned patterns
+CREATE TABLE learned_patterns (
+    pattern_id BIGSERIAL PRIMARY KEY,
+    pattern_type TEXT NOT NULL,           -- 'accept_rule' | 'reject_rule'
+    metric_id TEXT,
+    pattern_name TEXT NOT NULL,
+    pattern_definition JSONB NOT NULL,
+    precision NUMERIC,
+    recall NUMERIC,
+    status TEXT DEFAULT 'candidate',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+### Sprint 2: Candidate Generator (Days 2-3)
+
+**Create:** `src/review/candidate_generator.py`
+
+**Algorithm:**
+1. For each segment in filing, find all numbers via regex
+2. For each number, check if metric keyword within 100 chars
+3. If yes, extract 30-50 words context each direction
+4. Compute features for ML analysis
+5. Store as candidate with suggested metric
+
+**Key features to compute:**
+- `keyword_distance`: Chars from number to keyword
+- `is_in_table`: Table vs paragraph
+- `contains_definition_language`: "we define", "defined as"
+- `is_in_risk_factors`: High false positive section
+- `number_format`: integer, decimal, percentage, currency
+- `value_magnitude`: Log10 of value
+- `surrounding_numbers_count`: Other numbers nearby
+- `has_period_mention`: Date/quarter nearby
+
+**Create:** `scripts/generate_review_candidates.py`
+
+---
+
+### Sprint 3: Flask Review Interface (Days 4-6)
+
+**Add to requirements.txt:** `flask>=3.0.0`
+
+**Create application structure:**
+```
+src/web/
+├── app.py                    # Flask factory
+├── routes/
+│   ├── review.py             # Review interface routes
+│   └── api.py                # JSON API endpoints
+├── templates/
+│   ├── base.html             # Bootstrap base
+│   ├── filing_list.html      # Select filing to review
+│   └── review.html           # Main review interface
+└── static/
+    └── js/review.js          # Keyboard shortcuts
+```
+
+**Routes:**
+- `GET /filings` - List filings with candidate counts
+- `GET /review/<filing_id>` - Review interface
+- `POST /api/decision` - Record decision (AJAX)
+
+**Review Interface displays:**
+- Context text with **highlighted number** and _underlined keyword_
+- Suggested metric and confidence
+- Accept / Reclassify (dropdown) / Reject (with reason) buttons
+- Keyboard: `a`=Accept, `r`=Reject, `c`=Reclassify, `n`=Next
+
+---
+
+### Sprint 4: Pattern Analyzer (Days 7-8)
+
+**Create:** `src/review/pattern_analyzer.py`
+
+After reviewing 5-10 filings:
+1. Load all decisions with features
+2. Compute feature importance (chi-squared for categorical, t-test for numeric)
+3. Find rejection patterns: "Numbers in risk factors with 'customers' → 85% rejected"
+4. Find acceptance patterns: "Within 30 chars of 'active customers' + definition → 90% correct"
+
+**Create:** `src/review/rule_generator.py`
+
+Generate Python code for improved extraction rules with precision/recall metrics.
+
+---
+
+### Sprint 5: False Negative Detection (Day 9)
+
+**Add to pattern_analyzer.py:**
+- `find_potential_missed_metrics(filing_id)`: Numbers near metric concepts not flagged
+- Review mode to check for missed items
+
+---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `sql/07_create_review_schema.sql` | Database schema |
+| `src/review/__init__.py` | Module init |
+| `src/review/models.py` | ReviewCandidate, ReviewDecision dataclasses |
+| `src/review/candidate_generator.py` | High-recall candidate detection |
+| `src/review/feature_extractor.py` | Compute ML features |
+| `src/review/pattern_analyzer.py` | Analyze accepted vs rejected |
+| `src/review/rule_generator.py` | Generate improved rules |
+| `src/web/app.py` | Flask application |
+| `src/web/routes/review.py` | Review routes |
+| `src/web/routes/api.py` | API endpoints |
+| `src/web/templates/*.html` | UI templates |
+| `scripts/generate_review_candidates.py` | Populate candidates |
+| `scripts/run_review_server.py` | Start Flask |
+
+---
+
+## Critical Reference Files
+
+| File | What to reference |
+|------|-------------------|
+| `src/extraction/metric_classifier.py:57-188` | `METRIC_KEYWORDS` dict for candidate keywords |
+| `src/extraction/extraction_validation.py:44-185` | `METRIC_UNIT_RULES`, `METRIC_RANGE_RULES` for validation |
+| `src/extraction/models.py:14-152` | `SourceSegment`, `MetricValue` patterns |
+| `src/infra/db.py` | Database adapter pattern |
+| `sql/03_create_analysis_schema.sql` | Schema conventions |
+
+---
+
+## Parallel Work Streams
+
+### Stream A: Database & Models (No dependencies)
+```
+A1. sql/07_create_review_schema.sql
+A2. src/review/models.py (dataclasses)
+A3. Database adapter methods in src/infra/db.py
+```
+
+### Stream B: Candidate Generation (Depends on A1, A2)
+```
+B1. src/review/candidate_generator.py
+B2. src/review/feature_extractor.py
+B3. scripts/generate_review_candidates.py
+```
+
+### Stream C: Flask App Structure (No dependencies)
+```
+C1. Add flask to requirements.txt
+C2. src/web/app.py (factory)
+C3. src/web/templates/base.html
+C4. src/web/static/css/review.css
+```
+
+### Stream D: Review Interface (Depends on A3, C2)
+```
+D1. src/web/routes/review.py
+D2. src/web/routes/api.py
+D3. src/web/templates/filing_list.html
+D4. src/web/templates/review.html
+D5. src/web/static/js/review.js
+D6. scripts/run_review_server.py
+```
+
+### Stream E: Analysis (Depends on A3)
+```
+E1. src/review/pattern_analyzer.py
+E2. src/review/rule_generator.py
+```
+
+### Dependency Graph
+```
+A1 ─┬─> A2 ──> A3 ─┬─> B1 ──> B2 ──> B3
+    │              │
+    │              └─> D1 ──> D2 ──> D3 ──> D4 ──> D5 ──> D6
+    │              │
+    │              └─> E1 ──> E2
+    │
+C1 ──> C2 ──> C3 ──> C4 ─┘
+```
+
+**Can start immediately (parallel):**
+- Stream A (A1, A2)
+- Stream C (C1, C2, C3, C4)
+
+**After A3 complete (parallel):**
+- Stream B (B1, B2, B3)
+- Stream D (D1-D6)
+- Stream E (E1, E2)
+
+---
+
+## Task Checklist
+
+### Phase 1: Foundation (Can run in parallel)
+- [ ] **A1** Create `sql/07_create_review_schema.sql`
+- [x] **A2** Create `src/review/models.py` (ReviewCandidate, ReviewDecision, CandidateFeatures)
+- [ ] **C1** Add `flask>=3.0.0` to requirements.txt
+- [ ] **C2** Create `src/web/app.py` (Flask factory)
+- [ ] **C3** Create `src/web/templates/base.html` (Bootstrap base)
+- [ ] **C4** Create `src/web/static/css/review.css`
+
+### Phase 2: Database Integration (After A1, A2)
+- [ ] **A3** Add review table methods to `src/infra/db.py`
+
+### Phase 3: Core Features (After A3, can run in parallel)
+- [ ] **B1** Create `src/review/candidate_generator.py`
+- [ ] **B2** Create `src/review/feature_extractor.py`
+- [ ] **D1** Create `src/web/routes/review.py`
+- [ ] **D2** Create `src/web/routes/api.py`
+- [ ] **E1** Create `src/review/pattern_analyzer.py`
+
+### Phase 4: UI & Scripts (After D1, D2)
+- [ ] **D3** Create `src/web/templates/filing_list.html`
+- [ ] **D4** Create `src/web/templates/review.html`
+- [ ] **D5** Create `src/web/static/js/review.js`
+- [ ] **B3** Create `scripts/generate_review_candidates.py`
+- [ ] **D6** Create `scripts/run_review_server.py`
+- [ ] **E2** Create `src/review/rule_generator.py`
+
+---
+
+## Expected Workflow
+
+1. Run `scripts/generate_review_candidates.py --filing-ids 1,2,3,4,5`
+2. Start `scripts/run_review_server.py`
+3. Review candidates at http://localhost:5000
+4. After 5-10 filings: Run pattern analysis
+5. Review generated rules, apply to same filings
+6. Iterate until precision > 80%
+7. Expand to new filings, monitor for false negatives
