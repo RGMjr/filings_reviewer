@@ -281,7 +281,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 - [x] **C1** Add `flask>=3.0.0` to requirements.txt
 - [x] **C2** Create `src/web/app.py` (Flask factory)
 - [x] **C3** Create `src/web/templates/base.html` (Bootstrap base)
-- [ ] **C4** Create `src/web/static/css/review.css`
+- [x] **C4** Create `src/web/static/css/review.css`
 
 ### Phase 2: Database Integration (After A1, A2)
 - [ ] **A3** Add review table methods to `src/infra/db.py`
