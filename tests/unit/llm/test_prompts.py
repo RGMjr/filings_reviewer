@@ -223,6 +223,14 @@ That's all I found."""
         with pytest.raises(ValueError, match="Failed to parse JSON"):
             PromptTemplates.parse_json_response(response)
 
+    def test_parse_json_response_regex_match_still_invalid(self):
+        """Test parsing when regex finds something that looks like JSON but isn't valid."""
+        # This triggers the fallback regex search, finds [invalid], but it still fails to parse
+        response = "Here is the result: [not, valid, json, {unclosed"
+
+        with pytest.raises(ValueError, match="Failed to parse JSON"):
+            PromptTemplates.parse_json_response(response)
+
     def test_parse_json_response_preserves_whitespace_in_values(self):
         """Test parsing preserves whitespace in JSON values."""
         response = '[{"quote": "We had   10 million   users"}]'
@@ -331,6 +339,17 @@ class TestValidateDefinitionExtractionResponse:
         """Test validation fails for non-list response."""
         result = PromptTemplates.validate_definition_extraction_response(
             {"metric_name": "users", "definition_text": "...", "quote": "..."}
+        )
+
+        assert result is False
+
+    def test_validate_definition_extraction_response_non_dict_item_invalid(self):
+        """Test validation fails when list contains non-dict items."""
+        result = PromptTemplates.validate_definition_extraction_response(
+            [
+                {"metric_name": "mau", "definition_text": "users", "quote": "..."},
+                "invalid string item",  # This should cause failure
+            ]
         )
 
         assert result is False
