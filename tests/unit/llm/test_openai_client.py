@@ -410,6 +410,77 @@ class TestComplete:
             # Should only try once since ValueError isn't retried
             assert mock_instance.chat.completions.create.call_count == 1
 
+    def test_complete_retry_on_connection_error(self, mock_tiktoken, mock_openai_response):
+        """Test retry on API connection error."""
+        from openai import APIConnectionError
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            # Fail first two times with connection error, succeed on third
+            mock_instance.chat.completions.create.side_effect = [
+                APIConnectionError(request=MagicMock()),
+                APIConnectionError(request=MagicMock()),
+                mock_openai_response,
+            ]
+            mock_openai_class.return_value = mock_instance
+
+            with patch("time.sleep"):  # Don't actually sleep
+                client = OpenAIClient(api_key="test-key")
+                response = client.complete("Test prompt")
+
+                assert response.content == "Test response content"
+                assert mock_instance.chat.completions.create.call_count == 3
+
+    def test_complete_api_error_4xx_non_retryable(self, mock_tiktoken):
+        """Test that 4xx API errors (except rate limit) are not retried."""
+        from openai import APIError
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            # Create a mock APIError with status_code attribute
+            error = MagicMock(spec=APIError)
+            error.status_code = 400
+            # Make it raise as an APIError by setting up the exception
+            actual_error = APIError.__new__(APIError)
+            actual_error.status_code = 400
+            mock_instance.chat.completions.create.side_effect = actual_error
+            mock_openai_class.return_value = mock_instance
+
+            with patch("time.sleep"):
+                client = OpenAIClient(api_key="test-key")
+
+                with pytest.raises(APIError):
+                    client.complete("Test prompt")
+
+                # Should only try once since 4xx errors are not retried
+                assert mock_instance.chat.completions.create.call_count == 1
+                # Should track the failure
+                assert client.cost_tracker.failed_requests == 1
+
+    def test_complete_api_error_5xx_retryable(self, mock_tiktoken, mock_openai_response):
+        """Test that 5xx API errors are retried."""
+        from openai import APIError
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            # Create APIError without calling __init__ to avoid signature issues
+            error = APIError.__new__(APIError)
+            error.status_code = 500
+            # Fail first two times, succeed on third
+            mock_instance.chat.completions.create.side_effect = [
+                error,
+                error,
+                mock_openai_response,
+            ]
+            mock_openai_class.return_value = mock_instance
+
+            with patch("time.sleep"):
+                client = OpenAIClient(api_key="test-key")
+                response = client.complete("Test prompt")
+
+                assert response.content == "Test response content"
+                assert mock_instance.chat.completions.create.call_count == 3
+
 
 class TestCompleteBatch:
     """Tests for the complete_batch() method."""
