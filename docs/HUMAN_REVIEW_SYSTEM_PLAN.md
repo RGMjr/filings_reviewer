@@ -279,8 +279,8 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 - [ ] **A1** Create `sql/07_create_review_schema.sql`
 - [x] **A2** Create `src/review/models.py` (ReviewCandidate, ReviewDecision, CandidateFeatures)
 - [x] **C1** Add `flask>=3.0.0` to requirements.txt
-- [ ] **C2** Create `src/web/app.py` (Flask factory)
-- [ ] **C3** Create `src/web/templates/base.html` (Bootstrap base)
+- [x] **C2** Create `src/web/app.py` (Flask factory)
+- [x] **C3** Create `src/web/templates/base.html` (Bootstrap base)
 - [ ] **C4** Create `src/web/static/css/review.css`
 
 ### Phase 2: Database Integration (After A1, A2)
