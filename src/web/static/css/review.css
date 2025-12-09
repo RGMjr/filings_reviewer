@@ -7,6 +7,14 @@
    CSS Variables
    ============================================================================= */
 :root {
+    /* Base colors (Bootstrap-aligned) */
+    --color-muted: #6c757d;
+    --color-border: #dee2e6;
+    --color-bg-light: #f8f9fa;
+    --color-bg-secondary: #e9ecef;
+    --color-text: #495057;
+    --color-text-dark: #212529;
+
     /* Review status colors */
     --review-pending: #ffc107;
     --review-in-progress: #17a2b8;
@@ -15,8 +23,17 @@
 
     /* Decision colors */
     --decision-accept: #28a745;
+    --decision-accept-hover: #218838;
+    --decision-accept-active: #1e7e34;
     --decision-reject: #dc3545;
+    --decision-reject-hover: #c82333;
+    --decision-reject-active: #bd2130;
     --decision-reclassify: #fd7e14;
+    --decision-reclassify-hover: #e96c00;
+    --decision-reclassify-active: #d86200;
+    --decision-skip: #6c757d;
+    --decision-skip-hover: #5a6268;
+    --decision-skip-active: #545b62;
 
     /* Highlight colors */
     --highlight-number: #fff3cd;
@@ -27,7 +44,12 @@
     /* Confidence levels */
     --confidence-high: #28a745;
     --confidence-medium: #ffc107;
+    --confidence-medium-text: #856404;
     --confidence-low: #dc3545;
+
+    /* Focus ring */
+    --focus-ring-color: rgba(13, 110, 253, 0.5);
+    --focus-ring-width: 3px;
 }
 
 /* =============================================================================
@@ -36,7 +58,7 @@
 .sticky-top-below-nav {
     position: sticky;
     top: 70px;
-    z-index: 1000;
+    z-index: 1020; /* Below Bootstrap modal (1050) but above content */
 }
 
 .review-container {
@@ -63,7 +85,7 @@
 }
 
 .filing-stats .stat-label {
-    color: #6c757d;
+    color: var(--color-muted);
 }
 
 .filing-stats .stat-value {
@@ -74,7 +96,7 @@
    Review Interface - Candidate Cards
    ============================================================================= */
 .candidate-card {
-    border-left: 4px solid #dee2e6;
+    border-left: 4px solid var(--color-border);
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -105,13 +127,13 @@
     justify-content: space-between;
     align-items: center;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid #dee2e6;
+    border-bottom: 1px solid var(--color-border);
     margin-bottom: 0.75rem;
 }
 
 .candidate-number {
     font-size: 0.875rem;
-    color: #6c757d;
+    color: var(--color-muted);
 }
 
 .candidate-metric {
@@ -125,10 +147,10 @@
     font-family: Georgia, "Times New Roman", serif;
     font-size: 1rem;
     line-height: 1.7;
-    background-color: #f8f9fa;
+    background-color: var(--color-bg-light);
     padding: 1rem;
     border-radius: 0.375rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--color-border);
 }
 
 /* Highlighted extracted number */
@@ -152,25 +174,31 @@
 /* Table context indicator */
 .context-text.from-table {
     border-left: 3px solid #6f42c1;
+    padding-top: 2.25rem; /* Make room for the label */
+    position: relative;
 }
 
 .context-text.from-table::before {
-    content: "Table";
+    content: "From Table";
+    position: absolute;
+    top: 0.5rem;
+    left: 1rem;
     display: inline-block;
     background-color: #6f42c1;
     color: white;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     padding: 0.125rem 0.5rem;
     border-radius: 0.25rem;
-    margin-bottom: 0.5rem;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
 }
 
 /* =============================================================================
    Extracted Value Display
    ============================================================================= */
 .extracted-value-display {
-    background-color: #e9ecef;
+    background-color: var(--color-bg-secondary);
     padding: 0.75rem 1rem;
     border-radius: 0.375rem;
     margin-top: 0.75rem;
@@ -184,13 +212,13 @@
 
 .extracted-value-display .unit {
     font-size: 1rem;
-    color: #6c757d;
+    color: var(--color-muted);
     margin-left: 0.25rem;
 }
 
 .extracted-value-display .raw-text {
     font-size: 0.875rem;
-    color: #6c757d;
+    color: var(--color-muted);
     display: block;
     margin-top: 0.25rem;
 }
@@ -215,7 +243,7 @@
 
 .confidence-badge.medium {
     background-color: rgba(255, 193, 7, 0.15);
-    color: #856404;
+    color: var(--confidence-medium-text);
 }
 
 .confidence-badge.low {
@@ -226,7 +254,7 @@
 .confidence-bar {
     width: 50px;
     height: 6px;
-    background-color: #dee2e6;
+    background-color: var(--color-border);
     border-radius: 3px;
     overflow: hidden;
 }
@@ -258,43 +286,108 @@
     flex-wrap: wrap;
 }
 
+/* Accept button */
 .btn-accept {
     background-color: var(--decision-accept);
     border-color: var(--decision-accept);
     color: white;
 }
 
-.btn-accept:hover,
-.btn-accept:focus {
-    background-color: #218838;
-    border-color: #1e7e34;
+.btn-accept:hover {
+    background-color: var(--decision-accept-hover);
+    border-color: var(--decision-accept-active);
     color: white;
 }
 
+.btn-accept:focus {
+    background-color: var(--decision-accept-hover);
+    border-color: var(--decision-accept-active);
+    color: white;
+    box-shadow: 0 0 0 var(--focus-ring-width) rgba(40, 167, 69, 0.5);
+    outline: none;
+}
+
+.btn-accept:active {
+    background-color: var(--decision-accept-active);
+    border-color: var(--decision-accept-active);
+}
+
+/* Reject button */
 .btn-reject {
     background-color: var(--decision-reject);
     border-color: var(--decision-reject);
     color: white;
 }
 
-.btn-reject:hover,
-.btn-reject:focus {
-    background-color: #c82333;
-    border-color: #bd2130;
+.btn-reject:hover {
+    background-color: var(--decision-reject-hover);
+    border-color: var(--decision-reject-active);
     color: white;
 }
 
+.btn-reject:focus {
+    background-color: var(--decision-reject-hover);
+    border-color: var(--decision-reject-active);
+    color: white;
+    box-shadow: 0 0 0 var(--focus-ring-width) rgba(220, 53, 69, 0.5);
+    outline: none;
+}
+
+.btn-reject:active {
+    background-color: var(--decision-reject-active);
+    border-color: var(--decision-reject-active);
+}
+
+/* Reclassify button */
 .btn-reclassify {
     background-color: var(--decision-reclassify);
     border-color: var(--decision-reclassify);
     color: white;
 }
 
-.btn-reclassify:hover,
-.btn-reclassify:focus {
-    background-color: #e96c00;
-    border-color: #d86200;
+.btn-reclassify:hover {
+    background-color: var(--decision-reclassify-hover);
+    border-color: var(--decision-reclassify-active);
     color: white;
+}
+
+.btn-reclassify:focus {
+    background-color: var(--decision-reclassify-hover);
+    border-color: var(--decision-reclassify-active);
+    color: white;
+    box-shadow: 0 0 0 var(--focus-ring-width) rgba(253, 126, 20, 0.5);
+    outline: none;
+}
+
+.btn-reclassify:active {
+    background-color: var(--decision-reclassify-active);
+    border-color: var(--decision-reclassify-active);
+}
+
+/* Skip button */
+.btn-skip {
+    background-color: var(--decision-skip);
+    border-color: var(--decision-skip);
+    color: white;
+}
+
+.btn-skip:hover {
+    background-color: var(--decision-skip-hover);
+    border-color: var(--decision-skip-active);
+    color: white;
+}
+
+.btn-skip:focus {
+    background-color: var(--decision-skip-hover);
+    border-color: var(--decision-skip-active);
+    color: white;
+    box-shadow: 0 0 0 var(--focus-ring-width) rgba(108, 117, 125, 0.5);
+    outline: none;
+}
+
+.btn-skip:active {
+    background-color: var(--decision-skip-active);
+    border-color: var(--decision-skip-active);
 }
 
 /* =============================================================================
@@ -306,19 +399,19 @@
     height: 1.5rem;
     line-height: 1.5rem;
     text-align: center;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-border);
     border-radius: 0.25rem;
     font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #495057;
+    color: var(--color-text);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .keyboard-shortcuts-panel {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
@@ -344,15 +437,15 @@
    Review Progress
    ============================================================================= */
 .review-progress-bar {
+    display: flex;
     height: 0.5rem;
     border-radius: 0.25rem;
-    background-color: #e9ecef;
+    background-color: var(--color-bg-secondary);
     overflow: hidden;
 }
 
 .review-progress-bar .progress-segment {
     height: 100%;
-    float: left;
     transition: width 0.3s ease;
 }
 
@@ -368,15 +461,19 @@
     background-color: var(--decision-reclassify);
 }
 
+.review-progress-bar .segment-skipped {
+    background-color: var(--decision-skip);
+}
+
 .review-progress-bar .segment-pending {
-    background-color: #dee2e6;
+    background-color: var(--color-border);
 }
 
 .progress-stats {
     display: flex;
     justify-content: space-between;
     font-size: 0.75rem;
-    color: #6c757d;
+    color: var(--color-muted);
     margin-top: 0.25rem;
 }
 
@@ -395,7 +492,7 @@
 
 .status-badge.pending {
     background-color: var(--review-pending);
-    color: #212529;
+    color: var(--color-text-dark);
 }
 
 .status-badge.in-progress {
@@ -428,7 +525,7 @@
 }
 
 .metric-selector .metric-option:hover {
-    background-color: #f8f9fa;
+    background-color: var(--color-bg-light);
 }
 
 .metric-selector .metric-option.selected {
@@ -438,12 +535,12 @@
 .metric-selector .metric-id {
     font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
     font-size: 0.875rem;
-    color: #0d6efd;
+    color: var(--bs-primary, #0d6efd);
 }
 
 .metric-selector .metric-name {
     font-size: 0.875rem;
-    color: #495057;
+    color: var(--color-text);
 }
 
 /* =============================================================================
@@ -476,8 +573,8 @@
    Features Panel (for debugging/analysis)
    ============================================================================= */
 .features-panel {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     padding: 0.75rem;
     font-size: 0.8125rem;
@@ -485,7 +582,7 @@
 
 .features-panel h6 {
     font-size: 0.8125rem;
-    color: #6c757d;
+    color: var(--color-muted);
     margin-bottom: 0.5rem;
 }
 
@@ -493,7 +590,7 @@
     display: flex;
     justify-content: space-between;
     padding: 0.25rem 0;
-    border-bottom: 1px solid #e9ecef;
+    border-bottom: 1px solid var(--color-bg-secondary);
 }
 
 .features-panel .feature-item:last-child {
@@ -501,7 +598,7 @@
 }
 
 .features-panel .feature-name {
-    color: #495057;
+    color: var(--color-text);
 }
 
 .features-panel .feature-value {
@@ -515,7 +612,7 @@
 }
 
 .features-panel .feature-value.false {
-    color: #6c757d;
+    color: var(--color-muted);
 }
 
 /* =============================================================================
@@ -563,6 +660,92 @@
     100% {
         background-color: transparent;
     }
+}
+
+/* =============================================================================
+   Loading States
+   ============================================================================= */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.loading-spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--bs-primary, #0d6efd);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.btn.is-loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn.is-loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1rem;
+    height: 1rem;
+    margin: -0.5rem 0 0 -0.5rem;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+/* =============================================================================
+   Error States
+   ============================================================================= */
+.error-message {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+    color: #721c24;
+    margin-bottom: 1rem;
+}
+
+.error-message .error-title {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.error-message .error-detail {
+    font-size: 0.875rem;
+}
+
+.form-error {
+    color: var(--decision-reject);
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+}
+
+.is-invalid {
+    border-color: var(--decision-reject) !important;
+}
+
+.is-invalid:focus {
+    box-shadow: 0 0 0 var(--focus-ring-width) rgba(220, 53, 69, 0.25) !important;
 }
 
 /* =============================================================================
