@@ -664,7 +664,7 @@ class DatabaseAdapter:
             status: New status ('pending', 'in_progress', 'reviewed', 'skipped')
 
         Returns:
-            True if update succeeded
+            True if a row was updated, False if no candidate found with given ID
 
         Raises:
             ValidationError: If status is not a valid review status
@@ -676,10 +676,60 @@ class DatabaseAdapter:
             UPDATE review_candidates
             SET review_status = %(status)s, updated_at = now()
             WHERE candidate_id = %(candidate_id)s
+            RETURNING candidate_id
         """
-        self.execute(sql, {"candidate_id": candidate_id, "status": status})
-        logger.debug(f"Updated candidate {candidate_id} status to {status}")
-        return True
+        result = self.execute(
+            sql, {"candidate_id": candidate_id, "status": status}, fetch=True
+        )
+        updated = bool(result)
+        if updated:
+            logger.debug(f"Updated candidate {candidate_id} status to {status}")
+        else:
+            logger.warning(f"No candidate found with id {candidate_id}")
+        return updated
+
+    def bulk_update_candidate_status(
+        self, candidate_ids: List[int], status: str
+    ) -> int:
+        """
+        Update status for multiple candidates efficiently.
+
+        Uses PostgreSQL ANY() for single-statement bulk update.
+
+        Args:
+            candidate_ids: List of candidate IDs to update
+            status: New status ('pending', 'in_progress', 'reviewed', 'skipped')
+
+        Returns:
+            Number of rows updated
+
+        Raises:
+            ValidationError: If status is not a valid review status
+        """
+        if not candidate_ids:
+            return 0
+
+        # Validate status
+        validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            UPDATE review_candidates
+            SET review_status = %(status)s, updated_at = now()
+            WHERE candidate_id = ANY(%(candidate_ids)s)
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {"candidate_ids": candidate_ids, "status": status},
+                )
+                rows_updated = cur.rowcount
+
+        logger.debug(
+            f"Bulk updated {rows_updated} candidates to status '{status}'"
+        )
+        return rows_updated
 
     def bulk_insert_review_candidates(
         self, candidates: List[Dict[str, Any]]
@@ -1169,6 +1219,65 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
+    def get_candidate_patterns(
+        self,
+        pattern_type: Optional[str] = None,
+        metric_id: Optional[str] = None,
+        min_precision: Optional[float] = None,
+        min_sample_count: Optional[int] = None,
+    ) -> List[Dict]:
+        """
+        Get patterns pending approval (status='candidate').
+
+        Use this for the pattern management workflow to review and approve
+        newly discovered patterns before they're used in extraction.
+
+        Args:
+            pattern_type: Optional filter by pattern type
+            metric_id: Optional filter by metric (includes global patterns)
+            min_precision: Optional minimum precision score filter
+            min_sample_count: Optional minimum sample count filter
+
+        Returns:
+            List of candidate pattern records, ordered by precision score
+
+        Raises:
+            ValidationError: If pattern_type is provided but not a valid type
+            ValidationError: If min_precision is not between 0 and 1
+        """
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        # Validate min_precision if provided
+        validate_score(min_precision, "min_precision")
+
+        sql = """
+            SELECT * FROM learned_patterns
+            WHERE status = 'candidate'
+        """
+        params: Dict[str, Any] = {}
+
+        if pattern_type:
+            sql += " AND pattern_type = %(pattern_type)s"
+            params["pattern_type"] = pattern_type
+
+        if metric_id:
+            sql += " AND (metric_id = %(metric_id)s OR metric_id IS NULL)"
+            params["metric_id"] = metric_id
+
+        if min_precision is not None:
+            sql += " AND precision_score >= %(min_precision)s"
+            params["min_precision"] = min_precision
+
+        if min_sample_count is not None:
+            sql += " AND sample_count >= %(min_sample_count)s"
+            params["min_sample_count"] = min_sample_count
+
+        sql += " ORDER BY precision_score DESC NULLS LAST, created_at DESC"
+
+        return self.query(sql, params)
+
     def update_pattern_status(
         self,
         pattern_id: int,
@@ -1184,7 +1293,7 @@ class DatabaseAdapter:
             approved_by: Who approved (if status='approved')
 
         Returns:
-            True if update succeeded
+            True if a row was updated, False if no pattern found with given ID
 
         Raises:
             ValidationError: If status is not a valid pattern status
@@ -1199,13 +1308,130 @@ class DatabaseAdapter:
                 approved_by = COALESCE(%(approved_by)s, approved_by),
                 updated_at = now()
             WHERE pattern_id = %(pattern_id)s
+            RETURNING pattern_id
         """
-        self.execute(
+        result = self.execute(
             sql,
             {"pattern_id": pattern_id, "status": status, "approved_by": approved_by},
+            fetch=True,
         )
-        logger.debug(f"Updated pattern {pattern_id} status to {status}")
-        return True
+        updated = bool(result)
+        if updated:
+            logger.debug(f"Updated pattern {pattern_id} status to {status}")
+        else:
+            logger.warning(f"No pattern found with id {pattern_id}")
+        return updated
+
+    # =========================================================================
+    # Filing and Segment Retrieval Methods (for Candidate Generation)
+    # =========================================================================
+
+    def get_filing_with_company(self, filing_id: int) -> Optional[Dict]:
+        """
+        Get filing information including company details.
+
+        Args:
+            filing_id: The filing ID to retrieve
+
+        Returns:
+            Dict with filing and company info, or None if not found
+        """
+        sql = """
+            SELECT
+                f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                f.company_id,
+                c.company_name, c.cik, c.sic_code
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.filing_id = %(filing_id)s
+        """
+        results = self.query(sql, {"filing_id": filing_id})
+        return results[0] if results else None
+
+    def get_source_segments_for_filing(
+        self,
+        filing_id: int,
+        segment_types: Optional[List[str]] = None,
+        with_numeric_disclosure: Optional[bool] = None,
+    ) -> List[Dict]:
+        """
+        Get all source segments for a filing.
+
+        Args:
+            filing_id: The filing ID to retrieve segments for
+            segment_types: Optional filter by segment types (e.g., ['paragraph', 'table'])
+            with_numeric_disclosure: Optional filter by contains_numeric_disclosure_flag
+
+        Returns:
+            List of source segment dicts ordered by sequence_index
+        """
+        sql = """
+            SELECT
+                source_segment_id, filing_id, segment_type,
+                section_path, section_heading, sequence_index,
+                html_selector, char_start_offset, char_end_offset, page_number,
+                raw_text, raw_html,
+                candidate_metric_ids, contains_definition_flag,
+                contains_methodology_flag, contains_numeric_disclosure_flag,
+                classifier_confidence,
+                created_at, updated_at
+            FROM source_segments
+            WHERE filing_id = %(filing_id)s
+        """
+        params: Dict[str, Any] = {"filing_id": filing_id}
+
+        if segment_types:
+            sql += " AND segment_type = ANY(%(segment_types)s)"
+            params["segment_types"] = segment_types
+
+        if with_numeric_disclosure is not None:
+            sql += " AND contains_numeric_disclosure_flag = %(with_numeric_disclosure)s"
+            params["with_numeric_disclosure"] = with_numeric_disclosure
+
+        sql += " ORDER BY sequence_index"
+
+        return self.query(sql, params)
+
+    def get_filings_for_candidate_generation(
+        self,
+        limit: int = 100,
+        exclude_with_candidates: bool = True,
+    ) -> List[Dict]:
+        """
+        Get filings eligible for candidate generation.
+
+        Args:
+            limit: Maximum number of filings to return
+            exclude_with_candidates: If True, exclude filings that already have candidates
+
+        Returns:
+            List of filings with company info
+        """
+        sql = """
+            SELECT
+                f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                f.company_id,
+                c.company_name, c.cik
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.is_in_scope_phase1 = true
+        """
+        params: Dict[str, Any] = {"limit": limit}
+
+        if exclude_with_candidates:
+            sql += """
+                AND NOT EXISTS (
+                    SELECT 1 FROM review_candidates rc
+                    WHERE rc.filing_id = f.filing_id
+                )
+            """
+
+        sql += """
+            ORDER BY f.filing_date DESC
+            LIMIT %(limit)s
+        """
+
+        return self.query(sql, params)
 
     # =========================================================================
     # Helper Methods for Flask Routes
