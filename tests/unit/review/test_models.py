@@ -91,7 +91,6 @@ class TestCandidateFeatures:
             surrounding_numbers_count=2,
             section_name="Use of Proceeds",
             context_word_count=45,
-            sentence_position=3,
         )
 
         d = features.to_dict()
