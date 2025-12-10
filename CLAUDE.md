@@ -118,6 +118,18 @@ candidate_generator.py (orchestrator - 243 statements, 98% coverage)
 - candidate_generator.py reduced by 43% (428 → 243 statements)
 - Total: 426 statements with 98% average coverage across 5 modules
 
+**Feature Extractor (B2):**
+
+In addition to the candidate generation pipeline, the review system includes a feature extraction module (`src/review/feature_extractor.py`) that computes ML features for pattern analysis:
+- **71 statements, 100% coverage, 90 tests**
+- Keyword proximity features (distance, position)
+- Context features (definition language, period mentions, risk factors)
+- Number format features (integer, decimal, percentage, currency)
+- Section features (table vs paragraph, section name)
+- Magnitude features (log10 of value)
+- Unit normalization for consistency
+- Performance tested with 1,000-10,000 candidate volumes
+
 ## Database Schema
 
 PostgreSQL with key tables:
