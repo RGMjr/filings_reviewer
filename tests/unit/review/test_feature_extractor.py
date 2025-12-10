@@ -791,3 +791,229 @@ class TestFeaturesSerialization:
         assert features.contains_definition_language is True
         assert features.has_period_mention is True
         assert features.section_name == "Risk Factors"
+
+
+# =============================================================================
+# Unit Normalization Tests (B2 Improvement #4)
+# =============================================================================
+
+
+class TestUnitNormalization:
+    """
+    Tests for unit normalization in FeatureExtractor.
+
+    Verifies that determine_number_format() correctly handles unit variations from:
+    - NumberParser: "%", "usd", "count"
+    - ValueExtractor: "percent", "usd", "count"
+    - LLM: "percent", "dollars", "currency", "thousands", "millions", etc.
+    """
+
+    def test_percentage_canonical_format(self):
+        """Test canonical percentage format '%'."""
+        extractor = FeatureExtractor()
+        assert extractor.determine_number_format("%", "45") == "percentage"
+        assert extractor.determine_number_format("%", "45.5") == "percentage"
+
+    def test_percentage_variations(self):
+        """Test percentage variations are normalized to '%'."""
+        extractor = FeatureExtractor()
+
+        # Common variations
+        assert extractor.determine_number_format("percent", "45") == "percentage"
+        assert extractor.determine_number_format("percentage", "45.5") == "percentage"
+        assert extractor.determine_number_format("pct", "30") == "percentage"
+
+        # Case insensitive
+        assert extractor.determine_number_format("PERCENT", "45") == "percentage"
+        assert extractor.determine_number_format("Percentage", "45.5") == "percentage"
+        assert extractor.determine_number_format("PCT", "30") == "percentage"
+
+        # With whitespace
+        assert extractor.determine_number_format(" percent ", "45") == "percentage"
+        assert extractor.determine_number_format("  percentage  ", "45") == "percentage"
+
+    def test_currency_canonical_format(self):
+        """Test canonical currency format 'usd'."""
+        extractor = FeatureExtractor()
+        assert extractor.determine_number_format("usd", "1234567") == "currency"
+        assert extractor.determine_number_format("usd", "1234.56") == "currency"
+
+    def test_currency_variations(self):
+        """Test currency variations are normalized to 'usd'."""
+        extractor = FeatureExtractor()
+
+        # Common variations
+        assert extractor.determine_number_format("dollars", "1234567") == "currency"
+        assert extractor.determine_number_format("dollar", "1234") == "currency"
+        assert extractor.determine_number_format("currency", "5678") == "currency"
+        assert extractor.determine_number_format("$", "1000") == "currency"
+
+        # Case insensitive
+        assert extractor.determine_number_format("DOLLARS", "1234567") == "currency"
+        assert extractor.determine_number_format("Currency", "5678") == "currency"
+        assert extractor.determine_number_format("USD", "1000") == "currency"
+
+        # With whitespace
+        assert extractor.determine_number_format(" dollars ", "1234") == "currency"
+        assert extractor.determine_number_format("  currency  ", "5678") == "currency"
+
+    def test_count_canonical_format(self):
+        """Test canonical count format 'count'."""
+        extractor = FeatureExtractor()
+        assert extractor.determine_number_format("count", "1234567") == "integer"
+        assert extractor.determine_number_format("count", "1234.56") == "decimal"
+
+    def test_count_magnitude_variations(self):
+        """Test magnitude indicator variations are normalized to 'count'."""
+        extractor = FeatureExtractor()
+
+        # Magnitude words
+        assert extractor.determine_number_format("thousands", "10") == "integer"
+        assert extractor.determine_number_format("millions", "10") == "integer"
+        assert extractor.determine_number_format("billions", "10") == "integer"
+
+        # Abbreviations
+        assert extractor.determine_number_format("k", "10") == "integer"
+        assert extractor.determine_number_format("m", "10") == "integer"
+        assert extractor.determine_number_format("b", "10") == "integer"
+
+        # With decimals (becomes "decimal" not "integer")
+        assert extractor.determine_number_format("millions", "10.5") == "decimal"
+        assert extractor.determine_number_format("m", "10.5") == "decimal"
+
+        # Case insensitive
+        assert extractor.determine_number_format("THOUSANDS", "10") == "integer"
+        assert extractor.determine_number_format("Millions", "10") == "integer"
+        assert extractor.determine_number_format("K", "10") == "integer"
+
+    def test_none_and_empty_units(self):
+        """Test None and empty unit handling."""
+        extractor = FeatureExtractor()
+
+        # None falls through to decimal/integer based on raw_text
+        assert extractor.determine_number_format(None, "1234") == "integer"
+        assert extractor.determine_number_format(None, "1234.56") == "decimal"
+
+        # Empty string
+        assert extractor.determine_number_format("", "1234") == "integer"
+        assert extractor.determine_number_format("", "1234.56") == "decimal"
+
+        # Whitespace only
+        assert extractor.determine_number_format("   ", "1234") == "integer"
+
+    def test_unknown_units_pass_through(self):
+        """Test unknown units pass through and fall back to decimal/integer."""
+        extractor = FeatureExtractor()
+
+        # Unknown units fall through to decimal/integer logic
+        assert extractor.determine_number_format("unknown", "1234") == "integer"
+        assert extractor.determine_number_format("unknown", "1234.56") == "decimal"
+        assert extractor.determine_number_format("basis_points", "100") == "integer"
+        assert extractor.determine_number_format("per_customer", "50.5") == "decimal"
+
+    def test_normalization_called_from_compute_features(self):
+        """Test that compute_features uses normalized units."""
+        extractor = FeatureExtractor()
+
+        # Test percentage variation through compute_features
+        features_percent = extractor.compute_features(
+            number_value=Decimal("45"),
+            number_unit="percent",  # Variation, not canonical
+            number_raw_text="45",
+            keyword_distance=10,
+            keyword_position="after",
+            context_text="The retention rate was 45 percent",
+        )
+        assert features_percent.number_format == "percentage"
+
+        # Test currency variation through compute_features
+        features_dollars = extractor.compute_features(
+            number_value=Decimal("1000000"),
+            number_unit="dollars",  # Variation, not canonical
+            number_raw_text="1000000",
+            keyword_distance=10,
+            keyword_position="after",
+            context_text="Revenue was 1 million dollars",
+        )
+        assert features_dollars.number_format == "currency"
+
+        # Test count magnitude variation through compute_features
+        features_millions = extractor.compute_features(
+            number_value=Decimal("10.5"),
+            number_unit="millions",  # Variation, not canonical
+            number_raw_text="10.5",
+            keyword_distance=10,
+            keyword_position="after",
+            context_text="Active users were 10.5 millions",
+        )
+        assert features_millions.number_format == "decimal"
+
+    def test_backward_compatibility_with_numberparser(self):
+        """Test backward compatibility with NumberParser canonical units."""
+        extractor = FeatureExtractor()
+
+        # NumberParser produces: "%", "usd", "count"
+        # These should still work (no change from before)
+        assert extractor.determine_number_format("%", "45") == "percentage"
+        assert extractor.determine_number_format("usd", "1234") == "currency"
+        assert extractor.determine_number_format("count", "100") == "integer"
+
+    def test_convenience_function_normalization(self):
+        """Test that module-level convenience function uses normalization."""
+        # Using "percent" variation (not canonical)
+        features = compute_features(
+            number_value=Decimal("75"),
+            number_unit="percent",
+            number_raw_text="75",
+            keyword_distance=5,
+            keyword_position="before",
+            context_text="retention was 75 percent",
+        )
+        assert features.number_format == "percentage"
+
+        # Using "dollars" variation (not canonical)
+        features = compute_features(
+            number_value=Decimal("5000000"),
+            number_unit="dollars",
+            number_raw_text="5000000",
+            keyword_distance=5,
+            keyword_position="before",
+            context_text="revenue was 5 million dollars",
+        )
+        assert features.number_format == "currency"
+
+    def test_determine_number_format_standalone(self):
+        """Test standalone determine_number_format() function with variations."""
+        from src.review.feature_extractor import determine_number_format
+
+        # Percentage variations
+        assert determine_number_format("percent", "45") == "percentage"
+        assert determine_number_format("percentage", "45") == "percentage"
+        assert determine_number_format("%", "45") == "percentage"
+
+        # Currency variations
+        assert determine_number_format("dollars", "1234") == "currency"
+        assert determine_number_format("currency", "1234") == "currency"
+        assert determine_number_format("usd", "1234") == "currency"
+
+        # Count/magnitude variations
+        assert determine_number_format("millions", "10") == "integer"
+        assert determine_number_format("count", "100") == "integer"
+
+    def test_edge_cases_in_normalization(self):
+        """Test edge cases in unit normalization."""
+        extractor = FeatureExtractor()
+
+        # Mixed case with spaces
+        assert extractor.determine_number_format(" PerCent ", "45") == "percentage"
+        assert extractor.determine_number_format(" DoLLaRs ", "1234") == "currency"
+
+        # Single character units
+        assert extractor.determine_number_format("k", "10") == "integer"
+        assert extractor.determine_number_format("m", "10") == "integer"
+        assert extractor.determine_number_format("b", "10") == "integer"
+        assert extractor.determine_number_format("$", "100") == "currency"
+
+        # Partial matches should not normalize
+        assert extractor.determine_number_format("percentage_points", "5") == "integer"
+        assert extractor.determine_number_format("dollar_equivalent", "100") == "integer"

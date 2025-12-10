@@ -92,7 +92,7 @@ class MetricValue:
     # Value
     value_numeric: Optional[Decimal] = None
     value_text: Optional[str] = None
-    unit: Optional[str] = None  # 'count', '%', 'usd', 'basis_points', 'per_customer'
+    unit: Optional[str] = None  # Canonical: '%', 'usd', 'count'; Also: 'basis_points', 'per_customer'
     currency: Optional[str] = None  # ISO code when monetary
 
     # Time dimensions
