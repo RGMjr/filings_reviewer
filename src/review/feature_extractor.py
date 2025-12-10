@@ -168,6 +168,41 @@ class FeatureExtractor:
             context_word_count=context_word_count,
         )
 
+    def _normalize_unit(self, number_unit: Optional[str]) -> Optional[str]:
+        """
+        Normalize unit variations to canonical format.
+
+        Handles variations from different sources:
+        - NumberParser: "%", "usd", "count"
+        - ValueExtractor: "percent", "usd", "count"
+        - LLM: "percent", "dollars", "currency", "thousands", "millions", etc.
+
+        Args:
+            number_unit: Unit string from any source
+
+        Returns:
+            Normalized unit: "%", "usd", "count", or None
+        """
+        if not number_unit:
+            return None
+
+        unit_lower = number_unit.lower().strip()
+
+        # Percentage variations
+        if unit_lower in ("percent", "percentage", "pct", "%"):
+            return "%"
+
+        # Currency variations
+        if unit_lower in ("dollars", "currency", "dollar", "$", "usd"):
+            return "usd"
+
+        # Count variations (normalize magnitude indicators to "count")
+        if unit_lower in ("thousands", "millions", "billions", "k", "m", "b", "count"):
+            return "count"
+
+        # Unknown unit - return lowercased for consistency
+        return unit_lower
+
     def determine_number_format(
         self,
         number_unit: Optional[str],
@@ -176,16 +211,24 @@ class FeatureExtractor:
         """
         Determine the number format from unit and raw text.
 
+        Normalizes unit variations before classification:
+        - Accepts: "%", "percent", "percentage", "pct" → "percentage"
+        - Accepts: "usd", "dollars", "currency", "$" → "currency"
+        - Accepts: "count", "thousands", "millions" → "integer"/"decimal"
+
         Args:
-            number_unit: Detected unit ('count', '%', 'usd', etc.)
+            number_unit: Detected unit (accepts variations)
             number_raw_text: Original text of the number
 
         Returns:
             One of: 'integer', 'decimal', 'percentage', 'currency'
         """
-        if number_unit == "%":
+        # Normalize unit variations
+        normalized_unit = self._normalize_unit(number_unit)
+
+        if normalized_unit == "%":
             return "percentage"
-        if number_unit == "usd":
+        if normalized_unit == "usd":
             return "currency"
         if "." in (number_raw_text or ""):
             return "decimal"
