@@ -287,6 +287,15 @@ class FeatureExtractor:
 
 
 # =============================================================================
+# Module-Level Singleton Instance
+# =============================================================================
+
+# Singleton instance to avoid repeated instantiation.
+# FeatureExtractor is stateless, so a single instance is sufficient.
+_feature_extractor = FeatureExtractor()
+
+
+# =============================================================================
 # Module-Level Convenience Functions
 # =============================================================================
 
@@ -308,8 +317,7 @@ def compute_features(
 
     See FeatureExtractor.compute_features() for documentation.
     """
-    extractor = FeatureExtractor()
-    return extractor.compute_features(
+    return _feature_extractor.compute_features(
         number_value=number_value,
         number_unit=number_unit,
         number_raw_text=number_raw_text,
@@ -332,5 +340,4 @@ def determine_number_format(
 
     See FeatureExtractor.determine_number_format() for documentation.
     """
-    extractor = FeatureExtractor()
-    return extractor.determine_number_format(number_unit, number_raw_text)
+    return _feature_extractor.determine_number_format(number_unit, number_raw_text)
