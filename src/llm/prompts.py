@@ -50,7 +50,18 @@ Extract data precisely as disclosed. Do not infer or calculate values not explic
 CRITICAL: Only extract HISTORICAL data explicitly stated in the filing.
 Do not extract: forward-looking projections, industry benchmarks, or hypothetical examples.
 
-Ensure metric_name matches the value type (counts for customer numbers, percentages for rates)."""
+Ensure metric_name matches the value type (counts for customer numbers, percentages for rates).
+
+CRITICAL - COMMON ERRORS TO AVOID:
+1. DO NOT extract a number just because it appears near a metric keyword.
+   WRONG: Text says "LTV:CAC Ratio of 8x. Revenue grew 83%." → Extract CAC=83%
+   RIGHT: No CAC value is stated, so do not extract CAC.
+
+2. The quote MUST contain BOTH the metric name/abbreviation AND the value.
+   WRONG: Quote "Revenue grew 83%" for metric "CAC"
+   RIGHT: Quote "Our CAC was $150" for metric "CAC"
+
+3. If a metric is mentioned but no specific value is given, do NOT extract anything."""
 
     SYSTEM_DEFINITION_EXTRACTION = """You are an expert at extracting metric definitions from SEC filings.
 
@@ -73,32 +84,43 @@ Extract the exact wording used in the filing."""
         Returns:
             Formatted prompt
         """
-        return f"""Analyze the following text segment from an SEC filing and extract any customer metric values.
+        return f"""Extract customer metric values from this SEC filing text.
 
-PRIORITY: Focus on CMASB Core Metrics (new customers acquired, customer count by tenure, revenue by cohort, transactions by cohort) if present.
+STRICT RULES - ONLY extract values that meet ALL criteria:
+1. The text EXPLICITLY states the value IS the metric (not just near a keyword)
+2. The value is HISTORICAL (not projected, expected, or hypothetical)
+3. You can find an EXACT quote where the metric name and value appear together
+
+CRITICAL: Do NOT extract a value just because it appears near a metric keyword.
+The text must explicitly state the value represents the metric.
+
+CORRECT extraction example:
+"Our customer acquisition cost was $150 per customer" → CAC = $150
+"We had 500,000 active users" → active_users = 500,000
+
+INCORRECT extraction (do NOT do this):
+Text: "We discuss CAC and our revenue was $10M" → DO NOT extract CAC = $10M
+The revenue value is near CAC but does NOT represent CAC.
 
 Metrics to look for: {metric_names}
 
 TEXT SEGMENT:
 {segment_text}
 
-Extract all metric values you find. For each value, provide:
-1. metric_name: The type of metric (e.g., "new_customers_acquired", "active_users", "customer_churn_rate")
+For each metric value you find, provide:
+1. metric_name: The canonical metric type
 2. value: The numeric value
-3. units: The units (e.g., "millions", "thousands", "percent")
-4. period: The time period (e.g., "Q4 2023", "December 31, 2023", "FY 2022")
-5. cohort_label: If this is cohort-specific data (e.g., "2022 Cohort", "0-12 months", "Year 1")
-6. quote: Copy the EXACT sentence(s) containing this value verbatim - must include the numeric value
+3. units: Must match the metric type (CAC→dollars, retention→percent, customers→count)
+4. period: The time period stated
+5. cohort_label: If cohort-specific
+6. quote: REQUIRED - The EXACT sentence explicitly stating "[metric] was/is [value]"
 
-LOOK FOR COHORT INDICATORS:
-- Phrases like "customers acquired in 2021", "2022 cohort revenue", "first-year customers"
-- Tenure descriptions like "0-12 months", "Year 1", "customers by age"
-- Vintage labels like "FY2021 cohort", "2022 vintage"
+UNIT RULES:
+- Customer Acquisition Cost: must be in dollars/currency, NOT percent
+- Retention Rate, NRR, Churn: must be in percent
+- Customer counts: must be in count/thousands/millions, NOT percent
 
-IMPORTANT: Do not extract projections ("we expect", "anticipated") or industry statistics.
-The quote must be copied exactly from the text - do not paraphrase.
-
-Return your response as a JSON array of objects. If no metrics found, return an empty array [].
+Return a JSON array. If no valid metrics found, return [].
 
 Example output:
 [
@@ -109,14 +131,6 @@ Example output:
     "period": "December 31, 2023",
     "cohort_label": null,
     "quote": "As of December 31, 2023, we had 10.5 million monthly active users."
-  }},
-  {{
-    "metric_name": "new_customers_acquired",
-    "value": "500000",
-    "units": "count",
-    "period": "FY 2023",
-    "cohort_label": null,
-    "quote": "We acquired 500,000 new customers during fiscal year 2023."
   }}
 ]"""
 
@@ -135,9 +149,21 @@ Example output:
         Returns:
             Formatted prompt
         """
-        return f"""Analyze the following table from an SEC filing and extract customer metric values.
+        return f"""Extract customer metric values from this SEC filing table.
 
-PRIORITY: Look especially for cohort-based metrics (revenue by cohort, transactions by cohort, customer count by tenure).
+STRICT RULES - ONLY extract values that meet ALL criteria:
+1. The row/column headers EXPLICITLY identify the metric type
+2. The value CLEARLY represents the metric (not a different measure)
+3. Units match the metric type (see rules below)
+
+CRITICAL: The table header or row label MUST explicitly name the metric.
+Do NOT infer metrics from context - they must be explicitly labeled.
+
+UNIT RULES (values with wrong units are INVALID):
+- Customer Acquisition Cost: dollars/currency only, NOT percent
+- Retention Rate, NRR, Churn Rate: percent only
+- Customer counts: count/thousands/millions, NOT percent
+- Revenue: dollars/currency
 
 Metrics to look for: {metric_names}
 
@@ -147,44 +173,34 @@ TABLE TEXT:
 TABLE HTML (for structure):
 {table_html[:1000]}...
 
-Extract all metric values from the table. For each value, provide:
-1. metric_name: The type of metric (prioritize CMASB Core Metrics if present)
+For each valid metric value, provide:
+1. metric_name: The canonical metric type from the list above
 2. value: The numeric value
-3. units: The units if specified
-4. period: The time period (often in column headers like "Q4 2023", "Year 2", "FY 2022")
-5. cohort_label: If this is a cohort breakdown (look for patterns like "2021 Cohort", "FY2022 Cohort", "0-12 months", "Year 1")
-6. row_label: The row label from the table
-7. column_label: The column label from the table
+3. units: Must match metric type requirements
+4. period: Time period from column header
+5. cohort_label: If cohort-specific (e.g., "2021 Cohort")
+6. row_label: The EXACT row label from the table
+7. column_label: The EXACT column label from the table
+8. quote: The cell value as it appears in the table
 
-Do not extract totals when individual values are available. Do not extract pro forma figures when GAAP figures exist.
+SKIP these:
+- Totals when individual values are available
+- Pro forma figures when GAAP exists
+- Values where the metric type is ambiguous
 
-COHORT TABLE INDICATORS:
-- Row headers containing years (e.g., "2021 Cohort", "2022 Cohort")
-- Column headers showing time progression (e.g., "Year 1", "Year 2", "Q1", "Q2")
-- Tenure labels (e.g., "0-6 months", "6-12 months")
-- Vintage labels (e.g., "2021", "2022", "2023")
+Return a JSON array. If no valid metrics found, return [].
 
-Return your response as a JSON array of objects. If no metrics found, return an empty array [].
-
-Example output for a cohort retention table:
+Example output:
 [
   {{
-    "metric_name": "revenue_retention",
+    "metric_name": "net_revenue_retention",
     "value": "130",
     "units": "percent",
     "period": "Year 2",
     "cohort_label": "2021 Cohort",
     "row_label": "2021 Cohort",
-    "column_label": "Year 2"
-  }},
-  {{
-    "metric_name": "revenue_by_cohort",
-    "value": "5.2",
-    "units": "millions",
-    "period": "2023",
-    "cohort_label": "2021 Cohort",
-    "row_label": "2021 Cohort",
-    "column_label": "2023 Revenue"
+    "column_label": "NRR Year 2",
+    "quote": "130%"
   }}
 ]"""
 
