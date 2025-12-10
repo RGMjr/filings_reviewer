@@ -7,11 +7,12 @@ Creates and configures the Flask application with:
 - Template and static file configuration
 """
 
+import atexit
 import logging
 import os
 from typing import Any, Dict, Optional
 
-from flask import Flask, current_app, g
+from flask import Flask, current_app, g, jsonify, render_template_string, request
 
 from src.infra.db import DatabaseAdapter
 
@@ -28,6 +29,11 @@ class Config:
     SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+
+    # Connection pool configuration
+    DB_POOL_ENABLED = os.environ.get("DB_POOL_ENABLED", "true").lower() == "true"
+    DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "2"))
+    DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "10"))
 
 
 class DevelopmentConfig(Config):
@@ -67,6 +73,7 @@ def get_db() -> DatabaseAdapter:
     Get database adapter for the current request.
 
     Returns cached adapter from Flask g object, creating if needed.
+    If connection pooling is enabled, the adapter uses the app-level pool.
     Must be called within a Flask request context.
     """
     if "db" not in g:
@@ -76,8 +83,92 @@ def get_db() -> DatabaseAdapter:
                 "DATABASE_URL not configured. "
                 "Set DATABASE_URL in app config or environment."
             )
-        g.db = DatabaseAdapter(database_url)
+        # Get pool from app config (may be None if pooling disabled)
+        pool = current_app.config.get("_db_pool")
+        g.db = DatabaseAdapter(database_url, pool=pool)
     return g.db
+
+
+def close_db(e: Optional[Exception] = None) -> None:
+    """
+    Clean up database adapter at end of request.
+
+    Called automatically via teardown_appcontext. Removes the adapter
+    from Flask's g object. When connection pooling is enabled, pooled
+    connections are automatically returned to the pool by the adapter's
+    context manager.
+
+    Args:
+        e: Optional exception that occurred during request handling.
+    """
+    db = g.pop("db", None)
+    if db is not None:
+        logger.debug("Database adapter removed from request context")
+
+
+def init_pool(app: Flask) -> None:
+    """
+    Initialize the connection pool for the Flask application.
+
+    Creates a connection pool and stores it in app.config["_db_pool"].
+    The pool is used by get_db() to provide pooled connections to
+    DatabaseAdapter instances.
+
+    If pool creation fails, logs the error and continues without pooling
+    (graceful degradation to per-request connections).
+
+    Args:
+        app: Flask application instance.
+    """
+    if not app.config.get("DB_POOL_ENABLED", True):
+        logger.info("Connection pooling disabled via DB_POOL_ENABLED=false")
+        return
+
+    database_url = app.config.get("DATABASE_URL", "")
+    if not database_url:
+        logger.warning("DATABASE_URL not configured, skipping pool initialization")
+        return
+
+    from src.infra.pool import create_pool
+
+    try:
+        pool = create_pool(
+            database_url,
+            min_size=app.config.get("DB_POOL_MIN_SIZE", 2),
+            max_size=app.config.get("DB_POOL_MAX_SIZE", 10),
+        )
+        app.config["_db_pool"] = pool
+        logger.info(
+            f"Connection pool initialized: min_size={app.config.get('DB_POOL_MIN_SIZE', 2)}, "
+            f"max_size={app.config.get('DB_POOL_MAX_SIZE', 10)}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize connection pool: {e}. "
+            "Falling back to per-request connections."
+        )
+        app.config["_db_pool"] = None
+
+
+def close_pool(app: Flask) -> None:
+    """
+    Close the connection pool for the Flask application.
+
+    Should be called when the application is shutting down to properly
+    release database connections.
+
+    Args:
+        app: Flask application instance.
+    """
+    pool = app.config.get("_db_pool")
+    if pool is not None:
+        try:
+            pool.close()
+            logger.info("Connection pool closed")
+        except Exception as e:
+            logger.warning(f"Error closing connection pool: {e}")
+        finally:
+            app.config["_db_pool"] = None
 
 
 def create_app(config_name: Optional[str] = None, config_override: Optional[Dict[str, Any]] = None) -> Flask:
@@ -135,6 +226,15 @@ def create_app(config_name: Optional[str] = None, config_override: Optional[Dict
         # Update config with the actual secret key from environment
         app.config["SECRET_KEY"] = env_secret
 
+    # Register database teardown handler
+    app.teardown_appcontext(close_db)
+
+    # Initialize connection pool
+    init_pool(app)
+
+    # Register pool cleanup on process exit
+    atexit.register(close_pool, app)
+
     # Register blueprints (routes will be added in later tasks)
     _register_blueprints(app)
 
@@ -166,17 +266,56 @@ def _register_blueprints(app: Flask) -> None:
     pass
 
 
+def _wants_json_response() -> bool:
+    """Check if the client prefers JSON over HTML."""
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    return (
+        best == "application/json"
+        and request.accept_mimetypes[best] > request.accept_mimetypes["text/html"]
+    )
+
+
 def _register_error_handlers(app: Flask) -> None:
-    """Register custom error handlers."""
+    """Register custom error handlers that return JSON for API requests, HTML otherwise."""
 
     @app.errorhandler(404)
     def not_found_error(error):
-        return {"error": "Not found"}, 404
+        if _wants_json_response():
+            return jsonify(error="Not found"), 404
+        return render_template_string(
+            """
+            {% extends "base.html" %}
+            {% block title %}404 - Not Found{% endblock %}
+            {% block content %}
+            <div class="text-center py-5">
+                <h1 class="display-1 text-muted">404</h1>
+                <p class="lead">Page not found</p>
+                <p class="text-muted">The page you're looking for doesn't exist.</p>
+                <a href="/" class="btn btn-primary mt-3">Go Home</a>
+            </div>
+            {% endblock %}
+            """
+        ), 404
 
     @app.errorhandler(500)
     def internal_error(error):
         logger.error(f"Internal server error: {error}")
-        return {"error": "Internal server error"}, 500
+        if _wants_json_response():
+            return jsonify(error="Internal server error"), 500
+        return render_template_string(
+            """
+            {% extends "base.html" %}
+            {% block title %}500 - Server Error{% endblock %}
+            {% block content %}
+            <div class="text-center py-5">
+                <h1 class="display-1 text-muted">500</h1>
+                <p class="lead">Internal Server Error</p>
+                <p class="text-muted">Something went wrong on our end. Please try again later.</p>
+                <a href="/" class="btn btn-primary mt-3">Go Home</a>
+            </div>
+            {% endblock %}
+            """
+        ), 500
 
 
 def _register_context_processors(app: Flask) -> None:
