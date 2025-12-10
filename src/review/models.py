@@ -78,7 +78,6 @@ class CandidateFeatures:
 
     # Additional computed features
     context_word_count: int = 0
-    sentence_position: Optional[int] = None  # Position of number in sentence
 
     def __post_init__(self):
         """Validate enumerated fields."""
@@ -107,7 +106,6 @@ class CandidateFeatures:
             "surrounding_numbers_count": self.surrounding_numbers_count,
             "section_name": self.section_name,
             "context_word_count": self.context_word_count,
-            "sentence_position": self.sentence_position,
         }
 
     @classmethod
@@ -127,7 +125,6 @@ class CandidateFeatures:
             surrounding_numbers_count=data.get("surrounding_numbers_count", 0),
             section_name=data.get("section_name"),
             context_word_count=data.get("context_word_count", 0),
-            sentence_position=data.get("sentence_position"),
         )
 
 

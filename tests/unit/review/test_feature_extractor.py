@@ -734,7 +734,6 @@ class TestFeaturesSerialization:
             "surrounding_numbers_count",
             "section_name",
             "context_word_count",
-            "sentence_position",
         ]
         for field_name in expected_fields:
             assert field_name in d, f"Missing field: {field_name}"
