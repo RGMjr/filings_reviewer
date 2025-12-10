@@ -255,15 +255,15 @@ def _register_blueprints(app: Flask) -> None:
 
     Blueprints are added in tasks D1 (review.py) and D2 (api.py).
     """
-    # Placeholder for blueprint registration
-    # These will be uncommented as the routes are implemented:
-    #
-    # from src.web.routes.review import review_bp
-    # from src.web.routes.api import api_bp
-    #
-    # app.register_blueprint(review_bp)
-    # app.register_blueprint(api_bp, url_prefix='/api')
-    pass
+    # Register review blueprint (D1)
+    from src.web.routes.review import review_bp
+
+    app.register_blueprint(review_bp)
+
+    # API blueprint (D2)
+    from src.web.routes.api import api_bp
+
+    app.register_blueprint(api_bp, url_prefix="/api")
 
 
 def _wants_json_response() -> bool:

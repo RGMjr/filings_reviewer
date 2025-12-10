@@ -39,12 +39,12 @@ docker run --rm filings-reviewer python -m pytest --cov=src --cov-report=term
 
 ### Run Extraction Scripts
 ```bash
-# Run Phase 1B extraction (requires database connection)
+# Run enhanced extraction (requires database connection)
 docker run --rm \
   --network host \
   -e DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  filings-reviewer python scripts/run_phase1b_extraction.py
+  filings-reviewer python scripts/run_extraction_enhanced.py --company-ids 1,2,3
 
 # Interactive shell for debugging
 docker run --rm -it filings-reviewer bash
@@ -55,7 +55,7 @@ When running scripts that need database access, use the `host.docker.internal` h
 ```bash
 docker run --rm \
   -e DATABASE_URL=postgresql://dev:dev@host.docker.internal:5433/filings_analysis \
-  filings-reviewer python scripts/debug_db.py
+  filings-reviewer python scripts/test_single_extraction.py --company-id 1
 ```
 
 ## Volume Mounts

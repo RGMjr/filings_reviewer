@@ -91,7 +91,7 @@ def test_data(db_adapter):
         keyword_position="after",
         parsed_value=100000,
         parsed_unit="count",
-        suggested_metric_id="active_customers",
+        suggested_metric_id="cm_active_customers_total",
         suggestion_confidence=0.85,
         features={
             "keyword_distance": 15,
@@ -111,7 +111,7 @@ def test_data(db_adapter):
         keyword_position="after",
         parsed_value=50000000,
         parsed_unit="usd",
-        suggested_metric_id="arr",
+        suggested_metric_id="cm_revenue_per_customer",
         suggestion_confidence=0.90,
         features={
             "keyword_distance": 10,
@@ -161,7 +161,7 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_1,
                 "decision": "accept",
-                "assigned_metric_id": "active_customers",
+                "assigned_metric_id": "cm_active_customers_total",
                 "reviewer_notes": "Looks correct",
                 "review_time_seconds": 30,
             },
@@ -182,7 +182,7 @@ class TestCreateDecisionIntegration:
         assert decision is not None
         assert decision["decision_id"] == decision_id
         assert decision["decision"] == "accept"
-        assert decision["assigned_metric_id"] == "active_customers"
+        assert decision["assigned_metric_id"] == "cm_active_customers_total"
         assert decision["reviewer_notes"] == "Looks correct"
         assert decision["review_time_seconds"] == 30
 
@@ -231,8 +231,8 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_1,
                 "decision": "reclassify",
-                "assigned_metric_id": "total_customers",
-                "reviewer_notes": "Should be total, not active",
+                "assigned_metric_id": "cm_new_customers_acquired",
+                "reviewer_notes": "Should be new customers, not active",
             },
         )
 
@@ -244,8 +244,8 @@ class TestCreateDecisionIntegration:
         # Verify decision in database
         decision = db_adapter.get_decision_for_candidate(candidate_id_1)
         assert decision["decision"] == "reclassify"
-        assert decision["assigned_metric_id"] == "total_customers"
-        assert decision["reviewer_notes"] == "Should be total, not active"
+        assert decision["assigned_metric_id"] == "cm_new_customers_acquired"
+        assert decision["reviewer_notes"] == "Should be new customers, not active"
 
     def test_transaction_atomicity(self, client, db_adapter, test_data):
         """Test that decision and status update happen atomically."""
@@ -261,7 +261,7 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_1,
                 "decision": "accept",
-                "assigned_metric_id": "active_customers",
+                "assigned_metric_id": "cm_active_customers_total",
             },
         )
 
@@ -283,7 +283,7 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_1,
                 "decision": "accept",
-                "assigned_metric_id": "active_customers",
+                "assigned_metric_id": "cm_active_customers_total",
             },
         )
         assert response1.status_code == 201
@@ -315,7 +315,7 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_1,
                 "decision": "accept",
-                "assigned_metric_id": "active_customers",
+                "assigned_metric_id": "cm_active_customers_total",
             },
         )
 
@@ -329,7 +329,7 @@ class TestCreateDecisionIntegration:
             json={
                 "candidate_id": candidate_id_2,
                 "decision": "accept",
-                "assigned_metric_id": "arr",
+                "assigned_metric_id": "cm_revenue_per_customer",
             },
         )
 

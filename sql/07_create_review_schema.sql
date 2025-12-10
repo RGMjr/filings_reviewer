@@ -88,7 +88,7 @@ CREATE TABLE review_decisions (
 
     -- Decision
     decision TEXT NOT NULL,  -- 'accept', 'reject', 'reclassify'
-    assigned_metric_id TEXT,  -- Final metric ID (may differ from suggested)
+    assigned_metric_id TEXT REFERENCES metrics(metric_id),  -- Final metric ID (may differ from suggested)
 
     -- Rejection details (when decision = 'reject')
     rejection_reason TEXT,  -- Free-text explanation

@@ -11,7 +11,7 @@
 
 # PostgreSQL adapter (psycopg3) - Database connectivity for storing filings,
 # companies, metrics, and extraction results. Uses binary package for faster install.
-psycopg[binary]>=3.1.0
+psycopg[binary,pool]>=3.1.0
 
 # Environment variable management - Loads DATABASE_URL, API keys from .env files
 python-dotenv>=1.0.0
