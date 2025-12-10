@@ -8,6 +8,7 @@ Uses mocked database to isolate route logic.
 import json
 from unittest.mock import MagicMock, patch
 
+import psycopg
 import pytest
 
 from src.web.app import create_app
@@ -366,6 +367,224 @@ class TestCreateDecision:
         data = json.loads(response.data)
         assert data["status"] == "error"
         assert "Internal server error" in data["message"]
+
+    def test_foreign_key_violation(self, client, mock_db):
+        """Test 400 error when invalid metric_id is provided."""
+        # Setup mock to raise ForeignKeyViolation
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = (
+            psycopg.errors.ForeignKeyViolation("Foreign key violation")
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "invalid_metric",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "Invalid metric_id" in data["message"]
+        assert "invalid_metric" in data["message"]
+        assert data["error_type"] == "foreign_key_violation"
+
+    def test_unique_violation(self, client, mock_db):
+        """Test 409 error when duplicate decision is created (race condition)."""
+        # Setup mock to raise UniqueViolation
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.errors.UniqueViolation(
+            "Unique constraint violation"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 409
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "already exists" in data["message"]
+        assert data["error_type"] == "duplicate_decision"
+
+    def test_not_null_violation(self, client, mock_db):
+        """Test 400 error when NOT NULL constraint is violated."""
+        # Setup mock to raise NotNullViolation
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.errors.NotNullViolation(
+            "NOT NULL constraint violation"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "Missing required field" in data["message"]
+        assert data["error_type"] == "not_null_violation"
+
+    def test_check_violation(self, client, mock_db):
+        """Test 400 error when CHECK constraint is violated."""
+        # Setup mock to raise CheckViolation
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.errors.CheckViolation(
+            "CHECK constraint violation"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "Data validation failed" in data["message"]
+        assert data["error_type"] == "check_violation"
+
+    def test_integrity_error(self, client, mock_db):
+        """Test 400 error for other integrity constraint violations."""
+        # Setup mock to raise generic IntegrityError
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.IntegrityError(
+            "Integrity constraint violation"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "integrity constraint" in data["message"]
+        assert data["error_type"] == "integrity_error"
+
+    def test_operational_error(self, client, mock_db):
+        """Test 503 error when database is unavailable."""
+        # Setup mock to raise OperationalError
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.OperationalError(
+            "Database connection failed"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 503
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "temporarily unavailable" in data["message"]
+        assert data["error_type"] == "database_unavailable"
+
+    def test_database_error_generic(self, client, mock_db):
+        """Test 500 error for other database errors."""
+        # Setup mock to raise generic DatabaseError
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.get_decision_for_candidate.return_value = None
+        mock_db.insert_review_decision.side_effect = psycopg.DatabaseError(
+            "Unexpected database error"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/decisions",
+                json={
+                    "candidate_id": 123,
+                    "decision": "accept",
+                    "assigned_metric_id": "active_customers",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "Database error" in data["message"]
+        assert data["error_type"] == "database_error"
 
     def test_next_candidate_returned(self, client, mock_db):
         """Test that next candidate info is returned in response."""
