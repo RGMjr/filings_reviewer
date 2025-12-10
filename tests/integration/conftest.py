@@ -67,6 +67,20 @@ def clean_db(test_db_adapter):
             cur.execute("SET CONSTRAINTS ALL DEFERRED")
 
             # Truncate in correct order (respecting foreign keys)
+            # Review tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE learned_patterns CASCADE;
+                    TRUNCATE TABLE review_decisions CASCADE;
+                    TRUNCATE TABLE review_candidates CASCADE;
+                EXCEPTION WHEN undefined_table THEN
+                    -- Tables don't exist yet, ignore
+                    NULL;
+                END $$;
+                """
+            )
             cur.execute("TRUNCATE TABLE filings CASCADE")
             cur.execute("TRUNCATE TABLE companies CASCADE")
 
@@ -80,6 +94,20 @@ def clean_db(test_db_adapter):
     with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SET CONSTRAINTS ALL DEFERRED")
+            # Review tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE learned_patterns CASCADE;
+                    TRUNCATE TABLE review_decisions CASCADE;
+                    TRUNCATE TABLE review_candidates CASCADE;
+                EXCEPTION WHEN undefined_table THEN
+                    -- Tables don't exist yet, ignore
+                    NULL;
+                END $$;
+                """
+            )
             cur.execute("TRUNCATE TABLE filings CASCADE")
             cur.execute("TRUNCATE TABLE companies CASCADE")
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")

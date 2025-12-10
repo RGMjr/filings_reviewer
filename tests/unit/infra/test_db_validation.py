@@ -187,12 +187,12 @@ class TestUpdateCandidateStatusValidation:
         assert "review_status" in str(exc_info.value)
         assert "invalid_status" in str(exc_info.value)
 
-    def test_valid_statuses(self, mock_db):
-        """All valid statuses should be in the constant."""
-        assert "pending" in REVIEW_STATUSES
-        assert "in_progress" in REVIEW_STATUSES
-        assert "reviewed" in REVIEW_STATUSES
-        assert "skipped" in REVIEW_STATUSES
+    def test_valid_status_passes_validation(self, mock_db):
+        """Valid status should pass validation (fail on DB, not validation)."""
+        for status in REVIEW_STATUSES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.update_candidate_status(1, status)
+            assert not isinstance(exc_info.value, ValidationError)
 
 
 class TestGetReviewCandidatesForFilingValidation:
@@ -247,7 +247,7 @@ class TestInsertReviewDecisionValidation:
 
     def test_accept_without_metric_raises(self, mock_db):
         """Accept decision without assigned_metric_id should raise."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             mock_db.insert_review_decision(
                 candidate_id=1,
                 decision="accept",
@@ -259,7 +259,7 @@ class TestInsertReviewDecisionValidation:
 
     def test_reclassify_without_metric_raises(self, mock_db):
         """Reclassify decision without assigned_metric_id should raise."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             mock_db.insert_review_decision(
                 candidate_id=1,
                 decision="reclassify",
@@ -271,7 +271,7 @@ class TestInsertReviewDecisionValidation:
 
     def test_rejection_category_with_accept_raises(self, mock_db):
         """rejection_category with non-reject decision should raise."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             mock_db.insert_review_decision(
                 candidate_id=1,
                 decision="accept",
@@ -354,12 +354,12 @@ class TestUpdatePatternStatusValidation:
 
         assert "pattern_status" in str(exc_info.value)
 
-    def test_valid_pattern_statuses(self, mock_db):
-        """All valid pattern statuses should be in constant."""
-        assert "candidate" in PATTERN_STATUSES
-        assert "approved" in PATTERN_STATUSES
-        assert "rejected" in PATTERN_STATUSES
-        assert "deprecated" in PATTERN_STATUSES
+    def test_valid_status_passes_validation(self, mock_db):
+        """Valid pattern status should pass validation (fail on DB, not validation)."""
+        for status in PATTERN_STATUSES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.update_pattern_status(1, status)
+            assert not isinstance(exc_info.value, ValidationError)
 
 
 class TestBulkInsertValidation:
@@ -422,3 +422,83 @@ class TestBulkInsertValidation:
 
         assert "suggestion_confidence" in str(exc_info.value)
         assert "candidate 0" in str(exc_info.value)
+
+
+class TestGetApprovedPatternsValidation:
+    """Tests for get_approved_patterns validation."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a DatabaseAdapter with mocked connection."""
+        return DatabaseAdapter("postgresql://test")
+
+    def test_invalid_pattern_type_raises(self, mock_db):
+        """Invalid pattern_type should raise ValidationError before DB call."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.get_approved_patterns(pattern_type="invalid_type")
+
+        assert "pattern_type" in str(exc_info.value)
+        assert "invalid_type" in str(exc_info.value)
+
+    def test_valid_pattern_type_passes_validation(self, mock_db):
+        """Valid pattern_type should pass validation (fail on DB, not validation)."""
+        for pattern_type in PATTERN_TYPES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.get_approved_patterns(pattern_type=pattern_type)
+            assert not isinstance(exc_info.value, ValidationError)
+
+
+class TestGetFilingsWithCandidatesValidation:
+    """Tests for get_filings_with_candidates validation."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a DatabaseAdapter with mocked connection."""
+        return DatabaseAdapter("postgresql://test")
+
+    def test_invalid_status_raises(self, mock_db):
+        """Invalid status should raise ValidationError before DB call."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.get_filings_with_candidates(status="invalid_status")
+
+        assert "review_status" in str(exc_info.value)
+        assert "invalid_status" in str(exc_info.value)
+
+    def test_valid_status_passes_validation(self, mock_db):
+        """Valid status should pass validation (fail on DB, not validation)."""
+        for status in REVIEW_STATUSES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.get_filings_with_candidates(status=status)
+            assert not isinstance(exc_info.value, ValidationError)
+
+
+class TestNonePassthroughValidation:
+    """Tests that None values skip validation without raising errors."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a DatabaseAdapter with mocked connection."""
+        return DatabaseAdapter("postgresql://test")
+
+    def test_get_review_candidates_for_filing_none_status(self, mock_db):
+        """None status should not raise ValidationError."""
+        # Will fail on DB connection, but should NOT raise ValidationError
+        with pytest.raises(Exception) as exc_info:
+            mock_db.get_review_candidates_for_filing(filing_id=1, status=None)
+
+        # Should fail on connection, not validation
+        assert not isinstance(exc_info.value, ValidationError)
+
+    def test_get_approved_patterns_none_pattern_type(self, mock_db):
+        """None pattern_type should not raise ValidationError."""
+        with pytest.raises(Exception) as exc_info:
+            mock_db.get_approved_patterns(pattern_type=None)
+
+        assert not isinstance(exc_info.value, ValidationError)
+
+    def test_get_filings_with_candidates_none_status(self, mock_db):
+        """None status should not raise ValidationError."""
+        with pytest.raises(Exception) as exc_info:
+            mock_db.get_filings_with_candidates(status=None)
+
+        assert not isinstance(exc_info.value, ValidationError)

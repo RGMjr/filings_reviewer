@@ -99,6 +99,37 @@ class DatabaseAdapter:
             finally:
                 conn.close()
 
+    @contextmanager
+    def transaction(self):
+        """
+        Get a transaction context for multi-step operations.
+
+        Use this when you need multiple database operations to succeed or fail
+        together as an atomic unit. All operations within the context share
+        a single connection and transaction.
+
+        The transaction commits automatically on clean exit and rolls back
+        on any exception.
+
+        Yields:
+            psycopg connection object with an open transaction
+
+        Example:
+            with db.transaction() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO table1 ...")
+                    cur.execute("UPDATE table2 ...")
+                # Both operations commit together
+
+            # Or for complex workflows:
+            with db.transaction() as conn:
+                # Multiple related operations
+                # All succeed or all fail
+        """
+        with self.get_connection() as conn:
+            yield conn
+            # Commit/rollback handled by get_connection()
+
     def execute_script(self, sql_file_path: str) -> None:
         """
         Execute a SQL script file.
@@ -468,8 +499,8 @@ class DatabaseAdapter:
             candidate_id of the inserted record
 
         Raises:
-            ValueError: If keyword_position is not 'before' or 'after'
-            ValueError: If suggestion_confidence is not between 0 and 1
+            ValidationError: If keyword_position is not 'before' or 'after'
+            ValidationError: If suggestion_confidence is not between 0 and 1
         """
         # Validate enum values
         validate_enum(keyword_position, KEYWORD_POSITIONS, "keyword_position")
@@ -636,7 +667,7 @@ class DatabaseAdapter:
             True if update succeeded
 
         Raises:
-            ValueError: If status is not a valid review status
+            ValidationError: If status is not a valid review status
         """
         # Validate status
         validate_enum(status, REVIEW_STATUSES, "review_status")
@@ -666,8 +697,8 @@ class DatabaseAdapter:
             List of inserted candidate_ids (in same order as input)
 
         Raises:
-            ValueError: If any candidate has invalid keyword_position
-            ValueError: If any candidate has invalid suggestion_confidence
+            ValidationError: If any candidate has invalid keyword_position
+            ValidationError: If any candidate has invalid suggestion_confidence
         """
         if not candidates:
             return []
@@ -814,7 +845,9 @@ class DatabaseAdapter:
         """
         Record a human review decision.
 
-        Note: This method automatically updates the candidate's status to 'reviewed'.
+        This method atomically inserts the decision AND updates the candidate's
+        status to 'reviewed' in a single transaction. Both operations succeed
+        together or fail together - there's no risk of partial state.
 
         Args:
             candidate_id: Candidate being reviewed
@@ -829,10 +862,10 @@ class DatabaseAdapter:
             decision_id of the inserted record
 
         Raises:
-            ValueError: If decision is not 'accept', 'reject', or 'reclassify'
-            ValueError: If rejection_category is not a valid category
-            ValueError: If accept/reclassify without assigned_metric_id
-            ValueError: If rejection_category provided for non-reject decision
+            ValidationError: If decision is not 'accept', 'reject', or 'reclassify'
+            ValidationError: If rejection_category is not a valid category
+            ValidationError: If accept/reclassify without assigned_metric_id
+            ValidationError: If rejection_category provided for non-reject decision
         """
         # Validate decision type
         validate_enum(decision, DECISION_TYPES, "decision")
@@ -845,18 +878,18 @@ class DatabaseAdapter:
 
         # Business rule: accept/reclassify require assigned_metric_id
         if decision in ("accept", "reclassify") and not assigned_metric_id:
-            raise ValueError(
+            raise ValidationError(
                 f"Decision '{decision}' requires assigned_metric_id"
             )
 
         # Business rule: rejection_category only valid for reject
         if decision != "reject" and rejection_category:
-            raise ValueError(
+            raise ValidationError(
                 f"rejection_category should only be set when decision='reject', "
                 f"got decision='{decision}'"
             )
 
-        sql = """
+        insert_sql = """
             INSERT INTO review_decisions (
                 candidate_id, decision, assigned_metric_id,
                 rejection_reason, rejection_category,
@@ -870,10 +903,18 @@ class DatabaseAdapter:
             RETURNING decision_id
         """
 
+        update_status_sql = """
+            UPDATE review_candidates
+            SET review_status = 'reviewed', updated_at = now()
+            WHERE candidate_id = %(candidate_id)s
+        """
+
+        # Both operations in same transaction for atomicity
         with self.get_connection() as conn:
             with conn.cursor() as cur:
+                # Insert the decision
                 cur.execute(
-                    sql,
+                    insert_sql,
                     {
                         "candidate_id": candidate_id,
                         "decision": decision,
@@ -887,8 +928,8 @@ class DatabaseAdapter:
                 result = cur.fetchone()
                 decision_id = result["decision_id"]
 
-        # Also update the candidate status to 'reviewed'
-        self.update_candidate_status(candidate_id, "reviewed")
+                # Update candidate status - SAME TRANSACTION
+                cur.execute(update_status_sql, {"candidate_id": candidate_id})
 
         logger.debug(
             f"Inserted review decision: decision_id={decision_id}, "
@@ -1027,8 +1068,8 @@ class DatabaseAdapter:
             pattern_id of the inserted record
 
         Raises:
-            ValueError: If pattern_type is not valid
-            ValueError: If any score is not between 0 and 1
+            ValidationError: If pattern_type is not valid
+            ValidationError: If any score is not between 0 and 1
         """
         # Validate pattern_type
         validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
@@ -1102,7 +1143,14 @@ class DatabaseAdapter:
 
         Returns:
             List of approved pattern records
+
+        Raises:
+            ValidationError: If pattern_type is provided but not a valid type
         """
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
         sql = """
             SELECT * FROM learned_patterns
             WHERE status = 'approved'
@@ -1139,7 +1187,7 @@ class DatabaseAdapter:
             True if update succeeded
 
         Raises:
-            ValueError: If status is not a valid pattern status
+            ValidationError: If status is not a valid pattern status
         """
         # Validate status
         validate_enum(status, PATTERN_STATUSES, "pattern_status")
@@ -1179,7 +1227,14 @@ class DatabaseAdapter:
 
         Returns:
             List of filings with candidate counts
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
         """
+        # Validate status if provided
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
         status_filter = ""
         params: Dict[str, Any] = {"limit": limit}
 
