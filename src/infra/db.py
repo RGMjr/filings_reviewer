@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import psycopg
 from psycopg.rows import dict_row
@@ -615,6 +615,84 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
+    def get_review_candidates_with_decisions(
+        self,
+        filing_id: int,
+        status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get review candidates for a filing WITH their decisions (if any).
+
+        This method uses a LEFT JOIN to fetch candidates and decisions in a single
+        query, eliminating the N+1 query pattern when displaying candidates with
+        their review decisions.
+
+        Args:
+            filing_id: Filing to get candidates for
+            status: Optional filter by review_status
+            limit: Maximum number to return
+            offset: Number to skip (for pagination)
+
+        Returns:
+            List of candidate records with decision fields (decision_id, decision,
+            assigned_metric_id, rejection_category, rejection_reason, reviewer_notes,
+            reviewer_id, review_time_seconds, decision_created_at).
+            Decision fields are NULL if no decision exists.
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        # Validate status if provided
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            SELECT
+                rc.*,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id,
+                rd.rejection_category,
+                rd.rejection_reason,
+                rd.reviewer_notes,
+                rd.reviewer_id,
+                rd.review_time_seconds,
+                rd.created_at as decision_created_at
+            FROM review_candidates rc
+            LEFT JOIN (
+                SELECT DISTINCT ON (candidate_id)
+                    candidate_id,
+                    decision_id,
+                    decision,
+                    assigned_metric_id,
+                    rejection_category,
+                    rejection_reason,
+                    reviewer_notes,
+                    reviewer_id,
+                    review_time_seconds,
+                    created_at
+                FROM review_decisions
+                ORDER BY candidate_id, created_at DESC
+            ) rd ON rc.candidate_id = rd.candidate_id
+            WHERE rc.filing_id = %(filing_id)s
+        """
+        params: Dict[str, Any] = {"filing_id": filing_id}
+
+        if status:
+            sql += " AND rc.review_status = %(status)s"
+            params["status"] = status
+
+        sql += " ORDER BY rc.char_position"
+
+        if limit:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        return self.query(sql, params)
+
     def get_pending_candidates(
         self,
         filing_id: Optional[int] = None,
@@ -889,6 +967,7 @@ class DatabaseAdapter:
         assigned_metric_id: Optional[str] = None,
         rejection_reason: Optional[str] = None,
         rejection_category: Optional[str] = None,
+        reviewer_id: Optional[str] = None,
         reviewer_notes: Optional[str] = None,
         review_time_seconds: Optional[int] = None,
     ) -> int:
@@ -905,6 +984,7 @@ class DatabaseAdapter:
             assigned_metric_id: Final metric ID (required for accept/reclassify)
             rejection_reason: Free-text explanation for rejection
             rejection_category: Categorized reason for pattern learning
+            reviewer_id: Identifier for who made this decision (username, email)
             reviewer_notes: Optional notes
             review_time_seconds: Time spent on this decision
 
@@ -943,12 +1023,12 @@ class DatabaseAdapter:
             INSERT INTO review_decisions (
                 candidate_id, decision, assigned_metric_id,
                 rejection_reason, rejection_category,
-                reviewer_notes, review_time_seconds
+                reviewer_id, reviewer_notes, review_time_seconds
             )
             VALUES (
                 %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
                 %(rejection_reason)s, %(rejection_category)s,
-                %(reviewer_notes)s, %(review_time_seconds)s
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
             )
             RETURNING decision_id
         """
@@ -971,6 +1051,7 @@ class DatabaseAdapter:
                         "assigned_metric_id": assigned_metric_id,
                         "rejection_reason": rejection_reason,
                         "rejection_category": rejection_category,
+                        "reviewer_id": reviewer_id,
                         "reviewer_notes": reviewer_notes,
                         "review_time_seconds": review_time_seconds,
                     },
@@ -1083,6 +1164,168 @@ class DatabaseAdapter:
             "reject_pct": (row["reject_count"] or 0) / total * 100 if total > 0 else 0,
             "avg_review_time_seconds": row["avg_review_time_seconds"],
         }
+
+    def get_decisions_by_reviewer(
+        self,
+        reviewer_id: str,
+        decision: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        include_total: bool = False,
+    ) -> Union[List[Dict], Dict[str, Any]]:
+        """
+        Get all review decisions made by a specific reviewer.
+
+        Args:
+            reviewer_id: Identifier of the reviewer (username, email, etc.)
+            decision: Optional filter by decision type ('accept', 'reject', 'reclassify')
+            limit: Maximum number of results to return (must be > 0 if provided)
+            offset: Number of results to skip for pagination (must be >= 0)
+            include_total: If True, returns dict with 'results' and 'total' keys
+
+        Returns:
+            If include_total=False: List of decision records with candidate context
+            info, ordered by created_at descending (most recent first)
+
+            If include_total=True: Dict with:
+                - results: List of decision records
+                - total: Total count matching filters (ignoring limit/offset)
+
+        Raises:
+            ValidationError: If decision filter is not a valid decision type
+            ValidationError: If limit is provided and <= 0
+            ValidationError: If offset < 0
+        """
+        # Validate decision type if provided
+        if decision is not None:
+            validate_enum(decision, DECISION_TYPES, "decision")
+
+        # Validate pagination parameters
+        if limit is not None and limit <= 0:
+            raise ValidationError(f"limit must be > 0, got {limit}")
+        if offset < 0:
+            raise ValidationError(f"offset must be >= 0, got {offset}")
+
+        conditions = ["rd.reviewer_id = %(reviewer_id)s"]
+        params: Dict[str, Any] = {"reviewer_id": reviewer_id}
+
+        if decision:
+            conditions.append("rd.decision = %(decision)s")
+            params["decision"] = decision
+
+        where_clause = " AND ".join(conditions)
+
+        # Build pagination clause using parameterized queries
+        pagination = ""
+        if limit is not None:
+            pagination = " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        sql = f"""
+            SELECT rd.*,
+                   rc.filing_id,
+                   rc.company_id,
+                   rc.context_text,
+                   rc.raw_number_text,
+                   rc.triggering_keyword,
+                   rc.suggested_metric_id,
+                   rc.char_position,
+                   f.accession_number,
+                   c.company_name
+            FROM review_decisions rd
+            JOIN review_candidates rc ON rd.candidate_id = rc.candidate_id
+            JOIN filings f ON rc.filing_id = f.filing_id
+            JOIN companies c ON rc.company_id = c.company_id
+            WHERE {where_clause}
+            ORDER BY rd.created_at DESC
+            {pagination}
+        """
+
+        results = self.query(sql, params)
+
+        if not include_total:
+            return results
+
+        # Get total count for pagination metadata
+        count_sql = f"""
+            SELECT COUNT(*) as total
+            FROM review_decisions rd
+            WHERE {where_clause}
+        """
+        # Remove pagination params for count query
+        count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+        count_result = self.query(count_sql, count_params)
+        total = count_result[0]["total"] if count_result else 0
+
+        return {"results": results, "total": total}
+
+    # =========================================================================
+    # Analysis View Methods
+    # =========================================================================
+
+    def get_decision_stats_by_metric(
+        self, metric_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get decision statistics grouped by suggested metric.
+
+        Queries the v_decision_stats_by_metric view to show acceptance rates
+        per metric type. Useful for the pattern analyzer to identify which
+        metrics have high/low acceptance rates.
+
+        Args:
+            metric_id: Optional filter by specific metric ID
+
+        Returns:
+            List of dicts with columns:
+            - suggested_metric: The metric ID (or 'unknown')
+            - decision: 'accept', 'reject', or 'reclassify'
+            - decision_count: Number of decisions of this type
+            - pct_of_metric: Percentage of this decision within the metric
+        """
+        sql = "SELECT * FROM v_decision_stats_by_metric"
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " WHERE suggested_metric = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY suggested_metric, decision"
+
+        return self.query(sql, params)
+
+    def get_rejection_reasons(
+        self, metric_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get rejection reason statistics grouped by metric.
+
+        Queries the v_rejection_reasons view to show patterns in why
+        candidates are rejected. Useful for the pattern analyzer to
+        identify systematic false positive patterns.
+
+        Args:
+            metric_id: Optional filter by specific metric ID
+
+        Returns:
+            List of dicts with columns:
+            - suggested_metric: The metric ID (or 'unknown')
+            - rejection_category: Category of rejection reason
+            - rejection_count: Number of rejections with this reason
+            - avg_keyword_distance: Average distance from number to keyword
+            - common_keyword_position: Most common keyword position ('before'/'after')
+        """
+        sql = "SELECT * FROM v_rejection_reasons"
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " WHERE suggested_metric = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY suggested_metric, rejection_count DESC"
+
+        return self.query(sql, params)
 
     # =========================================================================
     # Learned Patterns Methods
@@ -1441,6 +1684,7 @@ class DatabaseAdapter:
         self,
         status: Optional[str] = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> List[Dict]:
         """
         Get filings that have review candidates.
@@ -1450,6 +1694,7 @@ class DatabaseAdapter:
         Args:
             status: Optional filter by candidate review_status
             limit: Maximum number of filings to return
+            offset: Number of filings to skip (for pagination)
 
         Returns:
             List of filings with candidate counts
@@ -1462,7 +1707,7 @@ class DatabaseAdapter:
             validate_enum(status, REVIEW_STATUSES, "review_status")
 
         status_filter = ""
-        params: Dict[str, Any] = {"limit": limit}
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
 
         if status:
             status_filter = "AND rc.review_status = %(status)s"
@@ -1482,10 +1727,46 @@ class DatabaseAdapter:
             GROUP BY f.filing_id, f.accession_number, f.form_type, f.filing_date,
                      c.company_name, c.cik
             ORDER BY pending_count DESC, f.filing_date DESC
-            LIMIT %(limit)s
+            LIMIT %(limit)s OFFSET %(offset)s
         """
 
         return self.query(sql, params)
+
+    def get_filings_with_candidates_count(
+        self,
+        status: Optional[str] = None,
+    ) -> int:
+        """
+        Get count of filings that have review candidates.
+
+        Args:
+            status: Optional filter by candidate review_status
+
+        Returns:
+            Total count of filings matching filter
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        status_filter = ""
+        params: Dict[str, Any] = {}
+
+        if status:
+            status_filter = "AND rc.review_status = %(status)s"
+            params["status"] = status
+
+        sql = f"""
+            SELECT COUNT(DISTINCT f.filing_id) as count
+            FROM filings f
+            JOIN review_candidates rc ON f.filing_id = rc.filing_id
+            WHERE 1=1 {status_filter}
+        """
+
+        result = self.query(sql, params)
+        return result[0]["count"] if result else 0
 
     def get_review_progress(self) -> Dict[str, Any]:
         """

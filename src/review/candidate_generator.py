@@ -20,13 +20,29 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.extraction.metric_classifier import MetricClassifier
+from src.review.context_extraction import ContextExtractor, DEFAULT_CONTEXT_WORDS
+from src.review.false_positive_filter import (
+    DATE_CONTEXT_PATTERNS,
+    FALSE_POSITIVE_CONTEXT_PATTERNS,
+    FalsePositiveFilter,
+    MIN_METRIC_VALUE,
+    YEAR_MIN,
+    YEAR_MAX,
+)
 from src.review.feature_extractor import (
     DEFINITION_PATTERNS,
     PERIOD_PATTERNS,
     RISK_FACTORS_PATTERNS,
     FeatureExtractor,
 )
+from src.review.keyword_matching import (
+    METRIC_KEYWORDS,
+    SPECIFIC_KEYWORD_PATTERNS,
+    KeywordMatch,
+    KeywordMatcher,
+)
 from src.review.models import CandidateFeatures, ReviewCandidate
+from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
 
 logger = logging.getLogger(__name__)
 
@@ -128,34 +144,17 @@ class ProcessingStats:
 # Number Detection Patterns
 # =============================================================================
 
-# Pattern to match numbers with optional currency, commas, decimals, and suffixes
-# Supports both comma-separated (1,234,567) and plain integers (1234567)
-NUMBER_PATTERN = r"""
-    (?P<currency>\$)?                           # Optional currency symbol
-    \s*
-    (?P<number>
-        -?                                      # Optional negative sign
-        (?:
-            \d{1,3}(?:,\d{3})+                 # Comma-separated (1,234 or 1,234,567)
-            |
-            \d+                                 # Or plain integer (1234567)
-        )
-        (?:\.\d+)?                              # Optional decimal part
-    )
-    \s*
-    (?P<suffix>million|billion|thousand|mn|bn|k|m|b|%|percent)?  # Optional suffix
-"""
-
-NUMBER_REGEX = re.compile(NUMBER_PATTERN, re.IGNORECASE | re.VERBOSE)
+# Number parsing functionality moved to src/review/number_parsing.py (P1.3)
+# NUMBER_REGEX and NumberMatch are now imported from that module
 
 
 # =============================================================================
-# Metric Keywords (imported from metric_classifier.py)
+# Metric Keywords (imported from keyword_matching.py)
 # =============================================================================
 
-# Import keywords from the authoritative source to ensure consistency
-# between candidate generation and metric classification
-METRIC_KEYWORDS: Dict[str, List[str]] = MetricClassifier.METRIC_KEYWORDS
+# METRIC_KEYWORDS and SPECIFIC_KEYWORD_PATTERNS moved to
+# src/review/keyword_matching.py (P1.3)
+# They are imported from that module to maintain single source of truth
 
 
 # =============================================================================
@@ -166,59 +165,12 @@ METRIC_KEYWORDS: Dict[str, List[str]] = MetricClassifier.METRIC_KEYWORDS
 
 
 # =============================================================================
-# False Positive Detection Patterns
+# False Positive Detection (imported from false_positive_filter.py)
 # =============================================================================
 
-# Date patterns - to detect if a number is part of a date
-DATE_CONTEXT_PATTERNS = [
-    # MM/DD/YYYY or DD/MM/YYYY
-    re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}"),
-    # Month DD, YYYY
-    re.compile(
-        r"(?:January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+\d{1,2},?\s+\d{4}",
-        re.IGNORECASE,
-    ),
-    # DD Month YYYY
-    re.compile(
-        r"\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{4}",
-        re.IGNORECASE,
-    ),
-]
-
-# Patterns that indicate a number is NOT a metric (contextual false positives)
-FALSE_POSITIVE_CONTEXT_PATTERNS = [
-    # Page references: "page 123", "pages 10-20"
-    re.compile(r"\bpages?\s+\d+", re.IGNORECASE),
-    # Note references: "Note 5", "Notes 1-3"
-    re.compile(r"\bnotes?\s+\d+", re.IGNORECASE),
-    # Section references: "Section 5.1"
-    re.compile(r"\bsections?\s+\d+", re.IGNORECASE),
-    # Item references: "Item 1A"
-    re.compile(r"\bitems?\s+\d+", re.IGNORECASE),
-    # Version numbers: "Version 2.0", "v2.1"
-    re.compile(r"\b(?:version|v)\s*\d+(?:\.\d+)*", re.IGNORECASE),
-    # Exhibit references: "Exhibit 10.1"
-    re.compile(r"\bexhibits?\s+\d+", re.IGNORECASE),
-    # Table references: "Table 1"
-    re.compile(r"\btables?\s+\d+", re.IGNORECASE),
-    # Figure references: "Figure 3"
-    re.compile(r"\bfigures?\s+\d+", re.IGNORECASE),
-    # Footnote references: "[1]", "(1)"
-    re.compile(r"[\[\(]\d+[\]\)]"),
-    # Chapter references: "Chapter 5"
-    re.compile(r"\bchapters?\s+\d+", re.IGNORECASE),
-    # Part references: "Part II"
-    re.compile(r"\bparts?\s+(?:I{1,3}|IV|V|VI{0,3}|\d+)", re.IGNORECASE),
-]
-
-# Year range - numbers in this range are likely years, not metrics
-YEAR_MIN = 1990
-YEAR_MAX = 2100
-
-# Minimum value threshold - very small numbers are rarely metrics
-MIN_METRIC_VALUE = 10  # Filter out single-digit numbers by default
+# DATE_CONTEXT_PATTERNS, FALSE_POSITIVE_CONTEXT_PATTERNS, YEAR_MIN,
+# YEAR_MAX, and MIN_METRIC_VALUE moved to src/review/false_positive_filter.py (P1.3)
+# They are imported from that module to maintain single source of truth
 
 
 # =============================================================================
@@ -253,24 +205,7 @@ METRIC_EXPECTED_FORMATS: Dict[str, List[str]] = {
     "cm_customer_growth_rate": ["percentage"],
 }
 
-# Keywords that are more specific (multi-word) get a bonus
-# Single-word keywords like "customers" are ambiguous
-SPECIFIC_KEYWORD_PATTERNS = [
-    r"active\s+customers?",
-    r"enterprise\s+customers?",
-    r"paying\s+customers?",
-    r"total\s+customers?",
-    r"net\s+revenue\s+retention",
-    r"gross\s+revenue\s+retention",
-    r"net\s+dollar\s+retention",
-    r"customer\s+acquisition\s+cost",
-    r"lifetime\s+value",
-    r"average\s+revenue\s+per",
-    r"annual\s+recurring\s+revenue",
-    r"monthly\s+recurring\s+revenue",
-    r"daily\s+active\s+users?",
-    r"monthly\s+active\s+users?",
-]
+# SPECIFIC_KEYWORD_PATTERNS moved to src/review/keyword_matching.py (P1.3)
 
 
 # =============================================================================
@@ -278,26 +213,8 @@ SPECIFIC_KEYWORD_PATTERNS = [
 # =============================================================================
 
 
-@dataclass
-class NumberMatch:
-    """A number found in text with position and parsed value."""
-
-    start: int  # Character position in text
-    end: int  # End position
-    raw_text: str  # Original text (e.g., "$1,234.56 million")
-    value: Optional[Decimal]  # Parsed numeric value
-    unit: Optional[str]  # Detected unit ('count', '%', 'usd', etc.)
-
-
-@dataclass
-class KeywordMatch:
-    """A keyword match found in text."""
-
-    start: int  # Character position
-    end: int  # End position
-    keyword: str  # The matched text
-    metric_id: str  # Associated metric ID
-    pattern: str  # The regex pattern that matched
+# NumberMatch dataclass moved to src/review/number_parsing.py (P1.3)
+# KeywordMatch dataclass moved to src/review/keyword_matching.py (P1.3)
 
 
 # =============================================================================
@@ -455,8 +372,8 @@ class CandidateGenerator:
     # Maximum character distance between number and keyword
     MAX_KEYWORD_DISTANCE = 100
 
-    # Context extraction settings
-    CONTEXT_WORDS = 40  # Words to extract each direction
+    # Context extraction settings (imported from context_extraction.py)
+    CONTEXT_WORDS = DEFAULT_CONTEXT_WORDS  # Words to extract each direction
 
     def __init__(
         self,
@@ -493,12 +410,25 @@ class CandidateGenerator:
         # Initialize feature extractor
         self._feature_extractor = FeatureExtractor()
 
-        # Compile keyword patterns for performance
-        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
-        for metric_id, patterns in METRIC_KEYWORDS.items():
-            self._compiled_patterns[metric_id] = [
-                re.compile(p, re.IGNORECASE) for p in patterns
-            ]
+        # Initialize number parser (P1.3 - extracted to separate module)
+        self._number_parser = NumberParser()
+
+        # Initialize keyword matcher (P1.3 - extracted to separate module)
+        self._keyword_matcher = KeywordMatcher(max_keyword_distance=max_keyword_distance)
+
+        # Initialize false positive filter (P1.3 - extracted to separate module)
+        self._false_positive_filter = FalsePositiveFilter(
+            filter_enabled=filter_false_positives,
+            min_value=self.min_value,
+            filter_years=filter_years,
+        )
+
+        # Initialize context extractor (P1.3 - extracted to separate module)
+        self._context_extractor = ContextExtractor(context_words=context_words)
+
+        # Cache for word positions during segment processing (optimization for P1.2)
+        # This avoids re-parsing text into words for every number in a segment
+        self._current_segment_words: Optional[List[Tuple[int, int, str]]] = None
 
     def generate_for_filing(
         self,
@@ -669,9 +599,13 @@ class CandidateGenerator:
 
         segment_stats["numbers_found"] = len(numbers)
 
-        # Pre-compute all keyword matches once for efficiency
+        # Pre-compute all keyword matches once for efficiency (P1.1 optimization)
         # This avoids re-searching the text for every number
         all_keywords = self._find_all_keywords(text)
+
+        # Pre-compute word positions once for efficiency (P1.2 optimization)
+        # This avoids re-parsing text for context extraction for every number
+        self._current_segment_words = self._context_extractor.parse_text_into_words(text)
 
         # Track (number_position, metric_id) pairs to avoid duplicates
         seen: Set[Tuple[int, str]] = set()
@@ -751,11 +685,16 @@ class CandidateGenerator:
                 )
                 # Continue processing other numbers
 
+        # Clear cached word positions (P1.2 optimization cleanup)
+        self._current_segment_words = None
+
         return candidates, segment_stats
 
     def _find_numbers(self, text: str) -> List[NumberMatch]:
         """
         Find all numbers in text.
+
+        Delegates to NumberParser (P1.3 - extracted to separate module).
 
         Args:
             text: The text to search
@@ -763,85 +702,9 @@ class CandidateGenerator:
         Returns:
             List of NumberMatch objects
         """
-        matches = []
+        return self._number_parser.find_numbers(text)
 
-        for match in NUMBER_REGEX.finditer(text):
-            full_match = match.group(0)
-            raw_text = full_match.strip()
-
-            # Skip very short matches (likely false positives)
-            if len(raw_text) < 1:
-                continue
-
-            # Parse the value
-            value, unit = self._parse_number(match)
-
-            # Skip if we couldn't parse a meaningful value
-            if value is None:
-                continue
-
-            # Calculate actual position after stripping whitespace
-            # The match may include leading/trailing whitespace
-            leading_ws = len(full_match) - len(full_match.lstrip())
-            actual_start = match.start() + leading_ws
-            actual_end = actual_start + len(raw_text)
-
-            matches.append(
-                NumberMatch(
-                    start=actual_start,
-                    end=actual_end,
-                    raw_text=raw_text,
-                    value=value,
-                    unit=unit,
-                )
-            )
-
-        return matches
-
-    def _parse_number(
-        self, match: re.Match
-    ) -> Tuple[Optional[Decimal], Optional[str]]:
-        """
-        Parse a number match into value and unit.
-
-        Args:
-            match: Regex match object
-
-        Returns:
-            Tuple of (parsed_value, unit)
-        """
-        groups = match.groupdict()
-        currency = groups.get("currency")
-        number_str = groups.get("number", "")
-        suffix = groups.get("suffix", "")
-
-        # Remove commas
-        number_str = number_str.replace(",", "")
-
-        try:
-            value = Decimal(number_str)
-        except (InvalidOperation, ValueError):
-            return None, None
-
-        # Apply suffix multiplier
-        if suffix:
-            suffix_lower = suffix.lower()
-            if suffix_lower in ("million", "mn", "m"):
-                value *= Decimal("1000000")
-            elif suffix_lower in ("billion", "bn", "b"):
-                value *= Decimal("1000000000")
-            elif suffix_lower in ("thousand", "k"):
-                value *= Decimal("1000")
-
-        # Determine unit
-        if suffix and suffix.lower() in ("%", "percent"):
-            unit = "%"
-        elif currency:
-            unit = "usd"
-        else:
-            unit = "count"
-
-        return value, unit
+    # _parse_number method removed - now part of NumberParser (P1.3)
 
     def _is_likely_false_positive(
         self, text: str, number: NumberMatch
@@ -849,12 +712,7 @@ class CandidateGenerator:
         """
         Check if a number match is likely a false positive.
 
-        Filters out:
-        - Numbers that are part of dates (12/31/2023)
-        - Numbers that look like years (1990-2100)
-        - Page/note/section/exhibit references
-        - Version numbers
-        - Numbers below minimum threshold
+        Delegates to FalsePositiveFilter (P1.3 - extracted to separate module).
 
         Args:
             text: The full text containing the number
@@ -864,60 +722,13 @@ class CandidateGenerator:
             Tuple of (is_false_positive, reason)
             reason is None if not a false positive
         """
-        if not self.filter_false_positives:
-            return False, None
-
-        value = number.value
-        start = number.start
-        end = number.end
-
-        # Check minimum value threshold (skip for percentages, currency, and decimals)
-        # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
-        if number.unit == "count" and value is not None:
-            is_decimal = "." in number.raw_text
-            if not is_decimal and abs(float(value)) < self.min_value:
-                return True, "below_min_value"
-
-        # Check if number looks like a year (only for plain integers)
-        if self.filter_years and number.unit == "count":
-            if value is not None and YEAR_MIN <= float(value) <= YEAR_MAX:
-                # Additional check: is it a 4-digit integer without decimal?
-                if "." not in number.raw_text and len(number.raw_text.replace(",", "")) == 4:
-                    return True, "likely_year"
-
-        # Check if number is part of a date pattern
-        # Look at surrounding context (30 chars each side)
-        context_start = max(0, start - 30)
-        context_end = min(len(text), end + 30)
-        local_context = text[context_start:context_end]
-
-        # Calculate the number's position relative to the local context
-        num_rel_start = start - context_start
-        num_rel_end = end - context_start
-
-        for pattern in DATE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
-                # Check if our number overlaps with the date match (in local coords)
-                if num_rel_start >= match.start() and num_rel_end <= match.end():
-                    return True, "part_of_date"
-
-        # Check for false positive context patterns (page refs, notes, etc.)
-        for pattern in FALSE_POSITIVE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
-                # Check if our number overlaps with the reference pattern
-                if num_rel_start >= match.start() and num_rel_end <= match.end():
-                    return True, "reference_number"
-
-        return False, None
+        return self._false_positive_filter.is_false_positive(text, number)
 
     def _find_all_keywords(self, text: str) -> List[KeywordMatch]:
         """
-        Find all metric keywords in text (pre-computation for efficiency).
+        Find all metric keywords in text.
 
-        This method searches the text once for all patterns, avoiding
-        redundant searches when checking multiple numbers.
+        Delegates to KeywordMatcher (P1.3 - extracted to separate module).
 
         Args:
             text: The full text to search
@@ -925,24 +736,7 @@ class CandidateGenerator:
         Returns:
             List of all KeywordMatch objects found, sorted by position
         """
-        all_matches = []
-
-        for metric_id, patterns in self._compiled_patterns.items():
-            for pattern in patterns:
-                for match in pattern.finditer(text):
-                    all_matches.append(
-                        KeywordMatch(
-                            start=match.start(),
-                            end=match.end(),
-                            keyword=match.group(),
-                            metric_id=metric_id,
-                            pattern=pattern.pattern,
-                        )
-                    )
-
-        # Sort by position for potential early-exit optimizations
-        all_matches.sort(key=lambda m: m.start)
-        return all_matches
+        return self._keyword_matcher.find_all_keywords(text)
 
     def _find_keywords_near_number(
         self,
@@ -952,7 +746,7 @@ class CandidateGenerator:
         """
         Find metric keywords within max_keyword_distance of a number.
 
-        Uses pre-computed keyword matches for efficiency.
+        Delegates to KeywordMatcher (P1.3 - extracted to separate module).
 
         Args:
             number: The NumberMatch to search around
@@ -961,28 +755,13 @@ class CandidateGenerator:
         Returns:
             List of KeywordMatch objects within range (one per metric)
         """
-        matches = []
-        seen_metrics: Set[str] = set()
-
-        for kw in all_keywords:
-            # Skip if we already have a match for this metric
-            if kw.metric_id in seen_metrics:
-                continue
-
-            # Calculate distance
-            dist = self._calculate_distance_from_positions(
-                number.start, number.end, kw.start, kw.end
-            )
-
-            if dist <= self.max_keyword_distance:
-                matches.append(kw)
-                seen_metrics.add(kw.metric_id)
-
-        return matches
+        return self._keyword_matcher.find_keywords_near_number(number, all_keywords)
 
     def _calculate_distance(self, number: NumberMatch, keyword: KeywordMatch) -> int:
         """
         Calculate character distance between number and keyword.
+
+        Delegates to KeywordMatcher (P1.3 - extracted to separate module).
 
         Args:
             number: NumberMatch
@@ -991,32 +770,14 @@ class CandidateGenerator:
         Returns:
             Minimum distance in characters
         """
-        return self._calculate_distance_from_positions(
-            number.start, number.end, keyword.start, keyword.end
-        )
-
-    def _calculate_distance_from_positions(
-        self, n_start: int, n_end: int, k_start: int, k_end: int
-    ) -> int:
-        """
-        Calculate distance between two spans.
-
-        If spans overlap, distance is 0.
-        Otherwise, distance is the gap between them.
-        """
-        if n_end <= k_start:
-            # Number is before keyword
-            return k_start - n_end
-        elif k_end <= n_start:
-            # Keyword is before number
-            return n_start - k_end
-        else:
-            # Overlapping
-            return 0
+        return self._keyword_matcher.calculate_distance(number, keyword)
 
     def _extract_context(self, text: str, position: int) -> str:
         """
         Extract context words around a position.
+
+        Delegates to ContextExtractor (P1.3 - extracted to separate module).
+        Uses cached word positions if available (optimization P1.2).
 
         Args:
             text: The full text
@@ -1025,35 +786,9 @@ class CandidateGenerator:
         Returns:
             Context string with ~context_words words each direction
         """
-        # Split into words with positions
-        words = []
-        for match in re.finditer(r"\S+", text):
-            words.append((match.start(), match.end(), match.group()))
-
-        if not words:
-            return text[:500] if len(text) > 500 else text
-
-        # Find the word containing or nearest to position
-        center_idx = 0
-        min_dist = float("inf")
-        for i, (start, end, _) in enumerate(words):
-            if start <= position < end:
-                center_idx = i
-                break
-            dist = min(abs(start - position), abs(end - position))
-            if dist < min_dist:
-                min_dist = dist
-                center_idx = i
-
-        # Extract words around center
-        start_idx = max(0, center_idx - self.context_words)
-        end_idx = min(len(words), center_idx + self.context_words + 1)
-
-        # Get text span
-        context_start = words[start_idx][0]
-        context_end = words[end_idx - 1][1]
-
-        return text[context_start:context_end]
+        return self._context_extractor.extract_context(
+            text, position, cached_words=self._current_segment_words
+        )
 
     def _compute_features(
         self,

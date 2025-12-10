@@ -1254,6 +1254,263 @@ class TestHelperMethods:
         next_candidate = clean_db.get_next_candidate_for_review()
         assert next_candidate is None
 
+    def test_get_review_candidates_with_decisions_no_decisions(self, clean_db):
+        """Test fetching candidates with decisions when no decisions exist."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert candidates without decisions
+        for i in range(3):
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i * 1000),
+                triggering_keyword="customers",
+                keyword_distance=10 + i,
+                keyword_position="after",
+            )
+
+        candidates = clean_db.get_review_candidates_with_decisions(filing_id)
+        assert len(candidates) == 3
+
+        # All should have NULL decision fields
+        for candidate in candidates:
+            assert candidate["decision_id"] is None
+            assert candidate["decision"] is None
+            assert candidate["assigned_metric_id"] is None
+            assert candidate["rejection_category"] is None
+            assert candidate["reviewer_notes"] is None
+
+    def test_get_review_candidates_with_decisions_with_decisions(self, clean_db):
+        """Test fetching candidates with decisions when decisions exist."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 3 candidates
+        candidate_ids = []
+        for i in range(3):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i * 1000),
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="after",
+                suggested_metric_id="active_customers",
+            )
+            candidate_ids.append(cid)
+
+        # Add decisions to first two candidates
+        decision_id1 = clean_db.insert_review_decision(
+            candidate_id=candidate_ids[0],
+            decision="accept",
+            assigned_metric_id="active_customers",
+            reviewer_notes="Looks good",
+            review_time_seconds=10,
+        )
+        decision_id2 = clean_db.insert_review_decision(
+            candidate_id=candidate_ids[1],
+            decision="reject",
+            rejection_category="wrong_metric",
+            rejection_reason="Not a customer metric",
+            review_time_seconds=15,
+        )
+
+        # Fetch candidates with decisions
+        candidates = clean_db.get_review_candidates_with_decisions(filing_id)
+        assert len(candidates) == 3
+
+        # Verify first candidate has accept decision
+        cand0 = next(c for c in candidates if c["candidate_id"] == candidate_ids[0])
+        assert cand0["decision_id"] == decision_id1
+        assert cand0["decision"] == "accept"
+        assert cand0["reviewer_notes"] == "Looks good"
+        assert cand0["review_status"] == "reviewed"
+
+        # Verify second candidate has reject decision
+        cand1 = next(c for c in candidates if c["candidate_id"] == candidate_ids[1])
+        assert cand1["decision_id"] == decision_id2
+        assert cand1["decision"] == "reject"
+        assert cand1["rejection_category"] == "wrong_metric"
+
+        # Verify third candidate has no decision
+        cand2 = next(c for c in candidates if c["candidate_id"] == candidate_ids[2])
+        assert cand2["decision_id"] is None
+        assert cand2["decision"] is None
+
+    def test_get_review_candidates_with_decisions_latest_decision(self, clean_db):
+        """Test that only the latest decision is returned for each candidate."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert one candidate
+        cid = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="Test",
+            raw_number_text="1000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+        )
+
+        # Add first decision
+        first_decision_id = clean_db.insert_review_decision(
+            candidate_id=cid,
+            decision="reject",
+            rejection_category="wrong_metric",
+            reviewer_notes="First review",
+        )
+
+        # Add second decision (should override first in the result)
+        second_decision_id = clean_db.insert_review_decision(
+            candidate_id=cid,
+            decision="accept",
+            assigned_metric_id="active_customers",
+            reviewer_notes="Second review - corrected",
+        )
+
+        # Fetch candidate with decision
+        candidates = clean_db.get_review_candidates_with_decisions(filing_id)
+        assert len(candidates) == 1
+
+        # Should have the LATEST decision (second one)
+        candidate = candidates[0]
+        assert candidate["decision_id"] == second_decision_id
+        assert candidate["decision"] == "accept"
+        assert candidate["reviewer_notes"] == "Second review - corrected"
+
+    def test_get_review_candidates_with_decisions_filters_by_status(self, clean_db):
+        """Test filtering candidates by status works with decisions."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 3 candidates
+        candidate_ids = []
+        for i in range(3):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i),
+                triggering_keyword="test",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            candidate_ids.append(cid)
+
+        # Review first two
+        clean_db.insert_review_decision(
+            candidate_id=candidate_ids[0],
+            decision="accept",
+            assigned_metric_id="test_metric",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidate_ids[1],
+            decision="reject",
+            rejection_category="not_a_metric",
+        )
+
+        # Filter by pending status
+        pending = clean_db.get_review_candidates_with_decisions(
+            filing_id, status="pending"
+        )
+        assert len(pending) == 1
+        assert pending[0]["candidate_id"] == candidate_ids[2]
+        assert pending[0]["decision_id"] is None
+
+        # Filter by reviewed status
+        reviewed = clean_db.get_review_candidates_with_decisions(
+            filing_id, status="reviewed"
+        )
+        assert len(reviewed) == 2
+        # Both should have decisions
+        assert all(c["decision_id"] is not None for c in reviewed)
+
+    def test_get_filings_with_candidates_offset_pagination(self, clean_db):
+        """Test pagination with offset for get_filings_with_candidates."""
+        # Create 5 filings with candidates
+        filing_ids = []
+        for i in range(5):
+            company_id, filing_id = create_test_company_and_filing(
+                clean_db,
+                cik=f"000123456{i}",
+                accession_number=f"000123456{i}-24-000001",
+            )
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=100,
+                context_text="We have 10000 customers.",
+                raw_number_text="10,000",
+                triggering_keyword="customers",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            filing_ids.append(filing_id)
+
+        # Test page 1 (offset=0, limit=2)
+        page1 = clean_db.get_filings_with_candidates(limit=2, offset=0)
+        assert len(page1) == 2
+
+        # Test page 2 (offset=2, limit=2)
+        page2 = clean_db.get_filings_with_candidates(limit=2, offset=2)
+        assert len(page2) == 2
+
+        # Test page 3 (offset=4, limit=2)
+        page3 = clean_db.get_filings_with_candidates(limit=2, offset=4)
+        assert len(page3) == 1
+
+        # Verify no overlap between pages
+        page1_ids = {f["filing_id"] for f in page1}
+        page2_ids = {f["filing_id"] for f in page2}
+        page3_ids = {f["filing_id"] for f in page3}
+        assert len(page1_ids & page2_ids) == 0
+        assert len(page2_ids & page3_ids) == 0
+        assert len(page1_ids & page3_ids) == 0
+
+    def test_get_filings_with_candidates_count(self, clean_db):
+        """Test counting filings with candidates."""
+        # Initially should be 0
+        count = clean_db.get_filings_with_candidates_count()
+        assert count == 0
+
+        # Create 3 filings with candidates
+        for i in range(3):
+            company_id, filing_id = create_test_company_and_filing(
+                clean_db,
+                cik=f"0001234{i:02d}",
+                accession_number=f"0001234{i:02d}-24-000001",
+            )
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=100,
+                context_text="We have 10000 customers.",
+                raw_number_text="10,000",
+                triggering_keyword="customers",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+
+        # Should now be 3
+        count = clean_db.get_filings_with_candidates_count()
+        assert count == 3
+
+        # Mark first filing's candidate as reviewed
+        filings = clean_db.get_filings_with_candidates()
+        first_filing_id = filings[0]["filing_id"]
+        candidates = clean_db.get_review_candidates_for_filing(first_filing_id)
+        clean_db.update_candidate_status(candidates[0]["candidate_id"], "reviewed")
+
+        # Count with status filter
+        pending_count = clean_db.get_filings_with_candidates_count(status="pending")
+        reviewed_count = clean_db.get_filings_with_candidates_count(status="reviewed")
+        assert pending_count == 2  # 2 filings with pending candidates
+        assert reviewed_count == 1  # 1 filing with reviewed candidates
+
 
 class TestAnalysisViewMethods:
     """Tests for analysis view query methods."""

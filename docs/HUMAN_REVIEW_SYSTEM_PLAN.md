@@ -287,7 +287,15 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 - [x] **A3** Add review table methods to `src/infra/db.py`
 
 ### Phase 3: Core Features (After A3, can run in parallel)
-- [ ] **B1** Create `src/review/candidate_generator.py`
+- [x] **B1** Create `src/review/candidate_generator.py`
+  - [x] **P1.2** Optimize candidate generation (word-position caching)
+  - [x] **P1.3** Module splitting for maintainability:
+    - [x] `src/review/number_parsing.py` (55 statements, 95% coverage)
+    - [x] `src/review/keyword_matching.py` (49 statements, 100% coverage)
+    - [x] `src/review/false_positive_filter.py` (45 statements, 100% coverage)
+    - [x] `src/review/context_extraction.py` (34 statements, 100% coverage)
+    - Result: candidate_generator.py reduced from 428 to 243 statements (-43%)
+    - Result: Coverage improved from 23% to 98%
 - [ ] **B2** Create `src/review/feature_extractor.py`
 - [ ] **D1** Create `src/web/routes/review.py`
 - [ ] **D2** Create `src/web/routes/api.py`
