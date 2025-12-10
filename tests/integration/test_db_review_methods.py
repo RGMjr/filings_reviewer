@@ -224,6 +224,12 @@ class TestReviewCandidatesMethods:
         candidate = clean_db.get_review_candidate(candidate_id)
         assert candidate["review_status"] == "reviewed"
 
+    def test_update_candidate_status_nonexistent_returns_false(self, clean_db):
+        """Updating a non-existent candidate should return False."""
+        # Use an ID that doesn't exist
+        result = clean_db.update_candidate_status(999999, "reviewed")
+        assert result is False
+
     def test_bulk_insert_review_candidates(self, clean_db):
         """Test bulk inserting multiple candidates."""
         company_id, filing_id = self._create_test_company_and_filing(clean_db)
@@ -255,6 +261,84 @@ class TestReviewCandidatesMethods:
         """Test bulk insert with empty list returns empty list."""
         inserted_ids = clean_db.bulk_insert_review_candidates([])
         assert inserted_ids == []
+
+    def test_bulk_update_candidate_status(self, clean_db):
+        """Test bulk updating status for multiple candidates."""
+        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+
+        # Insert multiple candidates
+        candidate_ids = []
+        for i in range(5):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i),
+                triggering_keyword="test",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            candidate_ids.append(cid)
+
+        # All should start as pending
+        for cid in candidate_ids:
+            candidate = clean_db.get_review_candidate(cid)
+            assert candidate["review_status"] == "pending"
+
+        # Bulk update first 3 to skipped
+        rows_updated = clean_db.bulk_update_candidate_status(
+            candidate_ids[:3], "skipped"
+        )
+        assert rows_updated == 3
+
+        # Verify statuses
+        for cid in candidate_ids[:3]:
+            candidate = clean_db.get_review_candidate(cid)
+            assert candidate["review_status"] == "skipped"
+
+        for cid in candidate_ids[3:]:
+            candidate = clean_db.get_review_candidate(cid)
+            assert candidate["review_status"] == "pending"
+
+    def test_bulk_update_candidate_status_empty_list(self, clean_db):
+        """Test bulk update with empty list returns 0."""
+        rows_updated = clean_db.bulk_update_candidate_status([], "reviewed")
+        assert rows_updated == 0
+
+    def test_bulk_update_candidate_status_nonexistent_ids(self, clean_db):
+        """Test bulk update with non-existent IDs returns 0 updated."""
+        # Use IDs that don't exist
+        rows_updated = clean_db.bulk_update_candidate_status(
+            [999998, 999999], "reviewed"
+        )
+        assert rows_updated == 0
+
+    def test_bulk_update_candidate_status_partial_match(self, clean_db):
+        """Test bulk update when some IDs exist and some don't."""
+        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+
+        # Insert one candidate
+        cid = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="Test",
+            raw_number_text="100",
+            triggering_keyword="test",
+            keyword_distance=5,
+            keyword_position="after",
+        )
+
+        # Update with one valid ID and one invalid
+        rows_updated = clean_db.bulk_update_candidate_status(
+            [cid, 999999], "in_progress"
+        )
+        assert rows_updated == 1
+
+        # Verify the valid one was updated
+        candidate = clean_db.get_review_candidate(cid)
+        assert candidate["review_status"] == "in_progress"
 
 
 class TestReviewDecisionsMethods:
@@ -548,20 +632,176 @@ class TestLearnedPatternsMethods:
         assert pattern["status"] == "candidate"
 
         # Reject it
-        clean_db.update_pattern_status(pattern_id, "rejected")
+        result = clean_db.update_pattern_status(pattern_id, "rejected")
+        assert result is True
         pattern = clean_db.get_learned_pattern(pattern_id)
         assert pattern["status"] == "rejected"
 
         # Approve it (could happen after modification)
-        clean_db.update_pattern_status(pattern_id, "approved", approved_by="admin")
+        result = clean_db.update_pattern_status(pattern_id, "approved", approved_by="admin")
+        assert result is True
         pattern = clean_db.get_learned_pattern(pattern_id)
         assert pattern["status"] == "approved"
         assert pattern["approved_by"] == "admin"
 
         # Deprecate it
-        clean_db.update_pattern_status(pattern_id, "deprecated")
+        result = clean_db.update_pattern_status(pattern_id, "deprecated")
+        assert result is True
         pattern = clean_db.get_learned_pattern(pattern_id)
         assert pattern["status"] == "deprecated"
+
+    def test_update_pattern_status_nonexistent_returns_false(self, clean_db):
+        """Updating a non-existent pattern should return False."""
+        # Use an ID that doesn't exist
+        result = clean_db.update_pattern_status(999999, "approved")
+        assert result is False
+
+    def test_get_candidate_patterns_basic(self, clean_db):
+        """Test getting candidate patterns (status='candidate')."""
+        # Insert patterns with different statuses
+        candidate_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Candidate pattern",
+            pattern_definition={"conditions": []},
+            precision_score=0.85,
+        )
+        approved_id = clean_db.insert_learned_pattern(
+            pattern_type="reject_rule",
+            pattern_name="Approved pattern",
+            pattern_definition={"conditions": []},
+            precision_score=0.90,
+        )
+        clean_db.update_pattern_status(approved_id, "approved")
+
+        # Should only get the candidate one
+        patterns = clean_db.get_candidate_patterns()
+        assert len(patterns) == 1
+        assert patterns[0]["pattern_id"] == candidate_id
+        assert patterns[0]["status"] == "candidate"
+
+    def test_get_candidate_patterns_by_type(self, clean_db):
+        """Test filtering candidate patterns by type."""
+        accept_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Accept candidate",
+            pattern_definition={"conditions": []},
+        )
+        reject_id = clean_db.insert_learned_pattern(
+            pattern_type="reject_rule",
+            pattern_name="Reject candidate",
+            pattern_definition={"conditions": []},
+        )
+
+        accept_patterns = clean_db.get_candidate_patterns(pattern_type="accept_rule")
+        assert len(accept_patterns) == 1
+        assert accept_patterns[0]["pattern_id"] == accept_id
+
+        reject_patterns = clean_db.get_candidate_patterns(pattern_type="reject_rule")
+        assert len(reject_patterns) == 1
+        assert reject_patterns[0]["pattern_id"] == reject_id
+
+    def test_get_candidate_patterns_by_metric(self, clean_db):
+        """Test filtering candidate patterns by metric."""
+        # Global pattern
+        global_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Global pattern",
+            pattern_definition={"conditions": []},
+            metric_id=None,
+        )
+        # Metric-specific pattern
+        metric_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Customer pattern",
+            pattern_definition={"conditions": []},
+            metric_id="active_customers",
+        )
+        # Different metric pattern
+        other_metric_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Revenue pattern",
+            pattern_definition={"conditions": []},
+            metric_id="revenue",
+        )
+
+        # Should get global + metric-specific
+        patterns = clean_db.get_candidate_patterns(metric_id="active_customers")
+        assert len(patterns) == 2
+        pattern_ids = [p["pattern_id"] for p in patterns]
+        assert global_id in pattern_ids
+        assert metric_id in pattern_ids
+        assert other_metric_id not in pattern_ids
+
+    def test_get_candidate_patterns_min_precision(self, clean_db):
+        """Test filtering candidate patterns by minimum precision."""
+        low_precision_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Low precision",
+            pattern_definition={"conditions": []},
+            precision_score=0.50,
+        )
+        high_precision_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="High precision",
+            pattern_definition={"conditions": []},
+            precision_score=0.95,
+        )
+
+        # Filter for high precision
+        patterns = clean_db.get_candidate_patterns(min_precision=0.80)
+        assert len(patterns) == 1
+        assert patterns[0]["pattern_id"] == high_precision_id
+
+        # Lower threshold gets both
+        patterns = clean_db.get_candidate_patterns(min_precision=0.40)
+        assert len(patterns) == 2
+
+    def test_get_candidate_patterns_min_sample_count(self, clean_db):
+        """Test filtering candidate patterns by minimum sample count."""
+        low_sample_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Low samples",
+            pattern_definition={"conditions": []},
+            sample_count=10,
+        )
+        high_sample_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="High samples",
+            pattern_definition={"conditions": []},
+            sample_count=100,
+        )
+
+        # Filter for high sample count
+        patterns = clean_db.get_candidate_patterns(min_sample_count=50)
+        assert len(patterns) == 1
+        assert patterns[0]["pattern_id"] == high_sample_id
+
+    def test_get_candidate_patterns_ordering(self, clean_db):
+        """Test that patterns are ordered by precision desc, then created_at desc."""
+        # Insert in order: low precision, high precision
+        low_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Low precision",
+            pattern_definition={"conditions": []},
+            precision_score=0.60,
+        )
+        high_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="High precision",
+            pattern_definition={"conditions": []},
+            precision_score=0.95,
+        )
+
+        patterns = clean_db.get_candidate_patterns()
+        assert len(patterns) == 2
+        # High precision should come first
+        assert patterns[0]["pattern_id"] == high_id
+        assert patterns[1]["pattern_id"] == low_id
+
+    def test_get_candidate_patterns_empty(self, clean_db):
+        """Test when no candidate patterns exist."""
+        patterns = clean_db.get_candidate_patterns()
+        assert patterns == []
 
 
 class TestHelperMethods:

@@ -424,6 +424,37 @@ class TestBulkInsertValidation:
         assert "candidate 0" in str(exc_info.value)
 
 
+class TestBulkUpdateCandidateStatusValidation:
+    """Tests for bulk_update_candidate_status validation."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a DatabaseAdapter with mocked connection."""
+        return DatabaseAdapter("postgresql://test")
+
+    def test_invalid_status_raises(self, mock_db):
+        """Invalid status should raise ValidationError before DB call."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.bulk_update_candidate_status([1, 2, 3], "invalid_status")
+
+        assert "review_status" in str(exc_info.value)
+        assert "invalid_status" in str(exc_info.value)
+
+    def test_empty_list_returns_zero(self, mock_db):
+        """Empty candidate list should return 0 without DB call."""
+        # Should not raise - returns early
+        result = mock_db.bulk_update_candidate_status([], "reviewed")
+        assert result == 0
+
+    def test_valid_status_passes_validation(self, mock_db):
+        """Valid status should pass validation (fail on DB, not validation)."""
+        for status in REVIEW_STATUSES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.bulk_update_candidate_status([1, 2], status)
+            # Should fail on DB connection, not validation
+            assert not isinstance(exc_info.value, ValidationError)
+
+
 class TestGetApprovedPatternsValidation:
     """Tests for get_approved_patterns validation."""
 
@@ -446,6 +477,60 @@ class TestGetApprovedPatternsValidation:
             with pytest.raises(Exception) as exc_info:
                 mock_db.get_approved_patterns(pattern_type=pattern_type)
             assert not isinstance(exc_info.value, ValidationError)
+
+
+class TestGetCandidatePatternsValidation:
+    """Tests for get_candidate_patterns validation."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a DatabaseAdapter with mocked connection."""
+        return DatabaseAdapter("postgresql://test")
+
+    def test_invalid_pattern_type_raises(self, mock_db):
+        """Invalid pattern_type should raise ValidationError before DB call."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.get_candidate_patterns(pattern_type="invalid_type")
+
+        assert "pattern_type" in str(exc_info.value)
+        assert "invalid_type" in str(exc_info.value)
+
+    def test_invalid_min_precision_too_high_raises(self, mock_db):
+        """min_precision > 1 should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.get_candidate_patterns(min_precision=1.5)
+
+        assert "min_precision" in str(exc_info.value)
+        assert "between 0.0 and 1.0" in str(exc_info.value)
+
+    def test_invalid_min_precision_negative_raises(self, mock_db):
+        """Negative min_precision should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            mock_db.get_candidate_patterns(min_precision=-0.1)
+
+        assert "min_precision" in str(exc_info.value)
+
+    def test_valid_pattern_type_passes_validation(self, mock_db):
+        """Valid pattern_type should pass validation (fail on DB, not validation)."""
+        for pattern_type in PATTERN_TYPES:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.get_candidate_patterns(pattern_type=pattern_type)
+            assert not isinstance(exc_info.value, ValidationError)
+
+    def test_valid_min_precision_passes_validation(self, mock_db):
+        """Valid min_precision should pass validation (fail on DB, not validation)."""
+        for precision in [0.0, 0.5, 1.0]:
+            with pytest.raises(Exception) as exc_info:
+                mock_db.get_candidate_patterns(min_precision=precision)
+            assert not isinstance(exc_info.value, ValidationError)
+
+    def test_none_values_pass_validation(self, mock_db):
+        """None values for optional params should pass validation."""
+        with pytest.raises(Exception) as exc_info:
+            mock_db.get_candidate_patterns(
+                pattern_type=None, min_precision=None, min_sample_count=None
+            )
+        assert not isinstance(exc_info.value, ValidationError)
 
 
 class TestGetFilingsWithCandidatesValidation:
