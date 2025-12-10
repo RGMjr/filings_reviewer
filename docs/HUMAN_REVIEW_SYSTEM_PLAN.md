@@ -284,7 +284,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 - [x] **C4** Create `src/web/static/css/review.css`
 
 ### Phase 2: Database Integration (After A1, A2)
-- [ ] **A3** Add review table methods to `src/infra/db.py`
+- [x] **A3** Add review table methods to `src/infra/db.py`
 
 ### Phase 3: Core Features (After A3, can run in parallel)
 - [ ] **B1** Create `src/review/candidate_generator.py`
