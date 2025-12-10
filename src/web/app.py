@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from flask import Flask, current_app, g, jsonify, render_template_string, request
+from flask import Flask, current_app, g, jsonify, render_template, request
 
 from src.infra.db import DatabaseAdapter
 
@@ -282,40 +282,14 @@ def _register_error_handlers(app: Flask) -> None:
     def not_found_error(error):
         if _wants_json_response():
             return jsonify(error="Not found"), 404
-        return render_template_string(
-            """
-            {% extends "base.html" %}
-            {% block title %}404 - Not Found{% endblock %}
-            {% block content %}
-            <div class="text-center py-5">
-                <h1 class="display-1 text-muted">404</h1>
-                <p class="lead">Page not found</p>
-                <p class="text-muted">The page you're looking for doesn't exist.</p>
-                <a href="/" class="btn btn-primary mt-3">Go Home</a>
-            </div>
-            {% endblock %}
-            """
-        ), 404
+        return render_template("errors/404.html"), 404
 
     @app.errorhandler(500)
     def internal_error(error):
         logger.error(f"Internal server error: {error}")
         if _wants_json_response():
             return jsonify(error="Internal server error"), 500
-        return render_template_string(
-            """
-            {% extends "base.html" %}
-            {% block title %}500 - Server Error{% endblock %}
-            {% block content %}
-            <div class="text-center py-5">
-                <h1 class="display-1 text-muted">500</h1>
-                <p class="lead">Internal Server Error</p>
-                <p class="text-muted">Something went wrong on our end. Please try again later.</p>
-                <a href="/" class="btn btn-primary mt-3">Go Home</a>
-            </div>
-            {% endblock %}
-            """
-        ), 500
+        return render_template("errors/500.html"), 500
 
 
 def _register_context_processors(app: Flask) -> None:

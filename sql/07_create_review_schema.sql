@@ -94,6 +94,7 @@ CREATE TABLE review_decisions (
     rejection_category TEXT,  -- Categorized reason for pattern learning
 
     -- Review metadata
+    reviewer_id TEXT,  -- Identifier for the reviewer (username, email, etc.)
     reviewer_notes TEXT,  -- Optional notes from reviewer
     review_time_seconds INT,  -- Time spent on this decision
 
@@ -119,11 +120,14 @@ CREATE INDEX idx_review_decisions_candidate ON review_decisions(candidate_id);
 CREATE INDEX idx_review_decisions_decision ON review_decisions(decision);
 CREATE INDEX idx_review_decisions_metric ON review_decisions(assigned_metric_id) WHERE assigned_metric_id IS NOT NULL;
 CREATE INDEX idx_review_decisions_rejection ON review_decisions(rejection_category) WHERE rejection_category IS NOT NULL;
+CREATE INDEX idx_review_decisions_created ON review_decisions(created_at);
+CREATE INDEX idx_review_decisions_reviewer ON review_decisions(reviewer_id) WHERE reviewer_id IS NOT NULL;
 
 -- Comments
 COMMENT ON TABLE review_decisions IS 'Human review decisions on candidate extractions for pattern learning';
 COMMENT ON COLUMN review_decisions.decision IS 'Review decision: accept (correct metric), reject (not a valid extraction), reclassify (different metric)';
 COMMENT ON COLUMN review_decisions.rejection_category IS 'Categorized rejection reason: wrong_metric, not_a_metric, wrong_value, wrong_period, duplicate, other';
+COMMENT ON COLUMN review_decisions.reviewer_id IS 'Identifier for who made this decision (username, email) for multi-user tracking';
 COMMENT ON COLUMN review_decisions.review_time_seconds IS 'Time spent reviewing this candidate (for workload analysis)';
 
 -- ============================================================================
@@ -233,3 +237,30 @@ GROUP BY COALESCE(rc.suggested_metric_id, 'unknown'), rd.rejection_category
 ORDER BY suggested_metric, rejection_count DESC;
 
 COMMENT ON VIEW v_rejection_reasons IS 'Rejection patterns for identifying systematic false positives';
+
+-- ============================================================================
+-- TRIGGERS for updated_at
+-- ============================================================================
+
+-- Function to automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for review_candidates
+CREATE TRIGGER trigger_review_candidates_updated_at
+    BEFORE UPDATE ON review_candidates
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for learned_patterns
+CREATE TRIGGER trigger_learned_patterns_updated_at
+    BEFORE UPDATE ON learned_patterns
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON FUNCTION update_updated_at_column() IS 'Automatically sets updated_at to current timestamp on row update';
