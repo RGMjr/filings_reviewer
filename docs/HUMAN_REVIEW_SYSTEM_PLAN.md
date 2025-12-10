@@ -301,8 +301,21 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
   - Features: Keyword proximity, context features, number format, section features, magnitude
   - Improvements: Unit normalization, performance optimization, memory efficiency
   - Performance tested: 1,000 and 10,000 candidate volumes
-- [ ] **D1** Create `src/web/routes/review.py`
-- [ ] **D2** Create `src/web/routes/api.py`
+- [x] **D1** Create `src/web/routes/review.py` (COMPLETE - 2025-12-10)
+  - Implementation: 254 statements, 94% coverage, 28 unit tests passing
+  - 7 production-ready improvements implemented:
+    - Page overflow validation with redirect
+    - Empty result handling
+    - Flash-before-abort antipattern fixes
+    - Input validation (filing_id, candidate_id, metric_id)
+    - Template data contracts
+    - Complex logic extraction (pagination, validation)
+    - Audit logging integration
+  - Documentation: See `docs/D1_IMPROVEMENTS_FINAL.md`
+- [x] **D2** Create `src/web/routes/api.py` (COMPLETE - 2025-12-10)
+  - Implementation: 115 statements, 97% coverage, 35 unit tests passing
+  - REST API endpoints for review decisions and candidate management
+  - Full integration with D1 review interface
 - [ ] **E1** Create `src/review/pattern_analyzer.py`
 
 ### Phase 4: UI & Scripts (After D1, D2)

@@ -64,13 +64,15 @@ Instructions for setting up, running, and maintaining the system.
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
 | **[08_DEPLOYMENT_GUIDE.md](operations/08_DEPLOYMENT_GUIDE.md)** | Deployment procedures, monitoring | DevOps, PMs |
 
-### Human Review System (In Progress)
+### Human Review System (In Progress - D1/D2 Complete)
 
 Human-in-the-loop system for validating and improving extraction quality.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[HUMAN_REVIEW_SYSTEM_PLAN.md](HUMAN_REVIEW_SYSTEM_PLAN.md)** | Implementation plan, task checklist, architecture | Developers |
+| **[D1_IMPROVEMENTS_FINAL.md](D1_IMPROVEMENTS_FINAL.md)** | D1 review routes completion details (7 improvements) | Developers, QA |
+| **[D1_COMPREHENSIVE_EVALUATION.md](D1_COMPREHENSIVE_EVALUATION.md)** | D1 comprehensive evaluation and testing | Developers, QA |
 
 ### Archive (Historical Reference)
 
@@ -122,7 +124,11 @@ Historical documents for reference only. Not part of current operations.
 | Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
 | Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
-| Human Review System | 🔄 In Progress | - | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
+| Review Candidate Generator | ✅ Complete | 98% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
+| Review Feature Extractor | ✅ Complete | 100% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
+| Review Routes (D1) | ✅ Complete | 94% | [D1 Final](D1_IMPROVEMENTS_FINAL.md) |
+| API Routes (D2) | ✅ Complete | 97% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
+| Pattern Analyzer (E1) | 🔄 In Progress | - | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
 
 **Overall Status:** ✅ **Production Ready** (77% test coverage)
 
@@ -299,9 +305,14 @@ When updating documentation:
 
 ## Version History
 
-### Version 2.1 (Current - 2025-12-09)
-- 🔄 Human review system (in progress)
-- ✅ Review models: ReviewCandidate, ReviewDecision, LearnedPattern
+### Version 2.1 (Current - 2025-12-10)
+- 🔄 Human review system (D1/D2 complete, E1 in progress)
+- ✅ Review models: ReviewCandidate, ReviewDecision, LearnedPattern, CandidateFeatures
+- ✅ Candidate generation with modular architecture (B1: 98% coverage)
+- ✅ Feature extraction (B2: 100% coverage, 90 tests)
+- ✅ Review routes (D1: 94% coverage, 28 tests, 7 production improvements)
+- ✅ API routes (D2: 97% coverage, 35 tests)
+- 🔄 Pattern analyzer (E1: in progress)
 
 ### Version 2.0 (2025-12-09)
 - ✅ Complete pipeline implementation
