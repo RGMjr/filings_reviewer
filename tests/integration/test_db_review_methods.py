@@ -815,3 +815,172 @@ class TestHelperMethods:
 
         next_candidate = clean_db.get_next_candidate_for_review()
         assert next_candidate is None
+
+
+class TestTransactionContext:
+    """Tests for the transaction() context manager."""
+
+    def _create_test_company_and_filing(self, db):
+        """Helper to create prerequisite company and filing."""
+        company_id = db.upsert_company(
+            cik="0001234567",
+            company_name="Test Company Inc",
+            ticker="TEST",
+        )
+        filing_id = db.upsert_filing(
+            company_id=company_id,
+            cik="0001234567",
+            accession_number="0001234567-24-000001",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            sec_html_url="https://www.sec.gov/test",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
+        )
+        return company_id, filing_id
+
+    def test_transaction_commits_on_success(self, clean_db):
+        """Transaction should commit all operations on clean exit."""
+        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+
+        # Use transaction for multiple operations
+        with clean_db.transaction() as conn:
+            with conn.cursor() as cur:
+                # Insert candidate
+                cur.execute(
+                    """
+                    INSERT INTO review_candidates (
+                        filing_id, company_id, char_position, context_text,
+                        raw_number_text, triggering_keyword, keyword_distance,
+                        keyword_position
+                    )
+                    VALUES (%(filing_id)s, %(company_id)s, 100, 'Test context',
+                            '1000', 'customers', 10, 'after')
+                    RETURNING candidate_id
+                    """,
+                    {"filing_id": filing_id, "company_id": company_id},
+                )
+                result = cur.fetchone()
+                candidate_id = result["candidate_id"]
+
+                # Update status in same transaction
+                cur.execute(
+                    """
+                    UPDATE review_candidates
+                    SET review_status = 'in_progress'
+                    WHERE candidate_id = %(candidate_id)s
+                    """,
+                    {"candidate_id": candidate_id},
+                )
+
+        # Verify both operations committed
+        candidate = clean_db.get_review_candidate(candidate_id)
+        assert candidate is not None
+        assert candidate["review_status"] == "in_progress"
+
+    def test_transaction_rolls_back_on_exception(self, clean_db):
+        """Transaction should roll back all operations on exception."""
+        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+
+        # Get initial candidate count
+        initial_count = len(clean_db.get_review_candidates_for_filing(filing_id))
+
+        with pytest.raises(ValueError):
+            with clean_db.transaction() as conn:
+                with conn.cursor() as cur:
+                    # Insert candidate (would succeed)
+                    cur.execute(
+                        """
+                        INSERT INTO review_candidates (
+                            filing_id, company_id, char_position, context_text,
+                            raw_number_text, triggering_keyword, keyword_distance,
+                            keyword_position
+                        )
+                        VALUES (%(filing_id)s, %(company_id)s, 100, 'Test context',
+                                '1000', 'customers', 10, 'after')
+                        RETURNING candidate_id
+                        """,
+                        {"filing_id": filing_id, "company_id": company_id},
+                    )
+                    # Raise exception before commit
+                    raise ValueError("Simulated failure")
+
+        # Verify insert was rolled back
+        final_count = len(clean_db.get_review_candidates_for_filing(filing_id))
+        assert final_count == initial_count
+
+
+class TestAtomicReviewDecision:
+    """Tests that insert_review_decision is atomic."""
+
+    def _create_test_candidate(self, db):
+        """Helper to create a test candidate."""
+        company_id = db.upsert_company(
+            cik="0001234567",
+            company_name="Test Company Inc",
+        )
+        filing_id = db.upsert_filing(
+            company_id=company_id,
+            cik="0001234567",
+            accession_number="0001234567-24-000001",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            sec_html_url="https://www.sec.gov/test",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
+        )
+        candidate_id = db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="We have 10,000 customers",
+            raw_number_text="10,000",
+            triggering_keyword="customers",
+            keyword_distance=15,
+            keyword_position="after",
+        )
+        return company_id, filing_id, candidate_id
+
+    def test_decision_and_status_update_atomic(self, clean_db):
+        """Decision insert and status update should happen in same transaction."""
+        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+
+        # Verify initial state
+        candidate = clean_db.get_review_candidate(candidate_id)
+        assert candidate["review_status"] == "pending"
+
+        # Insert decision (should atomically update status)
+        decision_id = clean_db.insert_review_decision(
+            candidate_id=candidate_id,
+            decision="accept",
+            assigned_metric_id="active_customers",
+        )
+
+        # Verify both happened
+        decision = clean_db.get_decision_for_candidate(candidate_id)
+        assert decision is not None
+        assert decision["decision_id"] == decision_id
+
+        candidate = clean_db.get_review_candidate(candidate_id)
+        assert candidate["review_status"] == "reviewed"
+
+    def test_decision_with_invalid_candidate_rolls_back(self, clean_db):
+        """If decision insert fails, nothing should be committed."""
+        # Use a non-existent candidate_id
+        invalid_candidate_id = 999999
+
+        with pytest.raises(Exception):  # Foreign key violation
+            clean_db.insert_review_decision(
+                candidate_id=invalid_candidate_id,
+                decision="accept",
+                assigned_metric_id="active_customers",
+            )
+
+        # Verify no decision was inserted
+        decisions = clean_db.query(
+            "SELECT * FROM review_decisions WHERE candidate_id = %(cid)s",
+            {"cid": invalid_candidate_id},
+        )
+        assert len(decisions) == 0
