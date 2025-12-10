@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Filings Review - {{ super() }}{% endblock %}
+
+{% block content %}
+{# Page Header #}
+<div class="row mb-4">
+  <div class="col-12">
+    <h1>Filings Review</h1>
+  </div>
+</div>
+
+{# Overall Progress Section #}
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Overall Progress</h5>
+        <p class="mb-2">
+          {{ progress.reviewed_count }}/{{ progress.total_candidates }} reviewed
+          ({{ progress.review_pct|round(0)|int }}%)
+        </p>
+        <p class="text-muted mb-3">
+          {{ progress.filings_with_pending }} of {{ progress.total_filings }}
+          filings have pending candidates
+        </p>
+
+        {# Multi-segment progress bar #}
+        <div class="progress" style="height: 20px;">
+          {% if progress.total_candidates > 0 %}
+            {# Reviewed segment (green) #}
+            {% if progress.reviewed_count > 0 %}
+            <div class="progress-bar bg-success" role="progressbar"
+                 style="width: {{ progress.review_pct }}%"
+                 aria-valuenow="{{ progress.reviewed_count }}"
+                 aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+              Reviewed: {{ progress.reviewed_count }}
+            </div>
+            {% endif %}
+
+            {# Pending segment (yellow) #}
+            {% if progress.pending_count > 0 %}
+            {% set pending_pct = (progress.pending_count / progress.total_candidates * 100)|round(1) %}
+            <div class="progress-bar bg-warning text-dark" role="progressbar"
+                 style="width: {{ pending_pct }}%"
+                 aria-valuenow="{{ progress.pending_count }}"
+                 aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+              Pending: {{ progress.pending_count }}
+            </div>
+            {% endif %}
+
+            {# Skipped segment (grey) #}
+            {% if progress.skipped_count > 0 %}
+            {% set skipped_pct = (progress.skipped_count / progress.total_candidates * 100)|round(1) %}
+            <div class="progress-bar bg-secondary" role="progressbar"
+                 style="width: {{ skipped_pct }}%"
+                 aria-valuenow="{{ progress.skipped_count }}"
+                 aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+              Skipped: {{ progress.skipped_count }}
+            </div>
+            {% endif %}
+          {% else %}
+            {# No candidates - show empty progress bar #}
+            <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
+              No candidates
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Filter Controls #}
+<div class="row mb-3">
+  <div class="col-12">
+    <form method="get" action="{{ url_for('review.filing_list') }}" class="mb-3">
+      <div class="row align-items-end">
+        <div class="col-md-4">
+          <label for="status-filter" class="form-label">Filter by status:</label>
+          <select class="form-select" id="status-filter" name="status">
+            <option value="" {% if not current_status_filter %}selected{% endif %}>
+              All Filings
+            </option>
+            {% for status in review_statuses %}
+            <option value="{{ status }}"
+                    {% if current_status_filter == status %}selected{% endif %}>
+              {{ status|capitalize }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">
+            Apply Filter
+          </button>
+        </div>
+        {% if current_status_filter %}
+        <div class="col-md-2">
+          <a href="{{ url_for('review.filing_list') }}" class="btn btn-outline-secondary w-100">
+            Clear Filter
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Filing Cards Grid #}
+<div class="row mb-4">
+  <div class="col-12">
+    {% if filings %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+      {% for filing in filings %}
+      <div class="col">
+        <div class="card filing-card h-100">
+          {# Card Header: Company name + Status badge #}
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-1">{{ filing.company_name }}</h5>
+              <small class="text-muted">CIK: {{ filing.cik }}</small>
+            </div>
+            {% if filing.pending_count > 0 %}
+            <span class="badge status-badge pending">Pending</span>
+            {% else %}
+            <span class="badge status-badge reviewed">Reviewed</span>
+            {% endif %}
+          </div>
+
+          {# Card Body: Filing metadata + Progress + Statistics #}
+          <div class="card-body">
+            {# Filing metadata #}
+            <div class="filing-stats mb-3">
+              <div class="mb-1">
+                <span class="stat-label">Form Type:</span>
+                <span class="stat-value">{{ filing.form_type }}</span>
+                <span class="ms-3 stat-label">Date:</span>
+                <span class="stat-value">{{ filing.filing_date.strftime('%Y-%m-%d') }}</span>
+              </div>
+              <div class="mb-3">
+                <span class="stat-label">Accession:</span>
+                <span class="stat-value" style="font-size: 0.8em; font-family: monospace;">
+                  {{ filing.accession_number }}
+                </span>
+              </div>
+            </div>
+
+            {# Progress bar #}
+            <h6 class="mb-2">Review Progress</h6>
+            <div class="progress mb-2" style="height: 8px;">
+              {% set review_pct = (filing.reviewed_count / filing.total_candidates * 100) if filing.total_candidates > 0 else 0 %}
+              <div class="progress-bar bg-success" role="progressbar"
+                   style="width: {{ review_pct }}%"
+                   aria-valuenow="{{ filing.reviewed_count }}"
+                   aria-valuemin="0" aria-valuemax="{{ filing.total_candidates }}">
+              </div>
+            </div>
+            <p class="mb-3">
+              <small>
+                {{ filing.reviewed_count }}/{{ filing.total_candidates }} reviewed
+                ({{ review_pct|round(0)|int }}%)
+              </small>
+            </p>
+
+            {# Statistics #}
+            <div class="filing-stats">
+              <div class="d-flex justify-content-between mb-1">
+                <span class="stat-label">Total candidates:</span>
+                <span class="stat-value">{{ filing.total_candidates }}</span>
+              </div>
+              <div class="d-flex justify-content-between mb-1">
+                <span class="stat-label">Pending review:</span>
+                <span class="stat-value text-warning">{{ filing.pending_count }}</span>
+              </div>
+              <div class="d-flex justify-content-between">
+                <span class="stat-label">Already reviewed:</span>
+                <span class="stat-value text-success">{{ filing.reviewed_count }}</span>
+              </div>
+            </div>
+          </div>
+
+          {# Card Footer: Action button #}
+          <div class="card-footer bg-transparent">
+            <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id) }}"
+               class="btn btn-primary w-100">
+              {% if filing.pending_count > 0 %}
+              Start Review ({{ filing.pending_count }} pending)
+              {% else %}
+              View Reviewed Candidates
+              {% endif %}
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    {# Empty state #}
+    <div class="alert alert-info" role="alert">
+      <h4 class="alert-heading">No filings found</h4>
+      <p>No filings found with review candidates.</p>
+      <hr>
+      <p class="mb-0">
+        To get started, generate review candidates using:<br>
+        <code>python scripts/generate_review_candidates.py</code>
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# Pagination Controls #}
+{% if pagination.total_pages > 1 %}
+<div class="row mt-4">
+  <div class="col-12">
+    <nav aria-label="Filings pagination">
+      <ul class="pagination justify-content-center">
+        {# Previous button #}
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          {% if pagination.has_prev %}
+          <a class="page-link"
+             href="{{ url_for('review.filing_list', status=current_status_filter, page=pagination.page - 1, per_page=pagination.per_page) }}">
+            &laquo; Previous
+          </a>
+          {% else %}
+          <span class="page-link">&laquo; Previous</span>
+          {% endif %}
+        </li>
+
+        {# Page numbers (show current page ± 2, always show first and last) #}
+        {% for page_num in range(1, pagination.total_pages + 1) %}
+          {% if page_num == 1 or page_num == pagination.total_pages or (page_num >= pagination.page - 2 and page_num <= pagination.page + 2) %}
+          <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+            <a class="page-link"
+               href="{{ url_for('review.filing_list', status=current_status_filter, page=page_num, per_page=pagination.per_page) }}">
+              {{ page_num }}
+            </a>
+          </li>
+          {% elif page_num == pagination.page - 3 or page_num == pagination.page + 3 %}
+          <li class="page-item disabled">
+            <span class="page-link">...</span>
+          </li>
+          {% endif %}
+        {% endfor %}
+
+        {# Next button #}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          {% if pagination.has_next %}
+          <a class="page-link"
+             href="{{ url_for('review.filing_list', status=current_status_filter, page=pagination.page + 1, per_page=pagination.per_page) }}">
+            Next &raquo;
+          </a>
+          {% else %}
+          <span class="page-link">Next &raquo;</span>
+          {% endif %}
+        </li>
+      </ul>
+
+      {# Page info text #}
+      <p class="text-center text-muted">
+        Page {{ pagination.page }} of {{ pagination.total_pages }}
+        &bull;
+        Showing {{ pagination.offset + 1 }}-{{ [pagination.offset + pagination.limit, pagination.total_count]|min }}
+        of {{ pagination.total_count }} filings
+      </p>
+    </nav>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
