@@ -7,3 +7,40 @@ This module provides tools for:
 - Analyzing patterns in accepted vs rejected candidates
 - Generating improved extraction rules
 """
+
+from src.review.candidate_generator import (
+    CandidateGenerator,
+    generate_candidates_for_filing,
+)
+from src.review.feature_extractor import (
+    DEFINITION_PATTERNS,
+    PERIOD_PATTERNS,
+    RISK_FACTORS_PATTERNS,
+    FeatureExtractor,
+    compute_features,
+    determine_number_format,
+)
+from src.review.models import (
+    CandidateFeatures,
+    LearnedPattern,
+    ReviewCandidate,
+    ReviewDecision,
+)
+
+__all__ = [
+    # Models
+    "CandidateFeatures",
+    "ReviewCandidate",
+    "ReviewDecision",
+    "LearnedPattern",
+    # Feature extraction
+    "FeatureExtractor",
+    "compute_features",
+    "determine_number_format",
+    "DEFINITION_PATTERNS",
+    "PERIOD_PATTERNS",
+    "RISK_FACTORS_PATTERNS",
+    # Candidate generation
+    "CandidateGenerator",
+    "generate_candidates_for_filing",
+]
