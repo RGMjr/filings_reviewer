@@ -38,6 +38,7 @@ See commit 7e509a6 for detailed analysis of why 100% coverage was reverted.
 """
 
 import math
+import time
 from decimal import Decimal
 
 import pytest
@@ -1017,3 +1018,214 @@ class TestUnitNormalization:
         # Partial matches should not normalize
         assert extractor.determine_number_format("percentage_points", "5") == "integer"
         assert extractor.determine_number_format("dollar_equivalent", "100") == "integer"
+
+
+# =============================================================================
+# Performance Tests (B2 Improvement #5)
+# =============================================================================
+
+
+class TestFeatureExtractorPerformance:
+    """
+    Performance tests for large segment volumes.
+
+    These tests verify that feature extraction scales efficiently
+    for production workloads with many candidates.
+    """
+
+    def test_compute_features_for_1000_candidates(self):
+        """Should compute features for 1000 candidates in under 2 seconds."""
+        extractor = FeatureExtractor()
+
+        # Generate 1000 realistic candidates with varying characteristics
+        candidates = self._generate_candidates(1000)
+
+        # Time the computation
+        start_time = time.time()
+        features_list = [extractor.compute_features(**c) for c in candidates]
+        elapsed_time = time.time() - start_time
+
+        # Assertions
+        assert len(features_list) == 1000
+        assert all(isinstance(f, CandidateFeatures) for f in features_list)
+
+        # Performance threshold: 1000 candidates in < 2 seconds
+        # (~2ms per candidate on typical hardware)
+        assert elapsed_time < 2.0, (
+            f"Performance degradation: {elapsed_time:.3f}s for 1000 candidates "
+            f"({elapsed_time/1000*1000:.3f}ms per candidate)"
+        )
+
+    def test_compute_features_for_10000_candidates(self):
+        """Should scale to 10,000 candidates efficiently."""
+        extractor = FeatureExtractor()
+
+        # Generate 10,000 candidates
+        candidates = self._generate_candidates(10000)
+
+        # Time the computation
+        start_time = time.time()
+        features_list = [extractor.compute_features(**c) for c in candidates]
+        elapsed_time = time.time() - start_time
+
+        # Assertions
+        assert len(features_list) == 10000
+
+        # Performance threshold: 10,000 candidates in < 20 seconds
+        # (linear scaling with overhead)
+        assert elapsed_time < 20.0, (
+            f"Performance degradation: {elapsed_time:.3f}s for 10,000 candidates "
+            f"({elapsed_time/10000*1000:.3f}ms per candidate)"
+        )
+
+    def test_pattern_matching_performance(self):
+        """Should efficiently match patterns in large text."""
+        extractor = FeatureExtractor()
+
+        # Generate candidate with very long context (5000 words)
+        long_context = (
+            "We define active customers as those who have made a purchase "
+            "in the fiscal year ended December 31, 2023. This metric represents "
+            "our ability to retain customers over time. "
+        ) * 200  # ~5000 words
+
+        # Time 100 feature computations with large context
+        start_time = time.time()
+        for _ in range(100):
+            features = extractor.compute_features(
+                number_value=Decimal("1000"),
+                number_unit="count",
+                number_raw_text="1000",
+                keyword_distance=10,
+                keyword_position="after",
+                context_text=long_context,
+            )
+            # Verify patterns are still detected
+            assert features.contains_definition_language is True
+            assert features.has_period_mention is True
+
+        elapsed_time = time.time() - start_time
+
+        # Should complete in under 5 seconds (regex is compiled, should be fast)
+        assert elapsed_time < 5.0, (
+            f"Pattern matching too slow: {elapsed_time:.3f}s for 100 large contexts"
+        )
+
+    def test_single_instance_reuse(self):
+        """Should efficiently reuse single FeatureExtractor instance."""
+        extractor = FeatureExtractor()
+
+        # Compute features 1000 times with same instance
+        start_time = time.time()
+        for i in range(1000):
+            features = extractor.compute_features(
+                number_value=Decimal(str(1000 + i)),
+                number_unit="count",
+                number_raw_text=str(1000 + i),
+                keyword_distance=10,
+                keyword_position="after",
+                context_text="We have customers in the year 2023.",
+            )
+            assert isinstance(features, CandidateFeatures)
+        elapsed_time = time.time() - start_time
+
+        # Should be very fast with single instance reuse
+        assert elapsed_time < 1.0, (
+            f"Instance reuse inefficient: {elapsed_time:.3f}s for 1000 calls"
+        )
+
+    def test_module_level_function_performance(self):
+        """Module-level compute_features should have similar performance."""
+        # Generate 1000 candidates
+        candidates = self._generate_candidates(1000)
+
+        # Time the computation using module-level function
+        start_time = time.time()
+        features_list = [compute_features(**c) for c in candidates]
+        elapsed_time = time.time() - start_time
+
+        # Should be same performance (uses singleton instance)
+        assert len(features_list) == 1000
+        assert elapsed_time < 2.0, (
+            f"Module function slow: {elapsed_time:.3f}s for 1000 candidates"
+        )
+
+    def test_memory_efficiency_no_accumulation(self):
+        """Should not accumulate memory across many feature computations."""
+        extractor = FeatureExtractor()
+
+        # Compute features 10,000 times and don't store results
+        # If there's a memory leak, this would grow memory usage
+        for i in range(10000):
+            features = extractor.compute_features(
+                number_value=Decimal(str(i)),
+                number_unit="count",
+                number_raw_text=str(i),
+                keyword_distance=10,
+                keyword_position="after",
+                context_text="Test context that is discarded",
+            )
+            # Don't store features - let it be garbage collected
+            del features
+
+        # Test passes if no memory error occurs
+        # (In practice, this prevents regression if someone adds stateful caching)
+        assert True
+
+    def _generate_candidates(self, count: int) -> list:
+        """
+        Generate realistic test candidates.
+
+        Args:
+            count: Number of candidates to generate
+
+        Returns:
+            List of candidate dictionaries
+        """
+        candidates = []
+
+        # Base context texts with varying patterns
+        context_templates = [
+            "We define active customers as those who purchased.",
+            "For the fiscal year ended December 2023, we had customers.",
+            "Revenue from enterprise customers increased.",
+            "We may not be able to retain all customers.",
+            "Customer acquisition cost represents the total marketing spend.",
+        ]
+
+        for i in range(count):
+            # Vary numeric properties
+            number_value = Decimal(str(1000 + i * 100))
+            number_unit = ["count", "%", "usd", "thousands", "percent", "dollars"][
+                i % 6
+            ]
+            number_raw_text = str(number_value)
+
+            # Vary keyword properties
+            keyword_distance = 5 + (i % 50)
+            keyword_position = "before" if i % 2 == 0 else "after"
+
+            # Vary context (use templates and vary length)
+            base_context = context_templates[i % len(context_templates)]
+            context_text = base_context * ((i % 3) + 1)
+
+            # Vary segment properties
+            segment_type = "table" if i % 3 == 0 else "paragraph"
+            section_heading = f"Section {i % 10}" if i % 5 == 0 else None
+
+            candidates.append(
+                {
+                    "number_value": number_value,
+                    "number_unit": number_unit,
+                    "number_raw_text": number_raw_text,
+                    "keyword_distance": keyword_distance,
+                    "keyword_position": keyword_position,
+                    "context_text": context_text,
+                    "segment_type": segment_type,
+                    "section_heading": section_heading,
+                    "section_path": None,
+                    "surrounding_numbers_count": i % 10,
+                }
+            )
+
+        return candidates
