@@ -1842,6 +1842,76 @@ class DatabaseAdapter:
         results = self.query(sql, params)
         return results[0] if results else None
 
+    def insert_audit_log(
+        self,
+        session_id: Optional[str],
+        ip_address: Optional[str],
+        user_agent: Optional[str],
+        route_name: str,
+        http_method: str,
+        url_path: str,
+        filing_id: Optional[int],
+        candidate_id: Optional[int],
+        query_params: Optional[Dict[str, Any]],
+        response_status: int,
+        response_time_ms: Optional[int],
+    ) -> int:
+        """
+        Insert an audit log entry for a review route request.
+
+        Args:
+            session_id: Flask session ID
+            ip_address: Client IP address
+            user_agent: Browser/client user agent string
+            route_name: Flask route name (e.g., 'review.filing_list')
+            http_method: HTTP method (GET, POST, etc.)
+            url_path: Full URL path
+            filing_id: Filing ID if applicable
+            candidate_id: Candidate ID if applicable
+            query_params: All query parameters as dict
+            response_status: HTTP status code
+            response_time_ms: Response time in milliseconds
+
+        Returns:
+            The log_id of the inserted record
+
+        Raises:
+            psycopg.Error: If database insert fails
+        """
+        import json
+
+        sql = """
+            INSERT INTO review_audit_log (
+                session_id, ip_address, user_agent,
+                route_name, http_method, url_path,
+                filing_id, candidate_id, query_params,
+                response_status, response_time_ms
+            ) VALUES (
+                %(session_id)s, %(ip_address)s, %(user_agent)s,
+                %(route_name)s, %(http_method)s, %(url_path)s,
+                %(filing_id)s, %(candidate_id)s, %(query_params)s,
+                %(response_status)s, %(response_time_ms)s
+            )
+            RETURNING log_id
+        """
+
+        params = {
+            "session_id": session_id,
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "route_name": route_name,
+            "http_method": http_method,
+            "url_path": url_path,
+            "filing_id": filing_id,
+            "candidate_id": candidate_id,
+            "query_params": json.dumps(query_params) if query_params else None,
+            "response_status": response_status,
+            "response_time_ms": response_time_ms,
+        }
+
+        result = self.query(sql, params)
+        return result[0]["log_id"] if result else 0
+
 
 # =============================================================================
 # Convenience Functions

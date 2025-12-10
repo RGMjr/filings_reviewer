@@ -6,6 +6,7 @@
 -- ============================================================================
 
 -- Drop tables if they exist (for development)
+DROP TABLE IF EXISTS review_audit_log CASCADE;
 DROP TABLE IF EXISTS learned_patterns CASCADE;
 DROP TABLE IF EXISTS review_decisions CASCADE;
 DROP TABLE IF EXISTS review_candidates CASCADE;
@@ -185,6 +186,56 @@ COMMENT ON TABLE learned_patterns IS 'Patterns discovered from human review deci
 COMMENT ON COLUMN learned_patterns.pattern_type IS 'Type: accept_rule (high-precision accept), reject_rule (high-precision reject), feature_weight (statistical feature)';
 COMMENT ON COLUMN learned_patterns.pattern_definition IS 'JSON definition of the pattern (rules, thresholds, feature weights)';
 COMMENT ON COLUMN learned_patterns.status IS 'Lifecycle status: candidate (new), approved (in use), rejected (not useful), deprecated (superseded)';
+
+-- ============================================================================
+-- TABLE: review_audit_log
+-- ============================================================================
+-- Grain: One row per HTTP request to review routes
+-- Purpose: Audit trail of user navigation and review actions for compliance and analytics
+
+CREATE TABLE review_audit_log (
+    -- Primary key
+    log_id BIGSERIAL PRIMARY KEY,
+
+    -- Request metadata
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    session_id VARCHAR(255),  -- Flask session ID for tracking user sessions
+    ip_address INET,  -- Client IP address
+    user_agent TEXT,  -- Browser/client user agent string
+
+    -- Route information
+    route_name VARCHAR(100) NOT NULL,  -- Flask route name (e.g., 'review.filing_list')
+    http_method VARCHAR(10) NOT NULL,  -- GET, POST, etc.
+    url_path TEXT NOT NULL,  -- Full URL path
+
+    -- Request parameters (for context)
+    filing_id BIGINT REFERENCES filings(filing_id) ON DELETE SET NULL,
+    candidate_id BIGINT REFERENCES review_candidates(candidate_id) ON DELETE SET NULL,
+    query_params JSONB,  -- All query parameters as JSON
+
+    -- Response information
+    response_status INT NOT NULL,  -- HTTP status code (200, 302, 404, etc.)
+    response_time_ms INT,  -- Response time in milliseconds
+
+    -- Constraints
+    CONSTRAINT check_http_method CHECK (http_method IN ('GET', 'POST', 'PUT', 'DELETE', 'PATCH')),
+    CONSTRAINT check_response_status CHECK (response_status >= 100 AND response_status < 600)
+);
+
+-- Indices
+CREATE INDEX idx_audit_log_timestamp ON review_audit_log(timestamp DESC);
+CREATE INDEX idx_audit_log_session ON review_audit_log(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX idx_audit_log_route ON review_audit_log(route_name);
+CREATE INDEX idx_audit_log_filing ON review_audit_log(filing_id) WHERE filing_id IS NOT NULL;
+CREATE INDEX idx_audit_log_candidate ON review_audit_log(candidate_id) WHERE candidate_id IS NOT NULL;
+CREATE INDEX idx_audit_log_ip ON review_audit_log(ip_address) WHERE ip_address IS NOT NULL;
+
+-- Comments
+COMMENT ON TABLE review_audit_log IS 'Audit trail of all HTTP requests to review routes for compliance and analytics';
+COMMENT ON COLUMN review_audit_log.session_id IS 'Flask session ID for tracking user sessions across multiple requests';
+COMMENT ON COLUMN review_audit_log.route_name IS 'Flask route name (e.g., review.filing_list, review.review_filing)';
+COMMENT ON COLUMN review_audit_log.query_params IS 'All query parameters as JSON (page, status, candidate_id, etc.)';
+COMMENT ON COLUMN review_audit_log.response_time_ms IS 'Response time in milliseconds for performance monitoring';
 
 -- ============================================================================
 -- VIEWS for analysis
