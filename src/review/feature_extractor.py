@@ -118,6 +118,15 @@ class FeatureExtractor:
         Note:
             This method uses defensive defaults for missing/invalid values
             to ensure graceful degradation rather than failures.
+
+            Word counting uses Python's str.split() which has limitations:
+            - Splits on ASCII whitespace only (space, tab, newline, etc.)
+            - Does not handle languages without spaces (Chinese, Japanese, Thai, etc.)
+            - Does not recognize Unicode whitespace beyond ASCII
+            - Counts hyphenated terms as single words
+
+            This is acceptable for SEC filings (English text), but may
+            undercount in mixed-language contexts or future internationalization.
         """
         # Defensive: ensure context_text is a string
         if not isinstance(context_text, str):
