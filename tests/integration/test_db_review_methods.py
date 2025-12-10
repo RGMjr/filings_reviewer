@@ -14,33 +14,20 @@ Requires:
 import pytest
 from decimal import Decimal
 
+from src.infra.validation import ValidationError
+from tests.integration.conftest import (
+    create_test_company,
+    create_test_company_and_filing,
+    create_test_candidate,
+)
+
 
 class TestReviewCandidatesMethods:
     """Tests for review_candidates table operations."""
 
-    def _create_test_company_and_filing(self, db):
-        """Helper to create prerequisite company and filing."""
-        company_id = db.upsert_company(
-            cik="0001234567",
-            company_name="Test Company Inc",
-            ticker="TEST",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="0001234567",
-            accession_number="0001234567-24-000001",
-            form_type="S-1",
-            filing_date="2024-01-15",
-            sec_html_url="https://www.sec.gov/test",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-        return company_id, filing_id
-
     def test_insert_review_candidate_minimal(self, clean_db):
         """Test inserting a candidate with minimal required fields."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         candidate_id = clean_db.insert_review_candidate(
             filing_id=filing_id,
@@ -68,7 +55,7 @@ class TestReviewCandidatesMethods:
 
     def test_insert_review_candidate_full(self, clean_db):
         """Test inserting a candidate with all optional fields."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         features = {
             "keyword_distance": 25,
@@ -111,7 +98,7 @@ class TestReviewCandidatesMethods:
 
     def test_get_review_candidates_for_filing(self, clean_db):
         """Test retrieving candidates for a specific filing."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert multiple candidates
         for i in range(5):
@@ -141,7 +128,7 @@ class TestReviewCandidatesMethods:
 
     def test_get_review_candidates_for_filing_by_status(self, clean_db):
         """Test filtering candidates by status."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert 3 pending candidates
         candidate_ids = []
@@ -171,7 +158,7 @@ class TestReviewCandidatesMethods:
 
     def test_get_pending_candidates(self, clean_db):
         """Test getting all pending candidates."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert candidates
         for i in range(3):
@@ -195,7 +182,7 @@ class TestReviewCandidatesMethods:
 
     def test_update_candidate_status(self, clean_db):
         """Test updating a candidate's review status."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         candidate_id = clean_db.insert_review_candidate(
             filing_id=filing_id,
@@ -232,7 +219,7 @@ class TestReviewCandidatesMethods:
 
     def test_bulk_insert_review_candidates(self, clean_db):
         """Test bulk inserting multiple candidates."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         candidates = [
             {
@@ -264,7 +251,7 @@ class TestReviewCandidatesMethods:
 
     def test_bulk_update_candidate_status(self, clean_db):
         """Test bulk updating status for multiple candidates."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert multiple candidates
         candidate_ids = []
@@ -316,7 +303,7 @@ class TestReviewCandidatesMethods:
 
     def test_bulk_update_candidate_status_partial_match(self, clean_db):
         """Test bulk update when some IDs exist and some don't."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert one candidate
         cid = clean_db.insert_review_candidate(
@@ -344,39 +331,11 @@ class TestReviewCandidatesMethods:
 class TestReviewDecisionsMethods:
     """Tests for review_decisions table operations."""
 
-    def _create_test_candidate(self, db):
-        """Helper to create prerequisite company, filing, and candidate."""
-        company_id = db.upsert_company(
-            cik="0001234567",
-            company_name="Test Company Inc",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="0001234567",
-            accession_number="0001234567-24-000001",
-            form_type="S-1",
-            filing_date="2024-01-15",
-            sec_html_url="https://www.sec.gov/test",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-        candidate_id = db.insert_review_candidate(
-            filing_id=filing_id,
-            company_id=company_id,
-            char_position=100,
-            context_text="We have 10,000 customers.",
-            raw_number_text="10,000",
-            triggering_keyword="customers",
-            keyword_distance=15,
-            keyword_position="after",
-            suggested_metric_id="active_customers",
-        )
-        return company_id, filing_id, candidate_id
-
     def test_insert_review_decision_accept(self, clean_db):
         """Test recording an accept decision."""
-        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+        company_id, filing_id, candidate_id = create_test_candidate(
+            clean_db, suggested_metric_id="active_customers"
+        )
 
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
@@ -402,7 +361,7 @@ class TestReviewDecisionsMethods:
 
     def test_insert_review_decision_reject(self, clean_db):
         """Test recording a reject decision."""
-        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
 
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
@@ -421,7 +380,7 @@ class TestReviewDecisionsMethods:
 
     def test_insert_review_decision_reclassify(self, clean_db):
         """Test recording a reclassify decision."""
-        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
 
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
@@ -439,7 +398,7 @@ class TestReviewDecisionsMethods:
 
     def test_get_decisions_for_filing(self, clean_db):
         """Test getting all decisions for a filing."""
-        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
 
         # Create more candidates for this filing
         candidate_id2 = clean_db.insert_review_candidate(
@@ -474,7 +433,7 @@ class TestReviewDecisionsMethods:
 
     def test_get_decision_statistics(self, clean_db):
         """Test getting decision statistics."""
-        company_id, filing_id, _ = self._create_test_candidate(clean_db)
+        company_id, filing_id, _ = create_test_candidate(clean_db)
 
         # Create multiple candidates and decisions
         for i in range(6):
@@ -511,6 +470,264 @@ class TestReviewDecisionsMethods:
         # Test filtering by filing
         stats_filing = clean_db.get_decision_statistics(filing_id=filing_id)
         assert stats_filing["total_decisions"] == 6
+
+    def test_get_decisions_by_reviewer(self, clean_db):
+        """Test getting decisions filtered by reviewer_id."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        # Create more candidates
+        candidate_id2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Second candidate",
+            raw_number_text="200",
+            triggering_keyword="test",
+            keyword_distance=5,
+            keyword_position="before",
+        )
+        candidate_id3 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=300,
+            context_text="Third candidate",
+            raw_number_text="300",
+            triggering_keyword="test",
+            keyword_distance=5,
+            keyword_position="after",
+        )
+
+        # Record decisions by different reviewers
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id,
+            decision="accept",
+            assigned_metric_id="active_customers",
+            reviewer_id="alice@example.com",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id2,
+            decision="reject",
+            rejection_category="not_a_metric",
+            reviewer_id="alice@example.com",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id3,
+            decision="accept",
+            assigned_metric_id="total_customers",
+            reviewer_id="bob@example.com",
+        )
+
+        # Get decisions by Alice
+        alice_decisions = clean_db.get_decisions_by_reviewer("alice@example.com")
+        assert len(alice_decisions) == 2
+        assert all(d["reviewer_id"] == "alice@example.com" for d in alice_decisions)
+
+        # Get decisions by Bob
+        bob_decisions = clean_db.get_decisions_by_reviewer("bob@example.com")
+        assert len(bob_decisions) == 1
+        assert bob_decisions[0]["reviewer_id"] == "bob@example.com"
+
+        # Verify join data is included
+        assert alice_decisions[0]["company_name"] == "Test Company Inc"
+        assert "accession_number" in alice_decisions[0]
+        assert "context_text" in alice_decisions[0]
+
+    def test_get_decisions_by_reviewer_filter_by_decision(self, clean_db):
+        """Test filtering by decision type."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        # Create more candidates
+        candidate_id2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Second",
+            raw_number_text="200",
+            triggering_keyword="test",
+            keyword_distance=5,
+            keyword_position="before",
+        )
+
+        # Same reviewer, different decisions
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id,
+            decision="accept",
+            assigned_metric_id="metric1",
+            reviewer_id="reviewer@test.com",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id2,
+            decision="reject",
+            rejection_category="other",
+            reviewer_id="reviewer@test.com",
+        )
+
+        # Filter by accept
+        accepts = clean_db.get_decisions_by_reviewer(
+            "reviewer@test.com", decision="accept"
+        )
+        assert len(accepts) == 1
+        assert accepts[0]["decision"] == "accept"
+
+        # Filter by reject
+        rejects = clean_db.get_decisions_by_reviewer(
+            "reviewer@test.com", decision="reject"
+        )
+        assert len(rejects) == 1
+        assert rejects[0]["decision"] == "reject"
+
+    def test_get_decisions_by_reviewer_pagination(self, clean_db):
+        """Test pagination with limit and offset."""
+        company_id, filing_id, _ = create_test_candidate(clean_db)
+
+        # Create multiple candidates and decisions by same reviewer
+        for i in range(5):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i),
+                triggering_keyword="test",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            clean_db.insert_review_decision(
+                candidate_id=cid,
+                decision="accept",
+                assigned_metric_id=f"metric_{i}",
+                reviewer_id="paginated@test.com",
+            )
+
+        # Get all
+        all_decisions = clean_db.get_decisions_by_reviewer("paginated@test.com")
+        assert len(all_decisions) == 5
+
+        # Get first 2
+        page1 = clean_db.get_decisions_by_reviewer(
+            "paginated@test.com", limit=2, offset=0
+        )
+        assert len(page1) == 2
+
+        # Get next 2
+        page2 = clean_db.get_decisions_by_reviewer(
+            "paginated@test.com", limit=2, offset=2
+        )
+        assert len(page2) == 2
+
+        # Verify pages are different (ordered by created_at DESC)
+        page1_ids = [d["decision_id"] for d in page1]
+        page2_ids = [d["decision_id"] for d in page2]
+        assert not set(page1_ids).intersection(set(page2_ids))
+
+    def test_get_decisions_by_reviewer_empty(self, clean_db):
+        """Test with non-existent reviewer returns empty list."""
+        decisions = clean_db.get_decisions_by_reviewer("nonexistent@test.com")
+        assert decisions == []
+
+    def test_get_decisions_by_reviewer_ordering(self, clean_db):
+        """Test decisions are ordered by created_at descending."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        candidate_id2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Second",
+            raw_number_text="200",
+            triggering_keyword="test",
+            keyword_distance=5,
+            keyword_position="before",
+        )
+
+        # Insert decisions - first one should appear last in results
+        first_decision_id = clean_db.insert_review_decision(
+            candidate_id=candidate_id,
+            decision="accept",
+            assigned_metric_id="first",
+            reviewer_id="order@test.com",
+        )
+        second_decision_id = clean_db.insert_review_decision(
+            candidate_id=candidate_id2,
+            decision="accept",
+            assigned_metric_id="second",
+            reviewer_id="order@test.com",
+        )
+
+        decisions = clean_db.get_decisions_by_reviewer("order@test.com")
+        assert len(decisions) == 2
+        # Most recent first
+        assert decisions[0]["decision_id"] == second_decision_id
+        assert decisions[1]["decision_id"] == first_decision_id
+
+    def test_get_decisions_by_reviewer_invalid_decision(self, clean_db):
+        """Test that invalid decision filter raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.get_decisions_by_reviewer("test@test.com", decision="invalid")
+        assert "decision" in str(exc_info.value)
+
+    def test_get_decisions_by_reviewer_invalid_limit(self, clean_db):
+        """Test that invalid limit raises ValidationError."""
+        # Zero limit
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.get_decisions_by_reviewer("test@test.com", limit=0)
+        assert "limit must be > 0" in str(exc_info.value)
+
+        # Negative limit
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.get_decisions_by_reviewer("test@test.com", limit=-5)
+        assert "limit must be > 0" in str(exc_info.value)
+
+    def test_get_decisions_by_reviewer_invalid_offset(self, clean_db):
+        """Test that negative offset raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.get_decisions_by_reviewer("test@test.com", offset=-1)
+        assert "offset must be >= 0" in str(exc_info.value)
+
+    def test_get_decisions_by_reviewer_include_total(self, clean_db):
+        """Test include_total returns dict with results and total count."""
+        company_id, filing_id, _ = create_test_candidate(clean_db)
+
+        # Create multiple candidates and decisions
+        for i in range(5):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i),
+                triggering_keyword="test",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            clean_db.insert_review_decision(
+                candidate_id=cid,
+                decision="accept",
+                assigned_metric_id=f"metric_{i}",
+                reviewer_id="total_test@test.com",
+            )
+
+        # Without include_total - returns list
+        result_list = clean_db.get_decisions_by_reviewer("total_test@test.com")
+        assert isinstance(result_list, list)
+        assert len(result_list) == 5
+
+        # With include_total - returns dict
+        result_dict = clean_db.get_decisions_by_reviewer(
+            "total_test@test.com", include_total=True
+        )
+        assert isinstance(result_dict, dict)
+        assert "results" in result_dict
+        assert "total" in result_dict
+        assert len(result_dict["results"]) == 5
+        assert result_dict["total"] == 5
+
+        # With pagination + include_total
+        paginated = clean_db.get_decisions_by_reviewer(
+            "total_test@test.com", limit=2, offset=0, include_total=True
+        )
+        assert len(paginated["results"]) == 2
+        assert paginated["total"] == 5  # Total ignores pagination
 
 
 class TestLearnedPatternsMethods:
@@ -807,28 +1024,9 @@ class TestLearnedPatternsMethods:
 class TestHelperMethods:
     """Tests for Flask route helper methods."""
 
-    def _create_test_data(self, db):
-        """Helper to create test company, filing, and candidates."""
-        company_id = db.upsert_company(
-            cik="0001234567",
-            company_name="Test Company Inc",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="0001234567",
-            accession_number="0001234567-24-000001",
-            form_type="S-1",
-            filing_date="2024-01-15",
-            sec_html_url="https://www.sec.gov/test",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-        return company_id, filing_id
-
     def test_get_filings_with_candidates(self, clean_db):
         """Test getting filings with candidate counts."""
-        company_id, filing_id = self._create_test_data(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Add candidates
         for i in range(5):
@@ -913,7 +1111,7 @@ class TestHelperMethods:
 
     def test_get_review_progress(self, clean_db):
         """Test getting overall review progress."""
-        company_id, filing_id = self._create_test_data(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Add candidates with different statuses
         candidate_ids = []
@@ -951,7 +1149,7 @@ class TestHelperMethods:
 
     def test_get_next_candidate_for_review(self, clean_db):
         """Test getting next pending candidate."""
-        company_id, filing_id = self._create_test_data(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Add candidates
         for i in range(3):
@@ -1037,7 +1235,7 @@ class TestHelperMethods:
 
     def test_get_next_candidate_for_review_none_pending(self, clean_db):
         """Test when no pending candidates exist."""
-        company_id, filing_id = self._create_test_data(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         cid = clean_db.insert_review_candidate(
             filing_id=filing_id,
@@ -1057,32 +1255,234 @@ class TestHelperMethods:
         assert next_candidate is None
 
 
+class TestAnalysisViewMethods:
+    """Tests for analysis view query methods."""
+
+    def _create_test_data_with_decisions(self, db):
+        """Helper to create test data with candidates and decisions."""
+        company_id, filing_id = create_test_company_and_filing(db)
+
+        # Create candidates with different suggested metrics
+        candidates = []
+
+        # 3 active_customers candidates
+        for i in range(3):
+            _, _, cid = create_test_candidate(
+                db,
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Active customers context {i}",
+                raw_number_text=str(1000 + i),
+                triggering_keyword="customers",
+                keyword_distance=20 + i * 10,
+                keyword_position="after",
+                suggested_metric_id="active_customers",
+            )
+            candidates.append(("active_customers", cid))
+
+        # 2 arr candidates
+        for i in range(2):
+            _, _, cid = create_test_candidate(
+                db,
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=300 + i * 100,
+                context_text=f"ARR context {i}",
+                raw_number_text=str(500 + i),
+                triggering_keyword="ARR",
+                keyword_distance=15 + i * 5,
+                keyword_position="before",
+                suggested_metric_id="arr",
+            )
+            candidates.append(("arr", cid))
+
+        return company_id, filing_id, candidates
+
+    def test_get_decision_stats_by_metric_empty(self, clean_db):
+        """Test with no decisions - should return empty list."""
+        stats = clean_db.get_decision_stats_by_metric()
+        assert stats == []
+
+    def test_get_decision_stats_by_metric_with_data(self, clean_db):
+        """Test decision stats aggregation."""
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
+
+        # Add decisions: 2 accept, 1 reject for active_customers
+        clean_db.insert_review_decision(
+            candidate_id=candidates[0][1],  # active_customers
+            decision="accept",
+            assigned_metric_id="active_customers",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[1][1],  # active_customers
+            decision="accept",
+            assigned_metric_id="active_customers",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[2][1],  # active_customers
+            decision="reject",
+            rejection_reason="Wrong metric",
+            rejection_category="wrong_metric",
+        )
+
+        # 1 accept, 1 reclassify for arr
+        clean_db.insert_review_decision(
+            candidate_id=candidates[3][1],  # arr
+            decision="accept",
+            assigned_metric_id="arr",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[4][1],  # arr
+            decision="reclassify",
+            assigned_metric_id="revenue",
+        )
+
+        stats = clean_db.get_decision_stats_by_metric()
+
+        # Should have entries for active_customers and arr
+        assert len(stats) >= 4  # At least 2 metrics * 2 decision types each
+
+        # Check active_customers stats
+        ac_stats = [s for s in stats if s["suggested_metric"] == "active_customers"]
+        assert len(ac_stats) == 2  # accept and reject
+        ac_accept = next(s for s in ac_stats if s["decision"] == "accept")
+        ac_reject = next(s for s in ac_stats if s["decision"] == "reject")
+        assert ac_accept["decision_count"] == 2
+        assert ac_reject["decision_count"] == 1
+
+        # Check arr stats
+        arr_stats = [s for s in stats if s["suggested_metric"] == "arr"]
+        assert len(arr_stats) == 2  # accept and reclassify
+
+    def test_get_decision_stats_by_metric_filtered(self, clean_db):
+        """Test filtering by specific metric."""
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
+
+        # Add one decision for each metric
+        clean_db.insert_review_decision(
+            candidate_id=candidates[0][1],
+            decision="accept",
+            assigned_metric_id="active_customers",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[3][1],
+            decision="accept",
+            assigned_metric_id="arr",
+        )
+
+        # Filter to only active_customers
+        stats = clean_db.get_decision_stats_by_metric(metric_id="active_customers")
+        assert all(s["suggested_metric"] == "active_customers" for s in stats)
+        assert len(stats) == 1  # Only accept for active_customers
+
+    def test_get_rejection_reasons_empty(self, clean_db):
+        """Test with no rejections - should return empty list."""
+        reasons = clean_db.get_rejection_reasons()
+        assert reasons == []
+
+    def test_get_rejection_reasons_with_data(self, clean_db):
+        """Test rejection reason aggregation."""
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
+
+        # Add rejections with different categories
+        clean_db.insert_review_decision(
+            candidate_id=candidates[0][1],
+            decision="reject",
+            rejection_reason="Not a real metric",
+            rejection_category="not_a_metric",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[1][1],
+            decision="reject",
+            rejection_reason="Wrong metric type",
+            rejection_category="wrong_metric",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[2][1],
+            decision="reject",
+            rejection_reason="Also not a metric",
+            rejection_category="not_a_metric",
+        )
+
+        reasons = clean_db.get_rejection_reasons()
+
+        # Should have 2 categories for active_customers
+        assert len(reasons) == 2
+        ac_reasons = [r for r in reasons if r["suggested_metric"] == "active_customers"]
+        assert len(ac_reasons) == 2
+
+        # not_a_metric should have count 2
+        not_metric = next(
+            r for r in ac_reasons if r["rejection_category"] == "not_a_metric"
+        )
+        assert not_metric["rejection_count"] == 2
+        assert not_metric["avg_keyword_distance"] is not None
+
+        # wrong_metric should have count 1
+        wrong_metric = next(
+            r for r in ac_reasons if r["rejection_category"] == "wrong_metric"
+        )
+        assert wrong_metric["rejection_count"] == 1
+
+    def test_get_rejection_reasons_filtered(self, clean_db):
+        """Test filtering by specific metric."""
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
+
+        # Add rejections to both metrics
+        clean_db.insert_review_decision(
+            candidate_id=candidates[0][1],
+            decision="reject",
+            rejection_category="wrong_metric",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidates[3][1],
+            decision="reject",
+            rejection_category="not_a_metric",
+        )
+
+        # Filter to only arr
+        reasons = clean_db.get_rejection_reasons(metric_id="arr")
+        assert all(r["suggested_metric"] == "arr" for r in reasons)
+        assert len(reasons) == 1
+
+    def test_get_rejection_reasons_includes_keyword_stats(self, clean_db):
+        """Test that keyword distance and position stats are included."""
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
+
+        # Add a rejection
+        clean_db.insert_review_decision(
+            candidate_id=candidates[0][1],
+            decision="reject",
+            rejection_category="wrong_metric",
+        )
+
+        reasons = clean_db.get_rejection_reasons()
+        assert len(reasons) == 1
+        reason = reasons[0]
+
+        # Should have keyword stats from the view
+        assert "avg_keyword_distance" in reason
+        assert "common_keyword_position" in reason
+        assert reason["common_keyword_position"] == "after"  # Matches candidate
+
+
 class TestTransactionContext:
     """Tests for the transaction() context manager."""
 
-    def _create_test_company_and_filing(self, db):
-        """Helper to create prerequisite company and filing."""
-        company_id = db.upsert_company(
-            cik="0001234567",
-            company_name="Test Company Inc",
-            ticker="TEST",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="0001234567",
-            accession_number="0001234567-24-000001",
-            form_type="S-1",
-            filing_date="2024-01-15",
-            sec_html_url="https://www.sec.gov/test",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-        return company_id, filing_id
-
     def test_transaction_commits_on_success(self, clean_db):
         """Transaction should commit all operations on clean exit."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Use transaction for multiple operations
         with clean_db.transaction() as conn:
@@ -1121,7 +1521,7 @@ class TestTransactionContext:
 
     def test_transaction_rolls_back_on_exception(self, clean_db):
         """Transaction should roll back all operations on exception."""
-        company_id, filing_id = self._create_test_company_and_filing(clean_db)
+        company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Get initial candidate count
         initial_count = len(clean_db.get_review_candidates_for_filing(filing_id))
@@ -1154,38 +1554,9 @@ class TestTransactionContext:
 class TestAtomicReviewDecision:
     """Tests that insert_review_decision is atomic."""
 
-    def _create_test_candidate(self, db):
-        """Helper to create a test candidate."""
-        company_id = db.upsert_company(
-            cik="0001234567",
-            company_name="Test Company Inc",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="0001234567",
-            accession_number="0001234567-24-000001",
-            form_type="S-1",
-            filing_date="2024-01-15",
-            sec_html_url="https://www.sec.gov/test",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-        candidate_id = db.insert_review_candidate(
-            filing_id=filing_id,
-            company_id=company_id,
-            char_position=100,
-            context_text="We have 10,000 customers",
-            raw_number_text="10,000",
-            triggering_keyword="customers",
-            keyword_distance=15,
-            keyword_position="after",
-        )
-        return company_id, filing_id, candidate_id
-
     def test_decision_and_status_update_atomic(self, clean_db):
         """Decision insert and status update should happen in same transaction."""
-        company_id, filing_id, candidate_id = self._create_test_candidate(clean_db)
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
 
         # Verify initial state
         candidate = clean_db.get_review_candidate(candidate_id)
@@ -1224,3 +1595,398 @@ class TestAtomicReviewDecision:
             {"cid": invalid_candidate_id},
         )
         assert len(decisions) == 0
+
+
+class TestValidationErrors:
+    """Tests for validation error conditions in review methods."""
+
+    # =========================================================================
+    # insert_review_candidate validation
+    # =========================================================================
+
+    def test_insert_candidate_invalid_keyword_position(self, clean_db):
+        """Invalid keyword_position should raise ValidationError."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=100,
+                context_text="Test context",
+                raw_number_text="1000",
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="invalid",  # Not 'before' or 'after'
+            )
+        assert "keyword_position" in str(exc_info.value)
+
+    def test_insert_candidate_confidence_too_high(self, clean_db):
+        """suggestion_confidence > 1 should raise ValidationError."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=100,
+                context_text="Test context",
+                raw_number_text="1000",
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="after",
+                suggestion_confidence=1.5,  # Must be <= 1
+            )
+        assert "suggestion_confidence" in str(exc_info.value)
+
+    def test_insert_candidate_confidence_negative(self, clean_db):
+        """suggestion_confidence < 0 should raise ValidationError."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=100,
+                context_text="Test context",
+                raw_number_text="1000",
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="before",
+                suggestion_confidence=-0.1,  # Must be >= 0
+            )
+        assert "suggestion_confidence" in str(exc_info.value)
+
+    # =========================================================================
+    # bulk_insert_review_candidates validation
+    # =========================================================================
+
+    def test_bulk_insert_invalid_keyword_position(self, clean_db):
+        """Invalid keyword_position in any candidate should raise ValidationError."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        candidates = [
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 100,
+                "context_text": "Valid candidate",
+                "raw_number_text": "1000",
+                "triggering_keyword": "customers",
+                "keyword_distance": 10,
+                "keyword_position": "after",  # Valid
+            },
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 200,
+                "context_text": "Invalid candidate",
+                "raw_number_text": "2000",
+                "triggering_keyword": "users",
+                "keyword_distance": 15,
+                "keyword_position": "beside",  # Invalid
+            },
+        ]
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.bulk_insert_review_candidates(candidates)
+        assert "keyword_position" in str(exc_info.value)
+        assert "candidate 1" in str(exc_info.value)
+
+    def test_bulk_insert_invalid_confidence(self, clean_db):
+        """Invalid suggestion_confidence in any candidate should raise ValidationError."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        candidates = [
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 100,
+                "context_text": "Valid candidate",
+                "raw_number_text": "1000",
+                "triggering_keyword": "customers",
+                "keyword_distance": 10,
+                "keyword_position": "after",
+                "suggestion_confidence": 0.8,  # Valid
+            },
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 200,
+                "context_text": "Invalid candidate",
+                "raw_number_text": "2000",
+                "triggering_keyword": "users",
+                "keyword_distance": 15,
+                "keyword_position": "before",
+                "suggestion_confidence": 2.0,  # Invalid - too high
+            },
+        ]
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.bulk_insert_review_candidates(candidates)
+        assert "suggestion_confidence" in str(exc_info.value)
+        assert "candidate 1" in str(exc_info.value)
+
+    def test_bulk_insert_fails_fast_no_partial_insert(self, clean_db):
+        """Validation failure should prevent any candidates from being inserted."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Get initial count
+        initial_count = len(clean_db.get_review_candidates_for_filing(filing_id))
+
+        candidates = [
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 100,
+                "context_text": "Valid candidate",
+                "raw_number_text": "1000",
+                "triggering_keyword": "customers",
+                "keyword_distance": 10,
+                "keyword_position": "after",
+            },
+            {
+                "filing_id": filing_id,
+                "company_id": company_id,
+                "char_position": 200,
+                "context_text": "Invalid candidate",
+                "raw_number_text": "2000",
+                "triggering_keyword": "users",
+                "keyword_distance": 15,
+                "keyword_position": "invalid",  # Will cause failure
+            },
+        ]
+
+        with pytest.raises(ValidationError):
+            clean_db.bulk_insert_review_candidates(candidates)
+
+        # Verify nothing was inserted
+        final_count = len(clean_db.get_review_candidates_for_filing(filing_id))
+        assert final_count == initial_count
+
+    # =========================================================================
+    # insert_review_decision validation
+    # =========================================================================
+
+    def test_insert_decision_invalid_type(self, clean_db):
+        """Invalid decision type should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_decision(
+                candidate_id=candidate_id,
+                decision="approve",  # Invalid - should be 'accept'
+            )
+        assert "decision" in str(exc_info.value)
+
+    def test_insert_decision_accept_without_metric_id(self, clean_db):
+        """Accept decision without assigned_metric_id should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_decision(
+                candidate_id=candidate_id,
+                decision="accept",
+                assigned_metric_id=None,  # Required for accept
+            )
+        assert "assigned_metric_id" in str(exc_info.value)
+
+    def test_insert_decision_reclassify_without_metric_id(self, clean_db):
+        """Reclassify decision without assigned_metric_id should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_decision(
+                candidate_id=candidate_id,
+                decision="reclassify",
+                assigned_metric_id=None,  # Required for reclassify
+            )
+        assert "assigned_metric_id" in str(exc_info.value)
+
+    def test_insert_decision_rejection_category_on_accept(self, clean_db):
+        """rejection_category on non-reject decision should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_decision(
+                candidate_id=candidate_id,
+                decision="accept",
+                assigned_metric_id="active_customers",
+                rejection_category="wrong_metric",  # Only valid for reject
+            )
+        assert "rejection_category" in str(exc_info.value)
+
+    def test_insert_decision_invalid_rejection_category(self, clean_db):
+        """Invalid rejection_category should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_review_decision(
+                candidate_id=candidate_id,
+                decision="reject",
+                rejection_category="invalid_category",  # Not in allowed list
+            )
+        assert "rejection_category" in str(exc_info.value)
+
+    # =========================================================================
+    # update_candidate_status validation
+    # =========================================================================
+
+    def test_update_candidate_status_invalid(self, clean_db):
+        """Invalid status should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.update_candidate_status(candidate_id, "completed")  # Invalid
+        assert "review_status" in str(exc_info.value)
+
+    # =========================================================================
+    # bulk_update_candidate_status validation
+    # =========================================================================
+
+    def test_bulk_update_candidate_status_invalid(self, clean_db):
+        """Invalid status in bulk update should raise ValidationError."""
+        company_id, filing_id, candidate_id = create_test_candidate(clean_db)
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.bulk_update_candidate_status([candidate_id], "done")  # Invalid
+        assert "review_status" in str(exc_info.value)
+
+    def test_bulk_update_no_partial_update_on_validation_error(self, clean_db):
+        """Validation error should prevent any status updates."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Create multiple candidates
+        candidate_ids = []
+        for i in range(3):
+            cid = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i),
+                triggering_keyword="test",
+                keyword_distance=5,
+                keyword_position="after",
+            )
+            candidate_ids.append(cid)
+
+        # Attempt bulk update with invalid status
+        with pytest.raises(ValidationError):
+            clean_db.bulk_update_candidate_status(candidate_ids, "invalid_status")
+
+        # Verify all candidates still have original status
+        for cid in candidate_ids:
+            candidate = clean_db.get_review_candidate(cid)
+            assert candidate["review_status"] == "pending"
+
+    # =========================================================================
+    # insert_learned_pattern validation
+    # =========================================================================
+
+    def test_insert_pattern_invalid_type(self, clean_db):
+        """Invalid pattern_type should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_learned_pattern(
+                pattern_type="invalid_type",  # Not 'accept_rule', 'reject_rule', or 'feature_weight'
+                pattern_name="Test pattern",
+                pattern_definition={"conditions": []},
+            )
+        assert "pattern_type" in str(exc_info.value)
+
+    def test_insert_pattern_precision_too_high(self, clean_db):
+        """precision_score > 1 should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_learned_pattern(
+                pattern_type="accept_rule",
+                pattern_name="Test pattern",
+                pattern_definition={"conditions": []},
+                precision_score=1.5,  # Must be <= 1
+            )
+        assert "precision_score" in str(exc_info.value)
+
+    def test_insert_pattern_precision_negative(self, clean_db):
+        """precision_score < 0 should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_learned_pattern(
+                pattern_type="accept_rule",
+                pattern_name="Test pattern",
+                pattern_definition={"conditions": []},
+                precision_score=-0.1,  # Must be >= 0
+            )
+        assert "precision_score" in str(exc_info.value)
+
+    def test_insert_pattern_recall_too_high(self, clean_db):
+        """recall_score > 1 should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_learned_pattern(
+                pattern_type="reject_rule",
+                pattern_name="Test pattern",
+                pattern_definition={"conditions": []},
+                recall_score=2.0,  # Must be <= 1
+            )
+        assert "recall_score" in str(exc_info.value)
+
+    def test_insert_pattern_f1_negative(self, clean_db):
+        """f1_score < 0 should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.insert_learned_pattern(
+                pattern_type="feature_weight",
+                pattern_name="Test pattern",
+                pattern_definition={"conditions": []},
+                f1_score=-0.5,  # Must be >= 0
+            )
+        assert "f1_score" in str(exc_info.value)
+
+    def test_insert_pattern_boundary_scores_valid(self, clean_db):
+        """Boundary values 0 and 1 should be valid."""
+        # Score of exactly 0 should work
+        pattern_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Zero score pattern",
+            pattern_definition={"conditions": []},
+            precision_score=0.0,
+            recall_score=0.0,
+            f1_score=0.0,
+        )
+        assert pattern_id > 0
+
+        # Score of exactly 1 should work
+        pattern_id = clean_db.insert_learned_pattern(
+            pattern_type="reject_rule",
+            pattern_name="Perfect score pattern",
+            pattern_definition={"conditions": []},
+            precision_score=1.0,
+            recall_score=1.0,
+            f1_score=1.0,
+        )
+        assert pattern_id > 0
+
+    # =========================================================================
+    # update_pattern_status validation
+    # =========================================================================
+
+    def test_update_pattern_status_invalid(self, clean_db):
+        """Invalid status should raise ValidationError."""
+        # First create a valid pattern
+        pattern_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Test pattern",
+            pattern_definition={"conditions": []},
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.update_pattern_status(pattern_id, "invalid_status")
+        assert "pattern_status" in str(exc_info.value)
+
+    def test_update_pattern_status_empty(self, clean_db):
+        """Empty status should raise ValidationError."""
+        pattern_id = clean_db.insert_learned_pattern(
+            pattern_type="accept_rule",
+            pattern_name="Test pattern",
+            pattern_definition={"conditions": []},
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            clean_db.update_pattern_status(pattern_id, "")
+        assert "pattern_status" in str(exc_info.value)
