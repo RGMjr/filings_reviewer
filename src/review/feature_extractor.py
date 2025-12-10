@@ -156,12 +156,8 @@ class FeatureExtractor:
         section_name = section_heading if section_heading else None
 
         # Count words in context
-        # NOTE: Defensive exception handler - line 124 ensures context_text is str,
-        # so split() should always exist. This catches future code modifications.
-        try:
-            context_word_count = len(context_text.split())
-        except AttributeError:  # pragma: no cover - defensive, unreachable
-            context_word_count = 0
+        # Line 131-133 ensures context_text is always a string, so split() is safe
+        context_word_count = len(context_text.split())
 
         return CandidateFeatures(
             keyword_distance=keyword_distance,
@@ -257,13 +253,8 @@ class FeatureExtractor:
         """
         if number_value is None or number_value == 0:
             return None
-        # NOTE: Defensive exception handler - Real Decimal objects convert to
-        # inf/nan and never raise these exceptions. This protects against future
-        # changes or unexpected input types.
-        try:
-            return math.log10(abs(float(number_value)))
-        except (ValueError, OverflowError, TypeError):  # pragma: no cover - defensive
-            return None
+        # Decimal objects convert to inf/nan for extreme values, never raise
+        return math.log10(abs(float(number_value)))
 
     def _check_definition_language(self, context_text: str) -> bool:
         """
@@ -277,13 +268,8 @@ class FeatureExtractor:
         """
         if not context_text or not isinstance(context_text, str):
             return False
-        # NOTE: Defensive exception handler - isinstance check ensures valid string,
-        # and DEFINITION_PATTERNS are pre-compiled regexes. This protects against
-        # runtime corruption of pattern list or future modifications.
-        try:
-            return any(p.search(context_text) for p in DEFINITION_PATTERNS)
-        except (TypeError, AttributeError):  # pragma: no cover - defensive
-            return False
+        # isinstance check ensures valid string; DEFINITION_PATTERNS are pre-compiled
+        return any(p.search(context_text) for p in DEFINITION_PATTERNS)
 
     def _check_period_mention(self, context_text: str) -> bool:
         """
@@ -297,11 +283,8 @@ class FeatureExtractor:
         """
         if not context_text or not isinstance(context_text, str):
             return False
-        # NOTE: Defensive exception handler - see _check_definition_language
-        try:
-            return any(p.search(context_text) for p in PERIOD_PATTERNS)
-        except (TypeError, AttributeError):  # pragma: no cover - defensive
-            return False
+        # isinstance check ensures valid string; PERIOD_PATTERNS are pre-compiled
+        return any(p.search(context_text) for p in PERIOD_PATTERNS)
 
     def _check_risk_factors(
         self,
@@ -331,11 +314,8 @@ class FeatureExtractor:
         # Check context text patterns
         if not context_text or not isinstance(context_text, str):
             return False
-        # NOTE: Defensive exception handler - see _check_definition_language
-        try:
-            return any(p.search(context_text) for p in RISK_FACTORS_PATTERNS)
-        except (TypeError, AttributeError):  # pragma: no cover - defensive
-            return False
+        # isinstance check ensures valid string; RISK_FACTORS_PATTERNS are pre-compiled
+        return any(p.search(context_text) for p in RISK_FACTORS_PATTERNS)
 
 
 # =============================================================================
