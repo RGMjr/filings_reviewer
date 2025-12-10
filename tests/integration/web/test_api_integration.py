@@ -351,10 +351,13 @@ class TestCreateDecisionIntegration:
             },
         )
 
-        # Verify 500 error (foreign key constraint violation)
-        assert response.status_code == 500
+        # Verify 400 error (foreign key constraint violation = client error)
+        assert response.status_code == 400
         data = json.loads(response.data)
         assert data["status"] == "error"
+        assert "Invalid metric_id" in data["message"]
+        assert "this_metric_does_not_exist_in_database_12345" in data["message"]
+        assert data["error_type"] == "foreign_key_violation"
 
         # Verify no decision was created (transaction rolled back)
         decision = db_adapter.get_decision_for_candidate(candidate_id_1)

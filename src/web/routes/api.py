@@ -8,6 +8,7 @@ and fetching candidate data. All endpoints return JSON responses.
 import logging
 from typing import Any, Dict, List, Optional
 
+import psycopg
 from flask import Blueprint, jsonify, request
 
 from src.review.models import (
@@ -180,13 +181,140 @@ def create_decision():
             201,
         )
 
+    except psycopg.errors.ForeignKeyViolation as e:
+        # Invalid assigned_metric_id - client provided non-existent metric
+        logger.warning(
+            f"Foreign key violation creating decision for candidate {data.get('candidate_id')}: {e}"
+        )
+        # Extract metric_id from request for better error message
+        metric_id = data.get("assigned_metric_id", "unknown")
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Invalid metric_id: '{metric_id}' does not exist",
+                    "error_type": "foreign_key_violation",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.errors.UniqueViolation as e:
+        # Duplicate decision (race condition bypassing our check at line 129)
+        logger.warning(
+            f"Unique constraint violation creating decision for candidate {data.get('candidate_id')}: {e}"
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "A decision already exists for this candidate",
+                    "error_type": "duplicate_decision",
+                }
+            ),
+            409,
+        )
+
+    except psycopg.errors.NotNullViolation as e:
+        # NOT NULL constraint violation - missing required field
+        logger.warning(
+            f"NOT NULL violation creating decision for candidate {data.get('candidate_id')}: {e}"
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Missing required field in database operation",
+                    "error_type": "not_null_violation",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.errors.CheckViolation as e:
+        # CHECK constraint violation - invalid enum value, etc.
+        logger.warning(
+            f"CHECK constraint violation creating decision for candidate {data.get('candidate_id')}: {e}"
+        )
+        # Try to get detailed message from diag, fallback to generic message
+        try:
+            detail_msg = e.diag.message_primary if e.diag else str(e)
+        except AttributeError:
+            detail_msg = str(e)
+
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Data validation failed: {detail_msg}",
+                    "error_type": "check_violation",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.IntegrityError as e:
+        # Other integrity constraint violations not caught above
+        logger.warning(
+            f"Integrity error creating decision for candidate {data.get('candidate_id')}: {e}"
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Data integrity constraint violated",
+                    "error_type": "integrity_error",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.OperationalError as e:
+        # Database connection/operational issues - temporary problem
+        logger.error(
+            f"Database operational error creating decision for candidate {data.get('candidate_id')}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Database temporarily unavailable, please retry",
+                    "error_type": "database_unavailable",
+                }
+            ),
+            503,
+        )
+
+    except psycopg.DatabaseError as e:
+        # Other database errors - unexpected database issues
+        logger.error(
+            f"Database error creating decision for candidate {data.get('candidate_id')}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Database error occurred",
+                    "error_type": "database_error",
+                }
+            ),
+            500,
+        )
+
     except Exception as e:
-        logger.error(f"Error creating decision: {e}", exc_info=True)
+        # Unexpected application errors - bugs
+        logger.error(
+            f"Unexpected error creating decision for candidate {data.get('candidate_id')}: {e}",
+            exc_info=True,
+        )
         return (
             jsonify(
                 {
                     "status": "error",
                     "message": "Internal server error",
+                    "error_type": "internal_error",
                 }
             ),
             500,
