@@ -44,7 +44,7 @@ from tqdm import tqdm
 
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging, get_timestamped_log_path
-from src.review.candidate_generator import generate_candidates_for_filing
+from src.review.helpers import generate_candidates_for_filing
 
 logger = logging.getLogger(__name__)
 

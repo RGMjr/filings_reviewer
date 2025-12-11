@@ -8,10 +8,8 @@ This module provides tools for:
 - Generating improved extraction rules
 """
 
-from src.review.candidate_generator import (
-    CandidateGenerator,
-    generate_candidates_for_filing,
-)
+from src.review.candidate_generator import CandidateGenerator
+from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,
@@ -44,6 +42,9 @@ __all__ = [
     "CandidateGenerationError",
     "SegmentProcessingError",
     "NumberProcessingError",
+    # Confidence scoring
+    "ConfidenceScorer",
+    "METRIC_EXPECTED_FORMATS",
     # Feature extraction
     "FeatureExtractor",
     "compute_features",
@@ -53,5 +54,4 @@ __all__ = [
     "RISK_FACTORS_PATTERNS",
     # Candidate generation
     "CandidateGenerator",
-    "generate_candidates_for_filing",
 ]
