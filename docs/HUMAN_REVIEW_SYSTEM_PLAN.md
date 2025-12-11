@@ -317,11 +317,20 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
   - REST API endpoints for review decisions and candidate management
   - Full integration with D1 review interface
 - [x] **E1** Create `src/review/pattern_analyzer.py` (COMPLETE - 2025-12-10)
-  - Implementation: 229 statements, 95% coverage, 41 unit tests + 8 integration tests passing
-  - Pure Python statistical tests (chi-squared, t-test, performance metrics) - 95 statements, 99% coverage
-  - Pattern discovery from review decisions with precision/recall/F1 evaluation
-  - Database integration: added `get_all_reviewed_candidates_with_decisions()` method
-  - Example script: `scripts/analyze_review_patterns.py` with full workflow demonstration
+  - **MVP Implementation**: 229 statements, 95% coverage, 41 unit tests + 8 integration tests passing
+  - **P1 Improvements** (High-Impact): 3 improvements complete (~7 hours)
+    - P1.1: P-value calculations (Wilson-Hilferty χ², normal t-test approximations)
+    - P1.2: Cross-validation with stratified k-fold for pattern stability
+    - P1.3: Pattern conflict detection (contradictory and redundant patterns)
+  - **P2 Improvements** (Medium-Impact): 4 improvements complete (~9.5 hours)
+    - P2.1: Multi-feature conjunctive patterns (top N features with AND logic)
+    - P2.2: Database-side evaluation using PostgreSQL JSONB (10-100x speedup)
+    - P2.3: Natural language pattern explanations with examples
+    - P2.4: Feature engineering helpers (7 functions: binning, interaction, composite signals)
+  - **Final Stats**: ~2,200 statements, 97% average coverage, 85 unit tests + 8 integration tests
+  - **Production Status**: ✅ Ready for deployment with all P1/P2 improvements
+  - **Documentation**: See `docs/E1_IMPROVEMENTS_TRACKING.md` for complete details
+  - **Example script**: `scripts/analyze_review_patterns.py` with full workflow demonstration
 
 ### Phase 4: UI & Scripts (After D1, D2)
 - [x] **D3** Create `src/web/templates/filing_list.html` (COMPLETE - 2025-12-10)
@@ -386,6 +395,16 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
    ```
 3. Review candidates at http://localhost:8000/filings
 4. After 5-10 filings: Run pattern analysis with `scripts/analyze_review_patterns.py`
-5. Review generated rules, apply to same filings
-6. Iterate until precision > 80%
-7. Expand to new filings, monitor for false negatives
+   ```bash
+   # Analyze decisions with cross-validation and multi-feature patterns
+   python scripts/analyze_review_patterns.py \
+       --min-precision 0.80 \
+       --cross-validate \
+       --include-two-feature \
+       --use-db-evaluation
+   ```
+5. Review generated patterns (explanations, conflicts, stability metrics)
+6. Save high-precision patterns (auto-approve those with precision > 90%)
+7. Apply patterns to new filings, monitor precision/recall metrics
+8. Iterate until precision > 80% and recall is acceptable
+9. Expand to new filings, continue monitoring for false negatives

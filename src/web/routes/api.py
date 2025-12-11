@@ -613,13 +613,13 @@ def _get_next_candidate_info(
     Returns:
         Dict with candidate_id and url, or None if no more pending
     """
-    # Query for next pending candidate
+    # Query for next pending candidate (any pending, not just higher IDs)
     sql = """
         SELECT candidate_id
         FROM review_candidates
         WHERE filing_id = %(filing_id)s
           AND review_status = 'pending'
-          AND candidate_id > %(current_candidate_id)s
+          AND candidate_id != %(current_candidate_id)s
         ORDER BY candidate_id ASC
         LIMIT 1
     """

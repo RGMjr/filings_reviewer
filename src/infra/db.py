@@ -693,6 +693,88 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
+    def get_all_reviewed_candidates_with_decisions(
+        self,
+        metric_id: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get all reviewed candidates with decisions across all filings.
+
+        Similar to get_review_candidates_with_decisions() but not filtered
+        by filing_id. Used for pattern analysis across the full dataset.
+
+        Only returns candidates that have been reviewed (have decisions).
+        Uses an INNER JOIN instead of LEFT JOIN to ensure all returned
+        candidates have a decision.
+
+        Args:
+            metric_id: Optional filter by suggested_metric_id
+            limit: Maximum number to return
+            offset: Number to skip (for pagination)
+
+        Returns:
+            List of candidate records with decision fields (decision_id, decision,
+            assigned_metric_id, rejection_category, rejection_reason, reviewer_notes,
+            reviewer_id, review_time_seconds, decision_created_at).
+
+        Example:
+            >>> db = DatabaseAdapter(connection_string)
+            >>> # Get all reviewed candidates
+            >>> all_decisions = db.get_all_reviewed_candidates_with_decisions()
+            >>> # Get reviewed candidates for specific metric
+            >>> arr_decisions = db.get_all_reviewed_candidates_with_decisions(
+            ...     metric_id="annual_recurring_revenue"
+            ... )
+            >>> # Get first 100 with pagination
+            >>> batch = db.get_all_reviewed_candidates_with_decisions(limit=100)
+        """
+        sql = """
+            SELECT
+                rc.*,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id,
+                rd.rejection_category,
+                rd.rejection_reason,
+                rd.reviewer_notes,
+                rd.reviewer_id,
+                rd.review_time_seconds,
+                rd.created_at as decision_created_at
+            FROM review_candidates rc
+            INNER JOIN (
+                SELECT DISTINCT ON (candidate_id)
+                    candidate_id,
+                    decision_id,
+                    decision,
+                    assigned_metric_id,
+                    rejection_category,
+                    rejection_reason,
+                    reviewer_notes,
+                    reviewer_id,
+                    review_time_seconds,
+                    created_at
+                FROM review_decisions
+                ORDER BY candidate_id, created_at DESC
+            ) rd ON rc.candidate_id = rd.candidate_id
+            WHERE 1=1
+        """
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " AND rc.suggested_metric_id = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY rc.candidate_id"
+
+        if limit:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        return self.query(sql, params)
+
     def get_pending_candidates(
         self,
         filing_id: Optional[int] = None,

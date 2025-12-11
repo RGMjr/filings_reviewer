@@ -340,7 +340,7 @@ class TestReviewDecisionsMethods:
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
             reviewer_notes="Clear customer count",
             review_time_seconds=15,
         )
@@ -416,7 +416,7 @@ class TestReviewDecisionsMethods:
         clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
         )
         clean_db.insert_review_decision(
             candidate_id=candidate_id2,
@@ -501,7 +501,7 @@ class TestReviewDecisionsMethods:
         clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
             reviewer_id="alice@example.com",
         )
         clean_db.insert_review_decision(
@@ -1306,7 +1306,7 @@ class TestHelperMethods:
         decision_id1 = clean_db.insert_review_decision(
             candidate_id=candidate_ids[0],
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
             reviewer_notes="Looks good",
             review_time_seconds=10,
         )
@@ -1368,7 +1368,7 @@ class TestHelperMethods:
         second_decision_id = clean_db.insert_review_decision(
             candidate_id=cid,
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
             reviewer_notes="Second review - corrected",
         )
 
@@ -1405,7 +1405,7 @@ class TestHelperMethods:
         clean_db.insert_review_decision(
             candidate_id=candidate_ids[0],
             decision="accept",
-            assigned_metric_id="test_metric",
+            assigned_metric_id="cm_new_customers_acquired",
         )
         clean_db.insert_review_decision(
             candidate_id=candidate_ids[1],
@@ -1571,12 +1571,12 @@ class TestAnalysisViewMethods:
         clean_db.insert_review_decision(
             candidate_id=candidates[0][1],  # active_customers
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
         )
         clean_db.insert_review_decision(
             candidate_id=candidates[1][1],  # active_customers
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
         )
         clean_db.insert_review_decision(
             candidate_id=candidates[2][1],  # active_customers
@@ -1624,7 +1624,7 @@ class TestAnalysisViewMethods:
         clean_db.insert_review_decision(
             candidate_id=candidates[0][1],
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
         )
         clean_db.insert_review_decision(
             candidate_id=candidates[3][1],
@@ -1823,7 +1823,7 @@ class TestAtomicReviewDecision:
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="active_customers",
+            assigned_metric_id="cm_new_customers_acquired",
         )
 
         # Verify both happened
@@ -1843,7 +1843,7 @@ class TestAtomicReviewDecision:
             clean_db.insert_review_decision(
                 candidate_id=invalid_candidate_id,
                 decision="accept",
-                assigned_metric_id="active_customers",
+                assigned_metric_id="cm_new_customers_acquired",
             )
 
         # Verify no decision was inserted
@@ -2068,7 +2068,7 @@ class TestValidationErrors:
             clean_db.insert_review_decision(
                 candidate_id=candidate_id,
                 decision="accept",
-                assigned_metric_id="active_customers",
+                assigned_metric_id="cm_new_customers_acquired",
                 rejection_category="wrong_metric",  # Only valid for reject
             )
         assert "rejection_category" in str(exc_info.value)
@@ -2247,3 +2247,361 @@ class TestValidationErrors:
         with pytest.raises(ValidationError) as exc_info:
             clean_db.update_pattern_status(pattern_id, "")
         assert "pattern_status" in str(exc_info.value)
+
+
+class TestGetAllReviewedCandidatesWithDecisions:
+    """Tests for get_all_reviewed_candidates_with_decisions() (Phase 4 - E1)."""
+
+    def test_get_all_reviewed_empty_database(self, clean_db):
+        """Test with no candidates in database."""
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 0
+
+    def test_get_all_reviewed_only_pending_candidates(self, clean_db):
+        """Test that pending (unreviewed) candidates are not returned."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 3 pending candidates (no decisions)
+        for i in range(3):
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Context {i}",
+                raw_number_text=str(i * 1000),
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="after",
+            )
+
+        # Should return 0 since no decisions exist
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 0
+
+    def test_get_all_reviewed_single_filing(self, clean_db):
+        """Test with reviewed candidates from a single filing."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 2 candidates with decisions
+        cand1 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="We have 1,000 customers",
+            raw_number_text="1,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+            suggested_metric_id="active_customers",
+        )
+
+        cand2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Revenue was $5M",
+            raw_number_text="$5M",
+            triggering_keyword="revenue",
+            keyword_distance=15,
+            keyword_position="after",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+
+        # Add decisions
+        clean_db.insert_review_decision(
+            candidate_id=cand1,
+            decision="accept",
+            assigned_metric_id="cm_new_customers_acquired",  # Valid metric from seed
+            reviewer_notes="Good match",
+        )
+
+        clean_db.insert_review_decision(
+            candidate_id=cand2,
+            decision="reject",
+            rejection_category="wrong_metric",
+            rejection_reason="Not ARR",
+        )
+
+        # Fetch all reviewed
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 2
+
+        # Verify both have decisions
+        for candidate in candidates:
+            assert candidate["decision"] is not None
+            assert candidate["decision_id"] is not None
+
+        # Verify specific decisions
+        cand1_result = next(c for c in candidates if c["candidate_id"] == cand1)
+        assert cand1_result["decision"] == "accept"
+        assert cand1_result["reviewer_notes"] == "Good match"
+
+        cand2_result = next(c for c in candidates if c["candidate_id"] == cand2)
+        assert cand2_result["decision"] == "reject"
+        assert cand2_result["rejection_category"] == "wrong_metric"
+
+    def test_get_all_reviewed_multiple_filings(self, clean_db):
+        """Test with reviewed candidates across multiple filings."""
+        # Create two companies and filings
+        company1_id, filing1_id = create_test_company_and_filing(clean_db)
+        company2_id, filing2_id = create_test_company_and_filing(
+            clean_db, cik="0000654321"
+        )
+
+        # Insert candidate in filing 1
+        cand1 = clean_db.insert_review_candidate(
+            filing_id=filing1_id,
+            company_id=company1_id,
+            char_position=100,
+            context_text="Filing 1 candidate",
+            raw_number_text="1,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+            suggested_metric_id="active_customers",
+        )
+
+        # Insert candidate in filing 2
+        cand2 = clean_db.insert_review_candidate(
+            filing_id=filing2_id,
+            company_id=company2_id,
+            char_position=200,
+            context_text="Filing 2 candidate",
+            raw_number_text="2,000",
+            triggering_keyword="customers",
+            keyword_distance=15,
+            keyword_position="after",
+            suggested_metric_id="active_customers",
+        )
+
+        # Add decisions to both
+        clean_db.insert_review_decision(
+            candidate_id=cand1, decision="accept", assigned_metric_id="cm_new_customers_acquired"
+        )
+        clean_db.insert_review_decision(
+            candidate_id=cand2,
+            decision="reject",
+            rejection_category="not_a_metric",
+        )
+
+        # Fetch all reviewed - should get both
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 2
+
+        # Verify from different filings
+        filing_ids = {c["filing_id"] for c in candidates}
+        assert filing1_id in filing_ids
+        assert filing2_id in filing_ids
+
+    def test_get_all_reviewed_filters_by_metric_id(self, clean_db):
+        """Test filtering by metric_id."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 3 candidates with different metric IDs
+        cand1 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="ARR candidate",
+            raw_number_text="$5M",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="after",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+
+        cand2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Customer candidate",
+            raw_number_text="1,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+            suggested_metric_id="active_customers",
+        )
+
+        cand3 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=300,
+            context_text="Another ARR candidate",
+            raw_number_text="$10M",
+            triggering_keyword="revenue",
+            keyword_distance=15,
+            keyword_position="after",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+
+        # Add decisions to all
+        for cand_id in [cand1, cand2, cand3]:
+            clean_db.insert_review_decision(
+                candidate_id=cand_id,
+                decision="accept",
+                assigned_metric_id="cm_new_customers_acquired",
+            )
+
+        # Filter by ARR
+        arr_candidates = clean_db.get_all_reviewed_candidates_with_decisions(
+            metric_id="annual_recurring_revenue"
+        )
+        assert len(arr_candidates) == 2
+        for c in arr_candidates:
+            assert c["suggested_metric_id"] == "annual_recurring_revenue"
+
+        # Filter by active_customers
+        customer_candidates = clean_db.get_all_reviewed_candidates_with_decisions(
+            metric_id="active_customers"
+        )
+        assert len(customer_candidates) == 1
+        assert customer_candidates[0]["suggested_metric_id"] == "active_customers"
+
+        # No filter - get all
+        all_candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(all_candidates) == 3
+
+    def test_get_all_reviewed_pagination(self, clean_db):
+        """Test pagination with limit and offset."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 10 candidates with decisions
+        candidate_ids = []
+        for i in range(10):
+            cand_id = clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Candidate {i}",
+                raw_number_text=str(i * 1000),
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="after",
+            )
+            candidate_ids.append(cand_id)
+
+            # Add decision
+            clean_db.insert_review_decision(
+                candidate_id=cand_id,
+                decision="accept" if i % 2 == 0 else "reject",
+                assigned_metric_id="cm_new_customers_acquired" if i % 2 == 0 else None,
+                rejection_category="not_a_metric" if i % 2 == 1 else None,
+            )
+
+        # Test limit
+        batch1 = clean_db.get_all_reviewed_candidates_with_decisions(limit=3)
+        assert len(batch1) == 3
+
+        # Test limit + offset
+        batch2 = clean_db.get_all_reviewed_candidates_with_decisions(
+            limit=3, offset=3
+        )
+        assert len(batch2) == 3
+
+        # Batches should be different
+        batch1_ids = {c["candidate_id"] for c in batch1}
+        batch2_ids = {c["candidate_id"] for c in batch2}
+        assert batch1_ids.isdisjoint(batch2_ids)
+
+        # Test offset beyond data
+        batch_empty = clean_db.get_all_reviewed_candidates_with_decisions(
+            limit=5, offset=100
+        )
+        assert len(batch_empty) == 0
+
+    def test_get_all_reviewed_latest_decision_only(self, clean_db):
+        """Test that only latest decision is returned for each candidate."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        cand_id = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="Test candidate",
+            raw_number_text="1,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+        )
+
+        # Add first decision (older)
+        decision1_id = clean_db.insert_review_decision(
+            candidate_id=cand_id,
+            decision="reject",
+            rejection_category="not_a_metric",
+            reviewer_notes="Initial review",
+        )
+
+        # Add second decision (newer) - should be the one returned
+        decision2_id = clean_db.insert_review_decision(
+            candidate_id=cand_id,
+            decision="accept",
+            assigned_metric_id="cm_new_customers_acquired",
+            reviewer_notes="After reconsideration",
+        )
+
+        # Fetch - should get latest decision only
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 1
+
+        candidate = candidates[0]
+        assert candidate["decision_id"] == decision2_id
+        assert candidate["decision"] == "accept"
+        assert candidate["reviewer_notes"] == "After reconsideration"
+
+    def test_get_all_reviewed_mixed_reviewed_and_pending(self, clean_db):
+        """Test that only reviewed candidates are returned, pending are excluded."""
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Insert 2 reviewed candidates
+        cand1 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100,
+            context_text="Reviewed 1",
+            raw_number_text="1,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=cand1, decision="accept", assigned_metric_id="cm_new_customers_acquired"
+        )
+
+        cand2 = clean_db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=200,
+            context_text="Reviewed 2",
+            raw_number_text="2,000",
+            triggering_keyword="customers",
+            keyword_distance=10,
+            keyword_position="after",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=cand2,
+            decision="reject",
+            rejection_category="not_a_metric",
+        )
+
+        # Insert 3 pending candidates (no decisions)
+        for i in range(3):
+            clean_db.insert_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=(i + 3) * 100,
+                context_text=f"Pending {i}",
+                raw_number_text=str((i + 3) * 1000),
+                triggering_keyword="customers",
+                keyword_distance=10,
+                keyword_position="after",
+            )
+
+        # Should only get the 2 reviewed candidates
+        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
+        assert len(candidates) == 2
+
+        # All returned should have decisions
+        for candidate in candidates:
+            assert candidate["decision"] is not None
+            assert candidate["decision_id"] is not None

@@ -25,30 +25,30 @@ The following test data has been generated:
 2. Verify page loads successfully
 
 **Expected Results:**
-- [ ] Page title shows "Filings Review"
-- [ ] Overall Progress section displays:
-  - [ ] "X/45 reviewed (Y%)" text
-  - [ ] Multi-segment progress bar with:
+- [X] Page title shows "Filings Review"
+- [X] Overall Progress section displays:
+  - [X] "X/45 reviewed (Y%)" text
+  - [X] Multi-segment progress bar with:
     - [ ] Green segment for reviewed candidates
-    - [ ] Yellow segment for pending candidates
+    - [X] Yellow segment for pending candidates
   - [ ] "X of 10 filings have pending candidates" text
-- [ ] Filter dropdown shows "All Filings" selected
-- [ ] Filing cards grid displays:
-  - [ ] 10 filing cards visible (or first page if paginated)
+- [X] Filter dropdown shows "All Filings" selected
+- [X] Filing cards grid displays:
+  - [X] 10 filing cards visible (or first page if paginated)
   - [ ] Each card shows:
-    - [ ] Company name (e.g., "CloudTech Solutions, Inc.")
-    - [ ] CIK number
-    - [ ] Form type (S-1)
-    - [ ] Filing date
-    - [ ] Accession number
-    - [ ] Status badge (Pending or Reviewed)
-    - [ ] Review progress bar
-    - [ ] Statistics (total, pending, reviewed counts)
-    - [ ] "Start Review" or "View Reviewed Candidates" button
+    - [X] Company name (e.g., "CloudTech Solutions, Inc.")
+    - [X] CIK number
+    - [X] Form type (S-1)
+    - [X] Filing date
+    - [X] Accession number
+    - [X] Status badge (Pending or Reviewed)
+    - [X] Review progress bar
+    - [S] Statistics (total, pending, reviewed counts)
+    - [X] "Start Review" or "View Reviewed Candidates" button
 
 **Screenshots:**
-- [ ] Take screenshot of overall progress section
-- [ ] Take screenshot of filing cards grid
+- [X] Take screenshot of overall progress section
+- [X] Take screenshot of filing cards grid
 
 ---
 
@@ -62,17 +62,17 @@ The following test data has been generated:
 3. Click "Apply Filter"
 
 **Expected Results:**
-- [ ] URL updates to include `?status=pending`
-- [ ] Filter dropdown shows "Pending" selected
-- [ ] "Clear Filter" button appears
-- [ ] Only filings with pending candidates are shown
-  - [ ] All visible cards should have "Pending" status badge (yellow)
-  - [ ] All cards should show `pending_count > 0`
-- [ ] "Start Review" button text includes pending count
-  - [ ] Example: "Start Review (4 pending)"
+- [X] URL updates to include `?status=pending`
+- [X] Filter dropdown shows "Pending" selected
+- [X] "Clear Filter" button appears
+- [X] Only filings with pending candidates are shown
+  - [X] All visible cards should have "Pending" status badge (yellow)
+  - [X] All cards should show `pending_count > 0`
+- [X] "Start Review" button text includes pending count
+  - [X] Example: "Start Review (4 pending)"
 
 **Screenshots:**
-- [ ] Take screenshot showing pending filter active
+- [X] Take screenshot showing pending filter active
 
 ---
 
@@ -86,9 +86,9 @@ The following test data has been generated:
 3. Click "Apply Filter"
 
 **Expected Results:**
-- [ ] URL updates to include `?status=reviewed`
-- [ ] Filter dropdown shows "Reviewed" selected
-- [ ] "Clear Filter" button appears
+- [X] URL updates to include `?status=reviewed`
+- [X] Filter dropdown shows "Reviewed" selected
+- [X] "Clear Filter" button appears
 - [ ] Only filings with NO pending candidates are shown
   - [ ] All visible cards should have "Reviewed" status badge (green)
   - [ ] All cards should show `pending_count = 0`
@@ -106,10 +106,10 @@ The following test data has been generated:
 2. Click the "Clear Filter" button
 
 **Expected Results:**
-- [ ] URL updates to `/filings` (no status param)
-- [ ] Filter dropdown resets to "All Filings"
-- [ ] "Clear Filter" button disappears
-- [ ] All filings are shown again
+- [X] URL updates to `/filings` (no status param)
+- [X] Filter dropdown resets to "All Filings"
+- [X] "Clear Filter" button disappears
+- [X] All filings are shown again
 
 ---
 
@@ -144,19 +144,19 @@ The following test data has been generated:
 1. Click "Start Review" button on any filing card with pending candidates
 
 **Expected Results:**
-- [ ] Browser navigates to `/review/{filing_id}`
-- [ ] Review interface loads (D4 - not yet implemented)
-  - [ ] You'll see a 404 or error since D4 isn't complete yet
-  - [ ] This is expected - just verify the URL is correct
+- [X] Browser navigates to `/review/{filing_id}`
+- [X] Review interface loads (D4 - not yet implemented)
+  - [X] You'll see a 404 or error since D4 isn't complete yet
+  - [X] This is expected - just verify the URL is correct
 
 ---
 
 ### ✅ Test Case 7: Responsive Layout
 
 **Desktop (≥ 1200px width):**
-- [ ] Filing cards displayed in 3 columns
-- [ ] Cards aligned in grid
-- [ ] All cards have equal height
+- [X] Filing cards displayed in 3 columns
+- [X] Cards aligned in grid
+- [X] All cards have equal height
 
 **Tablet (768-1199px width):**
 - [ ] Filing cards displayed in 2 columns
@@ -180,20 +180,20 @@ The following test data has been generated:
 **Alternative:** Test by filtering for a status that has no results (if you mark all as reviewed, pending filter will show empty state)
 
 **Expected Results:**
-- [ ] Empty state alert box displayed
-- [ ] Message: "No filings found with review candidates"
-- [ ] Helpful instructions shown with command to run
+- [X] Empty state alert box displayed
+- [X] Message: "No filings found with review candidates"
+- [X] Helpful instructions shown with command to run
 
 ---
 
 ## Visual/UI Checks
 
 ### Overall Appearance:
-- [ ] Bootstrap 5 styling applied correctly
-- [ ] Colors and fonts consistent with base template
-- [ ] No layout shifts or broken elements
-- [ ] Progress bars display correctly
-- [ ] Badges (Pending/Reviewed) have correct colors
+- [X] Bootstrap 5 styling applied correctly
+- [X] Colors and fonts consistent with base template
+- [X] No layout shifts or broken elements
+- [X] Progress bars display correctly
+- [X] Badges (Pending/Reviewed) have correct colors
 
 ### Accessibility:
 - [ ] All progress bars have ARIA attributes
@@ -202,17 +202,17 @@ The following test data has been generated:
 - [ ] Color contrast sufficient for text
 
 ### Performance:
-- [ ] Page loads quickly (< 2 seconds)
-- [ ] No JavaScript errors in console
-- [ ] No broken image links
-- [ ] All links functional
+- [X] Page loads quickly (< 2 seconds)
+- [X] No JavaScript errors in console
+- [X] No broken image links
+- [X] All links functional
 
 ---
 
 ## Browser Testing
 
 Test in multiple browsers:
-- [ ] Chrome/Edge (Chromium)
+- [X] Chrome/Edge (Chromium)
 - [ ] Firefox
 - [ ] Safari (if on macOS)
 
