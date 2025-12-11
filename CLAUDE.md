@@ -133,6 +133,31 @@ In addition to the candidate generation pipeline, the review system includes a f
 - Unit normalization for consistency
 - Performance tested with 1,000-10,000 candidate volumes
 
+**Pattern Analyzer (E1):**
+
+The pattern analyzer discovers high-precision patterns from human review decisions to improve extraction rules:
+- **229 statements, 95% coverage, 41 unit tests + 8 integration tests**
+- Pure Python statistical functions (no scipy/numpy dependencies):
+  - `statistical_tests.py` (95 statements, 99% coverage) - chi-squared test, t-test, performance metrics
+- Feature importance analysis:
+  - Categorical features: chi-squared test for association with decisions
+  - Numeric features: t-test for group differences (accept vs reject)
+- Pattern discovery:
+  - Single-feature patterns for MVP (categorical values, numeric quartile thresholds)
+  - Precision/recall/F1 evaluation using `LearnedPattern.matches()`
+  - Configurable minimum precision (default: 0.75) and support (default: 5)
+- Database integration:
+  - New method: `get_all_reviewed_candidates_with_decisions()` for cross-filing analysis
+  - Pattern persistence with optional auto-approval threshold
+- Example usage: `scripts/analyze_review_patterns.py`
+
+```
+PatternAnalyzer workflow:
+1. analyze_decisions(filing_id, metric_id) → feature importance
+2. discover_patterns(pattern_type) → List[LearnedPattern]
+3. save_patterns(patterns, auto_approve_threshold) → DB persistence
+```
+
 ## Database Schema
 
 PostgreSQL with key tables:
@@ -273,7 +298,9 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | FeatureExtractor | Complete | 100% |
 | ReviewRoutes (D1) | Complete | 94% |
 | APIRoutes (D2) | Complete | 97% |
-| PatternAnalyzer | In Progress | - |
+| ReviewTemplate (D4) | Complete | 94% |
+| PatternAnalyzer (E1) | Complete | 95% |
+| StatisticalTests (E1) | Complete | 99% |
 
 **Input Validation:** Centralized validation module (`src/infra/validation.py`) provides:
 - CIK validation and normalization

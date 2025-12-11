@@ -637,3 +637,109 @@ def test_audit_log_captures_redirect_status(client, mock_db):
     # Verify audit log captured redirect status
     call_args = mock_db.insert_audit_log.call_args[1]
     assert call_args["response_status"] == 302
+
+
+# =============================================================================
+# Helper Function Tests: _highlight_context()
+# =============================================================================
+
+
+def test_highlight_context_basic():
+    """Test basic number and keyword highlighting."""
+    from src.web.routes.review import _highlight_context
+
+    context = "We had 1,234 active customers in Q1 2023."
+    result = _highlight_context(context, "1,234", "customers")
+
+    # Check that result is Markup
+    from markupsafe import Markup
+
+    assert isinstance(result, Markup)
+
+    # Check number is highlighted with <mark>
+    assert '<mark class="extracted-number">1,234</mark>' in result
+
+    # Check keyword is underlined with <u>
+    assert '<u class="triggering-keyword">customers</u>' in result
+
+    # Check basic text is preserved
+    assert "We had" in result
+    assert "in Q1 2023" in result
+
+
+def test_highlight_context_escapes_html():
+    """Test HTML escaping for XSS protection."""
+    from src.web.routes.review import _highlight_context
+
+    context = "We had <script>alert('xss')</script> 1,234 customers."
+    result = _highlight_context(context, "1,234", "customers")
+
+    # Check that script tags are escaped
+    assert "<script>" not in result
+    assert "&lt;script&gt;" in result
+    assert "&lt;/script&gt;" in result
+
+    # Check number is still highlighted
+    assert '<mark class="extracted-number">1,234</mark>' in result
+
+
+def test_highlight_context_number_not_found():
+    """Test handling when number is not found in context."""
+    from src.web.routes.review import _highlight_context
+
+    context = "We had many active customers in Q1."
+    result = _highlight_context(context, "1,234", "customers")
+
+    # Number should not be highlighted (not found)
+    assert '<mark class="extracted-number">1,234</mark>' not in result
+
+    # Keyword should still be highlighted
+    assert '<u class="triggering-keyword">customers</u>' in result
+
+    # Context should be preserved
+    assert "We had many active" in result
+
+
+def test_highlight_context_keyword_not_found():
+    """Test handling when keyword is not found in context."""
+    from src.web.routes.review import _highlight_context
+
+    context = "The total was 1,234 in the last quarter."
+    result = _highlight_context(context, "1,234", "customers")
+
+    # Number should be highlighted
+    assert '<mark class="extracted-number">1,234</mark>' in result
+
+    # Keyword should not be highlighted (not found)
+    assert '<u class="triggering-keyword">customers</u>' not in result
+
+    # Context should be preserved
+    assert "The total was" in result
+
+
+def test_highlight_context_case_insensitive_keyword():
+    """Test that keyword matching is case-insensitive."""
+    from src.web.routes.review import _highlight_context
+
+    context = "We had 1,234 Active Customers in Q1."
+    result = _highlight_context(context, "1,234", "customers")
+
+    # Keyword should match case-insensitively and preserve original case
+    assert '<u class="triggering-keyword">Customers</u>' in result
+
+    # Number should also be highlighted
+    assert '<mark class="extracted-number">1,234</mark>' in result
+
+
+def test_highlight_context_with_special_chars():
+    """Test highlighting with special characters in number."""
+    from src.web.routes.review import _highlight_context
+
+    context = "Our revenue was $493M in fiscal year 2023."
+    result = _highlight_context(context, "$493M", "revenue")
+
+    # Check number with special chars is highlighted
+    assert '<mark class="extracted-number">$493M</mark>' in result
+
+    # Check keyword is highlighted
+    assert '<u class="triggering-keyword">revenue</u>' in result

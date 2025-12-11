@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import List, Dict, Optional, Tuple, TypedDict
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for, session
+from markupsafe import Markup, escape
 
 from src.review.models import (
     DECISION_TYPES,
@@ -740,3 +741,80 @@ def _get_active_metrics() -> List[MetricData]:
         g.metrics = db.query(metrics_sql)
 
     return g.metrics
+
+
+def _highlight_context(
+    context_text: str,
+    raw_number_text: str,
+    triggering_keyword: str
+) -> Markup:
+    """
+    Highlight number and keyword in context text for review display.
+
+    This function prepares context text for display in the review interface by:
+    1. HTML-escaping the context for XSS safety
+    2. Wrapping the raw number with <mark class="extracted-number"> for yellow highlighting
+    3. Wrapping the triggering keyword with <u class="triggering-keyword"> for blue underlining
+    4. Returning as Markup for safe template rendering
+
+    Args:
+        context_text: The surrounding text context (30-50 words each direction from number)
+        raw_number_text: Exact number text to highlight (e.g., "1,234", "$493M")
+        triggering_keyword: Metric keyword to underline (e.g., "customers", "revenue")
+
+    Returns:
+        Markup: HTML-safe string with highlighting markup
+
+    Edge Cases:
+        - Number not found: Logs warning, returns context with only keyword highlighted
+        - Keyword not found: Highlights only the number
+        - Number matching: Case-sensitive exact match
+        - Keyword matching: Case-insensitive search
+        - XSS protection: All user input is HTML-escaped before markup is added
+
+    Example:
+        >>> context = "We had 1,234 active customers in Q1 2023."
+        >>> result = _highlight_context(context, "1,234", "customers")
+        >>> # Returns: "We had <mark class='extracted-number'>1,234</mark> active
+        >>> #           <u class='triggering-keyword'>customers</u> in Q1 2023."
+    """
+    # HTML-escape context_text first for XSS protection
+    safe_text = str(escape(context_text))
+    safe_number = str(escape(raw_number_text))
+
+    # Find and highlight number (case-sensitive exact match)
+    num_idx = safe_text.find(safe_number)
+    if num_idx != -1:
+        before = safe_text[:num_idx]
+        number = safe_text[num_idx:num_idx + len(safe_number)]
+        after = safe_text[num_idx + len(safe_number):]
+        safe_text = (
+            before +
+            f'<mark class="extracted-number">{number}</mark>' +
+            after
+        )
+    else:
+        logger.warning(
+            f"Number '{raw_number_text}' not found in context text. "
+            f"Context length: {len(context_text)} chars"
+        )
+
+    # Find and highlight keyword (case-insensitive)
+    # Need to search in the safe_text which may now contain markup
+    # So we search case-insensitively and extract the actual case from text
+    lower_text = safe_text.lower()
+    kw_lower = triggering_keyword.lower()
+    kw_idx = lower_text.find(kw_lower)
+
+    if kw_idx != -1:
+        # Extract actual keyword with original case from safe_text
+        actual_keyword = safe_text[kw_idx:kw_idx + len(triggering_keyword)]
+        before = safe_text[:kw_idx]
+        after = safe_text[kw_idx + len(triggering_keyword):]
+        safe_text = (
+            before +
+            f'<u class="triggering-keyword">{actual_keyword}</u>' +
+            after
+        )
+
+    return Markup(safe_text)
