@@ -95,12 +95,21 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
 - See `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` for full implementation roadmap
 - See `docs/D1_IMPROVEMENTS_FINAL.md` for D1 completion details
 
-## Review Module Architecture (P1.3 Module Splitting)
+## Review Module Architecture
 
-The review system uses a modular architecture where `candidate_generator.py` orchestrates several specialized modules:
+The review system uses a modular architecture with specialized, focused modules:
 
 ```
-candidate_generator.py (orchestrator - 243 statements, 98% coverage)
+candidate_generator.py (orchestrator - ~370 lines, 98% coverage)
+├── exceptions.py            # Custom exception hierarchy
+│                            # CandidateGenerationError, SegmentProcessingError, NumberProcessingError
+│                            # (50 lines, 100% coverage)
+├── confidence_scoring.py    # Multi-signal confidence computation
+│                            # ConfidenceScorer class + METRIC_EXPECTED_FORMATS config
+│                            # (220 lines, 100% coverage)
+├── helpers.py               # DB orchestration helpers
+│                            # generate_candidates_for_filing() convenience function
+│                            # (90 lines, 100% coverage)
 ├── number_parsing.py        # Extract numbers: $1.2M, 45%, 50,000
 │                            # (55 statements, 95% coverage)
 ├── keyword_matching.py      # Find metric keywords near numbers
@@ -109,17 +118,21 @@ candidate_generator.py (orchestrator - 243 statements, 98% coverage)
 ├── false_positive_filter.py # Filter dates, years, page refs, small values
 │                            # Configurable thresholds, returns (bool, reason)
 │                            # (45 statements, 100% coverage)
-└── context_extraction.py    # Extract N words around position
-                             # Supports word-position caching (P1.2 optimization)
-                             # (34 statements, 100% coverage)
+├── context_extraction.py    # Extract N words around position
+│                            # Supports word-position caching (P1.2 optimization)
+│                            # (34 statements, 100% coverage)
+└── feature_extractor.py     # Compute ML features for pattern analysis
+                             # (630 statements, 100% coverage)
 ```
 
-**Benefits of Module Splitting:**
-- Each module has single responsibility (SOLID principles)
-- 100% test coverage on extracted modules vs. 23% before splitting
+**Benefits of Modular Architecture:**
+- Each module has single clear responsibility (SOLID principles)
+- 98%+ test coverage across all modules
+- Exception hierarchy reusable across review module
+- ConfidenceScorer independently testable
+- DB helpers separated from algorithm
 - Easier to test, modify, and reuse components independently
-- candidate_generator.py reduced by 43% (428 → 243 statements)
-- Total: 426 statements with 98% average coverage across 5 modules
+- candidate_generator.py reduced by 53% (970 → ~450 lines)
 
 **Feature Extractor (B2):**
 
