@@ -379,7 +379,30 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
   - Usage: `--host`, `--port`, `--threads`, `--log-level` CLI arguments
   - Security: SECRET_KEY validation, no hardcoded credentials, production config enforced
   - Documentation: See `docs/D6_COMPLETION_SUMMARY.md`
-- [ ] **E2** Create `src/review/rule_generator.py`
+- [x] **E2** Create `src/review/rule_applicator.py` (COMPLETE - 2025-12-10)
+  - **Week 1**: Core RuleApplicator module (162 lines, 100% coverage, 18 unit tests)
+  - **Week 2**: CandidateGenerator integration (~80 lines modified, 4 integration tests, 174/174 passing)
+  - **Week 3**: Evaluation infrastructure (690-line script, comprehensive A/B testing framework)
+  - **Week 4**: Documentation and polish (E2_RULE_GENERATION_GUIDE.md, docstrings, final testing)
+  - **Architecture**: Pattern-based filtering during candidate generation
+    - Loads approved patterns from learned_patterns table (cached, 5-minute reload)
+    - Applies reject_rule patterns to filter false positives
+    - Supports metric-specific and global patterns
+    - Lazy loading, minimal overhead (<5%)
+  - **Integration**: CandidateGenerator.generate_for_filing(db=db, apply_learned_rules=True)
+  - **Statistics**: New field `filtered_by_learned_rules` tracks E2 filtering
+  - **Testing**: 22/22 tests passing (18 unit + 4 integration), 98% coverage on RuleApplicator
+  - **Production Status**: ✅ Infrastructure complete and production-ready
+    - Core E2 functionality: ✅ Complete
+    - Evaluation framework: ✅ Complete
+    - Documentation: ✅ Complete
+    - Quantitative metrics: ⏳ Requires comprehensive test data (30+ decisions + approved patterns)
+  - **Success Criteria** (target):
+    - ≥10x precision improvement (e.g., 4% → 40%+)
+    - <10% recall degradation
+    - ≥50% candidate volume reduction
+  - **Documentation**: See `docs/E2_WEEK1_COMPLETION.md`, `docs/E2_WEEK2_COMPLETION.md`, `docs/E2_WEEK3_EVALUATION.md`, `docs/E2_RULE_GENERATION_GUIDE.md`
+  - **Example script**: `scripts/evaluate_extraction_improvement.py` for A/B testing
 
 ---
 
@@ -394,7 +417,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
    python scripts/run_review_server.py
    ```
 3. Review candidates at http://localhost:8000/filings
-4. After 5-10 filings: Run pattern analysis with `scripts/analyze_review_patterns.py`
+4. After 5-10 filings: Run pattern analysis (E1) with `scripts/analyze_review_patterns.py`
    ```bash
    # Analyze decisions with cross-validation and multi-feature patterns
    python scripts/analyze_review_patterns.py \
@@ -404,7 +427,29 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
        --use-db-evaluation
    ```
 5. Review generated patterns (explanations, conflicts, stability metrics)
-6. Save high-precision patterns (auto-approve those with precision > 90%)
-7. Apply patterns to new filings, monitor precision/recall metrics
-8. Iterate until precision > 80% and recall is acceptable
-9. Expand to new filings, continue monitoring for false negatives
+6. Approve high-quality patterns (precision ≥0.80, sample_count ≥5):
+   ```sql
+   -- View candidate patterns
+   SELECT pattern_id, pattern_name, precision_score, recall_score, sample_count
+   FROM learned_patterns
+   WHERE status = 'candidate'
+   ORDER BY precision_score DESC, sample_count DESC;
+
+   -- Approve pattern
+   UPDATE learned_patterns
+   SET status = 'approved', approved_at = now(), approved_by = 'your_name'
+   WHERE pattern_id = 123;
+   ```
+7. Generate new candidates with E2 filtering (automatic):
+   ```bash
+   # E2 automatically applies approved patterns
+   python scripts/generate_review_candidates.py --filing-ids 6,7,8,9,10
+   ```
+8. Evaluate improvement (E2):
+   ```bash
+   # A/B comparison: baseline vs improved
+   python scripts/evaluate_extraction_improvement.py --min-decisions 5 --detailed
+   ```
+9. Iterate until precision > 80% and recall is acceptable:
+   - Review new candidates → E1 discovers new patterns → Approve patterns → E2 applies patterns
+10. Expand to new filings, continue monitoring for false negatives
