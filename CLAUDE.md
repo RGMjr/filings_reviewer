@@ -299,6 +299,8 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | ReviewRoutes (D1) | Complete | 94% |
 | APIRoutes (D2) | Complete | 97% |
 | ReviewTemplate (D4) | Complete | 94% |
+| ReviewJavaScript (D5) | Complete | Manual |
+| ProductionServer (D6) | Complete | Manual |
 | PatternAnalyzer (E1) | Complete | 95% |
 | StatisticalTests (E1) | Complete | 99% |
 
