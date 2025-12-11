@@ -98,6 +98,7 @@ class ProcessingStats:
     numbers_failed: int = 0
     candidates_generated: int = 0
     false_positives_filtered: int = 0
+    filtered_by_learned_rules: int = 0
     duplicates_removed: int = 0
 
     @property
@@ -123,6 +124,7 @@ class ProcessingStats:
             f"segments={self.segments_processed}/{self.segments_processed + self.segments_failed}, "
             f"numbers={self.numbers_found}, "
             f"filtered={self.false_positives_filtered}, "
+            f"learned_rules_filtered={self.filtered_by_learned_rules}, "
             f"duplicates={self.duplicates_removed}, "
             f"candidates={self.candidates_generated}"
         )
@@ -383,6 +385,7 @@ class CandidateGenerator:
         min_value: Optional[int] = None,
         filter_years: bool = True,
         compute_confidence: bool = True,
+        apply_learned_rules: bool = True,
     ):
         """
         Initialize the candidate generator.
@@ -394,6 +397,7 @@ class CandidateGenerator:
             min_value: Minimum numeric value to consider (default MIN_METRIC_VALUE)
             filter_years: Filter out numbers that look like years (default True)
             compute_confidence: Compute suggestion_confidence scores (default True)
+            apply_learned_rules: Apply learned patterns from E1 to filter candidates (default True)
         """
         self.max_keyword_distance = max_keyword_distance
         self.context_words = context_words
@@ -401,6 +405,7 @@ class CandidateGenerator:
         self.min_value = min_value if min_value is not None else MIN_METRIC_VALUE
         self.filter_years = filter_years
         self.compute_confidence = compute_confidence
+        self.apply_learned_rules = apply_learned_rules
 
         # Initialize confidence scorer
         self._confidence_scorer = ConfidenceScorer(
@@ -430,12 +435,36 @@ class CandidateGenerator:
         # This avoids re-parsing text into words for every number in a segment
         self._current_segment_words: Optional[List[Tuple[int, int, str]]] = None
 
+        # Lazy-loaded RuleApplicator (E2 integration)
+        self._rule_applicator = None
+
+    def _get_rule_applicator(self, db):
+        """
+        Lazy-load RuleApplicator for E2 learned pattern filtering.
+
+        Args:
+            db: DatabaseAdapter instance (needed for pattern loading)
+
+        Returns:
+            RuleApplicator instance
+
+        Note:
+            Only loads RuleApplicator if apply_learned_rules=True.
+            Caches the instance for reuse across segments.
+        """
+        if self._rule_applicator is None and self.apply_learned_rules:
+            from src.review.rule_applicator import RuleApplicator
+
+            self._rule_applicator = RuleApplicator(db)
+        return self._rule_applicator
+
     def generate_for_filing(
         self,
         filing_id: int,
         company_id: int,
         segments: List[Dict[str, Any]],
         return_stats: bool = False,
+        db=None,
     ) -> List[ReviewCandidate] | Tuple[List[ReviewCandidate], ProcessingStats]:
         """
         Generate candidates from all segments of a filing.
@@ -445,6 +474,7 @@ class CandidateGenerator:
             company_id: The company ID
             segments: List of segment dicts from database
             return_stats: If True, return (candidates, stats) tuple
+            db: Optional DatabaseAdapter for learned rules filtering (E2)
 
         Returns:
             List of ReviewCandidate objects (not yet saved to DB)
@@ -465,6 +495,7 @@ class CandidateGenerator:
                     filing_id=filing_id,
                     company_id=company_id,
                     segment=segment,
+                    db=db,
                 )
                 candidates.extend(segment_candidates)
                 stats.segments_processed += 1
@@ -472,6 +503,9 @@ class CandidateGenerator:
                 stats.numbers_failed += segment_stats.get("numbers_failed", 0)
                 stats.false_positives_filtered += segment_stats.get(
                     "false_positives_filtered", 0
+                )
+                stats.filtered_by_learned_rules += segment_stats.get(
+                    "filtered_by_learned_rules", 0
                 )
                 stats.candidates_generated += len(segment_candidates)
             except Exception as e:
@@ -552,6 +586,7 @@ class CandidateGenerator:
         filing_id: int,
         company_id: int,
         segment: Dict[str, Any],
+        db=None,
     ) -> Tuple[List[ReviewCandidate], Dict[str, int]]:
         """
         Process a single segment to find candidates.
@@ -560,16 +595,18 @@ class CandidateGenerator:
             filing_id: The filing ID
             company_id: The company ID
             segment: Segment dict from database
+            db: Optional DatabaseAdapter for learned rules filtering (E2)
 
         Returns:
             Tuple of (candidates, segment_stats)
             segment_stats contains counts for numbers_found, numbers_failed,
-            false_positives_filtered
+            false_positives_filtered, filtered_by_learned_rules
         """
         segment_stats = {
             "numbers_found": 0,
             "numbers_failed": 0,
             "false_positives_filtered": 0,
+            "filtered_by_learned_rules": 0,
         }
 
         # Validate segment dict
@@ -687,6 +724,25 @@ class CandidateGenerator:
 
         # Clear cached word positions (P1.2 optimization cleanup)
         self._current_segment_words = None
+
+        # E2: Apply learned pattern filtering if enabled
+        if self.apply_learned_rules and db is not None:
+            applicator = self._get_rule_applicator(db)
+            if applicator is not None:
+                filtered_candidates = []
+                for candidate in candidates:
+                    should_filter, reason = applicator.should_filter(
+                        candidate, candidate.features
+                    )
+                    if should_filter:
+                        segment_stats["filtered_by_learned_rules"] += 1
+                        logger.debug(
+                            f"Filtered candidate by learned rule: {reason} "
+                            f"(value={candidate.parsed_value}, metric={candidate.suggested_metric_id})"
+                        )
+                    else:
+                        filtered_candidates.append(candidate)
+                candidates = filtered_candidates
 
         return candidates, segment_stats
 
@@ -887,6 +943,7 @@ def generate_candidates_for_filing(
         filing_id=filing_id,
         company_id=company_id,
         segments=segments,
+        db=db,
     )
 
     # Optionally save to database

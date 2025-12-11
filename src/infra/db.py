@@ -1504,6 +1504,65 @@ class DatabaseAdapter:
         results = self.query(sql, {"pattern_id": pattern_id})
         return results[0] if results else None
 
+    def get_learned_patterns(
+        self,
+        status: str = "approved",
+        pattern_type: Optional[str] = None,
+        metric_id: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Get learned patterns with flexible filtering.
+
+        This is the general-purpose method for loading patterns. Use this
+        for E2 RuleApplicator to load approved patterns.
+
+        Args:
+            status: Pattern status filter (default: 'approved')
+            pattern_type: Optional filter by pattern type
+            metric_id: Optional filter by metric (includes global patterns if None)
+
+        Returns:
+            List of pattern records ordered by precision score (highest first)
+
+        Raises:
+            ValidationError: If status is not a valid pattern status
+            ValidationError: If pattern_type is provided but not a valid type
+
+        Example:
+            >>> # Get all approved patterns for E2
+            >>> patterns = db.get_learned_patterns(status='approved')
+            >>> # Get approved reject patterns for a specific metric
+            >>> patterns = db.get_learned_patterns(
+            ...     status='approved',
+            ...     pattern_type='reject_rule',
+            ...     metric_id='annual_recurring_revenue'
+            ... )
+        """
+        # Validate status
+        validate_enum(status, PATTERN_STATUSES, "pattern_status")
+
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        sql = """
+            SELECT * FROM learned_patterns
+            WHERE status = %(status)s
+        """
+        params: Dict[str, Any] = {"status": status}
+
+        if pattern_type:
+            sql += " AND pattern_type = %(pattern_type)s"
+            params["pattern_type"] = pattern_type
+
+        if metric_id:
+            sql += " AND (metric_id = %(metric_id)s OR metric_id IS NULL)"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY precision_score DESC NULLS LAST, pattern_id"
+
+        return self.query(sql, params)
+
     def get_approved_patterns(
         self,
         pattern_type: Optional[str] = None,
