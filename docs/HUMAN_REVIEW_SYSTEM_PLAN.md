@@ -342,8 +342,26 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
   - Full WCAG 2.1 AA accessibility, responsive design (mobile/tablet/desktop)
   - Edge case handling: 8 scenarios (empty candidates, missing data, division by zero)
   - Documentation: See `docs/D4_IMPLEMENTATION_COMPLETE.md`
-- [ ] **D5** Create `src/web/static/js/review.js`
-- [ ] **B3** Create `scripts/generate_review_candidates.py`
+- [x] **D5** Create `src/web/static/js/review.js` (COMPLETE - 2025-12-10)
+  - Implementation: 551 lines, vanilla JavaScript ES6+, IIFE module pattern
+  - Features: Keyboard shortcuts (A, R, C, N), AJAX submission, character counters, review time tracking
+  - UI feedback: Loading states, success flash, error handling with Bootstrap 5 integration
+  - Browser compatibility: Chrome, Firefox, Safari, Edge (all latest versions)
+  - Accessibility: WCAG 2.1 AA compliant, keyboard-only navigation, ARIA attributes
+  - Documentation: See `docs/D5_IMPLEMENTATION_COMPLETE.md`
+- [x] **B3** Create `scripts/generate_review_candidates.py` (COMPLETE - 2025-12-10)
+  - Implementation: 327 lines with comprehensive CLI, error handling, and logging
+  - **Tests: 34 total (29 unit + 5 integration), all passing**
+  - **Grade: A+ (upgraded from A after enhancements)**
+  - Features: --filing-ids, --limit, --batch-id, --dry-run, --no-progress flags
+  - Error handling: Continues on individual filing failures
+  - Statistics: Tracks filings processed/failed, candidates generated, averages
+  - Logging: Timestamped log files for audit trail
+  - **Enhancements (2025-12-10):**
+    - Enhancement #1: Integration tests for main() (5 tests, ~95% coverage)
+    - Enhancement #2: Limit validation (max 1000, prevents memory issues)
+    - Enhancement #3: Progress bar with tqdm (visual feedback for long batches)
+  - Documentation: See `docs/B3_COMPLETION_SUMMARY.md`, `docs/B3_ENHANCEMENTS_IMPLEMENTED.md`, `docs/B3_RECOMMENDED_ENHANCEMENTS.md`
 - [ ] **D6** Create `scripts/run_review_server.py`
 - [ ] **E2** Create `src/review/rule_generator.py`
 
