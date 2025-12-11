@@ -392,6 +392,8 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     """
     Validate decision request data.
 
+    Orchestrates field-level and decision-specific validators.
+
     Args:
         data: Request JSON data
 
@@ -401,61 +403,200 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     """
     errors: Dict[str, str] = {}
 
-    # Required: candidate_id
-    candidate_id = data.get("candidate_id")
-    if candidate_id is None:
-        errors["candidate_id"] = "Required field"
-    elif not isinstance(candidate_id, int) or candidate_id <= 0:
-        errors["candidate_id"] = "Must be a positive integer"
+    # Validate required fields
+    if error := _validate_candidate_id(data.get("candidate_id")):
+        errors["candidate_id"] = error
 
-    # Required: decision
-    decision = data.get("decision")
-    if not decision:
-        errors["decision"] = "Required field"
-    elif decision not in DECISION_TYPES:
-        errors["decision"] = (
-            f"Must be one of: {', '.join(DECISION_TYPES)}. Got: {decision}"
-        )
+    if error := _validate_decision_type(data.get("decision")):
+        errors["decision"] = error
     else:
-        # Decision-specific validation
-        if decision in ("accept", "reclassify"):
-            # Require assigned_metric_id
-            assigned_metric_id = data.get("assigned_metric_id")
-            if not assigned_metric_id:
-                errors["assigned_metric_id"] = (
-                    f"Required for {decision} decision"
-                )
-            elif not isinstance(assigned_metric_id, str):
-                errors["assigned_metric_id"] = "Must be a string"
+        # Decision-specific validation (only if decision type is valid)
+        decision = data["decision"]
+        decision_errors = _validate_decision_specific_fields(decision, data)
+        errors.update(decision_errors)
 
-        elif decision == "reject":
-            # Require rejection_category
-            rejection_category = data.get("rejection_category")
-            if not rejection_category:
-                errors["rejection_category"] = "Required for reject decision"
-            elif rejection_category not in REJECTION_CATEGORIES:
-                errors["rejection_category"] = (
-                    f"Must be one of: {', '.join(REJECTION_CATEGORIES)}. "
-                    f"Got: {rejection_category}"
-                )
+    # Validate optional fields
+    if error := _validate_text_field(
+        data.get("reviewer_notes"), "reviewer_notes", max_length=1000
+    ):
+        errors["reviewer_notes"] = error
 
-            # Optional: rejection_reason (max 500 chars)
-            rejection_reason = data.get("rejection_reason")
-            if rejection_reason and len(rejection_reason) > 500:
-                errors["rejection_reason"] = "Must be 500 characters or less"
-
-    # Optional: reviewer_notes (max 1000 chars)
-    reviewer_notes = data.get("reviewer_notes")
-    if reviewer_notes and len(reviewer_notes) > 1000:
-        errors["reviewer_notes"] = "Must be 1000 characters or less"
-
-    # Optional: review_time_seconds
-    review_time_seconds = data.get("review_time_seconds")
-    if review_time_seconds is not None:
-        if not isinstance(review_time_seconds, int) or review_time_seconds < 0:
-            errors["review_time_seconds"] = "Must be a non-negative integer"
+    if error := _validate_review_time(data.get("review_time_seconds")):
+        errors["review_time_seconds"] = error
 
     return errors
+
+
+def _validate_candidate_id(value: Any) -> Optional[str]:
+    """
+    Validate candidate_id field.
+
+    Args:
+        value: The candidate_id value to validate
+
+    Returns:
+        Error message if invalid, None if valid
+    """
+    if value is None:
+        return "Required field"
+    if not isinstance(value, int) or value <= 0:
+        return "Must be a positive integer"
+    return None
+
+
+def _validate_decision_type(value: Any) -> Optional[str]:
+    """
+    Validate decision type field.
+
+    Args:
+        value: The decision type value to validate
+
+    Returns:
+        Error message if invalid, None if valid
+    """
+    if not value:
+        return "Required field"
+    if value not in DECISION_TYPES:
+        return f"Must be one of: {', '.join(DECISION_TYPES)}. Got: {value}"
+    return None
+
+
+def _validate_decision_specific_fields(
+    decision: str, data: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Validate fields specific to the decision type.
+
+    Args:
+        decision: The decision type (accept, reject, reclassify)
+        data: Full request data
+
+    Returns:
+        Dict of field_name -> error message for decision-specific fields
+    """
+    if decision in ("accept", "reclassify"):
+        return _validate_accept_or_reclassify_decision(decision, data)
+    elif decision == "reject":
+        return _validate_reject_decision(data)
+    return {}
+
+
+def _validate_accept_or_reclassify_decision(
+    decision: str, data: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Validate fields required for accept or reclassify decisions.
+
+    Args:
+        decision: The decision type (accept or reclassify)
+        data: Full request data
+
+    Returns:
+        Dict of field_name -> error message
+    """
+    errors: Dict[str, str] = {}
+
+    if error := _validate_assigned_metric_id(
+        data.get("assigned_metric_id"), decision
+    ):
+        errors["assigned_metric_id"] = error
+
+    return errors
+
+
+def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Validate fields required for reject decisions.
+
+    Args:
+        data: Full request data
+
+    Returns:
+        Dict of field_name -> error message
+    """
+    errors: Dict[str, str] = {}
+
+    if error := _validate_rejection_category(data.get("rejection_category")):
+        errors["rejection_category"] = error
+
+    if error := _validate_text_field(
+        data.get("rejection_reason"), "rejection_reason", max_length=500
+    ):
+        errors["rejection_reason"] = error
+
+    return errors
+
+
+def _validate_assigned_metric_id(value: Any, decision: str) -> Optional[str]:
+    """
+    Validate assigned_metric_id field.
+
+    Args:
+        value: The assigned_metric_id value to validate
+        decision: The decision type (for error message context)
+
+    Returns:
+        Error message if invalid, None if valid
+    """
+    if not value:
+        return f"Required for {decision} decision"
+    if not isinstance(value, str):
+        return "Must be a string"
+    return None
+
+
+def _validate_rejection_category(value: Any) -> Optional[str]:
+    """
+    Validate rejection_category field.
+
+    Args:
+        value: The rejection_category value to validate
+
+    Returns:
+        Error message if invalid, None if valid
+    """
+    if not value:
+        return "Required for reject decision"
+    if value not in REJECTION_CATEGORIES:
+        return (
+            f"Must be one of: {', '.join(REJECTION_CATEGORIES)}. Got: {value}"
+        )
+    return None
+
+
+def _validate_text_field(
+    value: Any, field_name: str, max_length: int
+) -> Optional[str]:
+    """
+    Validate optional text field with maximum length.
+
+    Args:
+        value: The text value to validate
+        field_name: Name of the field (for error messages)
+        max_length: Maximum allowed length
+
+    Returns:
+        Error message if invalid, None if valid or None
+    """
+    if value and len(value) > max_length:
+        return f"Must be {max_length} characters or less"
+    return None
+
+
+def _validate_review_time(value: Any) -> Optional[str]:
+    """
+    Validate review_time_seconds field.
+
+    Args:
+        value: The review_time_seconds value to validate
+
+    Returns:
+        Error message if invalid, None if valid or None
+    """
+    if value is not None:
+        if not isinstance(value, int) or value < 0:
+            return "Must be a non-negative integer"
+    return None
 
 
 def _get_next_candidate_info(
