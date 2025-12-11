@@ -235,6 +235,9 @@ def create_app(config_name: Optional[str] = None, config_override: Optional[Dict
     # Register pool cleanup on process exit
     atexit.register(close_pool, app)
 
+    # Register health check endpoint
+    _register_health_check(app)
+
     # Register blueprints (routes will be added in later tasks)
     _register_blueprints(app)
 
@@ -250,6 +253,63 @@ def create_app(config_name: Optional[str] = None, config_override: Optional[Dict
     logger.info(f"Flask app created with config: {config_name}")
 
     return app
+
+
+def _register_health_check(app: Flask) -> None:
+    """
+    Register /health endpoint for load balancers and monitoring.
+
+    Returns 200 OK if app and database are healthy, 503 otherwise.
+    Does not require authentication.
+    """
+    @app.route("/health")
+    def health_check():
+        """
+        Health check endpoint for monitoring and load balancing.
+
+        Returns:
+            JSON response with health status and optional pool stats.
+            - 200 OK: Application and database are healthy
+            - 503 Service Unavailable: Database connection failed
+        """
+        try:
+            pool = current_app.config.get("_db_pool")
+
+            if pool is not None:
+                from src.infra.pool import check_pool_health
+
+                health = check_pool_health(pool)
+                if health["healthy"]:
+                    return jsonify({
+                        "status": "healthy",
+                        "database": "connected",
+                        "pool_stats": health["stats"],
+                    }), 200
+                else:
+                    return jsonify({
+                        "status": "unhealthy",
+                        "database": "error",
+                        "message": health["message"],
+                    }), 503
+            else:
+                # No pool, try direct connection
+                db = DatabaseAdapter(current_app.config["DATABASE_URL"])
+                with db.get_connection() as conn:
+                    conn.execute("SELECT 1")
+
+                return jsonify({
+                    "status": "healthy",
+                    "database": "connected",
+                    "pool_stats": None,
+                }), 200
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return jsonify({
+                "status": "unhealthy",
+                "database": "error",
+                "message": str(e),
+            }), 503
 
 
 def _register_blueprints(app: Flask) -> None:
