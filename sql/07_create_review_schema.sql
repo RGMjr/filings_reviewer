@@ -84,7 +84,7 @@ CREATE TABLE review_decisions (
     decision_id BIGSERIAL PRIMARY KEY,
 
     -- Foreign key
-    candidate_id BIGINT NOT NULL REFERENCES review_candidates(candidate_id) ON DELETE CASCADE,
+    candidate_id BIGINT NOT NULL UNIQUE REFERENCES review_candidates(candidate_id) ON DELETE CASCADE,
 
     -- Decision
     decision TEXT NOT NULL,  -- 'accept', 'reject', 'reclassify'
@@ -117,7 +117,7 @@ CREATE TABLE review_decisions (
 );
 
 -- Indices
-CREATE INDEX idx_review_decisions_candidate ON review_decisions(candidate_id);
+-- Note: No index needed on candidate_id - UNIQUE constraint creates one automatically
 CREATE INDEX idx_review_decisions_decision ON review_decisions(decision);
 CREATE INDEX idx_review_decisions_metric ON review_decisions(assigned_metric_id) WHERE assigned_metric_id IS NOT NULL;
 CREATE INDEX idx_review_decisions_rejection ON review_decisions(rejection_category) WHERE rejection_category IS NOT NULL;

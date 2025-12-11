@@ -7,6 +7,7 @@ Verifies transaction atomicity and data integrity.
 
 import json
 import os
+import threading
 
 import pytest
 
@@ -366,3 +367,103 @@ class TestCreateDecisionIntegration:
         # Verify candidate status unchanged (transaction rolled back)
         candidate = db_adapter.get_review_candidate(candidate_id_1)
         assert candidate["review_status"] == "pending"
+
+    def test_concurrent_decision_race_condition(self, client, db_adapter, test_data):
+        """Test that concurrent requests for same candidate are handled correctly.
+
+        Simulates a race condition where multiple requests try to create
+        decisions for the same candidate simultaneously. Verifies:
+        - Exactly one request succeeds (201)
+        - Other requests receive 409 Conflict
+        - Database UNIQUE constraint prevents duplicate decisions
+        - Transaction isolation prevents race conditions
+        """
+        filing_id, candidate_id_1, candidate_id_2 = test_data
+
+        # Number of concurrent requests to simulate race condition
+        num_threads = 5
+        results = []
+        results_lock = threading.Lock()
+
+        def make_decision_request(thread_id):
+            """Make a decision request and store the result."""
+            try:
+                response = client.post(
+                    "/api/decisions",
+                    json={
+                        "candidate_id": candidate_id_1,
+                        "decision": "accept",
+                        "assigned_metric_id": "cm_active_customers_total",
+                        "reviewer_notes": f"Request from thread {thread_id}",
+                    },
+                )
+
+                with results_lock:
+                    results.append({
+                        "thread_id": thread_id,
+                        "status_code": response.status_code,
+                        "data": json.loads(response.data),
+                    })
+            except Exception as e:
+                with results_lock:
+                    results.append({
+                        "thread_id": thread_id,
+                        "error": str(e),
+                    })
+
+        # Create threads that will all try to create decisions simultaneously
+        threads = []
+        for i in range(num_threads):
+            thread = threading.Thread(target=make_decision_request, args=(i,))
+            threads.append(thread)
+
+        # Start all threads as close to simultaneously as possible
+        for thread in threads:
+            thread.start()
+
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        # Analyze results
+        assert len(results) == num_threads, f"Expected {num_threads} results, got {len(results)}"
+
+        # Count successes (201) and conflicts (409)
+        successes = [r for r in results if r.get("status_code") == 201]
+        conflicts = [r for r in results if r.get("status_code") == 409]
+        errors = [r for r in results if "error" in r]
+
+        # Verify exactly one success
+        assert len(successes) == 1, (
+            f"Expected exactly 1 success, got {len(successes)}. "
+            f"Successes: {successes}, Conflicts: {conflicts}, Errors: {errors}"
+        )
+
+        # Verify all others are conflicts
+        assert len(conflicts) == num_threads - 1, (
+            f"Expected {num_threads - 1} conflicts, got {len(conflicts)}. "
+            f"Successes: {successes}, Conflicts: {conflicts}, Errors: {errors}"
+        )
+
+        # Verify no unexpected errors
+        assert len(errors) == 0, f"Unexpected errors: {errors}"
+
+        # Verify success response structure
+        success = successes[0]
+        assert success["data"]["status"] == "success"
+        assert "decision_id" in success["data"]
+
+        # Verify conflict response structure
+        for conflict in conflicts:
+            assert conflict["data"]["status"] == "error"
+            assert "already exists" in conflict["data"]["message"]
+            assert conflict["data"].get("error_type") == "duplicate_decision"
+
+        # Verify only one decision in database
+        decision = db_adapter.get_decision_for_candidate(candidate_id_1)
+        assert decision is not None
+        assert decision["decision"] == "accept"
+
+        # Verify candidate status updated exactly once
+        candidate = db_adapter.get_review_candidate(candidate_id_1)
+        assert candidate["review_status"] == "reviewed"
