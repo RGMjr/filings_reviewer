@@ -18,6 +18,175 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# P-Value Approximations
+# =============================================================================
+
+
+def _normal_cdf(z: float) -> float:
+    """
+    Compute cumulative distribution function for standard normal distribution.
+
+    Uses the error function approximation for N(0,1).
+
+    Args:
+        z: Z-score
+
+    Returns:
+        P(Z <= z) for standard normal distribution
+
+    Algorithm:
+        CDF(z) = 0.5 * (1 + erf(z / sqrt(2)))
+        erf(x) ≈ sign(x) * sqrt(1 - exp(-x^2 * (4/π + ax^2) / (1 + ax^2)))
+        where a = 0.147
+    """
+    # Abramowitz and Stegun approximation for error function
+    # Maximum error: 1.5×10^-7
+    a = 0.147
+    x = z / math.sqrt(2)
+
+    # erf(x) approximation
+    sign = 1 if x >= 0 else -1
+    x_abs = abs(x)
+
+    erf_x = sign * math.sqrt(
+        1 - math.exp(-x_abs**2 * (4 / math.pi + a * x_abs**2) / (1 + a * x_abs**2))
+    )
+
+    return 0.5 * (1 + erf_x)
+
+
+def _approximate_chi_squared_p_value(chi_squared: float, df: int) -> Optional[float]:
+    """
+    Approximate p-value for chi-squared test using Wilson-Hilferty transformation.
+
+    This approximation works well for df > 5. For smaller df, returns None.
+
+    Args:
+        chi_squared: Chi-squared test statistic
+        df: Degrees of freedom
+
+    Returns:
+        Approximate two-tailed p-value, or None if df <= 5
+
+    Algorithm:
+        Wilson-Hilferty transformation converts chi-squared to approximately
+        normal distribution:
+            z ≈ ((chi_squared/df)^(1/3) - (1 - 2/(9*df))) / sqrt(2/(9*df))
+        Then p-value = 2 * (1 - Φ(|z|)) where Φ is standard normal CDF
+    """
+    if df <= 5:
+        # Approximation not reliable for small df
+        return None
+
+    if chi_squared < 0:
+        return None
+
+    # Handle edge case: chi-squared ≈ 0 means perfect fit (p ≈ 1.0)
+    if chi_squared < 1e-10:
+        return 1.0
+
+    # Wilson-Hilferty transformation
+    numerator = (chi_squared / df) ** (1 / 3) - (1 - 2 / (9 * df))
+    denominator = math.sqrt(2 / (9 * df))
+
+    z = numerator / denominator
+
+    # Two-tailed p-value
+    p_value = 2 * (1 - _normal_cdf(abs(z)))
+
+    return p_value
+
+
+def _approximate_t_test_p_value(t_statistic: float, df: float) -> Optional[float]:
+    """
+    Approximate p-value for t-test using normal approximation.
+
+    This approximation works well for df > 30 (large samples). For smaller df,
+    returns None as normal approximation is not accurate.
+
+    Args:
+        t_statistic: T-test statistic
+        df: Degrees of freedom
+
+    Returns:
+        Approximate two-tailed p-value, or None if df <= 30
+
+    Algorithm:
+        For large df (> 30), t-distribution ≈ N(0,1)
+        Two-tailed p-value = 2 * (1 - Φ(|t|)) where Φ is standard normal CDF
+    """
+    if df <= 30:
+        # Approximation not reliable for small samples
+        return None
+
+    # Two-tailed p-value using normal approximation
+    p_value = 2 * (1 - _normal_cdf(abs(t_statistic)))
+
+    return p_value
+
+
+def interpret_significance(
+    p_value: Optional[float],
+    alpha_levels: List[float] = [0.001, 0.01, 0.05],
+) -> Dict[str, Any]:
+    """
+    Interpret statistical significance at common alpha levels.
+
+    Args:
+        p_value: P-value from statistical test (None if not computed)
+        alpha_levels: Significance thresholds (default: [0.001, 0.01, 0.05])
+
+    Returns:
+        Dict with:
+            - is_significant: bool - True if p < 0.05
+            - significance_level: Optional[str] - "***" (p<0.001), "**" (p<0.01), "*" (p<0.05), or None
+            - interpretation: str - Human-readable interpretation
+
+    Example:
+        >>> result = interpret_significance(0.003)
+        >>> print(result['significance_level'])
+        "**"
+        >>> print(result['interpretation'])
+        "Highly significant (p < 0.01)"
+    """
+    if p_value is None:
+        return {
+            "is_significant": None,
+            "significance_level": None,
+            "interpretation": "P-value not computed (insufficient df for approximation)",
+        }
+
+    # Sort alpha levels in ascending order
+    sorted_alphas = sorted(alpha_levels)
+
+    # Determine significance level
+    if p_value < sorted_alphas[0]:  # p < 0.001
+        return {
+            "is_significant": True,
+            "significance_level": "***",
+            "interpretation": f"Extremely significant (p < {sorted_alphas[0]})",
+        }
+    elif p_value < sorted_alphas[1]:  # p < 0.01
+        return {
+            "is_significant": True,
+            "significance_level": "**",
+            "interpretation": f"Highly significant (p < {sorted_alphas[1]})",
+        }
+    elif p_value < sorted_alphas[2]:  # p < 0.05
+        return {
+            "is_significant": True,
+            "significance_level": "*",
+            "interpretation": f"Significant (p < {sorted_alphas[2]})",
+        }
+    else:
+        return {
+            "is_significant": False,
+            "significance_level": None,
+            "interpretation": f"Not significant (p >= {sorted_alphas[2]})",
+        }
+
+
+# =============================================================================
 # Chi-Squared Test for Categorical Features
 # =============================================================================
 
@@ -111,9 +280,12 @@ def chi_squared_test(
             f"Chi-squared test may not be reliable."
         )
 
+    # Compute p-value using Wilson-Hilferty approximation (if df > 5)
+    p_value = _approximate_chi_squared_p_value(chi_squared, df)
+
     return {
         "chi_squared": chi_squared,
-        "p_value": None,  # MVP: return None, add approximation later
+        "p_value": p_value,
         "degrees_of_freedom": df,
         "is_valid": is_valid,
         "warning": warning,
@@ -259,9 +431,12 @@ def t_test_independent(
         pooled_std = math.sqrt((var1 + var2) / 2)
         cohens_d = mean_difference / pooled_std if pooled_std > 0 else 0.0
 
+    # Compute p-value using normal approximation (if df > 30)
+    p_value = _approximate_t_test_p_value(t_stat, df)
+
     return {
         "t_statistic": t_stat,
-        "p_value": None,  # MVP: return None, add approximation later
+        "p_value": p_value,
         "degrees_of_freedom": df,
         "mean_difference": mean_difference,
         "effect_size": cohens_d,

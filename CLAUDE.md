@@ -124,7 +124,9 @@ candidate_generator.py (orchestrator - 243 statements, 98% coverage)
 **Feature Extractor (B2):**
 
 In addition to the candidate generation pipeline, the review system includes a feature extraction module (`src/review/feature_extractor.py`) that computes ML features for pattern analysis:
-- **71 statements, 100% coverage, 90 tests**
+- **~630 statements total, 100% coverage, 115 tests** (including P2.4 enhancements)
+
+**Base Features**:
 - Keyword proximity features (distance, position)
 - Context features (definition language, period mentions, risk factors)
 - Number format features (integer, decimal, percentage, currency)
@@ -133,30 +135,67 @@ In addition to the candidate generation pipeline, the review system includes a f
 - Unit normalization for consistency
 - Performance tested with 1,000-10,000 candidate volumes
 
+**Derived Features (P2.4)**:
+- Binning functions (2): `bin_keyword_distance()`, `bin_value_magnitude()` for interpretability
+- Interaction features (1): `compute_distance_magnitude_interaction()` for non-linear relationships
+- Composite signals (3): `compute_strong_signal()`, `compute_weak_signal()`, `compute_very_weak_signal()`
+- Convenience function: `compute_all_derived_features()` for batch computation
+- All features computed on-demand from base features (no database schema changes)
+
 **Pattern Analyzer (E1):**
 
 The pattern analyzer discovers high-precision patterns from human review decisions to improve extraction rules:
-- **229 statements, 95% coverage, 41 unit tests + 8 integration tests**
+- **~2,200 statements total, 97% average coverage, 85 unit tests + 8 integration tests**
+- **Production-ready** with P1 (high-impact) and P2 (medium-impact) improvements complete
+
+**Core Features**:
 - Pure Python statistical functions (no scipy/numpy dependencies):
   - `statistical_tests.py` (95 statements, 99% coverage) - chi-squared test, t-test, performance metrics
+  - P1.1: P-value calculations (Wilson-Hilferty χ² approximation, normal t-test approximation)
 - Feature importance analysis:
   - Categorical features: chi-squared test for association with decisions
   - Numeric features: t-test for group differences (accept vs reject)
+  - Significance filtering (α = 0.05, 0.01, 0.001)
 - Pattern discovery:
-  - Single-feature patterns for MVP (categorical values, numeric quartile thresholds)
+  - Single-feature patterns (categorical values, numeric quartile thresholds)
+  - P2.1: Multi-feature conjunctive patterns (top N features combined with AND logic)
   - Precision/recall/F1 evaluation using `LearnedPattern.matches()`
   - Configurable minimum precision (default: 0.75) and support (default: 5)
 - Database integration:
-  - New method: `get_all_reviewed_candidates_with_decisions()` for cross-filing analysis
+  - Method: `get_all_reviewed_candidates_with_decisions()` for cross-filing analysis
+  - P2.2: Database-side pattern evaluation using PostgreSQL JSONB operators (10-100x speedup)
   - Pattern persistence with optional auto-approval threshold
-- Example usage: `scripts/analyze_review_patterns.py`
 
+**Advanced Capabilities (P1 & P2)**:
+- P1.2: Cross-validation with stratified k-fold for pattern stability detection
+- P1.3: Pattern conflict detection (contradictory and redundant patterns)
+- P2.3: Natural language pattern explanations with examples and metrics interpretation
+- P2.4: Feature engineering helpers (7 functions: binning, interaction, composite signals)
+
+**Usage Example**:
+```python
+# Initialize analyzer
+analyzer = PatternAnalyzer(db, min_pattern_precision=0.80)
+
+# Analyze with cross-validation and multi-feature patterns
+patterns = analyzer.discover_patterns_with_cross_validation(
+    pattern_type='reject_rule',
+    include_two_feature_patterns=True,
+    use_db_evaluation=True  # Fast evaluation for large datasets
+)
+
+# Check for conflicts before saving
+conflicts = analyzer.detect_pattern_conflicts(patterns)
+if not conflicts['contradictory'] and not conflicts['redundant']:
+    analyzer.save_patterns(patterns, auto_approve_threshold=0.90)
+
+# Generate explanations for review
+for pattern in patterns[:5]:
+    explanation = analyzer.generate_pattern_explanation(pattern)
+    print(explanation)
 ```
-PatternAnalyzer workflow:
-1. analyze_decisions(filing_id, metric_id) → feature importance
-2. discover_patterns(pattern_type) → List[LearnedPattern]
-3. save_patterns(patterns, auto_approve_threshold) → DB persistence
-```
+
+**Documentation**: See `docs/E1_IMPROVEMENTS_TRACKING.md` for complete P1/P2 implementation details
 
 ## Database Schema
 

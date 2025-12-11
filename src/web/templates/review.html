@@ -590,13 +590,14 @@
                             <span class="small">Next candidate</span>
                         </div>
 
-                        <p class="text-muted small mt-3 mb-0">
-                            Note: Keyboard shortcuts will be enabled in D5 (JavaScript)
-                        </p>
                     </div>
                 </div>
             </div>
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='js/review.js') }}"></script>
 {% endblock %}

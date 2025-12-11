@@ -16,7 +16,7 @@ import logging
 import math
 import re
 from decimal import Decimal
-from typing import List, Optional, Pattern
+from typing import Any, Dict, List, Optional, Pattern
 
 from src.review.models import CandidateFeatures
 
@@ -373,3 +373,260 @@ def determine_number_format(
     See FeatureExtractor.determine_number_format() for documentation.
     """
     return _feature_extractor.determine_number_format(number_unit, number_raw_text)
+
+
+# =============================================================================
+# Feature Engineering Helpers (P2.4)
+# =============================================================================
+
+
+def bin_keyword_distance(keyword_distance: int) -> str:
+    """
+    Bin keyword distance into interpretable categories (P2.4).
+
+    Args:
+        keyword_distance: Distance in characters from number to keyword
+
+    Returns:
+        One of: 'very_close' (0-20), 'close' (20-50), 'far' (50-100), 'very_far' (100+)
+
+    Example:
+        >>> bin_keyword_distance(15)
+        'very_close'
+        >>> bin_keyword_distance(75)
+        'far'
+    """
+    if keyword_distance < 20:
+        return "very_close"
+    elif keyword_distance < 50:
+        return "close"
+    elif keyword_distance < 100:
+        return "far"
+    else:
+        return "very_far"
+
+
+def bin_value_magnitude(value_magnitude: Optional[float]) -> str:
+    """
+    Bin value magnitude (log10) into interpretable size categories (P2.4).
+
+    Args:
+        value_magnitude: Log10 of absolute value (None if value is 0 or None)
+
+    Returns:
+        One of: 'unknown' (None), 'small' (<3), 'medium' (3-5), 'large' (5-6), 'very_large' (6+)
+
+    Example:
+        >>> bin_value_magnitude(None)
+        'unknown'
+        >>> bin_value_magnitude(2.5)  # ~300
+        'small'
+        >>> bin_value_magnitude(4.0)  # 10,000
+        'medium'
+        >>> bin_value_magnitude(6.5)  # 3,000,000
+        'very_large'
+
+    Note:
+        Value ranges (approximate):
+        - small: < 1,000 (log10 < 3)
+        - medium: 1,000 - 100,000 (log10: 3-5)
+        - large: 100,000 - 1,000,000 (log10: 5-6)
+        - very_large: > 1,000,000 (log10 >= 6)
+    """
+    if value_magnitude is None:
+        return "unknown"
+    elif value_magnitude < 3:
+        return "small"
+    elif value_magnitude < 5:
+        return "medium"
+    elif value_magnitude < 6:
+        return "large"
+    else:
+        return "very_large"
+
+
+def compute_distance_magnitude_interaction(
+    keyword_distance: int,
+    value_magnitude: Optional[float],
+) -> Optional[float]:
+    """
+    Compute interaction feature between distance and magnitude (P2.4).
+
+    This captures non-linear relationships where very large numbers
+    far from keywords are suspicious, but small numbers nearby are okay.
+
+    Args:
+        keyword_distance: Distance in characters
+        value_magnitude: Log10 of absolute value
+
+    Returns:
+        Product of distance and magnitude, or None if magnitude is None
+
+    Example:
+        >>> compute_distance_magnitude_interaction(50, 4.0)
+        200.0
+        >>> compute_distance_magnitude_interaction(10, None)
+        None
+
+    Interpretation:
+        - High values (>500): Large number far from keyword → likely false positive
+        - Low values (<100): Small number near keyword → likely true positive
+        - Medium values: Requires context (definition, table, etc.)
+    """
+    if value_magnitude is None:
+        return None
+    return keyword_distance * value_magnitude
+
+
+def compute_strong_signal(features: CandidateFeatures) -> bool:
+    """
+    Compute strong signal composite flag (P2.4).
+
+    Strong signal indicates high confidence in the candidate:
+    - Keyword very close (< 30 chars)
+    - Contains definition language
+    - NOT in risk factors section
+
+    Args:
+        features: CandidateFeatures object
+
+    Returns:
+        True if all strong signal conditions are met
+
+    Example:
+        >>> from src.review.models import CandidateFeatures
+        >>> features = CandidateFeatures(
+        ...     keyword_distance=25,
+        ...     keyword_position='after',
+        ...     is_in_table=False,
+        ...     is_in_risk_factors=False,
+        ...     contains_definition_language=True,
+        ...     has_period_mention=True,
+        ...     number_format='integer'
+        ... )
+        >>> compute_strong_signal(features)
+        True
+    """
+    return (
+        features.keyword_distance < 30
+        and features.contains_definition_language
+        and not features.is_in_risk_factors
+    )
+
+
+def compute_weak_signal(features: CandidateFeatures) -> bool:
+    """
+    Compute weak signal composite flag (P2.4).
+
+    Weak signal indicates moderate confidence:
+    - Keyword moderately far (50-100 chars)
+    - OR in risk factors section
+    - OR no definition language and not in table
+
+    Args:
+        features: CandidateFeatures object
+
+    Returns:
+        True if any weak signal conditions are met
+
+    Example:
+        >>> from src.review.models import CandidateFeatures
+        >>> features = CandidateFeatures(
+        ...     keyword_distance=75,
+        ...     keyword_position='after',
+        ...     is_in_table=False,
+        ...     is_in_risk_factors=False,
+        ...     contains_definition_language=False,
+        ...     has_period_mention=False,
+        ...     number_format='integer'
+        ... )
+        >>> compute_weak_signal(features)
+        True
+    """
+    return (
+        (50 <= features.keyword_distance < 100)
+        or features.is_in_risk_factors
+        or (not features.contains_definition_language and not features.is_in_table)
+    )
+
+
+def compute_very_weak_signal(features: CandidateFeatures) -> bool:
+    """
+    Compute very weak signal composite flag (P2.4).
+
+    Very weak signal indicates low confidence (likely false positive):
+    - Keyword very far (>= 100 chars)
+    - AND (in risk factors OR no definition language)
+
+    Args:
+        features: CandidateFeatures object
+
+    Returns:
+        True if very weak signal conditions are met
+
+    Example:
+        >>> from src.review.models import CandidateFeatures
+        >>> features = CandidateFeatures(
+        ...     keyword_distance=150,
+        ...     keyword_position='after',
+        ...     is_in_table=False,
+        ...     is_in_risk_factors=True,
+        ...     contains_definition_language=False,
+        ...     has_period_mention=False,
+        ...     number_format='integer'
+        ... )
+        >>> compute_very_weak_signal(features)
+        True
+    """
+    return features.keyword_distance >= 100 and (
+        features.is_in_risk_factors or not features.contains_definition_language
+    )
+
+
+def compute_all_derived_features(features: CandidateFeatures) -> Dict[str, Any]:
+    """
+    Compute all derived features from base features (P2.4).
+
+    This convenience function computes binned, interaction, and composite
+    features in one call for pattern analysis and ML applications.
+
+    Args:
+        features: CandidateFeatures object with base features
+
+    Returns:
+        Dictionary with all derived features:
+            - keyword_distance_bin: str ('very_close', 'close', 'far', 'very_far')
+            - value_magnitude_bin: str ('unknown', 'small', 'medium', 'large', 'very_large')
+            - distance_magnitude_interaction: Optional[float]
+            - strong_signal: bool
+            - weak_signal: bool
+            - very_weak_signal: bool
+
+    Example:
+        >>> from src.review.models import CandidateFeatures
+        >>> features = CandidateFeatures(
+        ...     keyword_distance=25,
+        ...     keyword_position='after',
+        ...     is_in_table=False,
+        ...     is_in_risk_factors=False,
+        ...     contains_definition_language=True,
+        ...     has_period_mention=True,
+        ...     number_format='integer',
+        ...     value_magnitude=4.5
+        ... )
+        >>> derived = compute_all_derived_features(features)
+        >>> derived['keyword_distance_bin']
+        'close'
+        >>> derived['strong_signal']
+        True
+    """
+    return {
+        "keyword_distance_bin": bin_keyword_distance(features.keyword_distance),
+        "value_magnitude_bin": bin_value_magnitude(features.value_magnitude),
+        "distance_magnitude_interaction": compute_distance_magnitude_interaction(
+            features.keyword_distance, features.value_magnitude
+        ),
+        "strong_signal": compute_strong_signal(features),
+        "weak_signal": compute_weak_signal(features),
+        "very_weak_signal": compute_very_weak_signal(features),
+    }

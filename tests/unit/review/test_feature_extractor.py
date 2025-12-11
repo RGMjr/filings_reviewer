@@ -40,7 +40,14 @@ from src.review.feature_extractor import (
     PERIOD_PATTERNS,
     RISK_FACTORS_PATTERNS,
     FeatureExtractor,
+    bin_keyword_distance,
+    bin_value_magnitude,
+    compute_all_derived_features,
+    compute_distance_magnitude_interaction,
     compute_features,
+    compute_strong_signal,
+    compute_very_weak_signal,
+    compute_weak_signal,
     determine_number_format,
 )
 from src.review.models import CandidateFeatures
@@ -1221,3 +1228,360 @@ class TestFeatureExtractorPerformance:
             )
 
         return candidates
+
+
+# =============================================================================
+# Tests for Derived Features (P2.4)
+# =============================================================================
+
+
+class TestBinKeywordDistance:
+    """Tests for bin_keyword_distance() function (P2.4)."""
+
+    def test_very_close_distance(self):
+        """Should return 'very_close' for distance < 20."""
+        assert bin_keyword_distance(0) == "very_close"
+        assert bin_keyword_distance(10) == "very_close"
+        assert bin_keyword_distance(19) == "very_close"
+
+    def test_close_distance(self):
+        """Should return 'close' for distance 20-49."""
+        assert bin_keyword_distance(20) == "close"
+        assert bin_keyword_distance(35) == "close"
+        assert bin_keyword_distance(49) == "close"
+
+    def test_far_distance(self):
+        """Should return 'far' for distance 50-99."""
+        assert bin_keyword_distance(50) == "far"
+        assert bin_keyword_distance(75) == "far"
+        assert bin_keyword_distance(99) == "far"
+
+    def test_very_far_distance(self):
+        """Should return 'very_far' for distance >= 100."""
+        assert bin_keyword_distance(100) == "very_far"
+        assert bin_keyword_distance(150) == "very_far"
+        assert bin_keyword_distance(500) == "very_far"
+
+
+class TestBinValueMagnitude:
+    """Tests for bin_value_magnitude() function (P2.4)."""
+
+    def test_unknown_magnitude(self):
+        """Should return 'unknown' for None magnitude."""
+        assert bin_value_magnitude(None) == "unknown"
+
+    def test_small_magnitude(self):
+        """Should return 'small' for magnitude < 3 (value < 1K)."""
+        assert bin_value_magnitude(0) == "small"
+        assert bin_value_magnitude(2.0) == "small"  # 100
+        assert bin_value_magnitude(2.99) == "small"  # ~980
+
+    def test_medium_magnitude(self):
+        """Should return 'medium' for magnitude 3-4.99 (value 1K-100K)."""
+        assert bin_value_magnitude(3.0) == "medium"  # 1,000
+        assert bin_value_magnitude(4.0) == "medium"  # 10,000
+        assert bin_value_magnitude(4.99) == "medium"  # ~97,000
+
+    def test_large_magnitude(self):
+        """Should return 'large' for magnitude 5-5.99 (value 100K-1M)."""
+        assert bin_value_magnitude(5.0) == "large"  # 100,000
+        assert bin_value_magnitude(5.5) == "large"  # ~316,000
+        assert bin_value_magnitude(5.99) == "large"  # ~977,000
+
+    def test_very_large_magnitude(self):
+        """Should return 'very_large' for magnitude >= 6 (value >= 1M)."""
+        assert bin_value_magnitude(6.0) == "very_large"  # 1,000,000
+        assert bin_value_magnitude(7.5) == "very_large"  # ~31M
+        assert bin_value_magnitude(10.0) == "very_large"  # 10B
+
+
+class TestComputeDistanceMagnitudeInteraction:
+    """Tests for compute_distance_magnitude_interaction() function (P2.4)."""
+
+    def test_basic_interaction(self):
+        """Should return product of distance and magnitude."""
+        assert compute_distance_magnitude_interaction(50, 4.0) == 200.0
+        assert compute_distance_magnitude_interaction(100, 3.0) == 300.0
+        assert compute_distance_magnitude_interaction(25, 5.0) == 125.0
+
+    def test_none_magnitude(self):
+        """Should return None if magnitude is None."""
+        assert compute_distance_magnitude_interaction(50, None) is None
+        assert compute_distance_magnitude_interaction(0, None) is None
+
+    def test_zero_distance(self):
+        """Should return 0 for zero distance."""
+        assert compute_distance_magnitude_interaction(0, 4.0) == 0.0
+
+    def test_interpretation_thresholds(self):
+        """Should capture expected false positive patterns."""
+        # High interaction: large number far from keyword (likely FP)
+        assert compute_distance_magnitude_interaction(100, 6.0) == 600.0
+        assert compute_distance_magnitude_interaction(100, 6.0) > 500  # FP threshold
+
+        # Low interaction: small number near keyword (likely TP)
+        assert compute_distance_magnitude_interaction(10, 3.0) == 30.0
+        assert compute_distance_magnitude_interaction(10, 3.0) < 100  # TP threshold
+
+
+class TestComputeStrongSignal:
+    """Tests for compute_strong_signal() function (P2.4)."""
+
+    def test_all_conditions_met(self):
+        """Should return True when all strong signal conditions are met."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=True,
+            has_period_mention=True,
+            number_format="integer",
+        )
+        assert compute_strong_signal(features) is True
+
+    def test_distance_too_far(self):
+        """Should return False if keyword distance >= 30."""
+        features = CandidateFeatures(
+            keyword_distance=30,  # Too far
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=True,
+            has_period_mention=True,
+            number_format="integer",
+        )
+        assert compute_strong_signal(features) is False
+
+    def test_no_definition_language(self):
+        """Should return False if no definition language."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,  # Missing
+            has_period_mention=True,
+            number_format="integer",
+        )
+        assert compute_strong_signal(features) is False
+
+    def test_in_risk_factors(self):
+        """Should return False if in risk factors section."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=True,  # Risk factors
+            contains_definition_language=True,
+            has_period_mention=True,
+            number_format="integer",
+        )
+        assert compute_strong_signal(features) is False
+
+
+class TestComputeWeakSignal:
+    """Tests for compute_weak_signal() function (P2.4)."""
+
+    def test_moderately_far_distance(self):
+        """Should return True if distance is 50-99."""
+        features = CandidateFeatures(
+            keyword_distance=75,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=True,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_weak_signal(features) is True
+
+    def test_in_risk_factors(self):
+        """Should return True if in risk factors."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=True,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_weak_signal(features) is True
+
+    def test_no_definition_and_not_in_table(self):
+        """Should return True if no definition language and not in table."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_weak_signal(features) is True
+
+    def test_strong_signal_not_weak(self):
+        """Should return False for strong signal features."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=True,  # In table
+            is_in_risk_factors=False,
+            contains_definition_language=True,  # Has definition
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_weak_signal(features) is False
+
+
+class TestComputeVeryWeakSignal:
+    """Tests for compute_very_weak_signal() function (P2.4)."""
+
+    def test_very_far_and_risk_factors(self):
+        """Should return True if distance >= 100 and in risk factors."""
+        features = CandidateFeatures(
+            keyword_distance=150,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_very_weak_signal(features) is True
+
+    def test_very_far_and_no_definition(self):
+        """Should return True if distance >= 100 and no definition."""
+        features = CandidateFeatures(
+            keyword_distance=100,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_very_weak_signal(features) is True
+
+    def test_very_far_with_definition(self):
+        """Should return False if distance >= 100 but has definition."""
+        features = CandidateFeatures(
+            keyword_distance=100,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=True,  # Has definition
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_very_weak_signal(features) is False
+
+    def test_close_distance(self):
+        """Should return False if distance < 100."""
+        features = CandidateFeatures(
+            keyword_distance=50,  # Not very far
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+        )
+        assert compute_very_weak_signal(features) is False
+
+
+class TestComputeAllDerivedFeatures:
+    """Tests for compute_all_derived_features() function (P2.4)."""
+
+    def test_all_features_computed(self):
+        """Should compute all 6 derived features."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=True,
+            has_period_mention=True,
+            number_format="integer",
+            value_magnitude=4.5,
+        )
+        
+        derived = compute_all_derived_features(features)
+        
+        # Check all keys present
+        assert "keyword_distance_bin" in derived
+        assert "value_magnitude_bin" in derived
+        assert "distance_magnitude_interaction" in derived
+        assert "strong_signal" in derived
+        assert "weak_signal" in derived
+        assert "very_weak_signal" in derived
+
+        # Verify values
+        assert derived["keyword_distance_bin"] == "close"
+        assert derived["value_magnitude_bin"] == "medium"
+        assert derived["distance_magnitude_interaction"] == 112.5
+        assert derived["strong_signal"] is True
+        assert derived["weak_signal"] is False
+        assert derived["very_weak_signal"] is False
+
+    def test_none_magnitude_handled(self):
+        """Should handle None magnitude gracefully."""
+        features = CandidateFeatures(
+            keyword_distance=50,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+            value_magnitude=None,
+        )
+        
+        derived = compute_all_derived_features(features)
+        
+        assert derived["value_magnitude_bin"] == "unknown"
+        assert derived["distance_magnitude_interaction"] is None
+
+    def test_weak_signal_features(self):
+        """Should correctly identify weak signal features."""
+        features = CandidateFeatures(
+            keyword_distance=75,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+            value_magnitude=3.5,
+        )
+        
+        derived = compute_all_derived_features(features)
+        
+        assert derived["keyword_distance_bin"] == "far"
+        assert derived["weak_signal"] is True
+        assert derived["strong_signal"] is False
+        assert derived["very_weak_signal"] is False
+
+    def test_very_weak_signal_features(self):
+        """Should correctly identify very weak signal features."""
+        features = CandidateFeatures(
+            keyword_distance=150,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="integer",
+            value_magnitude=6.0,
+        )
+        
+        derived = compute_all_derived_features(features)
+        
+        assert derived["keyword_distance_bin"] == "very_far"
+        assert derived["value_magnitude_bin"] == "very_large"
+        assert derived["distance_magnitude_interaction"] == 900.0
+        assert derived["very_weak_signal"] is True
+        assert derived["weak_signal"] is True  # Also weak
+        assert derived["strong_signal"] is False

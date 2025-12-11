@@ -10,8 +10,12 @@ import math
 import pytest
 
 from src.review.statistical_tests import (
+    _approximate_chi_squared_p_value,
+    _approximate_t_test_p_value,
+    _normal_cdf,
     chi_squared_test,
     compute_performance_metrics,
+    interpret_significance,
     t_test_independent,
 )
 
@@ -104,13 +108,31 @@ class TestChiSquaredTest:
         assert result["degrees_of_freedom"] == (3 - 1) * (3 - 1)  # 4
         assert result["chi_squared"] == pytest.approx(0.0, abs=0.01)  # Perfect independence
 
-    def test_chi_squared_returns_none_pvalue(self):
-        """Should return p_value=None in MVP."""
+    def test_chi_squared_computes_pvalue_large_df(self):
+        """Should compute p-value for large degrees of freedom (df > 5)."""
+        # Create contingency table with df > 5: 4 features × 3 decisions = df = 6
+        feature_values = []
+        decision_values = []
+        for feat in ["A", "B", "C", "D"]:  # 4 categories
+            for dec in ["accept", "reject", "reclassify"]:  # 3 decisions
+                feature_values.extend([feat] * 10)
+                decision_values.extend([dec] * 10)
+
+        result = chi_squared_test(feature_values, decision_values)
+
+        assert result["degrees_of_freedom"] == 6  # (4-1) * (3-1)
+        assert result["p_value"] is not None  # Should compute for df > 5
+        assert 0.0 <= result["p_value"] <= 1.0  # Valid p-value range
+
+    def test_chi_squared_returns_none_pvalue_small_df(self):
+        """Should return p_value=None for small degrees of freedom (df <= 5)."""
+        # Small contingency table: df = (2-1) * (2-1) = 1 < 5
         feature_values = ["A", "B", "C"]
         decision_values = ["accept", "reject", "accept"]
         result = chi_squared_test(feature_values, decision_values)
 
-        assert result["p_value"] is None  # MVP: not implemented yet
+        assert result["degrees_of_freedom"] <= 5
+        assert result["p_value"] is None  # Approximation not reliable for small df
 
 
 # =============================================================================
@@ -206,13 +228,28 @@ class TestTTestIndependent:
         assert "Zero variance" in result["warning"]
         assert result["t_statistic"] == 0.0
 
-    def test_t_test_returns_none_pvalue(self):
-        """Should return p_value=None in MVP."""
-        group1 = [10.0, 12.0, 14.0]
-        group2 = [20.0, 22.0, 24.0]
+    def test_t_test_computes_pvalue_large_sample(self):
+        """Should compute p-value for large samples (df > 30)."""
+        # Create large samples: n1=50, n2=50, df = 98 > 30
+        import random
+        random.seed(42)
+        group1 = [random.gauss(10, 2) for _ in range(50)]  # mean~10, std~2
+        group2 = [random.gauss(15, 2) for _ in range(50)]  # mean~15, std~2
         result = t_test_independent(group1, group2)
 
-        assert result["p_value"] is None  # MVP: not implemented yet
+        assert result["degrees_of_freedom"] > 30  # Large sample
+        assert result["p_value"] is not None  # Should compute for large samples
+        assert 0.0 <= result["p_value"] <= 1.0  # Valid p-value range
+        assert result["p_value"] < 0.001  # Should be highly significant (groups different)
+
+    def test_t_test_returns_none_pvalue_small_sample(self):
+        """Should return p_value=None for small samples (df <= 30)."""
+        group1 = [10.0, 12.0, 14.0]  # n=3
+        group2 = [20.0, 22.0, 24.0]  # n=3
+        result = t_test_independent(group1, group2)
+
+        assert result["degrees_of_freedom"] <= 30  # Small sample: df = 4
+        assert result["p_value"] is None  # Approximation not reliable for small df
 
     def test_t_test_positive_difference(self):
         """Should handle positive mean difference."""
@@ -360,6 +397,169 @@ class TestPerformanceMetrics:
         assert result["precision"] == 0.0
         assert result["recall"] == 0.0
         assert result["f1_score"] == 0.0
+
+
+# =============================================================================
+# TestPValueCalculations
+# =============================================================================
+
+
+class TestPValueCalculations:
+    """Tests for p-value approximation functions."""
+
+    def test_normal_cdf_standard_values(self):
+        """Should compute standard normal CDF correctly for known values."""
+        # Test known values (approximately)
+        assert _normal_cdf(0.0) == pytest.approx(0.5, abs=1e-4)  # Φ(0) = 0.5
+        assert _normal_cdf(1.0) == pytest.approx(0.8413, abs=1e-3)  # Φ(1) ≈ 0.8413
+        assert _normal_cdf(-1.0) == pytest.approx(0.1587, abs=1e-3)  # Φ(-1) ≈ 0.1587
+        assert _normal_cdf(2.0) == pytest.approx(0.9772, abs=1e-3)  # Φ(2) ≈ 0.9772
+        assert _normal_cdf(-2.0) == pytest.approx(0.0228, abs=1e-3)  # Φ(-2) ≈ 0.0228
+
+    def test_normal_cdf_extreme_values(self):
+        """Should handle extreme z-scores."""
+        assert _normal_cdf(5.0) == pytest.approx(1.0, abs=1e-6)  # Very high z
+        assert _normal_cdf(-5.0) == pytest.approx(0.0, abs=1e-6)  # Very low z
+
+    def test_chi_squared_pvalue_none_small_df(self):
+        """Should return None for df <= 5."""
+        assert _approximate_chi_squared_p_value(10.0, df=1) is None
+        assert _approximate_chi_squared_p_value(10.0, df=5) is None
+
+    def test_chi_squared_pvalue_computed_large_df(self):
+        """Should compute p-value for df > 5."""
+        # Chi-squared = 12.0, df = 6
+        # Should return valid p-value in (0, 1)
+        p_value = _approximate_chi_squared_p_value(12.0, df=6)
+        assert p_value is not None
+        assert 0.0 < p_value < 1.0
+
+    def test_chi_squared_pvalue_zero_statistic(self):
+        """Should handle chi-squared = 0 (perfect fit)."""
+        p_value = _approximate_chi_squared_p_value(0.0, df=10)
+        assert p_value is not None
+        assert p_value == pytest.approx(1.0, abs=0.01)  # p ≈ 1 for χ² = 0
+
+    def test_chi_squared_pvalue_large_statistic(self):
+        """Should handle large chi-squared values (strong association)."""
+        p_value = _approximate_chi_squared_p_value(50.0, df=10)
+        assert p_value is not None
+        assert p_value < 0.001  # Very small p-value for large χ²
+
+    def test_chi_squared_pvalue_negative_statistic(self):
+        """Should return None for negative chi-squared (invalid)."""
+        assert _approximate_chi_squared_p_value(-5.0, df=10) is None
+
+    def test_t_test_pvalue_none_small_df(self):
+        """Should return None for df <= 30."""
+        assert _approximate_t_test_p_value(2.0, df=10) is None
+        assert _approximate_t_test_p_value(2.0, df=30) is None
+
+    def test_t_test_pvalue_computed_large_df(self):
+        """Should compute p-value for df > 30."""
+        # t = 2.0, df = 50 (large sample)
+        p_value = _approximate_t_test_p_value(2.0, df=50)
+        assert p_value is not None
+        assert 0.0 < p_value < 1.0
+
+    def test_t_test_pvalue_zero_statistic(self):
+        """Should handle t = 0 (no difference)."""
+        p_value = _approximate_t_test_p_value(0.0, df=100)
+        assert p_value is not None
+        assert p_value == pytest.approx(1.0, abs=0.01)  # p ≈ 1 for t = 0
+
+    def test_t_test_pvalue_large_statistic(self):
+        """Should handle large t-values (strong difference)."""
+        p_value = _approximate_t_test_p_value(5.0, df=100)
+        assert p_value is not None
+        assert p_value < 0.001  # Very small p-value for large |t|
+
+    def test_t_test_pvalue_negative_statistic(self):
+        """Should handle negative t-values (symmetric)."""
+        # Two-tailed test: p(-t) = p(t)
+        p_positive = _approximate_t_test_p_value(2.5, df=50)
+        p_negative = _approximate_t_test_p_value(-2.5, df=50)
+        assert p_positive == pytest.approx(p_negative, abs=1e-6)
+
+
+# =============================================================================
+# TestSignificanceInterpretation
+# =============================================================================
+
+
+class TestSignificanceInterpretation:
+    """Tests for interpret_significance function."""
+
+    def test_extremely_significant(self):
+        """Should interpret p < 0.001 as extremely significant."""
+        result = interpret_significance(0.0005)
+        assert result["is_significant"] is True
+        assert result["significance_level"] == "***"
+        assert "Extremely significant" in result["interpretation"]
+
+    def test_highly_significant(self):
+        """Should interpret 0.001 <= p < 0.01 as highly significant."""
+        result = interpret_significance(0.005)
+        assert result["is_significant"] is True
+        assert result["significance_level"] == "**"
+        assert "Highly significant" in result["interpretation"]
+
+    def test_significant(self):
+        """Should interpret 0.01 <= p < 0.05 as significant."""
+        result = interpret_significance(0.03)
+        assert result["is_significant"] is True
+        assert result["significance_level"] == "*"
+        assert "Significant" in result["interpretation"]
+
+    def test_not_significant(self):
+        """Should interpret p >= 0.05 as not significant."""
+        result = interpret_significance(0.15)
+        assert result["is_significant"] is False
+        assert result["significance_level"] is None
+        assert "Not significant" in result["interpretation"]
+
+    def test_none_pvalue(self):
+        """Should handle None p-value (not computed)."""
+        result = interpret_significance(None)
+        assert result["is_significant"] is None
+        assert result["significance_level"] is None
+        assert "not computed" in result["interpretation"]
+
+    def test_custom_alpha_levels(self):
+        """Should support custom alpha levels."""
+        # Use stricter thresholds: [0.0001, 0.001, 0.01]
+        # For p=0.005: 0.005 is not < 0.001, so not highly significant (**)
+        # But 0.005 < 0.01, so it is significant (*)
+        result = interpret_significance(0.005, alpha_levels=[0.0001, 0.001, 0.01])
+        assert result["is_significant"] is True
+        assert result["significance_level"] == "*"  # 0.001 < 0.005 < 0.01
+
+        # Test a value that IS highly significant
+        result2 = interpret_significance(0.0005, alpha_levels=[0.0001, 0.001, 0.01])
+        assert result2["is_significant"] is True
+        assert result2["significance_level"] == "**"  # 0.0001 < 0.0005 < 0.001
+
+    def test_boundary_values(self):
+        """Should handle exact boundary values correctly."""
+        # Exactly at threshold
+        result_boundary = interpret_significance(0.05)
+        assert result_boundary["is_significant"] is False  # p >= 0.05 is not significant
+
+        # Just below threshold
+        result_below = interpret_significance(0.049)
+        assert result_below["is_significant"] is True
+
+    def test_zero_pvalue(self):
+        """Should handle p-value = 0 (extremely significant)."""
+        result = interpret_significance(0.0)
+        assert result["is_significant"] is True
+        assert result["significance_level"] == "***"
+
+    def test_pvalue_one(self):
+        """Should handle p-value = 1.0 (no significance)."""
+        result = interpret_significance(1.0)
+        assert result["is_significant"] is False
+        assert result["significance_level"] is None
 
 
 # =============================================================================
