@@ -7,10 +7,13 @@ and learned patterns before they're written to the database.
 Schema alignment: sql/07_create_review_schema.sql
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -520,3 +523,62 @@ class LearnedPattern:
             return any(results)
         else:
             return all(results)
+
+
+# =============================================================================
+# ProcessingStats
+# =============================================================================
+
+
+@dataclass
+class ProcessingStats:
+    """Statistics from candidate generation processing."""
+
+    segments_processed: int = 0
+    segments_failed: int = 0
+    numbers_found: int = 0
+    numbers_failed: int = 0
+    candidates_generated: int = 0
+    false_positives_filtered: int = 0
+    filtered_by_learned_rules: int = 0
+    duplicates_removed: int = 0
+
+    @property
+    def segment_success_rate(self) -> float:
+        """Percentage of segments successfully processed."""
+        total = self.segments_processed + self.segments_failed
+        if total == 0:
+            return 1.0
+        return self.segments_processed / total
+
+    @property
+    def number_success_rate(self) -> float:
+        """Percentage of numbers successfully processed."""
+        total = self.numbers_found + self.numbers_failed
+        if total == 0:
+            return 1.0
+        return self.numbers_found / total
+
+    def log_summary(self, filing_id: int) -> None:
+        """Log a summary of processing stats."""
+        logger.info(
+            f"Filing {filing_id} stats: "
+            f"segments={self.segments_processed}/{self.segments_processed + self.segments_failed}, "
+            f"numbers={self.numbers_found}, "
+            f"filtered={self.false_positives_filtered}, "
+            f"learned_rules_filtered={self.filtered_by_learned_rules}, "
+            f"duplicates={self.duplicates_removed}, "
+            f"candidates={self.candidates_generated}"
+        )
+        if self.segments_failed > 0:
+            logger.warning(
+                f"Filing {filing_id}: {self.segments_failed} segments failed to process"
+            )
+        if self.numbers_failed > 0:
+            logger.warning(
+                f"Filing {filing_id}: {self.numbers_failed} numbers failed to process"
+            )
+        if self.duplicates_removed > 0:
+            logger.debug(
+                f"Filing {filing_id}: {self.duplicates_removed} duplicate candidates removed"
+            )

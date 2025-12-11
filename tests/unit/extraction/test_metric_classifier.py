@@ -317,3 +317,259 @@ def test_ltv_cac_ratio(classifier, sample_segment):
     result = classifier.classify_segment(sample_segment)
 
     assert "cm_ltv_to_cac_ratio" in result.candidate_metric_ids
+
+
+# ===== CMASB Boost Tests (Phase 3.3) =====
+
+
+def test_cmasb_core_metric_confidence_boost(classifier, sample_segment):
+    """Test that CMASB core metrics receive +0.2 confidence boost."""
+    # Use a core metric keyword with segment > 100 chars to avoid short-text penalty
+    sample_segment.raw_text = (
+        "We acquired 10,000 new customers in Q4 2024, representing significant growth "
+        "over the prior quarter when we added 7,500 customers. This strong customer acquisition "
+        "demonstrates the effectiveness of our sales and marketing initiatives."
+    )
+    sample_segment.sequence_index = 100
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should identify the core metric
+    assert "cm_new_customers_acquired" in result.candidate_metric_ids
+
+    # Should have boosted confidence
+    # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.2 (CMASB core) = 0.8
+    # No short-text penalty since > 100 chars
+    assert result.classifier_confidence >= 0.7
+
+
+def test_cmasb_extended_metric_confidence_boost(classifier, sample_segment):
+    """Test that CMASB extended metrics receive +0.1 confidence boost."""
+    # Use an extended metric keyword with segment > 100 chars to avoid short-text penalty
+    sample_segment.raw_text = (
+        "Our customer retention rate improved to 95% in 2024, up from 92% in the prior year. "
+        "This improvement reflects our enhanced customer success initiatives and product improvements."
+    )
+    sample_segment.sequence_index = 200
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should identify the extended metric
+    assert "cm_customer_retention_rate" in result.candidate_metric_ids
+
+    # Should have moderate boost
+    # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB extended) = 0.7
+    # No short-text penalty since > 100 chars
+    assert result.classifier_confidence >= 0.6
+
+
+def test_cmasb_non_priority_no_boost(classifier, sample_segment):
+    """Test that non-priority metrics don't receive CMASB boost."""
+    # Use a generic metric keyword that's not in CMASB lists
+    sample_segment.raw_text = "Our total revenue was $100 million."
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Might identify generic revenue metric but no CMASB boost
+    # Base: 0.3 (numeric) + metric candidates boost (varies)
+    # Should be lower than CMASB-boosted segments
+    assert result.classifier_confidence < 0.7
+
+
+# ===== Confidence Score Tests (Phase 3.3) =====
+
+
+def test_confidence_score_short_segment_penalty(classifier, sample_segment):
+    """Test that short segments receive confidence penalty."""
+    # Short segment < 100 chars
+    sample_segment.raw_text = "We define MRR as monthly recurring revenue."
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should be classified
+    assert result.contains_definition_flag is True
+
+    # But confidence should be penalized (* 0.7)
+    # Without penalty: 0.2 (definition) + candidates
+    # With penalty: that value * 0.7
+    assert result.classifier_confidence < 0.3
+
+
+def test_confidence_score_caps_at_one(classifier, sample_segment):
+    """Test that confidence score caps at 1.0."""
+    # Create segment with all positive signals
+    sample_segment.raw_text = (
+        "We define new customers acquired as individuals who made their first "
+        "purchase during the period. This metric is calculated as the number "
+        "of unique customer IDs making their first transaction. "
+        "In Q4 2024, we acquired 50,000 new customers, up from 30,000 in Q3."
+    )
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should hit maximum confidence
+    # definition + methodology + numeric + specific metric + CMASB boost
+    # But should cap at 1.0
+    assert result.classifier_confidence <= 1.0
+    assert result.classifier_confidence >= 0.8
+
+
+def test_confidence_score_single_candidate_boost(classifier, sample_segment):
+    """Test that single candidate metric gets +0.3 boost."""
+    # Segment with very specific metric mention (must be >100 chars to avoid short-text penalty)
+    sample_segment.raw_text = (
+        "New customers acquired totaled 10,000 in 2024, representing strong growth from the prior "
+        "year when we added only 7,500 customers. This metric demonstrates our market traction."
+    )
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should identify exactly one metric
+    assert len(result.candidate_metric_ids) == 1
+
+    # Should have single-candidate boost
+    # Base: 0.3 (numeric) + 0.3 (single) + 0.2 (CMASB) = 0.8
+    assert result.classifier_confidence >= 0.7
+
+
+def test_confidence_score_two_candidates_boost(classifier, sample_segment):
+    """Test that two candidate metrics get +0.2 boost."""
+    # Segment mentioning two metrics
+    sample_segment.raw_text = (
+        "We track active customers and customer retention rate to measure engagement."
+    )
+
+    result = classifier.classify_segment(sample_segment)
+
+    # Should identify two metrics
+    assert len(result.candidate_metric_ids) >= 2
+
+    # Should have two-candidate boost (0.2)
+    # Less than single-candidate boost (0.3)
+    assert result.classifier_confidence > 0.0
+
+
+# ===== Validation Tests (Phase 3.3) =====
+
+
+def test_validation_invalid_segment_raises(classifier):
+    """Test that validation raises for invalid segment."""
+    from src.extraction.exceptions import ValidationError
+    from src.extraction.models import SourceSegment
+
+    # Create segment with None raw_text
+    invalid_segment = SourceSegment(
+        filing_id=1,
+        segment_type="paragraph",
+        sequence_index=0,
+        raw_text=None  # Invalid!
+    )
+
+    with pytest.raises(ValidationError):
+        classifier.classify_segment(invalid_segment, validate=True)
+
+
+def test_validation_can_be_disabled(classifier):
+    """Test that validation can be disabled."""
+    from src.extraction.models import SourceSegment
+
+    # Create segment with None raw_text
+    invalid_segment = SourceSegment(
+        filing_id=1,
+        segment_type="paragraph",
+        sequence_index=0,
+        raw_text=None
+    )
+
+    # Should raise AttributeError (not ValidationError) when validation disabled
+    with pytest.raises(AttributeError):
+        classifier.classify_segment(invalid_segment, validate=False)
+
+
+# ===== Metrics Collection Tests (Phase 3.3) =====
+
+
+def test_metrics_collection(classifier):
+    """Test that metrics are collected during batch classification."""
+    from src.extraction.models import SourceSegment
+
+    segments = [
+        SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="We define daily active users (DAU) as unique users who log in daily."
+        ),
+        SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=1,
+            raw_text="Revenue per customer is calculated as total revenue divided by customer count."
+        ),
+        SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=2,
+            raw_text="We had 100,000 active customers as of December 31, 2024."
+        ),
+    ]
+
+    result = classifier.classify_batch(segments)
+    metrics = classifier.get_metrics()
+
+    # Metrics should exist
+    assert metrics is not None
+    assert metrics.total_segments == 3
+
+    # Should track definitions
+    assert metrics.definitions >= 1
+
+    # Should track methodologies
+    assert metrics.methodologies >= 1
+
+    # Should track numeric disclosures
+    assert metrics.numeric_disclosures >= 1
+
+    # Should have positive average confidence
+    assert metrics.avg_confidence() > 0.0
+
+    # Should track metric IDs
+    assert len(metrics.metric_id_counts) > 0
+
+    # Should have parse time
+    assert metrics.classification_time_seconds > 0.0
+
+    # Summary should be informative
+    summary = metrics.summary()
+    assert "segments" in summary
+    assert "3" in summary
+
+
+def test_metrics_top_metrics(classifier):
+    """Test that top_metrics() returns most common metrics."""
+    from src.extraction.metric_classifier import ClassificationMetrics
+
+    metrics = ClassificationMetrics()
+    metrics.metric_id_counts = {
+        "cm_new_customers_acquired": 10,
+        "cm_revenue_per_customer": 8,
+        "cm_total_customers": 5,
+        "cm_churn_rate": 3,
+        "cm_retention_rate": 1,
+    }
+
+    top_3 = metrics.top_metrics(3)
+
+    # Should return top 3 in descending order
+    assert len(top_3) == 3
+    assert top_3[0] == ("cm_new_customers_acquired", 10)
+    assert top_3[1] == ("cm_revenue_per_customer", 8)
+    assert top_3[2] == ("cm_total_customers", 5)
+
+
+def test_metrics_avg_confidence_with_zero_segments():
+    """Test average confidence calculation with zero segments."""
+    from src.extraction.metric_classifier import ClassificationMetrics
+
+    metrics = ClassificationMetrics()
+    assert metrics.avg_confidence() == 0.0

@@ -25,10 +25,17 @@ import atexit
 import logging
 import os
 import threading
-from typing import Any, Dict, Optional
+import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+from src.infra.exceptions import PoolExecutionError, PoolTimeoutError, TaskFailure
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,178 @@ logger = logging.getLogger(__name__)
 _shared_pool: Optional[ConnectionPool] = None
 _shared_pool_conninfo: Optional[str] = None
 _shared_pool_lock = threading.Lock()
+
+
+@dataclass
+class PoolHealthReport:
+    """Health check report for connection pool.
+
+    Attributes:
+        is_healthy: True if pool is working correctly
+        total_connections: Total connections in pool
+        idle_connections: Connections available for use
+        active_connections: Connections currently in use
+        test_query_elapsed: Time taken for test query (seconds)
+        timestamp: When health check was performed
+        error: Error message if health check failed
+    """
+
+    is_healthy: bool
+    total_connections: int
+    idle_connections: int
+    active_connections: int
+    test_query_elapsed: Optional[float] = None
+    timestamp: datetime = None
+    error: Optional[str] = None
+
+    def __post_init__(self):
+        """Set timestamp if not provided."""
+        if self.timestamp is None:
+            self.timestamp = datetime.now()
+
+
+def execute_batch(
+    tasks: List[Callable],
+    *,
+    max_workers: Optional[int] = None,
+    timeout: Optional[float] = None,
+    task_descriptions: Optional[List[str]] = None,
+    fail_fast: bool = True,
+) -> List[Any]:
+    """Execute tasks concurrently using ThreadPoolExecutor with fail-fast error handling.
+
+    This function provides structured error handling for concurrent task execution:
+    - Tracks failures with detailed context (task index, description, exception, traceback)
+    - Cancels remaining tasks on first failure when fail_fast=True
+    - Raises PoolExecutionError with comprehensive error details
+    - Supports timeout for overall execution
+
+    Args:
+        tasks: List of callables to execute (no arguments)
+        max_workers: Maximum number of worker threads (default: min(32, len(tasks)))
+        timeout: Optional timeout in seconds for all tasks to complete
+        task_descriptions: Optional human-readable descriptions for each task
+        fail_fast: If True, cancel remaining tasks on first failure (default: True)
+
+    Returns:
+        List of results in same order as input tasks
+
+    Raises:
+        PoolExecutionError: If any tasks fail (includes failure details)
+        PoolTimeoutError: If execution exceeds timeout
+
+    Example:
+        def task1(): return "result1"
+        def task2(): return "result2"
+
+        results = execute_batch(
+            [task1, task2],
+            task_descriptions=["Process filing 1", "Process filing 2"],
+            timeout=60.0
+        )
+    """
+    if not tasks:
+        return []
+
+    if task_descriptions is None:
+        task_descriptions = [f"Task {i}" for i in range(len(tasks))]
+
+    if len(task_descriptions) != len(tasks):
+        raise ValueError(
+            f"task_descriptions length ({len(task_descriptions)}) must match tasks length ({len(tasks)})"
+        )
+
+    # Determine worker count
+    if max_workers is None:
+        max_workers = min(32, len(tasks))
+
+    results: List[Any] = [None] * len(tasks)
+    failures: List[TaskFailure] = []
+    future_to_index: Dict[Future, int] = {}
+
+    start_time = time.time()
+
+    try:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            for i, task in enumerate(tasks):
+                future = executor.submit(task)
+                future_to_index[future] = i
+
+            # Collect results as they complete
+            completed_count = 0
+
+            for future in as_completed(future_to_index.keys(), timeout=timeout):
+                task_index = future_to_index[future]
+                task_desc = task_descriptions[task_index]
+
+                try:
+                    result = future.result()
+                    results[task_index] = result
+                    completed_count += 1
+
+                except Exception as e:
+                    # Record failure
+                    failure = TaskFailure(
+                        task_index=task_index,
+                        task_description=task_desc,
+                        exception=e,
+                        traceback_str=traceback.format_exc(),
+                    )
+                    failures.append(failure)
+
+                    logger.error(
+                        f"Task {task_index} ({task_desc}) failed: {type(e).__name__}: {e}"
+                    )
+
+                    if fail_fast:
+                        # Cancel remaining futures
+                        for remaining_future in future_to_index.keys():
+                            if not remaining_future.done():
+                                remaining_future.cancel()
+
+                        # Raise immediately
+                        raise PoolExecutionError(
+                            failures=failures,
+                            completed_count=completed_count,
+                            total_count=len(tasks),
+                            partial_results=None,  # Don't return partial results in fail-fast mode
+                        )
+
+            # If we reach here without fail_fast or all succeeded
+            if failures:
+                raise PoolExecutionError(
+                    failures=failures,
+                    completed_count=completed_count,
+                    total_count=len(tasks),
+                    partial_results=results,  # Return partial results when not fail-fast
+                )
+
+            return results
+
+    except TimeoutError as e:
+        # Timeout occurred - cancel remaining tasks
+        elapsed = time.time() - start_time
+        logger.error(f"Batch execution timed out after {elapsed:.1f}s (limit: {timeout}s)")
+
+        for future in future_to_index.keys():
+            if not future.done():
+                future.cancel()
+
+        # Create timeout failure
+        timeout_failure = TaskFailure(
+            task_index=-1,
+            task_description="Batch timeout",
+            exception=e,
+            traceback_str=traceback.format_exc(),
+        )
+        failures.append(timeout_failure)
+
+        raise PoolTimeoutError(
+            failures=failures,
+            completed_count=sum(1 for r in results if r is not None),
+            total_count=len(tasks),
+        )
 
 
 def get_pool_config() -> Dict[str, Any]:
@@ -175,7 +354,7 @@ def get_shared_pool(connection_string: str) -> ConnectionPool:
 
 def close_shared_pool() -> None:
     """
-    Close the shared singleton connection pool.
+    Close the shared singleton connection pool with instrumented logging.
 
     Safe to call multiple times or when no pool exists.
     Called automatically at process exit if pool was created.
@@ -186,10 +365,29 @@ def close_shared_pool() -> None:
     with _shared_pool_lock:
         if _shared_pool is not None:
             try:
+                # Get final stats before closing
+                try:
+                    stats = get_pool_stats(_shared_pool)
+                    logger.info(
+                        f"Closing shared pool: {stats['pool_size']} connections "
+                        f"({stats['pool_available']} idle, {stats['requests_waiting']} waiting)"
+                    )
+                except Exception:
+                    logger.info("Closing shared connection pool")
+
+                # Measure close time
+                start_time = time.time()
                 _shared_pool.close()
-                logger.info("Shared connection pool closed")
+                elapsed = time.time() - start_time
+
+                logger.info(f"Shared connection pool closed successfully in {elapsed:.3f}s")
+
             except Exception as e:
-                logger.warning(f"Error closing shared pool: {e}")
+                logger.error(
+                    f"Error closing shared pool: {type(e).__name__}: {e}. "
+                    "Pool resources may not be fully released."
+                )
+
             finally:
                 _shared_pool = None
                 _shared_pool_conninfo = None
@@ -222,7 +420,7 @@ def get_pool_stats(pool: ConnectionPool) -> Dict[str, Any]:
     }
 
 
-def check_pool_health(pool: ConnectionPool) -> Dict[str, Any]:
+def check_pool_health(pool: ConnectionPool) -> PoolHealthReport:
     """
     Check the health of a connection pool.
 
@@ -232,24 +430,44 @@ def check_pool_health(pool: ConnectionPool) -> Dict[str, Any]:
         pool: ConnectionPool instance to check.
 
     Returns:
-        Dict with:
-        - healthy: True if pool is working
-        - message: Description of status
-        - stats: Pool statistics
+        PoolHealthReport with health status and pool statistics.
     """
     try:
+        start_time = time.time()
+
         with pool.connection() as conn:
             conn.execute("SELECT 1")
 
+        elapsed = time.time() - start_time
+
         stats = get_pool_stats(pool)
-        return {
-            "healthy": True,
-            "message": "Pool is healthy",
-            "stats": stats,
-        }
+
+        return PoolHealthReport(
+            is_healthy=True,
+            total_connections=stats["pool_size"],
+            idle_connections=stats["pool_available"],
+            active_connections=stats["pool_size"] - stats["pool_available"],
+            test_query_elapsed=elapsed,
+            error=None,
+        )
+
     except Exception as e:
-        return {
-            "healthy": False,
-            "message": f"Pool health check failed: {e}",
-            "stats": None,
-        }
+        logger.error(f"Pool health check failed: {type(e).__name__}: {e}")
+
+        # Try to get stats even if health check failed
+        try:
+            stats = get_pool_stats(pool)
+            total = stats["pool_size"]
+            idle = stats["pool_available"]
+            active = total - idle
+        except Exception:
+            total = idle = active = 0
+
+        return PoolHealthReport(
+            is_healthy=False,
+            total_connections=total,
+            idle_connections=idle,
+            active_connections=active,
+            test_query_elapsed=None,
+            error=str(e),
+        )

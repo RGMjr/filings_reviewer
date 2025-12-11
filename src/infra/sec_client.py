@@ -5,16 +5,109 @@ Provides a simple abstraction over the SEC EDGAR API for discovering and fetchin
 """
 
 import logging
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
 import requests
 
+from src.infra.exceptions import SECDataError, SECRateLimitError
+from src.infra.http_client import HTTPClient, RequestsHTTPClient
 from src.infra.validation import validate_date_range, validate_sic_code, ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SECClientMetrics:
+    """Thread-safe metrics collection for SEC client requests.
+
+    Attributes:
+        requests_total: Total number of requests attempted
+        requests_success: Number of successful requests
+        requests_failed: Number of failed requests
+        requests_timeout: Number of timeout failures
+        total_elapsed_seconds: Total time spent on all requests
+        _lock: Thread lock for safe concurrent access
+    """
+
+    requests_total: int = 0
+    requests_success: int = 0
+    requests_failed: int = 0
+    requests_timeout: int = 0
+    total_elapsed_seconds: float = 0.0
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def record_request(self) -> None:
+        """Record that a request was attempted."""
+        with self._lock:
+            self.requests_total += 1
+
+    def record_success(self, elapsed_seconds: float) -> None:
+        """Record a successful request.
+
+        Args:
+            elapsed_seconds: Time taken for request
+        """
+        with self._lock:
+            self.requests_success += 1
+            self.total_elapsed_seconds += elapsed_seconds
+
+    def record_failure(self, elapsed_seconds: float = 0.0) -> None:
+        """Record a failed request.
+
+        Args:
+            elapsed_seconds: Time taken before failure
+        """
+        with self._lock:
+            self.requests_failed += 1
+            self.total_elapsed_seconds += elapsed_seconds
+
+    def record_timeout(self, elapsed_seconds: float = 0.0) -> None:
+        """Record a timeout failure.
+
+        Args:
+            elapsed_seconds: Time taken before timeout
+        """
+        with self._lock:
+            self.requests_timeout += 1
+            self.requests_failed += 1
+            self.total_elapsed_seconds += elapsed_seconds
+
+    def get_summary(self) -> dict:
+        """Get metrics summary.
+
+        Returns:
+            Dictionary with metrics:
+            - requests_total: Total requests
+            - requests_success: Successful requests
+            - requests_failed: Failed requests (including timeouts)
+            - requests_timeout: Timeout failures
+            - avg_elapsed_seconds: Average request time
+            - success_rate: Percentage of successful requests
+        """
+        with self._lock:
+            avg_elapsed = (
+                self.total_elapsed_seconds / self.requests_total
+                if self.requests_total > 0
+                else 0.0
+            )
+            success_rate = (
+                (self.requests_success / self.requests_total * 100)
+                if self.requests_total > 0
+                else 0.0
+            )
+
+            return {
+                "requests_total": self.requests_total,
+                "requests_success": self.requests_success,
+                "requests_failed": self.requests_failed,
+                "requests_timeout": self.requests_timeout,
+                "avg_elapsed_seconds": round(avg_elapsed, 3),
+                "success_rate": round(success_rate, 1),
+            }
 
 
 @dataclass
@@ -57,17 +150,40 @@ class SECClient:
     # Rate limiting: SEC requests max 10 requests per second
     MIN_REQUEST_INTERVAL = 0.11  # slightly over 100ms to be safe
 
-    def __init__(self, user_agent: str = "filings-reviewer info@example.com"):
+    def __init__(
+        self,
+        user_agent: str = "filings-reviewer info@example.com",
+        http_client: Optional[HTTPClient] = None,
+        metrics: Optional[SECClientMetrics] = None,
+    ):
         """
         Initialize SEC client.
 
         Args:
             user_agent: User agent string for SEC requests.
                 MUST include company name and contact email per SEC policy.
+            http_client: Optional HTTP client implementation. If None, creates
+                RequestsHTTPClient with the provided user_agent. Allows injecting
+                mock clients for testing.
+            metrics: Optional metrics collector for tracking request statistics.
+                If None, metrics collection is disabled.
         """
         self.user_agent = user_agent
+
+        # Use provided client or create default RequestsHTTPClient
+        if http_client is None:
+            self._http_client = RequestsHTTPClient(user_agent=user_agent)
+        else:
+            self._http_client = http_client
+
+        # Optional metrics collection
+        self._metrics = metrics
+
+        # Keep session for backward compatibility with existing code
+        # TODO: Remove once all code migrated to http_client
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
+
         self._last_request_time = 0.0
 
     def _rate_limit(self):
@@ -77,27 +193,128 @@ class SECClient:
             time.sleep(self.MIN_REQUEST_INTERVAL - elapsed)
         self._last_request_time = time.time()
 
-    def _make_request(self, url: str, params: Optional[dict] = None) -> dict:
+    def _make_request(self, url: str, params: Optional[dict] = None, max_retries: int = 3) -> dict:
         """
-        Make a rate-limited request to SEC.
+        Make a rate-limited request to SEC with retry logic.
+
+        Implements exponential backoff for transient failures:
+        - Retry on 5xx errors and timeouts
+        - Skip retry on 4xx errors (client errors)
+        - Backoff delays: 1s, 2s, 4s (max 3 retries)
 
         Args:
             url: URL to request
             params: Query parameters
+            max_retries: Maximum number of retry attempts (default: 3)
 
         Returns:
             JSON response as dict
 
         Raises:
-            requests.HTTPError: If request fails
+            SECRateLimitError: If 429 rate limit exceeded
+            SECDataError: If response is malformed JSON
+            requests.HTTPError: If request fails after retries
+            TimeoutError: If request times out after retries
         """
-        self._rate_limit()
+        import json as json_module
 
-        logger.debug(f"Requesting: {url}")
-        response = self.session.get(url, params=params)
-        response.raise_for_status()
+        for attempt in range(max_retries + 1):
+            request_start_time = time.time()
 
-        return response.json()
+            try:
+                self._rate_limit()
+
+                logger.debug(f"Requesting: {url} (attempt {attempt + 1}/{max_retries + 1})")
+
+                # Record request attempt
+                if self._metrics:
+                    self._metrics.record_request()
+
+                # Use HTTP client for request
+                http_response = self._http_client.get(url, timeout=10.0)
+
+                # Log timing
+                logger.debug(f"Request completed in {http_response.elapsed_seconds:.3f}s")
+
+                # Parse JSON response
+                try:
+                    data = json_module.loads(http_response.content)
+
+                    # Record success
+                    if self._metrics:
+                        self._metrics.record_success(http_response.elapsed_seconds)
+
+                    return data
+
+                except json_module.JSONDecodeError as e:
+                    # Invalid JSON is a non-retryable error
+                    elapsed = time.time() - request_start_time
+                    if self._metrics:
+                        self._metrics.record_failure(elapsed)
+
+                    preview = http_response.content[:200].decode('utf-8', errors='replace')
+                    raise SECDataError(
+                        f"Invalid JSON response from {url}: {e}",
+                        url=url,
+                        response_preview=preview
+                    )
+
+            except requests.HTTPError as e:
+                elapsed = time.time() - request_start_time
+                status_code = e.response.status_code if hasattr(e, 'response') else None
+
+                # Record failure for all HTTP errors
+                if self._metrics:
+                    self._metrics.record_failure(elapsed)
+
+                # Handle rate limiting (429)
+                if status_code == 429:
+                    logger.warning(f"Rate limit exceeded for {url}")
+                    raise SECRateLimitError(f"Rate limit exceeded: {url}")
+
+                # 4xx errors (client errors) - don't retry
+                if status_code and 400 <= status_code < 500:
+                    logger.debug(f"Client error {status_code} for {url} - not retrying")
+                    raise
+
+                # 5xx errors (server errors) - retry with backoff
+                if status_code and status_code >= 500:
+                    if attempt < max_retries:
+                        backoff_delay = 2 ** attempt  # 1s, 2s, 4s
+                        logger.warning(
+                            f"Server error {status_code} for {url}. "
+                            f"Retrying in {backoff_delay}s (attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        time.sleep(backoff_delay)
+                        continue
+                    else:
+                        logger.error(f"Server error {status_code} for {url} - max retries exceeded")
+                        raise
+
+                # Unknown status - don't retry
+                raise
+
+            except TimeoutError:
+                elapsed = time.time() - request_start_time
+
+                # Record timeout
+                if self._metrics:
+                    self._metrics.record_timeout(elapsed)
+
+                if attempt < max_retries:
+                    backoff_delay = 2 ** attempt
+                    logger.warning(
+                        f"Timeout for {url}. Retrying in {backoff_delay}s "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
+                    )
+                    time.sleep(backoff_delay)
+                    continue
+                else:
+                    logger.error(f"Timeout for {url} - max retries exceeded")
+                    raise
+
+        # Should never reach here
+        raise RuntimeError(f"Unexpected end of retry loop for {url}")
 
     def search_filings(
         self,
@@ -190,10 +407,12 @@ class SECClient:
 
         # Fetch and parse index file
         self._rate_limit()
-        response = self.session.get(url)
-        response.raise_for_status()
+        http_response = self._http_client.get(url, timeout=10.0)
 
-        return self._parse_master_index(response.text, form_types)
+        # Decode bytes to text
+        response_text = http_response.content.decode('utf-8', errors='replace')
+
+        return self._parse_master_index(response_text, form_types)
 
     def _parse_master_index(
         self, index_text: str, form_types: List[str]
@@ -307,11 +526,8 @@ class SECClient:
         )
 
         try:
-            self._rate_limit()
-            response = self.session.get(index_url)
-            response.raise_for_status()
-
-            data = response.json()
+            # Use _make_request for JSON with retry logic
+            data = self._make_request(index_url)
             directory = data.get("directory", {})
             items = directory.get("item", [])
 

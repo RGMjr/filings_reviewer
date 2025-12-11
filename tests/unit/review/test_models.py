@@ -6,6 +6,7 @@ Tests validation, serialization, and business rules for:
 - ReviewCandidate
 - ReviewDecision
 - LearnedPattern
+- ProcessingStats
 """
 
 from decimal import Decimal
@@ -18,6 +19,7 @@ from src.review.models import (
     ReviewCandidate,
     ReviewDecision,
     LearnedPattern,
+    ProcessingStats,
     KEYWORD_POSITIONS,
     NUMBER_FORMATS,
     REVIEW_STATUSES,
@@ -945,3 +947,52 @@ class TestEnumerationConstants:
         assert "approved" in PATTERN_STATUSES
         assert "rejected" in PATTERN_STATUSES
         assert "deprecated" in PATTERN_STATUSES
+
+
+class TestProcessingStats:
+    """Tests for ProcessingStats dataclass."""
+
+    def test_segment_success_rate_with_normal_values(self):
+        """Should calculate segment success rate correctly."""
+        stats = ProcessingStats(
+            segments_processed=8,
+            segments_failed=2,
+        )
+        assert stats.segment_success_rate == 0.8  # 8 / (8 + 2)
+
+    def test_segment_success_rate_with_zero_total(self):
+        """Should return 1.0 when no segments processed."""
+        stats = ProcessingStats()
+        assert stats.segment_success_rate == 1.0
+
+    def test_number_success_rate_with_normal_values(self):
+        """Should calculate number success rate correctly."""
+        stats = ProcessingStats(
+            numbers_found=95,
+            numbers_failed=5,
+        )
+        assert stats.number_success_rate == 0.95  # 95 / (95 + 5)
+
+    def test_number_success_rate_with_zero_total(self):
+        """Should return 1.0 when no numbers processed."""
+        stats = ProcessingStats()
+        assert stats.number_success_rate == 1.0
+
+    def test_log_summary_does_not_crash(self, caplog):
+        """Should log summary without errors."""
+        stats = ProcessingStats(
+            segments_processed=10,
+            segments_failed=1,
+            numbers_found=50,
+            candidates_generated=30,
+            false_positives_filtered=15,
+            duplicates_removed=5,
+        )
+
+        # Should not raise any exceptions
+        stats.log_summary(filing_id=123)
+
+        # Verify info message was logged
+        assert "Filing 123 stats" in caplog.text
+        assert "segments=10/11" in caplog.text
+        assert "candidates=30" in caplog.text

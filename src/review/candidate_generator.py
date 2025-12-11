@@ -15,12 +15,16 @@ Algorithm:
 
 import logging
 import re
-from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.extraction.metric_classifier import MetricClassifier
 from src.review.context_extraction import ContextExtractor, DEFAULT_CONTEXT_WORDS
+from src.review.exceptions import (
+    CandidateGenerationError,
+    NumberProcessingError,
+    SegmentProcessingError,
+)
 from src.review.false_positive_filter import (
     DATE_CONTEXT_PATTERNS,
     FALSE_POSITIVE_CONTEXT_PATTERNS,
@@ -41,105 +45,10 @@ from src.review.keyword_matching import (
     KeywordMatch,
     KeywordMatcher,
 )
-from src.review.models import CandidateFeatures, ReviewCandidate
+from src.review.models import CandidateFeatures, ProcessingStats, ReviewCandidate
 from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Custom Exceptions
-# =============================================================================
-
-
-class CandidateGenerationError(Exception):
-    """Base exception for candidate generation errors."""
-
-    pass
-
-
-class SegmentProcessingError(CandidateGenerationError):
-    """Error processing a specific segment."""
-
-    def __init__(
-        self,
-        message: str,
-        segment_id: Optional[int] = None,
-        original_error: Optional[Exception] = None,
-    ):
-        super().__init__(message)
-        self.segment_id = segment_id
-        self.original_error = original_error
-
-
-class NumberProcessingError(CandidateGenerationError):
-    """Error processing a specific number match."""
-
-    def __init__(
-        self,
-        message: str,
-        number_text: Optional[str] = None,
-        position: Optional[int] = None,
-        original_error: Optional[Exception] = None,
-    ):
-        super().__init__(message)
-        self.number_text = number_text
-        self.position = position
-        self.original_error = original_error
-
-
-@dataclass
-class ProcessingStats:
-    """Statistics from candidate generation processing."""
-
-    segments_processed: int = 0
-    segments_failed: int = 0
-    numbers_found: int = 0
-    numbers_failed: int = 0
-    candidates_generated: int = 0
-    false_positives_filtered: int = 0
-    filtered_by_learned_rules: int = 0
-    duplicates_removed: int = 0
-
-    @property
-    def segment_success_rate(self) -> float:
-        """Percentage of segments successfully processed."""
-        total = self.segments_processed + self.segments_failed
-        if total == 0:
-            return 1.0
-        return self.segments_processed / total
-
-    @property
-    def number_success_rate(self) -> float:
-        """Percentage of numbers successfully processed."""
-        total = self.numbers_found + self.numbers_failed
-        if total == 0:
-            return 1.0
-        return self.numbers_found / total
-
-    def log_summary(self, filing_id: int) -> None:
-        """Log a summary of processing stats."""
-        logger.info(
-            f"Filing {filing_id} stats: "
-            f"segments={self.segments_processed}/{self.segments_processed + self.segments_failed}, "
-            f"numbers={self.numbers_found}, "
-            f"filtered={self.false_positives_filtered}, "
-            f"learned_rules_filtered={self.filtered_by_learned_rules}, "
-            f"duplicates={self.duplicates_removed}, "
-            f"candidates={self.candidates_generated}"
-        )
-        if self.segments_failed > 0:
-            logger.warning(
-                f"Filing {filing_id}: {self.segments_failed} segments failed to process"
-            )
-        if self.numbers_failed > 0:
-            logger.warning(
-                f"Filing {filing_id}: {self.numbers_failed} numbers failed to process"
-            )
-        if self.duplicates_removed > 0:
-            logger.debug(
-                f"Filing {filing_id}: {self.duplicates_removed} duplicate candidates removed"
-            )
 
 
 # =============================================================================
