@@ -244,6 +244,9 @@ def create_app(config_name: Optional[str] = None, config_override: Optional[Dict
     # Register template context processors
     _register_context_processors(app)
 
+    # Register template filters
+    _register_template_filters(app)
+
     logger.info(f"Flask app created with config: {config_name}")
 
     return app
@@ -302,6 +305,33 @@ def _register_context_processors(app: Flask) -> None:
             "app_name": "Filings Review",
             "app_version": "0.1.0",
         }
+
+
+def _register_template_filters(app: Flask) -> None:
+    """Register custom Jinja2 template filters."""
+
+    @app.template_filter("highlight_context")
+    def highlight_context_filter(context_text, raw_number_text, triggering_keyword):
+        """
+        Jinja2 filter to highlight number and keyword in context text.
+
+        Usage in template:
+            {{ candidate.context_text|highlight_context(
+                 candidate.raw_number_text,
+                 candidate.triggering_keyword
+               )|safe }}
+
+        Args:
+            context_text: The surrounding text context
+            raw_number_text: Exact number text to highlight
+            triggering_keyword: Metric keyword to underline
+
+        Returns:
+            Markup: HTML-safe string with highlighted number and keyword
+        """
+        from src.web.routes.review import _highlight_context
+
+        return _highlight_context(context_text, raw_number_text, triggering_keyword)
 
 
 # Convenience function for running directly
