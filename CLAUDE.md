@@ -296,10 +296,10 @@ The SQL files in `sql/` are automatically applied when the container first start
 ## Testing Standards
 
 - **Minimum coverage**: 75% (enforced in pyproject.toml)
-- **Current coverage**: 77% overall (467 tests passing)
+- **Current coverage**: 83% overall (475+ tests passing)
   - Core extraction modules: 80-100% coverage
+  - Infrastructure modules: 87-100% coverage (SECClient, Pool, Validation, HTTPClient)
   - LLM modules: 88-95% coverage
-  - Validation module: 100% coverage
 - **Test structure**: `tests/unit/` for fast isolated tests, `tests/integration/` for database tests
 - **Configuration**: All pytest, coverage, black, and ruff settings in `pyproject.toml`
 
@@ -332,6 +332,9 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | OpenAIClient | Complete | 88% |
 | PromptTemplates | Complete | 95% |
 | Validation | Complete | 100% |
+| SECClient | Complete | 87% |
+| ConnectionPool | Complete | 90% |
+| HTTPClient | Complete | 97% |
 | ReviewModels | Complete | 56% |
 | CandidateGenerator | Complete | 98% (modular) |
 | FeatureExtractor | Complete | 100% |

@@ -12,6 +12,11 @@ from src.review.candidate_generator import (
     CandidateGenerator,
     generate_candidates_for_filing,
 )
+from src.review.exceptions import (
+    CandidateGenerationError,
+    NumberProcessingError,
+    SegmentProcessingError,
+)
 from src.review.feature_extractor import (
     DEFINITION_PATTERNS,
     PERIOD_PATTERNS,
@@ -23,6 +28,7 @@ from src.review.feature_extractor import (
 from src.review.models import (
     CandidateFeatures,
     LearnedPattern,
+    ProcessingStats,
     ReviewCandidate,
     ReviewDecision,
 )
@@ -33,6 +39,11 @@ __all__ = [
     "ReviewCandidate",
     "ReviewDecision",
     "LearnedPattern",
+    "ProcessingStats",
+    # Exceptions
+    "CandidateGenerationError",
+    "SegmentProcessingError",
+    "NumberProcessingError",
     # Feature extraction
     "FeatureExtractor",
     "compute_features",
