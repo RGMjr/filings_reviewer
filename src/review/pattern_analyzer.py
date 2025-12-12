@@ -28,8 +28,9 @@ Usage:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+from src.infra.db import DatabaseAdapter
 from src.review.models import CandidateFeatures, LearnedPattern
 from src.review.statistical_tests import (
     chi_squared_test,
@@ -93,7 +94,7 @@ class PatternAnalyzer:
 
     def __init__(
         self,
-        db_adapter,
+        db_adapter: DatabaseAdapter,
         min_pattern_precision: float = 0.75,
         min_pattern_support: int = 5,
         min_sample_size: int = 30,
@@ -481,7 +482,7 @@ class PatternAnalyzer:
         self,
         decisions_data: List[Dict[str, Any]],
         k: int = 5,
-    ) -> List[tuple]:
+    ) -> List[Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
         """
         Perform stratified k-fold split of decision data.
 
@@ -503,7 +504,7 @@ class PatternAnalyzer:
         import random
 
         # Group by decision type
-        decision_groups = {}
+        decision_groups: Dict[str, List[Dict[str, Any]]] = {}
         for d in decisions_data:
             decision = d["decision"]
             if decision not in decision_groups:
@@ -551,7 +552,7 @@ class PatternAnalyzer:
     def _get_significant_features(
         self,
         decisions_data: List[Dict[str, Any]],
-    ) -> set:
+    ) -> Set[str]:
         """
         Identify statistically significant features.
 
@@ -809,13 +810,15 @@ class PatternAnalyzer:
         filtered_patterns = []
         for pattern in patterns:
             if (
-                pattern.precision_score >= self.min_pattern_precision
+                pattern.precision_score is not None
+                and pattern.precision_score >= self.min_pattern_precision
+                and pattern.sample_count is not None
                 and pattern.sample_count >= self.min_pattern_support
             ):
                 filtered_patterns.append(pattern)
 
-        # Sort by F1 score descending
-        filtered_patterns.sort(key=lambda p: p.f1_score, reverse=True)
+        # Sort by F1 score descending (treat None as 0.0)
+        filtered_patterns.sort(key=lambda p: p.f1_score if p.f1_score is not None else 0.0, reverse=True)
 
         evaluation_method = "database-side" if use_db_evaluation else "Python-side"
         self.logger.info(
@@ -902,8 +905,8 @@ class PatternAnalyzer:
         splits = self._stratified_k_fold_split(decisions_data, k=k)
 
         # Store metrics for each pattern across folds
-        # Key: pattern_name -> List[Dict] with metrics for each fold
-        pattern_fold_metrics = {}
+        # Key: pattern_name -> Dict with "pattern" and "fold_metrics" List[Dict]
+        pattern_fold_metrics: Dict[str, Dict[str, Any]] = {}
 
         # Evaluate each fold
         for fold_idx, (train_data, test_data) in enumerate(splits):
@@ -1080,8 +1083,8 @@ class PatternAnalyzer:
             - Both have same pattern_type
             - Example: is_in_table=True → reject (general) vs is_in_table=True AND keyword_distance>50 → reject (specific)
         """
-        contradictory_pairs: List[tuple] = []
-        redundant_pairs: List[tuple] = []
+        contradictory_pairs: List[Tuple[LearnedPattern, LearnedPattern]] = []
+        redundant_pairs: List[Tuple[LearnedPattern, LearnedPattern]] = []
         warnings: List[str] = []
 
         # Check all pairs of patterns
@@ -1135,7 +1138,7 @@ class PatternAnalyzer:
         }
 
     def _conditions_equivalent(
-        self, cond1: List[Dict], cond2: List[Dict]
+        self, cond1: List[Dict[str, Any]], cond2: List[Dict[str, Any]]
     ) -> bool:
         """
         Check if two condition lists are equivalent (same field, op, value).
@@ -1151,7 +1154,7 @@ class PatternAnalyzer:
             return False
 
         # Normalize conditions for comparison (sort by field name)
-        def normalize(cond: Dict) -> tuple:
+        def normalize(cond: Dict[str, Any]) -> Tuple[Any, Any, Any]:
             return (cond.get("field"), cond.get("op"), cond.get("value"))
 
         norm1 = sorted([normalize(c) for c in cond1])
@@ -1160,7 +1163,7 @@ class PatternAnalyzer:
         return norm1 == norm2
 
     def _is_subset_conditions(
-        self, general: List[Dict], specific: List[Dict]
+        self, general: List[Dict[str, Any]], specific: List[Dict[str, Any]]
     ) -> bool:
         """
         Check if general conditions are a subset of specific conditions.
@@ -1177,7 +1180,7 @@ class PatternAnalyzer:
             return False  # Not a proper subset
 
         # Normalize conditions
-        def normalize(cond: Dict) -> tuple:
+        def normalize(cond: Dict[str, Any]) -> Tuple[Any, Any, Any]:
             return (cond.get("field"), cond.get("op"), cond.get("value"))
 
         gen_set = set([normalize(c) for c in general])
@@ -1190,7 +1193,7 @@ class PatternAnalyzer:
         self,
         decisions_data: List[Dict[str, Any]],
         target_decision: str,
-        significant_features: Optional[set] = None,
+        significant_features: Optional[Set[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Generate single-feature candidate patterns.
@@ -1309,7 +1312,7 @@ class PatternAnalyzer:
         self,
         decisions_data: List[Dict[str, Any]],
         target_decision: str,
-        significant_features: Optional[set] = None,
+        significant_features: Optional[Set[str]] = None,
         max_features: int = 5,
     ) -> List[Dict[str, Any]]:
         """
@@ -1569,7 +1572,7 @@ class PatternAnalyzer:
             precision_score=metrics["precision"],
             recall_score=metrics["recall"],
             f1_score=metrics["f1_score"],
-            sample_count=metrics["support"],
+            sample_count=int(metrics["support"]),
             status="candidate",
         )
 
@@ -1719,8 +1722,8 @@ class PatternAnalyzer:
         )
 
         # Build base WHERE clause for filing/metric filters
-        base_where_parts = []
-        base_params = []
+        base_where_parts: List[str] = []
+        base_params: List[Any] = []
 
         if filing_id is not None:
             base_where_parts.append("rc.filing_id = %s")
@@ -1925,6 +1928,7 @@ class PatternAnalyzer:
             # Determine status
             if (
                 auto_approve_threshold is not None
+                and pattern.precision_score is not None
                 and pattern.precision_score >= auto_approve_threshold
             ):
                 pattern.status = "approved"

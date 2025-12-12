@@ -7,6 +7,62 @@ and magnitude suffixes (million, billion, etc.).
 
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Number parsing happens automatically
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Each candidate has parsed_value field (Decimal)
+    >>> print(candidates[0].parsed_value)  # e.g., Decimal("50000")
+    >>> print(candidates[0].raw_number_text)  # e.g., "50,000"
+
+Direct Usage (advanced):
+    >>> from src.review.number_parsing import NumberParser
+    >>>
+    >>> # Initialize parser
+    >>> parser = NumberParser()
+    >>>
+    >>> # Find all numbers in text
+    >>> text = "We have $50,000 active customers and $100M in revenue."
+    >>> numbers = parser.find_numbers(text)
+    >>> for num in numbers:
+    ...     print(f"{num.raw_text} -> {num.value} {num.unit}")
+    >>> # Output:
+    >>> # "$50,000" -> 50000 currency
+    >>> # "$100M" -> 100000000 currency
+
+Supported Number Formats:
+    >>> # Simple integers
+    >>> parser.parse_number("$50,000")  # -> (Decimal("50000"), "currency")
+    >>> parser.parse_number("95%")      # -> (Decimal("95"), "percentage")
+    >>>
+    >>> # Decimals
+    >>> parser.parse_number("1.25")     # -> (Decimal("1.25"), "count")
+    >>> parser.parse_number("$12.50")   # -> (Decimal("12.50"), "currency")
+    >>>
+    >>> # Magnitude suffixes
+    >>> parser.parse_number("$100M")    # -> (Decimal("100000000"), "currency")
+    >>> parser.parse_number("2.5B")     # -> (Decimal("2500000000"), "count")
+    >>> parser.parse_number("500K")     # -> (Decimal("500000"), "count")
+    >>>
+    >>> # Negative numbers
+    >>> parser.parse_number("-45")      # -> (Decimal("-45"), "count")
+
+Understanding Units:
+    >>> # Units are determined by number format:
+    >>> # - "currency": Has $ prefix
+    >>> # - "percentage": Has % suffix
+    >>> # - "count": Everything else (default)
+    >>>
+    >>> # Units used for feature extraction and confidence scoring
+
+See Also:
+    - candidate_generator.py: Uses NumberParser internally
+    - false_positive_filter.py: Filters parsed numbers
 """
 
 import logging

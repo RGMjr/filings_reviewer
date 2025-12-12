@@ -290,10 +290,66 @@ benchmark: 5.2.3 (
 
 ## Future Work
 
+### High Priority
+
 1. **Memory Profiling**: Run memory tests separately and document results
+   - Current status: Memory tests implemented but not run with benchmark suite
+   - Action: Run memory profiling and establish baseline memory limits
+   - Target: <100MB peak memory for 500-segment filing
+
 2. **Database Performance**: Test with realistic learned patterns (1000+ patterns)
+   - Current: Tested with empty pattern set (0% overhead)
+   - Action: Generate 1000+ learned patterns from production review decisions
+   - Goal: Confirm <5% performance impact with realistic pattern load
+
+### Medium Priority
+
 3. **Concurrency Testing**: Test thread-safety and parallel processing
+   - Verify CandidateGenerator is thread-safe for parallel filing processing
+   - Test multiprocessing performance (4-8 workers) on batch jobs
+   - Measure overhead vs theoretical 4x/8x speedup
+
 4. **Production Validation**: Compare benchmark results with production metrics
+   - Deploy to production environment
+   - Monitor actual filing processing times
+   - Compare p95/p99 latencies against benchmark predictions
+   - Validate throughput claims (24-119 filings/sec)
+
+### Low Priority
+
+5. **Stress Testing**: Test with extreme inputs
+   - Very large filings (1000+ segments)
+   - High metric density (10+ numbers per segment)
+   - Edge cases (empty segments, malformed HTML)
+   - Memory behavior under sustained load (1000 consecutive filings)
+
+6. **Configuration Performance**: Test performance impact of config presets
+   - Benchmark high_precision_config (stricter filtering)
+   - Benchmark high_recall_config (looser filtering)
+   - Benchmark fast_config (disabled confidence scoring)
+   - Document performance trade-offs for each preset
+
+### Completed Optimizations (2025-12-12)
+
+✅ **P1.2: Word Position Caching** - Implemented and enabled by default
+   - Avoids re-parsing text for multiple context extractions
+   - ~10-20x speedup for repeated extractions from same segment
+   - Enabled via `cache_word_positions=True` in config (default)
+
+✅ **Config System Documentation** - All configuration options documented
+   - Usage examples added to 8 module docstrings
+   - Config presets (high precision, high recall, fast) fully documented
+   - Custom configuration patterns demonstrated
+
+✅ **Module Documentation** - Comprehensive usage examples added
+   - candidate_generator.py: Basic usage, presets, custom config, statistics
+   - confidence_scoring.py: Automatic usage, custom weights, interpretation
+   - helpers.py: Convenience wrappers, batch processing, error handling
+   - context_extraction.py: Automatic usage, window sizing, optimization
+   - false_positive_filter.py: Configuration, disabling, filter reasons
+   - feature_extractor.py: Feature categories, derived features, E1 integration
+   - keyword_matching.py: Proximity threshold adjustment, distance calculation
+   - number_parsing.py: Supported formats, unit interpretation
 
 ---
 

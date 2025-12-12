@@ -9,6 +9,71 @@ determine which keywords are near which numbers. It handles:
 
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Keyword matching happens automatically
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Each candidate has triggering_keyword field
+    >>> print(candidates[0].triggering_keyword)  # e.g., "active customers"
+
+Direct Usage (advanced):
+    >>> from src.review.keyword_matching import KeywordMatcher
+    >>> from src.review.number_parsing import NumberMatch
+    >>> from decimal import Decimal
+    >>>
+    >>> # Initialize matcher
+    >>> matcher = KeywordMatcher(max_keyword_distance=100)
+    >>>
+    >>> # Find all keywords in text
+    >>> text = "We have 50,000 active customers and $100M in revenue."
+    >>> keywords = matcher.find_all_keywords(text)
+    >>> print(f"Found {len(keywords)} keyword matches")
+    >>>
+    >>> # Find keywords near a specific number
+    >>> number = NumberMatch(
+    ...     start=8, end=14, raw_text="50,000", value=Decimal("50000"), unit="count"
+    ... )
+    >>> nearby = matcher.find_keywords_near_number(number, keywords)
+    >>> for kw in nearby:
+    ...     print(f"{kw.keyword} (metric: {kw.metric_id}, distance: {kw.distance})")
+
+Adjusting Proximity Threshold:
+    >>> from src.review.config import CandidateGenerationConfig
+    >>>
+    >>> # Stricter proximity (high precision)
+    >>> config = CandidateGenerationConfig(
+    ...     max_keyword_distance=50,  # Only match if within 50 chars
+    ... )
+    >>> generator = CandidateGenerator(config=config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>>
+    >>> # Looser proximity (high recall)
+    >>> config = CandidateGenerationConfig(
+    ...     max_keyword_distance=150,  # Match within 150 chars
+    ... )
+    >>> generator = CandidateGenerator(config=config)
+
+Understanding Distance Calculation:
+    >>> # Distance is character distance between spans
+    >>> # If keyword ends at position 50 and number starts at 60:
+    >>> # distance = 60 - 50 = 10 characters
+    >>> # Whitespace counts toward distance
+    >>>
+    >>> # Example: "active customers 50,000"
+    >>> # Keyword: "active customers" (positions 0-16)
+    >>> # Number: "50,000" (positions 17-23)
+    >>> # Distance: 17 - 16 = 1 character
+
+See Also:
+    - candidate_generator.py: Uses KeywordMatcher internally
+    - config.py: Configure max_keyword_distance
 """
 
 import logging
@@ -95,7 +160,7 @@ class KeywordMatcher:
         self.max_keyword_distance = max_keyword_distance
 
         # Pre-compile all keyword patterns for reuse
-        self._compiled_patterns: Dict[str, List[Tuple[re.Pattern, str]]] = {}
+        self._compiled_patterns: Dict[str, List[Tuple[re.Pattern[str], str]]] = {}
         for metric_id, patterns in METRIC_KEYWORDS.items():
             self._compiled_patterns[metric_id] = [
                 (re.compile(pattern, re.IGNORECASE), pattern) for pattern in patterns
