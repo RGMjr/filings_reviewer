@@ -188,12 +188,13 @@ class FilingData(TypedDict):
 
 
 class CandidateData(TypedDict, total=False):
-    """Structure of a review candidate with optional decision fields.
+    """Structure of a review candidate with optional segment and decision fields.
 
     Used by: review.html (in candidates array and current_candidate)
 
-    Note: Uses total=False because decision fields (decision_id, decision, etc.)
-    are only present when a candidate has been reviewed.
+    Note: Uses total=False because segment fields (segment_type, segment_html)
+    and decision fields (decision_id, decision, etc.) may be NULL depending on
+    whether the candidate has a source_segment_id or has been reviewed.
     """
     # Core candidate fields (always present)
     candidate_id: int
@@ -211,6 +212,11 @@ class CandidateData(TypedDict, total=False):
     suggestion_confidence: float
     review_status: str  # 'pending', 'reviewed', 'skipped'
     created_at: datetime
+
+    # Segment fields (from LEFT JOIN to source_segments)
+    segment_type: Optional[str]  # 'table', 'paragraph', etc. - NULL if no source_segment_id
+    segment_html: Optional[str]  # Raw HTML of segment - NULL if no source_segment_id
+    features: Optional[Dict]  # JSONB features for ML pattern analysis
 
     # Decision fields (present only if reviewed - from LEFT JOIN)
     decision_id: Optional[int]

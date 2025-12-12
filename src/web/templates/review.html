@@ -116,13 +116,34 @@
                             </div>
 
                             {# 3a. Context Display with highlighting #}
-                            <h6 class="text-muted mb-2">Context</h6>
-                            <div class="context-text mb-4 {% if current_candidate.features and current_candidate.features.get('is_in_table') %}from-table{% endif %}">
-                                {{ current_candidate.context_text|highlight_context(
-                                     current_candidate.raw_number_text,
-                                     current_candidate.triggering_keyword
-                                   )|safe }}
-                            </div>
+                            <h6 class="text-muted mb-2">Context
+                                {% if current_candidate.segment_type == 'table' %}
+                                    <span class="badge bg-info ms-2">Table</span>
+                                {% endif %}
+                            </h6>
+
+                            {% if current_candidate.segment_type == 'table' and current_candidate.segment_html %}
+                                {# Display HTML table with highlighting #}
+                                <div class="table-context mb-4">
+                                    <div class="alert alert-info mb-2" role="alert">
+                                        <small><i class="bi bi-info-circle"></i> This value appears in a table. The table below shows the full context with the candidate value highlighted in yellow.</small>
+                                    </div>
+                                    <div class="table-responsive">
+                                        {{ current_candidate.segment_html|highlight_context(
+                                             current_candidate.raw_number_text,
+                                             current_candidate.triggering_keyword
+                                           )|safe }}
+                                    </div>
+                                </div>
+                            {% else %}
+                                {# Display text context #}
+                                <div class="context-text mb-4">
+                                    {{ current_candidate.context_text|highlight_context(
+                                         current_candidate.raw_number_text,
+                                         current_candidate.triggering_keyword
+                                       )|safe }}
+                                </div>
+                            {% endif %}
 
                             {# 3b. Extracted Value Display #}
                             <div class="card mb-3">
