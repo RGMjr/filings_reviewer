@@ -105,24 +105,24 @@ class ManualTestSetup:
             return False
 
     def _ensure_schema(self) -> bool:
-        """Ensure review schema exists."""
-        logger.info("Checking review schema...")
+        """Ensure review tables exist."""
+        logger.info("Checking review tables...")
 
-        # Check if review.candidates table exists
+        # Check if review_candidates table exists (in public schema)
         result = self.db.query("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
-                WHERE table_schema = 'review'
-                AND table_name = 'candidates'
+                WHERE table_schema = 'public'
+                AND table_name = 'review_candidates'
             );
         """)
 
         if result and result[0]["exists"]:
-            logger.info("✓ Review schema exists")
+            logger.info("✓ Review tables exist")
             return True
         else:
-            logger.warning("✗ Review schema not found")
-            logger.info("Run: psql < sql/07_create_review_schema.sql")
+            logger.warning("✗ Review tables not found")
+            logger.info("Run: PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis < sql/07_create_review_schema.sql")
             return False
 
     def _process_company(self, company_name: str, config: Dict) -> None:
@@ -298,7 +298,7 @@ class ManualTestSetup:
         try:
             # Check if candidates already exist
             existing = self.db.query(
-                "SELECT COUNT(*) FROM review.candidates WHERE filing_id = %(filing_id)s;",
+                "SELECT COUNT(*) FROM review_candidates WHERE filing_id = %(filing_id)s;",
                 {"filing_id": filing_id}
             )
 
@@ -335,8 +335,8 @@ class ManualTestSetup:
                 (SELECT COUNT(*) FROM companies) as companies,
                 (SELECT COUNT(*) FROM filings) as filings,
                 (SELECT COUNT(*) FROM source_segments) as segments,
-                (SELECT COUNT(*) FROM review.candidates) as candidates,
-                (SELECT COUNT(*) FROM review.decisions) as decisions;
+                (SELECT COUNT(*) FROM review_candidates) as candidates,
+                (SELECT COUNT(*) FROM review_decisions) as decisions;
         """)
 
         if result:
@@ -363,8 +363,8 @@ class ManualTestSetup:
                 COUNT(rd.decision_id) as decision_count
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
-            LEFT JOIN review.candidates rc ON f.filing_id = rc.filing_id
-            LEFT JOIN review.decisions rd ON rc.candidate_id = rd.candidate_id
+            LEFT JOIN review_candidates rc ON f.filing_id = rc.filing_id
+            LEFT JOIN review_decisions rd ON rc.candidate_id = rd.candidate_id
             GROUP BY f.filing_id, c.company_name
             HAVING COUNT(rc.candidate_id) > 0
             ORDER BY f.filing_id;
