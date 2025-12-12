@@ -31,19 +31,8 @@ from src.review.helpers import generate_candidates_for_filing
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
-# Test companies configuration
-TEST_COMPANIES = {
-    "Farfetch": {
-        "cik": "0001740915",
-        "name": "Farfetch Ltd",
-        "ticker": "FTCH",
-    },
-    "Samsara": {
-        "cik": "0001828269",
-        "name": "Samsara Inc.",
-        "ticker": "IOT",
-    }
-}
+# Use real filings from data/filings directory
+# (These will be auto-discovered, no hardcoded test companies)
 
 
 class ManualTestSetup:
@@ -75,10 +64,8 @@ class ManualTestSetup:
             if not self._ensure_schema():
                 return False
 
-            # Step 3: Process test companies
-            for company_name, config in TEST_COMPANIES.items():
-                logger.info(f"\n--- Processing {company_name} ---")
-                self._process_company(company_name, config)
+            # Step 3: Find and process real filing files
+            self._process_real_filings()
 
             # Step 4: Generate candidates for existing filings
             self._process_existing_filings()
@@ -128,26 +115,64 @@ class ManualTestSetup:
             logger.info("Run: PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis < sql/07_create_review_schema.sql")
             return False
 
-    def _process_company(self, company_name: str, config: Dict) -> None:
-        """Process a single company's filings."""
-        cik = config["cik"]
+    def _process_real_filings(self) -> None:
+        """Find and process real filing files from data/filings directory."""
+        logger.info("\n--- Finding real filing files ---")
 
-        # Step 1: Ensure company exists
-        company_id = self._ensure_company(config)
-        if not company_id:
-            logger.warning(f"Could not create company {company_name}")
-            return
+        # Find primary.htm files (limit to 3 for manual testing)
+        filing_files = list(self.data_dir.glob("*/*/primary.htm"))[:3]
 
-        # Step 2: Find filing HTML files
-        filing_files = self._find_filing_files(cik)
         if not filing_files:
-            logger.warning(f"No filing files found for {company_name} (CIK: {cik})")
-            logger.info(f"Looked in: {self.data_dir / cik}")
+            logger.warning("No filing files found in data/filings")
+            logger.info("Looking for: data/filings/[CIK]/[accession]/primary.htm")
             return
 
-        # Step 3: Process each filing
-        for filing_path in filing_files[:1]:  # Process first filing only
+        logger.info(f"Found {len(filing_files)} filing file(s)")
+
+        for filing_path in filing_files:
+            # Extract CIK and accession from path
+            # Path format: data/filings/0001234567/000123456789012345/primary.htm
+            cik = filing_path.parent.parent.name
+            accession = filing_path.parent.name.replace("-", "")
+
+            logger.info(f"\nProcessing: CIK {cik}")
+
+            # Ensure company exists (create minimal record)
+            company_id = self._ensure_company_from_cik(cik)
+            if not company_id:
+                logger.warning(f"Could not create company for CIK {cik}")
+                continue
+
+            # Process the filing
             self._process_filing(company_id, filing_path)
+
+    def _ensure_company_from_cik(self, cik: str) -> Optional[int]:
+        """Ensure company exists, creating minimal record if needed."""
+        # Check if exists
+        result = self.db.query(
+            "SELECT company_id FROM companies WHERE cik = %(cik)s;",
+            {"cik": cik}
+        )
+
+        if result:
+            company_id = result[0]["company_id"]
+            logger.info(f"✓ Company exists (ID: {company_id})")
+            return company_id
+
+        # Create minimal company record
+        result = self.db.query("""
+            INSERT INTO companies (cik, company_name)
+            VALUES (%(cik)s, %(name)s)
+            RETURNING company_id;
+        """, {"cik": cik, "name": f"Company {cik}"})
+
+        if result:
+            company_id = result[0]["company_id"]
+            logger.info(f"✓ Created company (ID: {company_id})")
+            self.stats["companies_created"] += 1
+            return company_id
+
+        return None
 
     def _process_existing_filings(self) -> None:
         """Generate candidates for existing filings that don't have any."""
