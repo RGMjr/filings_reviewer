@@ -47,9 +47,10 @@ Claude: [Loads skill] "I'll create a plan following your A/B/C stream
 | Skill | File | Status | Use Case |
 |-------|------|--------|----------|
 | Implementation Planner | `.claude/skills/implementation-planner.md` | ✅ Ready | Generate structured plans with A/B/C streams |
-| Code Module Grader | TBD | ⬜ Planned | Evaluate modules A+ to F, generate improvements |
-| Test Coverage Analyzer | TBD | ⬜ Planned | Find gaps, generate test files |
-| Database Migration Helper | TBD | ⬜ Planned | Generate SQL migrations + db.py methods |
+| Flask API Builder | `.claude/skills/flask-api-builder.md` | ✅ Ready | Generate Flask routes, API endpoints, validation, tests |
+| Code Module Grader | `.claude/skills/code-module-grader.md` | ✅ Ready | Evaluate modules A+ to F, generate improvements |
+| Test Coverage Analyzer | `.claude/skills/test-coverage-analyzer.md` | ✅ Ready | Find gaps, generate test files, recommend quick wins |
+| Database Migration Helper | `.claude/skills/database-migration-helper.md` | ✅ Ready | Generate SQL migrations + db.py methods + tests |
 | Documentation Sync Validator | TBD | ⬜ Planned | Catch stale documentation |
 
 ---
@@ -460,9 +461,10 @@ Maintain a catalog of all skills:
 | Skill | Purpose | When to Use | Time Saved | Context Saved |
 |-------|---------|-------------|------------|---------------|
 | implementation-planner | Generate structured plans | Starting new features | 12 min | 90% |
-| code-module-grader | Evaluate code quality | After implementation | TBD | TBD |
-| test-coverage-analyzer | Find test gaps | Testing phase | TBD | TBD |
-| database-migration-helper | Generate migrations | Schema changes | TBD | TBD |
+| flask-api-builder | Generate Flask routes/APIs | Building web endpoints | 15 min | 70% |
+| code-module-grader | Evaluate code quality | After implementation | 10 min | 75% |
+| test-coverage-analyzer | Find test gaps | Testing phase | 8 min | 65% |
+| database-migration-helper | Generate migrations | Schema changes | 20 min | 70% |
 | documentation-sync-validator | Check doc accuracy | Monthly maintenance | TBD | TBD |
 
 Update after each skill creation.

@@ -82,7 +82,7 @@ class CandidateFeatures:
     # Additional computed features
     context_word_count: int = 0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
             raise ValueError(
@@ -181,7 +181,7 @@ class ReviewCandidate:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
             raise ValueError(
@@ -284,7 +284,7 @@ class ReviewDecision:
     decision_id: Optional[int] = None
     created_at: Optional[datetime] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate decision type, rejection category, and business rules."""
         if self.decision not in DECISION_TYPES:
             raise ValueError(
@@ -380,7 +380,7 @@ class LearnedPattern:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate pattern type and status."""
         if self.pattern_type not in PATTERN_TYPES:
             raise ValueError(

@@ -210,6 +210,142 @@ for pattern in patterns[:5]:
 
 **Documentation**: See `docs/E1_IMPROVEMENTS_TRACKING.md` for complete P1/P2 implementation details
 
+## Review Module Configuration
+
+The review system uses centralized configuration via `src/review/config.py`:
+
+### Basic Usage
+
+```python
+from src.review import CandidateGenerator
+from src.infra.db import DatabaseAdapter
+
+# Use default configuration
+db = DatabaseAdapter("postgresql://user:pass@localhost/filings_analysis")
+generator = CandidateGenerator()
+
+# Generate candidates for a filing
+segments = db.get_source_segments_for_filing(filing_id=123)
+candidates = generator.generate_for_filing(
+    filing_id=123,
+    company_id=456,
+    segments=segments,
+    db=db,
+)
+
+# Save to database
+db.bulk_insert_review_candidates([c.to_dict() for c in candidates])
+print(f"Generated {len(candidates)} candidates")
+```
+
+### Configuration Presets
+
+The system provides three presets for common scenarios:
+
+**High Precision** (minimize false positives):
+```python
+from src.review.config import get_high_precision_config
+
+# Stricter proximity, higher thresholds
+config = get_high_precision_config()
+generator = CandidateGenerator(config=config)
+
+# Results: Fewer candidates, higher quality, less review burden
+```
+
+**High Recall** (catch all potential metrics):
+```python
+from src.review.config import get_high_recall_config
+
+# Looser proximity, lower thresholds, disabled filtering
+config = get_high_recall_config()
+generator = CandidateGenerator(config=config)
+
+# Results: More candidates, may include false positives, comprehensive coverage
+```
+
+**Fast** (optimize for speed):
+```python
+from src.review.config import get_fast_config
+
+# Disable expensive computations (confidence scoring, pattern matching)
+config = get_fast_config()
+generator = CandidateGenerator(config=config)
+
+# Results: Faster processing, suitable for prototyping or large-scale batch processing
+```
+
+### Custom Configuration
+
+For fine-tuned control, create a custom configuration:
+
+```python
+from src.review.config import CandidateGenerationConfig
+
+# Adjust parameters for your use case
+custom_config = CandidateGenerationConfig(
+    max_keyword_distance=75,       # Moderate proximity (default: 100)
+    min_metric_value=50,           # Filter small numbers (default: 10)
+    apply_learned_rules=True,      # Use learned patterns from E1 (default: True)
+    min_pattern_precision=0.80,    # High-confidence patterns only (default: 0.75)
+    compute_confidence=True,       # Enable confidence scoring (default: True)
+    filter_false_positives=True,   # Enable FP filtering (default: True)
+    context_words=40,              # Context extraction window (default: 40)
+)
+generator = CandidateGenerator(config=custom_config)
+```
+
+### Convenience Wrapper
+
+For simple use cases, use the convenience wrapper:
+
+```python
+from src.review.helpers import generate_candidates_for_filing
+
+# One-liner for basic workflows
+candidates = generate_candidates_for_filing(
+    db=db,
+    filing_id=123,
+    company_id=456,
+)
+```
+
+### Configuration Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_keyword_distance` | 100 | Maximum characters between number and metric keyword |
+| `context_words` | 40 | Words to extract in each direction for context |
+| `min_metric_value` | 10 | Minimum numeric value to consider (filters single digits) |
+| `filter_false_positives` | True | Apply false positive filtering (dates, years, page refs) |
+| `filter_years` | True | Filter year-like numbers (1990-2100) |
+| `compute_confidence` | True | Compute confidence scores for candidates |
+| `apply_learned_rules` | True | Apply learned patterns from E1 filtering |
+| `min_pattern_precision` | 0.75 | Minimum precision for learned patterns to be applied |
+| `cache_word_positions` | True | Cache word positions for context extraction (P1.2 optimization) |
+
+### Backward Compatibility
+
+The generator maintains backward compatibility with individual parameters:
+
+```python
+# Old style (still works, but deprecated)
+generator = CandidateGenerator(
+    max_keyword_distance=50,
+    filter_false_positives=True,
+    min_value=100,
+)
+
+# New style (recommended)
+from src.review.config import CandidateGenerationConfig
+config = CandidateGenerationConfig(
+    max_keyword_distance=50,
+    filter_false_positives=True,
+    min_metric_value=100,
+)
+generator = CandidateGenerator(config=config)
+```
+
 ## Database Schema
 
 PostgreSQL with key tables:
@@ -271,7 +407,7 @@ python scripts/fetch_curated_sample.py
 | **Code Module Grader** | `.claude/skills/code-module-grader.md` | ✅ Ready | Evaluate modules A+ to F, generate P1/P2/P3 improvements |
 | **Test Coverage Analyzer** | `.claude/skills/test-coverage-analyzer.md` | ✅ Ready | Find coverage gaps, generate test files, recommend quick wins |
 | **Database Migration Helper** | `.claude/skills/database-migration-helper.md` | ✅ Ready | Generate SQL migrations + db.py methods + tests |
-| **Documentation Sync Validator** | Planned | ⬜ Not Created | Detect stale documentation, suggest fixes |
+| **Documentation Sync Validator** | Deferred | ⏸️ On Hold | Detect stale documentation, suggest fixes (create when needed) |
 
 ### How to Use Skills
 
@@ -352,6 +488,12 @@ Include db.py methods and integration tests."
 - 500 tokens to invoke
 - 30 seconds to request
 - Guaranteed consistency with project conventions
+
+### Skills-On-Demand Approach
+
+**Core skills complete** (5/6): Planning, API building, code grading, testing, database migrations
+
+**Additional skills created as needed** when specific pain points emerge. This keeps the skill set focused on actual workflow needs rather than theoretical coverage.
 
 ## Environment Setup
 

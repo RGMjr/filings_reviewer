@@ -12,6 +12,7 @@ import logging
 import re
 from typing import List, Optional, Pattern, Tuple
 
+from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MIN, YEAR_MAX
 from src.review.number_parsing import NumberMatch
 
 logger = logging.getLogger(__name__)
@@ -66,11 +67,13 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern] = [
 ]
 
 # Year range - numbers in this range are likely years, not metrics
-YEAR_MIN = 1990
-YEAR_MAX = 2100
+# (imported from config.py for centralized configuration)
+YEAR_MIN = YEAR_MIN
+YEAR_MAX = YEAR_MAX
 
 # Minimum value threshold - very small numbers are rarely metrics
-MIN_METRIC_VALUE = 10  # Filter out single-digit numbers by default
+# (imported from config.py for centralized configuration)
+MIN_METRIC_VALUE = MIN_METRIC_VALUE  # Filter out single-digit numbers by default
 
 
 # =============================================================================
@@ -91,17 +94,17 @@ class FalsePositiveFilter:
 
     def __init__(
         self,
-        filter_enabled: bool = True,
-        min_value: float = MIN_METRIC_VALUE,
-        filter_years: bool = True,
+        filter_enabled: bool = DEFAULT_CONFIG.filter_false_positives,
+        min_value: float = DEFAULT_CONFIG.min_metric_value,
+        filter_years: bool = DEFAULT_CONFIG.filter_years,
     ):
         """
         Initialize the false positive filter.
 
         Args:
-            filter_enabled: Whether to apply filtering (can disable for testing)
-            min_value: Minimum value threshold for count units
-            filter_years: Whether to filter year-like values
+            filter_enabled: Whether to apply filtering (default from config)
+            min_value: Minimum value threshold for count units (default from config)
+            filter_years: Whether to filter year-like values (default from config)
         """
         self.filter_enabled = filter_enabled
         self.min_value = min_value

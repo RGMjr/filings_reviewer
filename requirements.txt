@@ -64,6 +64,12 @@ pytest>=7.4.0
 # Coverage reporting - Tracks code coverage (target: 75%+ overall)
 pytest-cov>=4.1.0
 
+# Performance benchmarking - Measures throughput, latency, memory usage
+pytest-benchmark>=4.0.0
+
+# Memory profiling - Tracks memory consumption and detects leaks
+memory-profiler>=0.61.0
+
 # -----------------------------------------------------------------------------
 # Development Dependencies
 # -----------------------------------------------------------------------------

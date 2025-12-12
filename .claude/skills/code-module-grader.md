@@ -320,9 +320,13 @@ Generate a grading report document (see Output Format section below).
 
 ### P1.1 - {Improvement Title}
 
+**Status:** ⬜ Not Started
 **Priority:** P1 - Critical
 **Dimension:** {dimension}
 **Estimated Time:** {X-Y} hours
+**Actual Time:** - (fill when complete)
+**Assigned:** -
+**Completed:** - (fill when complete)
 **Impact:** {High/Medium impact on production readiness}
 
 **Current State:**
@@ -667,6 +671,14 @@ For these, use appropriate tools:
 ---
 
 ## Version History
+
+**1.1.0** (2025-12-12)
+- Enhanced P1/P2/P3 improvement tracking
+- Added "Status" field (⬜ Not Started/🔄 In Progress/✅ Complete)
+- Added "Actual Time" field for recording actual hours spent
+- Added "Assigned" field for tracking ownership
+- Added "Completed" date field for tracking completion dates
+- Matches actual usage patterns from E1/D1 improvement tracking
 
 **1.0.0** (2025-12-11)
 - Initial skill creation

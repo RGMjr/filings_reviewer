@@ -24,8 +24,9 @@ Score interpretation:
 
 import logging
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
+from src.review.config import DEFAULT_CONFIG, CandidateGenerationConfig
 from src.review.keyword_matching import SPECIFIC_KEYWORD_PATTERNS
 from src.review.models import CandidateFeatures
 
@@ -93,27 +94,48 @@ class ConfidenceScorer:
     - 0.7-1.0: High (very likely correct)
     """
 
-    # Scoring weights
-    BASE_SCORE = 0.30  # Starting score for any candidate
-    DISTANCE_MAX_WEIGHT = 0.25  # Max bonus for close distance
-    POSITION_BEFORE_BONUS = 0.05  # Bonus if keyword is before number
-    DEFINITION_BONUS = 0.20  # Bonus for definition language
-    PERIOD_BONUS = 0.05  # Bonus for period mention
-    FORMAT_MATCH_BONUS = 0.10  # Bonus if format matches metric type
-    SPECIFIC_KEYWORD_BONUS = 0.10  # Bonus for multi-word specific keyword
-    RISK_FACTORS_PENALTY = 0.25  # Penalty for risk factors section
-    SURROUNDING_NUMBERS_PENALTY_MAX = 0.15  # Max penalty for many numbers
-    TABLE_AMBIGUITY_PENALTY = 0.05  # Penalty for table without definition
+    # Scoring weights (can be overridden via config parameter)
+    # Default values are loaded from config.py for centralized configuration
+    BASE_SCORE = DEFAULT_CONFIG.confidence_base_score
+    DISTANCE_MAX_WEIGHT = DEFAULT_CONFIG.confidence_distance_max_weight
+    POSITION_BEFORE_BONUS = DEFAULT_CONFIG.confidence_position_before_bonus
+    DEFINITION_BONUS = DEFAULT_CONFIG.confidence_definition_bonus
+    PERIOD_BONUS = DEFAULT_CONFIG.confidence_period_bonus
+    FORMAT_MATCH_BONUS = DEFAULT_CONFIG.confidence_format_match_bonus
+    SPECIFIC_KEYWORD_BONUS = DEFAULT_CONFIG.confidence_specific_keyword_bonus
+    RISK_FACTORS_PENALTY = DEFAULT_CONFIG.confidence_risk_factors_penalty
+    SURROUNDING_NUMBERS_PENALTY_MAX = DEFAULT_CONFIG.confidence_surrounding_numbers_penalty_max
+    TABLE_AMBIGUITY_PENALTY = DEFAULT_CONFIG.confidence_table_ambiguity_penalty
 
-    def __init__(self, max_keyword_distance: int = 100):
+    def __init__(
+        self,
+        max_keyword_distance: int = DEFAULT_CONFIG.max_keyword_distance,
+        config: Optional[CandidateGenerationConfig] = None,
+    ):
         """
         Initialize the confidence scorer.
 
         Args:
             max_keyword_distance: Maximum distance for keyword matching
-                                 (used to scale distance score)
+                                 (used to scale distance score, default from config)
+            config: Optional custom configuration. If provided, scoring weights
+                   will be loaded from this config instead of class defaults.
         """
         self.max_keyword_distance = max_keyword_distance
+
+        # Load scoring weights from config if provided
+        if config is not None:
+            self.BASE_SCORE = config.confidence_base_score
+            self.DISTANCE_MAX_WEIGHT = config.confidence_distance_max_weight
+            self.POSITION_BEFORE_BONUS = config.confidence_position_before_bonus
+            self.DEFINITION_BONUS = config.confidence_definition_bonus
+            self.PERIOD_BONUS = config.confidence_period_bonus
+            self.FORMAT_MATCH_BONUS = config.confidence_format_match_bonus
+            self.SPECIFIC_KEYWORD_BONUS = config.confidence_specific_keyword_bonus
+            self.RISK_FACTORS_PENALTY = config.confidence_risk_factors_penalty
+            self.SURROUNDING_NUMBERS_PENALTY_MAX = config.confidence_surrounding_numbers_penalty_max
+            self.TABLE_AMBIGUITY_PENALTY = config.confidence_table_ambiguity_penalty
+
         # Compile specific keyword patterns
         self._specific_patterns = [
             re.compile(p, re.IGNORECASE) for p in SPECIFIC_KEYWORD_PATTERNS

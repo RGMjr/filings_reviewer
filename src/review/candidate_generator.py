@@ -19,8 +19,15 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.extraction.metric_classifier import MetricClassifier
+from src.review.config import (
+    CandidateGenerationConfig,
+    DEFAULT_CONFIG,
+    DEFAULT_CONTEXT_WORDS,
+    MAX_KEYWORD_DISTANCE,
+    MIN_METRIC_VALUE,
+)
 from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
-from src.review.context_extraction import ContextExtractor, DEFAULT_CONTEXT_WORDS
+from src.review.context_extraction import ContextExtractor
 from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,
@@ -30,9 +37,6 @@ from src.review.false_positive_filter import (
     DATE_CONTEXT_PATTERNS,
     FALSE_POSITIVE_CONTEXT_PATTERNS,
     FalsePositiveFilter,
-    MIN_METRIC_VALUE,
-    YEAR_MIN,
-    YEAR_MAX,
 )
 from src.review.feature_extractor import (
     DEFINITION_PATTERNS,
@@ -111,44 +115,96 @@ class CandidateGenerator:
     """
 
     # Maximum character distance between number and keyword
-    MAX_KEYWORD_DISTANCE = 100
+    # (imported from config.py for centralized configuration)
+    MAX_KEYWORD_DISTANCE = MAX_KEYWORD_DISTANCE
 
-    # Context extraction settings (imported from context_extraction.py)
+    # Context extraction settings (imported from config.py)
     CONTEXT_WORDS = DEFAULT_CONTEXT_WORDS  # Words to extract each direction
 
     def __init__(
         self,
-        max_keyword_distance: int = 100,
-        context_words: int = 40,
-        filter_false_positives: bool = True,
+        config: Optional[CandidateGenerationConfig] = None,
+        # Deprecated parameters (for backward compatibility)
+        max_keyword_distance: Optional[int] = None,
+        context_words: Optional[int] = None,
+        filter_false_positives: Optional[bool] = None,
         min_value: Optional[int] = None,
-        filter_years: bool = True,
-        compute_confidence: bool = True,
-        apply_learned_rules: bool = True,
+        filter_years: Optional[bool] = None,
+        compute_confidence: Optional[bool] = None,
+        apply_learned_rules: Optional[bool] = None,
     ):
         """
         Initialize the candidate generator.
 
         Args:
-            max_keyword_distance: Maximum chars between number and keyword
-            context_words: Words to extract for context each direction
-            filter_false_positives: Enable false positive filtering (default True)
-            min_value: Minimum numeric value to consider (default MIN_METRIC_VALUE)
-            filter_years: Filter out numbers that look like years (default True)
-            compute_confidence: Compute suggestion_confidence scores (default True)
-            apply_learned_rules: Apply learned patterns from E1 to filter candidates (default True)
-        """
-        self.max_keyword_distance = max_keyword_distance
-        self.context_words = context_words
-        self.filter_false_positives = filter_false_positives
-        self.min_value = min_value if min_value is not None else MIN_METRIC_VALUE
-        self.filter_years = filter_years
-        self.compute_confidence = compute_confidence
-        self.apply_learned_rules = apply_learned_rules
+            config: Configuration object. If None, uses DEFAULT_CONFIG or builds from deprecated params.
 
-        # Initialize confidence scorer
+            # Deprecated parameters (use config instead):
+            max_keyword_distance: DEPRECATED - Use config.max_keyword_distance
+            context_words: DEPRECATED - Use config.context_words
+            filter_false_positives: DEPRECATED - Use config.filter_false_positives
+            min_value: DEPRECATED - Use config.min_metric_value
+            filter_years: DEPRECATED - Use config.filter_years
+            compute_confidence: DEPRECATED - Use config.compute_confidence
+            apply_learned_rules: DEPRECATED - Use config.apply_learned_rules
+        """
+        # Handle config parameter vs deprecated individual parameters
+        if config is not None:
+            # Use provided config
+            self.config = config
+        elif any(
+            param is not None
+            for param in [
+                max_keyword_distance,
+                context_words,
+                filter_false_positives,
+                min_value,
+                filter_years,
+                compute_confidence,
+                apply_learned_rules,
+            ]
+        ):
+            # Build config from deprecated parameters (backward compatibility)
+            self.config = CandidateGenerationConfig(
+                max_keyword_distance=max_keyword_distance
+                if max_keyword_distance is not None
+                else DEFAULT_CONFIG.max_keyword_distance,
+                context_words=context_words
+                if context_words is not None
+                else DEFAULT_CONFIG.context_words,
+                filter_false_positives=filter_false_positives
+                if filter_false_positives is not None
+                else DEFAULT_CONFIG.filter_false_positives,
+                min_metric_value=min_value
+                if min_value is not None
+                else DEFAULT_CONFIG.min_metric_value,
+                filter_years=filter_years
+                if filter_years is not None
+                else DEFAULT_CONFIG.filter_years,
+                compute_confidence=compute_confidence
+                if compute_confidence is not None
+                else DEFAULT_CONFIG.compute_confidence,
+                apply_learned_rules=apply_learned_rules
+                if apply_learned_rules is not None
+                else DEFAULT_CONFIG.apply_learned_rules,
+            )
+        else:
+            # Use default config
+            self.config = DEFAULT_CONFIG
+
+        # Set convenience attributes for backward compatibility
+        self.max_keyword_distance = self.config.max_keyword_distance
+        self.context_words = self.config.context_words
+        self.filter_false_positives = self.config.filter_false_positives
+        self.min_value = self.config.min_metric_value
+        self.filter_years = self.config.filter_years
+        self.compute_confidence = self.config.compute_confidence
+        self.apply_learned_rules = self.config.apply_learned_rules
+
+        # Initialize confidence scorer with config
         self._confidence_scorer = ConfidenceScorer(
-            max_keyword_distance=max_keyword_distance
+            max_keyword_distance=self.config.max_keyword_distance,
+            config=self.config,
         )
 
         # Initialize feature extractor
@@ -158,26 +214,28 @@ class CandidateGenerator:
         self._number_parser = NumberParser()
 
         # Initialize keyword matcher (P1.3 - extracted to separate module)
-        self._keyword_matcher = KeywordMatcher(max_keyword_distance=max_keyword_distance)
+        self._keyword_matcher = KeywordMatcher(
+            max_keyword_distance=self.config.max_keyword_distance
+        )
 
         # Initialize false positive filter (P1.3 - extracted to separate module)
         self._false_positive_filter = FalsePositiveFilter(
-            filter_enabled=filter_false_positives,
-            min_value=self.min_value,
-            filter_years=filter_years,
+            filter_enabled=self.config.filter_false_positives,
+            min_value=self.config.min_metric_value,
+            filter_years=self.config.filter_years,
         )
 
         # Initialize context extractor (P1.3 - extracted to separate module)
-        self._context_extractor = ContextExtractor(context_words=context_words)
+        self._context_extractor = ContextExtractor(context_words=self.config.context_words)
 
         # Cache for word positions during segment processing (optimization for P1.2)
         # This avoids re-parsing text into words for every number in a segment
         self._current_segment_words: Optional[List[Tuple[int, int, str]]] = None
 
         # Lazy-loaded RuleApplicator (E2 integration)
-        self._rule_applicator = None
+        self._rule_applicator: Optional[Any] = None
 
-    def _get_rule_applicator(self, db):
+    def _get_rule_applicator(self, db: Any) -> Optional[Any]:
         """
         Lazy-load RuleApplicator for E2 learned pattern filtering.
 
@@ -203,7 +261,7 @@ class CandidateGenerator:
         company_id: int,
         segments: List[Dict[str, Any]],
         return_stats: bool = False,
-        db=None,
+        db: Optional[Any] = None,
     ) -> List[ReviewCandidate] | Tuple[List[ReviewCandidate], ProcessingStats]:
         """
         Generate candidates from all segments of a filing.
@@ -325,7 +383,7 @@ class CandidateGenerator:
         filing_id: int,
         company_id: int,
         segment: Dict[str, Any],
-        db=None,
+        db: Optional[Any] = None,
     ) -> Tuple[List[ReviewCandidate], Dict[str, int]]:
         """
         Process a single segment to find candidates.
@@ -612,11 +670,11 @@ class CandidateGenerator:
         """
         # Defensive: ensure segment is a dict
         if not isinstance(segment, dict):
-            segment = {}
+            segment = {}  # type: ignore[unreachable]
 
         # Defensive: ensure all_numbers is a list
         if not isinstance(all_numbers, list):
-            all_numbers = []
+            all_numbers = []  # type: ignore[unreachable]
 
         # Delegate to feature extractor
         return self._feature_extractor.compute_features(
