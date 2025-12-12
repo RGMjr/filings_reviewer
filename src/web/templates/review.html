@@ -129,7 +129,7 @@
                                         <small><i class="bi bi-info-circle"></i> This value appears in a table. The table below shows the full context with the candidate value highlighted in yellow.</small>
                                     </div>
                                     <div class="table-responsive">
-                                        {{ current_candidate.segment_html|highlight_context(
+                                        {{ current_candidate.segment_html|highlight_html(
                                              current_candidate.raw_number_text,
                                              current_candidate.triggering_keyword
                                            )|safe }}
@@ -155,7 +155,7 @@
                                                 {% if current_candidate.parsed_unit == 'usd' %}
                                                     ${{ "{:,.2f}".format(current_candidate.parsed_value|float) }}
                                                 {% elif current_candidate.parsed_unit == '%' %}
-                                                    {{ "{:.1f}".format(current_candidate.parsed_value|float) }}%
+                                                    {{ "{:.1f}".format((current_candidate.parsed_value|float) * 100) }}%
                                                 {% else %}
                                                     {{ "{:,.0f}".format(current_candidate.parsed_value|float) }}
                                                 {% endif %}
