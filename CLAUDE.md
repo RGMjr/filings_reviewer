@@ -400,14 +400,16 @@ python scripts/fetch_curated_sample.py
 
 ### Available Skills
 
-| Skill | File | Status | Use Case |
-|-------|------|--------|----------|
-| **Implementation Planner** | `.claude/skills/implementation-planner.md` | ✅ Ready | Generate structured plans with A/B/C streams, dependencies, time estimates |
-| **Flask API Builder** | `.claude/skills/flask-api-builder.md` | ✅ Ready | Generate Flask routes, API endpoints, validation, tests (D1/D2 patterns) |
-| **Code Module Grader** | `.claude/skills/code-module-grader.md` | ✅ Ready | Evaluate modules A+ to F, generate P1/P2/P3 improvements |
-| **Test Coverage Analyzer** | `.claude/skills/test-coverage-analyzer.md` | ✅ Ready | Find coverage gaps, generate test files, recommend quick wins |
-| **Database Migration Helper** | `.claude/skills/database-migration-helper.md` | ✅ Ready | Generate SQL migrations + db.py methods + tests |
-| **Documentation Sync Validator** | Deferred | ⏸️ On Hold | Detect stale documentation, suggest fixes (create when needed) |
+| Skill | File | Version | Use Case |
+|-------|------|---------|----------|
+| **Implementation Planner** | `.claude/skills/implementation-planner.md` | v1.1 ✅ | Generate structured plans with A/B/C streams, dependencies, time estimates + **actual time tracking** |
+| **Flask API Builder** | `.claude/skills/flask-api-builder.md` | v1.0 ✅ | Generate Flask routes, API endpoints, validation, tests (D1/D2 patterns) |
+| **Code Module Grader** | `.claude/skills/code-module-grader.md` | v1.1 ✅ | Evaluate modules A+ to F, generate P1/P2/P3 improvements + **completion tracking** |
+| **Test Coverage Analyzer** | `.claude/skills/test-coverage-analyzer.md` | v1.1 ✅ | Find coverage gaps, generate test files + **before→after improvement tracking** |
+| **Database Migration Helper** | `.claude/skills/database-migration-helper.md` | v1.0 ✅ | Generate SQL migrations + db.py methods + tests |
+| **Completion Report Generator** | `.claude/skills/completion-report-generator.md` | v1.0 ✅ | Generate comprehensive completion reports when phases finish |
+| **Refactor Evaluator** | `.claude/skills/refactor-evaluator.md` | v1.0 ✅ | Evaluate refactoring opportunities, compare approaches, recommend best path |
+| **Documentation Sync Validator** | `.claude/skills/documentation-sync-validator.md` | v1.0 ✅ | Detect stale documentation, outdated metrics, missing references |
 
 ### How to Use Skills
 
@@ -462,6 +464,42 @@ Columns:
 Include db.py methods and integration tests."
 ```
 
+*Generating completion reports:*
+```
+"Use completion-report-generator skill to create report for:
+
+Phase: E1 P1 Improvements
+Original plan: docs/E1_IMPROVEMENTS_TRACKING.md
+Completed: 2025-12-10
+
+Results:
+- 3 P1 improvements complete
+- Time: 7 hours (estimate: 7-9 hours)
+- 26 new tests added
+- 99% coverage achieved
+
+Generate full completion report with lessons learned."
+```
+
+*Evaluating refactoring opportunities:*
+```
+"Use refactor-evaluator skill to analyze:
+
+Module: src/extraction/metric_classifier.py
+Concerns: 850 lines, high complexity, multiple responsibilities
+Consider: Extract helper modules vs split into classes vs keep as-is
+Show: Approach comparison with risk assessment"
+```
+
+*Validating documentation:*
+```
+"Use documentation-sync-validator skill to:
+- Check CLAUDE.md and DEVELOPMENT_PLAN.md
+- After refactoring candidate_generator.py
+- Focus on: file_references, coverage_metrics, module_structure
+- Show quick wins (< 5 min fixes)"
+```
+
 **Claude will:**
 1. Load the skill (encodes project patterns)
 2. Generate code following established patterns (TypedDict, validation, error handling)
@@ -491,9 +529,22 @@ Include db.py methods and integration tests."
 
 ### Skills-On-Demand Approach
 
-**Core skills complete** (5/6): Planning, API building, code grading, testing, database migrations
+**All core skills complete** (8/8):
+- **Planning & Implementation:** Implementation Planner, Flask API Builder
+- **Quality & Testing:** Code Module Grader, Test Coverage Analyzer
+- **Database:** Database Migration Helper
+- **Process & Maintenance:** Completion Report Generator, Refactor Evaluator, Documentation Sync Validator
 
-**Additional skills created as needed** when specific pain points emerge. This keeps the skill set focused on actual workflow needs rather than theoretical coverage.
+**Result:** Comprehensive skill coverage for the full development lifecycle - from planning to implementation to completion to maintenance.
+
+### Skill Enhancements (v1.1 Updates)
+
+**December 2025 enhancements:**
+- **Implementation Planner v1.1:** Added actual time tracking, completion date tracking, enhanced "Notes & Decisions" section
+- **Code Module Grader v1.1:** Added status field, actual time field, assigned field, completion date tracking
+- **Test Coverage Analyzer v1.1:** Added before→after coverage visualization, test count growth tracking, "Expected Result" celebration format
+
+These enhancements match actual usage patterns from E1/D1 improvement tracking and enable better estimation accuracy over time.
 
 ## Environment Setup
 
