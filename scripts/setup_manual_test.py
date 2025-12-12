@@ -179,7 +179,7 @@ class ManualTestSetup:
             company_name = row["company_name"]
 
             logger.info(f"Processing filing {filing_id} ({company_name})...")
-            self._generate_candidates(filing_id, company_id)
+            self._generate_candidates(filing_id)
 
     def _ensure_company(self, config: Dict) -> Optional[int]:
         """Ensure company exists in database."""
@@ -251,7 +251,7 @@ class ManualTestSetup:
             self._generate_segments(filing_id, filing_path)
 
         # Step 4: Generate review candidates
-        self._generate_candidates(filing_id, company_id)
+        self._generate_candidates(filing_id)
 
     def _ensure_filing(self, company_id: int, accession: str, filing_path: Path) -> Optional[int]:
         """Ensure filing exists in database."""
@@ -326,7 +326,7 @@ class ManualTestSetup:
         except Exception as e:
             logger.error(f"Error generating segments: {e}", exc_info=True)
 
-    def _generate_candidates(self, filing_id: int, company_id: int) -> None:
+    def _generate_candidates(self, filing_id: int) -> None:
         """Generate review candidates for filing."""
         logger.info("Generating review candidates...")
 
@@ -342,15 +342,15 @@ class ManualTestSetup:
                 logger.info(f"✓ Filing already has {count} candidates")
                 return
 
-            # Generate new candidates
+            # Generate new candidates (save=True to persist to database)
             candidates = generate_candidates_for_filing(
                 db=self.db,
                 filing_id=filing_id,
-                company_id=company_id,
+                save=True,
             )
 
             if candidates:
-                logger.info(f"✓ Generated {len(candidates)} candidates")
+                logger.info(f"✓ Generated and saved {len(candidates)} candidates")
                 self.stats["candidates_generated"] += len(candidates)
             else:
                 logger.warning("No candidates generated")
@@ -416,7 +416,7 @@ class ManualTestSetup:
         """Start Flask application."""
         logger.info("\nStarting Flask application...")
         logger.info("=" * 80)
-        logger.info("Open your browser to: http://localhost:5001/review/filings")
+        logger.info("Open your browser to: http://localhost:5001/filings")
         logger.info("Press Ctrl+C to stop the server")
         logger.info("=" * 80 + "\n")
 
