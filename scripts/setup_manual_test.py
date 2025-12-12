@@ -80,10 +80,13 @@ class ManualTestSetup:
                 logger.info(f"\n--- Processing {company_name} ---")
                 self._process_company(company_name, config)
 
-            # Step 4: Print summary
+            # Step 4: Generate candidates for existing filings
+            self._process_existing_filings()
+
+            # Step 5: Print summary
             self._print_summary()
 
-            # Step 5: Start Flask
+            # Step 6: Start Flask
             self._start_flask()
 
             return True
@@ -145,6 +148,38 @@ class ManualTestSetup:
         # Step 3: Process each filing
         for filing_path in filing_files[:1]:  # Process first filing only
             self._process_filing(company_id, filing_path)
+
+    def _process_existing_filings(self) -> None:
+        """Generate candidates for existing filings that don't have any."""
+        logger.info("\n--- Processing existing filings ---")
+
+        # Find filings with segments but no candidates
+        result = self.db.query("""
+            SELECT DISTINCT f.filing_id, f.company_id, c.company_name
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE EXISTS (
+                SELECT 1 FROM source_segments ss WHERE ss.filing_id = f.filing_id
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM review_candidates rc WHERE rc.filing_id = f.filing_id
+            )
+            LIMIT 5;
+        """)
+
+        if not result:
+            logger.info("No filings need candidate generation")
+            return
+
+        logger.info(f"Found {len(result)} filing(s) needing candidates")
+
+        for row in result:
+            filing_id = row["filing_id"]
+            company_id = row["company_id"]
+            company_name = row["company_name"]
+
+            logger.info(f"Processing filing {filing_id} ({company_name})...")
+            self._generate_candidates(filing_id, company_id)
 
     def _ensure_company(self, config: Dict) -> Optional[int]:
         """Ensure company exists in database."""
