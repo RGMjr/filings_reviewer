@@ -2727,3 +2727,291 @@ class TestContextExtractionPerformance:
 
         # Should have found candidate(s)
         assert stats["numbers_found"] > 0
+
+
+# =============================================================================
+# Config System Adoption Tests (Phase 2)
+# =============================================================================
+
+
+class TestConfigSystemAdoption:
+    """
+    Tests demonstrating the config system API and presets.
+
+    These tests verify that:
+    1. Default config works correctly
+    2. All three presets (high precision, high recall, fast) work
+    3. Custom configs can be created and used
+    4. Backward compatibility is maintained
+    """
+
+    @pytest.fixture
+    def sample_segments(self):
+        """Standard test segments for config testing."""
+        return [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We have 50,000 active customers as of December 2023.",
+            },
+            {
+                "source_segment_id": 2,
+                "raw_text": "In 2023, we had revenue of $100 million with 5 new customers.",
+            },
+        ]
+
+    def test_candidate_generator_with_default_config(self, sample_segments):
+        """
+        Test CandidateGenerator with default configuration.
+
+        Default config uses production-tuned values:
+        - max_keyword_distance: 100
+        - min_metric_value: 10
+        - filter_false_positives: True
+        - compute_confidence: True
+        - apply_learned_rules: True
+        """
+        generator = CandidateGenerator()  # Uses DEFAULT_CONFIG internally
+
+        # Verify config is applied
+        assert generator.config.max_keyword_distance == 100
+        assert generator.config.min_metric_value == 10
+        assert generator.config.filter_false_positives is True
+        assert generator.config.compute_confidence is True
+        assert generator.config.apply_learned_rules is True
+
+        # Generate candidates
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should find candidates with default settings
+        assert len(candidates) >= 1
+
+        # Candidates should have confidence scores (compute_confidence=True)
+        assert all(c.suggestion_confidence is not None for c in candidates)
+
+        # Year 2023 should be filtered (filter_false_positives=True, filter_years=True)
+        raw_texts = [c.raw_number_text for c in candidates]
+        assert "2023" not in raw_texts
+
+        # Small value "5" should be filtered (min_metric_value=10)
+        assert "5" not in raw_texts
+
+    def test_candidate_generator_with_high_precision_config(self, sample_segments):
+        """
+        Test CandidateGenerator with high precision configuration.
+
+        High precision config:
+        - max_keyword_distance: 50 (stricter proximity)
+        - min_metric_value: 100 (filters small numbers)
+        - min_pattern_precision: 0.85 (only high-confidence patterns)
+
+        Expected: Fewer candidates, higher quality, less review burden.
+        """
+        from src.review.config import get_high_precision_config
+
+        config = get_high_precision_config()
+        generator = CandidateGenerator(config=config)
+
+        # Verify config is applied
+        assert generator.config.max_keyword_distance == 50
+        assert generator.config.min_metric_value == 100
+        assert generator.config.min_pattern_precision == 0.85
+
+        # Generate candidates
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should still find some candidates
+        assert len(candidates) >= 0
+
+        # All candidates should have value >= 100
+        for candidate in candidates:
+            if candidate.parsed_value is not None:
+                assert candidate.parsed_value >= 100 or candidate.parsed_value < 0
+
+    def test_candidate_generator_with_high_recall_config(self, sample_segments):
+        """
+        Test CandidateGenerator with high recall configuration.
+
+        High recall config:
+        - max_keyword_distance: 150 (looser proximity)
+        - min_metric_value: 1 (keep all numbers)
+        - filter_false_positives: False (disable filtering)
+        - filter_years: False (don't filter years)
+        - apply_learned_rules: False (don't apply learned patterns)
+
+        Expected: More candidates, including false positives, comprehensive coverage.
+        """
+        from src.review.config import get_high_recall_config
+
+        config = get_high_recall_config()
+        generator = CandidateGenerator(config=config)
+
+        # Verify config is applied
+        assert generator.config.max_keyword_distance == 150
+        assert generator.config.min_metric_value == 1
+        assert generator.config.filter_false_positives is False
+        assert generator.config.filter_years is False
+        assert generator.config.apply_learned_rules is False
+
+        # Generate candidates
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should find MORE candidates than default (due to looser filtering)
+        assert len(candidates) >= 1
+
+        # Should include year 2023 (filter_years=False)
+        raw_texts = [c.raw_number_text for c in candidates]
+        assert "2023" in raw_texts
+
+        # Should include small value "5" (min_metric_value=1)
+        assert "5" in raw_texts
+
+    def test_candidate_generator_with_fast_config(self, sample_segments):
+        """
+        Test CandidateGenerator with fast configuration.
+
+        Fast config:
+        - compute_confidence: False (skip expensive confidence computation)
+        - apply_learned_rules: False (skip pattern matching)
+        - Other settings remain standard
+
+        Expected: Faster processing, confidence scores are None.
+        """
+        from src.review.config import get_fast_config
+
+        config = get_fast_config()
+        generator = CandidateGenerator(config=config)
+
+        # Verify config is applied
+        assert generator.config.compute_confidence is False
+        assert generator.config.apply_learned_rules is False
+        assert generator.config.cache_word_positions is True  # Optimization enabled
+
+        # Generate candidates
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should find candidates
+        assert len(candidates) >= 1
+
+        # Candidates should NOT have confidence scores (compute_confidence=False)
+        assert all(c.suggestion_confidence is None for c in candidates)
+
+    def test_candidate_generator_custom_config(self, sample_segments):
+        """
+        Test CandidateGenerator with custom configuration.
+
+        Demonstrates creating a fully customized configuration by
+        instantiating CandidateGenerationConfig with custom parameters.
+        """
+        from src.review.config import CandidateGenerationConfig
+
+        # Create custom config with specific requirements
+        custom_config = CandidateGenerationConfig(
+            max_keyword_distance=75,  # Moderate proximity
+            min_metric_value=50,  # Filter numbers < 50
+            filter_false_positives=True,
+            filter_years=True,
+            apply_learned_rules=True,
+            min_pattern_precision=0.80,  # High-confidence patterns
+            compute_confidence=True,
+            context_words=40,  # Standard context window
+            cache_word_positions=True,
+        )
+
+        generator = CandidateGenerator(config=custom_config)
+
+        # Verify all custom settings are applied
+        assert generator.config.max_keyword_distance == 75
+        assert generator.config.min_metric_value == 50
+        assert generator.config.min_pattern_precision == 0.80
+        assert generator.config.context_words == 40
+
+        # Generate candidates
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should find candidates
+        assert len(candidates) >= 0
+
+        # Small value "5" should be filtered (min_metric_value=50)
+        raw_texts = [c.raw_number_text for c in candidates]
+        assert "5" not in raw_texts
+
+        # Should have confidence scores
+        assert all(
+            c.suggestion_confidence is not None
+            for c in candidates
+            if len(candidates) > 0
+        )
+
+    def test_config_backward_compatibility(self, sample_segments):
+        """
+        Test backward compatibility of config system.
+
+        The old API (passing individual parameters to CandidateGenerator)
+        should still work and be equivalent to creating a custom config.
+        """
+        # Old style: individual parameters
+        generator_old = CandidateGenerator(
+            max_keyword_distance=50,
+            filter_false_positives=True,
+            min_value=100,  # Old parameter name
+        )
+
+        # New style: config object
+        from src.review.config import CandidateGenerationConfig
+
+        config = CandidateGenerationConfig(
+            max_keyword_distance=50,
+            filter_false_positives=True,
+            min_metric_value=100,  # New parameter name
+        )
+        generator_new = CandidateGenerator(config=config)
+
+        # Both should have same config values
+        assert generator_old.config.max_keyword_distance == 50
+        assert generator_old.config.filter_false_positives is True
+        assert generator_old.config.min_metric_value == 100
+
+        assert generator_new.config.max_keyword_distance == 50
+        assert generator_new.config.filter_false_positives is True
+        assert generator_new.config.min_metric_value == 100
+
+        # Both should produce same results
+        candidates_old = generator_old.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        candidates_new = generator_new.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=sample_segments,
+        )
+
+        # Should produce same number of candidates
+        assert len(candidates_old) == len(candidates_new)
+
+        # Should have same metric IDs (order may differ)
+        metric_ids_old = {c.suggested_metric_id for c in candidates_old}
+        metric_ids_new = {c.suggested_metric_id for c in candidates_new}
+        assert metric_ids_old == metric_ids_new

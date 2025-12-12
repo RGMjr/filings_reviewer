@@ -10,6 +10,106 @@ Features computed:
 - Number format features (integer, decimal, percentage, currency)
 - Section features (table vs paragraph, section name)
 - Magnitude features (log10 of value)
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Features extracted automatically for each candidate
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Each candidate has features attribute
+    >>> features = candidates[0].features
+    >>> print(f"Keyword distance: {features.keyword_distance}")
+    >>> print(f"Definition language: {features.contains_definition_language}")
+    >>> print(f"Number format: {features.number_format}")
+
+Direct Usage (advanced):
+    >>> from src.review.feature_extractor import FeatureExtractor
+    >>> from decimal import Decimal
+    >>>
+    >>> # Initialize extractor
+    >>> extractor = FeatureExtractor()
+    >>>
+    >>> # Compute features for a candidate
+    >>> features = extractor.compute_features(
+    ...     number_value=Decimal("50000"),
+    ...     number_unit="count",
+    ...     number_raw_text="50,000",
+    ...     keyword_distance=20,
+    ...     keyword_position="before",
+    ...     context_text="We define active customers as those who have...",
+    ...     segment_type="paragraph",
+    ...     section_heading="Business Overview",
+    ... )
+    >>> print(f"Features: {features}")
+
+Feature Categories and Examples:
+    >>> # Proximity features
+    >>> features.keyword_distance  # Characters between number and keyword
+    >>> features.keyword_position  # "before" or "after"
+    >>>
+    >>> # Context features (boolean flags)
+    >>> features.contains_definition_language  # Has "we define", "calculated as"
+    >>> features.has_period_mention  # Has "fiscal year", "as of December"
+    >>> features.is_in_risk_factors  # In risk factors section
+    >>>
+    >>> # Number format features
+    >>> features.number_format  # "integer", "decimal", "percentage", "currency"
+    >>> features.value_magnitude  # log10(value) for large number handling
+    >>>
+    >>> # Section features
+    >>> features.is_in_table  # Boolean: in table vs paragraph
+    >>> features.section_name  # Section heading text
+    >>>
+    >>> # Derived features (P2.4)
+    >>> features.surrounding_numbers_count  # Count of other numbers nearby
+    >>> features.context_word_count  # Total words in context
+
+Computing Derived Features (P2.4):
+    >>> from src.review.feature_extractor import (
+    ...     bin_keyword_distance,
+    ...     bin_value_magnitude,
+    ...     compute_distance_magnitude_interaction,
+    ...     compute_strong_signal,
+    ...     compute_weak_signal,
+    ...     compute_very_weak_signal,
+    ... )
+    >>>
+    >>> # Bin continuous features for interpretability
+    >>> distance_bin = bin_keyword_distance(features.keyword_distance)
+    >>> # Returns: "very_close" | "close" | "moderate" | "far" | "very_far"
+    >>>
+    >>> magnitude_bin = bin_value_magnitude(features.value_magnitude)
+    >>> # Returns: "tiny" | "small" | "medium" | "large" | "huge"
+    >>>
+    >>> # Compute interaction features
+    >>> interaction = compute_distance_magnitude_interaction(
+    ...     keyword_distance=20,
+    ...     value_magnitude=4.0,
+    ... )
+    >>>
+    >>> # Compute composite signals
+    >>> strong_signal = compute_strong_signal(features)  # High-confidence indicators
+    >>> weak_signal = compute_weak_signal(features)      # Low-confidence indicators
+    >>> very_weak_signal = compute_very_weak_signal(features)  # Very low confidence
+
+Using Features for Pattern Analysis (E1):
+    >>> from src.review.pattern_analyzer import PatternAnalyzer
+    >>> from src.infra.db import DatabaseAdapter
+    >>>
+    >>> # Analyze which features predict true vs false metrics
+    >>> db = DatabaseAdapter("postgresql://...")
+    >>> analyzer = PatternAnalyzer(db)
+    >>> patterns = analyzer.discover_patterns(pattern_type="reject_rule")
+    >>> # Patterns identify which feature combinations indicate false positives
+
+See Also:
+    - candidate_generator.py: Uses FeatureExtractor internally
+    - confidence_scoring.py: Uses features for confidence scoring
+    - pattern_analyzer.py: Learns patterns from features (E1)
+    - models.py: CandidateFeatures data structure
 """
 
 import logging
@@ -91,7 +191,7 @@ class FeatureExtractor:
         number_raw_text: str,
         keyword_distance: int,
         keyword_position: str,
-        context_text: str,
+        context_text: Optional[str],
         segment_type: Optional[str] = None,
         section_heading: Optional[str] = None,
         section_path: Optional[str] = None,

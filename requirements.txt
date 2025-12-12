@@ -79,3 +79,6 @@ black>=23.0.0
 
 # Linter - Fast Python linter for code quality
 ruff>=0.1.0
+
+# Type checker - Static type analysis for code quality
+mypy>=1.0.0

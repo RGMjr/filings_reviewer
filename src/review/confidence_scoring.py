@@ -20,6 +20,95 @@ Score interpretation:
 - 0.3-0.5: Moderate (needs careful review)
 - 0.5-0.7: Good (probably correct)
 - 0.7-1.0: High (very likely correct)
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Confidence scoring enabled by default
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>>
+    >>> # Filter by confidence threshold
+    >>> high_confidence = [c for c in candidates if c.suggestion_confidence >= 0.7]
+    >>> print(f"{len(high_confidence)} high-confidence candidates")
+
+Direct Usage (advanced):
+    >>> from src.review.confidence_scoring import ConfidenceScorer
+    >>> from src.review.models import CandidateFeatures
+    >>>
+    >>> # Create scorer with default weights
+    >>> scorer = ConfidenceScorer(max_keyword_distance=100)
+    >>>
+    >>> # Prepare features from candidate
+    >>> features = CandidateFeatures(
+    ...     keyword_distance=20,
+    ...     keyword_position="before",
+    ...     contains_definition_language=True,
+    ...     has_period_mention=True,
+    ...     is_in_risk_factors=False,
+    ...     number_format="percentage",
+    ...     surrounding_numbers_count=2,
+    ... )
+    >>>
+    >>> # Compute confidence
+    >>> confidence = scorer.compute_confidence(
+    ...     keyword_distance=20,
+    ...     keyword_position="before",
+    ...     keyword="net revenue retention",
+    ...     metric_id="cm_nrr",
+    ...     features=features,
+    ... )
+    >>> print(f"Confidence: {confidence:.2f}")
+
+Custom Scoring Weights (via config):
+    >>> from src.review.config import CandidateGenerationConfig
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Customize scoring weights
+    >>> config = CandidateGenerationConfig(
+    ...     confidence_definition_bonus=0.30,       # Increase definition bonus
+    ...     confidence_risk_factors_penalty=0.40,   # Stronger risk penalty
+    ...     confidence_distance_max_weight=0.30,    # More weight on proximity
+    ... )
+    >>>
+    >>> # Scorer uses weights from config
+    >>> generator = CandidateGenerator(config=config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+
+Disabling Confidence Scoring (for performance):
+    >>> from src.review.config import get_fast_config
+    >>>
+    >>> # Fast config disables confidence computation
+    >>> fast_config = get_fast_config()
+    >>> generator = CandidateGenerator(config=fast_config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # All candidates will have suggestion_confidence=None
+    >>> assert all(c.suggestion_confidence is None for c in candidates)
+
+Interpreting Scores for Review Prioritization:
+    >>> # Sort candidates by confidence (descending)
+    >>> candidates_sorted = sorted(
+    ...     candidates,
+    ...     key=lambda c: c.suggestion_confidence or 0.0,
+    ...     reverse=True,
+    ... )
+    >>>
+    >>> # Review high-confidence candidates first
+    >>> for candidate in candidates_sorted[:10]:
+    ...     if candidate.suggestion_confidence >= 0.7:
+    ...         print(f"High confidence ({candidate.suggestion_confidence:.2f}): "
+    ...               f"{candidate.raw_number_text} {candidate.suggested_metric_id}")
+
+See Also:
+    - config.py: CandidateGenerationConfig for confidence weight customization
+    - candidate_generator.py: CandidateGenerator (uses ConfidenceScorer internally)
+    - models.py: CandidateFeatures data structure
 """
 
 import logging

@@ -22,9 +22,15 @@ class TestCandidateGenerationThroughput:
 
     def test_throughput_100_segments(self, benchmark, realistic_segments_100):
         """
-        Measure throughput with 100-segment filing.
+        Measure throughput with 100-segment filing (small filing baseline).
 
-        Target: >20 segments/sec
+        Measures how many segments per second the pipeline can process
+        for a typical small-to-medium filing.
+
+        Target: >20 segments/sec (production minimum)
+        Interpretation: Higher is better. Multiply by segment count to estimate
+                       total filing processing time.
+        Configuration: Learned rules disabled (baseline performance)
         """
         filing_id = realistic_segments_100["filing_id"]
         company_id = realistic_segments_100["company_id"]
@@ -49,9 +55,15 @@ class TestCandidateGenerationThroughput:
 
     def test_throughput_500_segments(self, benchmark, realistic_segments_500):
         """
-        Measure throughput with 500-segment filing (large filing).
+        Measure throughput with 500-segment filing (large filing scalability test).
 
-        Target: >20 segments/sec
+        Tests whether throughput scales linearly with input size. Should maintain
+        similar segments/sec throughput as 100-segment test (within 10%).
+
+        Target: >20 segments/sec (production minimum)
+        Interpretation: Compare against 100-segment test to verify O(n) scalability.
+                       5x segments should take ~5x time, not more.
+        Configuration: Learned rules disabled (baseline performance)
         """
         filing_id = realistic_segments_500["filing_id"]
         company_id = realistic_segments_500["company_id"]
@@ -81,9 +93,16 @@ class TestCandidateGenerationLatency:
 
     def test_latency_percentiles(self, benchmark, realistic_segments_100):
         """
-        Measure latency percentiles (p50, p95, p99) per segment.
+        Measure latency percentiles (p50, p95, p99) for processing consistency.
 
-        Target p95: <500ms per segment
+        Uses pedantic mode with multiple iterations (10 per round, 5 rounds)
+        to capture latency distribution. p95/p99 show worst-case performance
+        important for user experience.
+
+        Target p95: <500ms per filing (interactive user experience)
+        Interpretation: Low variance (p95 ≈ p50) indicates consistent performance.
+                       High variance suggests optimization opportunities.
+        Configuration: Learned rules disabled (baseline performance)
         """
         filing_id = realistic_segments_100["filing_id"]
         company_id = realistic_segments_100["company_id"]
@@ -119,7 +138,14 @@ class TestCandidateGenerationMemory:
         """
         Measure peak memory consumption during candidate generation.
 
-        Target: <100MB peak usage for 100-segment filing
+        Uses memory_profiler to sample memory every 10ms during processing.
+        Tracks baseline (start), peak (maximum), and increase (difference).
+
+        Target: <100MB increase for 100-segment filing
+        Interpretation: Memory increase should scale linearly with segments.
+                       >500MB total suggests memory leak or inefficiency.
+        Configuration: Learned rules disabled (baseline)
+        Note: Not run with --benchmark-only flag. Run separately for profiling.
         """
         filing_id = realistic_segments_100["filing_id"]
         company_id = realistic_segments_100["company_id"]
@@ -161,7 +187,15 @@ class TestCandidateGenerationMemory:
         """
         Detect memory leaks by running multiple iterations.
 
-        Runs candidate generation 5 times and checks for linear memory growth.
+        Processes the same filing 5 times consecutively. If memory grows
+        significantly (>50MB), it suggests objects are not being garbage
+        collected (memory leak).
+
+        Target: <50MB growth over 5 iterations (indicates proper cleanup)
+        Interpretation: Small growth (~5-10MB) is normal due to caching.
+                       Large growth (>100MB) indicates memory leak.
+        Configuration: Learned rules disabled (baseline)
+        Note: Not run with --benchmark-only flag. Run separately for leak detection.
         """
         filing_id = realistic_segments_100["filing_id"]
         company_id = realistic_segments_100["company_id"]
@@ -205,9 +239,17 @@ class TestCandidateGenerationWithDB:
 
     def test_throughput_with_learned_rules(self, benchmark, benchmark_db, realistic_segments_100):
         """
-        Measure throughput with learned rules enabled (requires DB).
+        Measure throughput with learned rules enabled (full production config).
 
-        This tests the full pipeline including pattern matching.
+        Tests the complete pipeline including database pattern matching.
+        Compares against baseline to measure overhead of learned rules.
+
+        Target: <10% slower than baseline (learned rules overhead should be minimal)
+        Interpretation: If significantly slower (>20%), learned rules are
+                       becoming a bottleneck. Optimize pattern matching or
+                       reduce pattern count.
+        Configuration: Learned rules enabled, requires database connection
+        Note: Currently tests with 0 patterns. Add patterns to test realistic load.
         """
         filing_id = realistic_segments_100["filing_id"]
         company_id = realistic_segments_100["company_id"]

@@ -30,6 +30,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.infra.db import DatabaseAdapter
 from src.review.models import CandidateFeatures, LearnedPattern, ReviewCandidate
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ class RuleApplicator:
         reload_interval: How often to reload patterns (seconds)
     """
 
-    def __init__(self, db_adapter, reload_interval_seconds: int = 300):
+    def __init__(self, db_adapter: DatabaseAdapter, reload_interval_seconds: int = 300):
         """
         Initialize rule applicator with database connection.
 

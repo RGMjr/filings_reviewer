@@ -11,6 +11,116 @@ Algorithm:
 3. Deduplicate by (number_position, metric_id)
 4. Extract context (30-50 words each direction)
 5. Create ReviewCandidate objects for bulk insert
+
+Basic Usage:
+    >>> from src.review import CandidateGenerator
+    >>> from src.infra.db import DatabaseAdapter
+    >>>
+    >>> # Initialize with default config
+    >>> db = DatabaseAdapter("postgresql://user:pass@localhost/filings_analysis")
+    >>> generator = CandidateGenerator()
+    >>>
+    >>> # Fetch segments for a filing
+    >>> segments = db.get_source_segments_for_filing(filing_id=123)
+    >>>
+    >>> # Generate candidates
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123,
+    ...     company_id=456,
+    ...     segments=segments,
+    ... )
+    >>>
+    >>> # Save to database
+    >>> db.bulk_insert_review_candidates([c.to_dict() for c in candidates])
+    >>> print(f"Generated {len(candidates)} candidates")
+
+Using Configuration Presets:
+    >>> from src.review.config import (
+    ...     get_high_precision_config,
+    ...     get_high_recall_config,
+    ...     get_fast_config,
+    ... )
+    >>>
+    >>> # High precision: Fewer false positives, stricter matching
+    >>> hp_generator = CandidateGenerator(config=get_high_precision_config())
+    >>> hp_candidates = hp_generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>>
+    >>> # High recall: Maximum coverage, more false positives
+    >>> hr_generator = CandidateGenerator(config=get_high_recall_config())
+    >>> hr_candidates = hr_generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>>
+    >>> # Fast: Optimized for speed, no confidence scoring
+    >>> fast_generator = CandidateGenerator(config=get_fast_config())
+    >>> fast_candidates = fast_generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+
+Custom Configuration:
+    >>> from src.review.config import CandidateGenerationConfig
+    >>>
+    >>> # Create custom config for your use case
+    >>> custom_config = CandidateGenerationConfig(
+    ...     max_keyword_distance=75,        # Moderate proximity
+    ...     min_metric_value=50,            # Filter small numbers
+    ...     filter_false_positives=True,    # Enable filtering
+    ...     compute_confidence=True,        # Enable confidence scoring
+    ...     apply_learned_rules=True,       # Apply E2 patterns
+    ...     min_pattern_precision=0.80,     # High-confidence patterns only
+    ... )
+    >>> custom_generator = CandidateGenerator(config=custom_config)
+    >>> candidates = custom_generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+
+Getting Statistics:
+    >>> # Request processing statistics
+    >>> candidates, stats = generator.generate_for_filing(
+    ...     filing_id=123,
+    ...     company_id=456,
+    ...     segments=segments,
+    ...     return_stats=True,
+    ... )
+    >>> print(f"Segments processed: {stats.segments_processed}")
+    >>> print(f"Numbers found: {stats.numbers_found}")
+    >>> print(f"False positives filtered: {stats.false_positives_filtered}")
+    >>> print(f"Candidates generated: {stats.candidates_generated}")
+    >>> print(f"Success rate: {stats.segment_success_rate:.1%}")
+
+Convenience Wrapper (Recommended for simple workflows):
+    >>> from src.review.helpers import generate_candidates_for_filing
+    >>>
+    >>> # One-liner that fetches segments and generates candidates
+    >>> candidates = generate_candidates_for_filing(
+    ...     db=db,
+    ...     filing_id=123,
+    ...     company_id=456,
+    ... )
+
+Backward Compatibility (Old API still works):
+    >>> # Old style: individual parameters
+    >>> generator = CandidateGenerator(
+    ...     max_keyword_distance=50,
+    ...     filter_false_positives=True,
+    ...     min_value=100,  # Old parameter name
+    ... )
+    >>>
+    >>> # New style: config object (recommended)
+    >>> from src.review.config import CandidateGenerationConfig
+    >>> config = CandidateGenerationConfig(
+    ...     max_keyword_distance=50,
+    ...     filter_false_positives=True,
+    ...     min_metric_value=100,  # New parameter name
+    ... )
+    >>> generator = CandidateGenerator(config=config)
+
+See Also:
+    - config.py: Configuration presets and CandidateGenerationConfig
+    - helpers.py: Convenience wrappers for common workflows
+    - models.py: ReviewCandidate and ProcessingStats data structures
 """
 
 import logging

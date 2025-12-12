@@ -6,6 +6,78 @@ metrics, such as dates, years, page numbers, and other reference numbers.
 
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # False positive filtering enabled by default
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Years (1990-2100), dates, page refs automatically filtered
+
+Direct Usage (advanced):
+    >>> from src.review.false_positive_filter import FalsePositiveFilter
+    >>> from src.review.number_parsing import NumberMatch
+    >>> from decimal import Decimal
+    >>>
+    >>> # Initialize filter
+    >>> fp_filter = FalsePositiveFilter(
+    ...     min_metric_value=10,
+    ...     filter_years=True,
+    ...     year_min=1990,
+    ...     year_max=2100,
+    ... )
+    >>>
+    >>> # Check if a number is a false positive
+    >>> number = NumberMatch(
+    ...     start=10, end=14, raw_text="2023", value=Decimal("2023"), unit="count"
+    ... )
+    >>> text = "In 2023, we had 50,000 customers"
+    >>> is_fp, reason = fp_filter.is_false_positive(number, text)
+    >>> print(f"False positive: {is_fp}, Reason: {reason}")
+
+Configuring Filter Behavior:
+    >>> from src.review.config import CandidateGenerationConfig
+    >>>
+    >>> # Adjust filtering thresholds
+    >>> config = CandidateGenerationConfig(
+    ...     min_metric_value=100,    # Only keep numbers >= 100
+    ...     filter_years=False,      # Don't filter year-like numbers
+    ...     filter_false_positives=True,  # Keep other FP filtering
+    ... )
+    >>> generator = CandidateGenerator(config=config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+
+Disabling False Positive Filtering (high recall):
+    >>> from src.review.config import get_high_recall_config
+    >>>
+    >>> # Disable all false positive filtering
+    >>> config = get_high_recall_config()
+    >>> generator = CandidateGenerator(config=config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Will include years, dates, page refs, small numbers
+
+Understanding Filter Reasons:
+    >>> # Filter returns tuple (is_false_positive: bool, reason: str)
+    >>> # Possible reasons:
+    >>> # - "year_value": Number in year range (1990-2100)
+    >>> # - "small_value": Number below min_metric_value threshold
+    >>> # - "date_context": Part of a date (12/31/2023)
+    >>> # - "page_reference": Page number ("page 123")
+    >>> # - "note_reference": Note reference ("Note 5")
+    >>> # - "version_number": Version number ("Version 2.0")
+    >>> # - None: Not a false positive
+
+See Also:
+    - candidate_generator.py: Uses FalsePositiveFilter internally
+    - config.py: Configure filtering parameters
+    - number_parsing.py: NumberMatch data structure
 """
 
 import logging
@@ -23,7 +95,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Date patterns - to detect if a number is part of a date
-DATE_CONTEXT_PATTERNS: List[Pattern] = [
+DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     # MM/DD/YYYY or DD/MM/YYYY
     re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}"),
     # Month DD, YYYY
@@ -41,7 +113,7 @@ DATE_CONTEXT_PATTERNS: List[Pattern] = [
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)
-FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern] = [
+FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     # Page references: "page 123", "pages 10-20"
     re.compile(r"\bpages?\s+\d+", re.IGNORECASE),
     # Note references: "Note 5", "Notes 1-3"

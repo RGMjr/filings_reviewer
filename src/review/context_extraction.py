@@ -9,6 +9,58 @@ positions in text. It handles:
 
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
+
+Basic Usage:
+    >>> from src.review.context_extraction import ContextExtractor
+    >>>
+    >>> # Initialize extractor
+    >>> extractor = ContextExtractor(context_words=40)
+    >>>
+    >>> # Extract context around a position
+    >>> text = "We had 50,000 active customers as of December 31, 2023."
+    >>> context = extractor.extract_context(text, position=10, context_words=20)
+    >>> print(context)  # Returns ~20 words each direction from position 10
+
+Automatic Usage (via CandidateGenerator):
+    >>> from src.review import CandidateGenerator
+    >>>
+    >>> # Context extraction happens automatically during candidate generation
+    >>> generator = CandidateGenerator()
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+    >>> # Each candidate has context_text field (default: 40 words each direction)
+    >>> print(candidates[0].context_text)
+
+Customizing Context Window Size:
+    >>> from src.review.config import CandidateGenerationConfig
+    >>>
+    >>> # Adjust context window size
+    >>> config = CandidateGenerationConfig(
+    ...     context_words=60,  # Larger context (60 words each direction)
+    ... )
+    >>> generator = CandidateGenerator(config=config)
+    >>> candidates = generator.generate_for_filing(
+    ...     filing_id=123, company_id=456, segments=segments
+    ... )
+
+Performance Optimization (P1.2):
+    >>> # For multiple extractions from same text, pre-compute word positions
+    >>> extractor = ContextExtractor()
+    >>> text = "Large text with multiple numbers to process..."
+    >>>
+    >>> # Parse words once
+    >>> words = extractor.parse_text_into_words(text)
+    >>>
+    >>> # Extract context multiple times efficiently (using cached words)
+    >>> context1 = extractor.extract_context(text, position=100, word_positions=words)
+    >>> context2 = extractor.extract_context(text, position=500, word_positions=words)
+    >>> context3 = extractor.extract_context(text, position=900, word_positions=words)
+    >>> # ~10-20x faster than re-parsing each time
+
+See Also:
+    - candidate_generator.py: Uses ContextExtractor internally
+    - config.py: Configure context_words parameter
 """
 
 import logging

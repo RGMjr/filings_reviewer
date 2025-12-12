@@ -401,7 +401,7 @@ def t_test_independent(
 
         se = pooled_std * math.sqrt(1 / n1 + 1 / n2)
         t_stat = mean_difference / se
-        df = n1 + n2 - 2
+        df = float(n1 + n2 - 2)
         cohens_d = mean_difference / pooled_std
     else:
         # Welch's t-test (unequal variance)
