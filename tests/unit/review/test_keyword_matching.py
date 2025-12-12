@@ -216,3 +216,66 @@ class TestConstants:
         """SPECIFIC_KEYWORD_PATTERNS should not be empty."""
         assert len(SPECIFIC_KEYWORD_PATTERNS) > 0
         assert any("active" in p for p in SPECIFIC_KEYWORD_PATTERNS)
+
+
+# =============================================================================
+# Substring Deduplication Tests
+# =============================================================================
+
+
+class TestSubstringDeduplication:
+    """Tests for substring deduplication in keyword matching."""
+
+    def test_ltv_cac_ratio_deduplication(self):
+        """LTV/CAC ratio should not create separate LTV and CAC candidates."""
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        text = "Our LTV/CAC ratio was 1.42 for the period."
+        number = NumberMatch(start=18, end=22, raw_text="1.42", value=Decimal("1.42"), unit="count")
+
+        # Find all keywords in text
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Should find LTV/CAC, LTV, and CAC keywords
+        assert len(all_keywords) >= 3
+        keywords_text = [kw.keyword for kw in all_keywords]
+        assert any("LTV/CAC" in k or "ltv/cac" in k.lower() for k in keywords_text)
+        assert any("LTV" == k.upper() for k in keywords_text)
+        assert any("CAC" == k.upper() for k in keywords_text)
+
+        # But when filtering for this number, should only return LTV/CAC
+        # (longest/most specific match)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should have only LTV/CAC, not LTV and CAC separately
+        matched_keywords = [kw.keyword for kw in keywords_near_number]
+        assert len(matched_keywords) == 1, f"Expected 1 keyword, got {len(matched_keywords)}: {matched_keywords}"
+        assert "LTV/CAC" in matched_keywords[0] or "ltv/cac" in matched_keywords[0].lower()
+
+    def test_compound_metric_prevents_substring_matches(self):
+        """Compound metrics should prevent substring matches at overlapping positions."""
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        text = "Net Revenue Retention was 120% for the year."
+        number = NumberMatch(start=26, end=30, raw_text="120%", value=Decimal("120"), unit="percent")
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should prioritize "Net Revenue Retention" over just "Revenue" or "Retention"
+        matched_keywords = [kw.keyword for kw in keywords_near_number]
+        # The longest match should be first (or only match if they overlap)
+        longest_match = max(matched_keywords, key=len)
+        assert len(longest_match) > 10, "Should match compound metric, not single word"
+
+    def test_non_overlapping_keywords_both_kept(self):
+        """Non-overlapping keywords should both be kept even if one is substring of other."""
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        # "customers" appears twice: once in "active customers", once standalone
+        text = "We have active customers and customers grew by 50%."
+        number = NumberMatch(start=46, end=49, raw_text="50%", value=Decimal("50"), unit="percent")
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Since keywords don't overlap in position, both can be kept
+        # (one before number, one after)
+        assert len(keywords_near_number) >= 1

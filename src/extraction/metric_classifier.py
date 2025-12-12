@@ -128,14 +128,14 @@ class MetricClassifier:
         "cm_revenue_by_cohort": [
             r"\brevenue\s+by\s+cohort\b",
             r"\bcohort\s+revenue\b",
-            r"\brevenue.*cohort\b",
-            r"\bcohort.*revenue\b",
+            r"\brevenue[^.;]{0,100}\bcohort\b",  # Fixed: limit to same sentence
+            r"\bcohort[^.;]{0,100}\brevenue\b",  # Fixed: limit to same sentence
         ],
         "cm_transactions_by_cohort": [
             r"\btransactions?\s+by\s+cohort\b",
             r"\bcohort\s+transactions?\b",
             r"\bpurchase\s+transactions?\b",
-            r"\btransactions?.*cohort\b",
+            r"\btransactions?[^.;]{0,100}\bcohort\b",  # Fixed: limit to same sentence
         ],
         # Extended Metrics
         "cm_active_customers_total": [
@@ -177,7 +177,7 @@ class MetricClassifier:
             r"\bnet\s+retention\b",
             r"\bnet\s+dollar\s+retention\b",
             r"\bndr\b",
-            r"\bretention\s+rate.*\d+%",
+            r"\bretention\s+rate[^.;]{0,50}\d+%",  # Fixed: limit to same sentence
             r"\bnet\s+retention\s+rate\b",
         ],
         "cm_gross_revenue_retention": [
