@@ -49,6 +49,31 @@ Based on Phase 1B success, Phase 2 should focus on:
 2. **Timeout Optimization** - Handle large filings (25% timeout rate)
 3. **E-commerce Focus** - Investigate lower success rates
 
+### 🤖 **NEW: Claude Skills Development**
+**Status:** Planning (2025-12-11)
+**Purpose:** Reduce context window usage and improve consistency when working with Claude Code
+
+**Plan:** `docs/CLAUDE_SKILLS_DEVELOPMENT_PLAN.md`
+**Estimated Time:** 34.5-50 hours total (9-10 work days)
+
+**Skills to Develop (Priority Order):**
+1. ⬜ **Implementation Plan Creator** (4-6.5 hrs) - Auto-generate structured plans
+2. ⬜ **Code Module Grader** (6.5-8.5 hrs) - Evaluate code with A+ to F grades
+3. ⬜ **Test Coverage Analyzer** (5.5-7.5 hrs) - Identify gaps and generate tests
+4. ⬜ **Database Migration Helper** (6.5-9.5 hrs) - Generate migrations + db.py methods
+5. ⬜ **Documentation Sync Validator** (11.5-15.5 hrs) - Catch stale documentation
+
+**Expected Impact:**
+- 70%+ reduction in context needed for common tasks
+- 50%+ faster task initiation
+- Near-zero inconsistency in plan/doc generation
+
+**Next Steps:**
+- [ ] Create Skill #1 (Implementation Plan Creator)
+- [ ] Test Skill #1 on real planning scenario
+- [ ] Create Skill #2 (Code Module Grader)
+- [ ] Iterate based on usage feedback
+
 ### ✅ **COMPLETED: Core Development (Nov 2025)**
 **Status:** ALL DONE
 

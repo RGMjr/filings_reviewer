@@ -15,6 +15,8 @@ import logging
 import re
 from typing import List, Optional, Tuple
 
+from src.review.config import DEFAULT_CONFIG, DEFAULT_CONTEXT_WORDS
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +25,8 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Default number of words to extract each direction from target position
-DEFAULT_CONTEXT_WORDS = 40
+# (imported from config.py for centralized configuration)
+DEFAULT_CONTEXT_WORDS = DEFAULT_CONTEXT_WORDS
 
 
 # =============================================================================
@@ -40,12 +43,12 @@ class ContextExtractor:
     extracting multiple contexts from the same text.
     """
 
-    def __init__(self, context_words: int = DEFAULT_CONTEXT_WORDS):
+    def __init__(self, context_words: int = DEFAULT_CONFIG.context_words):
         """
         Initialize the context extractor.
 
         Args:
-            context_words: Number of words to extract each direction
+            context_words: Number of words to extract each direction (default from config)
         """
         self.context_words = context_words
 

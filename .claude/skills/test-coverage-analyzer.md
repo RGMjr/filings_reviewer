@@ -500,6 +500,17 @@ Suggestion:
 **Gap:** 7 percentage points
 **Statements Needed:** ~150 (estimated)
 
+## Coverage Improvement Tracking
+
+**Previous Coverage:** {X}% (if known, e.g., from last analysis)
+**Current Coverage:** 68%
+**Improvement:** +{Y} percentage points (or "First analysis")
+
+**Test Count Growth:**
+- Previous: {N} tests (if known)
+- Current: {M} tests
+- Added: {M-N} tests
+
 ## Summary
 
 - **Files Below Target:** 12
@@ -509,8 +520,10 @@ Suggestion:
 
 ## Quick Wins (Recommended First)
 
-### 1. src/web/routes/export.py (73% → 85%)
+### 1. src/web/routes/export.py
 
+**Coverage Improvement:** 73% → 85% (+12 percentage points)
+**Test Count:** {current_tests} → {current_tests + 3} tests (+3 tests)
 **Missing:** 6 statements (lines 23-28, 45)
 **Effort:** Low (1-2 tests)
 **Priority:** High (user-facing route)
@@ -519,6 +532,11 @@ Suggestion:
 1. `test_export_filing_handles_invalid_format()` - Lines 23-25
 2. `test_export_filing_handles_database_error()` - Lines 26-28
 3. `test_export_filing_validates_filing_exists()` - Line 45
+
+**Expected Result After Completion:**
+✅ Coverage improved from 73% → 85%
+✅ Added 3 comprehensive tests
+✅ All error cases covered
 
 ### 2. src/review/helpers.py (82% → 90%)
 
@@ -858,6 +876,14 @@ When generating tests, ensure:
 ---
 
 ## Version History
+
+**1.1.0** (2025-12-12)
+- Enhanced coverage improvement tracking
+- Added "Before → After" coverage visualization (e.g., "5% → 97%")
+- Added test count growth tracking (e.g., "2 → 48 tests")
+- Added "Expected Result After Completion" celebration format
+- Added coverage history section to track improvements over time
+- Matches actual usage patterns from DEVELOPMENT_PLAN.md
 
 **1.0.0** (2025-12-11)
 - Initial skill creation

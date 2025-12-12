@@ -36,6 +36,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
+    "mypy>=1.0.0",
 ]
 llm = [
     "openai>=1.0.0",
@@ -79,6 +80,7 @@ markers = [
     "unit: Unit tests (fast, no external dependencies)",
     "integration: Integration tests (require database)",
     "slow: Slow-running tests",
+    "benchmark: Performance benchmark tests",
 ]
 
 # Logging
@@ -143,3 +145,28 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
+
+[tool.mypy]
+# Global settings
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start permissive for most of the codebase
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
+ignore_missing_imports = true
+
+# Strict mode for review module
+[[tool.mypy.overrides]]
+module = "src.review.*"
+disallow_untyped_defs = true
+disallow_any_unimported = false
+disallow_any_expr = false
+disallow_any_decorated = false
+disallow_any_explicit = false
+disallow_any_generics = false
+disallow_subclassing_any = false

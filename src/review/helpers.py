@@ -6,7 +6,7 @@ with candidate generation for common use cases.
 """
 
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional, cast
 
 from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
@@ -55,12 +55,15 @@ def generate_candidates_for_filing(
     if generator is None:
         generator = CandidateGenerator()
 
-    candidates = generator.generate_for_filing(
+    # Note: return_stats=False (default), so this always returns List[ReviewCandidate]
+    candidates_result = generator.generate_for_filing(
         filing_id=filing_id,
         company_id=company_id,
         segments=segments,
         db=db,
     )
+    # Cast to clarify type for mypy (we know it's List[ReviewCandidate] when return_stats=False)
+    candidates: List[ReviewCandidate] = cast(List[ReviewCandidate], candidates_result)
 
     # Optionally save to database
     if save and candidates:

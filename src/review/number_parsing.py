@@ -75,7 +75,7 @@ class NumberParser:
     - Plain numbers: 1234567
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the number parser."""
         self._regex = NUMBER_REGEX
 

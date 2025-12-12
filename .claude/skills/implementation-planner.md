@@ -315,7 +315,9 @@ Use this template structure:
 **Status**: ⬜ Not Started
 **Priority**: P1
 **Estimate**: {X-Y} hours
+**Actual**: - (fill when complete)
 **Assigned**: -
+**Completed**: - (fill when complete)
 
 **Objective**: {Clear statement of what this improves}
 
@@ -466,7 +468,10 @@ C1 ──> C2 ──> C3 ─┘  └─> E1 ──> E2
 
 **Each improvement includes:**
 - Clear objective
-- Task breakdown
+- Task breakdown with time estimates
+- Actual time tracking (filled when complete)
+- Assigned owner
+- Completion date tracking
 - Files to modify
 - Success criteria
 - Implementation notes
@@ -600,6 +605,12 @@ To verify this skill works correctly:
 ---
 
 ## Version History
+
+- **v1.1** (2025-12-12): Enhanced time and completion tracking
+  - Added "Actual" time field for recording actual hours spent
+  - Added "Completed" date field for tracking completion dates
+  - Enhanced documentation to emphasize time tracking importance
+  - Matches actual usage patterns from E1/D1 improvement tracking
 
 - **v1.0** (2025-12-11): Initial skill creation
   - Supports main implementation plans
