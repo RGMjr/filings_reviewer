@@ -210,33 +210,86 @@ class KeywordMatcher:
         Find metric keywords within max_keyword_distance of a number.
 
         Uses pre-computed keyword matches for efficiency. Returns at most
-        one keyword per metric ID (the closest one).
+        one keyword per metric ID (the closest one). Filters out keywords
+        that are substrings of other matched keywords at overlapping positions
+        (e.g., if "LTV/CAC" is matched, don't also match "LTV" and "CAC").
 
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
 
         Returns:
-            List of KeywordMatch objects within range (one per metric)
+            List of KeywordMatch objects within range (one per metric,
+            prioritizing longer/more specific keywords)
         """
+        # First pass: collect all keywords within distance
+        candidates = []
+        for kw in all_keywords:
+            dist = self.calculate_distance_from_positions(
+                number.start, number.end, kw.start, kw.end
+            )
+            if dist <= self.max_keyword_distance:
+                candidates.append(kw)
+
+        # Sort by keyword length (longest first) to prioritize specific matches
+        candidates.sort(key=lambda k: len(k.keyword), reverse=True)
+
+        # Second pass: filter out substring duplicates
         matches = []
         seen_metrics: Set[str] = set()
 
-        for kw in all_keywords:
+        for kw in candidates:
             # Skip if we already have a match for this metric
             if kw.metric_id in seen_metrics:
                 continue
 
-            # Calculate distance
-            dist = self.calculate_distance_from_positions(
-                number.start, number.end, kw.start, kw.end
-            )
+            # Check if this keyword is a substring of any already-accepted keyword
+            # at an overlapping position
+            is_substring_duplicate = False
+            for accepted in matches:
+                if self._keywords_overlap(kw, accepted) and self._is_substring_match(
+                    kw, accepted
+                ):
+                    logger.debug(
+                        f"Filtered substring duplicate: '{kw.keyword}' "
+                        f"(substring of '{accepted.keyword}')"
+                    )
+                    is_substring_duplicate = True
+                    break
 
-            if dist <= self.max_keyword_distance:
+            if not is_substring_duplicate:
                 matches.append(kw)
                 seen_metrics.add(kw.metric_id)
 
         return matches
+
+    def _keywords_overlap(self, kw1: KeywordMatch, kw2: KeywordMatch) -> bool:
+        """
+        Check if two keyword matches overlap in position.
+
+        Args:
+            kw1: First keyword match
+            kw2: Second keyword match
+
+        Returns:
+            True if keywords overlap, False otherwise
+        """
+        return not (kw1.end <= kw2.start or kw2.end <= kw1.start)
+
+    def _is_substring_match(self, kw1: KeywordMatch, kw2: KeywordMatch) -> bool:
+        """
+        Check if kw1's keyword is a substring of kw2's keyword.
+
+        Args:
+            kw1: First keyword match
+            kw2: Second keyword match
+
+        Returns:
+            True if kw1.keyword is a substring of kw2.keyword (case-insensitive)
+        """
+        kw1_lower = kw1.keyword.lower()
+        kw2_lower = kw2.keyword.lower()
+        return kw1_lower in kw2_lower or kw2_lower in kw1_lower
 
     def calculate_distance(self, number: NumberMatch, keyword: KeywordMatch) -> int:
         """
