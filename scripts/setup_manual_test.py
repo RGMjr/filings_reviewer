@@ -381,7 +381,7 @@ class ManualTestSetup:
         """Start Flask application."""
         logger.info("\nStarting Flask application...")
         logger.info("=" * 80)
-        logger.info("Open your browser to: http://localhost:5000/review/filings")
+        logger.info("Open your browser to: http://localhost:5001/review/filings")
         logger.info("Press Ctrl+C to stop the server")
         logger.info("=" * 80 + "\n")
 
@@ -392,7 +392,7 @@ class ManualTestSetup:
         # Import and run Flask
         from src.web.app import create_app
         app = create_app()
-        app.run(host="0.0.0.0", port=5000, debug=True)
+        app.run(host="0.0.0.0", port=5001, debug=True)
 
 
 def main():
