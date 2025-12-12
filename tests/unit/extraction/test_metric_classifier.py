@@ -389,10 +389,11 @@ def test_confidence_score_short_segment_penalty(classifier, sample_segment):
     # Should be classified
     assert result.contains_definition_flag is True
 
-    # But confidence should be penalized (* 0.7)
-    # Without penalty: 0.2 (definition) + candidates
-    # With penalty: that value * 0.7
-    assert result.classifier_confidence < 0.3
+    # Confidence calculation:
+    # 0.2 (definition) + 0.3 (single candidate) + 0.1 (CMASB extended boost) = 0.6
+    # With short penalty: 0.6 * 0.7 = 0.42
+    # Note: MRR is now a CMASB_EXTENDED_METRIC so gets +0.1 boost
+    assert 0.4 <= result.classifier_confidence <= 0.5
 
 
 def test_confidence_score_caps_at_one(classifier, sample_segment):

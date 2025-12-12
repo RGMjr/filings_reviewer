@@ -184,6 +184,78 @@ VALUES (
     1
 );
 
+-- Gross Margin (Overall)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_gross_margin_overall',
+    'Gross Margin (Overall)',
+    'extended',
+    'Overall gross profit margin percentage across all customers and products.',
+    'financial_performance',
+    'active',
+    1
+);
+
+-- Gross Margin by Cohort
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_gross_margin_by_cohort',
+    'Gross Margin by Cohort',
+    'extended',
+    'Gross profit margin percentage broken down by customer cohort (acquisition or tenure).',
+    'cohort_economics',
+    'active',
+    1
+);
+
+-- Annual Recurring Revenue (ARR)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_arr',
+    'Annual Recurring Revenue',
+    'extended',
+    'Annualized value of recurring subscription revenue, typically calculated as MRR × 12 or based on contracted annual values.',
+    'financial_performance',
+    'active',
+    1
+);
+
+-- Monthly Recurring Revenue (MRR)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_mrr',
+    'Monthly Recurring Revenue',
+    'extended',
+    'Monthly value of recurring subscription revenue from active subscriptions.',
+    'financial_performance',
+    'active',
+    1
+);
+
+-- Expansion Revenue
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_expansion_revenue',
+    'Expansion Revenue',
+    'extended',
+    'Additional revenue from existing customers through upsells, cross-sells, or increased usage.',
+    'retention',
+    'active',
+    1
+);
+
+-- Revenue Concentration
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_revenue_concentration',
+    'Revenue Concentration',
+    'extended',
+    'Percentage of total revenue attributable to top customers (e.g., top 10 customers, top 5%).',
+    'risk',
+    'active',
+    1
+);
+
 -- ============================================================================
 -- FUTURE METRICS (Phase 2+)
 -- ============================================================================
