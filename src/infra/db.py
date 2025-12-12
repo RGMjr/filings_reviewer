@@ -636,10 +636,11 @@ class DatabaseAdapter:
             offset: Number to skip (for pagination)
 
         Returns:
-            List of candidate records with decision fields (decision_id, decision,
-            assigned_metric_id, rejection_category, rejection_reason, reviewer_notes,
-            reviewer_id, review_time_seconds, decision_created_at).
-            Decision fields are NULL if no decision exists.
+            List of candidate records with segment fields (segment_type, segment_html)
+            and decision fields (decision_id, decision, assigned_metric_id,
+            rejection_category, rejection_reason, reviewer_notes, reviewer_id,
+            review_time_seconds, decision_created_at).
+            Segment and decision fields are NULL if no source segment or decision exists.
 
         Raises:
             ValidationError: If status is provided but not a valid review status
@@ -651,6 +652,8 @@ class DatabaseAdapter:
         sql = """
             SELECT
                 rc.*,
+                ss.segment_type,
+                ss.raw_html as segment_html,
                 rd.decision_id,
                 rd.decision,
                 rd.assigned_metric_id,
@@ -661,6 +664,7 @@ class DatabaseAdapter:
                 rd.review_time_seconds,
                 rd.created_at as decision_created_at
             FROM review_candidates rc
+            LEFT JOIN source_segments ss ON rc.source_segment_id = ss.source_segment_id
             LEFT JOIN (
                 SELECT DISTINCT ON (candidate_id)
                     candidate_id,
