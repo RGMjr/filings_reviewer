@@ -95,9 +95,9 @@ class ManualTestSetup:
     def _check_database(self) -> bool:
         """Verify database connection."""
         logger.info("Checking database connection...")
-        result = self.db.execute_query("SELECT current_database(), version();")
+        result = self.db.query("SELECT current_database(), version();")
         if result:
-            db_name = result[0][0]
+            db_name = result[0]["current_database"]
             logger.info(f"✓ Connected to database: {db_name}")
             return True
         else:
@@ -109,7 +109,7 @@ class ManualTestSetup:
         logger.info("Checking review schema...")
 
         # Check if review.candidates table exists
-        result = self.db.execute_query("""
+        result = self.db.query("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_schema = 'review'
@@ -117,7 +117,7 @@ class ManualTestSetup:
             );
         """)
 
-        if result and result[0][0]:
+        if result and result[0]["exists"]:
             logger.info("✓ Review schema exists")
             return True
         else:
@@ -151,25 +151,25 @@ class ManualTestSetup:
         cik = config["cik"]
 
         # Check if exists
-        result = self.db.execute_query(
-            "SELECT company_id FROM companies WHERE cik = %s;",
-            (cik,)
+        result = self.db.query(
+            "SELECT company_id FROM companies WHERE cik = %(cik)s;",
+            {"cik": cik}
         )
 
         if result:
-            company_id = result[0][0]
+            company_id = result[0]["company_id"]
             logger.info(f"✓ Company exists (ID: {company_id})")
             return company_id
 
         # Create company
-        result = self.db.execute_query("""
+        result = self.db.query("""
             INSERT INTO companies (cik, company_name, ticker)
-            VALUES (%s, %s, %s)
+            VALUES (%(cik)s, %(name)s, %(ticker)s)
             RETURNING company_id;
-        """, (cik, config["name"], config.get("ticker")))
+        """, {"cik": cik, "name": config["name"], "ticker": config.get("ticker")})
 
         if result:
-            company_id = result[0][0]
+            company_id = result[0]["company_id"]
             logger.info(f"✓ Created company (ID: {company_id})")
             self.stats["companies_created"] += 1
             return company_id
@@ -204,13 +204,13 @@ class ManualTestSetup:
             return
 
         # Step 2: Check if segments exist
-        existing_segments = self.db.execute_query(
-            "SELECT COUNT(*) FROM source_segments WHERE filing_id = %s;",
-            (filing_id,)
+        existing_segments = self.db.query(
+            "SELECT COUNT(*) FROM source_segments WHERE filing_id = %(filing_id)s;",
+            {"filing_id": filing_id}
         )
 
-        if existing_segments and existing_segments[0][0] > 0:
-            logger.info(f"✓ Filing already has {existing_segments[0][0]} segments")
+        if existing_segments and existing_segments[0]["count"] > 0:
+            logger.info(f"✓ Filing already has {existing_segments[0]['count']} segments")
         else:
             # Step 3: Generate segments
             self._generate_segments(filing_id, filing_path)
@@ -221,25 +221,25 @@ class ManualTestSetup:
     def _ensure_filing(self, company_id: int, accession: str, filing_path: Path) -> Optional[int]:
         """Ensure filing exists in database."""
         # Check if exists
-        result = self.db.execute_query(
-            "SELECT filing_id FROM filings WHERE accession_number = %s;",
-            (accession,)
+        result = self.db.query(
+            "SELECT filing_id FROM filings WHERE accession_number = %(accession)s;",
+            {"accession": accession}
         )
 
         if result:
-            filing_id = result[0][0]
+            filing_id = result[0]["filing_id"]
             logger.info(f"✓ Filing exists (ID: {filing_id})")
             return filing_id
 
         # Create filing
-        result = self.db.execute_query("""
+        result = self.db.query("""
             INSERT INTO filings (company_id, form_type, filing_date, accession_number)
-            VALUES (%s, %s, CURRENT_DATE, %s)
+            VALUES (%(company_id)s, %(form_type)s, CURRENT_DATE, %(accession)s)
             RETURNING filing_id;
-        """, (company_id, "S-1", accession))
+        """, {"company_id": company_id, "form_type": "S-1", "accession": accession})
 
         if result:
-            filing_id = result[0][0]
+            filing_id = result[0]["filing_id"]
             logger.info(f"✓ Created filing (ID: {filing_id})")
             self.stats["filings_processed"] += 1
             return filing_id
@@ -261,17 +261,29 @@ class ManualTestSetup:
 
             # Insert into database
             inserted = 0
-            for seg in segments:
-                success = self.db.insert_source_segment(
-                    filing_id=filing_id,
-                    segment_type=seg.segment_type,
-                    section_name=seg.section_name,
-                    content=seg.content,
-                    html_content=seg.html_content,
-                    position=seg.position,
-                )
-                if success:
+            for i, seg in enumerate(segments):
+                try:
+                    self.db.execute("""
+                        INSERT INTO source_segments (
+                            filing_id, segment_type, section_name, content,
+                            html_content, sequence_index
+                        )
+                        VALUES (
+                            %(filing_id)s, %(segment_type)s, %(section_name)s,
+                            %(content)s, %(html_content)s, %(sequence_index)s
+                        );
+                    """, {
+                        "filing_id": filing_id,
+                        "segment_type": seg.segment_type,
+                        "section_name": seg.section_name,
+                        "content": seg.content,
+                        "html_content": seg.html_content,
+                        "sequence_index": i,
+                    })
                     inserted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to insert segment {i}: {e}")
+                    continue
 
             logger.info(f"✓ Inserted {inserted} segments into database")
             self.stats["segments_created"] += inserted
@@ -285,13 +297,13 @@ class ManualTestSetup:
 
         try:
             # Check if candidates already exist
-            existing = self.db.execute_query(
-                "SELECT COUNT(*) FROM review.candidates WHERE filing_id = %s;",
-                (filing_id,)
+            existing = self.db.query(
+                "SELECT COUNT(*) FROM review.candidates WHERE filing_id = %(filing_id)s;",
+                {"filing_id": filing_id}
             )
 
-            if existing and existing[0][0] > 0:
-                count = existing[0][0]
+            if existing and existing[0]["count"] > 0:
+                count = existing[0]["count"]
                 logger.info(f"✓ Filing already has {count} candidates")
                 return
 
@@ -318,7 +330,7 @@ class ManualTestSetup:
         logger.info("=" * 80)
 
         # Database stats
-        result = self.db.execute_query("""
+        result = self.db.query("""
             SELECT
                 (SELECT COUNT(*) FROM companies) as companies,
                 (SELECT COUNT(*) FROM filings) as filings,
@@ -330,11 +342,11 @@ class ManualTestSetup:
         if result:
             row = result[0]
             logger.info(f"\nDatabase totals:")
-            logger.info(f"  Companies:  {row[0]}")
-            logger.info(f"  Filings:    {row[1]}")
-            logger.info(f"  Segments:   {row[2]}")
-            logger.info(f"  Candidates: {row[3]}")
-            logger.info(f"  Decisions:  {row[4]}")
+            logger.info(f"  Companies:  {row['companies']}")
+            logger.info(f"  Filings:    {row['filings']}")
+            logger.info(f"  Segments:   {row['segments']}")
+            logger.info(f"  Candidates: {row['candidates']}")
+            logger.info(f"  Decisions:  {row['decisions']}")
 
         logger.info(f"\nThis session:")
         logger.info(f"  Companies created:     {self.stats['companies_created']}")
@@ -343,7 +355,7 @@ class ManualTestSetup:
         logger.info(f"  Candidates generated:  {self.stats['candidates_generated']}")
 
         # Candidates by filing
-        result = self.db.execute_query("""
+        result = self.db.query("""
             SELECT
                 f.filing_id,
                 c.company_name,
@@ -361,8 +373,7 @@ class ManualTestSetup:
         if result:
             logger.info(f"\nFilings ready for review:")
             for row in result:
-                filing_id, company_name, candidate_count, decision_count = row
-                logger.info(f"  Filing {filing_id} ({company_name}): {candidate_count} candidates, {decision_count} decisions")
+                logger.info(f"  Filing {row['filing_id']} ({row['company_name']}): {row['candidate_count']} candidates, {row['decision_count']} decisions")
 
         logger.info("\n" + "=" * 80)
 
