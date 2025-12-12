@@ -1724,7 +1724,7 @@ class DatabaseAdapter:
             SELECT
                 f.filing_id, f.accession_number, f.form_type, f.filing_date,
                 f.company_id,
-                c.company_name, c.cik, c.sic_code
+                c.company_name, c.cik, c.industry_code
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.filing_id = %(filing_id)s
