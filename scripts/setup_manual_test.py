@@ -119,15 +119,37 @@ class ManualTestSetup:
         """Find and process real filing files from data/filings directory."""
         logger.info("\n--- Finding real filing files ---")
 
-        # Find primary.htm files (limit to 3 for manual testing)
-        filing_files = list(self.data_dir.glob("*/*/primary.htm"))[:3]
+        # Priority companies to test with (well-known IPOs)
+        PRIORITY_CIKS = {
+            "0001740915": "Farfetch",
+            "0001764925": "Slack",
+            "0001828365": "Snowflake",
+            "0001644378": "Snap",
+            "0001620053": "DocuSign",
+        }
+
+        # Look for priority company filings first
+        filing_files = []
+        for cik, name in PRIORITY_CIKS.items():
+            cik_files = list(self.data_dir.glob(f"{cik}/*/primary.htm"))
+            if cik_files:
+                logger.info(f"✓ Found {len(cik_files)} filing(s) for {name} (CIK: {cik})")
+                filing_files.extend(cik_files[:1])  # Take first filing per company
+
+        # If we don't have enough priority filings, find any primary.htm files
+        if len(filing_files) < 3:
+            logger.info("Looking for additional filing files...")
+            all_files = list(self.data_dir.glob("*/*/primary.htm"))
+            # Filter out already-added priority files
+            additional_files = [f for f in all_files if f not in filing_files]
+            filing_files.extend(additional_files[:3 - len(filing_files)])
 
         if not filing_files:
             logger.warning("No filing files found in data/filings")
             logger.info("Looking for: data/filings/[CIK]/[accession]/primary.htm")
             return
 
-        logger.info(f"Found {len(filing_files)} filing file(s)")
+        logger.info(f"\nProcessing {len(filing_files)} filing file(s)")
 
         for filing_path in filing_files:
             # Extract CIK and accession from path
@@ -135,10 +157,13 @@ class ManualTestSetup:
             cik = filing_path.parent.parent.name
             accession = filing_path.parent.name.replace("-", "")
 
-            logger.info(f"\nProcessing: CIK {cik}")
+            # Get company name if it's a priority company
+            company_name = PRIORITY_CIKS.get(cik, f"Company {cik}")
 
-            # Ensure company exists (create minimal record)
-            company_id = self._ensure_company_from_cik(cik)
+            logger.info(f"\nProcessing: {company_name} (CIK: {cik})")
+
+            # Ensure company exists (create minimal record with real name)
+            company_id = self._ensure_company_from_cik(cik, company_name)
             if not company_id:
                 logger.warning(f"Could not create company for CIK {cik}")
                 continue
@@ -146,7 +171,7 @@ class ManualTestSetup:
             # Process the filing
             self._process_filing(company_id, filing_path)
 
-    def _ensure_company_from_cik(self, cik: str) -> Optional[int]:
+    def _ensure_company_from_cik(self, cik: str, company_name: Optional[str] = None) -> Optional[int]:
         """Ensure company exists, creating minimal record if needed."""
         # Check if exists
         result = self.db.query(
@@ -159,12 +184,13 @@ class ManualTestSetup:
             logger.info(f"✓ Company exists (ID: {company_id})")
             return company_id
 
-        # Create minimal company record
+        # Create minimal company record with provided name or default
+        name = company_name if company_name else f"Company {cik}"
         result = self.db.query("""
             INSERT INTO companies (cik, company_name)
             VALUES (%(cik)s, %(name)s)
             RETURNING company_id;
-        """, {"cik": cik, "name": f"Company {cik}"})
+        """, {"cik": cik, "name": name})
 
         if result:
             company_id = result[0]["company_id"]
