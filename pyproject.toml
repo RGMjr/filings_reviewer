@@ -184,3 +184,8 @@ check_untyped_defs = false        # Skip type inference in tests
 [[tool.mypy.overrides]]
 module = "src.infra.*"
 follow_imports = "skip"           # Don't apply --strict to infra imports
+
+# Exclude extraction imports from strict checks (prevents scope creep)
+[[tool.mypy.overrides]]
+module = "src.extraction.*"
+follow_imports = "skip"           # Don't apply --strict to extraction imports
