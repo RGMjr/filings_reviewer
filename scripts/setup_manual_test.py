@@ -291,12 +291,35 @@ class ManualTestSetup:
             logger.info(f"✓ Filing exists (ID: {filing_id})")
             return filing_id
 
+        # Get CIK from company (required for filings table)
+        company_result = self.db.query(
+            "SELECT cik FROM companies WHERE company_id = %(company_id)s;",
+            {"company_id": company_id}
+        )
+
+        if not company_result:
+            logger.error(f"Company {company_id} not found")
+            return None
+
+        cik = company_result[0]["cik"]
+
+        # Construct SEC EDGAR URL
+        # Remove leading zeros from CIK for URL (e.g., "0001928446" -> "1928446")
+        cik_for_url = cik.lstrip("0")
+        sec_html_url = f"https://www.sec.gov/Archives/edgar/data/{cik_for_url}/{accession}/primary.htm"
+
         # Create filing
         result = self.db.query("""
-            INSERT INTO filings (company_id, form_type, filing_date, accession_number)
-            VALUES (%(company_id)s, %(form_type)s, CURRENT_DATE, %(accession)s)
+            INSERT INTO filings (company_id, cik, form_type, filing_date, accession_number, sec_html_url)
+            VALUES (%(company_id)s, %(cik)s, %(form_type)s, CURRENT_DATE, %(accession)s, %(sec_html_url)s)
             RETURNING filing_id;
-        """, {"company_id": company_id, "form_type": "S-1", "accession": accession})
+        """, {
+            "company_id": company_id,
+            "cik": cik,
+            "form_type": "S-1",
+            "accession": accession,
+            "sec_html_url": sec_html_url
+        })
 
         if result:
             filing_id = result[0]["filing_id"]
@@ -311,13 +334,13 @@ class ManualTestSetup:
         logger.info("Generating segments...")
 
         try:
-            # Read HTML
-            with open(filing_path, 'r', encoding='utf-8', errors='ignore') as f:
-                html_content = f.read()
-
-            # Segment
-            segments = self.segmenter.segment(html_content)
+            # Use HTMLSegmenter to parse the filing (it reads the file itself)
+            segments = self.segmenter.segment_filing(filing_id, str(filing_path))
             logger.info(f"Generated {len(segments)} segments")
+
+            if not segments:
+                logger.warning("No segments generated from filing")
+                return
 
             # Insert into database
             inserted = 0
@@ -325,19 +348,20 @@ class ManualTestSetup:
                 try:
                     self.db.execute("""
                         INSERT INTO source_segments (
-                            filing_id, segment_type, section_name, content,
-                            html_content, sequence_index
+                            filing_id, segment_type, section_path, section_heading,
+                            raw_text, raw_html, sequence_index
                         )
                         VALUES (
-                            %(filing_id)s, %(segment_type)s, %(section_name)s,
-                            %(content)s, %(html_content)s, %(sequence_index)s
+                            %(filing_id)s, %(segment_type)s, %(section_path)s,
+                            %(section_heading)s, %(raw_text)s, %(raw_html)s, %(sequence_index)s
                         );
                     """, {
-                        "filing_id": filing_id,
+                        "filing_id": seg.filing_id,
                         "segment_type": seg.segment_type,
-                        "section_name": seg.section_name,
-                        "content": seg.content,
-                        "html_content": seg.html_content,
+                        "section_path": seg.section_path,
+                        "section_heading": seg.section_heading,
+                        "raw_text": seg.raw_text,
+                        "raw_html": seg.raw_html,
                         "sequence_index": i,
                     })
                     inserted += 1
