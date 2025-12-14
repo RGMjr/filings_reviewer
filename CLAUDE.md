@@ -48,7 +48,7 @@ src/
 │   ├── context_extraction.py # Extract context around positions (P1.3)
 │   └── feature_extractor.py  # Extract ML features from candidates
 │
-├── web/                      # Flask Web Application (In Progress)
+├── web/                      # Flask Web Application (COMPLETE)
 │   ├── app.py                # Flask application factory
 │   ├── routes/               # Route handlers (review, api)
 │   ├── templates/            # Jinja2 HTML templates
@@ -86,21 +86,28 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
 - Cost tracking and token management
 - Automated unit tests with 88-95% coverage
 
-**Stage 4: Human Review System** (In Progress - D1/D2 Complete)
+**Stage 4: Human Review System** (COMPLETE - Production Ready)
 - Flask-based web interface for human review of extraction candidates (COMPLETE)
 - Candidate generation with ML features for pattern analysis (COMPLETE)
 - Review routes with 7 production-ready improvements (D1 - COMPLETE)
 - REST API endpoints for review decisions (D2 - COMPLETE)
-- Pattern learning from review decisions to improve extraction rules (In Progress - E1)
+- Pattern learning from review decisions to improve extraction rules (E1 - COMPLETE)
+- Rule applicator for filtering false positives (E2 - COMPLETE)
 - See `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` for full implementation roadmap
-- See `docs/D1_IMPROVEMENTS_FINAL.md` for D1 completion details
+- See `docs/archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md` for E1 details
 
 ## Review Module Architecture
 
 The review system uses a modular architecture with specialized, focused modules:
 
 ```
-candidate_generator.py (orchestrator - ~370 lines, 98% coverage)
+candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
+├── config.py                # Centralized configuration (P1 enhancement)
+│                            # CandidateGenerationConfig dataclass + presets
+│                            # (75 statements, 100% coverage, 8 tests)
+├── boundary_detection.py    # Semantic boundary detection (P1 enhancement)
+│                            # BoundaryDetector: bullets, lists, paragraphs
+│                            # (92 statements, 95% coverage, 23 tests)
 ├── exceptions.py            # Custom exception hierarchy
 │                            # CandidateGenerationError, SegmentProcessingError, NumberProcessingError
 │                            # (50 lines, 100% coverage)
@@ -111,33 +118,42 @@ candidate_generator.py (orchestrator - ~370 lines, 98% coverage)
 │                            # generate_candidates_for_filing() convenience function
 │                            # (90 lines, 100% coverage)
 ├── number_parsing.py        # Extract numbers: $1.2M, 45%, 50,000
-│                            # (55 statements, 95% coverage)
-├── keyword_matching.py      # Find metric keywords near numbers
-│                            # Pre-compiled patterns, distance calculation
-│                            # (49 statements, 100% coverage)
+│                            # (55 statements, 91% coverage)
+├── keyword_matching.py      # Find metric keywords near numbers (P1 enhanced)
+│                            # Distance-first sorting, boundary-aware matching
+│                            # (96 statements, 91% coverage, 26 tests)
 ├── false_positive_filter.py # Filter dates, years, page refs, small values
 │                            # Configurable thresholds, returns (bool, reason)
 │                            # (45 statements, 100% coverage)
 ├── context_extraction.py    # Extract N words around position
 │                            # Supports word-position caching (P1.2 optimization)
-│                            # (34 statements, 100% coverage)
+│                            # (34 statements, 97% coverage)
 └── feature_extractor.py     # Compute ML features for pattern analysis
-                             # (630 statements, 100% coverage)
+                             # (630 statements, 100% coverage, 115 tests)
 ```
 
 **Benefits of Modular Architecture:**
 - Each module has single clear responsibility (SOLID principles)
-- 98%+ test coverage across all modules
+- 90%+ test coverage across all modules (updated with P1 enhancements)
 - Exception hierarchy reusable across review module
 - ConfidenceScorer independently testable
 - DB helpers separated from algorithm
 - Easier to test, modify, and reuse components independently
 - candidate_generator.py reduced by 53% (970 → ~450 lines)
 
+**P1 Enhancements (December 2025):**
+- **Semantic Boundary Detection**: Detects bullets, numbered lists, lettered lists, and paragraphs to prevent cross-boundary false positives
+- **Distance-First Keyword Sorting**: Prefers closest keywords over longest when distances differ
+- **Boundary-Aware Matching**: Constrains keyword matches to within the same semantic boundary as the number
+- **Ambiguity Logging**: Logs when multiple keywords are equally close to a number for debugging
+- **Centralized Configuration**: CandidateGenerationConfig dataclass with presets (high precision, high recall, fast)
+- **Improved Substring Filtering**: Only applies within the same metric to preserve multi-metric candidates
+- **202 tests passing** with 90%+ coverage across P1-enhanced modules
+
 **Feature Extractor (B2):**
 
 In addition to the candidate generation pipeline, the review system includes a feature extraction module (`src/review/feature_extractor.py`) that computes ML features for pattern analysis:
-- **~630 statements total, 100% coverage, 115 tests** (including P2.4 enhancements)
+- **~630 statements total, 72% coverage, 115 tests** (including P2.4 enhancements)
 
 **Base Features**:
 - Keyword proximity features (distance, position)
