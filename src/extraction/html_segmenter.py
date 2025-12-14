@@ -7,13 +7,49 @@ This module breaks down SEC filing HTML documents into atomic source segments
 
 import logging
 import re
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from bs4 import BeautifulSoup, Tag
 
 from .models import SourceSegment
+from .validators import SegmentValidator
+from .exceptions import ValidationError, EncodingError, HTMLParsingError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SegmentationMetrics:
+    """Metrics collected during HTML segmentation.
+
+    Tracks performance, segment distribution, and warnings for observability.
+    """
+
+    filing_id: int
+    total_segments: int = 0
+    segment_counts_by_type: Dict[str, int] = field(default_factory=dict)
+    total_text_length: int = 0
+    parse_time_seconds: float = 0.0
+    encoding_used: str = "utf-8"
+    warnings: List[str] = field(default_factory=list)
+
+    def avg_segment_length(self) -> float:
+        """Calculate average segment text length."""
+        if self.total_segments == 0:
+            return 0.0
+        return self.total_text_length / self.total_segments
+
+    def summary(self) -> str:
+        """Generate human-readable summary."""
+        type_counts = ", ".join(
+            f"{count} {seg_type}s" for seg_type, count in sorted(self.segment_counts_by_type.items())
+        )
+        return (
+            f"{self.total_segments} segments in {self.parse_time_seconds:.3f}s "
+            f"({type_counts}, avg length: {self.avg_segment_length():.0f} chars)"
+        )
 
 
 class HTMLSegmenter:
@@ -69,35 +105,87 @@ class HTMLSegmenter:
             min_length: Minimum text length for segments
             max_length: Maximum text length for segments
         """
+        # Validate length parameters
+        SegmentValidator.validate_min_max_length(min_length, max_length)
         self.min_length = min_length
         self.max_length = max_length
+        self._metrics: Optional[SegmentationMetrics] = None
 
-    def segment_filing(self, filing_id: int, html_path: str) -> List[SourceSegment]:
+    def segment_filing(
+        self, filing_id: int, html_path: str, raise_on_error: bool = False
+    ) -> List[SourceSegment]:
         """
         Parse filing HTML and return list of source segments.
 
         Args:
             filing_id: Database filing ID
             html_path: Path to HTML file
+            raise_on_error: If True, raise exceptions instead of returning empty list
+                (default: False for backward compatibility)
 
         Returns:
             List of SourceSegment objects (not yet inserted to DB)
+
+        Raises:
+            ValidationError: If filing_id or html_path is invalid (only if raise_on_error=True)
+            EncodingError: If file encoding cannot be determined (only if raise_on_error=True)
+            HTMLParsingError: If HTML structure is invalid (only if raise_on_error=True)
         """
+        start_time = time.time()
+
+        # Validate inputs
+        try:
+            SegmentValidator.validate_filing_id(filing_id)
+            validated_path = SegmentValidator.validate_html_path(html_path)
+        except (ValidationError, FileNotFoundError, PermissionError) as e:
+            if raise_on_error:
+                raise
+            logger.error(f"Validation failed for filing {filing_id}: {e}")
+            return []
+
         logger.info(f"Segmenting filing {filing_id} from {html_path}")
 
-        # Read HTML file
-        html_content = self._read_html_file(html_path)
+        # Initialize metrics
+        self._metrics = SegmentationMetrics(filing_id=filing_id)
+
+        # Read HTML file with encoding detection
+        try:
+            html_content, encoding_used = self._read_html_file_with_encoding(str(validated_path))
+            self._metrics.encoding_used = encoding_used
+        except EncodingError as e:
+            if raise_on_error:
+                raise
+            logger.error(f"Encoding error for filing {filing_id}: {e}")
+            self._metrics.warnings.append(f"Encoding error: {e}")
+            return []
+
         if not html_content:
-            logger.warning(f"Empty HTML content for filing {filing_id}")
+            msg = f"Empty HTML content for filing {filing_id}"
+            if raise_on_error:
+                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+            logger.warning(msg)
+            self._metrics.warnings.append("Empty HTML content")
             return []
 
         # Parse with BeautifulSoup
-        soup = BeautifulSoup(html_content, "html.parser")
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+        except Exception as e:
+            msg = f"Failed to parse HTML for filing {filing_id}: {e}"
+            if raise_on_error:
+                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+            logger.error(msg)
+            self._metrics.warnings.append(f"Parse error: {e}")
+            return []
 
         # Find the main content area (usually in <BODY> or after <TEXT> tag)
         main_content = self._find_main_content(soup)
         if not main_content:
-            logger.warning(f"Could not find main content in filing {filing_id}")
+            msg = f"Could not find main content in filing {filing_id}"
+            if raise_on_error:
+                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+            logger.warning(msg)
+            self._metrics.warnings.append("No main content found")
             return []
 
         # Pre-build heading cache for O(1) lookups (performance optimization)
@@ -118,29 +206,83 @@ class HTMLSegmenter:
                 segments.append(segment)
                 sequence_index += 1
 
+                # Update metrics
+                self._metrics.total_segments += 1
+                self._metrics.total_text_length += len(segment.raw_text)
+                seg_type = segment.segment_type
+                self._metrics.segment_counts_by_type[seg_type] = (
+                    self._metrics.segment_counts_by_type.get(seg_type, 0) + 1
+                )
+
         # Clear cache after processing
         self._heading_cache = None
 
-        logger.info(f"Extracted {len(segments)} segments from filing {filing_id}")
+        # Finalize metrics
+        self._metrics.parse_time_seconds = time.time() - start_time
+
+        # Enhanced logging
+        logger.info(f"Extracted {len(segments)} segments from filing {filing_id}: {self._metrics.summary()}")
+
+        if self._metrics.warnings:
+            logger.warning(f"Segmentation warnings for filing {filing_id}: {', '.join(self._metrics.warnings)}")
+
         return segments
 
-    def _read_html_file(self, html_path: str) -> Optional[str]:
-        """Read HTML file with proper encoding handling."""
+    def _read_html_file_with_encoding(self, html_path: str) -> Tuple[Optional[str], str]:
+        """Read HTML file with enhanced encoding detection and error reporting.
+
+        Args:
+            html_path: Path to HTML file
+
+        Returns:
+            Tuple of (content, encoding_used)
+
+        Raises:
+            EncodingError: If both UTF-8 and latin-1 encodings fail
+        """
+        path = Path(html_path)
+        attempted_encodings = []
+
+        # Try UTF-8 first
         try:
-            path = Path(html_path)
-            if not path.exists():
-                logger.error(f"HTML file not found: {html_path}")
-                return None
+            content = path.read_text(encoding="utf-8")
+            logger.debug(f"Successfully read {html_path} with UTF-8 encoding")
+            return (content, "utf-8")
+        except UnicodeDecodeError as e:
+            attempted_encodings.append("utf-8")
+            position = e.start if hasattr(e, 'start') else None
+            logger.warning(
+                f"UTF-8 decode failed for {html_path} at position {position}: {e}. "
+                f"Trying latin-1 fallback..."
+            )
 
-            # Try UTF-8 first, fall back to latin-1
-            try:
-                return path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                logger.warning(f"UTF-8 decode failed, trying latin-1: {html_path}")
-                return path.read_text(encoding="latin-1")
+        # Fall back to latin-1
+        try:
+            content = path.read_text(encoding="latin-1")
+            logger.info(f"Successfully read {html_path} with latin-1 encoding (UTF-8 failed)")
+            return (content, "latin-1")
+        except UnicodeDecodeError as e:
+            attempted_encodings.append("latin-1")
+            position = e.start if hasattr(e, 'start') else None
 
-        except Exception as e:
-            logger.error(f"Error reading HTML file {html_path}: {e}")
+            # Both encodings failed - raise EncodingError
+            raise EncodingError(
+                f"Failed to decode {html_path} with UTF-8 and latin-1 encodings. "
+                f"File may have mixed or invalid encoding.",
+                file_path=html_path,
+                attempted_encodings=attempted_encodings,
+                position=position
+            )
+
+    def _read_html_file(self, html_path: str) -> Optional[str]:
+        """DEPRECATED: Use _read_html_file_with_encoding() instead.
+
+        Kept for backward compatibility with external callers.
+        """
+        try:
+            content, _ = self._read_html_file_with_encoding(html_path)
+            return content
+        except EncodingError:
             return None
 
     def _find_main_content(self, soup: BeautifulSoup) -> Optional[Tag]:
@@ -380,6 +522,20 @@ class HTMLSegmenter:
         soup = BeautifulSoup(raw_html, "html.parser")
         text = soup.get_text()
         return self._normalize_text(text)
+
+    def get_metrics(self) -> Optional[SegmentationMetrics]:
+        """Get metrics from most recent segmentation.
+
+        Returns:
+            SegmentationMetrics object or None if no segmentation has been performed
+
+        Example:
+            segmenter = HTMLSegmenter()
+            segments = segmenter.segment_filing(1, "path/to/filing.html")
+            metrics = segmenter.get_metrics()
+            print(f"Processed {metrics.total_segments} segments in {metrics.parse_time_seconds:.2f}s")
+        """
+        return self._metrics
 
 
 # Convenience function

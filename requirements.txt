@@ -11,10 +11,13 @@
 
 # PostgreSQL adapter (psycopg3) - Database connectivity for storing filings,
 # companies, metrics, and extraction results. Uses binary package for faster install.
-psycopg[binary]>=3.1.0
+psycopg[binary,pool]>=3.1.0
 
 # Environment variable management - Loads DATABASE_URL, API keys from .env files
 python-dotenv>=1.0.0
+
+# Progress bars - Visual feedback for long-running operations
+tqdm>=4.66.0
 
 # HTTP client - Used for SEC EDGAR API requests (rate-limited, polite access)
 requests>=2.31.0
@@ -37,6 +40,21 @@ openai>=1.0.0
 tiktoken>=0.5.0
 
 # -----------------------------------------------------------------------------
+# Web Application Dependencies
+# -----------------------------------------------------------------------------
+
+# Flask - Web framework for human review interface
+flask>=3.0.0
+
+# -----------------------------------------------------------------------------
+# Production WSGI Server
+# -----------------------------------------------------------------------------
+
+# Waitress - Pure Python WSGI server for production deployment
+# Cross-platform (Linux, macOS, Windows), thread-based workers
+waitress>=3.0.0
+
+# -----------------------------------------------------------------------------
 # Testing Dependencies
 # -----------------------------------------------------------------------------
 
@@ -45,6 +63,12 @@ pytest>=7.4.0
 
 # Coverage reporting - Tracks code coverage (target: 75%+ overall)
 pytest-cov>=4.1.0
+
+# Performance benchmarking - Measures throughput, latency, memory usage
+pytest-benchmark>=4.0.0
+
+# Memory profiling - Tracks memory consumption and detects leaks
+memory-profiler>=0.61.0
 
 # -----------------------------------------------------------------------------
 # Development Dependencies
@@ -55,3 +79,6 @@ black>=23.0.0
 
 # Linter - Fast Python linter for code quality
 ruff>=0.1.0
+
+# Type checker - Static type analysis for code quality
+mypy>=1.0.0

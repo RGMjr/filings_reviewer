@@ -542,10 +542,49 @@ class ValueExtractor:
                         )
                         continue  # Skip this extraction - reject unverified quotes
                 else:
-                    logger.info(
+                    # CRITICAL FIX: Reject empty quotes instead of accepting
+                    logger.warning(
                         f"LLM returned empty quote for {metric_id} - "
-                        "accepting without verification"
+                        "rejecting extraction (quote required for verification)"
                     )
+                    continue  # Skip this extraction - require quotes
+
+                # CRITICAL: Validate quote contains metric keyword AND value
+                # This prevents extracting unrelated nearby numbers
+                from .extraction_validation import (
+                    validate_extraction,
+                    should_reject_extraction,
+                    get_rejection_reason,
+                    validate_quote_contains_metric_keyword,
+                    ValidationResult,
+                )
+                quote_keyword_result, reason = validate_quote_contains_metric_keyword(
+                    metric_id=metric_id,
+                    quote=quote,
+                    value=float(numeric_value),
+                )
+                if quote_keyword_result == ValidationResult.FAIL_KEYWORD:
+                    truncated_quote = quote[:100] + "..." if len(quote) > 100 else quote
+                    logger.warning(
+                        f"Quote-keyword validation failed for {metric_id}={numeric_value}: "
+                        f"{reason}. Quote: '{truncated_quote}'"
+                    )
+                    continue  # Reject - quote doesn't prove metric-value association
+
+                # Run additional post-extraction validation
+                validation_issues = validate_extraction(
+                    metric_id=metric_id,
+                    value=numeric_value,
+                    unit=item.get("units"),
+                    quote=quote,
+                    source_text=segment.raw_text,
+                )
+                if should_reject_extraction(validation_issues):
+                    reason = get_rejection_reason(validation_issues)
+                    logger.warning(
+                        f"Validation failed for {metric_id}={numeric_value}: {reason}"
+                    )
+                    continue  # Skip this extraction - validation failed
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
@@ -676,10 +715,50 @@ class ValueExtractor:
                         )
                         continue  # Reject unverified
                 else:
-                    logger.info(
+                    # CRITICAL FIX: Reject empty quotes instead of accepting
+                    logger.warning(
                         f"LLM returned empty quote for table extraction: {metric_id} - "
-                        "accepting without verification"
+                        "rejecting extraction (quote required for verification)"
                     )
+                    continue  # Skip this extraction - require quotes
+
+                # CRITICAL: Validate quote contains metric keyword AND value
+                # This prevents extracting unrelated nearby numbers
+                from .extraction_validation import (
+                    validate_extraction,
+                    should_reject_extraction,
+                    get_rejection_reason,
+                    validate_quote_contains_metric_keyword,
+                    ValidationResult,
+                )
+                quote_keyword_result, reason = validate_quote_contains_metric_keyword(
+                    metric_id=metric_id,
+                    quote=quote,
+                    value=float(numeric_value),
+                )
+                if quote_keyword_result == ValidationResult.FAIL_KEYWORD:
+                    truncated_quote = quote[:100] + "..." if len(quote) > 100 else quote
+                    logger.warning(
+                        f"Quote-keyword validation failed for table {metric_id}={numeric_value}: "
+                        f"{reason}. Quote: '{truncated_quote}'"
+                    )
+                    continue  # Reject - quote doesn't prove metric-value association
+
+                # Run additional post-extraction validation
+                source_for_validation = segment.raw_text or table_text
+                validation_issues = validate_extraction(
+                    metric_id=metric_id,
+                    value=numeric_value,
+                    unit=item.get("units"),
+                    quote=quote,
+                    source_text=source_for_validation,
+                )
+                if should_reject_extraction(validation_issues):
+                    reason = get_rejection_reason(validation_issues)
+                    logger.warning(
+                        f"Validation failed for table {metric_id}={numeric_value}: {reason}"
+                    )
+                    continue  # Skip this extraction - validation failed
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
@@ -868,14 +947,14 @@ class ValueExtractor:
 
         # Percentage
         if "%" in value_text or "percent" in value_lower:
-            return "percent"
+            return "%"
 
         # From metric type
         if "revenue" in metric_id or "cost" in metric_id or "value" in metric_id:
             return "usd"
 
         if "rate" in metric_id:
-            return "percent"
+            return "%"
 
         # Default to count for customer/user metrics
         if "customer" in metric_id or "user" in metric_id or "transaction" in metric_id:

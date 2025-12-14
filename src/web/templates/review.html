@@ -1,0 +1,624 @@
+{% extends "base.html" %}
+
+{% block title %}Review - {{ filing.company_name if filing else 'Filing' }}{% endblock %}
+
+{% block content %}
+<div class="container review-container mt-4">
+    {% if not candidates or candidates|length == 0 %}
+        {# Empty state: No candidates for this filing #}
+        <div class="alert alert-info">
+            <h5>No Candidates</h5>
+            <p>No review candidates have been generated for this filing yet.</p>
+            <a href="{{ url_for('review.filing_list') }}" class="btn btn-primary">
+                Back to Filing List
+            </a>
+        </div>
+    {% else %}
+        {# =================================================================
+           Section 1: Filing Header
+           ================================================================= #}
+        <div class="card mb-4">
+            <div class="card-body">
+                {# Breadcrumb navigation #}
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-2">
+                        <li class="breadcrumb-item">
+                            <a href="{{ url_for('review.filing_list') }}">Filings</a>
+                        </li>
+                        <li class="breadcrumb-item active" aria-current="page">
+                            {{ filing.company_name }}
+                        </li>
+                    </ol>
+                </nav>
+
+                {# Company name heading #}
+                <h2 class="mb-3">{{ filing.company_name }}</h2>
+
+                {# Filing metadata grid #}
+                <div class="row text-muted small">
+                    <div class="col-md-3">
+                        <div class="d-block text-uppercase fw-bold mb-1">Form Type</div>
+                        <div>{{ filing.form_type }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-block text-uppercase fw-bold mb-1">Filing Date</div>
+                        <div>{{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-block text-uppercase fw-bold mb-1">CIK</div>
+                        <div>{{ filing.cik }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-block text-uppercase fw-bold mb-1">Accession</div>
+                        <div class="font-monospace" style="font-size: 0.75rem;">
+                            {{ filing.accession_number }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# =================================================================
+           Section 2: Progress Bar (Sticky)
+           ================================================================= #}
+        {% set reviewed_pct = (reviewed_count / total_candidates * 100) if total_candidates > 0 else 0 %}
+        {% set pending_pct = (pending_count / total_candidates * 100) if total_candidates > 0 else 0 %}
+
+        <div class="card sticky-top-below-nav bg-light mb-3" style="top: 70px; z-index: 1020;">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">Review Progress</h6>
+                    <span class="text-muted small">
+                        {{ reviewed_count }} of {{ total_candidates }} reviewed
+                        <span class="text-warning">({{ pending_count }} pending)</span>
+                    </span>
+                </div>
+
+                <div class="progress" style="height: 8px;" role="progressbar"
+                     aria-valuenow="{{ reviewed_count }}"
+                     aria-valuemin="0"
+                     aria-valuemax="{{ total_candidates }}"
+                     aria-label="Review progress">
+                    <div class="progress-bar bg-success"
+                         style="width: {{ reviewed_pct }}%"
+                         title="{{ reviewed_count }} reviewed">
+                    </div>
+                    <div class="progress-bar bg-secondary"
+                         style="width: {{ pending_pct }}%"
+                         title="{{ pending_count }} pending">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# =================================================================
+           Main Content and Sidebar Layout
+           ================================================================= #}
+        <div class="row">
+            {# Left column: Main content (70%) #}
+            <div class="col-lg-8">
+                {% if current_candidate %}
+                    {# =============================================================
+                       Section 3: Current Candidate Card
+                       ============================================================= #}
+                    <div class="card candidate-card mb-3">
+                        <div class="card-body">
+                            {# Candidate header with status #}
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="candidate-number fw-bold">
+                                    Candidate #{{ loop.index if loop else 1 }}
+                                </span>
+                                {% if current_candidate.review_status == 'reviewed' %}
+                                    <span class="badge bg-success">Reviewed</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                {% endif %}
+                            </div>
+
+                            {# 3a. Context Display with highlighting #}
+                            <h6 class="text-muted mb-2">Context
+                                {% if current_candidate.segment_type == 'table' %}
+                                    <span class="badge bg-info ms-2">Table</span>
+                                {% endif %}
+                            </h6>
+
+                            {% if current_candidate.segment_type == 'table' and current_candidate.segment_html %}
+                                {# Display HTML table with highlighting #}
+                                <div class="table-context mb-4">
+                                    <div class="alert alert-info mb-2" role="alert">
+                                        <small><i class="bi bi-info-circle"></i> This value appears in a table. The table below shows the full context with the candidate value highlighted in yellow.</small>
+                                    </div>
+                                    <div class="table-responsive">
+                                        {{ current_candidate.segment_html|highlight_html(
+                                             current_candidate.raw_number_text,
+                                             current_candidate.triggering_keyword
+                                           )|safe }}
+                                    </div>
+                                </div>
+                            {% else %}
+                                {# Display text context #}
+                                <div class="context-text mb-4">
+                                    {{ current_candidate.context_text|highlight_context(
+                                         current_candidate.raw_number_text,
+                                         current_candidate.triggering_keyword
+                                       )|safe }}
+                                </div>
+                            {% endif %}
+
+                            {# 3b. Extracted Value Display #}
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6 class="text-muted mb-2">Extracted Value</h6>
+                                    <div class="extracted-value-display">
+                                        {% if current_candidate.parsed_value is not none %}
+                                            <span class="value h4">
+                                                {% if current_candidate.parsed_unit == 'usd' %}
+                                                    ${{ "{:,.2f}".format(current_candidate.parsed_value|float) }}
+                                                {% elif current_candidate.parsed_unit == '%' %}
+                                                    {{ "{:.1f}".format((current_candidate.parsed_value|float) * 100) }}%
+                                                {% else %}
+                                                    {{ "{:,.0f}".format(current_candidate.parsed_value|float) }}
+                                                {% endif %}
+                                            </span>
+
+                                            {% if current_candidate.parsed_unit and current_candidate.parsed_unit not in ['usd', '%'] %}
+                                                <span class="unit text-muted ms-2">{{ current_candidate.parsed_unit }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="value text-muted">Unable to parse</span>
+                                        {% endif %}
+
+                                        <div class="raw-text small text-muted mt-2">
+                                            Raw: "{{ current_candidate.raw_number_text }}"
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {# 3c. Suggested Metric Display #}
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="text-muted mb-1">Suggested Metric</h6>
+                                            <strong class="candidate-metric">
+                                                {{ current_candidate.suggested_metric_id|replace('_', ' ')|title if current_candidate.suggested_metric_id else 'Unknown Metric' }}
+                                            </strong>
+                                        </div>
+
+                                        {# Confidence badge #}
+                                        {% if current_candidate.suggestion_confidence is not none %}
+                                            {% set conf = current_candidate.suggestion_confidence %}
+                                            {% if conf >= 0.7 %}
+                                                {% set conf_class = 'high' %}
+                                                {% set conf_label = 'High' %}
+                                                {% set conf_color = 'success' %}
+                                            {% elif conf >= 0.4 %}
+                                                {% set conf_class = 'medium' %}
+                                                {% set conf_label = 'Medium' %}
+                                                {% set conf_color = 'warning' %}
+                                            {% else %}
+                                                {% set conf_class = 'low' %}
+                                                {% set conf_label = 'Low' %}
+                                                {% set conf_color = 'danger' %}
+                                            {% endif %}
+
+                                            <div>
+                                                <span class="badge bg-{{ conf_color }}">
+                                                    {{ conf_label }} Confidence ({{ "{:.0f}".format(conf * 100) }}%)
+                                                </span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+
+                                    {# Metadata: Keyword, Distance, Position #}
+                                    <div class="mt-3 small text-muted">
+                                        <span>Keyword: <em>{{ current_candidate.triggering_keyword }}</em></span>
+                                        <span class="mx-2">•</span>
+                                        <span>Distance: {{ current_candidate.keyword_distance }} chars</span>
+                                        <span class="mx-2">•</span>
+                                        <span>Position: {{ current_candidate.keyword_position }}</span>
+                                    </div>
+
+                                    {# 3d. Feature Preview (key features inline) #}
+                                    {% if current_candidate.features %}
+                                        {% set f = current_candidate.features %}
+                                        <div class="mt-3 pt-3 border-top">
+                                            <h6 class="text-muted small mb-2">Key Features</h6>
+                                            <div class="d-flex flex-wrap gap-2 small">
+                                                <span class="badge bg-secondary">
+                                                    {{ f.get('number_format', 'unknown')|title }}
+                                                </span>
+                                                {% if f.get('is_in_table') %}
+                                                    <span class="badge bg-info">In Table</span>
+                                                {% endif %}
+                                                {% if f.get('contains_definition_language') %}
+                                                    <span class="badge bg-info">Has Definition</span>
+                                                {% endif %}
+                                                {% if f.get('is_in_risk_factors') %}
+                                                    <span class="badge bg-warning text-dark">In Risk Factors</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# =============================================================
+                       Section 4: Decision Form
+                       ============================================================= #}
+                    {% if existing_decision %}
+                        {# 4a. Read-Only Mode: Already Reviewed #}
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <strong>Already Reviewed:</strong>
+                                    {{ existing_decision.decision|title }}
+                                    {% if existing_decision.assigned_metric_id %}
+                                        as <strong>{{ existing_decision.assigned_metric_id|replace('_', ' ')|title }}</strong>
+                                    {% endif %}
+                                    {% if existing_decision.created_at %}
+                                        on {{ existing_decision.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% endif %}
+                                </div>
+
+                                {# Show rejection details if rejected #}
+                                {% if existing_decision.decision == 'reject' %}
+                                    <div class="rejection-panel bg-light p-3 rounded mb-3">
+                                        <h6 class="text-danger">Rejection Details</h6>
+                                        <p class="mb-1">
+                                            <strong>Category:</strong>
+                                            {{ existing_decision.rejection_category|replace('_', ' ')|title if existing_decision.rejection_category else 'Not specified' }}
+                                        </p>
+                                        {% if existing_decision.rejection_reason %}
+                                            <p class="mb-0">
+                                                <strong>Reason:</strong> {{ existing_decision.rejection_reason }}
+                                            </p>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+
+                                {# Show reviewer notes if present #}
+                                {% if existing_decision.reviewer_notes %}
+                                    <div class="alert alert-secondary">
+                                        <strong>Notes:</strong> {{ existing_decision.reviewer_notes }}
+                                    </div>
+                                {% endif %}
+
+                                {# Next button #}
+                                <div class="d-flex justify-content-end mt-3">
+                                    <a href="{{ url_for('review.next_candidate', filing_id=filing.filing_id, current_id=current_candidate.candidate_id) }}"
+                                       class="btn btn-primary">
+                                        Next Candidate <span class="ms-2">→</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                    {% else %}
+                        {# 4b. Edit Mode: Pending Review #}
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="mb-3">Make Decision</h6>
+
+                                <form id="decision-form" data-candidate-id="{{ current_candidate.candidate_id }}">
+                                    {# Hidden fields for JavaScript (D5) #}
+                                    <input type="hidden" name="candidate_id" value="{{ current_candidate.candidate_id }}">
+                                    <input type="hidden" name="decision" id="decision-input">
+                                    <input type="hidden" name="assigned_metric_id" id="assigned-metric-id">
+                                    <input type="hidden" name="rejection_category" id="rejection-category">
+
+                                    {# Decision Buttons #}
+                                    <div class="d-grid gap-2 mb-3">
+                                        {# Accept Button #}
+                                        <button type="button"
+                                                class="btn btn-success btn-lg"
+                                                data-decision="accept"
+                                                data-metric-id="{{ current_candidate.suggested_metric_id }}"
+                                                {% if not current_candidate.suggested_metric_id %}disabled{% endif %}>
+                                            Accept as {{ current_candidate.suggested_metric_id|replace('_', ' ')|title if current_candidate.suggested_metric_id else 'Unknown' }}
+                                            <span class="badge bg-light text-dark ms-2">A</span>
+                                        </button>
+
+                                        {# Reject Button with Dropdown #}
+                                        <div class="btn-group" role="group">
+                                            <button type="button"
+                                                    class="btn btn-danger btn-lg dropdown-toggle"
+                                                    data-bs-toggle="dropdown"
+                                                    aria-expanded="false"
+                                                    aria-haspopup="true">
+                                                Reject
+                                                <span class="badge bg-light text-dark ms-2">R</span>
+                                            </button>
+                                            <ul class="dropdown-menu" style="max-height: 300px; overflow-y: auto;">
+                                                <li><h6 class="dropdown-header">Rejection Reason</h6></li>
+                                                {% for category in rejection_categories %}
+                                                    <li>
+                                                        <a class="dropdown-item rejection-category-option"
+                                                           href="#"
+                                                           data-category="{{ category }}">
+                                                            {{ category|replace('_', ' ')|title }}
+                                                        </a>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+
+                                        {# Reclassify Button with Dropdown #}
+                                        <div class="btn-group" role="group">
+                                            <button type="button"
+                                                    class="btn btn-warning btn-lg dropdown-toggle"
+                                                    data-bs-toggle="dropdown"
+                                                    aria-expanded="false"
+                                                    aria-haspopup="true"
+                                                    {% if not metrics %}disabled{% endif %}>
+                                                Reclassify
+                                                <span class="badge bg-light text-dark ms-2">C</span>
+                                            </button>
+                                            <ul class="dropdown-menu metric-selector" style="max-height: 300px; overflow-y: auto;">
+                                                <li><h6 class="dropdown-header">Choose Correct Metric</h6></li>
+                                                {% for metric in metrics %}
+                                                    <li>
+                                                        <a class="dropdown-item metric-option"
+                                                           href="#"
+                                                           data-metric-id="{{ metric.metric_id }}">
+                                                            <div class="small text-primary">{{ metric.metric_id }}</div>
+                                                            <div>{{ metric.display_name }}</div>
+                                                        </a>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    {# Rejection Panel (hidden by default, shown when reject category selected - D5) #}
+                                    <div id="rejection-panel" class="rejection-panel bg-light p-3 rounded mb-3" style="display: none;">
+                                        <h6>Rejection Details</h6>
+
+                                        <div id="rejection-category-display" class="mb-2">
+                                            <strong>Category:</strong> <span id="rejection-category-text">None selected</span>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="rejection-reason" class="form-label">
+                                                Additional Details (optional, max 500 chars)
+                                            </label>
+                                            <textarea name="rejection_reason"
+                                                      id="rejection-reason"
+                                                      class="form-control"
+                                                      rows="3"
+                                                      maxlength="500"
+                                                      placeholder="Why is this not the correct metric?"></textarea>
+                                            <div class="form-text">
+                                                <span id="rejection-reason-count">0</span> / 500 characters
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-danger" id="confirm-rejection">
+                                                Confirm Rejection
+                                            </button>
+                                            <button type="button" class="btn btn-secondary" id="cancel-rejection">
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {# Reviewer Notes (always visible) #}
+                                    <div class="mt-3">
+                                        <label for="reviewer-notes" class="form-label">
+                                            Reviewer Notes (optional, max 1000 chars)
+                                        </label>
+                                        <textarea name="reviewer_notes"
+                                                  id="reviewer-notes"
+                                                  class="form-control"
+                                                  rows="2"
+                                                  maxlength="1000"
+                                                  placeholder="Any observations or concerns about this candidate..."></textarea>
+                                        <div class="form-text">
+                                            <span id="reviewer-notes-count">0</span> / 1000 characters
+                                        </div>
+                                    </div>
+
+                                    {# Error message container (for D5 AJAX errors) #}
+                                    <div id="error-message" class="alert alert-danger mt-3" style="display: none;">
+                                        <strong>Error:</strong> <span id="error-detail-text"></span>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                {% else %}
+                    {# No current candidate selected #}
+                    <div class="alert alert-info">
+                        <p class="mb-0">No candidate selected. Select a candidate from the sidebar to begin review.</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            {# Right column: Sidebar (30%) #}
+            <div class="col-lg-4">
+                {# =============================================================
+                   Section 5: Candidate Navigation List
+                   ============================================================= #}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Candidates ({{ total_candidates }})</h6>
+                    </div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <div class="list-group list-group-flush">
+                            {% for candidate in candidates %}
+                                <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id, candidate_id=candidate.candidate_id) }}"
+                                   class="list-group-item list-group-item-action
+                                          {% if current_candidate and candidate.candidate_id == current_candidate.candidate_id %}active{% endif %}
+                                          {% if candidate.review_status == 'reviewed' %}opacity-75{% endif %}">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="flex-grow-1">
+                                            <strong class="small">#{{ loop.index }}</strong>
+                                            <span class="small text-muted ms-2">
+                                                {{ candidate.suggested_metric_id|replace('_', ' ')|title|truncate(25) if candidate.suggested_metric_id else 'Unknown' }}
+                                            </span>
+                                        </div>
+
+                                        {# Status badge #}
+                                        {% if candidate.review_status == 'reviewed' %}
+                                            {% if candidate.decision == 'accept' %}
+                                                <span class="badge bg-success">✓</span>
+                                            {% elif candidate.decision == 'reject' %}
+                                                <span class="badge bg-danger">✗</span>
+                                            {% elif candidate.decision == 'reclassify' %}
+                                                <span class="badge bg-warning">⟲</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">Pending</span>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                {# =============================================================
+                   Section 6: Features Panel
+                   ============================================================= #}
+                {% if current_candidate %}
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">Features</h6>
+                            <button class="btn btn-sm btn-outline-secondary d-lg-none"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#features-panel"
+                                    aria-expanded="false"
+                                    aria-controls="features-panel">
+                                Toggle
+                            </button>
+                        </div>
+                        <div class="collapse show" id="features-panel">
+                            <div class="card-body features-panel">
+                                {% if current_candidate.features %}
+                                    {% set f = current_candidate.features %}
+
+                                    {# Keyword Proximity #}
+                                    <div class="feature-item">
+                                        <span class="feature-name">Keyword Distance</span>
+                                        <span class="feature-value">{{ f.get('keyword_distance', 'N/A') }} chars</span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-name">Keyword Position</span>
+                                        <span class="feature-value">{{ f.get('keyword_position', 'N/A') }}</span>
+                                    </div>
+
+                                    <hr class="my-2">
+
+                                    {# Boolean Features #}
+                                    <div class="feature-item">
+                                        <span class="feature-name">In Table</span>
+                                        <span class="feature-value {{ 'true' if f.get('is_in_table') else 'false' }}">
+                                            {{ '✓ Yes' if f.get('is_in_table') else '✗ No' }}
+                                        </span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-name">In Risk Factors</span>
+                                        <span class="feature-value {{ 'true' if f.get('is_in_risk_factors') else 'false' }}">
+                                            {{ '✓ Yes' if f.get('is_in_risk_factors') else '✗ No' }}
+                                        </span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-name">Definition Language</span>
+                                        <span class="feature-value {{ 'true' if f.get('contains_definition_language') else 'false' }}">
+                                            {{ '✓ Yes' if f.get('contains_definition_language') else '✗ No' }}
+                                        </span>
+                                    </div>
+                                    <div class="feature-item">
+                                        <span class="feature-name">Period Mention</span>
+                                        <span class="feature-value {{ 'true' if f.get('has_period_mention') else 'false' }}">
+                                            {{ '✓ Yes' if f.get('has_period_mention') else '✗ No' }}
+                                        </span>
+                                    </div>
+
+                                    <hr class="my-2">
+
+                                    {# Number Features #}
+                                    <div class="feature-item">
+                                        <span class="feature-name">Number Format</span>
+                                        <span class="feature-value">{{ f.get('number_format', 'unknown')|title }}</span>
+                                    </div>
+                                    {% if f.get('value_magnitude') is not none %}
+                                        <div class="feature-item">
+                                            <span class="feature-name">Value Magnitude</span>
+                                            <span class="feature-value">10^{{ "{:.1f}".format(f.get('value_magnitude')) }}</span>
+                                        </div>
+                                    {% endif %}
+                                    <div class="feature-item">
+                                        <span class="feature-name">Surrounding Numbers</span>
+                                        <span class="feature-value">{{ f.get('surrounding_numbers_count', 0) }}</span>
+                                    </div>
+
+                                    {# Section Features #}
+                                    {% if f.get('section_name') %}
+                                        <hr class="my-2">
+                                        <div class="feature-item">
+                                            <span class="feature-name">Section</span>
+                                            <span class="feature-value small" title="{{ f.get('section_name') }}">
+                                                {{ f.get('section_name')|truncate(30) }}
+                                            </span>
+                                        </div>
+                                    {% endif %}
+
+                                    {% if f.get('context_word_count') %}
+                                        <div class="feature-item">
+                                            <span class="feature-name">Context Words</span>
+                                            <span class="feature-value">{{ f.get('context_word_count') }}</span>
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <p class="text-muted small mb-0">No features available</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+
+                {# =============================================================
+                   Section 7: Keyboard Shortcuts Panel
+                   ============================================================= #}
+                <div class="card keyboard-shortcuts-panel d-none d-lg-block">
+                    <div class="card-body">
+                        <h6 class="mb-3">Keyboard Shortcuts</h6>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">A</span>
+                            <span class="small">Accept suggested metric</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">R</span>
+                            <span class="small">Reject candidate</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">C</span>
+                            <span class="small">Reclassify to different metric</span>
+                        </div>
+
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-secondary me-2">N</span>
+                            <span class="small">Next candidate</span>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='js/review.js') }}"></script>
+{% endblock %}

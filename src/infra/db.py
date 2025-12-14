@@ -4,12 +4,27 @@ Database adapter for Customer Metrics Filings Analysis.
 Provides a clean interface for database operations using psycopg3.
 """
 
+import json
 import logging
+import os
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import psycopg
 from psycopg.rows import dict_row
+
+from src.infra.validation import ValidationError, validate_enum, validate_score
+from src.review.models import (
+    DECISION_TYPES,
+    KEYWORD_POSITIONS,
+    PATTERN_STATUSES,
+    PATTERN_TYPES,
+    REJECTION_CATEGORIES,
+    REVIEW_STATUSES,
+)
+
+if TYPE_CHECKING:
+    from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +33,35 @@ class DatabaseAdapter:
     """
     Database adapter for Postgres operations.
 
-    Provides connection pooling and common query patterns for the filings analysis system.
+    Provides connection management and common query patterns for the filings
+    analysis system. Supports both per-operation connections (default) and
+    connection pooling via psycopg_pool.
+
+    Usage without pooling (per-operation connections):
+        adapter = DatabaseAdapter(connection_string)
+
+    Usage with pooling (recommended for Flask apps and scripts):
+        from src.infra.pool import create_pool
+        pool = create_pool(connection_string)
+        adapter = DatabaseAdapter(connection_string, pool=pool)
     """
 
-    def __init__(self, connection_string: str):
+    def __init__(
+        self,
+        connection_string: str,
+        pool: Optional["ConnectionPool"] = None,
+    ):
         """
         Initialize the database adapter.
 
         Args:
             connection_string: PostgreSQL connection string
                 (e.g., "postgresql://user:password@localhost/dbname")
+            pool: Optional connection pool. If provided, connections are
+                borrowed from the pool instead of being created per operation.
         """
         self.connection_string = connection_string
+        self._pool = pool
         self._connection = None
 
     @contextmanager
@@ -37,19 +69,66 @@ class DatabaseAdapter:
         """
         Get a database connection context manager.
 
+        If a connection pool was provided to __init__, connections are borrowed
+        from the pool and automatically returned when the context exits.
+        Otherwise, a new connection is created and closed per operation.
+
         Yields:
             psycopg connection object
         """
-        conn = psycopg.connect(self.connection_string, row_factory=dict_row)
-        try:
+        if self._pool is not None:
+            # Use pooled connection - returned to pool on exit
+            with self._pool.connection() as conn:
+                try:
+                    yield conn
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    logger.error(f"Database error, rolling back: {e}")
+                    raise
+        else:
+            # Original behavior: create/close connection per operation
+            conn = psycopg.connect(self.connection_string, row_factory=dict_row)
+            try:
+                yield conn
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Database error, rolling back: {e}")
+                raise
+            finally:
+                conn.close()
+
+    @contextmanager
+    def transaction(self):
+        """
+        Get a transaction context for multi-step operations.
+
+        Use this when you need multiple database operations to succeed or fail
+        together as an atomic unit. All operations within the context share
+        a single connection and transaction.
+
+        The transaction commits automatically on clean exit and rolls back
+        on any exception.
+
+        Yields:
+            psycopg connection object with an open transaction
+
+        Example:
+            with db.transaction() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO table1 ...")
+                    cur.execute("UPDATE table2 ...")
+                # Both operations commit together
+
+            # Or for complex workflows:
+            with db.transaction() as conn:
+                # Multiple related operations
+                # All succeed or all fail
+        """
+        with self.get_connection() as conn:
             yield conn
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Database error, rolling back: {e}")
-            raise
-        finally:
-            conn.close()
+            # Commit/rollback handled by get_connection()
 
     def execute_script(self, sql_file_path: str) -> None:
         """
@@ -373,3 +452,1651 @@ class DatabaseAdapter:
         sql = "SELECT COUNT(*) as count FROM filings WHERE is_in_scope_phase1 = true"
         results = self.query(sql)
         return results[0]["count"] if results else 0
+
+    # =========================================================================
+    # Review Candidates Methods
+    # =========================================================================
+
+    def insert_review_candidate(
+        self,
+        filing_id: int,
+        company_id: int,
+        char_position: int,
+        context_text: str,
+        raw_number_text: str,
+        triggering_keyword: str,
+        keyword_distance: int,
+        keyword_position: str,
+        source_segment_id: Optional[int] = None,
+        parsed_value: Optional[Any] = None,
+        parsed_unit: Optional[str] = None,
+        suggested_metric_id: Optional[str] = None,
+        suggestion_confidence: Optional[float] = None,
+        features: Optional[Dict[str, Any]] = None,
+        review_batch_id: Optional[int] = None,
+    ) -> int:
+        """
+        Insert a new review candidate.
+
+        Args:
+            filing_id: Foreign key to filings table
+            company_id: Foreign key to companies table
+            char_position: Character position of number in segment
+            context_text: Surrounding text for context
+            raw_number_text: The raw number string found
+            triggering_keyword: Keyword that triggered this candidate
+            keyword_distance: Characters from number to keyword
+            keyword_position: 'before' or 'after' the number
+            source_segment_id: Optional foreign key to source_segments
+            parsed_value: Parsed numeric value
+            parsed_unit: Detected unit
+            suggested_metric_id: Initial suggested metric
+            suggestion_confidence: 0-1 confidence score
+            features: ML features as dict (stored as JSONB)
+            review_batch_id: Optional batch grouping
+
+        Returns:
+            candidate_id of the inserted record
+
+        Raises:
+            ValidationError: If keyword_position is not 'before' or 'after'
+            ValidationError: If suggestion_confidence is not between 0 and 1
+        """
+        # Validate enum values
+        validate_enum(keyword_position, KEYWORD_POSITIONS, "keyword_position")
+
+        # Validate confidence range
+        validate_score(suggestion_confidence, "suggestion_confidence")
+
+        sql = """
+            INSERT INTO review_candidates (
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                review_batch_id
+            )
+            VALUES (
+                %(filing_id)s, %(company_id)s, %(source_segment_id)s,
+                %(char_position)s, %(context_text)s, %(raw_number_text)s,
+                %(parsed_value)s, %(parsed_unit)s,
+                %(triggering_keyword)s, %(keyword_distance)s, %(keyword_position)s,
+                %(suggested_metric_id)s, %(suggestion_confidence)s, %(features)s,
+                %(review_batch_id)s
+            )
+            RETURNING candidate_id
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "filing_id": filing_id,
+                        "company_id": company_id,
+                        "source_segment_id": source_segment_id,
+                        "char_position": char_position,
+                        "context_text": context_text,
+                        "raw_number_text": raw_number_text,
+                        "parsed_value": parsed_value,
+                        "parsed_unit": parsed_unit,
+                        "triggering_keyword": triggering_keyword,
+                        "keyword_distance": keyword_distance,
+                        "keyword_position": keyword_position,
+                        "suggested_metric_id": suggested_metric_id,
+                        "suggestion_confidence": suggestion_confidence,
+                        "features": json.dumps(features) if features else None,
+                        "review_batch_id": review_batch_id,
+                    },
+                )
+                result = cur.fetchone()
+                candidate_id = result["candidate_id"]
+
+        logger.debug(f"Inserted review candidate: candidate_id={candidate_id}")
+        return candidate_id
+
+    def get_review_candidate(self, candidate_id: int) -> Optional[Dict]:
+        """
+        Get a review candidate by ID.
+
+        Args:
+            candidate_id: Primary key
+
+        Returns:
+            Candidate record as dict, or None if not found
+        """
+        sql = "SELECT * FROM review_candidates WHERE candidate_id = %(candidate_id)s"
+        results = self.query(sql, {"candidate_id": candidate_id})
+        return results[0] if results else None
+
+    def get_review_candidates_for_filing(
+        self,
+        filing_id: int,
+        status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get review candidates for a filing.
+
+        Args:
+            filing_id: Filing to get candidates for
+            status: Optional filter by review_status
+            limit: Maximum number to return
+            offset: Number to skip (for pagination)
+
+        Returns:
+            List of candidate records
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        # Validate status if provided
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            SELECT * FROM review_candidates
+            WHERE filing_id = %(filing_id)s
+        """
+        params: Dict[str, Any] = {"filing_id": filing_id}
+
+        if status:
+            sql += " AND review_status = %(status)s"
+            params["status"] = status
+
+        sql += " ORDER BY char_position"
+
+        if limit:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        return self.query(sql, params)
+
+    def get_review_candidates_with_decisions(
+        self,
+        filing_id: int,
+        status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get review candidates for a filing WITH their decisions (if any).
+
+        This method uses a LEFT JOIN to fetch candidates and decisions in a single
+        query, eliminating the N+1 query pattern when displaying candidates with
+        their review decisions.
+
+        Args:
+            filing_id: Filing to get candidates for
+            status: Optional filter by review_status
+            limit: Maximum number to return
+            offset: Number to skip (for pagination)
+
+        Returns:
+            List of candidate records with segment fields (segment_type, segment_html)
+            and decision fields (decision_id, decision, assigned_metric_id,
+            rejection_category, rejection_reason, reviewer_notes, reviewer_id,
+            review_time_seconds, decision_created_at).
+            Segment and decision fields are NULL if no source segment or decision exists.
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        # Validate status if provided
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            SELECT
+                rc.*,
+                ss.segment_type,
+                ss.raw_html as segment_html,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id,
+                rd.rejection_category,
+                rd.rejection_reason,
+                rd.reviewer_notes,
+                rd.reviewer_id,
+                rd.review_time_seconds,
+                rd.created_at as decision_created_at
+            FROM review_candidates rc
+            LEFT JOIN source_segments ss ON rc.source_segment_id = ss.source_segment_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (candidate_id)
+                    candidate_id,
+                    decision_id,
+                    decision,
+                    assigned_metric_id,
+                    rejection_category,
+                    rejection_reason,
+                    reviewer_notes,
+                    reviewer_id,
+                    review_time_seconds,
+                    created_at
+                FROM review_decisions
+                ORDER BY candidate_id, created_at DESC
+            ) rd ON rc.candidate_id = rd.candidate_id
+            WHERE rc.filing_id = %(filing_id)s
+        """
+        params: Dict[str, Any] = {"filing_id": filing_id}
+
+        if status:
+            sql += " AND rc.review_status = %(status)s"
+            params["status"] = status
+
+        sql += " ORDER BY rc.char_position"
+
+        if limit:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        return self.query(sql, params)
+
+    def get_all_reviewed_candidates_with_decisions(
+        self,
+        metric_id: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get all reviewed candidates with decisions across all filings.
+
+        Similar to get_review_candidates_with_decisions() but not filtered
+        by filing_id. Used for pattern analysis across the full dataset.
+
+        Only returns candidates that have been reviewed (have decisions).
+        Uses an INNER JOIN instead of LEFT JOIN to ensure all returned
+        candidates have a decision.
+
+        Args:
+            metric_id: Optional filter by suggested_metric_id
+            limit: Maximum number to return
+            offset: Number to skip (for pagination)
+
+        Returns:
+            List of candidate records with decision fields (decision_id, decision,
+            assigned_metric_id, rejection_category, rejection_reason, reviewer_notes,
+            reviewer_id, review_time_seconds, decision_created_at).
+
+        Example:
+            >>> db = DatabaseAdapter(connection_string)
+            >>> # Get all reviewed candidates
+            >>> all_decisions = db.get_all_reviewed_candidates_with_decisions()
+            >>> # Get reviewed candidates for specific metric
+            >>> arr_decisions = db.get_all_reviewed_candidates_with_decisions(
+            ...     metric_id="annual_recurring_revenue"
+            ... )
+            >>> # Get first 100 with pagination
+            >>> batch = db.get_all_reviewed_candidates_with_decisions(limit=100)
+        """
+        sql = """
+            SELECT
+                rc.*,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id,
+                rd.rejection_category,
+                rd.rejection_reason,
+                rd.reviewer_notes,
+                rd.reviewer_id,
+                rd.review_time_seconds,
+                rd.created_at as decision_created_at
+            FROM review_candidates rc
+            INNER JOIN (
+                SELECT DISTINCT ON (candidate_id)
+                    candidate_id,
+                    decision_id,
+                    decision,
+                    assigned_metric_id,
+                    rejection_category,
+                    rejection_reason,
+                    reviewer_notes,
+                    reviewer_id,
+                    review_time_seconds,
+                    created_at
+                FROM review_decisions
+                ORDER BY candidate_id, created_at DESC
+            ) rd ON rc.candidate_id = rd.candidate_id
+            WHERE 1=1
+        """
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " AND rc.suggested_metric_id = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY rc.candidate_id"
+
+        if limit:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        return self.query(sql, params)
+
+    def get_pending_candidates(
+        self,
+        filing_id: Optional[int] = None,
+        batch_id: Optional[int] = None,
+        limit: int = 50,
+    ) -> List[Dict]:
+        """
+        Get candidates pending review.
+
+        Args:
+            filing_id: Optional filter by filing
+            batch_id: Optional filter by batch
+            limit: Maximum number to return
+
+        Returns:
+            List of pending candidate records
+        """
+        sql = """
+            SELECT rc.*, f.accession_number, c.company_name
+            FROM review_candidates rc
+            JOIN filings f ON rc.filing_id = f.filing_id
+            JOIN companies c ON rc.company_id = c.company_id
+            WHERE rc.review_status = 'pending'
+        """
+        params: Dict[str, Any] = {"limit": limit}
+
+        if filing_id:
+            sql += " AND rc.filing_id = %(filing_id)s"
+            params["filing_id"] = filing_id
+
+        if batch_id:
+            sql += " AND rc.review_batch_id = %(batch_id)s"
+            params["batch_id"] = batch_id
+
+        sql += " ORDER BY rc.filing_id, rc.char_position LIMIT %(limit)s"
+
+        return self.query(sql, params)
+
+    def update_candidate_status(
+        self, candidate_id: int, status: str
+    ) -> bool:
+        """
+        Update a candidate's review status.
+
+        Args:
+            candidate_id: Candidate to update
+            status: New status ('pending', 'in_progress', 'reviewed', 'skipped')
+
+        Returns:
+            True if a row was updated, False if no candidate found with given ID
+
+        Raises:
+            ValidationError: If status is not a valid review status
+        """
+        # Validate status
+        validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            UPDATE review_candidates
+            SET review_status = %(status)s, updated_at = now()
+            WHERE candidate_id = %(candidate_id)s
+            RETURNING candidate_id
+        """
+        result = self.execute(
+            sql, {"candidate_id": candidate_id, "status": status}, fetch=True
+        )
+        updated = bool(result)
+        if updated:
+            logger.debug(f"Updated candidate {candidate_id} status to {status}")
+        else:
+            logger.warning(f"No candidate found with id {candidate_id}")
+        return updated
+
+    def bulk_update_candidate_status(
+        self, candidate_ids: List[int], status: str
+    ) -> int:
+        """
+        Update status for multiple candidates efficiently.
+
+        Uses PostgreSQL ANY() for single-statement bulk update.
+
+        Args:
+            candidate_ids: List of candidate IDs to update
+            status: New status ('pending', 'in_progress', 'reviewed', 'skipped')
+
+        Returns:
+            Number of rows updated
+
+        Raises:
+            ValidationError: If status is not a valid review status
+        """
+        if not candidate_ids:
+            return 0
+
+        # Validate status
+        validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        sql = """
+            UPDATE review_candidates
+            SET review_status = %(status)s, updated_at = now()
+            WHERE candidate_id = ANY(%(candidate_ids)s)
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {"candidate_ids": candidate_ids, "status": status},
+                )
+                rows_updated = cur.rowcount
+
+        logger.debug(
+            f"Bulk updated {rows_updated} candidates to status '{status}'"
+        )
+        return rows_updated
+
+    def bulk_insert_review_candidates(
+        self, candidates: List[Dict[str, Any]]
+    ) -> List[int]:
+        """
+        Bulk insert multiple review candidates efficiently.
+
+        Uses PostgreSQL UNNEST for efficient single-statement bulk insert.
+
+        Args:
+            candidates: List of candidate dictionaries with fields matching
+                        insert_review_candidate parameters
+
+        Returns:
+            List of inserted candidate_ids (in same order as input)
+
+        Raises:
+            ValidationError: If any candidate has invalid keyword_position
+            ValidationError: If any candidate has invalid suggestion_confidence
+        """
+        if not candidates:
+            return []
+
+        # Validate all candidates first (fail fast before any DB work)
+        for i, candidate in enumerate(candidates):
+            keyword_position = candidate["keyword_position"]
+            validate_enum(
+                keyword_position,
+                KEYWORD_POSITIONS,
+                f"keyword_position (candidate {i})",
+            )
+
+            validate_score(
+                candidate.get("suggestion_confidence"),
+                "suggestion_confidence",
+                context=f"candidate {i}",
+            )
+
+        # Build arrays for UNNEST bulk insert
+        filing_ids = []
+        company_ids = []
+        source_segment_ids = []
+        char_positions = []
+        context_texts = []
+        raw_number_texts = []
+        parsed_values = []
+        parsed_units = []
+        triggering_keywords = []
+        keyword_distances = []
+        keyword_positions = []
+        suggested_metric_ids = []
+        suggestion_confidences = []
+        features_list = []
+        review_batch_ids = []
+
+        for candidate in candidates:
+            filing_ids.append(candidate["filing_id"])
+            company_ids.append(candidate["company_id"])
+            source_segment_ids.append(candidate.get("source_segment_id"))
+            char_positions.append(candidate["char_position"])
+            context_texts.append(candidate["context_text"])
+            raw_number_texts.append(candidate["raw_number_text"])
+            parsed_values.append(candidate.get("parsed_value"))
+            parsed_units.append(candidate.get("parsed_unit"))
+            triggering_keywords.append(candidate["triggering_keyword"])
+            keyword_distances.append(candidate["keyword_distance"])
+            keyword_positions.append(candidate["keyword_position"])
+            suggested_metric_ids.append(candidate.get("suggested_metric_id"))
+            suggestion_confidences.append(candidate.get("suggestion_confidence"))
+            features = candidate.get("features")
+            features_list.append(json.dumps(features) if features else None)
+            review_batch_ids.append(candidate.get("review_batch_id"))
+
+        # Use UNNEST with ORDINALITY for efficient single-statement bulk insert
+        # WITH ORDINALITY ensures we preserve input array order via ORDER BY ord
+        sql = """
+            INSERT INTO review_candidates (
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                review_batch_id
+            )
+            SELECT
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                review_batch_id
+            FROM UNNEST(
+                %(filing_ids)s::bigint[],
+                %(company_ids)s::bigint[],
+                %(source_segment_ids)s::bigint[],
+                %(char_positions)s::int[],
+                %(context_texts)s::text[],
+                %(raw_number_texts)s::text[],
+                %(parsed_values)s::numeric[],
+                %(parsed_units)s::text[],
+                %(triggering_keywords)s::text[],
+                %(keyword_distances)s::int[],
+                %(keyword_positions)s::text[],
+                %(suggested_metric_ids)s::text[],
+                %(suggestion_confidences)s::numeric[],
+                %(features_list)s::jsonb[],
+                %(review_batch_ids)s::int[]
+            ) WITH ORDINALITY AS t(
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                review_batch_id,
+                ord
+            )
+            ORDER BY ord
+            RETURNING candidate_id
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "filing_ids": filing_ids,
+                        "company_ids": company_ids,
+                        "source_segment_ids": source_segment_ids,
+                        "char_positions": char_positions,
+                        "context_texts": context_texts,
+                        "raw_number_texts": raw_number_texts,
+                        "parsed_values": parsed_values,
+                        "parsed_units": parsed_units,
+                        "triggering_keywords": triggering_keywords,
+                        "keyword_distances": keyword_distances,
+                        "keyword_positions": keyword_positions,
+                        "suggested_metric_ids": suggested_metric_ids,
+                        "suggestion_confidences": suggestion_confidences,
+                        "features_list": features_list,
+                        "review_batch_ids": review_batch_ids,
+                    },
+                )
+                results = cur.fetchall()
+                inserted_ids = [row["candidate_id"] for row in results]
+
+        logger.debug(f"Bulk inserted {len(inserted_ids)} review candidates")
+        return inserted_ids
+
+    # =========================================================================
+    # Review Decisions Methods
+    # =========================================================================
+
+    def insert_review_decision(
+        self,
+        candidate_id: int,
+        decision: str,
+        assigned_metric_id: Optional[str] = None,
+        rejection_reason: Optional[str] = None,
+        rejection_category: Optional[str] = None,
+        reviewer_id: Optional[str] = None,
+        reviewer_notes: Optional[str] = None,
+        review_time_seconds: Optional[int] = None,
+    ) -> int:
+        """
+        Record a human review decision.
+
+        This method atomically inserts the decision AND updates the candidate's
+        status to 'reviewed' in a single transaction. Both operations succeed
+        together or fail together - there's no risk of partial state.
+
+        Args:
+            candidate_id: Candidate being reviewed
+            decision: 'accept', 'reject', or 'reclassify'
+            assigned_metric_id: Final metric ID (required for accept/reclassify)
+            rejection_reason: Free-text explanation for rejection
+            rejection_category: Categorized reason for pattern learning
+            reviewer_id: Identifier for who made this decision (username, email)
+            reviewer_notes: Optional notes
+            review_time_seconds: Time spent on this decision
+
+        Returns:
+            decision_id of the inserted record
+
+        Raises:
+            ValidationError: If decision is not 'accept', 'reject', or 'reclassify'
+            ValidationError: If rejection_category is not a valid category
+            ValidationError: If accept/reclassify without assigned_metric_id
+            ValidationError: If rejection_category provided for non-reject decision
+        """
+        # Validate decision type
+        validate_enum(decision, DECISION_TYPES, "decision")
+
+        # Validate rejection_category if provided
+        if rejection_category is not None:
+            validate_enum(
+                rejection_category, REJECTION_CATEGORIES, "rejection_category"
+            )
+
+        # Business rule: accept/reclassify require assigned_metric_id
+        if decision in ("accept", "reclassify") and not assigned_metric_id:
+            raise ValidationError(
+                f"Decision '{decision}' requires assigned_metric_id"
+            )
+
+        # Business rule: rejection_category only valid for reject
+        if decision != "reject" and rejection_category:
+            raise ValidationError(
+                f"rejection_category should only be set when decision='reject', "
+                f"got decision='{decision}'"
+            )
+
+        insert_sql = """
+            INSERT INTO review_decisions (
+                candidate_id, decision, assigned_metric_id,
+                rejection_reason, rejection_category,
+                reviewer_id, reviewer_notes, review_time_seconds
+            )
+            VALUES (
+                %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
+                %(rejection_reason)s, %(rejection_category)s,
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+            )
+            RETURNING decision_id
+        """
+
+        update_status_sql = """
+            UPDATE review_candidates
+            SET review_status = 'reviewed', updated_at = now()
+            WHERE candidate_id = %(candidate_id)s
+        """
+
+        # Both operations in same transaction for atomicity
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Insert the decision
+                cur.execute(
+                    insert_sql,
+                    {
+                        "candidate_id": candidate_id,
+                        "decision": decision,
+                        "assigned_metric_id": assigned_metric_id,
+                        "rejection_reason": rejection_reason,
+                        "rejection_category": rejection_category,
+                        "reviewer_id": reviewer_id,
+                        "reviewer_notes": reviewer_notes,
+                        "review_time_seconds": review_time_seconds,
+                    },
+                )
+                result = cur.fetchone()
+                decision_id = result["decision_id"]
+
+                # Update candidate status - SAME TRANSACTION
+                cur.execute(update_status_sql, {"candidate_id": candidate_id})
+
+        logger.debug(
+            f"Inserted review decision: decision_id={decision_id}, "
+            f"candidate_id={candidate_id}, decision={decision}"
+        )
+        return decision_id
+
+    def get_decision_for_candidate(self, candidate_id: int) -> Optional[Dict]:
+        """
+        Get the latest decision for a candidate.
+
+        Args:
+            candidate_id: Candidate to get decision for
+
+        Returns:
+            Decision record as dict, or None if not reviewed
+        """
+        sql = """
+            SELECT * FROM review_decisions
+            WHERE candidate_id = %(candidate_id)s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """
+        results = self.query(sql, {"candidate_id": candidate_id})
+        return results[0] if results else None
+
+    def get_decisions_for_filing(self, filing_id: int) -> List[Dict]:
+        """
+        Get all review decisions for a filing.
+
+        Args:
+            filing_id: Filing to get decisions for
+
+        Returns:
+            List of decision records with candidate info
+        """
+        sql = """
+            SELECT rd.*, rc.context_text, rc.raw_number_text,
+                   rc.triggering_keyword, rc.suggested_metric_id
+            FROM review_decisions rd
+            JOIN review_candidates rc ON rd.candidate_id = rc.candidate_id
+            WHERE rc.filing_id = %(filing_id)s
+            ORDER BY rd.created_at
+        """
+        return self.query(sql, {"filing_id": filing_id})
+
+    def get_decision_statistics(
+        self, filing_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Get statistics on review decisions.
+
+        Args:
+            filing_id: Optional filter by filing
+
+        Returns:
+            Dict with decision counts and percentages
+        """
+        where_clause = ""
+        params: Dict[str, Any] = {}
+
+        if filing_id:
+            where_clause = """
+                WHERE rd.candidate_id IN (
+                    SELECT candidate_id FROM review_candidates
+                    WHERE filing_id = %(filing_id)s
+                )
+            """
+            params["filing_id"] = filing_id
+
+        sql = f"""
+            SELECT
+                COUNT(*) as total_decisions,
+                COUNT(*) FILTER (WHERE decision = 'accept') as accept_count,
+                COUNT(*) FILTER (WHERE decision = 'reject') as reject_count,
+                COUNT(*) FILTER (WHERE decision = 'reclassify') as reclassify_count,
+                AVG(review_time_seconds) as avg_review_time_seconds
+            FROM review_decisions rd
+            {where_clause}
+        """
+
+        results = self.query(sql, params)
+        if not results:
+            return {
+                "total_decisions": 0,
+                "accept_count": 0,
+                "reject_count": 0,
+                "reclassify_count": 0,
+                "avg_review_time_seconds": None,
+            }
+
+        row = results[0]
+        total = row["total_decisions"] or 0
+
+        return {
+            "total_decisions": total,
+            "accept_count": row["accept_count"] or 0,
+            "reject_count": row["reject_count"] or 0,
+            "reclassify_count": row["reclassify_count"] or 0,
+            "accept_pct": (row["accept_count"] or 0) / total * 100 if total > 0 else 0,
+            "reject_pct": (row["reject_count"] or 0) / total * 100 if total > 0 else 0,
+            "avg_review_time_seconds": row["avg_review_time_seconds"],
+        }
+
+    def get_decisions_by_reviewer(
+        self,
+        reviewer_id: str,
+        decision: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        include_total: bool = False,
+    ) -> Union[List[Dict], Dict[str, Any]]:
+        """
+        Get all review decisions made by a specific reviewer.
+
+        Args:
+            reviewer_id: Identifier of the reviewer (username, email, etc.)
+            decision: Optional filter by decision type ('accept', 'reject', 'reclassify')
+            limit: Maximum number of results to return (must be > 0 if provided)
+            offset: Number of results to skip for pagination (must be >= 0)
+            include_total: If True, returns dict with 'results' and 'total' keys
+
+        Returns:
+            If include_total=False: List of decision records with candidate context
+            info, ordered by created_at descending (most recent first)
+
+            If include_total=True: Dict with:
+                - results: List of decision records
+                - total: Total count matching filters (ignoring limit/offset)
+
+        Raises:
+            ValidationError: If decision filter is not a valid decision type
+            ValidationError: If limit is provided and <= 0
+            ValidationError: If offset < 0
+        """
+        # Validate decision type if provided
+        if decision is not None:
+            validate_enum(decision, DECISION_TYPES, "decision")
+
+        # Validate pagination parameters
+        if limit is not None and limit <= 0:
+            raise ValidationError(f"limit must be > 0, got {limit}")
+        if offset < 0:
+            raise ValidationError(f"offset must be >= 0, got {offset}")
+
+        conditions = ["rd.reviewer_id = %(reviewer_id)s"]
+        params: Dict[str, Any] = {"reviewer_id": reviewer_id}
+
+        if decision:
+            conditions.append("rd.decision = %(decision)s")
+            params["decision"] = decision
+
+        where_clause = " AND ".join(conditions)
+
+        # Build pagination clause using parameterized queries
+        pagination = ""
+        if limit is not None:
+            pagination = " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+
+        sql = f"""
+            SELECT rd.*,
+                   rc.filing_id,
+                   rc.company_id,
+                   rc.context_text,
+                   rc.raw_number_text,
+                   rc.triggering_keyword,
+                   rc.suggested_metric_id,
+                   rc.char_position,
+                   f.accession_number,
+                   c.company_name
+            FROM review_decisions rd
+            JOIN review_candidates rc ON rd.candidate_id = rc.candidate_id
+            JOIN filings f ON rc.filing_id = f.filing_id
+            JOIN companies c ON rc.company_id = c.company_id
+            WHERE {where_clause}
+            ORDER BY rd.created_at DESC
+            {pagination}
+        """
+
+        results = self.query(sql, params)
+
+        if not include_total:
+            return results
+
+        # Get total count for pagination metadata
+        count_sql = f"""
+            SELECT COUNT(*) as total
+            FROM review_decisions rd
+            WHERE {where_clause}
+        """
+        # Remove pagination params for count query
+        count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+        count_result = self.query(count_sql, count_params)
+        total = count_result[0]["total"] if count_result else 0
+
+        return {"results": results, "total": total}
+
+    # =========================================================================
+    # Analysis View Methods
+    # =========================================================================
+
+    def get_decision_stats_by_metric(
+        self, metric_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get decision statistics grouped by suggested metric.
+
+        Queries the v_decision_stats_by_metric view to show acceptance rates
+        per metric type. Useful for the pattern analyzer to identify which
+        metrics have high/low acceptance rates.
+
+        Args:
+            metric_id: Optional filter by specific metric ID
+
+        Returns:
+            List of dicts with columns:
+            - suggested_metric: The metric ID (or 'unknown')
+            - decision: 'accept', 'reject', or 'reclassify'
+            - decision_count: Number of decisions of this type
+            - pct_of_metric: Percentage of this decision within the metric
+        """
+        sql = "SELECT * FROM v_decision_stats_by_metric"
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " WHERE suggested_metric = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY suggested_metric, decision"
+
+        return self.query(sql, params)
+
+    def get_rejection_reasons(
+        self, metric_id: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Get rejection reason statistics grouped by metric.
+
+        Queries the v_rejection_reasons view to show patterns in why
+        candidates are rejected. Useful for the pattern analyzer to
+        identify systematic false positive patterns.
+
+        Args:
+            metric_id: Optional filter by specific metric ID
+
+        Returns:
+            List of dicts with columns:
+            - suggested_metric: The metric ID (or 'unknown')
+            - rejection_category: Category of rejection reason
+            - rejection_count: Number of rejections with this reason
+            - avg_keyword_distance: Average distance from number to keyword
+            - common_keyword_position: Most common keyword position ('before'/'after')
+        """
+        sql = "SELECT * FROM v_rejection_reasons"
+        params: Dict[str, Any] = {}
+
+        if metric_id:
+            sql += " WHERE suggested_metric = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY suggested_metric, rejection_count DESC"
+
+        return self.query(sql, params)
+
+    # =========================================================================
+    # Learned Patterns Methods
+    # =========================================================================
+
+    def insert_learned_pattern(
+        self,
+        pattern_type: str,
+        pattern_name: str,
+        pattern_definition: Dict[str, Any],
+        metric_id: Optional[str] = None,
+        pattern_description: Optional[str] = None,
+        precision_score: Optional[float] = None,
+        recall_score: Optional[float] = None,
+        f1_score: Optional[float] = None,
+        sample_count: Optional[int] = None,
+    ) -> int:
+        """
+        Insert a new learned pattern.
+
+        Args:
+            pattern_type: 'accept_rule', 'reject_rule', or 'feature_weight'
+            pattern_name: Human-readable name
+            pattern_definition: Rule definition as dict (stored as JSONB)
+            metric_id: Optional metric-specific pattern
+            pattern_description: Longer description
+            precision_score: Precision on training data (0-1)
+            recall_score: Recall on training data (0-1)
+            f1_score: F1 score (0-1)
+            sample_count: Number of samples pattern was evaluated on
+
+        Returns:
+            pattern_id of the inserted record
+
+        Raises:
+            ValidationError: If pattern_type is not valid
+            ValidationError: If any score is not between 0 and 1
+        """
+        # Validate pattern_type
+        validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        # Validate score ranges
+        validate_score(precision_score, "precision_score")
+        validate_score(recall_score, "recall_score")
+        validate_score(f1_score, "f1_score")
+
+        sql = """
+            INSERT INTO learned_patterns (
+                pattern_type, metric_id, pattern_name, pattern_description,
+                pattern_definition, precision_score, recall_score, f1_score,
+                sample_count
+            )
+            VALUES (
+                %(pattern_type)s, %(metric_id)s, %(pattern_name)s, %(pattern_description)s,
+                %(pattern_definition)s, %(precision_score)s, %(recall_score)s, %(f1_score)s,
+                %(sample_count)s
+            )
+            RETURNING pattern_id
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "pattern_type": pattern_type,
+                        "metric_id": metric_id,
+                        "pattern_name": pattern_name,
+                        "pattern_description": pattern_description,
+                        "pattern_definition": json.dumps(pattern_definition),
+                        "precision_score": precision_score,
+                        "recall_score": recall_score,
+                        "f1_score": f1_score,
+                        "sample_count": sample_count,
+                    },
+                )
+                result = cur.fetchone()
+                pattern_id = result["pattern_id"]
+
+        logger.debug(f"Inserted learned pattern: pattern_id={pattern_id}")
+        return pattern_id
+
+    def get_learned_pattern(self, pattern_id: int) -> Optional[Dict]:
+        """
+        Get a learned pattern by ID.
+
+        Args:
+            pattern_id: Primary key
+
+        Returns:
+            Pattern record as dict, or None if not found
+        """
+        sql = "SELECT * FROM learned_patterns WHERE pattern_id = %(pattern_id)s"
+        results = self.query(sql, {"pattern_id": pattern_id})
+        return results[0] if results else None
+
+    def get_learned_patterns(
+        self,
+        status: str = "approved",
+        pattern_type: Optional[str] = None,
+        metric_id: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Get learned patterns with flexible filtering.
+
+        This is the general-purpose method for loading patterns. Use this
+        for E2 RuleApplicator to load approved patterns.
+
+        Args:
+            status: Pattern status filter (default: 'approved')
+            pattern_type: Optional filter by pattern type
+            metric_id: Optional filter by metric (includes global patterns if None)
+
+        Returns:
+            List of pattern records ordered by precision score (highest first)
+
+        Raises:
+            ValidationError: If status is not a valid pattern status
+            ValidationError: If pattern_type is provided but not a valid type
+
+        Example:
+            >>> # Get all approved patterns for E2
+            >>> patterns = db.get_learned_patterns(status='approved')
+            >>> # Get approved reject patterns for a specific metric
+            >>> patterns = db.get_learned_patterns(
+            ...     status='approved',
+            ...     pattern_type='reject_rule',
+            ...     metric_id='annual_recurring_revenue'
+            ... )
+        """
+        # Validate status
+        validate_enum(status, PATTERN_STATUSES, "pattern_status")
+
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        sql = """
+            SELECT * FROM learned_patterns
+            WHERE status = %(status)s
+        """
+        params: Dict[str, Any] = {"status": status}
+
+        if pattern_type:
+            sql += " AND pattern_type = %(pattern_type)s"
+            params["pattern_type"] = pattern_type
+
+        if metric_id:
+            sql += " AND (metric_id = %(metric_id)s OR metric_id IS NULL)"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY precision_score DESC NULLS LAST, pattern_id"
+
+        return self.query(sql, params)
+
+    def get_approved_patterns(
+        self,
+        pattern_type: Optional[str] = None,
+        metric_id: Optional[str] = None,
+    ) -> List[Dict]:
+        """
+        Get approved patterns for use in extraction.
+
+        Args:
+            pattern_type: Optional filter by pattern type
+            metric_id: Optional filter by metric
+
+        Returns:
+            List of approved pattern records
+
+        Raises:
+            ValidationError: If pattern_type is provided but not a valid type
+        """
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        sql = """
+            SELECT * FROM learned_patterns
+            WHERE status = 'approved'
+        """
+        params: Dict[str, Any] = {}
+
+        if pattern_type:
+            sql += " AND pattern_type = %(pattern_type)s"
+            params["pattern_type"] = pattern_type
+
+        if metric_id:
+            sql += " AND (metric_id = %(metric_id)s OR metric_id IS NULL)"
+            params["metric_id"] = metric_id
+
+        sql += " ORDER BY precision_score DESC NULLS LAST"
+
+        return self.query(sql, params)
+
+    def get_candidate_patterns(
+        self,
+        pattern_type: Optional[str] = None,
+        metric_id: Optional[str] = None,
+        min_precision: Optional[float] = None,
+        min_sample_count: Optional[int] = None,
+    ) -> List[Dict]:
+        """
+        Get patterns pending approval (status='candidate').
+
+        Use this for the pattern management workflow to review and approve
+        newly discovered patterns before they're used in extraction.
+
+        Args:
+            pattern_type: Optional filter by pattern type
+            metric_id: Optional filter by metric (includes global patterns)
+            min_precision: Optional minimum precision score filter
+            min_sample_count: Optional minimum sample count filter
+
+        Returns:
+            List of candidate pattern records, ordered by precision score
+
+        Raises:
+            ValidationError: If pattern_type is provided but not a valid type
+            ValidationError: If min_precision is not between 0 and 1
+        """
+        # Validate pattern_type if provided
+        if pattern_type is not None:
+            validate_enum(pattern_type, PATTERN_TYPES, "pattern_type")
+
+        # Validate min_precision if provided
+        validate_score(min_precision, "min_precision")
+
+        sql = """
+            SELECT * FROM learned_patterns
+            WHERE status = 'candidate'
+        """
+        params: Dict[str, Any] = {}
+
+        if pattern_type:
+            sql += " AND pattern_type = %(pattern_type)s"
+            params["pattern_type"] = pattern_type
+
+        if metric_id:
+            sql += " AND (metric_id = %(metric_id)s OR metric_id IS NULL)"
+            params["metric_id"] = metric_id
+
+        if min_precision is not None:
+            sql += " AND precision_score >= %(min_precision)s"
+            params["min_precision"] = min_precision
+
+        if min_sample_count is not None:
+            sql += " AND sample_count >= %(min_sample_count)s"
+            params["min_sample_count"] = min_sample_count
+
+        sql += " ORDER BY precision_score DESC NULLS LAST, created_at DESC"
+
+        return self.query(sql, params)
+
+    def update_pattern_status(
+        self,
+        pattern_id: int,
+        status: str,
+        approved_by: Optional[str] = None,
+    ) -> bool:
+        """
+        Update a pattern's status.
+
+        Args:
+            pattern_id: Pattern to update
+            status: New status ('candidate', 'approved', 'rejected', 'deprecated')
+            approved_by: Who approved (if status='approved')
+
+        Returns:
+            True if a row was updated, False if no pattern found with given ID
+
+        Raises:
+            ValidationError: If status is not a valid pattern status
+        """
+        # Validate status
+        validate_enum(status, PATTERN_STATUSES, "pattern_status")
+
+        sql = """
+            UPDATE learned_patterns
+            SET status = %(status)s,
+                approved_at = CASE WHEN %(status)s = 'approved' THEN now() ELSE approved_at END,
+                approved_by = COALESCE(%(approved_by)s, approved_by),
+                updated_at = now()
+            WHERE pattern_id = %(pattern_id)s
+            RETURNING pattern_id
+        """
+        result = self.execute(
+            sql,
+            {"pattern_id": pattern_id, "status": status, "approved_by": approved_by},
+            fetch=True,
+        )
+        updated = bool(result)
+        if updated:
+            logger.debug(f"Updated pattern {pattern_id} status to {status}")
+        else:
+            logger.warning(f"No pattern found with id {pattern_id}")
+        return updated
+
+    # =========================================================================
+    # Filing and Segment Retrieval Methods (for Candidate Generation)
+    # =========================================================================
+
+    def get_filing_with_company(self, filing_id: int) -> Optional[Dict]:
+        """
+        Get filing information including company details.
+
+        Args:
+            filing_id: The filing ID to retrieve
+
+        Returns:
+            Dict with filing and company info, or None if not found
+        """
+        sql = """
+            SELECT
+                f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                f.company_id,
+                c.company_name, c.cik, c.industry_code
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.filing_id = %(filing_id)s
+        """
+        results = self.query(sql, {"filing_id": filing_id})
+        return results[0] if results else None
+
+    def get_source_segments_for_filing(
+        self,
+        filing_id: int,
+        segment_types: Optional[List[str]] = None,
+        with_numeric_disclosure: Optional[bool] = None,
+    ) -> List[Dict]:
+        """
+        Get all source segments for a filing.
+
+        Args:
+            filing_id: The filing ID to retrieve segments for
+            segment_types: Optional filter by segment types (e.g., ['paragraph', 'table'])
+            with_numeric_disclosure: Optional filter by contains_numeric_disclosure_flag
+
+        Returns:
+            List of source segment dicts ordered by sequence_index
+        """
+        sql = """
+            SELECT
+                source_segment_id, filing_id, segment_type,
+                section_path, section_heading, sequence_index,
+                html_selector, char_start_offset, char_end_offset, page_number,
+                raw_text, raw_html,
+                candidate_metric_ids, contains_definition_flag,
+                contains_methodology_flag, contains_numeric_disclosure_flag,
+                classifier_confidence,
+                created_at, updated_at
+            FROM source_segments
+            WHERE filing_id = %(filing_id)s
+        """
+        params: Dict[str, Any] = {"filing_id": filing_id}
+
+        if segment_types:
+            sql += " AND segment_type = ANY(%(segment_types)s)"
+            params["segment_types"] = segment_types
+
+        if with_numeric_disclosure is not None:
+            sql += " AND contains_numeric_disclosure_flag = %(with_numeric_disclosure)s"
+            params["with_numeric_disclosure"] = with_numeric_disclosure
+
+        sql += " ORDER BY sequence_index"
+
+        return self.query(sql, params)
+
+    def get_filings_for_candidate_generation(
+        self,
+        limit: int = 100,
+        exclude_with_candidates: bool = True,
+    ) -> List[Dict]:
+        """
+        Get filings eligible for candidate generation.
+
+        Args:
+            limit: Maximum number of filings to return
+            exclude_with_candidates: If True, exclude filings that already have candidates
+
+        Returns:
+            List of filings with company info
+        """
+        sql = """
+            SELECT
+                f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                f.company_id,
+                c.company_name, c.cik
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.is_in_scope_phase1 = true
+        """
+        params: Dict[str, Any] = {"limit": limit}
+
+        if exclude_with_candidates:
+            sql += """
+                AND NOT EXISTS (
+                    SELECT 1 FROM review_candidates rc
+                    WHERE rc.filing_id = f.filing_id
+                )
+            """
+
+        sql += """
+            ORDER BY f.filing_date DESC
+            LIMIT %(limit)s
+        """
+
+        return self.query(sql, params)
+
+    # =========================================================================
+    # Helper Methods for Flask Routes
+    # =========================================================================
+
+    def get_filings_with_candidates(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """
+        Get filings that have review candidates.
+
+        Useful for the filing list page in the review interface.
+
+        Args:
+            status: Optional filter by candidate review_status
+            limit: Maximum number of filings to return
+            offset: Number of filings to skip (for pagination)
+
+        Returns:
+            List of filings with candidate counts
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        # Validate status if provided
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        status_filter = ""
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+
+        if status:
+            status_filter = "AND rc.review_status = %(status)s"
+            params["status"] = status
+
+        sql = f"""
+            SELECT
+                f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                c.company_name, c.cik,
+                COUNT(rc.candidate_id) as total_candidates,
+                COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'pending') as pending_count,
+                COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'reviewed') as reviewed_count
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            JOIN review_candidates rc ON f.filing_id = rc.filing_id
+            WHERE 1=1 {status_filter}
+            GROUP BY f.filing_id, f.accession_number, f.form_type, f.filing_date,
+                     c.company_name, c.cik
+            ORDER BY pending_count DESC, f.filing_date DESC
+            LIMIT %(limit)s OFFSET %(offset)s
+        """
+
+        return self.query(sql, params)
+
+    def get_filings_with_candidates_count(
+        self,
+        status: Optional[str] = None,
+    ) -> int:
+        """
+        Get count of filings that have review candidates.
+
+        Args:
+            status: Optional filter by candidate review_status
+
+        Returns:
+            Total count of filings matching filter
+
+        Raises:
+            ValidationError: If status is provided but not a valid review status
+        """
+        if status is not None:
+            validate_enum(status, REVIEW_STATUSES, "review_status")
+
+        status_filter = ""
+        params: Dict[str, Any] = {}
+
+        if status:
+            status_filter = "AND rc.review_status = %(status)s"
+            params["status"] = status
+
+        sql = f"""
+            SELECT COUNT(DISTINCT f.filing_id) as count
+            FROM filings f
+            JOIN review_candidates rc ON f.filing_id = rc.filing_id
+            WHERE 1=1 {status_filter}
+        """
+
+        result = self.query(sql, params)
+        return result[0]["count"] if result else 0
+
+    def get_review_progress(self) -> Dict[str, Any]:
+        """
+        Get overall review progress statistics.
+
+        Returns:
+            Dict with overall progress metrics
+        """
+        sql = """
+            SELECT
+                COUNT(*) as total_candidates,
+                COUNT(*) FILTER (WHERE review_status = 'pending') as pending_count,
+                COUNT(*) FILTER (WHERE review_status = 'reviewed') as reviewed_count,
+                COUNT(*) FILTER (WHERE review_status = 'skipped') as skipped_count,
+                COUNT(DISTINCT filing_id) as total_filings,
+                COUNT(DISTINCT filing_id) FILTER (WHERE review_status = 'pending') as filings_with_pending
+            FROM review_candidates
+        """
+
+        results = self.query(sql)
+        if not results:
+            return {
+                "total_candidates": 0,
+                "pending_count": 0,
+                "reviewed_count": 0,
+                "skipped_count": 0,
+                "review_pct": 0,
+                "total_filings": 0,
+                "filings_with_pending": 0,
+            }
+
+        row = results[0]
+        total = row["total_candidates"] or 0
+        reviewed = row["reviewed_count"] or 0
+
+        return {
+            "total_candidates": total,
+            "pending_count": row["pending_count"] or 0,
+            "reviewed_count": reviewed,
+            "skipped_count": row["skipped_count"] or 0,
+            "review_pct": reviewed / total * 100 if total > 0 else 0,
+            "total_filings": row["total_filings"] or 0,
+            "filings_with_pending": row["filings_with_pending"] or 0,
+        }
+
+    def get_next_candidate_for_review(
+        self, filing_id: Optional[int] = None
+    ) -> Optional[Dict]:
+        """
+        Get the next candidate needing review.
+
+        Args:
+            filing_id: Optional filter by filing
+
+        Returns:
+            Next pending candidate with filing info, or None if all reviewed
+        """
+        sql = """
+            SELECT rc.*, f.accession_number, c.company_name
+            FROM review_candidates rc
+            JOIN filings f ON rc.filing_id = f.filing_id
+            JOIN companies c ON rc.company_id = c.company_id
+            WHERE rc.review_status = 'pending'
+        """
+        params: Dict[str, Any] = {}
+
+        if filing_id:
+            sql += " AND rc.filing_id = %(filing_id)s"
+            params["filing_id"] = filing_id
+
+        sql += " ORDER BY rc.filing_id, rc.char_position LIMIT 1"
+
+        results = self.query(sql, params)
+        return results[0] if results else None
+
+    def insert_audit_log(
+        self,
+        session_id: Optional[str],
+        ip_address: Optional[str],
+        user_agent: Optional[str],
+        route_name: str,
+        http_method: str,
+        url_path: str,
+        filing_id: Optional[int],
+        candidate_id: Optional[int],
+        query_params: Optional[Dict[str, Any]],
+        response_status: int,
+        response_time_ms: Optional[int],
+    ) -> int:
+        """
+        Insert an audit log entry for a review route request.
+
+        Args:
+            session_id: Flask session ID
+            ip_address: Client IP address
+            user_agent: Browser/client user agent string
+            route_name: Flask route name (e.g., 'review.filing_list')
+            http_method: HTTP method (GET, POST, etc.)
+            url_path: Full URL path
+            filing_id: Filing ID if applicable
+            candidate_id: Candidate ID if applicable
+            query_params: All query parameters as dict
+            response_status: HTTP status code
+            response_time_ms: Response time in milliseconds
+
+        Returns:
+            The log_id of the inserted record
+
+        Raises:
+            psycopg.Error: If database insert fails
+        """
+        import json
+
+        sql = """
+            INSERT INTO review_audit_log (
+                session_id, ip_address, user_agent,
+                route_name, http_method, url_path,
+                filing_id, candidate_id, query_params,
+                response_status, response_time_ms
+            ) VALUES (
+                %(session_id)s, %(ip_address)s, %(user_agent)s,
+                %(route_name)s, %(http_method)s, %(url_path)s,
+                %(filing_id)s, %(candidate_id)s, %(query_params)s,
+                %(response_status)s, %(response_time_ms)s
+            )
+            RETURNING log_id
+        """
+
+        params = {
+            "session_id": session_id,
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "route_name": route_name,
+            "http_method": http_method,
+            "url_path": url_path,
+            "filing_id": filing_id,
+            "candidate_id": candidate_id,
+            "query_params": json.dumps(query_params) if query_params else None,
+            "response_status": response_status,
+            "response_time_ms": response_time_ms,
+        }
+
+        result = self.query(sql, params)
+        return result[0]["log_id"] if result else 0
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+
+def create_pooled_adapter(connection_string: Optional[str] = None) -> DatabaseAdapter:
+    """
+    Create a DatabaseAdapter backed by the shared connection pool.
+
+    This is a convenience function for scripts that want connection pooling
+    without managing pool lifecycle. The pool is created lazily on first call
+    and automatically closed at process exit.
+
+    Args:
+        connection_string: PostgreSQL connection string. If not provided,
+            reads from DATABASE_URL environment variable.
+
+    Returns:
+        DatabaseAdapter instance using the shared connection pool.
+
+    Raises:
+        ValueError: If connection_string not provided and DATABASE_URL not set.
+
+    Example:
+        # In a script
+        from src.infra.db import create_pooled_adapter
+
+        db = create_pooled_adapter()  # Uses DATABASE_URL from environment
+        results = db.query("SELECT * FROM companies LIMIT 10")
+    """
+    from src.infra.pool import get_shared_pool
+
+    if connection_string is None:
+        connection_string = os.environ.get("DATABASE_URL", "")
+        if not connection_string:
+            raise ValueError(
+                "connection_string not provided and DATABASE_URL environment "
+                "variable not set"
+            )
+
+    pool = get_shared_pool(connection_string)
+    return DatabaseAdapter(connection_string, pool=pool)
