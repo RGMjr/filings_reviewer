@@ -74,6 +74,28 @@ class CandidateGenerationConfig:
     """Maximum character distance between number and metric keyword."""
 
     # =========================================================================
+    # P1 Enhancement Settings (Boundary Detection & Closest Keyword)
+    # =========================================================================
+
+    prefer_closest_keyword: bool = True
+    """Sort by distance first (closest), then length (longest). P1 enhancement."""
+
+    respect_bullet_boundaries: bool = True
+    """Prefer keywords in same semantic boundary as number. P1 enhancement."""
+
+    enable_boundary_detection: bool = True
+    """Enable semantic boundary detection (bullets, lists, paragraphs). P1 enhancement."""
+
+    log_ambiguous_matches: bool = True
+    """Log when multiple keywords are equally close to a number. P1 enhancement."""
+
+    ambiguity_threshold: int = 10
+    """Character distance to consider keywords "equally close" for ambiguity logging."""
+
+    metric_distance_overrides: Dict[str, int] = field(default_factory=dict)
+    """Optional per-metric distance overrides. Format: {metric_id: distance}. For future use."""
+
+    # =========================================================================
     # Context Extraction Settings
     # =========================================================================
 
@@ -232,6 +254,12 @@ def get_high_precision_config() -> CandidateGenerationConfig:
         min_pattern_precision=0.85,  # Only use high-confidence patterns
         compute_confidence=True,
         cache_word_positions=True,
+        # P1 enhancements (all enabled for precision)
+        prefer_closest_keyword=True,
+        respect_bullet_boundaries=True,
+        enable_boundary_detection=True,
+        log_ambiguous_matches=True,
+        ambiguity_threshold=5,  # Stricter threshold for high precision
     )
 
 
@@ -253,6 +281,12 @@ def get_high_recall_config() -> CandidateGenerationConfig:
         apply_learned_rules=False,  # Don't apply learned filtering
         compute_confidence=True,  # Still compute confidence for ranking
         cache_word_positions=True,
+        # P1 enhancements (disabled for recall - want all matches)
+        prefer_closest_keyword=False,  # Keep all matches regardless of distance
+        respect_bullet_boundaries=False,  # Allow cross-boundary matches
+        enable_boundary_detection=False,  # Don't detect boundaries
+        log_ambiguous_matches=False,  # Reduce logging noise
+        ambiguity_threshold=20,  # Larger threshold when logging is enabled
     )
 
 
@@ -261,7 +295,7 @@ def get_fast_config() -> CandidateGenerationConfig:
     Configuration optimized for speed.
 
     Use for quick prototyping or when performance matters more than quality.
-    Disables expensive computations like confidence scoring.
+    Disables expensive computations like confidence scoring and boundary detection.
 
     Returns:
         CandidateGenerationConfig instance tuned for speed
@@ -274,4 +308,10 @@ def get_fast_config() -> CandidateGenerationConfig:
         apply_learned_rules=False,  # Skip pattern matching (can be slow)
         compute_confidence=False,  # Skip confidence computation (expensive)
         cache_word_positions=True,  # Enable caching for speed
+        # P1 enhancements (minimal for speed)
+        prefer_closest_keyword=True,  # Lightweight sorting improvement
+        respect_bullet_boundaries=False,  # Skip boundary filtering (adds overhead)
+        enable_boundary_detection=False,  # Skip boundary detection (adds overhead)
+        log_ambiguous_matches=False,  # Skip logging (reduces I/O)
+        ambiguity_threshold=10,  # Standard threshold
     )

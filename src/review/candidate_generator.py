@@ -323,9 +323,13 @@ class CandidateGenerator:
         # Initialize number parser (P1.3 - extracted to separate module)
         self._number_parser = NumberParser()
 
-        # Initialize keyword matcher (P1.3 - extracted to separate module)
+        # Initialize keyword matcher (P1.3 - extracted to separate module, P1 enhanced)
         self._keyword_matcher = KeywordMatcher(
-            max_keyword_distance=self.config.max_keyword_distance
+            max_keyword_distance=self.config.max_keyword_distance,
+            prefer_closest_keyword=self.config.prefer_closest_keyword,
+            respect_bullet_boundaries=self.config.respect_bullet_boundaries,
+            log_ambiguous_matches=self.config.log_ambiguous_matches,
+            ambiguity_threshold=self.config.ambiguity_threshold,
         )
 
         # Initialize false positive filter (P1.3 - extracted to separate module)
@@ -551,6 +555,16 @@ class CandidateGenerator:
         # This avoids re-parsing text for context extraction for every number
         self._current_segment_words = self._context_extractor.parse_text_into_words(text)
 
+        # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
+        # This enables boundary-aware keyword matching to avoid cross-boundary false positives
+        boundaries = None
+        if self.config.enable_boundary_detection:
+            from src.review.boundary_detection import BoundaryDetector
+
+            detector = BoundaryDetector()
+            boundaries = detector.find_boundaries(text)
+            logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
+
         # Track (number_position, metric_id) pairs to avoid duplicates
         seen: Set[Tuple[int, str]] = set()
 
@@ -566,7 +580,7 @@ class CandidateGenerator:
                     segment_stats["false_positives_filtered"] += 1
                     continue
 
-                keyword_matches = self._find_keywords_near_number(num, all_keywords)
+                keyword_matches = self._find_keywords_near_number(num, all_keywords, boundaries)
 
                 for kw in keyword_matches:
                     # Deduplicate by (number_position, metric_id)
@@ -705,20 +719,22 @@ class CandidateGenerator:
         self,
         number: NumberMatch,
         all_keywords: List[KeywordMatch],
+        boundaries: Optional[List[Any]] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
 
-        Delegates to KeywordMatcher (P1.3 - extracted to separate module).
+        Delegates to KeywordMatcher (P1.3 - extracted to separate module, P1 enhanced).
 
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
+            boundaries: Optional list of TextBoundary objects for boundary-aware matching (P1 enhancement)
 
         Returns:
             List of KeywordMatch objects within range (one per metric)
         """
-        return self._keyword_matcher.find_keywords_near_number(number, all_keywords)
+        return self._keyword_matcher.find_keywords_near_number(number, all_keywords, boundaries)
 
     def _calculate_distance(self, number: NumberMatch, keyword: KeywordMatch) -> int:
         """
