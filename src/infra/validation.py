@@ -7,7 +7,9 @@ CIKs, accession numbers, SIC codes, dates, and form types.
 
 import re
 from datetime import datetime
-from typing import Tuple
+from typing import Sequence, Tuple, TypeVar
+
+T = TypeVar("T")
 
 
 class ValidationError(ValueError):
@@ -228,3 +230,75 @@ def validate_form_type(form_type: str) -> str:
         )
 
     return normalized
+
+
+def validate_enum(value: T, valid_values: Sequence[T], field_name: str) -> T:
+    """
+    Validate that a value is in the allowed set.
+
+    Args:
+        value: The value to validate
+        valid_values: Sequence of valid values (tuple, list, etc.)
+        field_name: Name of the field (for error messages)
+
+    Returns:
+        The validated value (unchanged if valid)
+
+    Raises:
+        ValidationError: If value is not in valid_values
+
+    Example:
+        >>> VALID_STATUSES = ("pending", "approved", "rejected")
+        >>> validate_enum("pending", VALID_STATUSES, "status")
+        'pending'
+        >>> validate_enum("invalid", VALID_STATUSES, "status")
+        ValidationError: Invalid status 'invalid'. Must be one of: ('pending', 'approved', 'rejected')
+    """
+    if value not in valid_values:
+        raise ValidationError(
+            f"Invalid {field_name} '{value}'. Must be one of: {tuple(valid_values)}"
+        )
+    return value
+
+
+def validate_score(
+    value: float | None,
+    field_name: str,
+    min_val: float = 0.0,
+    max_val: float = 1.0,
+    context: str | None = None,
+) -> float | None:
+    """
+    Validate that a score/confidence value is within range.
+
+    Args:
+        value: The score to validate (None is allowed and passes through)
+        field_name: Name of the field (for error messages)
+        min_val: Minimum allowed value (default 0.0)
+        max_val: Maximum allowed value (default 1.0)
+        context: Optional context for error messages (e.g., "candidate 0")
+
+    Returns:
+        The validated value (unchanged if valid), or None if input was None
+
+    Raises:
+        ValidationError: If value is outside the allowed range
+
+    Example:
+        >>> validate_score(0.85, "confidence")
+        0.85
+        >>> validate_score(1.5, "confidence")
+        ValidationError: confidence must be between 0.0 and 1.0, got 1.5
+        >>> validate_score(None, "confidence")
+        None
+    """
+    if value is None:
+        return None
+
+    if not (min_val <= value <= max_val):
+        context_suffix = f" ({context})" if context else ""
+        raise ValidationError(
+            f"{field_name} must be between {min_val} and {max_val}, "
+            f"got {value}{context_suffix}"
+        )
+    return value

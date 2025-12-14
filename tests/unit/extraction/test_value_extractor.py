@@ -315,8 +315,8 @@ def test_infer_unit_percentage():
     """Infer percent unit from percentage symbols."""
     extractor = ValueExtractor()
 
-    assert extractor._infer_unit("25%", "cm_churn_rate") == "percent"
-    assert extractor._infer_unit("12.5 percent", "cm_retention_rate") == "percent"
+    assert extractor._infer_unit("25%", "cm_churn_rate") == "%"
+    assert extractor._infer_unit("12.5 percent", "cm_retention_rate") == "%"
 
 
 def test_infer_unit_from_metric_id():
@@ -324,7 +324,7 @@ def test_infer_unit_from_metric_id():
     extractor = ValueExtractor()
 
     assert extractor._infer_unit("1234", "cm_revenue_by_cohort") == "usd"
-    assert extractor._infer_unit("500", "cm_churn_rate") == "percent"
+    assert extractor._infer_unit("500", "cm_churn_rate") == "%"
     assert extractor._infer_unit("1000", "cm_daily_active_users") == "count"
 
 
@@ -677,7 +677,7 @@ def test_extract_from_table_percentage_values():
 
     assert len(values) == 1
     assert values[0].value_numeric == Decimal("5.5")
-    assert values[0].unit == "percent"
+    assert values[0].unit == "%"
 
 
 def test_extract_from_table_skip_non_numeric_cells():
