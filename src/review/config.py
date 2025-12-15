@@ -74,6 +74,62 @@ class CandidateGenerationConfig:
     """Maximum character distance between number and metric keyword."""
 
     # =========================================================================
+    # L4 Enhancement: Post-Value Keyword Distance Multiplier
+    # =========================================================================
+
+    post_value_distance_multiplier: float = 0.9
+    """Base multiplier applied to effective distance for keywords appearing AFTER values.
+
+    SEC filings typically list metrics BEFORE their values (e.g., "Net Revenue of $1.2M").
+    When keywords are equidistant from a number, this multiplier gives preference to
+    pre-value keywords. A value of 0.9 means post-value keywords need to be 10% closer
+    to win. L4 enhancement.
+
+    Note: Context-dependent multipliers override this base value when specific patterns
+    are detected (parenthetical text, tables, etc.)."""
+
+    # =========================================================================
+    # L4 Context-Dependent Multipliers (Option C Implementation)
+    # =========================================================================
+
+    use_context_dependent_multipliers: bool = True
+    """Enable context-dependent multiplier logic. When True, different multipliers
+    are applied based on the textual context (bullets, tables, parentheticals).
+    When False, uses post_value_distance_multiplier for all contexts. L4 enhancement."""
+
+    # Context-specific multipliers (applied to post-value keywords)
+    # Values < 1.0 penalize post-value (prefer pre-value)
+    # Values > 1.0 boost post-value (prefer post-value)
+    # Value = 1.0 means no preference
+
+    multiplier_bullet_points: float = 0.9
+    """Multiplier for post-value keywords in bullet points.
+    Bullet points typically list metrics before values. Default: 0.9 (prefer pre-value)."""
+
+    multiplier_parenthetical: float = 1.15
+    """Multiplier for post-value keywords in parenthetical text.
+    Parentheticals often clarify values: "33% (gross margin)".
+    Default: 1.15 (prefer post-value)."""
+
+    multiplier_tables: float = 0.85
+    """Multiplier for post-value keywords in tables.
+    Table headers appear before/above values. Default: 0.85 (strong pre-value preference)."""
+
+    multiplier_copula_verb: float = 0.9
+    """Multiplier for post-value keywords in sentences with copula verbs (is/was/were).
+    "Gross margin was 33%" structure puts metric before value.
+    Default: 0.9 (prefer pre-value)."""
+
+    multiplier_preposition: float = 1.1
+    """Multiplier for post-value keywords in prepositional phrases.
+    "33% of revenue" or "33% for margin" puts metric after value.
+    Default: 1.1 (prefer post-value)."""
+
+    multiplier_default: float = 0.9
+    """Default multiplier when no specific context detected.
+    Default: 0.9 (slight pre-value preference)."""
+
+    # =========================================================================
     # P1 Enhancement Settings (Boundary Detection & Closest Keyword)
     # =========================================================================
 
@@ -120,6 +176,16 @@ class CandidateGenerationConfig:
 
     filter_years: bool = True
     """Whether to filter numbers that look like years (1990-2100)."""
+
+    # =========================================================================
+    # L2 Enhancement: Table of Contents Filtering Settings
+    # =========================================================================
+
+    toc_proximity_chars: int = 300
+    """Character distance to search backwards for TOC headers. L2 enhancement."""
+
+    toc_dot_leader_window: int = 50
+    """Character distance to search backwards for dot leader patterns. L2 enhancement."""
 
     # =========================================================================
     # Confidence Scoring Weights

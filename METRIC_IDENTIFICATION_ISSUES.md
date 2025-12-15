@@ -1,6 +1,6 @@
 # Metric Identification Issues
 
-**Status**: Partially Implemented (3/6 issues complete, 3 require work)
+**Status**: Partially Implemented (4/6 issues complete, 2 require work)
 **Date Created**: 2025-12-13
 **Last Updated**: 2025-12-15
 **Priority**: Medium (affects review quality but reviewers can correct)
@@ -18,10 +18,10 @@ This document tracks known issues with the metric identification and keyword mat
 | Issue 2: Overly broad keyword patterns | Medium | ✅ Complete | - |
 | Issue 3: No "respectively" pattern recognition | Medium | ❌ Not started | P2 |
 | Issue 4: Page numbers not filtered | Low | ⚠️ Partial | P2 |
-| Issue 5: No post-value keyword preference | Medium | ⚠️ Partial (L3✅+integrated, L4❌) | P2 |
+| Issue 5: No post-value keyword preference | Medium | ✅ **Complete (L3+L4 Option C)** | - |
 | Issue 6: HTML segmenter misclassifies tables | Medium | ✅ Complete | - |
 
-**Completion Progress:** 2 complete, 3 partial, 1 not started (33% complete)
+**Completion Progress:** 3 complete, 2 partial, 1 not started (50% complete)
 
 ### Relationship to REMEDIATION_PLAN.md (Archived)
 
@@ -287,7 +287,7 @@ re.compile(r"\d+\s+(?:table\s+of\s+contents|toc)\b", re.IGNORECASE),
 **Severity**: Medium
 **Filing Example**: Farfetch Ltd (and others)
 **Reported**: 2025-12-13
-**Status**: ⚠️ PARTIALLY COMPLETE (L3 done, L4 pending)
+**Status**: ✅ **COMPLETE** (L3 + L4 Option C - 2025-12-15)
 
 ### Problem Description
 
@@ -356,36 +356,51 @@ The keyword matching algorithm:
 - No breaking changes to existing callers
 - **Status**: Production ready, L4 unblocked
 
-**❌ L4 PENDING** - Direction-based scoring not yet applied:
-- Direction field now flows correctly through the system
-- Ready for L4 implementation to apply 0.9x multiplier to post-value keywords
-- L4 can build on working L3 foundation
+**✅ L4 COMPLETE (2025-12-15)** - Context-dependent multipliers implemented (Option C):
 
-### Proposed Enhancement (L4)
+**Resolution Approach**: Instead of uniform pre-value or post-value preference, implemented context-dependent logic that adapts to different textual patterns.
 
-Add directionality weighting to keyword matching:
-1. **Distance score**: Closer keywords preferred (already considered)
-2. **Direction bonus**: Post-value keywords get small boost (e.g., 0.9x effective distance) **← L4**
-3. **Tiebreaker**: If two keywords at similar distances, prefer post-value **← L4**
+**Option C Implementation** - Different multipliers for different contexts:
 
-**Example scoring**:
-- Pre-value keyword at 30 chars: score = 30
-- Post-value keyword at 30 chars: score = 30 * 0.9 = 27 (preferred)
-- Pre-value keyword at 20 chars: score = 20
-- Post-value keyword at 30 chars: score = 27 (pre-value still wins if much closer)
+| Context | Multiplier | Preference | Rationale |
+|---------|------------|------------|-----------|
+| Parenthetical text | 1.15 | Post-value ✓ | "33% (gross margin)" - clarifications |
+| Tables | 0.85 | Pre-value ✓✓ | Headers appear before/above values |
+| Bullet points | 0.9 | Pre-value ✓ | Metrics listed before values |
+| Copula verbs (is/was/were) | 0.9 | Pre-value ✓ | "Gross margin was 33%" structure |
+| Prepositional phrases (of/for) | 1.1 | Post-value ✓ | "33% of revenue" structure |
+| Default | 0.9 | Pre-value ✓ | Slight preference when unclear |
 
-This makes post-value keywords slightly preferred without completely ignoring pre-value keywords.
+**Implementation Details**:
+- **Context detection**: 5 helper methods in `keyword_matching.py`
+  - `_is_in_parentheses()` - Detects parenthetical text
+  - `_is_in_table()` - Checks segment/boundary type
+  - `_is_in_bullet_point()` - Detects bullet/numbered lists
+  - `_has_copula_verb_between()` - Finds is/was/were between keyword and number
+  - `_has_preposition_after()` - Finds of/for/in/from after number
+- **Configuration**: 7 new config parameters in `config.py`
+  - `use_context_dependent_multipliers` (default: True)
+  - `multiplier_parenthetical`, `multiplier_tables`, `multiplier_bullet_points`, etc.
+- **Backward compatible**: Can disable with single config flag
+- **Tests**: 10 new tests, 59/59 total keyword_matching tests passing
+- **Documentation**: See `docs/L4_COMPLETION_SUMMARY.md` for full details
 
-### Caveats
+**Benefits of Option C**:
+- ✅ Respects context: Parentheticals prefer post-value, tables prefer pre-value
+- ✅ Best of both worlds: Adapts to actual filing patterns
+- ✅ Configurable: Can tune multipliers per context type
+- ✅ Extensible: Easy to add new context types
 
-The user notes: "This is not a 100% reliable indicator, but it's not a bad start."
+**Example Behavior**:
+```python
+# Parenthetical: "33% (gross margin)" → prefers "gross margin" after
+# Bullet: "• Gross margin was 33%" → prefers "gross margin" before
+# Table: Headers above values → strongly prefers headers
+# Copula: "Gross margin was 33%" → prefers "gross margin" before
+# Preposition: "33% of revenue" → prefers "revenue" after
+```
 
-Cases where pre-value keywords are correct:
-- Standard declarative sentences: "Gross margin was 33%"
-- Metric definitions: "Platform Order Contribution Margin ... was 33%"
-- Table headers: Column header "Gross Margin" above value "33%"
-
-So the preference should be modest, not absolute.
+**Result**: Production ready with sophisticated context awareness. Issue 5 fully resolved.
 
 ---
 
