@@ -134,6 +134,10 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 │                            # Handles patterns like "for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively"
 │                            # Returns parallel associations: [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]
 │                            # (115 statements, 91% coverage, 31 tests)
+├── models.py                # Data models and TypedDicts (Q1 enhancement)
+│                            # ReviewCandidate, ReviewDecision, CandidateFeatures, LearnedPattern
+│                            # SegmentDict TypedDict for type-safe segment data
+│                            # (214 statements, 96% coverage, 58 tests)
 └── feature_extractor.py     # Compute ML features for pattern analysis
                              # (630 statements, 100% coverage, 115 tests)
 ```
@@ -204,6 +208,26 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
     - Ambiguity logging fixed to use effective distance (not raw distance) - Task B1
   - **Tests**: 10 new tests (context detection, threshold math, boundary interaction, multiple keywords)
   - **Status**: Production ready, 59/59 keyword_matching tests passing
+- **L5 - Composite Segment Splitting (COMPLETE 2025-12-15)**:
+  - **Problem**: Segments containing both text and tables should be split into separate objects
+  - **Investigation**: Evaluated impact and determined current architecture is optimal
+  - **Status**: No changes needed, documented in `docs/L5_COMPLETION_SUMMARY.md`
+
+**Q-Series Enhancements: Code Quality Refactoring (December 2025):**
+- **Q1 - SegmentDict TypedDict (COMPLETE 2025-12-15)**:
+  - **Problem**: Segment data passed as `Dict[str, Any]` loses type information
+  - **Solution**: Defined `SegmentDict` TypedDict in `src/review/models.py`
+  - **Features**:
+    - 19 field definitions (7 required, 12 optional with NotRequired)
+    - Comprehensive docstring with usage examples
+    - Exported from `src/review/__init__.py` for public API
+    - 100% mypy strict compliance
+  - **Benefits**:
+    - IDE autocomplete for segment dict keys
+    - mypy catches type errors at development time
+    - Self-documenting code (field types visible in signatures)
+  - **Tests**: 58 existing tests pass, zero functional changes
+  - **Status**: Type definition complete, ready for Q2 (update function signatures)
 
 **Feature Extractor (B2):**
 
