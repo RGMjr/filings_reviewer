@@ -15,7 +15,13 @@ from src.infra.sec_client import SECClient, SECClientMetrics
 from tests.unit.infra.mock_http_client import MockHTTPClient
 
 
-class TestResolveRimary_documentUrl:
+@pytest.fixture
+def sec_client():
+    """Create a SECClient instance for testing."""
+    return SECClient()
+
+
+class TestResolvePrimaryDocumentUrl:
     """Test suite for resolve_primary_document_url method."""
 
     def test_pattern_matching_standard_s1(self):

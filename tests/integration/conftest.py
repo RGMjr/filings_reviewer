@@ -27,7 +27,7 @@ from src.infra.sec_client import FilingMetadata, MockSECClient
 def create_test_company(
     db: DatabaseAdapter,
     cik: str = "0001234567",
-    company_name: str = "Test Company Inc",
+    company_name: str = "Test Corp",
     ticker: Optional[str] = None,
     industry_code: Optional[str] = None,
 ) -> int:
@@ -37,7 +37,7 @@ def create_test_company(
     Args:
         db: Database adapter instance
         cik: Company CIK (default: "0001234567")
-        company_name: Company name (default: "Test Company Inc")
+        company_name: Company name (default: "Test Corp")
         ticker: Optional ticker symbol
         industry_code: Optional SIC industry code (e.g., "7372")
 
@@ -56,7 +56,7 @@ def create_test_company_and_filing(
     accession_number: str = "0001234567-24-000001",
     form_type: str = "S-1",
     filing_date: str = "2024-01-15",
-    company_name: str = "Test Company Inc",
+    company_name: str = "Test Corp",
     industry_code: Optional[str] = None,
 ) -> Tuple[int, int]:
     """

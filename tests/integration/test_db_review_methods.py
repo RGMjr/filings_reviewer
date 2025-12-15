@@ -178,7 +178,7 @@ class TestReviewCandidatesMethods:
 
         # Verify join data is included
         assert pending[0]["accession_number"] == "0001234567-24-000001"
-        assert pending[0]["company_name"] == "Test Company Inc"
+        assert pending[0]["company_name"] == "Test Corp"
 
     def test_update_candidate_status(self, clean_db):
         """Test updating a candidate's review status."""
@@ -528,7 +528,7 @@ class TestReviewDecisionsMethods:
         assert bob_decisions[0]["reviewer_id"] == "bob@example.com"
 
         # Verify join data is included
-        assert alice_decisions[0]["company_name"] == "Test Company Inc"
+        assert alice_decisions[0]["company_name"] == "Test Corp"
         assert "accession_number" in alice_decisions[0]
         assert "context_text" in alice_decisions[0]
 
@@ -1047,7 +1047,7 @@ class TestHelperMethods:
         assert filings[0]["total_candidates"] == 5
         assert filings[0]["pending_count"] == 5
         assert filings[0]["reviewed_count"] == 0
-        assert filings[0]["company_name"] == "Test Company Inc"
+        assert filings[0]["company_name"] == "Test Corp"
 
     def test_get_filings_with_candidates_multiple_filings(self, clean_db):
         """Test with multiple filings, sorted by pending count."""
