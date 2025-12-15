@@ -54,7 +54,7 @@
 **Objective:** Capture common aggregate metrics currently missed.
 
 - [x] **T1. DB:** Update `sql/04_seed_metrics_taxonomy.sql` to include `cm_bookings`, `cm_billings`, `cm_deferred_revenue`. → ✅ **COMPLETE (2025-12-15)**
-- [ ] **T2. DB:** Update seed file to include `cm_average_order_value`, `cm_repeat_purchase_rate`.
+- [x] **T2. DB:** Update seed file to include `cm_average_order_value`, `cm_repeat_purchase_rate`. → ✅ **COMPLETE (2025-12-15)**
 - [ ] **T3. DB:** Update seed file to include `cm_gmv`, `cm_take_rate` (Marketplace metrics).
 - [ ] **T4. DB:** Update seed file to include `cm_acv`, `cm_tcv` (SaaS metrics).
 - [ ] **T5. Code:** Add regex patterns for `cm_bookings` group to `src/extraction/metric_classifier.py`.
@@ -68,7 +68,7 @@
 **Objective:** Improve maintainability of the candidate generator.
 
 - [x] **Q1. Refactor:** Define `SegmentDict` using `TypedDict` in `src/review/models.py`. → ✅ **COMPLETE (2025-12-15)**
-- [ ] **Q2. Refactor:** Update `candidate_generator.py` signatures to use `SegmentDict` instead of `Dict[str, Any]`.
+- [x] **Q2. Refactor:** Update `candidate_generator.py` signatures to use `SegmentDict` instead of `Dict[str, Any]`. → ✅ **COMPLETE (2025-12-15)**
 - [ ] **Q3. Refactor:** Replace generic `except Exception` blocks in `candidate_generator.py` with specific `SegmentProcessingError` handling.
 - [ ] **Q4. Refactor:** Extract `_deduplicate_candidates` method into new `src/review/deduplicator.py` module.
 - [ ] **Q5. Test:** Create unit tests for new `deduplicator.py`.
