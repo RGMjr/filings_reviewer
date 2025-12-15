@@ -18,7 +18,7 @@ This document tracks known issues with the metric identification and keyword mat
 | Issue 2: Overly broad keyword patterns | Medium | ✅ Complete | - |
 | Issue 3: No "respectively" pattern recognition | Medium | ❌ Not started | P2 |
 | Issue 4: Page numbers not filtered | Low | ⚠️ Partial | P2 |
-| Issue 5: No post-value keyword preference | Medium | ⚠️ Partial (L3✅, L4❌) | P2 |
+| Issue 5: No post-value keyword preference | Medium | ⚠️ Partial (L3✅+integrated, L4❌) | P2 |
 | Issue 6: HTML segmenter misclassifies tables | Medium | ✅ Complete | - |
 
 **Completion Progress:** 2 complete, 3 partial, 1 not started (33% complete)
@@ -342,18 +342,24 @@ The keyword matching algorithm:
 
 ### Implementation Status
 
-**✅ L3 COMPLETE (2025-12-15)** - Direction detection implemented:
+**✅ L3 COMPLETE + INTEGRATED (2025-12-15)** - Direction detection fully functional:
 - Added `direction` field to `KeywordMatch` dataclass (`keyword_matching.py:140`)
 - Values: "before", "after", "at" (relative to number position)
-- Helper method: `calculate_keyword_direction()` (`keyword_matching.py:459-480`)
+- Helper method: `calculate_keyword_direction()` (`keyword_matching.py:473-493`)
 - Integrated in `find_keywords_near_number()` Phase 5 (`keyword_matching.py:383-394`)
-- **9 new tests** in `TestKeywordDirection` class (100% passing)
+- **INTEGRATION FIX (2025-12-15)**: `candidate_generator.py:617-618` now uses `kw.direction` field
+  - Previously: Direction was computed but then recomputed (never used)
+  - Now: Direction flows from KeywordMatch → ReviewCandidate → Database
+  - Edge case: "at" maps to "after" to comply with database constraint
+- **16 tests total**: 9 unit tests (keyword_matching.py) + 7 integration tests (candidate_generator.py)
 - Type safe: passes `mypy --strict`
 - No breaking changes to existing callers
+- **Status**: Production ready, L4 unblocked
 
 **❌ L4 PENDING** - Direction-based scoring not yet applied:
-- Direction field is computed but not yet used for filtering/scoring
-- Awaiting L4 implementation to apply 0.9x multiplier to post-value keywords
+- Direction field now flows correctly through the system
+- Ready for L4 implementation to apply 0.9x multiplier to post-value keywords
+- L4 can build on working L3 foundation
 
 ### Proposed Enhancement (L4)
 
