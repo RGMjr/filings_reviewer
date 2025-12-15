@@ -72,6 +72,8 @@ Understanding Filter Reasons:
     >>> # - "page_reference": Page number ("page 123")
     >>> # - "note_reference": Note reference ("Note 5")
     >>> # - "version_number": Version number ("Version 2.0")
+    >>> # - "toc_proximity": Number near "Table of Contents" header
+    >>> # - "toc_page_reference": Dot leader pattern (section name ... page number)
     >>> # - None: Not a false positive
 
 See Also:
@@ -147,6 +149,83 @@ YEAR_MAX = YEAR_MAX
 # (imported from config.py for centralized configuration)
 MIN_METRIC_VALUE = MIN_METRIC_VALUE  # Filter out single-digit numbers by default
 
+# Table of Contents proximity threshold - distance to look for TOC header
+TOC_PROXIMITY_CHARS = 300  # Characters before number to search for TOC header
+
+# Dot leader pattern - indicates page number in table of contents
+# Matches patterns like "... 12" or "........ 23" (3+ dots followed by optional whitespace at end)
+TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
+
+
+# =============================================================================
+# Helper Functions for Table of Contents Detection
+# =============================================================================
+
+
+def is_near_table_of_contents(text: str, number_position: int) -> bool:
+    """
+    Check if a number appears near a "Table of Contents" header.
+
+    Numbers near TOC headers are almost always page numbers, not customer metrics.
+    Searches backwards from the number position for TOC indicators.
+
+    Args:
+        text: The full text containing the number
+        number_position: Starting position of the number in the text
+
+    Returns:
+        True if "table of contents" found within TOC_PROXIMITY_CHARS before number
+
+    Examples:
+        >>> text = "TABLE OF CONTENTS\\nRisk Factors ... 12"
+        >>> is_near_table_of_contents(text, text.find("12"))
+        True
+
+        >>> text = "We had 12 million customers in the quarter"
+        >>> is_near_table_of_contents(text, text.find("12"))
+        False
+    """
+    # Look backwards from number position
+    search_start = max(0, number_position - TOC_PROXIMITY_CHARS)
+    search_text = text[search_start:number_position]
+
+    # Case-insensitive search for "table of contents"
+    return "table of contents" in search_text.lower()
+
+
+def is_toc_page_reference(text: str, number_position: int) -> bool:
+    """
+    Check if a number is part of a TOC page reference with dot leaders.
+
+    Detects patterns like:
+    - "Business Overview.........1"
+    - "Risk Factors ... 12"
+    - "Item 1A. Risk Factors....23"
+
+    Args:
+        text: The full text containing the number
+        number_position: Starting position of the number in the text
+
+    Returns:
+        True if dot leader pattern found immediately before the number
+
+    Examples:
+        >>> text = "Risk Factors.........12"
+        >>> is_toc_page_reference(text, text.find("12"))
+        True
+
+        >>> text = "We had 12 million customers"
+        >>> is_toc_page_reference(text, text.find("12"))
+        False
+    """
+    # Look backwards from number position for dot leader pattern
+    # Check up to 50 characters before the number (should be enough for dot leaders)
+    search_start = max(0, number_position - 50)
+    preceding_text = text[search_start:number_position]
+
+    # Check if the preceding text ends with dot leaders
+    return TOC_DOT_LEADER_PATTERN.search(preceding_text) is not None
+
 
 # =============================================================================
 # FalsePositiveFilter Class
@@ -191,6 +270,8 @@ class FalsePositiveFilter:
         Filters out:
         - Numbers that are part of dates (12/31/2023)
         - Numbers that look like years (1990-2100)
+        - Numbers near "Table of Contents" headers
+        - TOC page references with dot leaders (e.g., "Risk Factors...12")
         - Page/note/section/exhibit references
         - Version numbers
         - Numbers below minimum threshold
@@ -223,6 +304,14 @@ class FalsePositiveFilter:
                 # Additional check: is it a 4-digit integer without decimal?
                 if "." not in number.raw_text and len(number.raw_text.replace(",", "")) == 4:
                     return True, "likely_year"
+
+        # Check if number appears near "Table of Contents" header
+        if is_near_table_of_contents(text, start):
+            return True, "toc_proximity"
+
+        # Check if number is part of a TOC page reference with dot leaders
+        if is_toc_page_reference(text, start):
+            return True, "toc_page_reference"
 
         # Check if number is part of a date pattern
         # Look at surrounding context (30 chars each side)

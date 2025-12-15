@@ -12,8 +12,11 @@ from src.review.false_positive_filter import (
     FALSE_POSITIVE_CONTEXT_PATTERNS,
     FalsePositiveFilter,
     MIN_METRIC_VALUE,
+    TOC_PROXIMITY_CHARS,
     YEAR_MIN,
     YEAR_MAX,
+    is_near_table_of_contents,
+    is_toc_page_reference,
 )
 from src.review.number_parsing import NumberMatch
 
@@ -172,6 +175,248 @@ class TestIsFalsePositive:
         )
         assert is_fp is False
         assert reason is None
+
+
+# =============================================================================
+# Table of Contents Filtering Tests
+# =============================================================================
+
+
+class TestTableOfContentsFiltering:
+    """Tests for Table of Contents false positive detection."""
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_filters_numbers_near_toc_header(self, filter):
+        """Should filter numbers appearing near 'TABLE OF CONTENTS' header."""
+        text = "TABLE OF CONTENTS\nRisk Factors...12"
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "toc_proximity"
+
+    def test_filters_dot_leader_page_references(self, filter):
+        """Should filter numbers preceded by dot leaders (TOC page refs)."""
+        text = "Business Overview.........15"
+        number = NumberMatch(
+            start=text.find("15"),
+            end=text.find("15") + 2,
+            raw_text="15",
+            value=Decimal("15"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "toc_page_reference"
+
+    def test_filters_multiple_dot_patterns(self, filter):
+        """Should filter various dot leader patterns."""
+        # Three dots (minimum)
+        text1 = "Risk Factors...23"
+        number1 = NumberMatch(
+            start=text1.find("23"),
+            end=text1.find("23") + 2,
+            raw_text="23",
+            value=Decimal("23"),
+            unit="count",
+        )
+        is_fp1, reason1 = filter.is_false_positive(text1, number1)
+        assert is_fp1 is True
+        assert reason1 == "toc_page_reference"
+
+        # Many dots with spaces
+        text2 = "Item 1A. Risk Factors........ 45"
+        number2 = NumberMatch(
+            start=text2.find("45"),
+            end=text2.find("45") + 2,
+            raw_text="45",
+            value=Decimal("45"),
+            unit="count",
+        )
+        is_fp2, reason2 = filter.is_false_positive(text2, number2)
+        assert is_fp2 is True
+        assert reason2 == "toc_page_reference"
+
+    def test_does_not_filter_toc_unrelated_numbers(self, filter):
+        """Should NOT filter numbers unrelated to TOC."""
+        text = "We had 12 million customers in the quarter"
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should be filtered for being below min_value (12 > 10, so not filtered by min)
+        # But should NOT be filtered by TOC checks
+        assert reason != "toc_proximity"
+        assert reason != "toc_page_reference"
+
+    def test_case_insensitivity(self, filter):
+        """Should detect TOC headers case-insensitively."""
+        # Lowercase
+        text1 = "table of contents\nBusiness...12"
+        number1 = NumberMatch(
+            start=text1.find("12"),
+            end=text1.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp1, reason1 = filter.is_false_positive(text1, number1)
+        assert is_fp1 is True
+        assert reason1 == "toc_proximity"
+
+        # Mixed case
+        text2 = "Table Of Contents\nRisk Factors...23"
+        number2 = NumberMatch(
+            start=text2.find("23"),
+            end=text2.find("23") + 2,
+            raw_text="23",
+            value=Decimal("23"),
+            unit="count",
+        )
+        is_fp2, reason2 = filter.is_false_positive(text2, number2)
+        assert is_fp2 is True
+        assert reason2 == "toc_proximity"
+
+    def test_toc_proximity_boundary(self, filter):
+        """Should respect TOC_PROXIMITY_CHARS distance threshold."""
+        # Create text with TOC header exactly TOC_PROXIMITY_CHARS chars before number
+        toc_header = "TABLE OF CONTENTS\n"
+        # Fill with filler text to reach exactly the boundary
+        filler_needed = TOC_PROXIMITY_CHARS - len(toc_header)
+        filler = "x" * filler_needed
+        number_text = "12"
+
+        # At boundary (should filter)
+        text_at_boundary = toc_header + filler + number_text
+        number_at = NumberMatch(
+            start=len(toc_header) + filler_needed,
+            end=len(toc_header) + filler_needed + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp_at, reason_at = filter.is_false_positive(text_at_boundary, number_at)
+        assert is_fp_at is True
+        assert reason_at == "toc_proximity"
+
+        # Beyond boundary (should NOT filter by TOC proximity)
+        filler_beyond = "x" * (filler_needed + 1)
+        text_beyond = toc_header + filler_beyond + number_text
+        number_beyond = NumberMatch(
+            start=len(toc_header) + len(filler_beyond),
+            end=len(toc_header) + len(filler_beyond) + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp_beyond, reason_beyond = filter.is_false_positive(text_beyond, number_beyond)
+        # Should not be filtered by toc_proximity (beyond threshold)
+        assert reason_beyond != "toc_proximity"
+
+    def test_preserves_existing_filter_behavior(self, filter):
+        """Should not break existing false positive checks."""
+        # Test year filtering still works
+        text_year = "In 2023 we had revenue"
+        number_year = NumberMatch(
+            start=text_year.find("2023"),
+            end=text_year.find("2023") + 4,
+            raw_text="2023",
+            value=Decimal("2023"),
+            unit="count",
+        )
+        is_fp_year, reason_year = filter.is_false_positive(text_year, number_year)
+        assert is_fp_year is True
+        assert reason_year == "likely_year"
+
+        # Test date filtering still works
+        text_date = "As of 12/31/2023"
+        number_date = NumberMatch(
+            start=text_date.find("12"),
+            end=text_date.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp_date, reason_date = filter.is_false_positive(text_date, number_date)
+        assert is_fp_date is True
+        assert reason_date == "part_of_date"
+
+        # Test page reference filtering still works
+        text_page = "See page 123 for details"
+        number_page = NumberMatch(
+            start=text_page.find("123"),
+            end=text_page.find("123") + 3,
+            raw_text="123",
+            value=Decimal("123"),
+            unit="count",
+        )
+        is_fp_page, reason_page = filter.is_false_positive(text_page, number_page)
+        assert is_fp_page is True
+        assert reason_page == "reference_number"
+
+
+# =============================================================================
+# Helper Function Tests
+# =============================================================================
+
+
+class TestHelperFunctions:
+    """Tests for TOC detection helper functions."""
+
+    def test_is_near_table_of_contents_positive(self):
+        """Should return True when TOC header is within proximity."""
+        text = "TABLE OF CONTENTS\nRisk Factors...12"
+        position = text.find("12")
+        assert is_near_table_of_contents(text, position) is True
+
+    def test_is_near_table_of_contents_negative(self):
+        """Should return False when no TOC header nearby."""
+        text = "We had 12 million customers"
+        position = text.find("12")
+        assert is_near_table_of_contents(text, position) is False
+
+    def test_is_near_table_of_contents_case_insensitive(self):
+        """Should detect TOC header regardless of case."""
+        text = "table of contents\nSection 1...5"
+        position = text.find("5")
+        assert is_near_table_of_contents(text, position) is True
+
+    def test_is_toc_page_reference_positive(self):
+        """Should return True for dot leader patterns."""
+        text = "Business Overview.........15"
+        position = text.find("15")
+        assert is_toc_page_reference(text, position) is True
+
+    def test_is_toc_page_reference_negative(self):
+        """Should return False when no dot leaders present."""
+        text = "We had 12 million customers"
+        position = text.find("12")
+        assert is_toc_page_reference(text, position) is False
+
+    def test_is_toc_page_reference_minimum_dots(self):
+        """Should require at least 3 dots to match."""
+        # Two dots - should NOT match
+        text1 = "Section..5"
+        position1 = text1.find("5")
+        assert is_toc_page_reference(text1, position1) is False
+
+        # Three dots - should match
+        text2 = "Section...5"
+        position2 = text2.find("5")
+        assert is_toc_page_reference(text2, position2) is True
 
 
 # =============================================================================
