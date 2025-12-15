@@ -155,6 +155,9 @@ class KeywordMatcher:
     - Sort by distance first (closest keyword), then length (longest)
     - Boundary-aware matching (prefer keywords in same boundary as number)
     - Ambiguity logging when multiple keywords are equally close
+
+    P1.5 Enhancements:
+    - Sentence-aware matching (filter keywords from different sentences)
     """
 
     def __init__(
@@ -162,6 +165,7 @@ class KeywordMatcher:
         max_keyword_distance: int = 100,
         prefer_closest_keyword: bool = True,
         respect_bullet_boundaries: bool = True,
+        respect_sentence_boundaries: bool = True,
         log_ambiguous_matches: bool = True,
         ambiguity_threshold: int = 10,
     ):
@@ -173,12 +177,14 @@ class KeywordMatcher:
                                  and keyword for a match
             prefer_closest_keyword: Sort by distance first, then length (P1 enhancement)
             respect_bullet_boundaries: Prefer keywords in same boundary as number (P1 enhancement)
+            respect_sentence_boundaries: Filter keywords from different sentences (P1.5 enhancement)
             log_ambiguous_matches: Log when multiple keywords are equally close (P1 enhancement)
             ambiguity_threshold: Characters to consider "equally close" (default: 10)
         """
         self.max_keyword_distance = max_keyword_distance
         self.prefer_closest_keyword = prefer_closest_keyword
         self.respect_bullet_boundaries = respect_bullet_boundaries
+        self.respect_sentence_boundaries = respect_sentence_boundaries
         self.log_ambiguous_matches = log_ambiguous_matches
         self.ambiguity_threshold = ambiguity_threshold
 
@@ -229,6 +235,7 @@ class KeywordMatcher:
         number: NumberMatch,
         all_keywords: List[KeywordMatch],
         boundaries: Optional[List["TextBoundary"]] = None,
+        sentence_boundaries: Optional[List["TextBoundary"]] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -243,10 +250,15 @@ class KeywordMatcher:
         - Applies boundary constraints if boundaries provided
         - Logs ambiguous matches when multiple keywords are equally close
 
+        P1.5 Enhancements:
+        - Applies sentence boundary constraints if sentence_boundaries provided
+        - Filters keywords from different sentences than the number
+
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
             boundaries: Optional list of TextBoundary objects for boundary-aware matching
+            sentence_boundaries: Optional list of sentence boundaries for P1.5 filtering
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
@@ -284,6 +296,39 @@ class KeywordMatcher:
                         f"keywords in same boundary as number at position {number.start}"
                     )
                     candidates_with_distance = same_boundary
+
+        # Phase 2.5: Apply sentence boundary constraints (P1.5 enhancement)
+        if sentence_boundaries and self.respect_sentence_boundaries:
+            # Find the sentence containing the number
+            number_sentence = self._get_boundary_at_position(
+                number.start, sentence_boundaries
+            )
+
+            if number_sentence is not None:
+                # Filter to keywords in the same sentence as the number
+                same_sentence = [
+                    (kw, dist)
+                    for kw, dist in candidates_with_distance
+                    if self._is_in_same_boundary(
+                        kw.start, number_sentence, sentence_boundaries
+                    )
+                ]
+
+                # Only filter if we have same-sentence candidates
+                # (fallback: if no same-sentence keywords, keep all)
+                if same_sentence:
+                    if len(same_sentence) < len(candidates_with_distance):
+                        logger.debug(
+                            f"Sentence filtering: {len(same_sentence)}/{len(candidates_with_distance)} "
+                            f"keywords in same sentence as number '{number.raw_text}'"
+                        )
+                    candidates_with_distance = same_sentence
+                else:
+                    # No same-sentence keywords found - keep all candidates (fallback)
+                    logger.debug(
+                        f"Sentence filtering fallback: no keywords in same sentence "
+                        f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
+                    )
 
         # Phase 3: Sort by distance first, then length (P1 enhancement)
         if self.prefer_closest_keyword:

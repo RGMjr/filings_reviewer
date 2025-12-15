@@ -173,6 +173,19 @@ class CandidateGenerationConfig:
     """Minimum precision for learned patterns to be applied."""
 
     # =========================================================================
+    # P1.5 Sentence Detection Settings
+    # =========================================================================
+
+    detect_sentences: bool = True
+    """Enable sentence boundary detection. P1.5 enhancement."""
+
+    respect_sentence_boundaries: bool = True
+    """Filter keywords from different sentences than the number. P1.5 enhancement."""
+
+    sentence_detection_for_tables: bool = False
+    """Enable sentence detection for table segments. Default False (high FN risk)."""
+
+    # =========================================================================
     # Performance Tuning Settings
     # =========================================================================
 
@@ -260,6 +273,10 @@ def get_high_precision_config() -> CandidateGenerationConfig:
         enable_boundary_detection=True,
         log_ambiguous_matches=True,
         ambiguity_threshold=5,  # Stricter threshold for high precision
+        # P1.5 enhancements (enabled for precision)
+        detect_sentences=True,
+        respect_sentence_boundaries=True,
+        sentence_detection_for_tables=False,
     )
 
 
@@ -287,6 +304,10 @@ def get_high_recall_config() -> CandidateGenerationConfig:
         enable_boundary_detection=False,  # Don't detect boundaries
         log_ambiguous_matches=False,  # Reduce logging noise
         ambiguity_threshold=20,  # Larger threshold when logging is enabled
+        # P1.5 enhancements (disabled for recall - want all matches)
+        detect_sentences=False,
+        respect_sentence_boundaries=False,
+        sentence_detection_for_tables=False,
     )
 
 
@@ -314,4 +335,8 @@ def get_fast_config() -> CandidateGenerationConfig:
         enable_boundary_detection=False,  # Skip boundary detection (adds overhead)
         log_ambiguous_matches=False,  # Skip logging (reduces I/O)
         ambiguity_threshold=10,  # Standard threshold
+        # P1.5 enhancements (disabled for speed)
+        detect_sentences=False,
+        respect_sentence_boundaries=False,
+        sentence_detection_for_tables=False,
     )
