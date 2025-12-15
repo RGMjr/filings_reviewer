@@ -159,6 +159,10 @@ class KeywordMatcher:
 
     P1.5 Enhancements:
     - Sentence-aware matching (filter keywords from different sentences)
+
+    L4 Enhancement:
+    - Post-value distance multiplier (prefer keywords before values)
+    - Context-dependent multipliers (Option C: different preferences by context)
     """
 
     def __init__(
@@ -169,6 +173,14 @@ class KeywordMatcher:
         respect_sentence_boundaries: bool = True,
         log_ambiguous_matches: bool = True,
         ambiguity_threshold: int = 10,
+        post_value_distance_multiplier: float = 0.9,
+        use_context_dependent_multipliers: bool = True,
+        multiplier_bullet_points: float = 0.9,
+        multiplier_parenthetical: float = 1.15,
+        multiplier_tables: float = 0.85,
+        multiplier_copula_verb: float = 0.9,
+        multiplier_preposition: float = 1.1,
+        multiplier_default: float = 0.9,
     ):
         """
         Initialize the keyword matcher.
@@ -181,6 +193,14 @@ class KeywordMatcher:
             respect_sentence_boundaries: Filter keywords from different sentences (P1.5 enhancement)
             log_ambiguous_matches: Log when multiple keywords are equally close (P1 enhancement)
             ambiguity_threshold: Characters to consider "equally close" (default: 10)
+            post_value_distance_multiplier: Base multiplier for post-value keyword distances (L4 enhancement)
+            use_context_dependent_multipliers: Enable context-dependent multiplier logic (L4 Option C)
+            multiplier_bullet_points: Multiplier for bullet point contexts (L4 Option C)
+            multiplier_parenthetical: Multiplier for parenthetical text (L4 Option C)
+            multiplier_tables: Multiplier for table contexts (L4 Option C)
+            multiplier_copula_verb: Multiplier for copula verb contexts (L4 Option C)
+            multiplier_preposition: Multiplier for prepositional phrases (L4 Option C)
+            multiplier_default: Default multiplier when no context detected (L4 Option C)
         """
         self.max_keyword_distance = max_keyword_distance
         self.prefer_closest_keyword = prefer_closest_keyword
@@ -188,6 +208,16 @@ class KeywordMatcher:
         self.respect_sentence_boundaries = respect_sentence_boundaries
         self.log_ambiguous_matches = log_ambiguous_matches
         self.ambiguity_threshold = ambiguity_threshold
+        self.post_value_distance_multiplier = post_value_distance_multiplier
+
+        # L4 Option C: Context-dependent multipliers
+        self.use_context_dependent_multipliers = use_context_dependent_multipliers
+        self.multiplier_bullet_points = multiplier_bullet_points
+        self.multiplier_parenthetical = multiplier_parenthetical
+        self.multiplier_tables = multiplier_tables
+        self.multiplier_copula_verb = multiplier_copula_verb
+        self.multiplier_preposition = multiplier_preposition
+        self.multiplier_default = multiplier_default
 
         # Pre-compile all keyword patterns for reuse
         self._compiled_patterns: Dict[str, List[Tuple[re.Pattern[str], str]]] = {}
@@ -237,6 +267,8 @@ class KeywordMatcher:
         all_keywords: List[KeywordMatch],
         boundaries: Optional[List["TextBoundary"]] = None,
         sentence_boundaries: Optional[List["TextBoundary"]] = None,
+        text: str = "",
+        segment_type: Optional[str] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -255,17 +287,24 @@ class KeywordMatcher:
         - Applies sentence boundary constraints if sentence_boundaries provided
         - Filters keywords from different sentences than the number
 
+        L4 Option C Enhancement:
+        - Context-dependent multipliers for post-value keywords
+        - Different preferences based on textual context (tables, bullets, parentheticals)
+
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
             boundaries: Optional list of TextBoundary objects for boundary-aware matching
             sentence_boundaries: Optional list of sentence boundaries for P1.5 filtering
+            text: Optional full text for context detection (L4 Option C)
+            segment_type: Optional segment type for context detection (L4 Option C)
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
             prioritizing closest, then longest keywords)
         """
-        # Phase 1: Collect all keywords within distance with their distances
+        # Phase 1: Collect all keywords within distance with their distances and directions
+        # Store as (keyword, raw_distance, direction) for L4 multiplier application
         candidates_with_distance: List[Tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
             dist = self.calculate_distance_from_positions(
@@ -331,27 +370,63 @@ class KeywordMatcher:
                         f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
                     )
 
-        # Phase 3: Sort by distance first, then length (P1 enhancement)
+        # Phase 3: Sort by distance first, then length (P1 enhancement + L4 multiplier + L4 Option C)
         if self.prefer_closest_keyword:
-            # Sort by (distance, -length): closest first, then longest
-            candidates_with_distance.sort(key=lambda x: (x[1], -len(x[0].keyword)))
+            # L4 Option C: Compute effective distance using context-dependent multipliers
+            candidates_with_effective_distance: List[Tuple[KeywordMatch, int, float]] = []
+
+            for kw, raw_distance in candidates_with_distance:
+                # Compute direction to determine if multiplier applies
+                direction = self.calculate_keyword_direction(kw.start, number.start)
+
+                # Get context-appropriate multiplier (L4 Option C)
+                multiplier = self.get_context_multiplier(
+                    text=text,
+                    number_position=number.start,
+                    keyword_position=kw.start,
+                    keyword_direction=direction,
+                    boundaries=boundaries,
+                    segment_type=segment_type,
+                )
+
+                # Apply multiplier to post-value keywords by dividing
+                # Example: distance=100, multiplier=0.9 → effective=111.11 (less favorable)
+                # Example: distance=100, multiplier=1.15 → effective=86.96 (more favorable)
+                effective_distance = (
+                    raw_distance / multiplier if direction == "after" else float(raw_distance)
+                )
+
+                candidates_with_effective_distance.append(
+                    (kw, raw_distance, effective_distance)
+                )
+
+            # Sort by (effective_distance, -length): closest first, then longest
+            candidates_with_effective_distance.sort(
+                key=lambda x: (x[2], -len(x[0].keyword))
+            )
         else:
             # Original behavior: sort by length only (longest first)
-            candidates_with_distance.sort(key=lambda x: -len(x[0].keyword))
+            # Still need to create tuples with effective distance for consistency
+            candidates_with_effective_distance = [
+                (kw, dist, float(dist)) for kw, dist in candidates_with_distance
+            ]
+            candidates_with_effective_distance.sort(key=lambda x: -len(x[0].keyword))
 
-        # Phase 4: Detect and log ambiguous matches (P1 enhancement)
-        if self.log_ambiguous_matches and len(candidates_with_distance) > 1:
-            min_distance = candidates_with_distance[0][1]
+        # Phase 4: Detect and log ambiguous matches (P1 enhancement, B1 fix)
+        # B1 Fix: Use EFFECTIVE distance for ambiguity detection, not raw distance
+        if self.log_ambiguous_matches and len(candidates_with_effective_distance) > 1:
+            min_effective_distance = candidates_with_effective_distance[0][2]
             ambiguous_keywords = [
                 kw.keyword
-                for kw, dist in candidates_with_distance
-                if abs(dist - min_distance) <= self.ambiguity_threshold
+                for kw, raw_dist, eff_dist in candidates_with_effective_distance
+                if abs(eff_dist - min_effective_distance) <= self.ambiguity_threshold
             ]
 
             if len(ambiguous_keywords) > 1:
                 logger.info(
                     f"Ambiguous match: {len(ambiguous_keywords)} keywords equally close "
-                    f"to number '{number.raw_text}' at distance ~{min_distance}: "
+                    f"(effective distance) to number '{number.raw_text}' "
+                    f"at ~{min_effective_distance:.1f} chars: "
                     f"{', '.join(repr(k) for k in ambiguous_keywords[:5])}"
                 )
 
@@ -359,7 +434,7 @@ class KeywordMatcher:
         matches: list[KeywordMatch] = []
         seen_metrics: Set[str] = set()
 
-        for kw, dist in candidates_with_distance:
+        for kw, raw_dist, eff_dist in candidates_with_effective_distance:
             # Skip if we already have a match for this metric
             if kw.metric_id in seen_metrics:
                 continue
@@ -491,6 +566,181 @@ class KeywordMatcher:
             return "after"
         else:
             return "at"
+
+    def get_context_multiplier(
+        self,
+        text: str,
+        number_position: int,
+        keyword_position: int,
+        keyword_direction: str,
+        boundaries: Optional[List["TextBoundary"]] = None,
+        segment_type: Optional[str] = None,
+    ) -> float:
+        """
+        Determine the appropriate multiplier based on textual context.
+
+        This implements L4 Option C: context-dependent multipliers for post-value keywords.
+        Different contexts have different patterns for where metrics appear relative to values.
+
+        Args:
+            text: Full text containing both keyword and number
+            number_position: Character position of the number
+            keyword_position: Character position of the keyword
+            keyword_direction: 'before' or 'after' (from calculate_keyword_direction)
+            boundaries: Optional list of TextBoundary objects
+            segment_type: Optional segment type ('table', 'paragraph', etc.)
+
+        Returns:
+            Multiplier to apply to the effective distance (only for 'after' direction)
+            - < 1.0: Penalize post-value keywords (prefer pre-value)
+            - 1.0: No preference
+            - > 1.0: Boost post-value keywords (prefer post-value)
+        """
+        # If context-dependent multipliers disabled, use base multiplier
+        if not self.use_context_dependent_multipliers:
+            return self.post_value_distance_multiplier
+
+        # Only apply multiplier for post-value keywords
+        if keyword_direction != "after":
+            return 1.0  # No adjustment for pre-value keywords
+
+        # Priority 1: Table context (strongest signal)
+        if segment_type == "table" or self._is_in_table(number_position, boundaries):
+            return self.multiplier_tables
+
+        # Priority 2: Parenthetical text (strong signal for clarifications)
+        if self._is_in_parentheses(number_position, text):
+            return self.multiplier_parenthetical
+
+        # Priority 3: Bullet points (strong signal for structured lists)
+        if self._is_in_bullet_point(number_position, boundaries):
+            return self.multiplier_bullet_points
+
+        # Priority 4: Copula verb pattern (moderate signal)
+        if self._has_copula_verb_between(
+            text, min(keyword_position, number_position), max(keyword_position, number_position)
+        ):
+            return self.multiplier_copula_verb
+
+        # Priority 5: Prepositional phrase (moderate signal)
+        if self._has_preposition_after(text, number_position, keyword_position):
+            return self.multiplier_preposition
+
+        # Default: use configured default multiplier
+        return self.multiplier_default
+
+    def _is_in_parentheses(self, position: int, text: str) -> bool:
+        """
+        Check if a position is inside parentheses.
+
+        Args:
+            position: Character position to check
+            text: Full text
+
+        Returns:
+            True if position is inside (...), False otherwise
+        """
+        # Count open parentheses before position
+        text_before = text[:position]
+        open_count = text_before.count("(") - text_before.count(")")
+
+        # If more open than close, we're inside parentheses
+        return open_count > 0
+
+    def _is_in_table(
+        self, position: int, boundaries: Optional[List["TextBoundary"]]
+    ) -> bool:
+        """
+        Check if a position is in a table boundary.
+
+        Args:
+            position: Character position to check
+            boundaries: Optional list of boundaries
+
+        Returns:
+            True if position is in a table boundary, False otherwise
+        """
+        if boundaries is None:
+            return False
+
+        boundary = self._get_boundary_at_position(position, boundaries)
+        if boundary is None:
+            return False
+
+        # Check if boundary type indicates table
+        # Note: boundary_type might be "table" or have other indicators
+        return getattr(boundary, "boundary_type", None) == "table"
+
+    def _is_in_bullet_point(
+        self, position: int, boundaries: Optional[List["TextBoundary"]]
+    ) -> bool:
+        """
+        Check if a position is in a bullet point boundary.
+
+        Args:
+            position: Character position to check
+            boundaries: Optional list of boundaries
+
+        Returns:
+            True if position is in a bullet boundary, False otherwise
+        """
+        if boundaries is None:
+            return False
+
+        boundary = self._get_boundary_at_position(position, boundaries)
+        if boundary is None:
+            return False
+
+        # Check if boundary type indicates bullet/list
+        boundary_type = getattr(boundary, "boundary_type", None)
+        return boundary_type in ("bullet", "numbered_list", "lettered_list")
+
+    def _has_copula_verb_between(self, text: str, start: int, end: int) -> bool:
+        """
+        Check if there's a copula verb (is/was/were/are) between two positions.
+
+        Copula verbs suggest subject-verb structure: "Gross margin was 33%"
+
+        Args:
+            text: Full text
+            start: Start position
+            end: End position
+
+        Returns:
+            True if copula verb found between positions, False otherwise
+        """
+        snippet = text[start:end].lower()
+        # Match copula verbs with word boundaries
+        copula_pattern = r"\b(is|was|were|are)\b"
+        return bool(re.search(copula_pattern, snippet))
+
+    def _has_preposition_after(
+        self, text: str, number_position: int, keyword_position: int
+    ) -> bool:
+        """
+        Check if there's a preposition (of/for/in) between number and keyword.
+
+        Prepositions suggest the keyword is the object: "33% of revenue", "33% for margin"
+
+        Args:
+            text: Full text
+            number_position: Number start position
+            keyword_position: Keyword start position (must be after number)
+
+        Returns:
+            True if preposition found between number and keyword, False otherwise
+        """
+        if keyword_position <= number_position:
+            return False
+
+        # Check the gap between number and keyword (up to 50 chars)
+        gap_start = number_position
+        gap_end = min(number_position + 50, keyword_position + 10)
+        snippet = text[gap_start:gap_end].lower()
+
+        # Match common prepositions with word boundaries
+        preposition_pattern = r"\b(of|for|in|from)\b"
+        return bool(re.search(preposition_pattern, snippet))
 
     def _get_boundary_at_position(
         self, pos: int, boundaries: List["TextBoundary"]

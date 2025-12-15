@@ -187,7 +187,23 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
   - **Implementation**: `candidate_generator.py:617-618` now uses `kw.direction` instead of recomputing
   - **Edge case**: Maps "at" → "after" to comply with database constraint
   - **Tests**: 7 integration tests verify end-to-end flow (KeywordMatch → ReviewCandidate → DB)
-  - **Status**: Fully functional, ready for L4 distance multiplier implementation
+  - **Status**: Fully functional, L4 complete
+- **L4 - Post-Value Keyword Distance Multiplier (COMPLETE 2025-12-15, Option C Implementation)**:
+  - **Problem**: When keywords are equidistant from values, system doesn't prefer appropriate direction based on context
+  - **Solution**: Context-dependent multipliers that apply different preferences based on textual patterns
+  - **Option C Features** (Context-Dependent Logic):
+    - **Parenthetical text** (1.15x): Prefers post-value - "33% (gross margin)"
+    - **Table contexts** (0.85x): Strongly prefers pre-value - headers before values
+    - **Bullet points** (0.9x): Prefers pre-value - metrics listed before values
+    - **Copula verbs** (0.9x): Prefers pre-value - "Gross margin was 33%"
+    - **Prepositional phrases** (1.1x): Prefers post-value - "33% of revenue"
+    - **Default** (0.9x): Slight pre-value preference when no context detected
+  - **Implementation**:
+    - Context detection methods in `keyword_matching.py`: `get_context_multiplier()`, `_is_in_parentheses()`, `_is_in_table()`, `_is_in_bullet_point()`, `_has_copula_verb_between()`, `_has_preposition_after()`
+    - Config support in `config.py`: `use_context_dependent_multipliers`, `multiplier_parenthetical`, `multiplier_tables`, `multiplier_bullet_points`, `multiplier_copula_verb`, `multiplier_preposition`, `multiplier_default`
+    - Ambiguity logging fixed to use effective distance (not raw distance) - Task B1
+  - **Tests**: 10 new tests (context detection, threshold math, boundary interaction, multiple keywords)
+  - **Status**: Production ready, 59/59 keyword_matching tests passing
 
 **Feature Extractor (B2):**
 
