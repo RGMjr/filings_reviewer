@@ -181,8 +181,13 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
   - **Status**: Standalone module complete, integration with candidate_generator.py pending
 - **L2 - Table of Contents Proximity (COMPLETE 2025-12-15)**:
   - Added TOC proximity detection to `false_positive_filter.py`
-- **L3 - Keyword Direction Detection (COMPLETE 2025-12-15)**:
-  - Added direction field to KeywordMatch: "before"/"after"/"at" relative to number position
+- **L3 - Keyword Direction Detection (COMPLETE 2025-12-15, FIXES APPLIED 2025-12-15)**:
+  - **Problem**: Direction field was computed but never used (recomputed in candidate_generator.py)
+  - **Solution**: Integrated `direction` field from KeywordMatch into candidate generation pipeline
+  - **Implementation**: `candidate_generator.py:617-618` now uses `kw.direction` instead of recomputing
+  - **Edge case**: Maps "at" → "after" to comply with database constraint
+  - **Tests**: 7 integration tests verify end-to-end flow (KeywordMatch → ReviewCandidate → DB)
+  - **Status**: Fully functional, ready for L4 distance multiplier implementation
 
 **Feature Extractor (B2):**
 

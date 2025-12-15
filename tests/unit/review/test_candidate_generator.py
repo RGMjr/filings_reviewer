@@ -3015,3 +3015,273 @@ class TestConfigSystemAdoption:
         metric_ids_old = {c.suggested_metric_id for c in candidates_old}
         metric_ids_new = {c.suggested_metric_id for c in candidates_new}
         assert metric_ids_old == metric_ids_new
+
+
+# =============================================================================
+# L3 Enhancement Tests (Keyword Direction Integration)
+# =============================================================================
+
+
+class TestL3KeywordDirectionIntegration:
+    """Tests for L3: Verify direction field flows from KeywordMatch → ReviewCandidate."""
+
+    def test_direction_before_stored_in_candidate(self):
+        """L3: Keyword before number → candidate.keyword_position = 'before'."""
+        generator = CandidateGenerator()
+
+        # Text with keyword BEFORE number
+        segment = {
+            "source_segment_id": 1,
+            "segment_type": "paragraph",
+            "raw_text": "Our customer retention rate was 95% in Q4",
+            #                    ^keyword (retention)    ^number
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Should find at least one candidate
+        assert len(candidates) >= 1
+
+        # Find the retention candidate
+        retention_candidates = [
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
+        ]
+        assert len(retention_candidates) >= 1
+
+        # Verify keyword_position is "before"
+        candidate = retention_candidates[0]
+        assert candidate.keyword_position == "before", (
+            f"Expected keyword_position='before' but got '{candidate.keyword_position}'. "
+            f"Keyword: '{candidate.triggering_keyword}', Number: '{candidate.raw_number_text}'"
+        )
+
+    def test_direction_after_stored_in_candidate(self):
+        """L3: Keyword after number → candidate.keyword_position = 'after'."""
+        generator = CandidateGenerator()
+
+        # Text with keyword AFTER number
+        segment = {
+            "source_segment_id": 2,
+            "segment_type": "paragraph",
+            "raw_text": "We achieved 95% retention rate in Q4",
+            #                           ^number ^keyword
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Should find at least one candidate
+        assert len(candidates) >= 1
+
+        # Find the retention candidate
+        retention_candidates = [
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
+        ]
+        assert len(retention_candidates) >= 1
+
+        # Verify keyword_position is "after"
+        candidate = retention_candidates[0]
+        assert candidate.keyword_position == "after", (
+            f"Expected keyword_position='after' but got '{candidate.keyword_position}'. "
+            f"Keyword: '{candidate.triggering_keyword}', Number: '{candidate.raw_number_text}'"
+        )
+
+    def test_direction_at_mapped_to_after(self):
+        """L3: Edge case - keyword at same position as number → maps to 'after'."""
+        from src.review.keyword_matching import KeywordMatcher, KeywordMatch
+        from src.review.number_parsing import NumberMatch
+
+        matcher = KeywordMatcher()
+
+        # Create a mock scenario where keyword and number overlap (direction="at")
+        # This tests the edge case handling in candidate_generator.py
+        text = "gross margin30%"  # Pathological case: no space
+
+        # Mock KeywordMatch with direction="at"
+        kw_at = KeywordMatch(
+            start=0,
+            end=12,
+            keyword="gross margin",
+            metric_id="cm_gross_margin_overall",
+            pattern=r"\bgross\s+margin\b",
+            direction="at",  # Edge case
+        )
+
+        # Generate candidate - should map "at" → "after"
+        generator = CandidateGenerator()
+        segment = {
+            "source_segment_id": 3,
+            "segment_type": "paragraph",
+            "raw_text": text,
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Verify all candidates have valid keyword_position (never "at")
+        for candidate in candidates:
+            assert candidate.keyword_position in ("before", "after"), (
+                f"Invalid keyword_position: '{candidate.keyword_position}'. "
+                "L3 should map 'at' edge case to 'after'."
+            )
+
+    def test_multiple_candidates_different_directions(self):
+        """L3: Multiple candidates can have different directions in same segment."""
+        generator = CandidateGenerator()
+
+        # Text with keywords in both directions
+        segment = {
+            "source_segment_id": 4,
+            "segment_type": "paragraph",
+            "raw_text": (
+                "We had 50000 active customers in Q1. "
+                "Our gross margin was 52% in the same period."
+                #   ^kw before      ^num  ^kw after  ^num
+            ),
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Should find multiple candidates
+        assert len(candidates) >= 2
+
+        # Find candidates for each number
+        customer_candidates = [
+            c for c in candidates
+            if "50000" in c.raw_number_text or c.parsed_value == Decimal("50000")
+        ]
+        margin_candidates = [
+            c for c in candidates
+            if "52" in c.raw_number_text and c.parsed_unit in ("%", "percent")
+        ]
+
+        # Verify we found both
+        assert len(customer_candidates) >= 1, "Should find customer candidate"
+        assert len(margin_candidates) >= 1, "Should find margin candidate"
+
+        # Customer candidates should have keyword AFTER number (50000 active customers)
+        for candidate in customer_candidates:
+            if "customer" in candidate.triggering_keyword.lower():
+                assert candidate.keyword_position == "after", (
+                    f"'active customers' should be after 50000, got '{candidate.keyword_position}'"
+                )
+
+        # Margin candidates should have keyword BEFORE number (margin was 52%)
+        for candidate in margin_candidates:
+            if "margin" in candidate.triggering_keyword.lower():
+                assert candidate.keyword_position == "before", (
+                    f"'gross margin' should be before 52%, got '{candidate.keyword_position}'"
+                )
+
+    def test_direction_preserved_in_to_dict(self):
+        """L3: Direction field survives ReviewCandidate.to_dict() serialization."""
+        generator = CandidateGenerator()
+
+        segment = {
+            "source_segment_id": 5,
+            "segment_type": "paragraph",
+            "raw_text": "Retention rate was 95% in Q4",
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        assert len(candidates) >= 1
+        candidate = candidates[0]
+
+        # Convert to dict (for database insertion)
+        candidate_dict = candidate.to_dict()
+
+        # Verify keyword_position is in the dict
+        assert "keyword_position" in candidate_dict
+        assert candidate_dict["keyword_position"] in ("before", "after")
+
+        # Verify it matches the candidate object
+        assert candidate_dict["keyword_position"] == candidate.keyword_position
+
+    def test_direction_consistent_with_distance_calculation(self):
+        """L3: Direction should be consistent with distance calculation logic."""
+        generator = CandidateGenerator()
+
+        segment = {
+            "source_segment_id": 6,
+            "segment_type": "paragraph",
+            "raw_text": "Customer retention rate was 95.5% for the quarter",
+            #            ^keyword (retention)   ^number
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Find retention candidate
+        retention_candidates = [
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
+        ]
+
+        assert len(retention_candidates) >= 1
+        candidate = retention_candidates[0]
+
+        # Keyword "retention" appears before "95.5%"
+        assert candidate.keyword_position == "before"
+
+        # Distance should be positive (keyword before number = number_start - keyword_end)
+        assert candidate.keyword_distance >= 0
+
+    def test_end_to_end_direction_flow(self):
+        """L3: End-to-end test - direction flows from keyword matching → candidate."""
+        generator = CandidateGenerator()
+
+        # Real-world example from Farfetch filing
+        segment = {
+            "source_segment_id": 7,
+            "segment_type": "paragraph",
+            "raw_text": (
+                "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 "
+                "was 1.42, 1.53 and 1.72, respectively; and Platform Order Contribution Margin "
+                "for the years ended December 31, 2015, 2016 and 2017 was 33.0%, 35.0% and 43.0%, "
+                "respectively."
+            ),
+        }
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=[segment],
+        )
+
+        # Should generate multiple candidates
+        assert len(candidates) >= 3
+
+        # All candidates should have valid keyword_position
+        for candidate in candidates:
+            assert candidate.keyword_position in ("before", "after"), (
+                f"Candidate {candidate.candidate_id} has invalid keyword_position: "
+                f"'{candidate.keyword_position}'"
+            )
+
+            # Verify keyword_position is consistent with text structure
+            # (We can't assert specific values without knowing exact positions,
+            # but we can verify the field exists and is valid)

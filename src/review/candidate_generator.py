@@ -323,7 +323,7 @@ class CandidateGenerator:
         # Initialize number parser (P1.3 - extracted to separate module)
         self._number_parser = NumberParser()
 
-        # Initialize keyword matcher (P1.3 - extracted to separate module, P1 enhanced, P1.5 sentence-aware)
+        # Initialize keyword matcher (P1.3 - extracted to separate module, P1 enhanced, P1.5 sentence-aware, L4 multiplier)
         self._keyword_matcher = KeywordMatcher(
             max_keyword_distance=self.config.max_keyword_distance,
             prefer_closest_keyword=self.config.prefer_closest_keyword,
@@ -331,6 +331,7 @@ class CandidateGenerator:
             respect_sentence_boundaries=self.config.respect_sentence_boundaries,
             log_ambiguous_matches=self.config.log_ambiguous_matches,
             ambiguity_threshold=self.config.ambiguity_threshold,
+            post_value_distance_multiplier=self.config.post_value_distance_multiplier,
         )
 
         # Initialize false positive filter (P1.3 - extracted to separate module)
@@ -613,7 +614,8 @@ class CandidateGenerator:
 
                     # Calculate distance and position
                     distance = self._calculate_distance(num, kw)
-                    keyword_position = "before" if kw.start < num.start else "after"
+                    # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "after")
+                    keyword_position = "after" if kw.direction in ("after", "at") else "before"
 
                     # Extract context
                     context = self._extract_context(text, num.start)
