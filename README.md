@@ -20,10 +20,11 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | 3 | LLM Integration | ✅ Infrastructure Complete (GPT-4o-mini integrated) |
 | 4 | Production Extraction | 🟡 In Progress (CMASB Phase 1B deployed) |
 
-**Test Coverage:** 74% overall (323 tests passing)
-- Core modules: ~82% (target met)
+**Test Coverage:** 87% overall (1,625 tests, 1,593 passing)
+- Core modules: ~87% (target exceeded)
+- Review modules: 95-100% (human review system complete)
 - LLM modules: 0% (manual testing only)
-- Target: 75% minimum (below due to untested LLM code)
+- Target: 75% minimum (exceeded)
 
 For detailed progress tracking and sprint planning, see **[DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)**.
 
