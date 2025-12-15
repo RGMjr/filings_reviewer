@@ -122,9 +122,10 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 ├── keyword_matching.py      # Find metric keywords near numbers (P1 + P1.5 enhanced)
 │                            # Distance-first sorting, boundary + sentence aware matching
 │                            # (100 statements, 91% coverage, 36 tests)
-├── false_positive_filter.py # Filter dates, years, page refs, small values
+├── false_positive_filter.py # Filter dates, years, page refs, small values, TOC page numbers
 │                            # Configurable thresholds, returns (bool, reason)
-│                            # (45 statements, 100% coverage)
+│                            # TOC proximity detection (300 char window) + dot leader patterns
+│                            # (60 statements, 100% coverage)
 ├── context_extraction.py    # Extract N words around position
 │                            # Supports word-position caching (P1.2 optimization)
 │                            # (34 statements, 97% coverage)
