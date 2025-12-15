@@ -105,9 +105,9 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 ├── config.py                # Centralized configuration (P1 enhancement)
 │                            # CandidateGenerationConfig dataclass + presets
 │                            # (75 statements, 100% coverage, 8 tests)
-├── boundary_detection.py    # Semantic boundary detection (P1 enhancement)
-│                            # BoundaryDetector: bullets, lists, paragraphs
-│                            # (92 statements, 95% coverage, 23 tests)
+├── boundary_detection.py    # Semantic boundary detection (P1 + P1.5 enhancement)
+│                            # BoundaryDetector: bullets, lists, paragraphs, sentences
+│                            # (120 statements, 95% coverage, 50 tests)
 ├── exceptions.py            # Custom exception hierarchy
 │                            # CandidateGenerationError, SegmentProcessingError, NumberProcessingError
 │                            # (50 lines, 100% coverage)
@@ -119,9 +119,9 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 │                            # (90 lines, 100% coverage)
 ├── number_parsing.py        # Extract numbers: $1.2M, 45%, 50,000
 │                            # (55 statements, 91% coverage)
-├── keyword_matching.py      # Find metric keywords near numbers (P1 enhanced)
-│                            # Distance-first sorting, boundary-aware matching
-│                            # (96 statements, 91% coverage, 26 tests)
+├── keyword_matching.py      # Find metric keywords near numbers (P1 + P1.5 enhanced)
+│                            # Distance-first sorting, boundary + sentence aware matching
+│                            # (100 statements, 91% coverage, 36 tests)
 ├── false_positive_filter.py # Filter dates, years, page refs, small values
 │                            # Configurable thresholds, returns (bool, reason)
 │                            # (45 statements, 100% coverage)
@@ -148,7 +148,19 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 - **Ambiguity Logging**: Logs when multiple keywords are equally close to a number for debugging
 - **Centralized Configuration**: CandidateGenerationConfig dataclass with presets (high precision, high recall, fast)
 - **Improved Substring Filtering**: Only applies within the same metric to preserve multi-metric candidates
-- **202 tests passing** with 90%+ coverage across P1-enhanced modules
+- **660 tests passing** with 90%+ coverage across P1-enhanced modules
+
+**P1.5 Enhancement: Sentence-Aware Filtering (December 2025) - COMPLETE:**
+- **Problem**: Numbers matched to keywords from different sentences in same paragraph
+- **Solution**: Sentence boundary detection + sentence-aware filtering
+- **Status**: Complete (2025-12-15)
+- **Features**:
+  - Sentence boundary detection with abbreviation handling (Mr., Inc., U.S., e.g.)
+  - Decimal number protection (52.3% doesn't trigger false sentence break)
+  - Table segment handling (skip sentence detection to prevent false negatives)
+  - Config flags: `detect_sentences`, `respect_sentence_boundaries`, `sentence_detection_for_tables`
+  - Fallback behavior when no same-sentence keywords found
+- **Tests**: 27 boundary detection + 10 keyword matching + 8 integration = 45 new tests
 
 **Feature Extractor (B2):**
 

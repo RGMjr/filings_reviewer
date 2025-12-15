@@ -21,7 +21,7 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
   - ✅ API routes (D2) - COMPLETE, 97% coverage
   - ✅ Pattern analyzer (E1) - COMPLETE, 97% coverage, production-ready
   - ✅ Rule applicator (E2) - COMPLETE, 100% coverage
-- 📊 Overall Test Coverage: 87% (1,625 tests collected, 1,593 passing, target: 75% minimum) ✅
+- 📊 Overall Test Coverage: 87% (1,670+ tests collected, 660 review module tests passing, target: 75% minimum) ✅
   - Core modules: ~87% (exceeds target)
   - Review modules: 95-100% (all phases complete)
   - LLM modules: 0% (manual testing only, 196 untested statements)
@@ -42,6 +42,35 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 - ✅ Archived planning documents (REMEDIATION_PLAN.md, CONSOLIDATED_IMPROVEMENT_PLAN.md) to `docs/archive/planning/`
 
 **Total Time:** ~45 minutes (matched estimate)
+
+### ✅ **COMPLETED: P1.5 Sentence-Aware Filtering (Dec 15, 2025)**
+**Status:** COMPLETE
+**Documentation:** `CLAUDE.md` (Review Module Architecture section)
+
+**Objective:** Fix cross-metric false positives by adding sentence boundary detection to candidate generation.
+
+**Problem Solved:**
+```
+Text: "Gross margin increased from 52.3% to 54.1% in 2023. Attrition declined from 35.1% to 34.2%"
+Before: 52.3% matches BOTH "gross margin" AND "attrition" ✗
+After: 52.3% matches ONLY "gross margin" ✓
+```
+
+**Implementation Complete:**
+- [x] Phase 1: Sentence boundary detection in `boundary_detection.py`
+- [x] Phase 2: Config flags in `config.py` (detect_sentences, respect_sentence_boundaries, sentence_detection_for_tables)
+- [x] Phase 3: Sentence-aware keyword filtering in `keyword_matching.py`
+- [x] Phase 4: Pipeline wiring in `candidate_generator.py` + integration tests
+- [x] Mypy --strict compliance verified
+
+**Tests Added:** 45 new tests (27 boundary + 10 keyword + 8 integration)
+**Total Tests:** 660 passing
+
+**Key Features:**
+- Abbreviation handling (Mr., Inc., U.S., e.g., i.e.)
+- Decimal protection (52.3% doesn't trigger false sentence break)
+- Table segment handling (skip sentence detection to prevent false negatives)
+- Fallback behavior when no same-sentence keywords found
 
 ### ✅ **COMPLETED: CMASB Phase 1B Production Extraction**
 **Status:** COMPLETE (2025-12-02)

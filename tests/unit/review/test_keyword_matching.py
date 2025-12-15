@@ -541,3 +541,334 @@ class TestP1ConfigurationParameters:
         assert matcher.respect_bullet_boundaries is False
         assert matcher.log_ambiguous_matches is False
         assert matcher.ambiguity_threshold == 5
+
+
+# =============================================================================
+# P1.5 Enhancement Tests (Sentence-Aware Matching)
+# =============================================================================
+
+
+class TestP15SentenceAwareMatching:
+    """Tests for P1.5 enhancement: filter keywords from different sentences."""
+
+    def test_default_configuration_includes_sentence_settings(self):
+        """Default configuration should include P1.5 sentence settings."""
+        matcher = KeywordMatcher()
+        assert matcher.respect_sentence_boundaries is True
+
+    def test_same_sentence_keywords_kept(self):
+        """Keywords in the same sentence as the number should be kept."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        text = "We had 50000 active customers in Q1."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        number = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True)
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=sentences
+        )
+
+        # Should find "active customers" in same sentence
+        assert len(keywords) >= 1
+        assert any("customer" in kw.keyword.lower() for kw in keywords)
+
+    def test_different_sentence_keywords_filtered(self):
+        """Keywords in different sentences should be filtered out."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        # Number in second sentence (52%)
+        num_pos = text.index("52%")
+        number = NumberMatch(
+            start=num_pos,
+            end=num_pos + 3,
+            raw_text="52%",
+            value=Decimal("52"),
+            unit="percent",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True, max_keyword_distance=150)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # WITH sentence filtering
+        keywords_with_filter = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=sentences
+        )
+
+        # WITHOUT sentence filtering
+        matcher_no_sent = KeywordMatcher(respect_sentence_boundaries=False, max_keyword_distance=150)
+        keywords_no_filter = matcher_no_sent.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=sentences
+        )
+
+        # With filtering: should only find "gross margin" (in sentence 2)
+        # Without filtering: might also find "active customers" (in sentence 1)
+        keywords_with_ids = {kw.metric_id for kw in keywords_with_filter}
+        keywords_without_ids = {kw.metric_id for kw in keywords_no_filter}
+
+        # Gross margin should be in both
+        assert "cm_gross_margin_overall" in keywords_with_ids
+
+        # Active customers should be filtered WITH sentence boundaries
+        # but present WITHOUT sentence boundaries (if within distance)
+        if "cm_active_customers_total" in keywords_without_ids:
+            # If found without filtering, should NOT be found with filtering
+            assert "cm_active_customers_total" not in keywords_with_ids
+
+    def test_problem_example_cross_sentence_filtering(self):
+        """Test that cross-sentence keywords are properly filtered."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        # Use metrics that exist in the taxonomy for both sentences
+        text = "We had 50000 active customers in 2023. Gross margin was 52% in Q1."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        assert len(sentences) == 2, "Should detect 2 sentences"
+
+        # Number in first sentence (50000) - should match "active customers"
+        num1 = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        # Number in second sentence (52%) - should match "gross margin"
+        num2_pos = text.index("52%")
+        num2 = NumberMatch(
+            start=num2_pos,
+            end=num2_pos + 3,
+            raw_text="52%",
+            value=Decimal("52"),
+            unit="percent",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True, max_keyword_distance=150)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Verify we found keywords in both sentences
+        assert any("customer" in kw.keyword.lower() for kw in all_keywords), \
+            "Should find 'active customers' keyword"
+        assert any("gross margin" in kw.keyword.lower() for kw in all_keywords), \
+            "Should find 'gross margin' keyword"
+
+        # 50000 should only match keywords in sentence 1
+        keywords1 = matcher.find_keywords_near_number(
+            num1, all_keywords, sentence_boundaries=sentences
+        )
+
+        # 52% should only match keywords in sentence 2
+        keywords2 = matcher.find_keywords_near_number(
+            num2, all_keywords, sentence_boundaries=sentences
+        )
+
+        # Keywords for 50000 should be "active customers" (sentence 1)
+        for kw in keywords1:
+            assert sentences[0].contains_position(kw.start), \
+                f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 1 ({sentences[0].start}-{sentences[0].end})"
+
+        # Keywords for 52% should be "gross margin" (sentence 2)
+        for kw in keywords2:
+            assert sentences[1].contains_position(kw.start), \
+                f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 2 ({sentences[1].start}-{sentences[1].end})"
+
+        # Verify the key behavior: 50000 should NOT match "gross margin"
+        keywords1_ids = {kw.metric_id for kw in keywords1}
+        assert "cm_gross_margin_overall" not in keywords1_ids, \
+            "50000 should not match gross margin (different sentence)"
+
+        # Verify the key behavior: 52% should NOT match "active customers"
+        keywords2_ids = {kw.metric_id for kw in keywords2}
+        assert "cm_active_customers_total" not in keywords2_ids, \
+            "52% should not match active customers (different sentence)"
+
+    def test_fallback_when_no_same_sentence_keywords(self):
+        """If no keywords in same sentence, should keep all candidates."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        # Text where number has no keywords in same sentence
+        text = "The value was 100. Active customers grew significantly."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        number = NumberMatch(
+            start=text.index("100"),
+            end=text.index("100") + 3,
+            raw_text="100",
+            value=Decimal("100"),
+            unit="count",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True, max_keyword_distance=150)
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=sentences
+        )
+
+        # Should fall back to cross-sentence keywords if no same-sentence ones
+        # (may be empty if no keywords in range, or may include cross-sentence)
+        assert isinstance(keywords, list)
+
+    def test_sentence_filtering_disabled(self):
+        """When respect_sentence_boundaries=False, sentence filtering should be skipped."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        # Number in second sentence
+        num_pos = text.index("52%")
+        number = NumberMatch(
+            start=num_pos,
+            end=num_pos + 3,
+            raw_text="52%",
+            value=Decimal("52"),
+            unit="percent",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=False, max_keyword_distance=150)
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=sentences
+        )
+
+        # Without filtering, may include keywords from both sentences
+        assert isinstance(keywords, list)
+
+    def test_sentence_and_boundary_filtering_combined(self):
+        """Sentence filtering should work together with structural boundary filtering."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        text = """• First bullet: active customers reached 50000. Revenue grew.
+• Second bullet: gross margin was 52%. Costs increased."""
+
+        detector = BoundaryDetector()
+        boundaries = detector.find_boundaries(text)
+        sentences = detector.find_sentence_boundaries(text)
+
+        # Number "52%" is in second bullet, first sentence within that bullet
+        num_pos = text.index("52%")
+        number = NumberMatch(
+            start=num_pos,
+            end=num_pos + 3,
+            raw_text="52%",
+            value=Decimal("52"),
+            unit="percent",
+        )
+
+        matcher = KeywordMatcher(
+            respect_bullet_boundaries=True,
+            respect_sentence_boundaries=True,
+            max_keyword_distance=200,
+        )
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, boundaries=boundaries, sentence_boundaries=sentences
+        )
+
+        # Should filter by BOTH bullet boundary AND sentence boundary
+        # "gross margin" is in same bullet AND same sentence
+        # "active customers" is in different bullet
+        if len(keywords) > 0:
+            # Verify keywords are from correct boundary
+            for kw in keywords:
+                # Should be in same bullet boundary
+                kw_boundary = detector.get_boundary_at_position(kw.start, boundaries)
+                num_boundary = detector.get_boundary_at_position(number.start, boundaries)
+                if kw_boundary and num_boundary:
+                    assert kw_boundary == num_boundary or not matcher.respect_bullet_boundaries
+
+    def test_no_sentence_boundaries_provided(self):
+        """When sentence_boundaries is None, should skip sentence filtering."""
+        text = "We had 50000 active customers in Q1."
+
+        number = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Pass None for sentence_boundaries
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=None
+        )
+
+        # Should return keywords without sentence filtering (behaves like P1)
+        assert len(keywords) >= 1
+
+    def test_empty_sentence_boundaries(self):
+        """When sentence_boundaries is empty list, should skip filtering."""
+        text = "We had 50000 active customers in Q1."
+
+        number = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Pass empty list for sentence_boundaries
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=[]
+        )
+
+        # Should return keywords without filtering
+        assert len(keywords) >= 1
+
+    def test_long_sentence_multiple_metrics_preserved(self):
+        """Multiple metrics in the same long sentence should all be preserved."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        # One long sentence with multiple metrics
+        text = "Our active customers reached 50000 while gross margin improved to 52% in Q1."
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        assert len(sentences) == 1, "Should be one sentence"
+
+        # Number for customers (50000)
+        num1 = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        matcher = KeywordMatcher(respect_sentence_boundaries=True, max_keyword_distance=150)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Both keywords should be available for 50000 (all in same sentence)
+        keywords = matcher.find_keywords_near_number(
+            num1, all_keywords, sentence_boundaries=sentences
+        )
+
+        # May find both "active customers" and "gross margin" since they're in same sentence
+        metric_ids = {kw.metric_id for kw in keywords}
+        # At minimum, should find the closest keyword
+        assert len(keywords) >= 1

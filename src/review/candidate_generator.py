@@ -323,11 +323,12 @@ class CandidateGenerator:
         # Initialize number parser (P1.3 - extracted to separate module)
         self._number_parser = NumberParser()
 
-        # Initialize keyword matcher (P1.3 - extracted to separate module, P1 enhanced)
+        # Initialize keyword matcher (P1.3 - extracted to separate module, P1 enhanced, P1.5 sentence-aware)
         self._keyword_matcher = KeywordMatcher(
             max_keyword_distance=self.config.max_keyword_distance,
             prefer_closest_keyword=self.config.prefer_closest_keyword,
             respect_bullet_boundaries=self.config.respect_bullet_boundaries,
+            respect_sentence_boundaries=self.config.respect_sentence_boundaries,
             log_ambiguous_matches=self.config.log_ambiguous_matches,
             ambiguity_threshold=self.config.ambiguity_threshold,
         )
@@ -557,13 +558,32 @@ class CandidateGenerator:
 
         # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
         # This enables boundary-aware keyword matching to avoid cross-boundary false positives
-        boundaries = None
-        if self.config.enable_boundary_detection:
-            from src.review.boundary_detection import BoundaryDetector
+        from src.review.boundary_detection import BoundaryDetector
 
+        boundaries = None
+        detector: Optional[BoundaryDetector] = None
+        if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
             boundaries = detector.find_boundaries(text)
             logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
+
+        # Pre-compute sentence boundaries for P1.5 sentence-aware filtering
+        # This enables sentence-aware keyword matching to avoid cross-sentence false positives
+        sentence_boundaries = None
+        if self.config.detect_sentences:
+            if detector is None:  # Reuse detector if already created
+                detector = BoundaryDetector()
+            segment_type = segment.get("segment_type")
+            # Disable sentence detection for tables (configurable)
+            if segment_type == "table" and not self.config.sentence_detection_for_tables:
+                # Table segments get single boundary to prevent false negatives
+                pass  # sentence_boundaries stays None, fallback to no sentence filtering
+            else:
+                sentence_boundaries = detector.find_sentence_boundaries(text, segment_type)
+                if sentence_boundaries:
+                    logger.debug(
+                        f"Detected {len(sentence_boundaries)} sentences in segment"
+                    )
 
         # Track (number_position, metric_id) pairs to avoid duplicates
         seen: Set[Tuple[int, str]] = set()
@@ -580,7 +600,9 @@ class CandidateGenerator:
                     segment_stats["false_positives_filtered"] += 1
                     continue
 
-                keyword_matches = self._find_keywords_near_number(num, all_keywords, boundaries)
+                keyword_matches = self._find_keywords_near_number(
+                    num, all_keywords, boundaries, sentence_boundaries
+                )
 
                 for kw in keyword_matches:
                     # Deduplicate by (number_position, metric_id)
@@ -720,21 +742,25 @@ class CandidateGenerator:
         number: NumberMatch,
         all_keywords: List[KeywordMatch],
         boundaries: Optional[List[Any]] = None,
+        sentence_boundaries: Optional[List[Any]] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
 
-        Delegates to KeywordMatcher (P1.3 - extracted to separate module, P1 enhanced).
+        Delegates to KeywordMatcher (P1.3 - extracted to separate module, P1 enhanced, P1.5 sentence-aware).
 
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
             boundaries: Optional list of TextBoundary objects for boundary-aware matching (P1 enhancement)
+            sentence_boundaries: Optional list of TextBoundary objects for sentence-aware matching (P1.5 enhancement)
 
         Returns:
             List of KeywordMatch objects within range (one per metric)
         """
-        return self._keyword_matcher.find_keywords_near_number(number, all_keywords, boundaries)
+        return self._keyword_matcher.find_keywords_near_number(
+            number, all_keywords, boundaries, sentence_boundaries
+        )
 
     def _calculate_distance(self, number: NumberMatch, keyword: KeywordMatch) -> int:
         """
