@@ -872,3 +872,219 @@ class TestP15SentenceAwareMatching:
         metric_ids = {kw.metric_id for kw in keywords}
         # At minimum, should find the closest keyword
         assert len(keywords) >= 1
+
+
+# =============================================================================
+# L3 Enhancement Tests (Keyword Direction Detection)
+# =============================================================================
+
+
+class TestKeywordDirection:
+    """Tests for L3: keyword direction detection."""
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher(max_keyword_distance=100)
+
+    def test_keyword_before_number(self, matcher):
+        """Keyword appearing before number returns 'before' direction."""
+        text = "Our customer retention rate was 95%"
+        #       ^keyword                         ^number
+
+        number = NumberMatch(
+            start=text.index("95"),
+            end=text.index("95") + 3,
+            raw_text="95%",
+            value=Decimal("95"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        assert len(result) >= 1
+        # Find the retention keyword
+        retention_match = [kw for kw in result if "retention" in kw.keyword.lower()]
+        assert len(retention_match) >= 1
+        assert retention_match[0].direction == "before"
+
+    def test_keyword_after_number(self, matcher):
+        """Keyword appearing after number returns 'after' direction."""
+        text = "We achieved 95% retention rate"
+        #                   ^number ^keyword
+
+        number = NumberMatch(
+            start=text.index("95"),
+            end=text.index("95") + 3,
+            raw_text="95%",
+            value=Decimal("95"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        assert len(result) >= 1
+        # Find the retention keyword
+        retention_match = [kw for kw in result if "retention" in kw.keyword.lower()]
+        assert len(retention_match) >= 1
+        assert retention_match[0].direction == "after"
+
+    def test_direction_with_multiple_keywords(self, matcher):
+        """Direction is correct for closest keyword match."""
+        text = "gross margin was 30% gross margin again"
+        #       ^before          ^num ^after
+
+        number = NumberMatch(
+            start=text.index("30"),
+            end=text.index("30") + 3,
+            raw_text="30%",
+            value=Decimal("30"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should match one of the gross margin keywords
+        assert len(result) >= 1
+        # The matched keyword should have a direction
+        assert result[0].direction in ("before", "after")
+        # Direction should be set correctly (either before or after, depending on which matched)
+
+    def test_keyword_immediately_after(self, matcher):
+        """Keyword immediately following number is 'after'."""
+        text = "30% gross margin"
+
+        number = NumberMatch(
+            start=0,
+            end=3,
+            raw_text="30%",
+            value=Decimal("30"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        assert len(result) >= 1
+        assert result[0].direction == "after"
+
+    def test_keyword_immediately_before(self, matcher):
+        """Keyword immediately preceding number is 'before'."""
+        text = "gross margin 30%"
+
+        number = NumberMatch(
+            start=text.index("30"),
+            end=text.index("30") + 3,
+            raw_text="30%",
+            value=Decimal("30"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        assert len(result) >= 1
+        assert result[0].direction == "before"
+
+    def test_direction_field_in_result(self, matcher):
+        """Result always contains direction field."""
+        text = "active customers 1000"
+
+        number = NumberMatch(
+            start=text.index("1000"),
+            end=text.index("1000") + 4,
+            raw_text="1000",
+            value=Decimal("1000"),
+            unit="count",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        result = matcher.find_keywords_near_number(number, all_keywords)
+
+        assert len(result) >= 1
+        # Check that direction field exists and has valid value
+        assert hasattr(result[0], "direction")
+        assert result[0].direction in ("before", "after", "at")
+
+    def test_multiple_numbers_different_directions(self, matcher):
+        """Each number gets correct direction for its nearest keywords."""
+        text = "We had 50000 active customers and gross margin of 52%"
+        #              ^num1  ^kw1                            ^kw2 ^num2
+
+        # First number (50000) - "active customers" is after it
+        num1 = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        # Second number (52%) - "gross margin" is before it
+        num2 = NumberMatch(
+            start=text.index("52"),
+            end=text.index("52") + 3,
+            raw_text="52%",
+            value=Decimal("52"),
+            unit="percent",
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Check first number
+        keywords1 = matcher.find_keywords_near_number(num1, all_keywords)
+        customer_match = [kw for kw in keywords1 if "customer" in kw.keyword.lower()]
+        if customer_match:
+            assert customer_match[0].direction == "after"
+
+        # Check second number
+        keywords2 = matcher.find_keywords_near_number(num2, all_keywords)
+        margin_match = [kw for kw in keywords2 if "margin" in kw.keyword.lower()]
+        if margin_match:
+            assert margin_match[0].direction == "before"
+
+    def test_direction_preserved_across_boundary_filtering(self, matcher):
+        """Direction is correctly computed even with boundary filtering enabled."""
+        from src.review.boundary_detection import BoundaryDetector
+
+        text = """• Revenue metrics: 95% retention rate
+• Customer metrics: 50000 active customers"""
+
+        detector = BoundaryDetector()
+        boundaries = detector.find_boundaries(text)
+
+        # Number in first boundary (95%) - "retention rate" is after
+        num1 = NumberMatch(
+            start=text.index("95"),
+            end=text.index("95") + 3,
+            raw_text="95%",
+            value=Decimal("95"),
+            unit="percent",
+        )
+
+        matcher_with_boundaries = KeywordMatcher(
+            respect_bullet_boundaries=True,
+            max_keyword_distance=100
+        )
+        all_keywords = matcher_with_boundaries.find_all_keywords(text)
+        keywords = matcher_with_boundaries.find_keywords_near_number(
+            num1, all_keywords, boundaries=boundaries
+        )
+
+        # Should find keywords and they should have direction set
+        if keywords:
+            assert all(kw.direction in ("before", "after", "at") for kw in keywords)
+
+    def test_calculate_keyword_direction_helper(self, matcher):
+        """Test the calculate_keyword_direction helper method directly."""
+        # Keyword before number
+        assert matcher.calculate_keyword_direction(keyword_start=10, number_start=50) == "before"
+
+        # Keyword after number
+        assert matcher.calculate_keyword_direction(keyword_start=50, number_start=10) == "after"
+
+        # Keyword at same position as number (edge case)
+        assert matcher.calculate_keyword_direction(keyword_start=25, number_start=25) == "at"

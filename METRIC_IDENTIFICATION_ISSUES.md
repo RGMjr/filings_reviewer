@@ -18,10 +18,10 @@ This document tracks known issues with the metric identification and keyword mat
 | Issue 2: Overly broad keyword patterns | Medium | ✅ Complete | - |
 | Issue 3: No "respectively" pattern recognition | Medium | ❌ Not started | P2 |
 | Issue 4: Page numbers not filtered | Low | ⚠️ Partial | P2 |
-| Issue 5: No post-value keyword preference | Medium | ❌ Not started | P2 |
+| Issue 5: No post-value keyword preference | Medium | ⚠️ Partial (L3✅, L4❌) | P2 |
 | Issue 6: HTML segmenter misclassifies tables | Medium | ✅ Complete | - |
 
-**Completion Progress:** 2 complete, 2 partial, 2 not started (33% complete)
+**Completion Progress:** 2 complete, 3 partial, 1 not started (33% complete)
 
 ### Relationship to REMEDIATION_PLAN.md (Archived)
 
@@ -287,6 +287,7 @@ re.compile(r"\d+\s+(?:table\s+of\s+contents|toc)\b", re.IGNORECASE),
 **Severity**: Medium
 **Filing Example**: Farfetch Ltd (and others)
 **Reported**: 2025-12-13
+**Status**: ⚠️ PARTIALLY COMPLETE (L3 done, L4 pending)
 
 ### Problem Description
 
@@ -339,12 +340,27 @@ The keyword matching algorithm:
 - Increases false positives when pre-value keyword is from unrelated context
 - Reduces confidence in correct associations
 
-### Proposed Enhancement
+### Implementation Status
+
+**✅ L3 COMPLETE (2025-12-15)** - Direction detection implemented:
+- Added `direction` field to `KeywordMatch` dataclass (`keyword_matching.py:140`)
+- Values: "before", "after", "at" (relative to number position)
+- Helper method: `calculate_keyword_direction()` (`keyword_matching.py:459-480`)
+- Integrated in `find_keywords_near_number()` Phase 5 (`keyword_matching.py:383-394`)
+- **9 new tests** in `TestKeywordDirection` class (100% passing)
+- Type safe: passes `mypy --strict`
+- No breaking changes to existing callers
+
+**❌ L4 PENDING** - Direction-based scoring not yet applied:
+- Direction field is computed but not yet used for filtering/scoring
+- Awaiting L4 implementation to apply 0.9x multiplier to post-value keywords
+
+### Proposed Enhancement (L4)
 
 Add directionality weighting to keyword matching:
 1. **Distance score**: Closer keywords preferred (already considered)
-2. **Direction bonus**: Post-value keywords get small boost (e.g., 0.9x effective distance)
-3. **Tiebreaker**: If two keywords at similar distances, prefer post-value
+2. **Direction bonus**: Post-value keywords get small boost (e.g., 0.9x effective distance) **← L4**
+3. **Tiebreaker**: If two keywords at similar distances, prefer post-value **← L4**
 
 **Example scoring**:
 - Pre-value keyword at 30 chars: score = 30

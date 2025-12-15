@@ -137,6 +137,7 @@ class KeywordMatch:
     keyword: str  # The matched text
     metric_id: str  # Associated metric ID
     pattern: str  # The regex pattern that matched
+    direction: Optional[str] = None  # 'before' | 'after' | 'at' (relative to number, L3 enhancement)
 
 
 # =============================================================================
@@ -354,7 +355,7 @@ class KeywordMatcher:
                     f"{', '.join(repr(k) for k in ambiguous_keywords[:5])}"
                 )
 
-        # Phase 5: Filter substring duplicates and deduplicate by metric
+        # Phase 5: Filter substring duplicates, deduplicate by metric, and add direction (L3)
         matches: list[KeywordMatch] = []
         seen_metrics: Set[str] = set()
 
@@ -380,7 +381,20 @@ class KeywordMatcher:
                     break
 
             if not is_substring_duplicate:
-                matches.append(kw)
+                # L3: Compute direction relative to number
+                direction = self.calculate_keyword_direction(kw.start, number.start)
+
+                # Create new KeywordMatch with direction set
+                match_with_direction = KeywordMatch(
+                    start=kw.start,
+                    end=kw.end,
+                    keyword=kw.keyword,
+                    metric_id=kw.metric_id,
+                    pattern=kw.pattern,
+                    direction=direction,
+                )
+
+                matches.append(match_with_direction)
                 seen_metrics.add(kw.metric_id)
 
         return matches
@@ -455,6 +469,28 @@ class KeywordMatcher:
         else:
             # Overlapping
             return 0
+
+    def calculate_keyword_direction(
+        self, keyword_start: int, number_start: int
+    ) -> str:
+        """
+        Calculate whether keyword appears before or after the number.
+
+        Args:
+            keyword_start: Keyword start position
+            number_start: Number start position
+
+        Returns:
+            'before' if keyword appears before number,
+            'after' if keyword appears after number,
+            'at' if they start at the same position (edge case)
+        """
+        if keyword_start < number_start:
+            return "before"
+        elif keyword_start > number_start:
+            return "after"
+        else:
+            return "at"
 
     def _get_boundary_at_position(
         self, pos: int, boundaries: List["TextBoundary"]

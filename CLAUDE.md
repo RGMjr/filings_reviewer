@@ -119,9 +119,10 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 │                            # (90 lines, 100% coverage)
 ├── number_parsing.py        # Extract numbers: $1.2M, 45%, 50,000
 │                            # (55 statements, 91% coverage)
-├── keyword_matching.py      # Find metric keywords near numbers (P1 + P1.5 enhanced)
+├── keyword_matching.py      # Find metric keywords near numbers (P1 + P1.5 + L3 enhanced)
 │                            # Distance-first sorting, boundary + sentence aware matching
-│                            # (100 statements, 91% coverage, 36 tests)
+│                            # Direction detection: "before"/"after"/"at" relative to number (L3)
+│                            # (115 statements, 83% coverage, 45 tests)
 ├── false_positive_filter.py # Filter dates, years, page refs, small values, TOC page numbers
 │                            # Configurable thresholds, returns (bool, reason)
 │                            # TOC proximity detection (300 char window) + dot leader patterns

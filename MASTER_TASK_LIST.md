@@ -43,7 +43,7 @@
 
 - [ ] **L1. Issue 3:** Implement logic to detect "Respectively" patterns (e.g., "A, B and C were X, Y and Z respectively").
 - [x] **L2. Issue 4:** Add regex pattern for "Table of Contents" proximity to `false_positive_filter.py`. → ✅ **COMPLETE (2025-12-15)**
-- [ ] **L3. Issue 5:** Modify `keyword_matching.py` to calculate keyword direction (before/after value).
+- [x] **L3. Issue 5:** Modify `keyword_matching.py` to calculate keyword direction (before/after value). → ✅ **COMPLETE (2025-12-15)**
 - [ ] **L4. Issue 5:** Apply 0.9x distance multiplier to post-value keywords (e.g., "30% *margin*" preferred over "*margin*... 30%").
 - [ ] **L5. Issue 6:** Investigate `html_segmenter.py` to support splitting composite segments (Text + Table) into distinct objects.
 
