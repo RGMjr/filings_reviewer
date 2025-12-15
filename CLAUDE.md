@@ -133,7 +133,7 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 ├── respectively_parser.py   # Detect "respectively" patterns for parallel value-period associations (L1)
 │                            # Handles patterns like "for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively"
 │                            # Returns parallel associations: [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]
-│                            # (115 statements, 92% coverage, 31 tests)
+│                            # (115 statements, 91% coverage, 31 tests)
 └── feature_extractor.py     # Compute ML features for pattern analysis
                              # (630 statements, 100% coverage, 115 tests)
 ```
@@ -177,7 +177,7 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
     - Supports currency values, percentages, and plain decimals
     - Confidence scoring based on pattern clarity
     - Returns parallel associations: [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]
-  - **Tests**: 31 tests (100% passing, 92% coverage)
+  - **Tests**: 31 tests (100% passing, 91% coverage)
   - **Status**: Standalone module complete, integration with candidate_generator.py pending
 - **L2 - Table of Contents Proximity (COMPLETE 2025-12-15)**:
   - Added TOC proximity detection to `false_positive_filter.py`
