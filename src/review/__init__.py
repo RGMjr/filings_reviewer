@@ -38,6 +38,7 @@ from src.review.models import (
     ProcessingStats,
     ReviewCandidate,
     ReviewDecision,
+    SegmentDict,
 )
 
 __all__ = [
@@ -47,6 +48,7 @@ __all__ = [
     "ReviewDecision",
     "LearnedPattern",
     "ProcessingStats",
+    "SegmentDict",
     # Exceptions
     "CandidateGenerationError",
     "SegmentProcessingError",

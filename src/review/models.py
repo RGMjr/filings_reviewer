@@ -11,9 +11,96 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NotRequired, Optional, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# TypedDicts for database row structures
+# =============================================================================
+
+
+class SegmentDict(TypedDict):
+    """
+    Type definition for source segment dictionaries returned from database.
+
+    Source segments represent parsed sections of SEC filing documents (paragraphs,
+    tables, headings, etc.) and are the primary input to the candidate generation
+    pipeline.
+
+    This TypedDict documents the expected structure of segment dicts returned by
+    `DatabaseAdapter.get_source_segments_for_filing()` and consumed by
+    `CandidateGenerator.generate_for_filing()`.
+
+    Required Fields:
+        source_segment_id: Primary key identifier for this segment
+        filing_id: Foreign key to the parent filing
+        segment_type: Type of segment ('paragraph', 'table', 'heading', 'list_item')
+        raw_text: Plain text content of the segment (primary data for analysis)
+        sequence_index: Ordinal position within the filing (for ordering)
+        created_at: Timestamp when segment was created
+        updated_at: Timestamp when segment was last modified
+
+    Optional Fields:
+        section_path: Dot-separated path of section headings (e.g., "1.Business.1.1.Overview")
+        section_heading: Immediate parent section heading text
+        html_selector: CSS selector path to locate segment in original HTML
+        char_start_offset: Character offset where segment starts in full document
+        char_end_offset: Character offset where segment ends in full document
+        page_number: PDF page number (if available from filing)
+        raw_html: Original HTML markup for the segment
+        candidate_metric_ids: Array of metric IDs detected by classifier
+        contains_definition_flag: Whether segment contains metric definitions
+        contains_methodology_flag: Whether segment contains methodology descriptions
+        contains_numeric_disclosure_flag: Whether segment contains numeric values
+        classifier_confidence: Confidence score from metric classifier (0.0-1.0)
+
+    Example Usage:
+        >>> from src.infra.db import DatabaseAdapter
+        >>> from src.review import CandidateGenerator
+        >>>
+        >>> db = DatabaseAdapter("postgresql://user:pass@localhost/filings_analysis")
+        >>> segments: List[SegmentDict] = db.get_source_segments_for_filing(filing_id=123)
+        >>>
+        >>> generator = CandidateGenerator()
+        >>> candidates = generator.generate_for_filing(
+        ...     filing_id=123,
+        ...     company_id=456,
+        ...     segments=segments,
+        ... )
+
+    Database Source:
+        Populated by `DatabaseAdapter.get_source_segments_for_filing()` from
+        the `source_segments` table. See sql/01_create_schema.sql for table definition.
+
+    Type Safety:
+        Using this TypedDict enables mypy to catch type errors when accessing
+        segment dict keys, improving code quality and reducing runtime errors.
+    """
+
+    # Required fields (NOT NULL in database)
+    source_segment_id: int
+    filing_id: int
+    segment_type: str
+    raw_text: str
+    sequence_index: int
+    created_at: datetime
+    updated_at: datetime
+
+    # Optional fields (nullable in database or not always present)
+    section_path: NotRequired[Optional[str]]
+    section_heading: NotRequired[Optional[str]]
+    html_selector: NotRequired[Optional[str]]
+    char_start_offset: NotRequired[Optional[int]]
+    char_end_offset: NotRequired[Optional[int]]
+    page_number: NotRequired[Optional[int]]
+    raw_html: NotRequired[Optional[str]]
+    candidate_metric_ids: NotRequired[Optional[List[str]]]
+    contains_definition_flag: NotRequired[Optional[bool]]
+    contains_methodology_flag: NotRequired[Optional[bool]]
+    contains_numeric_disclosure_flag: NotRequired[Optional[bool]]
+    classifier_confidence: NotRequired[Optional[float]]
 
 
 # =============================================================================

@@ -67,7 +67,7 @@
 **Source:** `docs/GRADE_candidate_generator.md`
 **Objective:** Improve maintainability of the candidate generator.
 
-- [ ] **Q1. Refactor:** Define `SegmentDict` using `TypedDict` in `src/review/models.py`.
+- [x] **Q1. Refactor:** Define `SegmentDict` using `TypedDict` in `src/review/models.py`. → ✅ **COMPLETE (2025-12-15)**
 - [ ] **Q2. Refactor:** Update `candidate_generator.py` signatures to use `SegmentDict` instead of `Dict[str, Any]`.
 - [ ] **Q3. Refactor:** Replace generic `except Exception` blocks in `candidate_generator.py` with specific `SegmentProcessingError` handling.
 - [ ] **Q4. Refactor:** Extract `_deduplicate_candidates` method into new `src/review/deduplicator.py` module.
