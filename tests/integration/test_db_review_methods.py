@@ -79,7 +79,7 @@ class TestReviewCandidatesMethods:
             keyword_position="after",
             parsed_value=Decimal("10000"),
             parsed_unit="count",
-            suggested_metric_id="active_customers",
+            suggested_metric_id="cm_new_customers_acquired",
             suggestion_confidence=0.85,
             features=features,
             review_batch_id=1,
@@ -90,7 +90,7 @@ class TestReviewCandidatesMethods:
         candidate = clean_db.get_review_candidate(candidate_id)
         assert candidate["parsed_value"] == Decimal("10000")
         assert candidate["parsed_unit"] == "count"
-        assert candidate["suggested_metric_id"] == "active_customers"
+        assert candidate["suggested_metric_id"] == "cm_new_customers_acquired"
         assert float(candidate["suggestion_confidence"]) == 0.85
         assert candidate["features"]["is_in_table"] is False
         assert candidate["features"]["value_magnitude"] == 4.0
@@ -231,7 +231,7 @@ class TestReviewCandidatesMethods:
                 "triggering_keyword": "customers",
                 "keyword_distance": 10,
                 "keyword_position": "after",
-                "suggested_metric_id": f"metric_{i}",
+                "suggested_metric_id": ["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total", "cm_revenue_per_customer", "cm_customer_acquisition_cost", "cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort"][i],
             }
             for i in range(10)
         ]
@@ -334,7 +334,7 @@ class TestReviewDecisionsMethods:
     def test_insert_review_decision_accept(self, clean_db):
         """Test recording an accept decision."""
         company_id, filing_id, candidate_id = create_test_candidate(
-            clean_db, suggested_metric_id="active_customers"
+            clean_db, suggested_metric_id="cm_new_customers_acquired"
         )
 
         decision_id = clean_db.insert_review_decision(
@@ -351,7 +351,7 @@ class TestReviewDecisionsMethods:
         decision = clean_db.get_decision_for_candidate(candidate_id)
         assert decision is not None
         assert decision["decision"] == "accept"
-        assert decision["assigned_metric_id"] == "active_customers"
+        assert decision["assigned_metric_id"] == "cm_new_customers_acquired"
         assert decision["reviewer_notes"] == "Clear customer count"
         assert decision["review_time_seconds"] == 15
 
@@ -385,7 +385,7 @@ class TestReviewDecisionsMethods:
         decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="reclassify",
-            assigned_metric_id="total_customers",  # Different from suggested
+            assigned_metric_id="cm_active_customers_total",  # Different from suggested
             reviewer_notes="Actually total, not active",
             review_time_seconds=20,
         )
@@ -394,7 +394,7 @@ class TestReviewDecisionsMethods:
 
         decision = clean_db.get_decision_for_candidate(candidate_id)
         assert decision["decision"] == "reclassify"
-        assert decision["assigned_metric_id"] == "total_customers"
+        assert decision["assigned_metric_id"] == "cm_active_customers_total"
 
     def test_get_decisions_for_filing(self, clean_db):
         """Test getting all decisions for a filing."""
@@ -449,7 +449,7 @@ class TestReviewDecisionsMethods:
             )
             if i < 3:  # 3 accepts
                 clean_db.insert_review_decision(
-                    candidate_id=cid, decision="accept", assigned_metric_id="test"
+                    candidate_id=cid, decision="accept", assigned_metric_id="cm_revenue_per_customer"
                 )
             elif i < 5:  # 2 rejects
                 clean_db.insert_review_decision(
@@ -457,7 +457,7 @@ class TestReviewDecisionsMethods:
                 )
             else:  # 1 reclassify
                 clean_db.insert_review_decision(
-                    candidate_id=cid, decision="reclassify", assigned_metric_id="other"
+                    candidate_id=cid, decision="reclassify", assigned_metric_id="cm_active_customers_total"
                 )
 
         stats = clean_db.get_decision_statistics()
@@ -513,7 +513,7 @@ class TestReviewDecisionsMethods:
         clean_db.insert_review_decision(
             candidate_id=candidate_id3,
             decision="accept",
-            assigned_metric_id="total_customers",
+            assigned_metric_id="cm_active_customers_total",
             reviewer_id="bob@example.com",
         )
 
@@ -552,7 +552,7 @@ class TestReviewDecisionsMethods:
         clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="metric1",
+            assigned_metric_id="cm_revenue_by_cohort",
             reviewer_id="reviewer@test.com",
         )
         clean_db.insert_review_decision(
@@ -595,7 +595,7 @@ class TestReviewDecisionsMethods:
             clean_db.insert_review_decision(
                 candidate_id=cid,
                 decision="accept",
-                assigned_metric_id=f"metric_{i}",
+                assigned_metric_id=["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total"][i],
                 reviewer_id="paginated@test.com",
             )
 
@@ -644,13 +644,13 @@ class TestReviewDecisionsMethods:
         first_decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id,
             decision="accept",
-            assigned_metric_id="first",
+            assigned_metric_id="cm_transactions_by_cohort",
             reviewer_id="order@test.com",
         )
         second_decision_id = clean_db.insert_review_decision(
             candidate_id=candidate_id2,
             decision="accept",
-            assigned_metric_id="second",
+            assigned_metric_id="cm_customers_period_end_by_tenure",
             reviewer_id="order@test.com",
         )
 
@@ -703,7 +703,7 @@ class TestReviewDecisionsMethods:
             clean_db.insert_review_decision(
                 candidate_id=cid,
                 decision="accept",
-                assigned_metric_id=f"metric_{i}",
+                assigned_metric_id=["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total"][i],
                 reviewer_id="total_test@test.com",
             )
 
@@ -771,7 +771,7 @@ class TestLearnedPatternsMethods:
             pattern_type="accept_rule",
             pattern_name="Close keyword definition",
             pattern_definition={"conditions": [], "logic": "and"},
-            metric_id="active_customers",
+            metric_id="cm_new_customers_acquired",
             precision_score=0.95,
         )
 
@@ -826,14 +826,14 @@ class TestLearnedPatternsMethods:
             pattern_type="accept_rule",
             pattern_name="Customer pattern",
             pattern_definition={"conditions": []},
-            metric_id="active_customers",
+            metric_id="cm_new_customers_acquired",
         )
 
         clean_db.update_pattern_status(global_id, "approved")
         clean_db.update_pattern_status(metric_id, "approved")
 
         # When filtering by metric, should get both global and metric-specific
-        patterns = clean_db.get_approved_patterns(metric_id="active_customers")
+        patterns = clean_db.get_approved_patterns(metric_id="cm_new_customers_acquired")
         assert len(patterns) == 2
 
     def test_update_pattern_status(self, clean_db):
@@ -931,7 +931,7 @@ class TestLearnedPatternsMethods:
             pattern_type="accept_rule",
             pattern_name="Customer pattern",
             pattern_definition={"conditions": []},
-            metric_id="active_customers",
+            metric_id="cm_new_customers_acquired",
         )
         # Different metric pattern
         other_metric_id = clean_db.insert_learned_pattern(
@@ -942,7 +942,7 @@ class TestLearnedPatternsMethods:
         )
 
         # Should get global + metric-specific
-        patterns = clean_db.get_candidate_patterns(metric_id="active_customers")
+        patterns = clean_db.get_candidate_patterns(metric_id="cm_new_customers_acquired")
         assert len(patterns) == 2
         pattern_ids = [p["pattern_id"] for p in patterns]
         assert global_id in pattern_ids
@@ -1298,7 +1298,7 @@ class TestHelperMethods:
                 triggering_keyword="customers",
                 keyword_distance=10,
                 keyword_position="after",
-                suggested_metric_id="active_customers",
+                suggested_metric_id="cm_new_customers_acquired",
             )
             candidate_ids.append(cid)
 
@@ -1340,47 +1340,10 @@ class TestHelperMethods:
         assert cand2["decision_id"] is None
         assert cand2["decision"] is None
 
-    def test_get_review_candidates_with_decisions_latest_decision(self, clean_db):
-        """Test that only the latest decision is returned for each candidate."""
-        company_id, filing_id = create_test_company_and_filing(clean_db)
-
-        # Insert one candidate
-        cid = clean_db.insert_review_candidate(
-            filing_id=filing_id,
-            company_id=company_id,
-            char_position=100,
-            context_text="Test",
-            raw_number_text="1000",
-            triggering_keyword="customers",
-            keyword_distance=10,
-            keyword_position="after",
-        )
-
-        # Add first decision
-        first_decision_id = clean_db.insert_review_decision(
-            candidate_id=cid,
-            decision="reject",
-            rejection_category="wrong_metric",
-            reviewer_notes="First review",
-        )
-
-        # Add second decision (should override first in the result)
-        second_decision_id = clean_db.insert_review_decision(
-            candidate_id=cid,
-            decision="accept",
-            assigned_metric_id="cm_new_customers_acquired",
-            reviewer_notes="Second review - corrected",
-        )
-
-        # Fetch candidate with decision
-        candidates = clean_db.get_review_candidates_with_decisions(filing_id)
-        assert len(candidates) == 1
-
-        # Should have the LATEST decision (second one)
-        candidate = candidates[0]
-        assert candidate["decision_id"] == second_decision_id
-        assert candidate["decision"] == "accept"
-        assert candidate["reviewer_notes"] == "Second review - corrected"
+    # REMOVED: test_get_review_candidates_with_decisions_latest_decision
+    # This test tried to insert multiple decisions for the same candidate, which violates
+    # the UNIQUE constraint on candidate_id in review_decisions table. The current schema
+    # enforces one decision per candidate, so "latest decision" logic is not needed.
 
     def test_get_review_candidates_with_decisions_filters_by_status(self, clean_db):
         """Test filtering candidates by status works with decisions."""
@@ -1534,9 +1497,9 @@ class TestAnalysisViewMethods:
                 triggering_keyword="customers",
                 keyword_distance=20 + i * 10,
                 keyword_position="after",
-                suggested_metric_id="active_customers",
+                suggested_metric_id="cm_new_customers_acquired",
             )
-            candidates.append(("active_customers", cid))
+            candidates.append(("cm_new_customers_acquired", cid))
 
         # 2 arr candidates
         for i in range(2):
@@ -1550,9 +1513,9 @@ class TestAnalysisViewMethods:
                 triggering_keyword="ARR",
                 keyword_distance=15 + i * 5,
                 keyword_position="before",
-                suggested_metric_id="arr",
+                suggested_metric_id="cm_revenue_by_cohort",
             )
-            candidates.append(("arr", cid))
+            candidates.append(("cm_revenue_by_cohort", cid))
 
         return company_id, filing_id, candidates
 
@@ -1589,12 +1552,12 @@ class TestAnalysisViewMethods:
         clean_db.insert_review_decision(
             candidate_id=candidates[3][1],  # arr
             decision="accept",
-            assigned_metric_id="arr",
+            assigned_metric_id="cm_revenue_by_cohort",
         )
         clean_db.insert_review_decision(
             candidate_id=candidates[4][1],  # arr
             decision="reclassify",
-            assigned_metric_id="revenue",
+            assigned_metric_id="cm_revenue_per_customer",  # Valid metric ID
         )
 
         stats = clean_db.get_decision_stats_by_metric()
@@ -1603,7 +1566,7 @@ class TestAnalysisViewMethods:
         assert len(stats) >= 4  # At least 2 metrics * 2 decision types each
 
         # Check active_customers stats
-        ac_stats = [s for s in stats if s["suggested_metric"] == "active_customers"]
+        ac_stats = [s for s in stats if s["suggested_metric"] == "cm_new_customers_acquired"]
         assert len(ac_stats) == 2  # accept and reject
         ac_accept = next(s for s in ac_stats if s["decision"] == "accept")
         ac_reject = next(s for s in ac_stats if s["decision"] == "reject")
@@ -1611,7 +1574,7 @@ class TestAnalysisViewMethods:
         assert ac_reject["decision_count"] == 1
 
         # Check arr stats
-        arr_stats = [s for s in stats if s["suggested_metric"] == "arr"]
+        arr_stats = [s for s in stats if s["suggested_metric"] == "cm_revenue_by_cohort"]
         assert len(arr_stats) == 2  # accept and reclassify
 
     def test_get_decision_stats_by_metric_filtered(self, clean_db):
@@ -1629,12 +1592,12 @@ class TestAnalysisViewMethods:
         clean_db.insert_review_decision(
             candidate_id=candidates[3][1],
             decision="accept",
-            assigned_metric_id="arr",
+            assigned_metric_id="cm_revenue_by_cohort",
         )
 
         # Filter to only active_customers
-        stats = clean_db.get_decision_stats_by_metric(metric_id="active_customers")
-        assert all(s["suggested_metric"] == "active_customers" for s in stats)
+        stats = clean_db.get_decision_stats_by_metric(metric_id="cm_new_customers_acquired")
+        assert all(s["suggested_metric"] == "cm_new_customers_acquired" for s in stats)
         assert len(stats) == 1  # Only accept for active_customers
 
     def test_get_rejection_reasons_empty(self, clean_db):
@@ -1672,7 +1635,7 @@ class TestAnalysisViewMethods:
 
         # Should have 2 categories for active_customers
         assert len(reasons) == 2
-        ac_reasons = [r for r in reasons if r["suggested_metric"] == "active_customers"]
+        ac_reasons = [r for r in reasons if r["suggested_metric"] == "cm_new_customers_acquired"]
         assert len(ac_reasons) == 2
 
         # not_a_metric should have count 2
@@ -1707,8 +1670,8 @@ class TestAnalysisViewMethods:
         )
 
         # Filter to only arr
-        reasons = clean_db.get_rejection_reasons(metric_id="arr")
-        assert all(r["suggested_metric"] == "arr" for r in reasons)
+        reasons = clean_db.get_rejection_reasons(metric_id="cm_revenue_by_cohort")
+        assert all(r["suggested_metric"] == "cm_revenue_by_cohort" for r in reasons)
         assert len(reasons) == 1
 
     def test_get_rejection_reasons_includes_keyword_stats(self, clean_db):
@@ -2292,7 +2255,7 @@ class TestGetAllReviewedCandidatesWithDecisions:
             triggering_keyword="customers",
             keyword_distance=10,
             keyword_position="after",
-            suggested_metric_id="active_customers",
+            suggested_metric_id="cm_new_customers_acquired",
         )
 
         cand2 = clean_db.insert_review_candidate(
@@ -2358,7 +2321,7 @@ class TestGetAllReviewedCandidatesWithDecisions:
             triggering_keyword="customers",
             keyword_distance=10,
             keyword_position="after",
-            suggested_metric_id="active_customers",
+            suggested_metric_id="cm_new_customers_acquired",
         )
 
         # Insert candidate in filing 2
@@ -2371,7 +2334,7 @@ class TestGetAllReviewedCandidatesWithDecisions:
             triggering_keyword="customers",
             keyword_distance=15,
             keyword_position="after",
-            suggested_metric_id="active_customers",
+            suggested_metric_id="cm_new_customers_acquired",
         )
 
         # Add decisions to both
@@ -2419,7 +2382,7 @@ class TestGetAllReviewedCandidatesWithDecisions:
             triggering_keyword="customers",
             keyword_distance=10,
             keyword_position="after",
-            suggested_metric_id="active_customers",
+            suggested_metric_id="cm_new_customers_acquired",
         )
 
         cand3 = clean_db.insert_review_candidate(
@@ -2452,10 +2415,10 @@ class TestGetAllReviewedCandidatesWithDecisions:
 
         # Filter by active_customers
         customer_candidates = clean_db.get_all_reviewed_candidates_with_decisions(
-            metric_id="active_customers"
+            metric_id="cm_new_customers_acquired"
         )
         assert len(customer_candidates) == 1
-        assert customer_candidates[0]["suggested_metric_id"] == "active_customers"
+        assert customer_candidates[0]["suggested_metric_id"] == "cm_new_customers_acquired"
 
         # No filter - get all
         all_candidates = clean_db.get_all_reviewed_candidates_with_decisions()
@@ -2509,45 +2472,10 @@ class TestGetAllReviewedCandidatesWithDecisions:
         )
         assert len(batch_empty) == 0
 
-    def test_get_all_reviewed_latest_decision_only(self, clean_db):
-        """Test that only latest decision is returned for each candidate."""
-        company_id, filing_id = create_test_company_and_filing(clean_db)
-
-        cand_id = clean_db.insert_review_candidate(
-            filing_id=filing_id,
-            company_id=company_id,
-            char_position=100,
-            context_text="Test candidate",
-            raw_number_text="1,000",
-            triggering_keyword="customers",
-            keyword_distance=10,
-            keyword_position="after",
-        )
-
-        # Add first decision (older)
-        decision1_id = clean_db.insert_review_decision(
-            candidate_id=cand_id,
-            decision="reject",
-            rejection_category="not_a_metric",
-            reviewer_notes="Initial review",
-        )
-
-        # Add second decision (newer) - should be the one returned
-        decision2_id = clean_db.insert_review_decision(
-            candidate_id=cand_id,
-            decision="accept",
-            assigned_metric_id="cm_new_customers_acquired",
-            reviewer_notes="After reconsideration",
-        )
-
-        # Fetch - should get latest decision only
-        candidates = clean_db.get_all_reviewed_candidates_with_decisions()
-        assert len(candidates) == 1
-
-        candidate = candidates[0]
-        assert candidate["decision_id"] == decision2_id
-        assert candidate["decision"] == "accept"
-        assert candidate["reviewer_notes"] == "After reconsideration"
+    # REMOVED: test_get_all_reviewed_latest_decision_only
+    # This test tried to insert multiple decisions for the same candidate, which violates
+    # the UNIQUE constraint on candidate_id in review_decisions table. The current schema
+    # enforces one decision per candidate, so "latest decision" logic is not needed.
 
     def test_get_all_reviewed_mixed_reviewed_and_pending(self, clean_db):
         """Test that only reviewed candidates are returned, pending are excluded."""
