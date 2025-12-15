@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from src.review.candidate_generator import CandidateGenerator
+from src.review.config import CandidateGenerationConfig
 from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.exceptions import (
     CandidateGenerationError,
@@ -3285,3 +3286,126 @@ class TestL3KeywordDirectionIntegration:
             # Verify keyword_position is consistent with text structure
             # (We can't assert specific values without knowing exact positions,
             # but we can verify the field exists and is valid)
+
+
+class TestL1RespectivelyPatternIntegration:
+    """Tests for L1 respectively pattern detection and enrichment."""
+
+    def test_normalize_value_text_basic(self):
+        """Normalize value text removes spaces and lowercases units."""
+        generator = CandidateGenerator()
+
+        assert generator._normalize_value_text("$1M") == "$1m"
+        assert generator._normalize_value_text("$ 1 M") == "$1m"
+        assert generator._normalize_value_text("33.0%") == "33.0%"
+        assert generator._normalize_value_text("1.42") == "1.42"
+        assert generator._normalize_value_text("$2.5 Million") == "$2.5million"
+        assert generator._normalize_value_text("100 Billion") == "100billion"
+
+    def test_enrich_with_respectively_patterns_disabled_by_config(self):
+        """Enrichment skipped when config disables respectively detection."""
+        config = CandidateGenerationConfig(detect_respectively_patterns=False)
+        generator = CandidateGenerator(config=config)
+
+        # Create a mock candidate
+        from src.review.models import ReviewCandidate, CandidateFeatures
+
+        candidate = ReviewCandidate(
+            filing_id=1,
+            company_id=1,
+            source_segment_id=1,
+            char_position=0,
+            raw_number_text="33%",
+            parsed_value=33.0,
+            parsed_unit="%",
+            features=CandidateFeatures(
+                keyword_distance=50,
+                keyword_position="before",
+                is_in_table=False,
+                is_in_risk_factors=False,
+                contains_definition_language=False,
+                has_period_mention=False,
+                number_format="percentage",
+            ),
+        )
+
+        # Text with respectively pattern
+        text = "Margin for 2015 and 2016 was 33% and 35%, respectively."
+
+        # Enrichment should be skipped
+        enriched = generator._enrich_with_respectively_patterns([candidate], text)
+
+        # No enrichment should have occurred
+        assert enriched[0].features.detected_period is None
+        assert enriched[0].features.respectively_confidence is None
+
+    def test_enrich_with_respectively_patterns_no_pattern(self):
+        """Returns candidates unchanged when no respectively pattern found."""
+        config = CandidateGenerationConfig(detect_respectively_patterns=True)
+        generator = CandidateGenerator(config=config)
+
+        from src.review.models import ReviewCandidate, CandidateFeatures
+
+        candidate = ReviewCandidate(
+            filing_id=1,
+            company_id=1,
+            source_segment_id=1,
+            char_position=0,
+            raw_number_text="33%",
+            parsed_value=33.0,
+            parsed_unit="%",
+            features=CandidateFeatures(
+                keyword_distance=50,
+                keyword_position="before",
+                is_in_table=False,
+                is_in_risk_factors=False,
+                contains_definition_language=False,
+                has_period_mention=False,
+                number_format="percentage",
+            ),
+        )
+
+        # Text without respectively pattern
+        text = "Margin was 33% in 2015 and 35% in 2016."
+
+        # No enrichment should occur
+        enriched = generator._enrich_with_respectively_patterns([candidate], text)
+
+        assert enriched[0].features.detected_period is None
+        assert enriched[0].features.respectively_confidence is None
+
+    def test_enrich_with_respectively_patterns_low_confidence(self):
+        """Patterns below confidence threshold are ignored."""
+        config = CandidateGenerationConfig(
+            detect_respectively_patterns=True,
+            respectively_min_confidence=0.9,  # Very high threshold
+        )
+        generator = CandidateGenerator(config=config)
+
+        from src.review.models import ReviewCandidate, CandidateFeatures
+
+        candidate = ReviewCandidate(
+            filing_id=1,
+            company_id=1,
+            source_segment_id=1,
+            char_position=0,
+            raw_number_text="33",
+            parsed_value=33.0,
+            features=CandidateFeatures(
+                keyword_distance=50,
+                keyword_position="before",
+                is_in_table=False,
+                is_in_risk_factors=False,
+                contains_definition_language=False,
+                has_period_mention=False,
+                number_format="percentage",
+            ),
+        )
+
+        # Pattern with likely low confidence (non-consecutive years, inconsistent formats)
+        text = "Values for 2015, 2020 and 2025 were 33, 35 and 43 respectively"
+
+        enriched = generator._enrich_with_respectively_patterns([candidate], text)
+
+        # Low confidence pattern should be ignored
+        assert enriched[0].features.detected_period is None

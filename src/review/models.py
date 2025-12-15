@@ -82,6 +82,10 @@ class CandidateFeatures:
     # Additional computed features
     context_word_count: int = 0
 
+    # L1: Respectively pattern detection (Phase 2)
+    detected_period: Optional[str] = None  # e.g., "2015", "Q1 2016", "FY2017"
+    respectively_confidence: Optional[float] = None  # Pattern confidence 0.0-1.0
+
     def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
@@ -109,6 +113,8 @@ class CandidateFeatures:
             "surrounding_numbers_count": self.surrounding_numbers_count,
             "section_name": self.section_name,
             "context_word_count": self.context_word_count,
+            "detected_period": self.detected_period,
+            "respectively_confidence": self.respectively_confidence,
         }
 
     @classmethod
@@ -128,6 +134,8 @@ class CandidateFeatures:
             surrounding_numbers_count=data.get("surrounding_numbers_count", 0),
             section_name=data.get("section_name"),
             context_word_count=data.get("context_word_count", 0),
+            detected_period=data.get("detected_period"),  # L1: Respectively pattern
+            respectively_confidence=data.get("respectively_confidence"),  # L1
         )
 
 

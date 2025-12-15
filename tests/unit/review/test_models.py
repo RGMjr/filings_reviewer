@@ -148,6 +148,52 @@ class TestCandidateFeatures:
         assert features.keyword_position == "after"
         assert features.number_format == "integer"
 
+    def test_candidate_features_with_detected_period(self):
+        """Features include detected_period from respectively pattern (L1)."""
+        features = CandidateFeatures(
+            keyword_distance=25,
+            keyword_position="after",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=True,
+            number_format="percentage",
+            detected_period="2015",
+            respectively_confidence=0.9,
+        )
+
+        assert features.detected_period == "2015"
+        assert features.respectively_confidence == 0.9
+
+        # Serialization round-trip
+        data = features.to_dict()
+        assert data["detected_period"] == "2015"
+        assert data["respectively_confidence"] == 0.9
+
+        features2 = CandidateFeatures.from_dict(data)
+        assert features2.detected_period == "2015"
+        assert features2.respectively_confidence == 0.9
+
+    def test_candidate_features_backward_compatible(self):
+        """Features without detected_period still work (None defaults) (L1)."""
+        # Old format data without L1 fields
+        data = {
+            "keyword_distance": 50,
+            "keyword_position": "before",
+            "is_in_table": True,
+            "number_format": "currency",
+        }
+
+        features = CandidateFeatures.from_dict(data)
+
+        # L1 fields should default to None
+        assert features.detected_period is None
+        assert features.respectively_confidence is None
+
+        # Other fields should work normally
+        assert features.keyword_distance == 50
+        assert features.is_in_table is True
+
 
 class TestReviewCandidate:
     """Tests for ReviewCandidate dataclass."""

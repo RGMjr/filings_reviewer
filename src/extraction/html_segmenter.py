@@ -192,7 +192,7 @@ class HTMLSegmenter:
         self._heading_cache = self._build_heading_cache(main_content)
 
         # Extract segments
-        segments = []
+        raw_segments = []
         sequence_index = 0
 
         # Extract all segments
@@ -201,18 +201,40 @@ class HTMLSegmenter:
             if element.name == "p" and element.find_parent("table"):
                 continue
 
+            # Skip elements nested in a div that contains BOTH text and tables (L5 composite splitting)
+            # Those elements will be extracted when the parent div is split
+            if element.name in ["p", "table"]:
+                parent_div = element.find_parent("div")
+                if parent_div:
+                    # Check if the div has both paragraphs and tables (composite segment)
+                    has_table = parent_div.find("table") is not None
+                    has_paragraph = parent_div.find("p") is not None
+                    if has_table and has_paragraph:
+                        # This is a composite segment - skip nested elements
+                        # They'll be handled when the div is split
+                        continue
+
             segment = self._extract_segment(element, filing_id, sequence_index)
             if segment:
-                segments.append(segment)
+                raw_segments.append(segment)
                 sequence_index += 1
 
-                # Update metrics
-                self._metrics.total_segments += 1
-                self._metrics.total_text_length += len(segment.raw_text)
-                seg_type = segment.segment_type
-                self._metrics.segment_counts_by_type[seg_type] = (
-                    self._metrics.segment_counts_by_type.get(seg_type, 0) + 1
-                )
+        # Apply composite segment splitting (L5 enhancement)
+        # This splits segments containing both text and tables into separate segments
+        segments = []
+        for segment in raw_segments:
+            split_segs = self._split_composite_segment(segment)
+            segments.extend(split_segs)
+
+        # Update metrics after splitting
+        self._metrics.total_segments = len(segments)
+        self._metrics.total_text_length = sum(len(s.raw_text) for s in segments)
+        self._metrics.segment_counts_by_type = {}
+        for segment in segments:
+            seg_type = segment.segment_type
+            self._metrics.segment_counts_by_type[seg_type] = (
+                self._metrics.segment_counts_by_type.get(seg_type, 0) + 1
+            )
 
         # Clear cache after processing
         self._heading_cache = None
@@ -355,6 +377,148 @@ class HTMLSegmenter:
         )
 
         return segment
+
+    def _split_composite_segment(self, segment: SourceSegment) -> List[SourceSegment]:
+        """
+        Split a segment containing both text and tables into separate segments.
+
+        This prevents false positives where keywords in text are matched to numbers
+        in tables (or vice versa) during candidate generation.
+
+        Args:
+            segment: Original segment that may contain mixed text and table content
+
+        Returns:
+            List of segments (single segment if no split needed, multiple if split)
+        """
+        # Quick check: does the segment contain table tags?
+        if not segment.raw_html or '<table' not in segment.raw_html.lower():
+            return [segment]
+
+        # Check if segment is already a table - don't split tables themselves
+        if segment.segment_type == 'table':
+            return [segment]
+
+        try:
+            # Parse the HTML to identify table boundaries
+            soup = BeautifulSoup(segment.raw_html, 'html.parser')
+
+            # Find all table elements
+            # First, get all tables
+            all_tables = soup.find_all('table')
+
+            # Filter out tables that are nested within other tables
+            tables = []
+            for table in all_tables:
+                # Check if this table has a table ancestor (other than itself)
+                parent_tables = table.find_parents('table')
+                if not parent_tables:
+                    # Not nested in another table, include it
+                    tables.append(table)
+
+            # If no tables found, return original segment
+            if not tables:
+                return [segment]
+
+            # Build list of content pieces: (is_table, content_html, start_pos)
+            content_pieces = []
+
+            # Get the full HTML string for position tracking
+            full_html = str(soup)
+
+            # Track table positions in the HTML
+            table_positions = []
+            for table in tables:
+                table_html = str(table)
+                # Find start position of this table in the full HTML
+                start_pos = full_html.find(table_html)
+                if start_pos >= 0:
+                    table_positions.append((start_pos, start_pos + len(table_html), table_html))
+
+            # Sort by position
+            table_positions.sort(key=lambda x: x[0])
+
+            # Extract text before first table, between tables, and after last table
+            current_pos = 0
+            for start_pos, end_pos, table_html in table_positions:
+                # Extract text before this table
+                if start_pos > current_pos:
+                    text_before = full_html[current_pos:start_pos]
+                    # Parse it to get clean text
+                    text_soup = BeautifulSoup(text_before, 'html.parser')
+                    text_content = self._normalize_text(text_soup.get_text())
+                    if text_content.strip():  # Only add non-empty text
+                        content_pieces.append(('text', text_before, text_content))
+
+                # Add the table
+                table_soup = BeautifulSoup(table_html, 'html.parser')
+                table_text = self._normalize_text(table_soup.get_text())
+                if table_text.strip():  # Only add non-empty tables
+                    content_pieces.append(('table', table_html, table_text))
+
+                current_pos = end_pos
+
+            # Extract text after last table
+            if current_pos < len(full_html):
+                text_after = full_html[current_pos:]
+                text_soup = BeautifulSoup(text_after, 'html.parser')
+                text_content = self._normalize_text(text_soup.get_text())
+                if text_content.strip():  # Only add non-empty text
+                    content_pieces.append(('text', text_after, text_content))
+
+            # If we only have one piece, return the original segment
+            if len(content_pieces) <= 1:
+                return [segment]
+
+            # Create new segments from the pieces
+            split_segments = []
+            base_sequence = segment.sequence_index
+
+            for i, (piece_type, html_content, text_content) in enumerate(content_pieces):
+                # Determine segment type
+                seg_type = 'table' if piece_type == 'table' else 'paragraph'
+
+                # Check if text meets minimum length for paragraphs
+                if seg_type == 'paragraph' and len(text_content) < self.min_length:
+                    continue
+
+                # Truncate if needed
+                if len(text_content) > self.max_length:
+                    text_content = text_content[:self.max_length]
+                    html_content = html_content[:self.max_length]
+
+                # Create new segment with fractional sequence index
+                new_segment = SourceSegment(
+                    filing_id=segment.filing_id,
+                    segment_type=seg_type,
+                    section_path=segment.section_path,
+                    section_heading=segment.section_heading,
+                    sequence_index=base_sequence + (i * 0.1),  # Use fractional increments
+                    raw_text=text_content,
+                    raw_html=html_content[:self.max_length] if html_content else None,
+                    html_selector=segment.html_selector,
+                    char_start_offset=segment.char_start_offset,
+                    char_end_offset=segment.char_end_offset,
+                    page_number=segment.page_number,
+                    candidate_metric_ids=segment.candidate_metric_ids,
+                    contains_definition_flag=segment.contains_definition_flag,
+                    contains_methodology_flag=segment.contains_methodology_flag,
+                    contains_numeric_disclosure_flag=segment.contains_numeric_disclosure_flag,
+                    classifier_confidence=segment.classifier_confidence,
+                )
+
+                split_segments.append(new_segment)
+
+            # Return split segments if we created any, otherwise original
+            return split_segments if split_segments else [segment]
+
+        except Exception as e:
+            # On any error, log warning and return original segment
+            logger.warning(
+                f"Failed to split composite segment for filing {segment.filing_id}, "
+                f"sequence {segment.sequence_index}: {e}. Returning original segment."
+            )
+            return [segment]
 
     def _get_segment_type(self, element: Tag) -> str:
         """Determine segment type from HTML element."""

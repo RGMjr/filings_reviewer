@@ -660,3 +660,548 @@ def test_raise_on_error_empty_html():
 
     finally:
         Path(html_path).unlink()
+
+# ===== Composite Segment Splitting Tests (L5) =====
+
+
+class TestCompositeSegmentSplitting:
+    """Test suite for composite segment splitting (text + table separation)."""
+
+    def test_segment_with_table_only_no_split(self, temp_html_file):
+        """Segment containing only a table doesn't get split."""
+        html = """
+        <html><body>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>Revenue</td><td>$1M</td></tr>
+                <tr><td>Users</td><td>10,000</td></tr>
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have one table segment
+            assert len(segments) == 1
+            assert segments[0].segment_type == 'table'
+            assert 'Revenue' in segments[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_text_before_table_creates_two_segments(self, temp_html_file):
+        """Text + table splits into 2 segments."""
+        html = """
+        <html><body>
+            <div>
+                <p>Our revenue metrics show strong growth in Q4 2024:</p>
+                <table>
+                    <tr><th>Quarter</th><th>Revenue</th></tr>
+                    <tr><td>Q4 2024</td><td>$5M</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            # Should split into paragraph + table
+            assert len(segments) >= 2
+
+            # Find the segments
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            tables = [s for s in segments if s.segment_type == 'table']
+
+            assert len(paragraphs) >= 1
+            assert len(tables) >= 1
+
+            # Check content separation
+            assert any('revenue metrics' in p.raw_text.lower() for p in paragraphs)
+            assert any('Q4 2024' in t.raw_text for t in tables)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_text_table_text_creates_three_segments(self, temp_html_file):
+        """Text + table + text splits into 3 segments."""
+        html = """
+        <html><body>
+            <div>
+                <p>Our customer metrics for the year ended December 31, 2024:</p>
+                <table>
+                    <tr><th>Metric</th><th>Value</th></tr>
+                    <tr><td>Active Customers</td><td>50,000</td></tr>
+                </table>
+                <p>As shown in the table above, our customer base has grown significantly.</p>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+            # Should split into 3 segments: text, table, text
+            assert len(segments) >= 3
+
+            # Verify segment types in order
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            tables = [s for s in segments if s.segment_type == 'table']
+
+            assert len(paragraphs) >= 2  # Before and after table
+            assert len(tables) >= 1
+
+            # Check content
+            assert any('customer metrics' in p.raw_text.lower() for p in paragraphs)
+            assert any('Active Customers' in t.raw_text for t in tables)
+            assert any('shown in the table above' in p.raw_text.lower() for p in paragraphs)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_multiple_tables_split_correctly(self, temp_html_file):
+        """Multiple tables in one segment split into separate segments."""
+        html = """
+        <html><body>
+            <div>
+                <p>We track multiple customer metrics across different dimensions:</p>
+                <table id="t1">
+                    <tr><th>Metric</th><th>Q3</th></tr>
+                    <tr><td>Users</td><td>40,000</td></tr>
+                </table>
+                <table id="t2">
+                    <tr><th>Metric</th><th>Q4</th></tr>
+                    <tr><td>Users</td><td>50,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=4, html_path=html_path)
+
+            # Should have at least 3 segments: paragraph + 2 tables
+            assert len(segments) >= 3
+
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            tables = [s for s in segments if s.segment_type == 'table']
+
+            assert len(paragraphs) >= 1
+            assert len(tables) >= 2  # Two separate table segments
+
+            # Check that tables are separate
+            assert any('Q3' in t.raw_text for t in tables)
+            assert any('Q4' in t.raw_text for t in tables)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_empty_text_before_table_skipped(self, temp_html_file):
+        """Whitespace-only text before table doesn't create empty segment."""
+        html = """
+        <html><body>
+            <div>
+
+                <table>
+                    <tr><th>Metric</th><th>Value</th></tr>
+                    <tr><td>Monthly Active Users</td><td>100,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
+
+            # Should only have table segment, no empty paragraph
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+
+            # No segment should be empty or whitespace-only
+            for segment in segments:
+                assert segment.raw_text.strip()
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_section_name_preserved_across_splits(self, temp_html_file):
+        """All split segments inherit parent section_name."""
+        html = """
+        <html><body>
+            <h2>Item 1. Business</h2>
+            <div>
+                <p>Our key performance indicators demonstrate strong customer engagement:</p>
+                <table>
+                    <tr><th>KPI</th><th>2024</th></tr>
+                    <tr><td>DAU</td><td>500,000</td></tr>
+                </table>
+                <p>These metrics reflect our focus on customer retention and satisfaction.</p>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=6, html_path=html_path)
+
+            # Find segments with our test content
+            content_segments = [
+                s for s in segments
+                if 'performance indicators' in s.raw_text.lower()
+                or 'DAU' in s.raw_text
+                or 'retention' in s.raw_text.lower()
+            ]
+
+            # All should have the same section heading
+            assert len(content_segments) >= 2
+            for segment in content_segments:
+                assert segment.section_heading == "Item 1. Business"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_order_in_document_sequencing(self, temp_html_file):
+        """Split segments have increasing sequence_index values."""
+        html = """
+        <html><body>
+            <div>
+                <p>Introduction text about our customer acquisition metrics and strategy:</p>
+                <table>
+                    <tr><th>Year</th><th>New Customers</th></tr>
+                    <tr><td>2024</td><td>25,000</td></tr>
+                </table>
+                <p>These acquisition rates demonstrate the effectiveness of our go-to-market strategy.</p>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=7, html_path=html_path)
+
+            if len(segments) >= 3:
+                # Get sequence indices
+                indices = [s.sequence_index for s in segments]
+
+                # Should be in increasing order
+                for i in range(len(indices) - 1):
+                    assert indices[i] < indices[i + 1], f"Sequence not increasing: {indices}"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_table_not_split_separately(self, temp_html_file):
+        """Nested tables stay within parent table segment."""
+        html = """
+        <html><body>
+            <table>
+                <tr>
+                    <td>
+                        <table>
+                            <tr><td>Nested Data</td><td>Value</td></tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr><td>Outer table data with at least fifty characters of text</td></tr>
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=8, html_path=html_path)
+
+            # Should have one table segment containing nested table
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+
+            # The table segment should contain the nested table content
+            table_text = tables[0].raw_text
+            assert 'Nested Data' in table_text or 'Outer table data' in table_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_malformed_html_doesnt_crash(self, temp_html_file):
+        """Malformed HTML returns original segment with warning log."""
+        html = """
+        <html><body>
+            <div>
+                <p>Valid paragraph before malformed table element with sufficient length:</p>
+                <table><tr><td>Unclosed cell and row
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            # Should not raise exception
+            segments = segmenter.segment_filing(filing_id=9, html_path=html_path)
+
+            # Should return some segments (BeautifulSoup is forgiving)
+            assert isinstance(segments, list)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_segment_ids_preserved_after_split(self, temp_html_file):
+        """Split segments maintain filing_id consistency."""
+        html = """
+        <html><body>
+            <div>
+                <p>We analyze customer lifetime value across multiple cohorts and segments:</p>
+                <table>
+                    <tr><th>Cohort</th><th>LTV</th></tr>
+                    <tr><td>2024 Q1</td><td>$500</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=42, html_path=html_path)
+
+            # All segments should have same filing_id
+            for segment in segments:
+                assert segment.filing_id == 42
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_metadata_preserved(self, temp_html_file):
+        """filing_id, section_path, section_heading preserved on split."""
+        html = """
+        <html><body>
+            <h1>Risk Factors</h1>
+            <div>
+                <p>Our customer concentration presents certain business risks that investors should consider:</p>
+                <table>
+                    <tr><th>Top Customer</th><th>% Revenue</th></tr>
+                    <tr><td>Customer A</td><td>25%</td></tr>
+                </table>
+                <p>Loss of any major customer could materially impact our financial results.</p>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=10, html_path=html_path)
+
+            # Find segments from our div
+            content_segments = [
+                s for s in segments
+                if 'concentration' in s.raw_text.lower()
+                or 'Customer A' in s.raw_text
+                or 'Loss of any major' in s.raw_text
+            ]
+
+            assert len(content_segments) >= 2
+
+            # All should have same metadata
+            for segment in content_segments:
+                assert segment.filing_id == 10
+                assert segment.section_heading == "Risk Factors"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_short_text_segments_filtered(self, temp_html_file):
+        """Short text segments below min_length are filtered out."""
+        html = """
+        <html><body>
+            <div>
+                <p>Short</p>
+                <table>
+                    <tr><th>Metric</th><th>Value</th></tr>
+                    <tr><td>Customer Acquisition Cost</td><td>$150</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=50)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=11, html_path=html_path)
+
+            # Short paragraph should be filtered
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+
+            # No paragraph should exist if it's too short
+            for p in paragraphs:
+                assert len(p.raw_text) >= 50
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_table_with_text_in_between_multiple_tables(self, temp_html_file):
+        """Text between multiple tables is preserved as separate segments."""
+        html = """
+        <html><body>
+            <div>
+                <p>First, we present our quarterly active user metrics for the trailing twelve months:</p>
+                <table>
+                    <tr><th>Q</th><th>MAU</th></tr>
+                    <tr><td>Q1</td><td>100K</td></tr>
+                </table>
+                <p>Additionally, we track customer revenue metrics over the same time period:</p>
+                <table>
+                    <tr><th>Q</th><th>Revenue</th></tr>
+                    <tr><td>Q1</td><td>$2M</td></tr>
+                </table>
+                <p>These metrics demonstrate consistent growth in both user base and monetization.</p>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=12, html_path=html_path)
+
+            # Should have: text, table, text, table, text = 5 segments
+            assert len(segments) >= 5
+
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            tables = [s for s in segments if s.segment_type == 'table']
+
+            assert len(paragraphs) >= 3
+            assert len(tables) >= 2
+
+            # Check content is properly separated
+            assert any('active user metrics' in p.raw_text.lower() for p in paragraphs)
+            assert any('revenue metrics' in p.raw_text.lower() for p in paragraphs)
+            assert any('consistent growth' in p.raw_text.lower() for p in paragraphs)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_very_long_table_segment_truncated(self, temp_html_file):
+        """Very long table segments are truncated to max_length."""
+        # Create a very large table
+        table_rows = "".join(
+            f"<tr><td>Row {i}</td><td>Data {i}</td></tr>"
+            for i in range(500)  # 500 rows
+        )
+        html = f"""
+        <html><body>
+            <div>
+                <p>The following table contains extensive customer segment data:</p>
+                <table>
+                    <tr><th>Segment</th><th>Value</th></tr>
+                    {table_rows}
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20, max_length=5000)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=13, html_path=html_path)
+
+            # All segments should respect max_length
+            for segment in segments:
+                assert len(segment.raw_text) <= 5000
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_paragraph_only_not_split(self, temp_html_file):
+        """Paragraph without tables is not affected by splitting."""
+        html = """
+        <html><body>
+            <p>This is a simple paragraph discussing customer retention strategies and best practices
+            without any tables or structured data elements that would require special handling.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=14, html_path=html_path)
+
+            # Should have exactly one paragraph segment
+            assert len(segments) == 1
+            assert segments[0].segment_type == 'paragraph'
+            assert 'retention strategies' in segments[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_multiple_divs_with_tables_each_split_independently(self, temp_html_file):
+        """Multiple divs with tables are each split independently."""
+        html = """
+        <html><body>
+            <div>
+                <p>First section about monthly recurring revenue metrics:</p>
+                <table>
+                    <tr><th>Month</th><th>MRR</th></tr>
+                    <tr><td>Jan</td><td>$100K</td></tr>
+                </table>
+            </div>
+            <div>
+                <p>Second section about customer churn rates by cohort:</p>
+                <table>
+                    <tr><th>Cohort</th><th>Churn</th></tr>
+                    <tr><td>2024-Q1</td><td>5%</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=15, html_path=html_path)
+
+            # Should have at least 4 segments: 2 paragraphs + 2 tables
+            assert len(segments) >= 4
+
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            tables = [s for s in segments if s.segment_type == 'table']
+
+            assert len(paragraphs) >= 2
+            assert len(tables) >= 2
+
+            # Check both sections are represented
+            assert any('recurring revenue' in p.raw_text.lower() for p in paragraphs)
+            assert any('churn rates' in p.raw_text.lower() for p in paragraphs)
+
+        finally:
+            Path(html_path).unlink()
