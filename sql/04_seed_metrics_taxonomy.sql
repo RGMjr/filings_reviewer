@@ -256,6 +256,42 @@ VALUES (
     1
 );
 
+-- Bookings
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_bookings',
+    'Bookings',
+    'extended',
+    'Total value of customer contracts signed in a period, representing committed future revenue.',
+    'revenue_predictability',
+    'active',
+    1
+);
+
+-- Billings
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_billings',
+    'Billings',
+    'extended',
+    'Total amounts invoiced to customers in a period, typically revenue plus change in deferred revenue.',
+    'revenue_predictability',
+    'active',
+    1
+);
+
+-- Deferred Revenue
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_deferred_revenue',
+    'Deferred Revenue',
+    'extended',
+    'Payments received from customers for services not yet delivered, representing future revenue obligation.',
+    'revenue_predictability',
+    'active',
+    1
+);
+
 -- ============================================================================
 -- FUTURE METRICS (Phase 2+)
 -- ============================================================================
