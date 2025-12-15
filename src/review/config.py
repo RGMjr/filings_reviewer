@@ -252,6 +252,26 @@ class CandidateGenerationConfig:
     """Enable sentence detection for table segments. Default False (high FN risk)."""
 
     # =========================================================================
+    # L1 Respectively Pattern Detection Settings
+    # =========================================================================
+
+    detect_respectively_patterns: bool = False
+    """Enable detection of 'respectively' patterns for period association. L1 enhancement.
+
+    Off by default for gradual rollout. When enabled, patterns like:
+    "Revenue for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively"
+    will enrich candidates with detected_period field."""
+
+    respectively_min_confidence: float = 0.6
+    """Minimum confidence threshold for respectively pattern enrichment. L1 enhancement.
+
+    Range: 0.5-1.0
+    - 0.9-1.0: Very high - Perfect pattern structure
+    - 0.8-0.9: High - Strong pattern structure
+    - 0.7-0.8: Medium - Adequate pattern structure
+    - 0.5-0.7: Low - Manual review recommended"""
+
+    # =========================================================================
     # Performance Tuning Settings
     # =========================================================================
 
@@ -343,6 +363,9 @@ def get_high_precision_config() -> CandidateGenerationConfig:
         detect_sentences=True,
         respect_sentence_boundaries=True,
         sentence_detection_for_tables=False,
+        # L1 enhancements (enabled with high confidence threshold)
+        detect_respectively_patterns=True,
+        respectively_min_confidence=0.7,  # Higher threshold for precision
     )
 
 
@@ -374,6 +397,9 @@ def get_high_recall_config() -> CandidateGenerationConfig:
         detect_sentences=False,
         respect_sentence_boundaries=False,
         sentence_detection_for_tables=False,
+        # L1 enhancements (enabled with low threshold for recall)
+        detect_respectively_patterns=True,
+        respectively_min_confidence=0.5,  # Lower threshold for recall
     )
 
 
@@ -405,4 +431,6 @@ def get_fast_config() -> CandidateGenerationConfig:
         detect_sentences=False,
         respect_sentence_boundaries=False,
         sentence_detection_for_tables=False,
+        # L1 enhancements (disabled for speed)
+        detect_respectively_patterns=False,  # Skip pattern detection
     )

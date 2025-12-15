@@ -670,6 +670,12 @@ class CandidateGenerator:
         # Clear cached word positions (P1.2 optimization cleanup)
         self._current_segment_words = None
 
+        # L1: Enrich with respectively patterns (before learned rules filtering)
+        candidates = self._enrich_with_respectively_patterns(
+            candidates=candidates,
+            segment_text=text,
+        )
+
         # E2: Apply learned pattern filtering if enabled
         if self.apply_learned_rules and db is not None:
             applicator = self._get_rule_applicator(db)
@@ -843,6 +849,104 @@ class CandidateGenerator:
             section_path=segment.get("section_path"),
             surrounding_numbers_count=max(0, len(all_numbers) - 1),
         )
+
+    def _enrich_with_respectively_patterns(
+        self,
+        candidates: List[ReviewCandidate],
+        segment_text: str,
+    ) -> List[ReviewCandidate]:
+        """
+        Enrich candidates with period associations from respectively patterns (L1).
+
+        Detects patterns like:
+            "Revenue for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively."
+
+        And enriches matching candidates with detected_period="2015" etc. in features.
+
+        Args:
+            candidates: Candidates generated from segment
+            segment_text: Full segment text to search for patterns
+
+        Returns:
+            Enriched candidates with detected_period in features
+        """
+        # Skip if disabled
+        if not self.config.detect_respectively_patterns:
+            return candidates
+
+        # Detect pattern once per segment
+        from src.review.respectively_parser import detect_respectively_pattern
+
+        pattern = detect_respectively_pattern(segment_text)
+
+        # No pattern found or low confidence
+        if not pattern:
+            return candidates
+
+        if pattern.confidence < self.config.respectively_min_confidence:
+            logger.debug(
+                f"Respectively pattern confidence {pattern.confidence:.2f} below "
+                f"threshold {self.config.respectively_min_confidence}"
+            )
+            return candidates
+
+        # Build lookup: normalized value -> period
+        value_to_period = {}
+        for value_text, period_text in pattern.associations:
+            normalized = self._normalize_value_text(value_text)
+            value_to_period[normalized] = period_text
+
+        # Enrich candidates
+        enriched_count = 0
+        for candidate in candidates:
+            # Try to match candidate value to pattern value
+            normalized_candidate = self._normalize_value_text(
+                candidate.raw_number_text or ""
+            )
+
+            if normalized_candidate in value_to_period:
+                period = value_to_period[normalized_candidate]
+
+                # Update features
+                if candidate.features:
+                    candidate.features.detected_period = period
+                    candidate.features.respectively_confidence = pattern.confidence
+                    enriched_count += 1
+
+        if enriched_count > 0:
+            logger.info(
+                f"Enriched {enriched_count}/{len(candidates)} candidates with "
+                f"respectively pattern (confidence={pattern.confidence:.2f})"
+            )
+
+        return candidates
+
+    def _normalize_value_text(self, value_text: str) -> str:
+        """
+        Normalize value text for matching (remove spaces, lowercase units).
+
+        Used to match candidate raw_number_text with respectively pattern values.
+
+        Examples:
+            "$1M" -> "$1m"
+            "$ 1 M" -> "$1m"
+            "33.0%" -> "33.0%"
+            "1.42" -> "1.42"
+
+        Args:
+            value_text: Raw value text to normalize
+
+        Returns:
+            Normalized text for matching
+        """
+        # Remove spaces
+        normalized = value_text.replace(" ", "")
+
+        # Lowercase magnitude suffixes
+        for suffix in ["M", "B", "K", "Million", "Billion", "Thousand"]:
+            normalized = normalized.replace(suffix, suffix.lower())
+
+        return normalized
 
 
 # =============================================================================

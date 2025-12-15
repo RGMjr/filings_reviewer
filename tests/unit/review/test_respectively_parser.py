@@ -134,6 +134,93 @@ class TestConfidenceScoring:
         # All percentages should contribute to confidence
         assert confidence > 0.5
 
+    def test_farfetch_ltv_cac_confidence(self):
+        """Real example: LTV/CAC ratio should have high confidence."""
+        text = (
+            "Six month LTV/CAC ratio for the years ended December 31, "
+            "2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.72, respectively"
+        )
+        result = detect_respectively_pattern(text)
+
+        assert result is not None
+        # Breakdown: Base 0.5 + consecutive 0.1 + "and" 0.2 + close 0.1 = 0.9
+        assert result.confidence >= 0.85
+
+    def test_farfetch_margin_confidence(self):
+        """Real example: Platform margin should have high confidence."""
+        text = (
+            "Platform Order Contribution Margin for the years ended "
+            "December 31, 2015, 2016 and 2017 was 33.0%, 35.0% and 43.0%, "
+            "respectively."
+        )
+        result = detect_respectively_pattern(text)
+
+        assert result is not None
+        # Breakdown: Base 0.5 + consecutive 0.1 + "and" 0.2 + consistent 0.1 + close 0.1 = 1.0
+        assert result.confidence >= 0.9
+
+    def test_non_consecutive_years_lower_confidence(self):
+        """Non-consecutive years should have lower confidence."""
+        text1 = "Revenue for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively."
+        text2 = "Revenue for 2015, 2018 and 2022 was $1M, $2M and $3M, respectively."
+
+        result1 = detect_respectively_pattern(text1)
+        result2 = detect_respectively_pattern(text2)
+
+        assert result1 is not None
+        assert result2 is not None
+        assert result1.confidence > result2.confidence
+
+    def test_confidence_interpretation_documented(self):
+        """Verify confidence values fall within documented ranges."""
+        # High confidence pattern
+        text = "Margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
+        result = detect_respectively_pattern(text)
+
+        assert result is not None
+        assert 0.8 <= result.confidence <= 1.0  # "High" range
+
+
+class TestSentenceBoundaryRespect:
+    """Tests for sentence boundary detection (P1.2)."""
+
+    def test_cross_sentence_pattern_returns_none(self):
+        """Values and periods in different sentences should not match."""
+        text = (
+            "Revenue grew in 2015, 2016 and 2017 as we expanded. "
+            "Separately, gross margin was 33%, 35% and 43%, respectively."
+        )
+        result = detect_respectively_pattern(text)
+        assert result is None  # Different sentences
+
+    def test_same_sentence_pattern_matches(self):
+        """Values and periods in same sentence should match."""
+        text = (
+            "Gross margin for 2015, 2016 and 2017 was "
+            "33%, 35% and 43%, respectively."
+        )
+        result = detect_respectively_pattern(text)
+        assert result is not None
+        assert len(result.associations) == 3
+
+    def test_sentence_with_abbreviation_not_split(self):
+        """'Inc.' and 'Ltd.' should not split sentences."""
+        text = (
+            "Revenue for Acme Inc. for 2015, 2016 and 2017 was "
+            "$1M, $2M and $3M, respectively."
+        )
+        result = detect_respectively_pattern(text)
+        assert result is not None  # Single sentence despite "Inc."
+
+    def test_sentence_with_decimal_not_split(self):
+        """Decimal numbers (52.3%) should not split sentences."""
+        text = (
+            "Margin improved from 52.3% to 54.1% for 2015, 2016 and 2017 "
+            "and was 33%, 35% and 43%, respectively."
+        )
+        result = detect_respectively_pattern(text)
+        assert result is not None
+
 
 class TestEdgeCases:
     """Edge case tests."""
@@ -184,6 +271,22 @@ class TestEdgeCases:
         assert result is not None
         assert len(result.values) == 3
         assert "1.42" in result.values[0]
+
+    def test_very_long_distance_returns_none(self):
+        """Lists separated by >200 chars should not match (P1.4)."""
+        filler = " ".join(["word"] * 50)  # ~250 characters
+        text = f"For 2015, 2016 and 2017 {filler} was 33%, 35% and 43%, respectively."
+
+        result = detect_respectively_pattern(text)
+        assert result is None  # Too far apart
+
+    def test_distance_just_under_threshold_matches(self):
+        """Lists separated by <200 chars should match (P1.4)."""
+        filler = " ".join(["word"] * 35)  # ~180 characters
+        text = f"For 2015, 2016 and 2017 {filler} was 33%, 35% and 43%, respectively."
+
+        result = detect_respectively_pattern(text)
+        assert result is not None  # Within threshold
 
 
 class TestRealWorldExamples:

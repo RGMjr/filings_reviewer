@@ -44,8 +44,8 @@
 - [x] **L1. Issue 3:** Implement logic to detect "Respectively" patterns (e.g., "A, B and C were X, Y and Z respectively"). → ✅ **COMPLETE (2025-12-15)**
 - [x] **L2. Issue 4:** Add regex pattern for "Table of Contents" proximity to `false_positive_filter.py`. → ✅ **COMPLETE (2025-12-15)**
 - [x] **L3. Issue 5:** Modify `keyword_matching.py` to calculate keyword direction (before/after value). → ✅ **COMPLETE (2025-12-15)**
-- [ ] **L4. Issue 5:** Apply 0.9x distance multiplier to post-value keywords (e.g., "30% *margin*" preferred over "*margin*... 30%").
-- [ ] **L5. Issue 6:** Investigate `html_segmenter.py` to support splitting composite segments (Text + Table) into distinct objects.
+- [x] **L4. Issue 5:** Apply context-dependent distance multipliers to keyword matching (Option C implementation). → ✅ **COMPLETE (2025-12-15)**
+- [x] **L5. Issue 6:** Investigate `html_segmenter.py` to support splitting composite segments (Text + Table) into distinct objects. → ✅ **COMPLETE (2025-12-15)**
 
 ---
 
@@ -53,7 +53,7 @@
 **Source:** `docs/archive/analysis/METRICS_IMPROVEMENT_ANALYSIS.md`
 **Objective:** Capture common aggregate metrics currently missed.
 
-- [ ] **T1. DB:** Update `sql/04_seed_metrics_taxonomy.sql` to include `cm_bookings`, `cm_billings`, `cm_deferred_revenue`.
+- [x] **T1. DB:** Update `sql/04_seed_metrics_taxonomy.sql` to include `cm_bookings`, `cm_billings`, `cm_deferred_revenue`. → ✅ **COMPLETE (2025-12-15)**
 - [ ] **T2. DB:** Update seed file to include `cm_average_order_value`, `cm_repeat_purchase_rate`.
 - [ ] **T3. DB:** Update seed file to include `cm_gmv`, `cm_take_rate` (Marketplace metrics).
 - [ ] **T4. DB:** Update seed file to include `cm_acv`, `cm_tcv` (SaaS metrics).

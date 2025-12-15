@@ -86,6 +86,23 @@ class TestCandidateGenerationConfig:
         }
         assert set(weights.keys()) == expected_keys
 
+    def test_config_respectively_defaults(self):
+        """Default config has respectively detection disabled (L1)."""
+        config = CandidateGenerationConfig()
+
+        assert config.detect_respectively_patterns is False
+        assert config.respectively_min_confidence == 0.6
+
+    def test_config_respectively_can_be_customized(self):
+        """L1 respectively parameters can be customized."""
+        config = CandidateGenerationConfig(
+            detect_respectively_patterns=True,
+            respectively_min_confidence=0.8,
+        )
+
+        assert config.detect_respectively_patterns is True
+        assert config.respectively_min_confidence == 0.8
+
 
 class TestConfigurationPresets:
     """Tests for configuration presets."""
@@ -108,6 +125,10 @@ class TestConfigurationPresets:
         assert config.min_metric_value == 100
         assert config.min_pattern_precision == 0.85
 
+        # L1 enhancements enabled with high threshold
+        assert config.detect_respectively_patterns is True
+        assert config.respectively_min_confidence == 0.7
+
     def test_high_recall_preset_disables_p1_features(self):
         """High recall preset should disable P1 features to maximize recall."""
         config = get_high_recall_config()
@@ -126,6 +147,10 @@ class TestConfigurationPresets:
         assert config.min_metric_value == 1
         assert config.filter_false_positives is False
 
+        # L1 enhancements enabled with low threshold for recall
+        assert config.detect_respectively_patterns is True
+        assert config.respectively_min_confidence == 0.5
+
     def test_fast_preset_minimizes_overhead(self):
         """Fast preset should minimize computational overhead."""
         config = get_fast_config()
@@ -141,6 +166,9 @@ class TestConfigurationPresets:
         # Other fast settings
         assert config.compute_confidence is False  # Skip expensive computation
         assert config.cache_word_positions is True  # Enable caching
+
+        # L1 enhancements disabled for speed
+        assert config.detect_respectively_patterns is False
 
 
 class TestBackwardCompatibility:

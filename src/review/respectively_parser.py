@@ -36,12 +36,49 @@ Supported Pattern Types:
     Type C - Complex periods:
         "For the years ended December 31, 2015, 2016 and 2017 ... 33%, 35%, 43%, respectively."
 
-    Type D - Values first, periods second:
-        "Revenue of $1M, $2M and $3M for 2015, 2016 and 2017, respectively."
+    Note: "Values first, periods second" (Type D) patterns are NOT implemented.
+    These do not appear in real SEC filings surveyed (n=5 Farfetch examples, all Type A/B/C).
+
+Confidence Scores:
+    The confidence score (0.0-1.0) indicates pattern structure quality:
+
+    - 0.9-1.0: Very high - Perfect structure (consecutive years, consistent formats, clear separators)
+    - 0.8-0.9: High - Strong structure (most quality indicators present)
+    - 0.7-0.8: Medium - Adequate structure (basic pattern detected)
+    - 0.5-0.7: Low - Weak structure (manual review recommended)
+
+    Validated against 5 real SEC filing examples (Farfetch Ltd S-1, 2018).
+
+    Factors:
+    - Base score: 0.5
+    - "and" before final items: +0.1 each
+    - Consecutive years (2015→2016→2017): +0.1
+    - Consistent formats (all % or all $): +0.1
+    - Short distance (< 200 chars): +0.1
 
 Integration with CandidateGenerator:
-    This module is currently standalone and will be integrated with
-    candidate_generator.py in a future task to enhance time period detection.
+    This module integrates with candidate_generator.py to enrich candidates
+    with detected period associations. See Phase 2 implementation plan.
+
+    Basic integration pattern:
+
+    >>> from src.review.candidate_generator import CandidateGenerator
+    >>> from src.review.config import CandidateGenerationConfig
+    >>>
+    >>> # Enable respectively pattern detection
+    >>> config = CandidateGenerationConfig(detect_respectively_patterns=True)
+    >>> generator = CandidateGenerator(config=config)
+    >>>
+    >>> # Generate candidates - periods auto-detected from patterns
+    >>> candidates = generator.generate_for_filing(...)
+
+Limitations:
+    - Only detects patterns within same sentence (cross-sentence returns None)
+    - Lists must be separated by < 200 characters
+    - Requires equal-length value and period lists
+    - Only supports years (1990-2029) and quarters (Q1-Q4)
+    - Does not handle hyphen-separated lists (2015-2016-2017)
+    - Does not handle semicolon separators (only commas and "and")
 """
 
 import logging
@@ -49,7 +86,17 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from src.review.boundary_detection import BoundaryDetector
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Configuration Constants
+# =============================================================================
+
+# Maximum characters between period and value lists (P1.4)
+MAX_LIST_DISTANCE = 200
 
 
 # =============================================================================
@@ -160,16 +207,50 @@ def detect_respectively_pattern(text: str) -> Optional[RespectivelyMatch]:
 
     resp_pos = resp_match.start()
 
-    # 3. Extract text before "respectively" (where lists should be)
-    context = text[:resp_pos]
+    # 3. NEW: Detect sentence boundaries to prevent cross-sentence matching
+    detector = BoundaryDetector()
+    sentences = detector.find_sentence_boundaries(text)
 
-    # 4. Find period list (should be earlier in text)
+    # Find sentence containing "respectively"
+    resp_sentence = None
+    for sentence in sentences:
+        if sentence.start <= resp_pos < sentence.end:
+            resp_sentence = sentence
+            break
+
+    if not resp_sentence:
+        logger.debug("Could not find sentence boundary for 'respectively'")
+        return None
+
+    # 4. Extract text from SAME SENTENCE only (not entire text before "respectively")
+    context = text[resp_sentence.start:resp_pos]
+
+    # 5. Find period list (should be earlier in text)
     periods = _extract_period_list(context)
 
-    # 5. Find value list (closest to "respectively")
+    # 6. Find value list (closest to "respectively")
     values = _extract_value_list(context)
 
-    # 6. Validate: equal length lists
+    # 7. NEW: Distance constraint check (P1.4)
+    if values and periods:
+        # Find positions in context
+        last_period = periods[-1]
+        first_value = values[0]
+
+        last_period_pos = context.rfind(last_period)
+        first_value_pos = context.find(first_value)
+
+        if last_period_pos >= 0 and first_value_pos >= 0:
+            distance = first_value_pos - last_period_pos
+
+            if distance > MAX_LIST_DISTANCE:
+                logger.debug(
+                    f"Lists too far apart: {distance} > {MAX_LIST_DISTANCE} chars. "
+                    f"Periods: {periods}, Values: {values}"
+                )
+                return None
+
+    # 8. Validate: equal length lists
     if not values or not periods or len(values) != len(periods):
         logger.debug(
             f"Respectively pattern validation failed: "
@@ -178,10 +259,10 @@ def detect_respectively_pattern(text: str) -> Optional[RespectivelyMatch]:
         )
         return None
 
-    # 7. Create associations (pair values with periods in order)
+    # 9. Create associations (pair values with periods in order)
     associations = list(zip(values, periods))
 
-    # 8. Calculate confidence
+    # 10. Calculate confidence
     confidence = _calculate_confidence(values, periods, context)
 
     return RespectivelyMatch(
@@ -338,12 +419,23 @@ def _calculate_confidence(
     """
     Calculate confidence score for a respectively pattern match.
 
-    Considers multiple factors:
-    - Equal list lengths (required, +0.3 base)
-    - Clear "and" before final items (+0.2)
-    - Consistent value formats (+0.2)
-    - Consecutive years (+0.2)
-    - Short distance between lists (+0.1)
+    Confidence factors:
+    - Base score: 0.5
+    - "and" before final value: +0.1 (FIXED: was documented as +0.2)
+    - "and" before final period: +0.1 (FIXED: was documented as +0.2)
+    - Consistent value formats: +0.1 (all % or all $)
+    - Consecutive years: +0.1 (2015→2016→2017)
+    - Short distance: +0.1 (< 200 chars between lists)
+
+    Maximum: 1.0
+
+    Interpretation (validated against 5 real SEC filing examples):
+    - 0.9-1.0: Very high - Perfect pattern structure
+    - 0.8-0.9: High - Strong pattern structure
+    - 0.7-0.8: Medium - Adequate pattern structure
+    - 0.5-0.7: Low - Manual review recommended
+
+    Based on Farfetch Ltd S-1 filing examples (2018).
 
     Args:
         values: List of value strings
@@ -355,7 +447,7 @@ def _calculate_confidence(
     """
     score = 0.5  # Base score
 
-    # +0.2 if both lists end with "and" pattern
+    # +0.1 each if lists end with "and" pattern (total +0.2 if both)
     # Check if context contains "and [last_value]" and "and [last_period]"
     last_value = values[-1] if values else ""
     last_period = periods[-1] if periods else ""

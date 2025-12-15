@@ -150,10 +150,26 @@ YEAR_MAX = YEAR_MAX
 MIN_METRIC_VALUE = MIN_METRIC_VALUE  # Filter out single-digit numbers by default
 
 # Table of Contents proximity threshold - distance to look for TOC header
+# (L2 enhancement - configurable via CandidateGenerationConfig)
 TOC_PROXIMITY_CHARS = 300  # Characters before number to search for TOC header
 
+# Dot leader window - distance to search for dot leader pattern
+# (L2 enhancement - configurable via CandidateGenerationConfig)
+TOC_DOT_LEADER_WINDOW = 50  # Characters before number to search for dot leaders
+
+# Table of Contents header variations to recognize
+# (L2 enhancement - handles multiple TOC formats in real filings)
+TOC_HEADERS = [
+    "table of contents",
+    "contents",
+    "index",
+    "index to financial statements",
+    "index to consolidated financial statements",
+]
+
 # Dot leader pattern - indicates page number in table of contents
-# Matches patterns like "... 12" or "........ 23" (3+ dots followed by optional whitespace at end)
+# Matches patterns like "... 12" or "........ 23" (3+ dots followed by optional whitespace)
+# Updated to handle whitespace before number more flexibly
 TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
 
 
@@ -162,23 +178,39 @@ TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
 # =============================================================================
 
 
-def is_near_table_of_contents(text: str, number_position: int) -> bool:
+def is_near_table_of_contents(
+    text: str,
+    number_position: int,
+    proximity_chars: int = TOC_PROXIMITY_CHARS
+) -> bool:
     """
     Check if a number appears near a "Table of Contents" header.
 
     Numbers near TOC headers are almost always page numbers, not customer metrics.
     Searches backwards from the number position for TOC indicators.
 
+    Recognizes multiple TOC header variations:
+    - "Table of Contents"
+    - "Contents"
+    - "Index"
+    - "Index to Financial Statements"
+    - "Index to Consolidated Financial Statements"
+
     Args:
         text: The full text containing the number
         number_position: Starting position of the number in the text
+        proximity_chars: Character distance to search backwards (default: TOC_PROXIMITY_CHARS)
 
     Returns:
-        True if "table of contents" found within TOC_PROXIMITY_CHARS before number
+        True if any TOC header found within proximity_chars before number
 
     Examples:
         >>> text = "TABLE OF CONTENTS\\nRisk Factors ... 12"
         >>> is_near_table_of_contents(text, text.find("12"))
+        True
+
+        >>> text = "INDEX\\nBusiness Overview ... 5"
+        >>> is_near_table_of_contents(text, text.find("5"))
         True
 
         >>> text = "We had 12 million customers in the quarter"
@@ -186,14 +218,18 @@ def is_near_table_of_contents(text: str, number_position: int) -> bool:
         False
     """
     # Look backwards from number position
-    search_start = max(0, number_position - TOC_PROXIMITY_CHARS)
-    search_text = text[search_start:number_position]
+    search_start = max(0, number_position - proximity_chars)
+    search_text = text[search_start:number_position].lower()
 
-    # Case-insensitive search for "table of contents"
-    return "table of contents" in search_text.lower()
+    # Check for any TOC header variation (case-insensitive)
+    return any(header in search_text for header in TOC_HEADERS)
 
 
-def is_toc_page_reference(text: str, number_position: int) -> bool:
+def is_toc_page_reference(
+    text: str,
+    number_position: int,
+    window_chars: int = TOC_DOT_LEADER_WINDOW
+) -> bool:
     """
     Check if a number is part of a TOC page reference with dot leaders.
 
@@ -205,6 +241,7 @@ def is_toc_page_reference(text: str, number_position: int) -> bool:
     Args:
         text: The full text containing the number
         number_position: Starting position of the number in the text
+        window_chars: Character distance to search backwards (default: TOC_DOT_LEADER_WINDOW)
 
     Returns:
         True if dot leader pattern found immediately before the number
@@ -219,8 +256,7 @@ def is_toc_page_reference(text: str, number_position: int) -> bool:
         False
     """
     # Look backwards from number position for dot leader pattern
-    # Check up to 50 characters before the number (should be enough for dot leaders)
-    search_start = max(0, number_position - 50)
+    search_start = max(0, number_position - window_chars)
     preceding_text = text[search_start:number_position]
 
     # Check if the preceding text ends with dot leaders
@@ -241,6 +277,8 @@ class FalsePositiveFilter:
     - Year values (1990-2100)
     - Numbers that are part of dates
     - Reference numbers (page, note, section, etc.)
+    - Numbers near Table of Contents sections (L2 enhancement)
+    - TOC page references with dot leaders (L2 enhancement)
     """
 
     def __init__(
@@ -248,6 +286,8 @@ class FalsePositiveFilter:
         filter_enabled: bool = DEFAULT_CONFIG.filter_false_positives,
         min_value: float = DEFAULT_CONFIG.min_metric_value,
         filter_years: bool = DEFAULT_CONFIG.filter_years,
+        toc_proximity_chars: int = DEFAULT_CONFIG.toc_proximity_chars,
+        toc_dot_leader_window: int = DEFAULT_CONFIG.toc_dot_leader_window,
     ):
         """
         Initialize the false positive filter.
@@ -256,10 +296,14 @@ class FalsePositiveFilter:
             filter_enabled: Whether to apply filtering (default from config)
             min_value: Minimum value threshold for count units (default from config)
             filter_years: Whether to filter year-like values (default from config)
+            toc_proximity_chars: TOC header proximity threshold (default from config, L2)
+            toc_dot_leader_window: Dot leader search window (default from config, L2)
         """
         self.filter_enabled = filter_enabled
         self.min_value = min_value
         self.filter_years = filter_years
+        self.toc_proximity_chars = toc_proximity_chars
+        self.toc_dot_leader_window = toc_dot_leader_window
 
     def is_false_positive(
         self, text: str, number: NumberMatch
@@ -306,11 +350,19 @@ class FalsePositiveFilter:
                     return True, "likely_year"
 
         # Check if number appears near "Table of Contents" header
-        if is_near_table_of_contents(text, start):
+        if is_near_table_of_contents(text, start, self.toc_proximity_chars):
+            logger.debug(
+                f"TOC proximity filter: number={number.raw_text} "
+                f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+            )
             return True, "toc_proximity"
 
         # Check if number is part of a TOC page reference with dot leaders
-        if is_toc_page_reference(text, start):
+        if is_toc_page_reference(text, start, self.toc_dot_leader_window):
+            logger.debug(
+                f"TOC dot leader filter: number={number.raw_text} "
+                f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+            )
             return True, "toc_page_reference"
 
         # Check if number is part of a date pattern
