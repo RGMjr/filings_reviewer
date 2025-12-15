@@ -292,6 +292,30 @@ VALUES (
     1
 );
 
+-- Average Order Value
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_average_order_value',
+    'Average Order Value',
+    'extended',
+    'Average monetary value per order or transaction, commonly used by e-commerce and marketplace businesses.',
+    'unit_economics',
+    'active',
+    1
+);
+
+-- Repeat Purchase Rate
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_repeat_purchase_rate',
+    'Repeat Purchase Rate',
+    'extended',
+    'Percentage of customers who make more than one purchase, or the frequency of repeat purchases.',
+    'retention',
+    'active',
+    1
+);
+
 -- ============================================================================
 -- FUTURE METRICS (Phase 2+)
 -- ============================================================================
