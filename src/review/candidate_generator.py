@@ -160,7 +160,12 @@ from src.review.keyword_matching import (
     KeywordMatch,
     KeywordMatcher,
 )
-from src.review.models import CandidateFeatures, ProcessingStats, ReviewCandidate
+from src.review.models import (
+    CandidateFeatures,
+    ProcessingStats,
+    ReviewCandidate,
+    SegmentDict,
+)
 from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
 
 logger = logging.getLogger(__name__)
@@ -375,7 +380,7 @@ class CandidateGenerator:
         self,
         filing_id: int,
         company_id: int,
-        segments: List[Dict[str, Any]],
+        segments: List[SegmentDict],
         return_stats: bool = False,
         db: Optional[Any] = None,
     ) -> List[ReviewCandidate] | Tuple[List[ReviewCandidate], ProcessingStats]:
@@ -498,7 +503,7 @@ class CandidateGenerator:
         self,
         filing_id: int,
         company_id: int,
-        segment: Dict[str, Any],
+        segment: SegmentDict,
         db: Optional[Any] = None,
     ) -> Tuple[List[ReviewCandidate], Dict[str, int]]:
         """
@@ -809,7 +814,7 @@ class CandidateGenerator:
         keyword_distance: int,
         keyword_position: str,
         context_text: str,
-        segment: Dict[str, Any],
+        segment: SegmentDict,
         all_numbers: List[NumberMatch],
     ) -> CandidateFeatures:
         """
