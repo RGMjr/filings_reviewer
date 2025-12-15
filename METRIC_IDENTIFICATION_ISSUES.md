@@ -1,13 +1,36 @@
 # Metric Identification Issues
 
-**Status**: Partially Implemented (Issue 1: 2/4 root causes fixed)
+**Status**: Partially Implemented (3/6 issues complete, 3 require work)
 **Date Created**: 2025-12-13
-**Last Updated**: 2025-12-14
+**Last Updated**: 2025-12-15
 **Priority**: Medium (affects review quality but reviewers can correct)
+**Related Document**: See `docs/archive/planning/REMEDIATION_PLAN.md` for comprehensive system audit (archived, not actively implemented)
 
 ## Overview
 
 This document tracks known issues with the metric identification and keyword matching system. These issues cause the candidate generator to create false positive candidates by associating values with incorrect metrics.
+
+### Status Summary (as of 2025-12-15)
+
+| Issue | Severity | Status | Priority |
+|-------|----------|--------|----------|
+| Issue 1: Proximity matching crosses boundaries | High | ⚠️ Partial (2/4) | P1 |
+| Issue 2: Overly broad keyword patterns | Medium | ✅ Complete | - |
+| Issue 3: No "respectively" pattern recognition | Medium | ❌ Not started | P2 |
+| Issue 4: Page numbers not filtered | Low | ⚠️ Partial | P2 |
+| Issue 5: No post-value keyword preference | Medium | ❌ Not started | P2 |
+| Issue 6: HTML segmenter misclassifies tables | Medium | ✅ Complete | - |
+
+**Completion Progress:** 2 complete, 2 partial, 2 not started (33% complete)
+
+### Relationship to REMEDIATION_PLAN.md (Archived)
+
+This document focuses on **metric identification and keyword matching** issues discovered during usage and actively being tracked. The archived `docs/archive/planning/REMEDIATION_PLAN.md` document addressed **web interface, data layer, and security** issues discovered through code analysis but was not pursued for implementation.
+
+**Historical overlaps (for reference):**
+- REMEDIATION_PLAN H2 (boundary position calculation) related to Issue 1 root cause 1
+- REMEDIATION_PLAN H1 (deduplication algorithm) is separate but affects candidate quality
+- See archive README for context on why REMEDIATION_PLAN was not implemented
 
 ---
 
@@ -89,40 +112,58 @@ Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios
 
 ## Issue 2: Overly Broad Keyword Patterns for "By Cohort" Metrics
 
-**Severity**: Medium
+**Severity**: Medium → **✅ RESOLVED**
 **Filing Example**: Farfetch Ltd
 **Reported**: 2025-12-13
+**Resolved**: 2025-12-15 (verified in code review)
 
-### Problem Description
+### Problem Description (ORIGINAL)
 
 The metric `cm_gross_margin_by_cohort` uses keyword patterns that match ANY occurrence of "gross margin" or "gross profit" without requiring "cohort" context. This causes:
 - Overall gross margin values to be misclassified as "by cohort"
 - No "Gross Margin (Overall)" metric available as alternative
 
-### Keyword Patterns (from `metric_classifier.py:196-203`)
+### Resolution Status: ✅ COMPLETE
 
-```python
-"cm_gross_margin_by_cohort": [
-    r"\bgross\s+margin\b",        # TOO BROAD - matches ANY gross margin
-    r"\bgross\s+profit\b",        # TOO BROAD - matches ANY gross profit
-    r"\bmargin\s+by\s+cohort\b",
-    r"\bcohort\s+margin\b",
-    r"\bgross\s+margin\s+%\b",
-    r"\bgross\s+profit\s+margin\b",
-],
-```
+**Verified fixes (2025-12-15):**
 
-### Root Causes
+1. ✅ **`cm_gross_margin_overall` exists** in both:
+   - Code: `src/extraction/metric_classifier.py:196-203`
+   - Database: `sql/04_seed_metrics_taxonomy.sql:190`
 
-1. **Missing overall variant**: No `cm_gross_margin_overall` metric exists
-2. **Patterns don't check context**: First two patterns don't require "cohort" or "by cohort" nearby
-3. **Database vs code mismatch**: `cm_gross_margin_by_cohort` defined in code but not seeded in database
+2. ✅ **Keyword patterns now specific**:
+   ```python
+   # metric_classifier.py:196-203
+   "cm_gross_margin_overall": [
+       r"\bgross\s+margin(?:\s+(?:was|of|is|at))?\s+\d",
+       r"\boverall\s+gross\s+margin\b",
+       r"\btotal\s+gross\s+margin\b",
+       r"\bgross\s+profit\s+margin\b",
+       r"\bgross\s+margin\s+(?:percentage|rate)\b",
+       r"\b(?<!cohort\s)(?<!by\s)gross\s+margin\b",  # Negative lookbehind
+   ],
+   "cm_gross_margin_by_cohort": [  # Lines 204-208
+       r"\bgross\s+margin\s+by\s+cohort\b",
+       r"\bcohort\s+(?:gross\s+)?margin\b",
+       r"\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b",
+   ],
+   ```
+
+3. ✅ **Both metrics seeded in database** (verified in seed file)
+
+### Root Causes (ALL FIXED)
+
+1. ~~**Missing overall variant**~~ → ✅ `cm_gross_margin_overall` now exists
+2. ~~**Patterns don't check context**~~ → ✅ Patterns now require specific context
+3. ~~**Database vs code mismatch**~~ → ✅ Both metrics seeded in database
 
 ### Impact
 
-- Overall gross margin values incorrectly tagged as "by cohort"
-- Reviewers cannot select correct metric (no overall option)
-- Metric taxonomy incomplete
+- ✅ Overall gross margin values correctly classified
+- ✅ Reviewers can select appropriate metric (overall vs by cohort)
+- ✅ Metric taxonomy complete
+
+### No Further Action Required
 
 ---
 
@@ -151,13 +192,28 @@ Currently creates three candidates but may not correctly associate years with va
 
 ## Issue 4: Page Numbers Not Filtered by False Positive Filter
 
-**Severity**: Medium
+**Severity**: Medium → Low
 **Filing Example**: Farfetch Ltd
 **Reported**: 2025-12-13
+**Status**: ⚠️ PARTIALLY ADDRESSED (2025-12-15)
 
 ### Problem Description
 
 Page numbers appearing before "Table of Contents" links are being flagged as metric candidates. The false positive filter (`src/review/false_positive_filter.py`) is supposed to filter out page references but is not catching this pattern.
+
+### Implementation Status
+
+**✅ PARTIALLY COMPLETE** (2025-12-15)
+
+**What's Implemented:**
+- ✅ Generic page references filtered: `false_positive_filter.py:118` catches "page 123" patterns
+- ✅ Note, section, item, exhibit, table, figure references all filtered
+- ✅ Footnote patterns filtered: `[1]`, `(1)`
+
+**What's Missing:**
+- ❌ **"Table of Contents" proximity pattern** not implemented
+  - Current filter checks for "page X" but not "X Table of Contents"
+  - This specific pattern was the original bug report
 
 ### Specific Example
 
@@ -196,16 +252,33 @@ Page numbers can be identified by:
 
 ### Current False Positive Filter (from `false_positive_filter.py`)
 
-The filter currently checks for:
-- Years (1990-2100)
-- Dates (month/day/year patterns)
-- Small values (below `min_metric_value`, default 10)
-- Page references (may check for "page" keyword)
+**Already Implemented (verified 2025-12-15):**
+- ✅ Years (1990-2100)
+- ✅ Dates (month/day/year patterns)
+- ✅ Small values (below `min_metric_value`, default 10)
+- ✅ Page references: `r"\bpages?\s+\d+"` pattern
+- ✅ Note references: `r"\bnotes?\s+\d+"`
+- ✅ Section, item, exhibit, table, figure references
+- ✅ Version numbers, footnotes, chapter references
 
-Needs enhancement to detect:
-- "Table of Contents" proximity pattern
-- Sequential standalone numbers
-- Common filing footer/header patterns
+**Still Needs Enhancement:**
+- ❌ **"Table of Contents" proximity pattern** (primary gap)
+  - Pattern: `\d+\s+Table of Contents` or `\d+(?:\s+|&nbsp;)?<a[^>]*>Table of Contents`
+  - Should filter numbers immediately before ToC links (within 10 chars)
+- ⚠️ Sequential standalone numbers (optional enhancement, lower priority)
+- ⚠️ Common filing footer/header patterns (optional enhancement, lower priority)
+
+### Recommended Fix
+
+Add to `FALSE_POSITIVE_CONTEXT_PATTERNS` in `false_positive_filter.py`:
+
+```python
+# Table of Contents references: "73 Table of Contents"
+re.compile(r"\d+\s+(?:table\s+of\s+contents|toc)\b", re.IGNORECASE),
+```
+
+**Effort:** 1 hour (add pattern + test)
+**Priority:** P2 (low impact - easy for reviewers to reject)
 
 ---
 
