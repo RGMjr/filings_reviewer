@@ -679,3 +679,136 @@ class TestBookingsMetricPatterns:
         assert "cm_bookings" in result.candidate_metric_ids
         assert "cm_billings" in result.candidate_metric_ids
         assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+
+# ===== T6: E-Commerce Metrics Tests =====
+
+
+class TestECommerceMetricPatterns:
+    """Test identification of e-commerce metrics (T6)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    # --- Average Order Value Tests ---
+
+    def test_aov_acronym(self, classifier, sample_segment):
+        """Test identification via AOV acronym."""
+        sample_segment.raw_text = "Our AOV increased to $75 in Q4 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    def test_aov_full_phrase(self, classifier, sample_segment):
+        """Test identification via 'average order value' phrase."""
+        sample_segment.raw_text = "Average order value grew 15% year-over-year to $80."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    def test_aov_order_size(self, classifier, sample_segment):
+        """Test identification via 'average order size' variant."""
+        sample_segment.raw_text = "The average order size was $65 in the fiscal year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    def test_aov_average_ticket(self, classifier, sample_segment):
+        """Test identification via 'average ticket' retail variant."""
+        sample_segment.raw_text = "Average ticket size increased to $45."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    def test_aov_average_basket(self, classifier, sample_segment):
+        """Test identification via 'average basket' e-commerce variant."""
+        sample_segment.raw_text = "Average basket value was $55 per order."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    def test_aov_transaction_value(self, classifier, sample_segment):
+        """Test identification via 'average transaction value' variant."""
+        sample_segment.raw_text = "Average transaction value reached $90."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+
+    # --- Repeat Purchase Rate Tests ---
+
+    def test_repeat_purchase_rate_explicit(self, classifier, sample_segment):
+        """Test identification of explicit repeat purchase rate mention."""
+        sample_segment.raw_text = "Our repeat purchase rate improved to 45%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_repeat_customers(self, classifier, sample_segment):
+        """Test identification via 'repeat customers' variant."""
+        sample_segment.raw_text = "Repeat customers represented 60% of revenue."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_repeat_buyers(self, classifier, sample_segment):
+        """Test identification via 'repeat buyers' variant."""
+        sample_segment.raw_text = "Repeat buyers grew to 40% of our customer base."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_purchase_frequency(self, classifier, sample_segment):
+        """Test identification via 'purchase frequency' variant."""
+        sample_segment.raw_text = "Purchase frequency increased from 2.1 to 2.5 orders per year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_reorder_rate(self, classifier, sample_segment):
+        """Test identification via 'reorder rate' variant."""
+        sample_segment.raw_text = "Customer reorder rate was 35% in 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_repurchase_rate(self, classifier, sample_segment):
+        """Test identification via 'repurchase rate' variant."""
+        sample_segment.raw_text = "The repurchase rate for existing customers was 50%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    # --- Combined / Edge Case Tests ---
+
+    def test_multiple_ecommerce_metrics(self, classifier, sample_segment):
+        """Test segment with both AOV and repeat purchase metrics."""
+        sample_segment.raw_text = (
+            "Average order value increased to $70 while repeat customers "
+            "accounted for 55% of all orders."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+        assert "cm_repeat_purchase_rate" in result.candidate_metric_ids
+
+    def test_aov_not_avg_generic(self, classifier, sample_segment):
+        """Test that generic 'average' doesn't match AOV."""
+        sample_segment.raw_text = "The average customer age is 35 years."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" not in result.candidate_metric_ids
+
+    def test_repeat_not_repeat_generic(self, classifier, sample_segment):
+        """Test that generic 'repeat' doesn't match repeat purchase rate."""
+        sample_segment.raw_text = "We do not repeat our mistakes in operations."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_repeat_purchase_rate" not in result.candidate_metric_ids
+
+    def test_aov_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that AOV receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Our average order value increased to $85 in the fourth quarter, "
+            "up from $75 in the prior year, representing a 13% improvement in "
+            "customer spending per transaction."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_average_order_value" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
+        assert result.classifier_confidence >= 0.6
