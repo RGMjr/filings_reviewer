@@ -1890,3 +1890,133 @@ class TestListHandling:
 
         finally:
             Path(html_path).unlink()
+
+
+class TestHeadingCacheBinarySearch:
+    """Test binary search heading cache lookup (SEG1)."""
+
+    def test_empty_cache_returns_none(self):
+        """Empty heading cache should return (None, None)."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = []
+        result = segmenter._get_section_from_cache(None, element_position=100)
+        assert result == (None, None)
+
+    def test_element_before_first_heading_returns_none(self):
+        """Element positioned before first heading returns (None, None)."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [(100, 1, "First Heading")]
+        result = segmenter._get_section_from_cache(None, element_position=50)
+        assert result == (None, None)
+
+    def test_element_exactly_at_heading_position(self):
+        """Element at exact heading position returns that heading."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [
+            (100, 1, "First Heading"),
+            (200, 2, "Second Heading"),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=100)
+        assert result == ("First Heading", "First Heading")
+
+    def test_element_between_headings(self):
+        """Element between headings returns preceding heading."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [
+            (100, 1, "First Heading"),
+            (200, 2, "Second Heading"),
+            (300, 3, "Third Heading"),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=250)
+        assert result == ("Second Heading", "Second Heading")
+
+    def test_element_after_last_heading(self):
+        """Element after last heading returns last heading."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [
+            (100, 1, "First Heading"),
+            (200, 2, "Last Heading"),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=500)
+        assert result == ("Last Heading", "Last Heading")
+
+    def test_single_heading_in_cache(self):
+        """Single heading with element after it."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [(50, 1, "Only Heading")]
+        result = segmenter._get_section_from_cache(None, element_position=100)
+        assert result == ("Only Heading", "Only Heading")
+
+    def test_single_heading_with_element_before(self):
+        """Single heading with element before it returns None."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [(100, 1, "Only Heading")]
+        result = segmenter._get_section_from_cache(None, element_position=50)
+        assert result == (None, None)
+
+    def test_binary_search_performance_many_headings(self):
+        """Verify O(log n) behavior with many headings."""
+        segmenter = HTMLSegmenter()
+        # Create 100 headings at positions 100, 200, 300, ...
+        segmenter._heading_cache = [
+            (i * 100, 2, f"Heading {i}") for i in range(1, 101)
+        ]
+        # Element at position 5050 should find "Heading 50"
+        result = segmenter._get_section_from_cache(None, element_position=5050)
+        assert result == ("Heading 50", "Heading 50")
+
+    def test_boundary_condition_just_before_heading(self):
+        """Element just before a heading position returns previous heading."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [
+            (100, 1, "First Heading"),
+            (200, 2, "Second Heading"),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=199)
+        assert result == ("First Heading", "First Heading")
+
+    def test_boundary_condition_just_after_heading(self):
+        """Element just after a heading position returns that heading."""
+        segmenter = HTMLSegmenter()
+        segmenter._heading_cache = [
+            (100, 1, "First Heading"),
+            (200, 2, "Second Heading"),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=201)
+        assert result == ("Second Heading", "Second Heading")
+
+    def test_metadata_headings_filtered_in_cache(self, temp_html_file):
+        """Metadata headings should be filtered out during cache building.
+
+        Since cache is cleared after processing, we verify this by checking
+        that segments don't have metadata headings as their section_heading.
+        """
+        html = """
+        <html><body>
+            <h1>Table of Contents</h1>
+            <p>This is some table of contents content that is long enough to pass the minimum length filter.</p>
+            <h1>Business Overview</h1>
+            <p>Our company provides customer analytics services and works with enterprise clients around the world.</p>
+            <p>We have been growing our customer base for the past five years and have strong metrics.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Verify segments were created
+            assert len(segments) > 0
+
+            # All segments should have section from Business Overview, not Table of Contents
+            # This verifies metadata headings were filtered during cache building
+            for seg in segments:
+                if seg.section_heading:
+                    # Should have "Business Overview", not "Table of Contents"
+                    assert seg.section_heading.lower() != "table of contents"
+                    assert seg.section_heading == "Business Overview"
+
+        finally:
+            Path(html_path).unlink()

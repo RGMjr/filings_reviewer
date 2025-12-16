@@ -394,10 +394,10 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 **Total:** ~1 hour, immediate benefits
 
 ### Phase B: Performance (1-2 Days)
-| # | Item | Time | Impact |
-|---|------|------|--------|
-| 1 | Heading cache binary search | 2 hr | O(n²) → O(n log n) |
-| 11 | Parallel sentence detection | 1 hr | 2-4x faster |
+| # | Item | Time | Impact | Status |
+|---|------|------|--------|--------|
+| 1 | Heading cache binary search | 2 hr | O(n²) → O(n log n) | ✅ Complete |
+| 11 | Parallel sentence detection | 1 hr | 2-4x faster | 🟡 Pending |
 
 **Total:** ~3 hours, significant for large filings
 
