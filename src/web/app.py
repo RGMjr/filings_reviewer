@@ -393,6 +393,29 @@ def _register_template_filters(app: Flask) -> None:
 
         return _highlight_context(context_text, raw_number_text, triggering_keyword)
 
+    @app.template_filter("highlight_html")
+    def highlight_html_filter(html_content, raw_number_text, triggering_keyword):
+        """
+        Jinja2 filter to highlight number and keyword in HTML content (tables).
+
+        Usage in template:
+            {{ candidate.segment_html|highlight_html(
+                 candidate.raw_number_text,
+                 candidate.triggering_keyword
+               )|safe }}
+
+        Args:
+            html_content: HTML content (e.g., table markup)
+            raw_number_text: Exact number text to highlight
+            triggering_keyword: Metric keyword to underline
+
+        Returns:
+            Markup: HTML string with highlighted number and keyword
+        """
+        from src.web.routes.review import _highlight_html
+
+        return _highlight_html(html_content, raw_number_text, triggering_keyword)
+
 
 # Convenience function for running directly
 def run_dev_server(host: str = "127.0.0.1", port: int = 5000) -> None:

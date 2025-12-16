@@ -48,6 +48,50 @@
         initializeElements();
         bindEvents();
         startReviewTimer();
+        scrollActiveCandidateIntoView();
+        scrollHighlightedNumberIntoView();
+    }
+
+    function scrollHighlightedNumberIntoView() {
+        // Find the highlighted number in the context area (table or text)
+        const highlightedNumber = document.querySelector('.table-context .extracted-number, .context-text .extracted-number');
+        if (highlightedNumber) {
+            // Scroll the highlighted number into view within the table-responsive container
+            const container = highlightedNumber.closest('.table-responsive');
+            if (container) {
+                // For tables, scroll within the scrollable container
+                highlightedNumber.scrollIntoView({
+                    behavior: 'instant',
+                    block: 'center',
+                    inline: 'center'
+                });
+            } else {
+                // For text context, just ensure it's visible
+                highlightedNumber.scrollIntoView({
+                    behavior: 'instant',
+                    block: 'center'
+                });
+            }
+
+            // Add a brief flash effect to draw attention
+            highlightedNumber.style.transition = 'box-shadow 0.3s ease-out';
+            highlightedNumber.style.boxShadow = '0 0 20px 5px rgba(255, 193, 7, 0.8)';
+            setTimeout(() => {
+                highlightedNumber.style.boxShadow = '';
+            }, 1500);
+        }
+    }
+
+    function scrollActiveCandidateIntoView() {
+        // Find the active candidate in the sidebar list
+        const activeItem = document.querySelector('.list-group-item.active');
+        if (activeItem) {
+            // Scroll the active item into view within its container
+            activeItem.scrollIntoView({
+                behavior: 'instant',
+                block: 'center'
+            });
+        }
     }
 
     function initializeElements() {
@@ -546,26 +590,44 @@
     }
 
     function navigateToNext() {
-        // Look for the "Next Candidate" link - try multiple selectors
-        let nextLink = document.querySelector('a.btn-primary[href*="next_candidate"]');
+        // Find all candidate items in the sidebar list
+        const allCandidates = document.querySelectorAll('.list-group-item.list-group-item-action');
+        if (allCandidates.length === 0) {
+            console.log('No candidate list found');
+            return;
+        }
 
-        // Fallback: find any primary button containing "Next"
-        if (!nextLink) {
-            const allPrimaryLinks = document.querySelectorAll('a.btn-primary');
-            for (const link of allPrimaryLinks) {
-                if (link.textContent.includes('Next')) {
-                    nextLink = link;
-                    break;
-                }
+        // Find current active item index
+        let currentIndex = -1;
+        for (let i = 0; i < allCandidates.length; i++) {
+            if (allCandidates[i].classList.contains('active')) {
+                currentIndex = i;
+                break;
             }
         }
 
-        if (nextLink) {
-            console.log('Navigating to:', nextLink.href);
-            window.location.href = nextLink.href;
-        } else {
-            console.log('No next candidate link found');
+        // Find next pending (not reviewed) candidate after current
+        for (let i = currentIndex + 1; i < allCandidates.length; i++) {
+            const candidate = allCandidates[i];
+            // Skip reviewed candidates (they have opacity-75 class)
+            if (!candidate.classList.contains('opacity-75')) {
+                console.log('Navigating to next pending candidate:', candidate.href);
+                window.location.href = candidate.href;
+                return;
+            }
         }
+
+        // If no pending found after current, wrap around and check from beginning
+        for (let i = 0; i < currentIndex; i++) {
+            const candidate = allCandidates[i];
+            if (!candidate.classList.contains('opacity-75')) {
+                console.log('Wrapping to pending candidate:', candidate.href);
+                window.location.href = candidate.href;
+                return;
+            }
+        }
+
+        console.log('No more pending candidates found');
     }
 
     // =========================================================================
