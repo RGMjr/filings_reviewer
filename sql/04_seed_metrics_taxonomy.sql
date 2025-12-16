@@ -340,6 +340,30 @@ VALUES (
     1
 );
 
+-- Annual Contract Value
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_acv',
+    'Annual Contract Value',
+    'extended',
+    'Average or total annual value of customer contracts, commonly used by SaaS and subscription businesses.',
+    'revenue_predictability',
+    'active',
+    1
+);
+
+-- Total Contract Value
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_tcv',
+    'Total Contract Value',
+    'extended',
+    'Total value of customer contracts including all future committed revenue over the contract lifetime.',
+    'revenue_predictability',
+    'active',
+    1
+);
+
 -- ============================================================================
 -- FUTURE METRICS (Phase 2+)
 -- ============================================================================

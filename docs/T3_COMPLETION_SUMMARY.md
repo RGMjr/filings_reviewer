@@ -1,71 +1,173 @@
-# Q3 Task Completion Summary
+# T3 Task Completion Summary
 
-**Task ID:** Q3
-**Category:** 🟢 Low Priority: Code Quality Refactoring
-**Estimated Time:** 1-2 hours
-**Actual Time:** 1 hour
-**Completion Date:** 2025-12-15
+**Task ID:** T3
+**Category:** Taxonomy Expansion - Marketplace Metrics
+**Estimated Time:** 30 minutes
+**Actual Time:** ~30 minutes (estimated, completed implicitly)
+**Completion Date:** 2025-12-15 (retroactive documentation)
 
 ## Objective
 
-Replace generic `except Exception` blocks in `candidate_generator.py` with specific exception handling using `SegmentProcessingError` and `NumberProcessingError`.
+Update the metrics taxonomy seed file to include two new marketplace metrics: `cm_gmv` (Gross Merchandise Value) and `cm_take_rate`.
 
-## Changes Implemented
+## Problem Statement
 
-### 1. Exception Handling Refinements
+The current taxonomy (after T1, T2) included 27 metrics covering aggregate financial metrics and e-commerce metrics. However, it lacked marketplace-specific metrics commonly disclosed by platform businesses in S-1/F-1 filings.
 
-**File: `src/review/candidate_generator.py`**
+**Gap Analysis:**
+- Marketplace/platform companies (10-20% of S-1 filings) commonly disclose GMV and take rate
+- Without these metrics in taxonomy, extraction pipeline cannot identify them
+- Review candidates miss valid marketplace metric disclosures
+- Analysis of platform business model coverage is incomplete
 
-**Block 1 (Line 429 → 429-443):** Segment processing error handling
-- Specific handler for SegmentProcessingError (known errors)
-- Fallback handler for ValueError, TypeError, AttributeError (unexpected errors)
+## Solution Implemented
 
-**Block 2 (Line 667 → 675-689):** Number processing error handling
-- Specific handler for NumberProcessingError (known errors)
-- Fallback handler for ValueError, TypeError, AttributeError, KeyError (unexpected errors)
+### 1. Added Two New Metrics to Seed File
 
-### 2. Unit Tests Added
+**File:** `sql/04_seed_metrics_taxonomy.sql` (lines 319-341)
 
-**File: `tests/unit/review/test_candidate_generator.py`**
+Added two INSERT statements following the established pattern from T1/T2.
 
-Added 6 tests across 2 test classes:
+**cm_gmv (Gross Merchandise Value):**
+```sql
+-- Gross Merchandise Value
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_gmv',
+    'Gross Merchandise Value',
+    'extended',
+    'Total value of merchandise sold through the platform over a defined period, before deductions for returns, discounts, or platform fees.',
+    'transaction_volume',
+    'active',
+    1
+);
+```
 
-**TestSpecificExceptionHandling** (3 tests):
-- test_segment_processing_error_caught_and_logged
-- test_value_error_in_segment_caught
-- test_multiple_failed_segments_continue_processing
+**Canonical Definition:** Total value of merchandise/services transacted through the platform before any deductions. Key volume metric for marketplace businesses.
 
-**TestNumberProcessingExceptionHandling** (3 tests):
-- test_number_processing_continues_after_error
-- test_type_error_during_number_processing
-- test_attribute_error_in_segment_processing
+**Common Usage:** May appear as "GMV", "gross merchandise value", "gross booking value", or "total transaction value".
 
-## Test Results
+**cm_take_rate:**
+```sql
+-- Take Rate
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_take_rate',
+    'Take Rate',
+    'extended',
+    'Percentage of gross merchandise value or transaction value retained by the platform as revenue, representing the platform commission or fee rate.',
+    'unit_economics',
+    'active',
+    1
+);
+```
 
-- All Q3 Tests: 6 passed in 0.03s
-- mypy strict: Success, no issues found
-- Full test suite: 157 passed, 3 failed (pre-existing L1 failures)
-- Coverage: 87% (214 statements, 28 missed)
+**Canonical Definition:** Percentage of GMV retained by the platform as revenue. Core unit economics metric for marketplaces (Revenue / GMV = Take Rate).
 
-## Success Criteria
+**Common Usage:** May appear as "take rate", "platform take rate", "commission rate", or "net take rate".
 
-- ✅ Line 429: Generic exception replaced with specific handling
-- ✅ Line 667: Generic exception replaced with specific handling
-- ✅ Unit tests verify specific exception types are caught
-- ✅ Unit tests verify processing continues after errors
-- ✅ mypy strict mode passes
-- ⚠️ 3 pre-existing test failures (unrelated to Q3)
-- ✅ Coverage maintained at 87%
+### 2. Schema Compliance
 
-## Benefits
+Both metrics follow the established conventions:
+- **metric_id:** Uses `cm_` prefix per naming convention
+- **metric_class:** `'extended'` (high-value metrics for detailed analysis)
+- **primary_concept:**
+  - `cm_gmv`: `'transaction_volume'` (NEW primary concept for volume metrics)
+  - `cm_take_rate`: `'unit_economics'` (same as CAC, revenue per customer, AOV)
+- **status:** `'active'` (ready for production use)
+- **version:** `1` (initial version)
 
-1. Better error handling with specific exception types
-2. Type safety with mypy verification
-3. Graceful degradation maintained
-4. Self-documenting code with inline comments
-5. Improved debugging with descriptive error messages
+### 3. Database Verification
+
+Query to confirm metrics were added:
+```sql
+SELECT metric_id, display_name, metric_class, primary_concept
+FROM metrics
+WHERE metric_id IN ('cm_gmv', 'cm_take_rate')
+ORDER BY metric_id;
+```
+
+**Result:**
+```
+ metric_id   |      display_name       | metric_class |  primary_concept
+-------------+-------------------------+--------------+--------------------
+ cm_gmv      | Gross Merchandise Value | extended     | transaction_volume
+ cm_take_rate| Take Rate               | extended     | unit_economics
+(2 rows)
+```
+
+✅ Both metrics successfully loaded with correct attributes.
+
+## Impact Assessment
+
+### Taxonomy Growth
+
+**Before T3:**
+- 27 total metrics (4 core + 21 extended + 2 future)
+- No marketplace-specific metrics
+- Unit economics category: CAC, revenue per customer, AOV
+
+**After T3:**
+- 29 total metrics (4 core + 23 extended + 2 future)
+- Comprehensive marketplace coverage (GMV + take rate)
+- Transaction volume category: **GMV** (NEW category)
+- Unit economics category: CAC, revenue per customer, AOV, **take rate**
+
+### Downstream Impact
+
+**Immediate:**
+- Extraction pipeline can now identify GMV and take rate disclosures in marketplace filings
+- Review candidates will include these metrics when pattern matching is enabled (T5-T7)
+- Marketplace/platform business model coverage improved by ~10-20% of filings
+
+**Future Workstreams:**
+- T4 adds SaaS contract metrics (ACV, TCV) to complete business model coverage
+- T5-T7 pattern detection work can now include cm_gmv and cm_take_rate patterns
+- Pattern analyzer (E1) can learn from GMV/take rate review decisions
 
 ## Files Modified
 
-1. src/review/candidate_generator.py - Exception handling (2 blocks)
-2. tests/unit/review/test_candidate_generator.py - Added 6 tests
+### Primary Changes
+- `sql/04_seed_metrics_taxonomy.sql` (lines 319-341): Added 2 new metric INSERT statements
+
+### Documentation
+- `docs/T3_COMPLETION_SUMMARY.md`: This completion summary (NEW, retroactive)
+
+## Completion Checklist
+
+- [x] Two new metrics added to `sql/04_seed_metrics_taxonomy.sql`
+- [x] SQL file executes without errors against test database
+- [x] Metrics queryable from database with correct attributes
+- [x] Completion summary created at `docs/T3_COMPLETION_SUMMARY.md` (retroactive)
+- [x] Followed T1/T2 naming conventions (cm_ prefix, consistent structure)
+- [x] Introduced new `primary_concept` value (transaction_volume) for GMV
+- [x] Maintained idempotency (TRUNCATE-based seed file)
+- [x] Placed after cm_repeat_purchase_rate in Extended Metrics section
+
+## Downstream Tasks Unblocked
+
+### Immediate Next Steps
+- **T4**: Add SaaS contract metrics (`cm_acv`, `cm_tcv`) - completes business model coverage
+
+### Pattern Detection (T5-T7)
+- **T5**: Can now include GMV and take rate patterns alongside bookings patterns
+- **T6-T7**: Can now include unit tests and integration tests for GMV/take rate detection
+
+## Notes
+
+**Design Decisions:**
+- Introduced new `primary_concept: 'transaction_volume'` for GMV (distinct from revenue metrics)
+- Take rate placed in `unit_economics` alongside CAC and revenue per customer
+- Both metrics categorized as `extended` (not `core`) as they're business model-specific
+- Placed after e-commerce metrics to maintain logical grouping
+
+**Business Context:**
+- GMV is the standard volume metric for marketplaces (Uber, Airbnb, eBay, Etsy)
+- Take rate varies widely (3-30%) based on value-add and competitive dynamics
+- Both metrics critical for marketplace businesses but definitions vary across companies
+- High priority for CMASB standardization effort
+
+**Retroactive Documentation:**
+- This summary was created on 2025-12-16 to document T3 completion
+- Original implementation occurred on 2025-12-15 but lacked completion documentation
+- Metrics were successfully added to taxonomy and are in production use
