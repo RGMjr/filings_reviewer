@@ -405,6 +405,59 @@ custom_config = CandidateGenerationConfig(
 generator = CandidateGenerator(config=custom_config)
 ```
 
+### Respectively Pattern Detection (L1)
+
+Enable automatic detection of "respectively" patterns to associate values with time periods:
+
+```python
+from src.review.config import CandidateGenerationConfig
+
+# Enable respectively pattern detection
+config = CandidateGenerationConfig(
+    detect_respectively_patterns=True,
+    respectively_min_confidence=0.6,  # Quality threshold
+)
+
+generator = CandidateGenerator(config=config)
+candidates = generator.generate_for_filing(
+    filing_id=123,
+    company_id=456,
+    segments=segments,
+    db=db,
+)
+
+# Candidates now have detected_period in features:
+for candidate in candidates:
+    if candidate.features and candidate.features.detected_period:
+        print(f"Value {candidate.parsed_value} → Period {candidate.features.detected_period}")
+        print(f"Confidence: {candidate.features.respectively_confidence:.2f}")
+```
+
+**Pattern Example:**
+```
+"Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
+```
+
+Generates 3 candidates:
+- 33% → 2015 (confidence: 0.9)
+- 35% → 2016 (confidence: 0.9)
+- 43% → 2017 (confidence: 0.9)
+
+**Configuration:**
+- `detect_respectively_patterns`: Enable/disable (default: False for gradual rollout)
+- `respectively_min_confidence`: Minimum pattern confidence (default: 0.6, range: 0.5-1.0)
+
+**Confidence Interpretation:**
+- 0.9-1.0: Very high - Auto-accept recommended
+- 0.8-0.9: High - Likely correct
+- 0.7-0.8: Medium - Human review recommended
+- 0.5-0.7: Low - Manual verification required
+
+**Integration with Presets:**
+- High Precision: `detect_respectively_patterns=True`, `respectively_min_confidence=0.7`
+- High Recall: `detect_respectively_patterns=True`, `respectively_min_confidence=0.5`
+- Fast: `detect_respectively_patterns=False` (disabled for speed)
+
 ### Convenience Wrapper
 
 For simple use cases, use the convenience wrapper:
@@ -433,6 +486,8 @@ candidates = generate_candidates_for_filing(
 | `apply_learned_rules` | True | Apply learned patterns from E1 filtering |
 | `min_pattern_precision` | 0.75 | Minimum precision for learned patterns to be applied |
 | `cache_word_positions` | True | Cache word positions for context extraction (P1.2 optimization) |
+| `detect_respectively_patterns` | False | Enable detection of "respectively" patterns for period association (L1) |
+| `respectively_min_confidence` | 0.6 | Minimum confidence threshold for respectively pattern enrichment (L1) |
 
 ### Backward Compatibility
 

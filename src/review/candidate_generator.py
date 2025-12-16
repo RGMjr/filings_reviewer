@@ -456,7 +456,7 @@ class CandidateGenerator:
         self, candidates: List[ReviewCandidate]
     ) -> Tuple[List[ReviewCandidate], int]:
         """
-        Remove duplicate candidates based on (parsed_value, suggested_metric_id).
+        Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
 
         When duplicates exist, keep the one with highest suggestion_confidence.
         If confidence is equal or None, keep the first occurrence.
@@ -472,7 +472,7 @@ class CandidateGenerator:
 
         # Group candidates by (parsed_value, suggested_metric_id)
         # Use string representation of Decimal to handle None values
-        groups: Dict[Tuple[str, Optional[str]], List[ReviewCandidate]] = {}
+        groups: Dict[Tuple[str, str, str], List[ReviewCandidate]] = {}
 
         for candidate in candidates:
             # Create key - convert Decimal to string for hashing
@@ -481,7 +481,16 @@ class CandidateGenerator:
                 if candidate.parsed_value is not None
                 else "None"
             )
-            key = (value_key, candidate.suggested_metric_id)
+            metric_key = candidate.suggested_metric_id or "none"
+
+            # L1: Include period in key to preserve different periods
+            period_key = (
+                candidate.features.detected_period
+                if candidate.features and candidate.features.detected_period
+                else "none"
+            )
+
+            key = (value_key, metric_key, period_key)
 
             if key not in groups:
                 groups[key] = []
@@ -494,11 +503,15 @@ class CandidateGenerator:
                 deduplicated.append(group[0])
             else:
                 # Sort by confidence (descending), None values last
+                # L1: Also consider respectively_confidence when available
                 sorted_group = sorted(
                     group,
                     key=lambda c: (
                         c.suggestion_confidence is not None,
                         c.suggestion_confidence or 0,
+                        (c.features.respectively_confidence or 0)
+                        if c.features
+                        else 0,
                     ),
                     reverse=True,
                 )
