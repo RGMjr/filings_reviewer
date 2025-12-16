@@ -4,7 +4,7 @@
 
 **When to Use**: Create a worker prompt when delegating a task that:
 - Has clear boundaries and deliverables
-- Requires 1-5 hours of focused work
+- Requires 15 min - 5 hours of focused work (quick wins to full features)
 - Needs explicit constraints to avoid conflicts
 - Should follow project standards
 
@@ -22,6 +22,7 @@ STATUS:        [🟡 PENDING | 🔵 IN PROGRESS | ✅ COMPLETE (YYYY-MM-DD)]
 COMPLETION:    [Path to completion summary, if complete]
 TIME ESTIMATE: [Range in hours] (e.g., 2-3 hours, breakdown: investigation 30 min, implementation 60 min, testing 45 min)
 TIME ACTUAL:   [Actual time taken, if complete]
+RISK LEVEL:    [None | Low | Medium | High] (explain if Medium/High)
 PARALLEL WITH: [Other tasks that can run simultaneously, or "None"]
 ═══════════════════════════════════════════════════════════════════════════════
 ```
@@ -308,6 +309,7 @@ Before finalizing a worker prompt, verify:
 - [ ] Task ID is unique and follows convention (L-series, B-series, etc.)
 - [ ] Objective is 1-3 sentences with business rationale
 - [ ] Time estimate includes breakdown if >2 hours
+- [ ] Risk level specified (None/Low/Medium/High with explanation if Medium+)
 - [ ] Prerequisites list all dependencies
 - [ ] Implementation requirements focus on WHAT not HOW
 - [ ] Error handling strategy is specified
@@ -322,6 +324,12 @@ Before finalizing a worker prompt, verify:
 ---
 
 ## Version History
+
+- **v2.1** (2025-12-16): Added risk and quick-task support
+  - Added RISK LEVEL field (None/Low/Medium/High)
+  - Expanded time range to 15 min - 5 hours (supports quick wins)
+  - Added risk level to checklist
+  - Aligned with SEGMENTATION_IMPROVEMENT_PLAN.md task format
 
 - **v2.0** (2025-12-15): Concise requirements-focused format
   - 70% reduction in length (434 → ~100 lines)
