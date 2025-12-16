@@ -398,7 +398,7 @@ class TestStressScenarios:
 
 - `docs/PERFORMANCE_BASELINE.md` - Complete baseline metrics
 - `docs/P3_THREAD_SAFETY_AUDIT.md` - Thread-safety analysis
-- `PERFORMANCE_INVESTIGATION_B13.md` - P1/P1.5 performance impact
+- `docs/archive/workstreams/B-type-safety/PERFORMANCE_INVESTIGATION_B13.md` - P1/P1.5 performance impact
 - `tests/performance/` - Benchmark test suite
 - `src/review/config.py` - Configuration presets
 

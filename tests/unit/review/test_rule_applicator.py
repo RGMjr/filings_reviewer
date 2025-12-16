@@ -621,3 +621,638 @@ class TestGetStats:
 
         # Should have reloaded
         assert mock_db.get_learned_patterns.call_count == 2
+
+
+class TestPatternIndexing:
+    """Tests for P4 pattern indexing optimization."""
+
+    @patch("src.review.rule_applicator.logger")
+    def test_build_index_with_metric_specific_patterns(self, mock_logger):
+        """Test _build_index creates index with metric-specific patterns."""
+        mock_db = Mock()
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "ARR Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+            {
+                "pattern_id": 2,
+                "pattern_type": "reject_rule",
+                "metric_id": "customer_acquisition_cost",
+                "pattern_name": "CAC Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.85,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 15,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        # Check index contains both metric_ids
+        assert "annual_recurring_revenue" in applicator._patterns_by_metric
+        assert "customer_acquisition_cost" in applicator._patterns_by_metric
+        assert len(applicator._patterns_by_metric["annual_recurring_revenue"]) == 1
+        assert len(applicator._patterns_by_metric["customer_acquisition_cost"]) == 1
+
+    @patch("src.review.rule_applicator.logger")
+    def test_build_index_with_global_patterns(self, mock_logger):
+        """Test _build_index creates index with global patterns (metric_id=None)."""
+        mock_db = Mock()
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": None,  # Global pattern
+                "pattern_name": "Global Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        # Check index contains global patterns under None key
+        assert None in applicator._patterns_by_metric
+        assert len(applicator._patterns_by_metric[None]) == 1
+        assert applicator._patterns_by_metric[None][0].pattern_name == "Global Pattern"
+
+    @patch("src.review.rule_applicator.logger")
+    def test_build_index_updated_on_reload(self, mock_logger):
+        """Test _build_index updates when patterns are reloaded."""
+        mock_db = Mock()
+        initial_patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "Initial Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = initial_patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        # Check initial index
+        assert "annual_recurring_revenue" in applicator._patterns_by_metric
+        assert len(applicator._patterns_by_metric["annual_recurring_revenue"]) == 1
+
+        # Update patterns and force reload
+        new_patterns = [
+            {
+                "pattern_id": 2,
+                "pattern_type": "reject_rule",
+                "metric_id": "customer_acquisition_cost",
+                "pattern_name": "New Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.85,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 15,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = new_patterns
+
+        applicator.force_reload()
+
+        # Check index was updated
+        assert "customer_acquisition_cost" in applicator._patterns_by_metric
+        assert "annual_recurring_revenue" not in applicator._patterns_by_metric
+        assert len(applicator._patterns_by_metric["customer_acquisition_cost"]) == 1
+
+    @patch("src.review.rule_applicator.logger")
+    def test_build_index_with_empty_patterns(self, mock_logger):
+        """Test _build_index creates empty index when no patterns loaded."""
+        mock_db = Mock()
+        mock_db.get_learned_patterns.return_value = []
+
+        applicator = RuleApplicator(mock_db)
+
+        # Index should be empty
+        assert len(applicator._patterns_by_metric) == 0
+
+    @patch("src.review.rule_applicator.logger")
+    def test_build_index_excludes_accept_patterns(self, mock_logger):
+        """Test _build_index only indexes reject_rule patterns, not accept_rule."""
+        mock_db = Mock()
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "accept_rule",  # Should NOT be indexed
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "Accept Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+            {
+                "pattern_id": 2,
+                "pattern_type": "reject_rule",  # Should be indexed
+                "metric_id": "customer_acquisition_cost",
+                "pattern_name": "Reject Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.85,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 15,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        # Only reject_rule should be in index
+        assert "annual_recurring_revenue" not in applicator._patterns_by_metric
+        assert "customer_acquisition_cost" in applicator._patterns_by_metric
+        assert len(applicator._patterns_by_metric["customer_acquisition_cost"]) == 1
+
+
+class TestIndexedLookup:
+    """Tests for indexed pattern lookup in should_filter."""
+
+    @patch("src.review.rule_applicator.logger")
+    def test_indexed_lookup_metric_specific_pattern(self, mock_logger):
+        """Test should_filter uses indexed lookup for metric-specific patterns."""
+        mock_db = Mock()
+        pattern_data = {
+            "pattern_id": 1,
+            "pattern_type": "reject_rule",
+            "metric_id": "annual_recurring_revenue",
+            "pattern_name": "ARR risk factors",
+            "pattern_description": None,
+            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "precision_score": 0.95,
+            "recall_score": None,
+            "f1_score": None,
+            "sample_count": 20,
+            "status": "approved",
+            "approved_at": datetime.now(),
+            "approved_by": None,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        }
+        mock_db.get_learned_patterns.return_value = [pattern_data]
+
+        applicator = RuleApplicator(mock_db)
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Risk Factors...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # Should match via indexed lookup
+        assert should_filter is True
+        assert "ARR risk factors" in reason
+
+    @patch("src.review.rule_applicator.logger")
+    def test_indexed_lookup_global_pattern_when_no_metric_specific(self, mock_logger):
+        """Test should_filter falls back to global patterns when no metric-specific match."""
+        mock_db = Mock()
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": None,  # Global pattern
+                "pattern_name": "Global risk filter",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 30,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Risk Factors...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",  # No specific pattern for this metric
+        )
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # Should match global pattern via indexed lookup
+        assert should_filter is True
+        assert "Global risk filter" in reason
+
+    @patch("src.review.rule_applicator.logger")
+    def test_indexed_lookup_metric_specific_before_global(self, mock_logger):
+        """Test metric-specific patterns checked before global patterns."""
+        mock_db = Mock()
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "Metric-specific filter",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]},
+                "precision_score": 0.92,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 15,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+            {
+                "pattern_id": 2,
+                "pattern_type": "reject_rule",
+                "metric_id": None,
+                "pattern_name": "Global filter",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]},
+                "precision_score": 0.85,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 30,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Context...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=60,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+        features = CandidateFeatures(
+            keyword_distance=60,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # Should match metric-specific pattern (checked first)
+        assert should_filter is True
+        assert "Metric-specific filter" in reason
+        assert "Global filter" not in reason
+
+    @patch("src.review.rule_applicator.logger")
+    def test_indexed_lookup_no_match_unknown_metric(self, mock_logger):
+        """Test should_filter returns False for unknown metric_id with no global patterns."""
+        mock_db = Mock()
+        pattern_data = {
+            "pattern_id": 1,
+            "pattern_type": "reject_rule",
+            "metric_id": "customer_acquisition_cost",  # Different metric
+            "pattern_name": "CAC filter",
+            "pattern_description": None,
+            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "precision_score": 0.90,
+            "recall_score": None,
+            "f1_score": None,
+            "sample_count": 20,
+            "status": "approved",
+            "approved_at": datetime.now(),
+            "approved_by": None,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        }
+        mock_db.get_learned_patterns.return_value = [pattern_data]
+
+        applicator = RuleApplicator(mock_db)
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Risk Factors...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",  # Different from pattern
+        )
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # Should NOT match (no patterns for this metric, no global patterns)
+        assert should_filter is False
+        assert reason is None
+
+
+class TestPerformanceVerification:
+    """Tests to verify performance characteristics of indexing."""
+
+    @patch("src.review.rule_applicator.logger")
+    def test_early_exit_on_first_match(self, mock_logger):
+        """Test should_filter exits early on first match (doesn't check remaining patterns)."""
+        mock_db = Mock()
+
+        # Create patterns with mock matches() that track calls
+        pattern1_matches = Mock(return_value=True)
+        pattern2_matches = Mock(return_value=True)
+
+        patterns = [
+            {
+                "pattern_id": 1,
+                "pattern_type": "reject_rule",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "First Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+            {
+                "pattern_id": 2,
+                "pattern_type": "reject_rule",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "Second Pattern",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.85,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 15,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            },
+        ]
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        # Replace matches() methods to track calls
+        applicator._patterns_by_metric["annual_recurring_revenue"][0].matches = pattern1_matches
+        applicator._patterns_by_metric["annual_recurring_revenue"][1].matches = pattern2_matches
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Context...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # First pattern should match
+        assert should_filter is True
+        assert "First Pattern" in reason
+
+        # First pattern's matches() should be called
+        assert pattern1_matches.call_count == 1
+
+        # Second pattern's matches() should NOT be called (early exit)
+        assert pattern2_matches.call_count == 0
+
+    @patch("src.review.rule_applicator.logger")
+    def test_index_lookup_is_constant_time(self, mock_logger):
+        """Test indexed lookup doesn't iterate through unrelated patterns."""
+        mock_db = Mock()
+
+        # Create 100 patterns for different metrics
+        patterns = []
+        for i in range(100):
+            patterns.append({
+                "pattern_id": i,
+                "pattern_type": "reject_rule",
+                "metric_id": f"other_metric_{i}",
+                "pattern_name": f"Other Pattern {i}",
+                "pattern_description": None,
+                "pattern_definition": {"conditions": []},
+                "precision_score": 0.90,
+                "recall_score": None,
+                "f1_score": None,
+                "sample_count": 10,
+                "status": "approved",
+                "approved_at": datetime.now(),
+                "approved_by": None,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            })
+
+        # Add one pattern for our target metric
+        patterns.append({
+            "pattern_id": 100,
+            "pattern_type": "reject_rule",
+            "metric_id": "annual_recurring_revenue",
+            "pattern_name": "Target Pattern",
+            "pattern_description": None,
+            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "precision_score": 0.95,
+            "recall_score": None,
+            "f1_score": None,
+            "sample_count": 20,
+            "status": "approved",
+            "approved_at": datetime.now(),
+            "approved_by": None,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+        })
+
+        mock_db.get_learned_patterns.return_value = patterns
+
+        applicator = RuleApplicator(mock_db)
+
+        candidate = ReviewCandidate(
+            candidate_id=1,
+            filing_id=100,
+            company_id=1,
+            source_segment_id=500,
+            char_position=1000,
+            context_text="Risk Factors...",
+            raw_number_text="$1.2M",
+            parsed_value=1200000,
+            parsed_unit="dollars",
+            triggering_keyword="revenue",
+            keyword_distance=10,
+            keyword_position="before",
+            suggested_metric_id="annual_recurring_revenue",
+        )
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=True,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="currency",
+        )
+
+        should_filter, reason = applicator.should_filter(candidate, features)
+
+        # Should match target pattern via O(1) indexed lookup
+        assert should_filter is True
+        assert "Target Pattern" in reason
+
+        # Verify index was built correctly (100 other metrics + 1 target)
+        assert len(applicator._patterns_by_metric) == 101
+        # Only 1 pattern for our target metric (O(1) lookup, not O(N))
+        assert len(applicator._patterns_by_metric["annual_recurring_revenue"]) == 1

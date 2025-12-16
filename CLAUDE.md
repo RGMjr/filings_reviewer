@@ -142,8 +142,11 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 │                            # ReviewCandidate, ReviewDecision, CandidateFeatures, LearnedPattern
 │                            # SegmentDict TypedDict for type-safe segment data
 │                            # (214 statements, 96% coverage, 58 tests)
-└── feature_extractor.py     # Compute ML features for pattern analysis
-                             # (630 statements, 100% coverage, 115 tests)
+├── feature_extractor.py     # Compute ML features for pattern analysis
+│                            # (630 statements, 100% coverage, 115 tests)
+└── rule_applicator.py       # Apply learned patterns to filter candidates (E2 + P4)
+                             # RuleApplicator class with O(1) indexed pattern lookup
+                             # (220 statements, 100% coverage, 29 tests)
 ```
 
 **Benefits of Modular Architecture:**
@@ -323,6 +326,52 @@ for pattern in patterns[:5]:
 ```
 
 **Documentation**: See `docs/E1_IMPROVEMENTS_TRACKING.md` for complete P1/P2 implementation details
+
+**Rule Applicator (E2):**
+
+The rule applicator applies learned patterns from E1 to filter false positive candidates during generation:
+- **~220 statements total, 100% coverage, 29 unit tests**
+- **Production-ready** with P4 optimization for high-volume pattern matching
+
+**Core Features**:
+- Pattern caching with configurable reload interval (default: 5 minutes)
+- Metric-specific and global pattern application
+- Early exit on first matching reject pattern
+- Graceful error handling for database failures
+
+**P4 Optimization (December 2025)**:
+- O(1) pattern lookup by metric_id using indexed dictionary
+- Reduces performance degradation from 33.4% to <10% with 1000+ patterns
+- Index structure: `{metric_id: [patterns], None: [global_patterns]}`
+- Patterns indexed at load time, rebuilt on cache refresh
+
+**Usage Example**:
+```python
+from src.review import RuleApplicator, CandidateGenerator
+
+# Initialize rule applicator
+rule_applicator = RuleApplicator(db, reload_interval_seconds=300)
+
+# Check if candidate should be filtered
+should_filter, reason = rule_applicator.should_filter(candidate, features)
+if should_filter:
+    logger.info(f"Filtered by {reason}")
+
+# Get pattern statistics
+stats = rule_applicator.get_stats()
+print(f"Active patterns: {stats['total_patterns']}")
+```
+
+**Performance**:
+- Baseline throughput: 11,919 segments/sec (no patterns)
+- With 1000+ patterns: >10,700 segments/sec (<10% degradation)
+- Index build time: <10ms for 1000 patterns
+- Pattern match time: O(1) lookup + O(patterns_per_metric) evaluation
+
+**Integration**:
+- Used by `CandidateGenerator` when `apply_learned_rules=True`
+- Automatic pattern loading and cache management
+- No manual intervention required for pattern updates
 
 ## Review Module Configuration
 
@@ -845,6 +894,7 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | ProductionServer (D6) | Complete | Manual |
 | PatternAnalyzer (E1) | Complete | 95% |
 | StatisticalTests (E1) | Complete | 99% |
+| RuleApplicator (E2) | Complete | 100% |
 
 **Input Validation:** Centralized validation module (`src/infra/validation.py`) provides:
 - CIK validation and normalization
