@@ -227,7 +227,17 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
     - mypy catches type errors at development time
     - Self-documenting code (field types visible in signatures)
   - **Tests**: 58 existing tests pass, zero functional changes
-  - **Status**: Type definition complete, ready for Q2 (update function signatures)
+  - **Status**: Complete
+- **Q2 - Update candidate_generator.py Signatures (COMPLETE 2025-12-15)**:
+  - **Problem**: Functions using `Dict[str, Any]` for segments don't benefit from Q1 type safety
+  - **Solution**: Updated `candidate_generator.py` to use `SegmentDict` type annotations
+  - **Changes**:
+    - Added `SegmentDict` to imports from `.models`
+    - `generate_for_filing()`: `segments: List[Dict[str, Any]]` → `segments: List[SegmentDict]`
+    - `_process_segment()`: `segment: Dict[str, Any]` → `segment: SegmentDict`
+    - `_compute_features()`: `segment: Dict[str, Any]` → `segment: SegmentDict`
+  - **Verification**: mypy --strict passes, 168/171 tests pass (3 pre-existing L1 fixture issues)
+  - **Status**: Complete
 
 **Feature Extractor (B2):**
 
