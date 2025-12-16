@@ -90,13 +90,18 @@ This document specifies the architecture and implementation of the metric extrac
 
 **Module:** `src/extraction/html_segmenter.py`
 **Class:** `HTMLSegmenter`
-**Status:** Complete (80% test coverage)
+**Status:** Complete (85% test coverage)
 
 **Responsibilities:**
 - Parse filing HTML into semantic segments
 - Extract section headings and build section paths
 - Normalize text (remove excess whitespace, decode entities)
 - Preserve provenance metadata (HTML selectors, character offsets)
+- Detect sentence boundaries with SEC-specific abbreviations
+- Merge definition segments that span multiple HTML elements
+- Handle large tables with 25K character limit
+- Enrich segments with context from adjacent content
+- Extract list items with intro context
 
 **Interface:**
 
@@ -106,12 +111,22 @@ class HTMLSegmenter:
         """
         Parse filing HTML and return list of source segments.
 
+        Pipeline phases:
+        1. Parsing: HTML structure extraction
+        2. Element extraction: <p>, <table>, <div>, <ul>, <ol>
+        3. Composite splitting: Separate text/table from mixed divs
+        4. Sentence detection: Store boundaries as metadata
+        5. Definition merging: Combine split definitions
+        6. Table handling: 25K limit with truncation
+        7. Context enrichment: Add overlap + document position
+        8. Validation: Apply min/max length filters
+
         Args:
             filing_id: Database ID of the filing
             html_path: Path to cached HTML file
 
         Returns:
-            List of SourceSegment objects (not yet inserted to DB)
+            List of SourceSegment objects with enhanced metadata
         """
 
     def extract_section_path(self, element) -> str:
@@ -125,16 +140,28 @@ class HTMLSegmenter:
 - `paragraph`: Text paragraphs (default)
 - `table`: HTML tables (entire table as one segment)
 - `footnote`: Footnotes and endnotes
-- `definition_block`: Detected definition sections
+- `definition_block`: Detected definition sections (may be merged)
 - `methodology_block`: Detected calculation methodology sections
+- `list_item`: Individual list items with intro context
 - `other`: Fallback
+
+**Enhanced Segment Fields:**
+- `context_prefix`: Last sentence from previous segment (for context preservation)
+- `document_position`: 0.0-1.0 position in document
+- `sentence_boundaries`: List of (start, end) tuples for sentences
+- `table_truncated_flag`: True if table exceeded 25K limit
+- `definition_merged_count`: Number of segments merged for definition
 
 **Design Notes:**
 - Uses BeautifulSoup for HTML parsing
 - Extracts all `<p>` tags as paragraphs, all `<table>` tags as tables
+- Extracts `<ul>`, `<ol>` list items with intro text as context
 - Sequence index based on document order
 - Section path: traverse up DOM to find heading hierarchy
 - Keeps both raw_text (normalized) and raw_html (original snippet)
+- Sentence detection uses BoundaryDetector with SEC abbreviations (FY, Q, TTM, NRR, etc.)
+- Definition merging: max 3 segments, 2000 chars combined limit
+- Tables use higher limit (25K) vs text (10K) for truncation
 
 ---
 
@@ -580,6 +607,13 @@ OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction
 segmentation:
   min_paragraph_length: 50
   max_segment_length: 10000
+  table_max_length: 25000  # Higher limit for tables
+  enable_sentence_detection: true
+  enable_definition_merging: true
+  definition_lookahead_max: 3  # Max segments to merge
+  definition_max_combined_length: 2000
+  context_overlap_sentences: 1  # Sentences from prev segment
+  calculate_document_position: true
 
 classification:
   confidence_threshold: 0.5
@@ -626,6 +660,9 @@ quality:
 
 ---
 
-**Last Updated:** 2025-12-09
-**Version:** 2.0
+**Last Updated:** 2025-12-16
+**Version:** 2.1
 **Status:** Production Ready
+
+**Changelog:**
+- v2.1 (2025-12-16): Enhanced HTML segmentation with sentence detection, definition merging, 25K table limit, context enrichment, and list handling

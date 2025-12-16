@@ -179,6 +179,9 @@ class CandidateFeatures:
     # P1.6: Same-sentence tracking for deduplication preference
     is_same_sentence: bool = False  # True if keyword and value are in the same sentence
 
+    # Phase 7: Context prefix matching (segmentation redesign)
+    from_context_prefix: bool = False  # True if keyword was found in context_prefix, not main text
+
     def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
@@ -218,6 +221,7 @@ class CandidateFeatures:
             "respectively_confidence": self.respectively_confidence,
             "context_type": self.context_type,
             "is_same_sentence": self.is_same_sentence,
+            "from_context_prefix": self.from_context_prefix,
         }
 
     @classmethod
@@ -241,6 +245,7 @@ class CandidateFeatures:
             respectively_confidence=data.get("respectively_confidence"),  # L1
             context_type=data.get("context_type"),  # L4: Context multiplier type
             is_same_sentence=data.get("is_same_sentence", False),  # P1.6: Same-sentence tracking
+            from_context_prefix=data.get("from_context_prefix", False),  # Phase 7: Context prefix matching
         )
 
 

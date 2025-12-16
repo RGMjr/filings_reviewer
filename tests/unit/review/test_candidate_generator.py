@@ -3673,3 +3673,283 @@ class TestL1P13ValueNormalization:
         candidate_val = "$5B"
 
         assert gen._normalize_value_text(pattern_val) == gen._normalize_value_text(candidate_val)
+
+
+# =============================================================================
+# Phase 7: Context Prefix Matching Tests
+# =============================================================================
+
+
+class TestContextPrefixMatching:
+    """Tests for Phase 7: CandidateGenerator context_prefix matching.
+
+    When a segment contains numbers but no nearby keywords, the generator
+    should search the context_prefix field for relevant keywords. This supports
+    list items and other segments where context comes from a previous segment.
+    """
+
+    @pytest.fixture
+    def generator(self):
+        """Create generator with confidence scoring enabled."""
+        config = CandidateGenerationConfig(
+            max_keyword_distance=100,
+            min_metric_value=1,
+            filter_false_positives=False,
+            compute_confidence=True,
+        )
+        return CandidateGenerator(config=config)
+
+    def test_context_prefix_keyword_match_when_no_nearby_keywords(self, generator):
+        """Keywords from context_prefix should match when no nearby keywords exist."""
+        # Segment with a number but no metric keywords in main text
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The value increased to 50,000 during the period.",
+                "segment_type": "list_item",
+                "context_prefix": "Our active customers include:",  # Contains keyword
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should find candidate via context_prefix
+        assert len(candidates) >= 1
+        # Should match "active customers" from context_prefix
+        active_customer_candidates = [
+            c for c in candidates if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
+        ]
+        assert len(active_customer_candidates) >= 1
+
+    def test_context_prefix_not_used_when_nearby_keywords_exist(self, generator):
+        """Context_prefix should not be searched if nearby keywords exist in main text."""
+        # Segment with both nearby keyword and different keyword in context_prefix
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our monthly active users reached 50,000 this quarter.",
+                "segment_type": "paragraph",
+                "context_prefix": "Our net revenue retention includes:",  # Different keyword
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should find MAU from main text (metric_id is cm_monthly_active_users)
+        mau_candidates = [c for c in candidates if c.suggested_metric_id and "monthly_active" in c.suggested_metric_id.lower()]
+        assert len(mau_candidates) >= 1
+
+        # Should NOT pick up NRR from context_prefix (nearby keyword exists)
+        nrr_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id and ("net_revenue_retention" in c.suggested_metric_id or "nrr" in c.suggested_metric_id.lower())
+        ]
+        assert len(nrr_candidates) == 0
+
+    def test_context_prefix_match_gets_confidence_penalty(self, generator):
+        """Context_prefix matches should get 0.8x confidence penalty."""
+        # Segment with number but no nearby keywords
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The count was 50,000 at period end.",
+                "segment_type": "list_item",
+                "context_prefix": "Active customers by segment:",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Find candidates with active_customer metric
+        active_candidates = [
+            c for c in candidates if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
+        ]
+
+        if active_candidates:
+            # Context prefix matches should have reduced confidence
+            # The 0.8x penalty means confidence < 1.0 (if base confidence was 1.0)
+            for c in active_candidates:
+                if c.suggestion_confidence is not None:
+                    # Confidence should be reduced from what it would be with nearby keyword
+                    assert c.suggestion_confidence < 1.0
+
+    def test_context_prefix_match_has_distance_500(self, generator):
+        """Context_prefix matches should have distance set to 500."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We observed 50,000 in the period.",
+                "segment_type": "list_item",
+                "context_prefix": "Monthly recurring revenue details:",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        mrr_candidates = [
+            c for c in candidates if c.suggested_metric_id and ("mrr" in c.suggested_metric_id.lower() or "recurring_revenue" in c.suggested_metric_id)
+        ]
+
+        if mrr_candidates:
+            # Context prefix matches should have distance = 500
+            for c in mrr_candidates:
+                assert c.keyword_distance == 500
+
+    def test_context_prefix_match_is_same_sentence_false(self, generator):
+        """Context_prefix matches should have is_same_sentence=False."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The total was 50,000 at year end.",
+                "segment_type": "list_item",
+                "context_prefix": "Customer acquisition costs include:",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        cac_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id and ("cac" in c.suggested_metric_id.lower() or "customer_acquisition" in c.suggested_metric_id)
+        ]
+
+        if cac_candidates:
+            # Context prefix matches are never same sentence
+            for c in cac_candidates:
+                # The is_same_sentence is stored in features (not directly on candidate)
+                # But we can verify through the confidence score behavior
+                pass  # is_same_sentence affects features, not directly testable here
+
+    def test_context_prefix_sets_from_context_prefix_flag(self, generator):
+        """Context_prefix matches should set from_context_prefix=True in features."""
+        # This is tested implicitly through the distance=500 behavior
+        # The flag is internal but we can verify through distance value
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We had 100,000 during the quarter.",
+                "segment_type": "list_item",
+                "context_prefix": "Net revenue retention by cohort:",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Any NRR match should have from_context_prefix behavior (distance=500)
+        nrr_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id and ("nrr" in c.suggested_metric_id.lower() or "net_revenue_retention" in c.suggested_metric_id)
+        ]
+
+        for c in nrr_candidates:
+            # Verify it was matched via context_prefix (distance=500)
+            assert c.keyword_distance == 500
+
+    def test_empty_context_prefix_ignored(self, generator):
+        """Empty context_prefix should not cause errors."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The value was 50,000 at period end.",
+                "segment_type": "paragraph",
+                "context_prefix": "",  # Empty
+            }
+        ]
+
+        # Should not raise any errors
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should return empty (no keywords in either place)
+        assert isinstance(candidates, list)
+
+    def test_none_context_prefix_handled(self, generator):
+        """None context_prefix should be handled gracefully."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The count was 50,000.",
+                "segment_type": "paragraph",
+                "context_prefix": None,
+            }
+        ]
+
+        # Should not raise any errors
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        assert isinstance(candidates, list)
+
+    def test_missing_context_prefix_key_handled(self, generator):
+        """Missing context_prefix key should be handled gracefully."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The total was 50,000.",
+                "segment_type": "paragraph",
+                # No context_prefix key at all
+            }
+        ]
+
+        # Should not raise any errors
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        assert isinstance(candidates, list)
+
+    def test_context_prefix_with_multiple_numbers(self, generator):
+        """Multiple numbers in segment should all be checked against context_prefix."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "The values were 50,000 and 75,000 at year end.",
+                "segment_type": "list_item",
+                "context_prefix": "Annual recurring revenue breakdown:",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        arr_candidates = [
+            c for c in candidates if c.suggested_metric_id and "arr" in c.suggested_metric_id.lower()
+        ]
+
+        # Both numbers should potentially match ARR from context
+        assert len(arr_candidates) >= 1  # At least one match

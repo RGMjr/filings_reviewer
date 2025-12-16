@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup, Tag
 from .models import SourceSegment
 from .validators import SegmentValidator
 from .exceptions import ValidationError, EncodingError, HTMLParsingError
+from src.review.boundary_detection import BoundaryDetector
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,11 @@ class HTMLSegmenter:
     # Minimum text length for a segment to be included
     MIN_SEGMENT_LENGTH = 50
 
-    # Maximum text length for a single segment
+    # Maximum text length for a single text segment
     MAX_SEGMENT_LENGTH = 10000
+
+    # Maximum text length for tables (higher limit to preserve data integrity)
+    TABLE_MAX_LENGTH = 25000
 
     # Patterns that indicate definition or methodology blocks
     DEFINITION_PATTERNS = [
@@ -94,6 +98,27 @@ class HTMLSegmenter:
         'forward-looking statements',
         'about this prospectus',
     })
+
+    # Definition start patterns - detect when a segment begins a definition
+    # that may continue into subsequent segments
+    DEFINITION_START_PATTERNS = [
+        r"\bwe\s+define\s+['\"]?[\w\s]+['\"]?\s+as\b",  # "We define 'X' as..."
+        r"\b['\"][\w\s]+['\"]?\s+(?:means|refers\s+to)\b",  # "'X' means..."
+        r"\bdefined\s+as\b",  # "...defined as..."
+        r"\bthe\s+following\s+(?:table|metrics?|terms?)\b",  # "the following metrics..."
+    ]
+
+    # Signals that a segment is a continuation of a previous definition
+    DEFINITION_CONTINUATION_PATTERNS = [
+        r"^[a-z]",  # Starts with lowercase (likely mid-sentence)
+        r"^(?:and|or|but|which|that|who|where|when)\b",  # Starts with conjunction
+        r"^\s*\(",  # Starts with parenthetical
+        r"^(?:including|excluding|such\s+as)\b",  # Starts with qualifier
+    ]
+
+    # Limits for definition merging
+    DEFINITION_LOOKAHEAD_MAX = 3  # Max segments to merge
+    DEFINITION_MAX_COMBINED_LENGTH = 2000  # Max combined length
 
     def __init__(
         self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH
@@ -196,9 +221,13 @@ class HTMLSegmenter:
         sequence_index = 0
 
         # Extract all segments
-        for element in main_content.find_all(["p", "table", "div"], recursive=True):
+        for element in main_content.find_all(["p", "table", "div", "ul", "ol"], recursive=True):
             # Skip if element is nested inside a table (we'll capture the whole table)
             if element.name == "p" and element.find_parent("table"):
+                continue
+
+            # Skip list items nested inside another list (we'll handle from outer list)
+            if element.name in ["ul", "ol"] and element.find_parent(["ul", "ol"]):
                 continue
 
             # Skip elements nested in a div that contains BOTH text and tables (L5 composite splitting)
@@ -214,6 +243,16 @@ class HTMLSegmenter:
                         # They'll be handled when the div is split
                         continue
 
+            # Handle lists specially - extract individual items with context (Phase 6)
+            if element.name in ["ul", "ol"]:
+                intro_text = self._get_list_intro_text(element)
+                list_segments = self._extract_list_segments(
+                    element, filing_id, sequence_index, intro_text
+                )
+                raw_segments.extend(list_segments)
+                sequence_index += len(list_segments) if list_segments else 1
+                continue
+
             segment = self._extract_segment(element, filing_id, sequence_index)
             if segment:
                 raw_segments.append(segment)
@@ -225,6 +264,27 @@ class HTMLSegmenter:
         for segment in raw_segments:
             split_segs = self._split_composite_segment(segment)
             segments.extend(split_segs)
+
+        # Apply definition merging (Phase 3 of redesign)
+        # This merges segments that split a definition across HTML elements
+        segments = self._merge_definition_segments(segments)
+
+        # Apply sentence detection (Phase 2 of redesign)
+        # This stores sentence boundaries in segment metadata for:
+        # - Preventing mid-sentence truncation
+        # - Context overlap extraction
+        for segment in segments:
+            self._apply_sentence_detection(segment)
+
+        # Handle large tables (Phase 4 of redesign)
+        # Tables get a higher limit (25K) and summary generation if exceeded
+        for i, segment in enumerate(segments):
+            segments[i] = self._handle_large_table(segment)
+
+        # Add context enrichment (Phase 5 of redesign)
+        # This adds context overlap and document position
+        segments = self._add_context_overlap(segments)
+        segments = self._calculate_document_positions(segments)
 
         # Update metrics after splitting
         self._metrics.total_segments = len(segments)
@@ -353,14 +413,24 @@ class HTMLSegmenter:
             return None
 
         # Truncate segments that are too long
-        if len(raw_text) > self.max_length:
+        # Tables get a higher limit (TABLE_MAX_LENGTH) than text (max_length)
+        effective_max = self.TABLE_MAX_LENGTH if segment_type == 'table' else self.max_length
+
+        if len(raw_text) > effective_max:
             logger.debug(
-                f"Truncating segment from {len(raw_text)} to {self.max_length} chars"
+                f"Truncating {segment_type} segment from {len(raw_text)} to {effective_max} chars"
             )
-            raw_text = raw_text[: self.max_length]
+            if segment_type != 'table':
+                # Use sentence-aware truncation to avoid cutting mid-sentence
+                raw_text = self._truncate_at_sentence_boundary(raw_text, effective_max)
+            else:
+                # Tables: simple truncation here, _handle_large_table() creates summary
+                raw_text = raw_text[:effective_max]
 
         # Extract raw HTML (limited to avoid huge storage)
-        raw_html = str(element)[: self.max_length]
+        # Tables get higher limit to preserve structure for downstream extraction
+        html_max = self.TABLE_MAX_LENGTH if segment_type == 'table' else self.max_length
+        raw_html = str(element)[:html_max]
 
         # Extract section path and heading
         section_path, section_heading = self._extract_section_info(element)
@@ -581,6 +651,491 @@ class HTMLSegmenter:
         text = text.strip()
 
         return text
+
+    # =========================================================================
+    # Sentence Detection Methods (Phase 2 of redesign)
+    # =========================================================================
+
+    def _apply_sentence_detection(self, segment: SourceSegment) -> SourceSegment:
+        """
+        Store sentence boundaries in segment metadata.
+
+        Uses BoundaryDetector to find sentence boundaries, which is useful for:
+        - Preventing mid-sentence truncation
+        - Extracting context overlap between segments
+        - Downstream processing that needs sentence-level granularity
+
+        Args:
+            segment: SourceSegment to analyze
+
+        Returns:
+            Same segment with sentence_boundaries populated
+        """
+        # Tables don't need sentence detection (handled differently)
+        if segment.segment_type == 'table':
+            return segment
+
+        if not segment.raw_text:
+            return segment
+
+        detector = BoundaryDetector()
+        boundaries = detector.find_sentence_boundaries(
+            segment.raw_text,
+            segment_type=segment.segment_type
+        )
+
+        # Store as list of (start, end) tuples
+        segment.sentence_boundaries = [(b.start, b.end) for b in boundaries]
+
+        return segment
+
+    def _truncate_at_sentence_boundary(self, text: str, max_length: int) -> str:
+        """
+        Truncate text at the nearest sentence boundary before max_length.
+
+        This prevents cutting off in the middle of a sentence, which would
+        create nonsensical segments and lose context.
+
+        Args:
+            text: Text to potentially truncate
+            max_length: Maximum allowed length
+
+        Returns:
+            Text truncated at sentence boundary (or original if under limit)
+        """
+        if len(text) <= max_length:
+            return text
+
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        # Find the last complete sentence that fits within max_length
+        for boundary in reversed(sentences):
+            if boundary.end <= max_length:
+                return text[:boundary.end].rstrip()
+
+        # No complete sentence fits - fall back to truncation at max_length
+        # This should be rare (would mean first sentence is > max_length)
+        logger.debug(
+            f"No complete sentence fits within {max_length} chars, "
+            f"truncating mid-sentence"
+        )
+        return text[:max_length]
+
+    def _extract_last_sentence(self, text: str) -> Optional[str]:
+        """
+        Extract the last sentence from text.
+
+        Used for context overlap - adding the last sentence of the previous
+        segment to the current segment's context_prefix.
+
+        Args:
+            text: Text to extract from
+
+        Returns:
+            Last sentence, or None if no sentences found
+        """
+        if not text:
+            return None
+
+        detector = BoundaryDetector()
+        sentences = detector.find_sentence_boundaries(text)
+
+        if not sentences:
+            return None
+
+        last_boundary = sentences[-1]
+        last_sentence = text[last_boundary.start:last_boundary.end].strip()
+
+        return last_sentence if last_sentence else None
+
+    # =========================================================================
+    # Definition Merging Methods (Phase 3 of redesign)
+    # =========================================================================
+
+    def _starts_definition(self, text: str) -> bool:
+        """
+        Check if text starts a definition that may span multiple segments.
+
+        Args:
+            text: Text to check
+
+        Returns:
+            True if text appears to start a definition
+        """
+        if not text:
+            return False
+
+        text_lower = text.lower()
+        for pattern in self.DEFINITION_START_PATTERNS:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                return True
+        return False
+
+    def _is_continuation(self, text: str) -> bool:
+        """
+        Check if text appears to be a continuation of a previous definition.
+
+        Args:
+            text: Text to check
+
+        Returns:
+            True if text appears to be a continuation
+        """
+        if not text:
+            return False
+
+        for pattern in self.DEFINITION_CONTINUATION_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+        return False
+
+    def _merge_definition_segments(
+        self, segments: List[SourceSegment]
+    ) -> List[SourceSegment]:
+        """
+        Merge segments that split a definition across HTML elements.
+
+        When a definition like "We define active customers as customers who..."
+        gets split across multiple <p> tags, this method merges them back together.
+
+        Limits:
+        - Maximum 3 segments merged
+        - Maximum 2000 combined characters
+        - Only merges consecutive segments of same type
+
+        Args:
+            segments: List of segments to potentially merge
+
+        Returns:
+            List of segments with definitions merged
+        """
+        if not segments:
+            return segments
+
+        merged: List[SourceSegment] = []
+        i = 0
+
+        while i < len(segments):
+            segment = segments[i]
+
+            # Only try to merge paragraph-type segments (not tables, etc.)
+            if segment.segment_type not in ('paragraph', 'definition_block') or \
+               not self._starts_definition(segment.raw_text):
+                merged.append(segment)
+                i += 1
+                continue
+
+            # Found a definition start - look ahead for continuations
+            merged_text = segment.raw_text
+            merged_html = segment.raw_html or ""
+            merge_count = 1
+            j = i + 1
+
+            while (j < len(segments) and
+                   merge_count < self.DEFINITION_LOOKAHEAD_MAX and
+                   len(merged_text) < self.DEFINITION_MAX_COMBINED_LENGTH):
+
+                next_seg = segments[j]
+
+                # Only merge same-type segments that look like continuations
+                if next_seg.segment_type not in ('paragraph', 'definition_block'):
+                    break
+                if not self._is_continuation(next_seg.raw_text):
+                    break
+
+                # Merge this segment
+                merged_text += " " + next_seg.raw_text
+                if next_seg.raw_html:
+                    merged_html += next_seg.raw_html
+                merge_count += 1
+                j += 1
+
+            # Update the segment with merged content if we merged anything
+            if merge_count > 1:
+                segment.raw_text = merged_text.strip()
+                segment.raw_html = merged_html[:self.max_length] if merged_html else None
+                segment.definition_merged_count = merge_count
+                logger.debug(
+                    f"Merged {merge_count} segments into definition "
+                    f"({len(segment.raw_text)} chars)"
+                )
+
+            merged.append(segment)
+            i = j  # Skip past merged segments
+
+        return merged
+
+    # =========================================================================
+    # Table Handling Methods (Phase 4 of redesign)
+    # =========================================================================
+
+    def _handle_large_table(self, segment: SourceSegment) -> SourceSegment:
+        """
+        Handle tables that exceed the maximum length limit.
+
+        For very large tables, creates a summary in raw_text while preserving
+        the full table in raw_html. This allows downstream processing to
+        access the full data when needed while keeping segment sizes manageable.
+
+        Args:
+            segment: Table segment to potentially summarize
+
+        Returns:
+            Original segment (if under limit) or segment with summary
+        """
+        if segment.segment_type != 'table':
+            return segment
+
+        if len(segment.raw_text) <= self.TABLE_MAX_LENGTH:
+            return segment
+
+        # Table exceeds limit - create summary
+        logger.debug(
+            f"Large table detected ({len(segment.raw_text)} chars > "
+            f"{self.TABLE_MAX_LENGTH} limit), creating summary"
+        )
+
+        # Generate summary from the table
+        summary = self._create_table_summary(segment.raw_html, segment.raw_text)
+
+        # Update segment
+        segment.raw_text = summary
+        segment.table_truncated_flag = True
+
+        return segment
+
+    def _create_table_summary(
+        self, raw_html: Optional[str], raw_text: str
+    ) -> str:
+        """
+        Create a summary of a large table.
+
+        Includes:
+        - Header row(s) if available
+        - Row count estimate
+        - First few rows of data
+
+        Args:
+            raw_html: Original HTML (for structure parsing)
+            raw_text: Normalized text content
+
+        Returns:
+            Summary string
+        """
+        summary_parts = []
+
+        # Try to extract headers and structure from HTML
+        if raw_html:
+            try:
+                soup = BeautifulSoup(raw_html, 'html.parser')
+                table = soup.find('table')
+
+                if table:
+                    # Get header row
+                    thead = table.find('thead')
+                    header_row = None
+                    if thead:
+                        header_row = thead.find('tr')
+                    else:
+                        # Try first row with th elements
+                        first_row = table.find('tr')
+                        if first_row and first_row.find('th'):
+                            header_row = first_row
+
+                    if header_row:
+                        headers = [
+                            self._normalize_text(cell.get_text())
+                            for cell in header_row.find_all(['th', 'td'])
+                        ]
+                        headers = [h for h in headers if h]  # Remove empty
+                        if headers:
+                            summary_parts.append(
+                                f"[Table headers: {' | '.join(headers[:10])}]"
+                            )
+
+                    # Count rows
+                    all_rows = table.find_all('tr')
+                    row_count = len(all_rows)
+                    summary_parts.append(f"[{row_count} rows total]")
+
+            except Exception as e:
+                logger.debug(f"Could not parse table HTML for summary: {e}")
+
+        # Include truncated raw text for searchability
+        # Take first portion of text (approximately first few rows)
+        max_summary_text = 3000
+        if len(raw_text) > max_summary_text:
+            truncated_text = raw_text[:max_summary_text].rstrip()
+            # Try to end at a reasonable break point
+            last_space = truncated_text.rfind(' ')
+            if last_space > max_summary_text - 200:
+                truncated_text = truncated_text[:last_space]
+            summary_parts.append(truncated_text + "...")
+        else:
+            summary_parts.append(raw_text)
+
+        return " ".join(summary_parts)
+
+    # =========================================================================
+    # Context Enrichment Methods (Phase 5 of redesign)
+    # =========================================================================
+
+    def _add_context_overlap(
+        self, segments: List[SourceSegment]
+    ) -> List[SourceSegment]:
+        """
+        Add last sentence from previous segment as context_prefix.
+
+        This preserves context at segment boundaries, allowing downstream
+        processing to understand the relationship between segments.
+
+        Args:
+            segments: List of segments to enrich
+
+        Returns:
+            Same list with context_prefix populated
+        """
+        max_context_length = 200  # Don't include overly long context
+
+        for i in range(1, len(segments)):
+            prev = segments[i - 1]
+
+            # Don't take context from tables (not sentence-structured)
+            if prev.segment_type == 'table':
+                continue
+
+            # Extract last sentence from previous segment
+            last_sentence = self._extract_last_sentence(prev.raw_text)
+
+            if last_sentence and len(last_sentence) <= max_context_length:
+                segments[i].context_prefix = last_sentence
+
+        return segments
+
+    def _calculate_document_positions(
+        self, segments: List[SourceSegment]
+    ) -> List[SourceSegment]:
+        """
+        Calculate relative position of each segment in the document.
+
+        Position is a float from 0.0 (start) to 1.0 (end) based on
+        cumulative text length.
+
+        Args:
+            segments: List of segments to enrich
+
+        Returns:
+            Same list with document_position populated
+        """
+        if not segments:
+            return segments
+
+        # Calculate total text length
+        total_length = sum(len(s.raw_text) for s in segments)
+
+        if total_length == 0:
+            return segments
+
+        # Calculate cumulative position for each segment
+        cumulative = 0
+        for segment in segments:
+            segment.document_position = cumulative / total_length
+            cumulative += len(segment.raw_text)
+
+        return segments
+
+    # =========================================================================
+    # List Handling Methods (Phase 6 of redesign)
+    # =========================================================================
+
+    def _extract_list_segments(
+        self,
+        list_element: Tag,
+        filing_id: int,
+        base_sequence: int,
+        intro_text: Optional[str] = None
+    ) -> List[SourceSegment]:
+        """
+        Extract list items as separate segments with context.
+
+        Each <li> becomes its own segment, with the intro text (the paragraph
+        before the list) stored as context_prefix.
+
+        Args:
+            list_element: <ul> or <ol> element
+            filing_id: Database filing ID
+            base_sequence: Base sequence index for the list
+            intro_text: Text from preceding paragraph as context
+
+        Returns:
+            List of segments, one per list item
+        """
+        segments = []
+
+        # Find all direct child <li> elements (not nested lists)
+        list_items = list_element.find_all('li', recursive=False)
+
+        for i, li in enumerate(list_items):
+            text = self._normalize_text(li.get_text())
+
+            # Skip items that are too short
+            if len(text) < self.min_length:
+                continue
+
+            # Truncate if needed
+            if len(text) > self.max_length:
+                text = self._truncate_at_sentence_boundary(text, self.max_length)
+
+            # Extract section info
+            section_path, section_heading = self._extract_section_info(list_element)
+
+            segment = SourceSegment(
+                filing_id=filing_id,
+                segment_type='list_item',
+                section_path=section_path,
+                section_heading=section_heading,
+                sequence_index=base_sequence + (i * 0.1),  # Fractional indices
+                raw_text=text,
+                raw_html=str(li)[:self.max_length],
+                context_prefix=intro_text,  # Include intro as context
+            )
+
+            segments.append(segment)
+
+        return segments
+
+    def _get_list_intro_text(self, list_element: Tag) -> Optional[str]:
+        """
+        Get the introductory text before a list.
+
+        This is typically a sentence like "Key metrics include:" that
+        provides context for the list items.
+
+        Args:
+            list_element: <ul> or <ol> element
+
+        Returns:
+            Intro text, or None if not found
+        """
+        # Look for the immediately preceding sibling paragraph
+        prev_sibling = list_element.find_previous_sibling(['p', 'div'])
+
+        if not prev_sibling:
+            return None
+
+        intro_text = self._normalize_text(prev_sibling.get_text())
+
+        # Only use if it's reasonably short (likely an intro, not a paragraph)
+        if intro_text and len(intro_text) <= 200:
+            return intro_text
+
+        # Try to get just the last sentence
+        last_sentence = self._extract_last_sentence(intro_text)
+        if last_sentence and len(last_sentence) <= 200:
+            return last_sentence
+
+        return None
 
     def _build_heading_cache(self, main_content: Tag) -> List[Tuple[int, str, str]]:
         """

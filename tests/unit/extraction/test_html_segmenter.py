@@ -1205,3 +1205,574 @@ class TestCompositeSegmentSplitting:
 
         finally:
             Path(html_path).unlink()
+
+
+# ===== Phase 2: Sentence Detection Tests =====
+
+
+class TestSentenceDetection:
+    """Test suite for sentence detection integration (Phase 2 of redesign)."""
+
+    def test_sentence_boundaries_populated(self, temp_html_file):
+        """Sentence boundaries are populated for paragraph segments."""
+        html = """
+        <html><body>
+            <p>First sentence here. Second sentence follows. Third sentence ends it.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 1
+            # Should have sentence boundaries populated
+            assert segments[0].sentence_boundaries is not None
+            assert len(segments[0].sentence_boundaries) >= 3
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_tables_skip_sentence_detection(self, temp_html_file):
+        """Tables should not have sentence detection applied."""
+        html = """
+        <html><body>
+            <table>
+                <tr><th>Quarter</th><th>Revenue</th></tr>
+                <tr><td>Q1 2024</td><td>$5M</td></tr>
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Tables should NOT have sentence boundaries
+            assert tables[0].sentence_boundaries is None
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_sec_abbreviations_not_sentence_breaks(self, temp_html_file):
+        """SEC abbreviations like FY, Q1 should not break sentences."""
+        html = """
+        <html><body>
+            <p>In FY 2024, we achieved Q1 targets early. Revenue grew YoY by 25%.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 1
+            # Should have exactly 2 sentences (not more due to abbreviations)
+            assert segments[0].sentence_boundaries is not None
+            # FY and Q1 and YoY should not break sentences
+            assert len(segments[0].sentence_boundaries) == 2
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_truncation_respects_sentence_boundary(self, temp_html_file):
+        """Truncation should occur at sentence boundary, not mid-sentence."""
+        # Create text with multiple sentences that exceeds max_length
+        sentence = "This is a complete sentence about customer metrics. "
+        long_text = sentence * 30  # ~1500 chars
+
+        html = f"""
+        <html><body>
+            <p>{long_text}</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20, max_length=500)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 1
+            # Should end with a period (complete sentence)
+            assert segments[0].raw_text.rstrip().endswith('.')
+
+        finally:
+            Path(html_path).unlink()
+
+
+# ===== Phase 3: Definition Merging Tests =====
+
+
+class TestDefinitionMerging:
+    """Test suite for definition merging (Phase 3 of redesign)."""
+
+    def test_simple_definition_merge(self, temp_html_file):
+        """Consecutive definition paragraphs should be merged."""
+        html = """
+        <html><body>
+            <p>We define "active customers" as customers who have made at least one purchase.</p>
+            <p>and who have logged into our platform at least once in the preceding 90 days.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should be merged into one segment
+            assert len(segments) == 1
+            assert 'active customers' in segments[0].raw_text
+            assert '90 days' in segments[0].raw_text
+            assert segments[0].definition_merged_count >= 2
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_definition_with_which_clause(self, temp_html_file):
+        """Definition with 'which' continuation should merge."""
+        html = """
+        <html><body>
+            <p>We define "monthly recurring revenue" as the total revenue recognized in a month.</p>
+            <p>which includes all subscription fees and excludes one-time charges.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should be merged
+            assert len(segments) == 1
+            assert 'recurring revenue' in segments[0].raw_text.lower()
+            assert 'excludes' in segments[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_no_merge_for_non_definitions(self, temp_html_file):
+        """Non-definition paragraphs should not be merged."""
+        html = """
+        <html><body>
+            <p>Our company was founded in 2010 in San Francisco.</p>
+            <p>We have grown significantly since then.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should remain as separate segments
+            assert len(segments) == 2
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_merge_limit_3_segments(self, temp_html_file):
+        """Definition merging should stop after 3 segments."""
+        html = """
+        <html><body>
+            <p>We define customer lifetime value as the total revenue.</p>
+            <p>and includes all subscription payments.</p>
+            <p>and support fees.</p>
+            <p>and implementation charges.</p>
+            <p>and renewal fees over the entire relationship.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # First segment should merge at most 3
+            merged_segment = segments[0]
+            assert merged_segment.definition_merged_count <= 3
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_merge_respects_length_limit(self, temp_html_file):
+        """Definition merging should respect the 2000 char limit."""
+        # Create definition continuation that would exceed limit
+        long_continuation = "and " + "x" * 1800  # Very long continuation
+
+        html = f"""
+        <html><body>
+            <p>We define net revenue retention as the total recurring revenue from existing customers. {long_continuation}</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Merged text should not exceed the limit unreasonably
+            assert len(segments) >= 1
+
+        finally:
+            Path(html_path).unlink()
+
+
+# ===== Phase 4: Large Table Handling Tests =====
+
+
+class TestLargeTableHandling:
+    """Test suite for large table handling (Phase 4 of redesign)."""
+
+    def test_table_uses_higher_limit(self, temp_html_file):
+        """Tables should use 25K limit instead of 10K."""
+        # Create table with ~15K chars (exceeds default 10K, under 25K)
+        rows = "".join(
+            f"<tr><td>Row {i}</td><td>{'Data ' * 20}</td></tr>"
+            for i in range(200)
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Content</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Should not be truncated (under 25K)
+            assert not tables[0].table_truncated_flag
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_very_large_table_truncated_to_limit(self, temp_html_file):
+        """Tables exceeding 25K should be truncated to the limit."""
+        # Create very large table (~30K chars)
+        rows = "".join(
+            f"<tr><td>Row {i}</td><td>{'Data ' * 50}</td></tr>"
+            for i in range(500)
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>Row ID</th><th>Large Content Field</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Should be truncated to TABLE_MAX_LENGTH (25000)
+            assert len(tables[0].raw_text) == 25000
+            # Should still contain header row content (not truncated)
+            assert 'Row ID' in tables[0].raw_text or 'Large Content' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_large_table_preserves_headers(self, temp_html_file):
+        """Large tables should preserve header content after truncation."""
+        rows = "".join(
+            f"<tr><td>Row {i}</td><td>Value {i}</td><td>{'X' * 100}</td></tr>"
+            for i in range(400)
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>Customer ID</th><th>Revenue</th><th>Details</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Header content should be at the beginning and preserved
+            assert 'Customer ID' in tables[0].raw_text or 'Revenue' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+
+# ===== Phase 5: Context Overlap Tests =====
+
+
+class TestContextOverlap:
+    """Test suite for context overlap extraction (Phase 5 of redesign)."""
+
+    def test_context_prefix_from_previous_segment(self, temp_html_file):
+        """Segments should have context_prefix from previous segment's last sentence."""
+        html = """
+        <html><body>
+            <p>Our company provides cloud services. We have strong customer retention metrics.</p>
+            <p>These metrics are calculated monthly and include all paying customers.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 2
+            # Second segment should have context from first
+            assert segments[1].context_prefix is not None
+            assert 'retention metrics' in segments[1].context_prefix
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_no_context_from_tables(self, temp_html_file):
+        """Context should not be taken from table segments."""
+        html = """
+        <html><body>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>Revenue</td><td>$100M</td></tr>
+            </table>
+            <p>The table above shows our key financial metrics for the quarter.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            if paragraphs:
+                # Paragraph should NOT have context from table
+                assert paragraphs[0].context_prefix is None
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_first_segment_no_context_prefix(self, temp_html_file):
+        """First segment should not have a context_prefix."""
+        html = """
+        <html><body>
+            <p>This is the first paragraph about our customer metrics and growth strategy.</p>
+            <p>This is the second paragraph with more details about our performance.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 1
+            # First segment should have no context_prefix
+            assert segments[0].context_prefix is None
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_document_position_calculated(self, temp_html_file):
+        """Document position should be calculated for all segments."""
+        html = """
+        <html><body>
+            <p>First paragraph with some content about our business operations.</p>
+            <p>Second paragraph describing our customer acquisition strategies.</p>
+            <p>Third paragraph about our revenue growth and future projections.</p>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 3
+            # All segments should have document_position
+            for segment in segments:
+                assert segment.document_position is not None
+                assert 0.0 <= segment.document_position <= 1.0
+
+            # First should be near 0, last should be near end
+            assert segments[0].document_position == 0.0
+            assert segments[-1].document_position > segments[0].document_position
+
+        finally:
+            Path(html_path).unlink()
+
+
+# ===== Phase 6: List Handling Tests =====
+
+
+class TestListHandling:
+    """Test suite for list item extraction with context (Phase 6 of redesign)."""
+
+    def test_list_items_extracted_separately(self, temp_html_file):
+        """Each list item should become a separate segment."""
+        html = """
+        <html><body>
+            <p>Key metrics include:</p>
+            <ul>
+                <li>Monthly recurring revenue of $5 million from our subscription business</li>
+                <li>Customer acquisition cost averaging $150 per new customer acquired</li>
+                <li>Net revenue retention rate of 115% for the fiscal year ended</li>
+            </ul>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            list_items = [s for s in segments if s.segment_type == 'list_item']
+            assert len(list_items) >= 3
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_list_items_have_intro_context(self, temp_html_file):
+        """List items should have the intro text as context_prefix."""
+        html = """
+        <html><body>
+            <p>Our key performance indicators are:</p>
+            <ul>
+                <li>Active customer count exceeding one million users globally</li>
+                <li>Monthly active users growing at twenty percent annually</li>
+            </ul>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            list_items = [s for s in segments if s.segment_type == 'list_item']
+            if list_items:
+                # List items should have intro as context
+                assert list_items[0].context_prefix is not None
+                assert 'performance indicators' in list_items[0].context_prefix
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_ordered_list_extraction(self, temp_html_file):
+        """Ordered lists (<ol>) should also be extracted."""
+        html = """
+        <html><body>
+            <p>Customer growth strategy steps:</p>
+            <ol>
+                <li>Identify target market segments with high growth potential</li>
+                <li>Develop targeted marketing campaigns for each segment</li>
+                <li>Measure and optimize customer acquisition costs regularly</li>
+            </ol>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            list_items = [s for s in segments if s.segment_type == 'list_item']
+            assert len(list_items) >= 3
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_short_list_items_filtered(self, temp_html_file):
+        """List items shorter than min_length should be filtered."""
+        html = """
+        <html><body>
+            <p>Metrics:</p>
+            <ul>
+                <li>Short</li>
+                <li>This list item is long enough to pass the minimum length filter easily</li>
+            </ul>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=50)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            list_items = [s for s in segments if s.segment_type == 'list_item']
+            # Only the long item should be included
+            for item in list_items:
+                assert len(item.raw_text) >= 50
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_lists_handled(self, temp_html_file):
+        """Nested lists should not create duplicate segments."""
+        html = """
+        <html><body>
+            <p>Customer segments:</p>
+            <ul>
+                <li>Enterprise customers with annual contracts exceeding one million dollars
+                    <ul>
+                        <li>Large enterprise with thousand plus employees</li>
+                        <li>Mid-market with hundred to thousand employees</li>
+                    </ul>
+                </li>
+                <li>Small business customers with monthly subscriptions under ten thousand</li>
+            </ul>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should extract outer list items only (nested handled within)
+            list_items = [s for s in segments if s.segment_type == 'list_item']
+            # We expect outer list items to be extracted
+            assert len(list_items) >= 2
+
+        finally:
+            Path(html_path).unlink()

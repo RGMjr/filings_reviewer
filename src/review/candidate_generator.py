@@ -584,6 +584,28 @@ class CandidateGenerator:
                     num, all_keywords, boundaries, sentence_boundaries
                 )
 
+                # Phase 7: If no nearby keywords found, check context_prefix
+                # Context prefix contains the last sentence from the previous segment,
+                # which may provide relevant keyword context for list items, etc.
+                context_prefix = segment.get("context_prefix", "")
+                from_context_prefix = False
+                if not keyword_matches and context_prefix:
+                    # Search context_prefix for keywords
+                    context_keywords = self._find_all_keywords(context_prefix)
+                    if context_keywords:
+                        # Use context keywords (they won't have "nearby" relationship to number)
+                        # Take first keyword per metric for simplicity
+                        seen_metrics: Set[str] = set()
+                        for ck in context_keywords:
+                            if ck.metric_id not in seen_metrics:
+                                keyword_matches.append(ck)
+                                seen_metrics.add(ck.metric_id)
+                        from_context_prefix = True
+                        logger.debug(
+                            f"Found {len(keyword_matches)} keywords in context_prefix "
+                            f"for number {num.raw_text!r}"
+                        )
+
                 for kw in keyword_matches:
                     # Deduplicate by (number_position, metric_id)
                     key = (num.start, kw.metric_id)
@@ -592,11 +614,16 @@ class CandidateGenerator:
                     seen.add(key)
 
                     # Calculate distance and position
-                    distance = self._calculate_distance(num, kw)
-                    # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "before")
-                    # Rationale: When keyword and number are at same position, treat as "before" (no penalty)
-                    # since there's no temporal "after" relationship in reading order
-                    keyword_position = "after" if kw.direction == "after" else "before"
+                    # For context_prefix matches, use a special "large" distance
+                    if from_context_prefix:
+                        distance = 500  # Indicates "from context, not nearby"
+                        keyword_position = "before"  # Context is from previous segment
+                    else:
+                        distance = self._calculate_distance(num, kw)
+                        # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "before")
+                        # Rationale: When keyword and number are at same position, treat as "before" (no penalty)
+                        # since there's no temporal "after" relationship in reading order
+                        keyword_position = "after" if kw.direction == "after" else "before"
 
                     # Extract context
                     context = self._extract_context(text, num.start)
@@ -623,7 +650,7 @@ class CandidateGenerator:
                     features.context_type = context_type
 
                     # P1.6: Track if keyword and number are in the same sentence
-                    if sentence_boundaries:
+                    if sentence_boundaries and not from_context_prefix:
                         number_sentence = self._keyword_matcher._get_boundary_at_position(
                             num.start, sentence_boundaries
                         )
@@ -635,9 +662,15 @@ class CandidateGenerator:
                             and keyword_sentence is not None
                             and number_sentence == keyword_sentence
                         )
+                    elif from_context_prefix:
+                        # Context prefix matches are never "same sentence" (different segments)
+                        features.is_same_sentence = False
                     else:
                         # Without sentence detection, assume same sentence (conservative)
                         features.is_same_sentence = True
+
+                    # Phase 7: Track if keyword came from context_prefix
+                    features.from_context_prefix = from_context_prefix
 
                     # Compute confidence score
                     confidence = None
@@ -649,6 +682,15 @@ class CandidateGenerator:
                             metric_id=kw.metric_id,
                             features=features,
                         )
+
+                        # Phase 7: Apply 0.8x confidence penalty for context_prefix matches
+                        # These matches are less certain since keyword is in a different segment
+                        if from_context_prefix and confidence is not None:
+                            confidence = confidence * 0.8
+                            logger.debug(
+                                f"Applied 0.8x confidence penalty for context_prefix match: "
+                                f"{confidence:.3f}"
+                            )
 
                     candidate = ReviewCandidate(
                         filing_id=filing_id,

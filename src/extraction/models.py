@@ -6,7 +6,7 @@ These models represent extracted data before it's written to the database.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from decimal import Decimal
 
 
@@ -44,6 +44,13 @@ class SourceSegment:
     contains_numeric_disclosure_flag: bool = False
     classifier_confidence: Optional[float] = None
 
+    # Context preservation (populated by enhanced segmenter)
+    context_prefix: Optional[str] = None  # Last sentence from previous segment
+    document_position: Optional[float] = None  # 0.0-1.0 position in document
+    sentence_boundaries: Optional[List[Tuple[int, int]]] = None  # (start, end) pairs
+    table_truncated_flag: bool = False  # True if table was too large and summarized
+    definition_merged_count: int = 0  # Number of segments merged for definition
+
     # Database fields (populated after insert)
     source_segment_id: Optional[int] = None
     created_at: Optional[datetime] = None
@@ -68,6 +75,12 @@ class SourceSegment:
             "contains_methodology_flag": self.contains_methodology_flag,
             "contains_numeric_disclosure_flag": self.contains_numeric_disclosure_flag,
             "classifier_confidence": self.classifier_confidence,
+            # Context preservation fields (not yet in DB schema)
+            "context_prefix": self.context_prefix,
+            "document_position": self.document_position,
+            "sentence_boundaries": self.sentence_boundaries,
+            "table_truncated_flag": self.table_truncated_flag,
+            "definition_merged_count": self.definition_merged_count,
         }
 
 
