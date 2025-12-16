@@ -342,7 +342,7 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
     - Critical bug fixed: Missing database schema (review_audit_log, reviewer_id)
     - Test data: 5 companies, 10 filings, 45 candidates
     - Core functionality verified: page loads, cards display, navigation works
-    - Scripts: run_dev_server.py, generate_test_data_sql.sql
+    - Scripts: run_dev_server.py (mock data scripts removed 2025-12-16 to prevent learning contamination)
   - Documentation: See `docs/D3_FILING_LIST_TEMPLATE.md`, `docs/D3_TESTING_RESULTS.md`, `docs/D3_MANUAL_TESTING_CHECKLIST.md`
 - [x] **D4** Create `src/web/templates/review.html` (COMPLETE - 2025-12-10)
   - Implementation: 602 lines, 94% coverage (review.py), production-ready
