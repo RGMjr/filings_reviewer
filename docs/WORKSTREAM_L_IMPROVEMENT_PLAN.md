@@ -91,7 +91,7 @@ Workstream L (Metric Logic Repairs) has been comprehensively evaluated against t
 
 | ID | Gap | Priority | Effort |
 |----|-----|----------|--------|
-| L2-G1 | None identified | - | - |
+| L2-G1 | Issue 4 enhancement complete (standalone TOC pattern) | - | Complete |
 
 ---
 

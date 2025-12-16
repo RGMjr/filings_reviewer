@@ -74,6 +74,7 @@ Understanding Filter Reasons:
     >>> # - "version_number": Version number ("Version 2.0")
     >>> # - "toc_proximity": Number near "Table of Contents" header
     >>> # - "toc_page_reference": Dot leader pattern (section name ... page number)
+    >>> # - "reference_number": Matches FALSE_POSITIVE_CONTEXT_PATTERNS (page/note/section refs, TOC links)
     >>> # - None: Not a false positive
 
 See Also:
@@ -138,6 +139,8 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     re.compile(r"\bchapters?\s+\d+", re.IGNORECASE),
     # Part references: "Part II"
     re.compile(r"\bparts?\s+(?:I{1,3}|IV|V|VI{0,3}|\d+)", re.IGNORECASE),
+    # Table of Contents references: "73 Table of Contents" (Issue 4 - standalone pattern)
+    re.compile(r"\d+\s+(?:table\s+of\s+contents|toc)\b", re.IGNORECASE),
 ]
 
 # Year range - numbers in this range are likely years, not metrics
@@ -310,6 +313,7 @@ class FalsePositiveFilter:
     - Reference numbers (page, note, section, etc.)
     - Numbers near Table of Contents sections (L2 enhancement)
     - TOC page references with dot leaders (L2 enhancement)
+    - Numbers near "Table of Contents" links (Issue 4 enhancement)
     """
 
     def __init__(

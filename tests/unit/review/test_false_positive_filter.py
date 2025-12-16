@@ -893,3 +893,126 @@ Business Overview.........12"""
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is True
         assert reason == "toc_page_reference"
+
+
+# =============================================================================
+# Issue 4 - Standalone TOC Pattern Tests
+# =============================================================================
+
+
+class TestIssue4StandaloneTOCPattern:
+    """Tests for Issue 4 standalone TOC pattern filtering."""
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_filters_standalone_number_before_toc_text(self, filter):
+        """Test filtering of '73 Table of Contents' pattern."""
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
+        text = "73 Table of Contents"
+
+        is_fp, reason = filter.is_false_positive(text, number)
+
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_filters_toc_case_insensitive(self, filter):
+        """Test case-insensitive matching for TOC patterns."""
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
+
+        test_cases = [
+            "73 Table of Contents",
+            "73 TABLE OF CONTENTS",
+            "73 table of contents",
+            "73 Table Of Contents",
+        ]
+
+        for text in test_cases:
+            is_fp, reason = filter.is_false_positive(text, number)
+            assert is_fp is True, f"Failed for: {text}"
+            assert reason == "reference_number", f"Wrong reason for: {text}"
+
+    def test_filters_toc_abbreviation(self, filter):
+        """Test filtering of '73 TOC' abbreviated pattern."""
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
+        text = "73 TOC"
+
+        is_fp, reason = filter.is_false_positive(text, number)
+
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_does_not_filter_unrelated_numbers(self, filter):
+        """Test that numbers unrelated to TOC are not filtered."""
+        # Use a text that has no TOC-related words at all
+        # "toc" in "stock" should not match because of word boundary
+        text = "Our stock price grew 73% last quarter with strong momentum."
+        number = NumberMatch(
+            start=text.find("73"),
+            end=text.find("73") + 2,
+            raw_text="73",
+            value=Decimal("73"),
+            unit="percent",
+        )
+
+        is_fp, reason = filter.is_false_positive(text, number)
+
+        # Should not be filtered - "toc" in "stock" doesn't match due to word boundary
+        assert is_fp is False
+        assert reason is None
+
+    def test_filters_number_newline_before_toc(self, filter):
+        """Test filtering when number and TOC are on different lines."""
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
+        text = "73\nTable of Contents"
+
+        is_fp, reason = filter.is_false_positive(text, number)
+
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_filters_farfetch_filing_example(self, filter):
+        """Test real example from Farfetch filing."""
+        number = NumberMatch(
+            start=25, end=27, raw_text="73", value=Decimal("73"), unit="count"
+        )
+        # Realistic context from filing
+        text = "was 43.0%, respectively.\n73 Table of Contents\nLifetime Value"
+
+        is_fp, reason = filter.is_false_positive(text, number)
+
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_existing_filters_still_work(self, filter):
+        """Ensure new pattern doesn't break existing functionality."""
+        # Test existing patterns still work
+        # Note: Use numbers >= 10 to avoid below_min_value filtering
+        test_cases = [
+            ("page 73", "73", Decimal("73"), True, "reference_number"),
+            ("Note 15", "15", Decimal("15"), True, "reference_number"),
+            ("In 2023 we", "2023", Decimal("2023"), True, "likely_year"),
+        ]
+
+        for text, raw_text, value, expected_fp, expected_reason in test_cases:
+            number = NumberMatch(
+                start=text.find(raw_text),
+                end=text.find(raw_text) + len(raw_text),
+                raw_text=raw_text,
+                value=value,
+                unit="count",
+            )
+            is_fp, reason = filter.is_false_positive(text, number)
+            assert is_fp == expected_fp, f"Failed for: {text}"
+            if expected_reason:
+                assert reason == expected_reason, f"Wrong reason for: {text}"
