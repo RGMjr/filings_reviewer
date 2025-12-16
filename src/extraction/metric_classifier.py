@@ -236,6 +236,32 @@ class MetricClassifier:
             r"\bconcentration\s+of\s+revenue\b",
             r"\bmajor\s+customers?\b",
         ],
+        # -----------------------------------------------------------------
+        # Revenue Predictability Metrics (T5: cm_bookings group)
+        # -----------------------------------------------------------------
+        "cm_bookings": [
+            r"\bbookings\b",                    # "bookings" standalone
+            r"\btotal\s+bookings\b",            # "total bookings"
+            r"\bnew\s+bookings\b",              # "new bookings"
+            r"\bcontract\s+bookings\b",         # "contract bookings"
+            r"\bnet\s+new\s+bookings\b",        # "net new bookings"
+            r"\bquarterly\s+bookings\b",        # "quarterly bookings"
+            r"\bannual\s+bookings\b",           # "annual bookings"
+        ],
+        "cm_billings": [
+            r"\bbillings\b",                    # "billings" standalone
+            r"\btotal\s+billings\b",            # "total billings"
+            r"\bcalculated\s+billings\b",       # "calculated billings"
+            r"\badjusted\s+billings\b",         # "adjusted billings"
+        ],
+        "cm_deferred_revenue": [
+            r"\bdeferred\s+revenue\b",          # "deferred revenue"
+            r"\bunearned\s+revenue\b",          # "unearned revenue"
+            r"\bremaining\s+performance\s+obligation[s]?\b",  # RPO
+            r"\brpo\b",                         # "RPO" acronym
+            r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
+            r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
+        ],
         # Future Metrics
         "cm_lifetime_value_per_customer": [
             r"\bltv\b",
@@ -271,6 +297,10 @@ class MetricClassifier:
         'cm_customer_retention_rate',
         'cm_net_revenue_retention',
         'cm_expansion_revenue',
+        # T5: Revenue predictability metrics
+        'cm_bookings',
+        'cm_billings',
+        'cm_deferred_revenue',
     }
 
     # General customer/metric keywords (for numeric disclosure detection)

@@ -57,8 +57,7 @@
 - [x] **T2. DB:** Update seed file to include `cm_average_order_value`, `cm_repeat_purchase_rate`. → ✅ **COMPLETE (2025-12-15)**
 - [ ] **T3. DB:** Update seed file to include `cm_gmv`, `cm_take_rate` (Marketplace metrics).
 - [ ] **T4. DB:** Update seed file to include `cm_acv`, `cm_tcv` (SaaS metrics).
-- [ ] **T5. Code:** Add regex patterns for `cm_bookings` group to `src/extraction/metric_classifier.py`.
-- [ ] **T6. Code:** Add regex patterns for `cm_billings`/`cm_deferred_revenue` group.
+- [x] **T5. Code:** Add regex patterns for `cm_bookings` group to `src/extraction/metric_classifier.py`. → ✅ **COMPLETE (2025-12-16)**
 - [ ] **T7. Code:** Add regex patterns for `cm_gmv`/`cm_take_rate` group.
 
 ---
