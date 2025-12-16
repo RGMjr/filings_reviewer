@@ -574,3 +574,108 @@ def test_metrics_avg_confidence_with_zero_segments():
 
     metrics = ClassificationMetrics()
     assert metrics.avg_confidence() == 0.0
+
+
+# ===== T5: Revenue Predictability Metrics Tests =====
+
+
+class TestBookingsMetricPatterns:
+    """Test identification of bookings-related metrics (T5)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    def test_bookings_basic(self, classifier, sample_segment):
+        """Test identification of basic bookings mention."""
+        sample_segment.raw_text = "Our bookings grew 25% year-over-year to $100 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_bookings" in result.candidate_metric_ids
+
+    def test_bookings_total(self, classifier, sample_segment):
+        """Test identification of total bookings."""
+        sample_segment.raw_text = "Total bookings for fiscal 2024 were $500 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_bookings" in result.candidate_metric_ids
+
+    def test_bookings_new(self, classifier, sample_segment):
+        """Test identification of new bookings."""
+        sample_segment.raw_text = "New bookings increased by $50 million in Q4."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_bookings" in result.candidate_metric_ids
+
+    def test_billings_basic(self, classifier, sample_segment):
+        """Test identification of billings metric."""
+        sample_segment.raw_text = "Billings were $120 million, up from $100 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_billings" in result.candidate_metric_ids
+
+    def test_billings_total(self, classifier, sample_segment):
+        """Test identification of total billings."""
+        sample_segment.raw_text = "Total billings reached $400 million in 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_billings" in result.candidate_metric_ids
+
+    def test_deferred_revenue_basic(self, classifier, sample_segment):
+        """Test identification of deferred revenue."""
+        sample_segment.raw_text = "Deferred revenue increased to $200 million at year end."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+    def test_deferred_revenue_unearned(self, classifier, sample_segment):
+        """Test identification via 'unearned revenue' variant."""
+        sample_segment.raw_text = "Unearned revenue was $150 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+    def test_deferred_revenue_rpo(self, classifier, sample_segment):
+        """Test identification via RPO acronym."""
+        sample_segment.raw_text = "Our remaining performance obligations (RPO) were $300 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+    def test_deferred_revenue_backlog(self, classifier, sample_segment):
+        """Test identification via backlog variant."""
+        sample_segment.raw_text = "Revenue backlog totaled $250 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+    def test_deferred_revenue_contract_liabilities(self, classifier, sample_segment):
+        """Test identification via contract liabilities variant."""
+        sample_segment.raw_text = "Contract liabilities were $180 million at December 31."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_deferred_revenue" in result.candidate_metric_ids
+
+    def test_bookings_not_booking_singular(self, classifier, sample_segment):
+        """Test that singular 'booking' (reservations) doesn't match."""
+        sample_segment.raw_text = "The booking process for hotel reservations is simple."
+        result = classifier.classify_segment(sample_segment)
+        # Should NOT match cm_bookings (pattern requires plural or compound)
+        assert "cm_bookings" not in result.candidate_metric_ids
+
+    def test_billings_not_billing_singular(self, classifier, sample_segment):
+        """Test that singular 'billing' (invoicing) doesn't match."""
+        sample_segment.raw_text = "Our billing department handles invoices."
+        result = classifier.classify_segment(sample_segment)
+        # Should NOT match cm_billings (pattern requires plural)
+        assert "cm_billings" not in result.candidate_metric_ids
+
+    def test_multiple_revenue_predictability_metrics(self, classifier, sample_segment):
+        """Test segment with multiple revenue predictability metrics."""
+        sample_segment.raw_text = (
+            "Bookings were $100 million, billings were $90 million, "
+            "and deferred revenue increased to $50 million."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_bookings" in result.candidate_metric_ids
+        assert "cm_billings" in result.candidate_metric_ids
+        assert "cm_deferred_revenue" in result.candidate_metric_ids

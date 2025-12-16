@@ -736,7 +736,7 @@ Integration tests require PostgreSQL. Set `TEST_DATABASE_URL` environment variab
 | UniverseBuilder | Complete | 93% |
 | FilingFetcher | Complete | 94% |
 | HTMLSegmenter | Complete | 80% |
-| MetricClassifier | Complete | 98% |
+| MetricClassifier | Complete | 99% |
 | ValueExtractor | Complete | 66% |
 | DefinitionExtractor | Complete | 89% |
 | QualityScorer | Complete | 100% |
