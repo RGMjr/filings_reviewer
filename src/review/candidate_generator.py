@@ -138,6 +138,7 @@ from src.review.config import (
 )
 from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.context_extraction import ContextExtractor
+from src.review.deduplicator import deduplicate_candidates
 from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,
@@ -458,8 +459,7 @@ class CandidateGenerator:
         """
         Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
 
-        When duplicates exist, keep the one with highest suggestion_confidence.
-        If confidence is equal or None, keep the first occurrence.
+        Delegates to the standalone deduplicate_candidates function for reusability.
 
         Args:
             candidates: List of candidates to deduplicate
@@ -467,58 +467,7 @@ class CandidateGenerator:
         Returns:
             Tuple of (deduplicated_candidates, duplicates_removed_count)
         """
-        if not candidates:
-            return [], 0
-
-        # Group candidates by (parsed_value, suggested_metric_id)
-        # Use string representation of Decimal to handle None values
-        groups: Dict[Tuple[str, str, str], List[ReviewCandidate]] = {}
-
-        for candidate in candidates:
-            # Create key - convert Decimal to string for hashing
-            value_key = (
-                str(candidate.parsed_value)
-                if candidate.parsed_value is not None
-                else "None"
-            )
-            metric_key = candidate.suggested_metric_id or "none"
-
-            # L1: Include period in key to preserve different periods
-            period_key = (
-                candidate.features.detected_period
-                if candidate.features and candidate.features.detected_period
-                else "none"
-            )
-
-            key = (value_key, metric_key, period_key)
-
-            if key not in groups:
-                groups[key] = []
-            groups[key].append(candidate)
-
-        # Select best candidate from each group
-        deduplicated = []
-        for group in groups.values():
-            if len(group) == 1:
-                deduplicated.append(group[0])
-            else:
-                # Sort by confidence (descending), None values last
-                # L1: Also consider respectively_confidence when available
-                sorted_group = sorted(
-                    group,
-                    key=lambda c: (
-                        c.suggestion_confidence is not None,
-                        c.suggestion_confidence or 0,
-                        (c.features.respectively_confidence or 0)
-                        if c.features
-                        else 0,
-                    ),
-                    reverse=True,
-                )
-                deduplicated.append(sorted_group[0])
-
-        duplicates_removed = len(candidates) - len(deduplicated)
-        return deduplicated, duplicates_removed
+        return deduplicate_candidates(candidates)
 
     def _process_segment(
         self,
@@ -908,24 +857,44 @@ class CandidateGenerator:
         if not self.config.detect_respectively_patterns:
             return candidates
 
-        # Detect pattern once per segment
-        # L1-P1.1: Pass min_confidence to parser for early filtering
-        from src.review.respectively_parser import detect_respectively_pattern
-
-        pattern = detect_respectively_pattern(
-            segment_text,
-            min_confidence=self.config.respectively_min_confidence
+        # L1-P1.2: Detect patterns (single or multiple depending on config)
+        from src.review.respectively_parser import (
+            detect_respectively_pattern,
+            detect_all_respectively_patterns
         )
 
-        # No pattern found (or filtered by confidence)
-        if not pattern:
+        if self.config.detect_all_respectively_patterns:
+            # Detect ALL patterns in segment
+            patterns = detect_all_respectively_patterns(
+                segment_text,
+                min_confidence=self.config.respectively_min_confidence
+            )
+        else:
+            # Backward compatible: detect only first pattern
+            pattern = detect_respectively_pattern(
+                segment_text,
+                min_confidence=self.config.respectively_min_confidence
+            )
+            patterns = [pattern] if pattern else []
+
+        # No patterns found
+        if not patterns:
             return candidates
 
-        # Build lookup: normalized value -> period
-        value_to_period = {}
-        for value_text, period_text in pattern.associations:
-            normalized = self._normalize_value_text(value_text)
-            value_to_period[normalized] = period_text
+        # Build lookup: normalized value -> (period, confidence)
+        # If multiple patterns have same value, use highest confidence
+        value_to_period: dict[str, tuple[str, float]] = {}
+        for pattern in patterns:
+            for value_text, period_text in pattern.associations:
+                normalized = self._normalize_value_text(value_text)
+
+                # Keep highest confidence if duplicate
+                if normalized in value_to_period:
+                    existing_confidence = value_to_period[normalized][1]
+                    if pattern.confidence > existing_confidence:
+                        value_to_period[normalized] = (period_text, pattern.confidence)
+                else:
+                    value_to_period[normalized] = (period_text, pattern.confidence)
 
         # Enrich candidates
         enriched_count = 0
@@ -936,18 +905,18 @@ class CandidateGenerator:
             )
 
             if normalized_candidate in value_to_period:
-                period = value_to_period[normalized_candidate]
+                period, confidence = value_to_period[normalized_candidate]
 
                 # Update features
                 if candidate.features:
                     candidate.features.detected_period = period
-                    candidate.features.respectively_confidence = pattern.confidence
+                    candidate.features.respectively_confidence = confidence
                     enriched_count += 1
 
         if enriched_count > 0:
             logger.info(
                 f"Enriched {enriched_count}/{len(candidates)} candidates with "
-                f"respectively pattern (confidence={pattern.confidence:.2f})"
+                f"{len(patterns)} respectively pattern(s)"
             )
 
         return candidates
