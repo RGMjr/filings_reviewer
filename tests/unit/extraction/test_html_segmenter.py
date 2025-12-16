@@ -157,6 +157,42 @@ def test_segment_sgml_filing_uppercase_text_tag(sample_html_sgml_uppercase, temp
         Path(html_path).unlink()
 
 
+def test_boundary_detector_is_singleton(temp_html_file):
+    """Verify BoundaryDetector instance is reused across method calls.
+
+    Regression test for SEG3: Singleton BoundaryDetector optimization.
+    Ensures we don't create a new BoundaryDetector instance on every
+    segmentation call, reducing memory allocation overhead.
+    """
+    from src.review.boundary_detection import BoundaryDetector
+
+    segmenter = HTMLSegmenter()
+
+    # Verify instance exists
+    assert hasattr(segmenter, '_boundary_detector')
+    assert isinstance(segmenter._boundary_detector, BoundaryDetector)
+
+    # Verify it's the same instance (singleton pattern)
+    detector_id = id(segmenter._boundary_detector)
+
+    # Segment a filing with multiple paragraphs
+    html_content = """
+    <html><body>
+    <p>First paragraph with some text. Second sentence here.</p>
+    <p>Second paragraph with different content. More sentences.</p>
+    </body></html>
+    """
+    html_path = temp_html_file(html_content)
+
+    try:
+        segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+        # Verify same instance was used (not recreated)
+        assert id(segmenter._boundary_detector) == detector_id
+    finally:
+        Path(html_path).unlink()
+
+
 def test_min_segment_length_filter():
     """Test that segments shorter than min_length are filtered out."""
     html = """
