@@ -1000,3 +1000,153 @@ class TestMarketplaceMetricPatterns:
         assert "cm_gmv" in result.candidate_metric_ids
         assert "cm_take_rate" in result.candidate_metric_ids
         assert result.contains_numeric_disclosure_flag is True
+
+
+class TestSaaSContractMetricPatterns:
+    """Test identification of SaaS contract metrics (T8: ACV + TCV)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    # --- Annual Contract Value (ACV) Tests ---
+
+    def test_acv_acronym(self, classifier, sample_segment):
+        """Test identification via ACV acronym."""
+        sample_segment.raw_text = "ACV increased to $50,000 per customer in 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    def test_acv_full_phrase(self, classifier, sample_segment):
+        """Test identification via 'annual contract value' phrase."""
+        sample_segment.raw_text = "Annual contract value grew 35% year-over-year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    def test_acv_average_contract_value(self, classifier, sample_segment):
+        """Test identification via 'average contract value' variant."""
+        sample_segment.raw_text = "Our average contract value reached $75,000."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    def test_acv_annualized_contract_value(self, classifier, sample_segment):
+        """Test identification via 'annualized contract value' variant."""
+        sample_segment.raw_text = "Annualized contract value for enterprise customers was $120,000."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    def test_acv_average_annual_contract(self, classifier, sample_segment):
+        """Test identification via 'average annual contract' variant."""
+        sample_segment.raw_text = "The average annual contract for new customers is $45,000."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    def test_acv_contract_value_per_customer(self, classifier, sample_segment):
+        """Test identification via 'contract value per customer' variant."""
+        sample_segment.raw_text = "Contract value per customer increased to $65,000."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+
+    # --- Total Contract Value (TCV) Tests ---
+
+    def test_tcv_acronym(self, classifier, sample_segment):
+        """Test identification via TCV acronym."""
+        sample_segment.raw_text = "TCV for multi-year deals was $5 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" in result.candidate_metric_ids
+
+    def test_tcv_full_phrase(self, classifier, sample_segment):
+        """Test identification via 'total contract value' phrase."""
+        sample_segment.raw_text = "Total contract value of signed agreements was $10 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" in result.candidate_metric_ids
+
+    def test_tcv_lifetime_contract_value(self, classifier, sample_segment):
+        """Test identification via 'lifetime contract value' variant."""
+        sample_segment.raw_text = "Lifetime contract value for enterprise customers averages $2 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" in result.candidate_metric_ids
+
+    def test_tcv_contract_lifetime_value(self, classifier, sample_segment):
+        """Test identification via 'contract lifetime value' variant."""
+        sample_segment.raw_text = "Contract lifetime value has increased 40% since 2022."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" in result.candidate_metric_ids
+
+    # --- ACV/TCV Together Tests ---
+
+    def test_acv_tcv_together_in_segment(self, classifier, sample_segment):
+        """Test identification of both ACV and TCV in same segment."""
+        sample_segment.raw_text = (
+            "Our ACV for enterprise customers reached $150,000 while "
+            "TCV for multi-year contracts averaged $450,000."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_tcv" in result.candidate_metric_ids
+
+    # --- Negative Tests ---
+
+    def test_acv_not_generic_value(self, classifier, sample_segment):
+        """Test that generic 'value' doesn't match ACV."""
+        sample_segment.raw_text = "The value of our service increased significantly."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" not in result.candidate_metric_ids
+
+    def test_tcv_not_book_value(self, classifier, sample_segment):
+        """Test that 'book value' doesn't match TCV."""
+        sample_segment.raw_text = "The total book value of assets was $500 million."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" not in result.candidate_metric_ids
+
+    # --- CMASB Extended Boost Tests ---
+
+    def test_acv_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that ACV receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Annual contract value grew to $75,000 per customer in fiscal 2024, "
+            "representing a 25% increase over the prior year. Our ACV growth "
+            "was driven by enterprise customer expansion and upsells."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        assert result.classifier_confidence >= 0.6
+
+    def test_tcv_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that TCV receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Total contract value for new enterprise customers was 25 million in 2024, "
+            "up from 18 million in the prior year. TCV growth reflected our success "
+            "in signing multi-year agreements with Fortune 500 companies. We signed "
+            "total contract value deals worth 100 million during Q4 alone."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_tcv" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied - needs numeric disclosure + single candidate
+        # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
+        assert result.classifier_confidence >= 0.6
+
+    # --- Real-World Example ---
+
+    def test_saas_contract_metrics_real_example(self, classifier, sample_segment):
+        """Test realistic SaaS S-1 disclosure language."""
+        sample_segment.raw_text = (
+            "For the fiscal year ended December 31, 2024, our ACV per enterprise "
+            "customer was approximately $120,000, representing 28% growth compared "
+            "to the prior year. The total contract value of agreements signed during "
+            "the year was $350 million, with an average contract duration of 3 years."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_tcv" in result.candidate_metric_ids
+        assert result.contains_numeric_disclosure_flag is True
