@@ -163,6 +163,91 @@ Database: PostgreSQL (dev:dev@localhost:5433/filings_analysis_test)
 
 ---
 
+### P4 Optimization Results (2025-12-16)
+
+**After Pattern Indexing Optimization**
+
+#### Baseline (0 Patterns, Post-P4)
+
+**Test**: `test_throughput_100_segments`
+**Configuration**: No learned patterns, apply_learned_rules=False
+
+| Metric | Value |
+|--------|-------|
+| **Mean Time** | 14.89 ms |
+| **Median Time** | 14.87 ms |
+| **Min Time** | 14.47 ms |
+| **Max Time** | 15.70 ms |
+| **Std Dev** | 0.29 ms |
+| **Throughput** | **6,718 segments/sec** |
+| **OPS** | 67.18 ops/sec |
+
+**Note**: Baseline includes P1/P1.5 quality improvements (boundary + sentence detection)
+
+---
+
+#### With 1000 Patterns (Post-P4)
+
+**Test**: `test_throughput_with_1000_patterns`
+**Patterns Loaded**: 810 approved patterns (from 1000 generated)
+**Optimization**: O(1) metric_id indexing enabled
+
+| Metric | Value |
+|--------|-------|
+| **Mean Time** | 15.28 ms |
+| **Median Time** | 15.19 ms |
+| **Min Time** | 15.03 ms |
+| **Max Time** | 15.85 ms |
+| **Std Dev** | 0.25 ms |
+| **Throughput** | **6,545 segments/sec** |
+| **Performance Impact** | **2.6% degradation** |
+
+**Result**: ✅ **TARGET EXCEEDED** (target: <10% degradation, actual: 2.6%)
+
+---
+
+#### With 2000 Patterns (Post-P4)
+
+**Test**: `test_throughput_with_2000_patterns`
+**Patterns Loaded**: ~1600 approved patterns (from 2000 generated)
+**Optimization**: O(1) metric_id indexing enabled
+
+| Metric | Value |
+|--------|-------|
+| **Mean Time** | 15.18 ms |
+| **Median Time** | 15.08 ms |
+| **Min Time** | 14.81 ms |
+| **Max Time** | 16.11 ms |
+| **Std Dev** | 0.33 ms |
+| **Throughput** | **6,588 segments/sec** |
+| **Performance Impact** | **1.9% degradation** |
+
+**Result**: ✅ **TARGET EXCEEDED** (target: <15% degradation, actual: 1.9%)
+
+---
+
+### P4 Optimization Impact Summary
+
+**Before P4** (O(N) iteration through all patterns):
+- 1000 patterns: **33.4% degradation** (6,709 → 8,953 seg/sec, old baseline)
+- 2000 patterns: **43.6% degradation** (6,229 → 11,170 seg/sec, old baseline)
+- Complexity: O(patterns × candidates)
+
+**After P4** (O(1) indexed lookup by metric_id):
+- 1000 patterns: **2.6% degradation** (6,545 vs 6,718 seg/sec)
+- 2000 patterns: **1.9% degradation** (6,588 vs 6,718 seg/sec)
+- Complexity: O(relevant_patterns × candidates)
+
+**Improvement**:
+- **12.8x better** performance with 1000 patterns (2.6% vs 33.4% degradation)
+- **22.9x better** performance with 2000 patterns (1.9% vs 43.6% degradation)
+- **Near-constant time** pattern lookup regardless of total pattern count
+- Scales linearly with patterns-per-metric, not total patterns
+
+**Conclusion**: P4 optimization successfully eliminates pattern count as a performance bottleneck. The system can now handle 1000+ patterns with minimal overhead (<3% degradation).
+
+---
+
 ### Latency Benchmarks
 
 #### Percentile Analysis
@@ -510,7 +595,7 @@ Performance difference is from functional enhancements added AFTER baseline:
 
 **Conclusion**: Type hints have no measurable performance impact. The 24.9% difference is from quality improvements (boundary + sentence detection) that enhance extraction accuracy.
 
-**Full Report**: See `PERFORMANCE_INVESTIGATION_B13.md`
+**Full Report**: See `docs/archive/workstreams/B-type-safety/PERFORMANCE_INVESTIGATION_B13.md`
 
 ---
 

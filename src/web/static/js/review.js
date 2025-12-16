@@ -476,29 +476,41 @@
                             activeElement.tagName === 'TEXTAREA' ||
                             activeElement.isContentEditable;
 
-        if (isInputField) return;
+        if (isInputField) {
+            console.log('Keyboard shortcut ignored - focus in input field:', activeElement.tagName);
+            return;
+        }
 
         const key = event.key.toLowerCase();
+        console.log('Keyboard shortcut pressed:', key);
 
         switch (key) {
             case 'a':
                 event.preventDefault();
+                console.log('Accept shortcut - button:', elements.acceptButton, 'disabled:', elements.acceptButton?.disabled);
                 handleAccept();
                 break;
 
             case 'r':
                 event.preventDefault();
+                console.log('Reject shortcut triggered');
                 triggerRejectDropdown();
                 break;
 
             case 'c':
                 event.preventDefault();
+                console.log('Reclassify shortcut triggered');
                 triggerReclassifyDropdown();
                 break;
 
             case 'n':
                 event.preventDefault();
+                console.log('Next shortcut triggered');
                 navigateToNext();
+                break;
+
+            default:
+                // Unrecognized key, do nothing
                 break;
         }
     }
@@ -534,10 +546,22 @@
     }
 
     function navigateToNext() {
-        // Look for the "Next Candidate" link
-        const nextLink = document.querySelector('a.btn-primary[href*="next_candidate"]');
+        // Look for the "Next Candidate" link - try multiple selectors
+        let nextLink = document.querySelector('a.btn-primary[href*="next_candidate"]');
+
+        // Fallback: find any primary button containing "Next"
+        if (!nextLink) {
+            const allPrimaryLinks = document.querySelectorAll('a.btn-primary');
+            for (const link of allPrimaryLinks) {
+                if (link.textContent.includes('Next')) {
+                    nextLink = link;
+                    break;
+                }
+            }
+        }
 
         if (nextLink) {
+            console.log('Navigating to:', nextLink.href);
             window.location.href = nextLink.href;
         } else {
             console.log('No next candidate link found');

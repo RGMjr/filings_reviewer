@@ -47,7 +47,7 @@ class RuleApplicator:
     Performance:
     - Patterns cached in memory (reload every 5 minutes by default)
     - Lazy evaluation (only loads patterns if apply_learned_rules=True)
-    - Metric-specific patterns checked before global patterns
+    - O(1) pattern lookup by metric_id (P4 optimization)
     - Early exit on first matching reject pattern
 
     Attributes:
@@ -72,6 +72,7 @@ class RuleApplicator:
         self.db = db_adapter
         self.reload_interval = reload_interval_seconds
         self._patterns: List[LearnedPattern] = []
+        self._patterns_by_metric: Dict[Optional[str], List[LearnedPattern]] = {}
         self._last_reload: Optional[datetime] = None
         self._reload_patterns()
 
@@ -80,7 +81,7 @@ class RuleApplicator:
         Load approved patterns from database and update cache.
 
         Queries learned_patterns table for status='approved', converts to
-        LearnedPattern objects, and updates cache timestamp.
+        LearnedPattern objects, builds metric_id index, and updates cache timestamp.
 
         Logs:
             INFO: Number of patterns loaded
@@ -91,6 +92,7 @@ class RuleApplicator:
             self._patterns = [
                 LearnedPattern.from_row(row) for row in patterns_data
             ]
+            self._patterns_by_metric = self._build_index(self._patterns)
             self._last_reload = datetime.now()
             logger.info(f"Loaded {len(self._patterns)} approved patterns from database")
         except Exception as e:
@@ -99,6 +101,7 @@ class RuleApplicator:
             if self._last_reload is None:
                 # First load failed - start with empty pattern list
                 self._patterns = []
+                self._patterns_by_metric = {}
                 self._last_reload = datetime.now()
 
     def _check_reload(self) -> None:
@@ -115,12 +118,44 @@ class RuleApplicator:
             logger.debug("Pattern cache expired, reloading...")
             self._reload_patterns()
 
+    def _build_index(
+        self, patterns: List[LearnedPattern]
+    ) -> Dict[Optional[str], List[LearnedPattern]]:
+        """
+        Build an index of patterns by metric_id for O(1) lookup.
+
+        Groups reject_rule patterns by their metric_id to enable fast lookups
+        during candidate filtering. Patterns with metric_id=None are stored
+        under the None key (global patterns).
+
+        Args:
+            patterns: List of LearnedPattern objects to index
+
+        Returns:
+            Dictionary mapping metric_id (or None for global) to list of patterns
+
+        Example:
+            >>> index = self._build_index(patterns)
+            >>> arr_patterns = index.get("annual_recurring_revenue", [])
+            >>> global_patterns = index.get(None, [])
+        """
+        index: Dict[Optional[str], List[LearnedPattern]] = {}
+        for pattern in patterns:
+            # Only index reject_rule patterns (used in should_filter)
+            if pattern.pattern_type == "reject_rule":
+                key = pattern.metric_id  # None for global patterns
+                if key not in index:
+                    index[key] = []
+                index[key].append(pattern)
+        return index
+
     def should_filter(
         self, candidate: ReviewCandidate, features: CandidateFeatures
     ) -> Tuple[bool, Optional[str]]:
         """
         Check if candidate should be filtered based on learned reject patterns.
 
+        Uses O(1) indexed lookup by metric_id for fast pattern matching.
         Applies patterns in this order:
         1. Metric-specific reject_rule patterns (where pattern.metric_id matches)
         2. Global reject_rule patterns (where pattern.metric_id is None)
@@ -145,21 +180,20 @@ class RuleApplicator:
         """
         self._check_reload()
 
-        # Apply metric-specific reject patterns first (higher precision)
+        # Apply metric-specific reject patterns first (O(1) lookup)
         if candidate.suggested_metric_id:
-            for pattern in self._patterns:
-                if (
-                    pattern.pattern_type == "reject_rule"
-                    and pattern.metric_id == candidate.suggested_metric_id
-                ):
-                    if pattern.matches(features):
-                        return True, f"Learned rule: {pattern.pattern_name}"
-
-        # Then apply global reject patterns (metric_id=None)
-        for pattern in self._patterns:
-            if pattern.pattern_type == "reject_rule" and pattern.metric_id is None:
+            metric_patterns = self._patterns_by_metric.get(
+                candidate.suggested_metric_id, []
+            )
+            for pattern in metric_patterns:
                 if pattern.matches(features):
                     return True, f"Learned rule: {pattern.pattern_name}"
+
+        # Then apply global reject patterns (O(1) lookup)
+        global_patterns = self._patterns_by_metric.get(None, [])
+        for pattern in global_patterns:
+            if pattern.matches(features):
+                return True, f"Learned rule: {pattern.pattern_name}"
 
         return False, None
 
