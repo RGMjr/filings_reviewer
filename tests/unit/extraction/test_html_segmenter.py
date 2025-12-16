@@ -56,6 +56,25 @@ def sample_html_sgml():
 
 
 @pytest.fixture
+def sample_html_sgml_uppercase():
+    """SGML-wrapped SEC filing format with uppercase TEXT tag."""
+    return """
+    <DOCUMENT>
+    <TYPE>S-1
+    <SEQUENCE>1
+    <TEXT>
+    <HTML>
+    <HEAD></HEAD>
+    <BODY>
+        <p>Our customer count grew to 500 users in the last quarter.</p>
+    </BODY>
+    </HTML>
+    </TEXT>
+    </DOCUMENT>
+    """
+
+
+@pytest.fixture
 def temp_html_file():
     """Create a temporary HTML file for testing."""
 
@@ -110,6 +129,29 @@ def test_segment_sgml_format(sample_html_sgml, temp_html_file):
             "prospectus" in all_text.lower()
             or "monthly active users" in all_text.lower()
         )
+
+    finally:
+        Path(html_path).unlink()
+
+
+def test_segment_sgml_filing_uppercase_text_tag(sample_html_sgml_uppercase, temp_html_file):
+    """Test segmentation of SGML-wrapped filing with uppercase TEXT tag.
+
+    Regression test for Task 2: SGML Tag Case Insensitivity.
+    Older SEC EDGAR filings may use <TEXT> instead of <text>.
+    """
+    html_path = temp_html_file(sample_html_sgml_uppercase)
+    segmenter = HTMLSegmenter()
+
+    try:
+        segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+        # Should find content inside uppercase <TEXT> tags
+        assert len(segments) > 0, "Should extract segments from uppercase <TEXT> tag"
+
+        # Verify content was extracted
+        all_text = " ".join(s.raw_text for s in segments)
+        assert "customer count" in all_text.lower()
 
     finally:
         Path(html_path).unlink()

@@ -375,8 +375,9 @@ class HTMLSegmenter:
         - SGML format: <DOCUMENT><TEXT><HTML>...</HTML></TEXT></DOCUMENT>
         - Modern HTML: <!DOCTYPE html><HTML>...</HTML>
         """
-        # Try to find <TEXT> tag (SGML format)
-        text_tag = soup.find("text")
+        # Try to find <TEXT> tag (SGML format) - case insensitive
+        # Older filings may use uppercase <TEXT>, newer ones lowercase <text>
+        text_tag = soup.find("text") or soup.find("TEXT")
         if text_tag:
             return text_tag
 

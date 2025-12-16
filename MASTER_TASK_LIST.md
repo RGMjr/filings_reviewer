@@ -102,3 +102,11 @@
 - [x] **P1. Profile:** Run memory profiling tests (`test_memory_usage_baseline`) to establish RAM limits. → ✅ **COMPLETE (2025-12-16)**
 - [x] **P2. Stress Test:** Generate 1000+ synthetic learned patterns in DB to measure impact on extraction speed. → ✅ **COMPLETE (2025-12-16)** - 33.4% degradation with 790 patterns (optimization recommended)
 - [x] **P3. Concurrency:** Audit `CandidateGenerator` for thread-safety issues to enable parallel filing processing. → ✅ **COMPLETE (2025-12-16)** - Safe with per-thread instances, 3-7x speedup expected
+
+---
+
+## 🔵 HTML Segmentation Improvements
+**Source:** `docs/SEGMENTATION_IMPROVEMENT_PLAN.md`
+**Objective:** Optimize and harden the HTML segmentation pipeline.
+
+- [x] **SEG2. Fix:** SGML tag case insensitivity - handle uppercase `<TEXT>` tags in older filings. → ✅ **COMPLETE (2025-12-16)**

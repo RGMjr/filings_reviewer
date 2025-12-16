@@ -385,11 +385,11 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 ## Implementation Roadmap
 
 ### Phase A: Quick Wins (Same Day)
-| # | Item | Time | Impact |
-|---|------|------|--------|
-| 2 | SGML case insensitivity | 15 min | Correctness |
-| 3 | Singleton BoundaryDetector | 15 min | Performance |
-| 4 | Expand continuation patterns | 30 min | Accuracy |
+| # | Item | Time | Impact | Status |
+|---|------|------|--------|--------|
+| 2 | SGML case insensitivity | 15 min | Correctness | ✅ Complete |
+| 3 | Singleton BoundaryDetector | 15 min | Performance | |
+| 4 | Expand continuation patterns | 30 min | Accuracy | |
 
 **Total:** ~1 hour, immediate benefits
 
