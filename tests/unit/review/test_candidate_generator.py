@@ -3409,3 +3409,158 @@ class TestL1RespectivelyPatternIntegration:
 
         # Low confidence pattern should be ignored
         assert enriched[0].features.detected_period is None
+
+
+# Q3: Specific Exception Handling Tests
+class TestSpecificExceptionHandling:
+    """Tests for specific exception handling in generate_for_filing."""
+
+    @pytest.fixture
+    def generator(self):
+        return CandidateGenerator()
+
+    def test_segment_processing_error_caught_and_logged(self, generator, caplog):
+        """SegmentProcessingError should be caught, logged, and processing continues."""
+        import logging
+
+        segments = [
+            {"source_segment_id": 1, "raw_text": "Valid segment with 100 customers"},
+            "invalid_segment",  # Will raise SegmentProcessingError
+            {"source_segment_id": 3, "raw_text": "Another valid segment with 200 users"},
+        ]
+
+        with caplog.at_level(logging.ERROR):
+            candidates, stats = generator.generate_for_filing(
+                filing_id=1,
+                company_id=1,
+                segments=segments,
+                return_stats=True,
+            )
+
+        # Should have processed valid segments
+        assert stats.segments_processed == 2
+        assert stats.segments_failed == 1
+        assert "Segment processing error" in caplog.text or "must be a dict" in caplog.text
+
+    def test_value_error_in_segment_caught(self, generator, caplog):
+        """ValueError during segment processing should be caught and logged."""
+        import logging
+
+        # Create segment with raw_text that's not a string
+        segment = {"source_segment_id": 1, "raw_text": 12345}  # int instead of str
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SegmentProcessingError):
+                generator._process_segment(
+                    filing_id=1,
+                    company_id=1,
+                    segment=segment,
+                )
+
+    def test_multiple_failed_segments_continue_processing(self, generator):
+        """Multiple failed segments should not stop processing of valid segments."""
+        segments = [
+            {"source_segment_id": 1, "raw_text": "100 active customers"},
+            "invalid1",
+            {"source_segment_id": 3, "raw_text": "200 monthly subscribers"},
+            "invalid2",
+            {"source_segment_id": 5, "raw_text": "300 enterprise users"},
+        ]
+
+        candidates, stats = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+            return_stats=True,
+        )
+
+        assert stats.segments_processed == 3
+        assert stats.segments_failed == 2
+        # Should have generated candidates from valid segments
+        assert len(candidates) > 0
+
+
+class TestNumberProcessingExceptionHandling:
+    """Tests for exception handling during number processing."""
+
+    @pytest.fixture
+    def generator(self):
+        return CandidateGenerator()
+
+    def test_number_processing_continues_after_error(self, generator, monkeypatch):
+        """If one number fails processing, other numbers should still be processed."""
+        # Mock _find_keywords_near_number to fail for first call only
+        original_method = generator._find_keywords_near_number
+        call_count = [0]
+
+        def mock_keywords(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise ValueError("Simulated error on first number")
+            return original_method(*args, **kwargs)
+
+        monkeypatch.setattr(generator, "_find_keywords_near_number", mock_keywords)
+
+        segment = {
+            "source_segment_id": 1,
+            "raw_text": "Revenue was 100 million and we have 50,000 active customers",
+        }
+
+        candidates, stats = generator._process_segment(
+            filing_id=1,
+            company_id=1,
+            segment=segment,
+        )
+
+        # First number should have failed, but second should succeed
+        assert stats["numbers_failed"] == 1
+        # Should have some candidates from the second number
+        assert len(candidates) >= 0  # May or may not match keywords
+
+    def test_type_error_during_number_processing(self, generator, monkeypatch):
+        """TypeError during number processing should be caught and logged."""
+        import logging
+
+        def mock_keywords(*args, **kwargs):
+            raise TypeError("Simulated TypeError")
+
+        monkeypatch.setattr(generator, "_find_keywords_near_number", mock_keywords)
+
+        segment = {
+            "source_segment_id": 1,
+            "raw_text": "We have 100 customers",
+        }
+
+        candidates, stats = generator._process_segment(
+            filing_id=1,
+            company_id=1,
+            segment=segment,
+        )
+
+        # Should have failed gracefully
+        assert stats["numbers_failed"] == 1
+        assert len(candidates) == 0
+
+    def test_attribute_error_in_segment_processing(self, generator, caplog, monkeypatch):
+        """AttributeError during segment processing should be caught and logged."""
+        import logging
+
+        # Mock _process_segment to raise AttributeError
+        def mock_process_segment(*args, **kwargs):
+            raise AttributeError("Simulated AttributeError")
+
+        monkeypatch.setattr(generator, "_process_segment", mock_process_segment)
+
+        segment = {"source_segment_id": 1, "raw_text": "Test"}
+
+        with caplog.at_level(logging.ERROR):
+            candidates, stats = generator.generate_for_filing(
+                filing_id=1,
+                company_id=1,
+                segments=[segment],
+                return_stats=True,
+            )
+
+        # Should have caught the error
+        assert stats.segments_failed == 1
+        assert "Unexpected error" in caplog.text

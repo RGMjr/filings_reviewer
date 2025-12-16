@@ -450,3 +450,54 @@ class TestRespectivelyMatchDataclass:
                 confidence=0.85,
                 span=(0, 50)
             )
+
+
+class TestL1P11ConfigurableConfidenceFiltering:
+    """Tests for L1-P1.1: Configurable confidence filtering."""
+
+    def test_min_confidence_parameter_filters_low_confidence(self):
+        """Should filter patterns below min_confidence threshold."""
+        # This pattern has moderate confidence (~0.6-0.7)
+        text = "For 2015 and 2016 was 33% and 35%, respectively."
+
+        # Default min_confidence (0.6) should accept it
+        result_default = detect_respectively_pattern(text)
+        assert result_default is not None
+        assert result_default.confidence >= 0.5
+
+        # High min_confidence (0.9) should filter it
+        result_high = detect_respectively_pattern(text, min_confidence=0.9)
+        assert result_high is None
+
+    def test_min_confidence_default_is_0_6(self):
+        """Default min_confidence should be 0.6."""
+        # Pattern with confidence ~0.7 should pass
+        text = "Margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
+        result = detect_respectively_pattern(text)
+        assert result is not None
+
+    def test_high_confidence_pattern_passes_all_thresholds(self):
+        """High confidence patterns should pass even strict thresholds."""
+        # Farfetch pattern with high confidence (0.85-0.9)
+        text = (
+            "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 cohorts "
+            "was 1.42, 1.53 and 1.72, respectively"
+        )
+
+        # Should pass with default threshold
+        result_default = detect_respectively_pattern(text)
+        assert result_default is not None
+        assert result_default.confidence >= 0.8
+
+        # Should pass with strict threshold
+        result_strict = detect_respectively_pattern(text, min_confidence=0.8)
+        assert result_strict is not None
+        assert result_strict.confidence >= 0.8
+
+    def test_very_low_min_confidence_accepts_all(self):
+        """Setting min_confidence=0.5 should accept all valid patterns."""
+        # Simple pattern with lower confidence
+        text = "For Q1 and Q2 was 10 and 20, respectively."
+
+        result = detect_respectively_pattern(text, min_confidence=0.5)
+        assert result is not None  # Should accept even low confidence

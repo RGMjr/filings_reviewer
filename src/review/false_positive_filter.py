@@ -238,13 +238,19 @@ def is_toc_page_reference(
     - "Risk Factors ... 12"
     - "Item 1A. Risk Factors....23"
 
+    L2-P1.1 Enhancement: Context-aware detection to prevent false positives
+    from narrative ellipsis (e.g., "We expect...12 million customers").
+
+    Now requires BOTH dot leaders AND TOC context (either header proximity
+    or section heading pattern) to avoid filtering valid metrics.
+
     Args:
         text: The full text containing the number
         number_position: Starting position of the number in the text
         window_chars: Character distance to search backwards (default: TOC_DOT_LEADER_WINDOW)
 
     Returns:
-        True if dot leader pattern found immediately before the number
+        True if dot leader pattern found AND TOC context detected
 
     Examples:
         >>> text = "Risk Factors.........12"
@@ -254,13 +260,38 @@ def is_toc_page_reference(
         >>> text = "We had 12 million customers"
         >>> is_toc_page_reference(text, text.find("12"))
         False
+
+        >>> text = "We expect...12 million customers"  # Narrative ellipsis
+        >>> is_toc_page_reference(text, text.find("12"))
+        False  # No TOC context, not filtered
     """
     # Look backwards from number position for dot leader pattern
     search_start = max(0, number_position - window_chars)
     preceding_text = text[search_start:number_position]
 
-    # Check if the preceding text ends with dot leaders
-    return TOC_DOT_LEADER_PATTERN.search(preceding_text) is not None
+    # First check: Must have dot leader pattern (3+ dots)
+    if not TOC_DOT_LEADER_PATTERN.search(preceding_text):
+        return False
+
+    # L2-P1.1: Require TOC context to avoid narrative ellipsis false positives
+
+    # Context check 1: TOC header within 200 chars (tighter than default 300)
+    # This catches most genuine TOC entries
+    if is_near_table_of_contents(text, number_position, proximity_chars=200):
+        return True
+
+    # Context check 2: TOC-like section heading pattern
+    # Matches: "Item 1A.", "Part II", "Section 3", "Chapter 5"
+    # Look for these patterns anywhere in the preceding text (not just at end)
+    section_heading_pattern = re.compile(
+        r'(?:Item|Part|Section|Chapter)\s+[IVX0-9]+[A-Z]?\b',
+        re.IGNORECASE
+    )
+    if section_heading_pattern.search(preceding_text):
+        return True
+
+    # Has dot leaders but no TOC context - likely narrative ellipsis
+    return False
 
 
 # =============================================================================
