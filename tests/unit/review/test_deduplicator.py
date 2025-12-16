@@ -508,3 +508,235 @@ class TestDeduplicateCandidatesLogging:
 
         assert count == 0
         assert "Deduplication removed" not in caplog.text
+
+
+class TestDeduplicateCandidatesP16SameSentencePreference:
+    """Tests for P1.6 same-sentence preference enhancement."""
+
+    @staticmethod
+    def _make_candidate_with_sentence(
+        parsed_value: Decimal,
+        metric_id: str,
+        confidence: float = None,
+        is_same_sentence: bool = True,
+    ) -> ReviewCandidate:
+        """Helper to create test candidates with is_same_sentence field."""
+        features = CandidateFeatures(
+            keyword_distance=10,
+            keyword_position="before",
+            is_in_table=False,
+            is_in_risk_factors=False,
+            contains_definition_language=False,
+            has_period_mention=False,
+            number_format="decimal",
+            is_same_sentence=is_same_sentence,
+        )
+
+        return ReviewCandidate(
+            filing_id=1,
+            company_id=1,
+            char_position=0,
+            context_text="test context",
+            raw_number_text=str(parsed_value),
+            triggering_keyword="test",
+            keyword_distance=10,
+            keyword_position="before",
+            parsed_value=parsed_value,
+            suggested_metric_id=metric_id,
+            suggestion_confidence=confidence,
+            features=features,
+        )
+
+    def test_same_sentence_preferred_over_higher_confidence_cross_sentence(self):
+        """Same-sentence candidate should win over higher-confidence cross-sentence."""
+        candidates = [
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=True)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.7  # Same-sentence wins
+        assert result[0].features.is_same_sentence is True
+        assert count == 1
+
+    def test_same_sentence_preference_disabled(self):
+        """When prefer_same_sentence=False, highest confidence wins."""
+        candidates = [
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=False)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.9  # Highest confidence wins
+        assert result[0].features.is_same_sentence is False
+        assert count == 1
+
+    def test_highest_confidence_among_same_sentence_selected(self):
+        """Among same-sentence candidates, highest confidence should win."""
+        candidates = [
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.6, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.8, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.95, is_same_sentence=False
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=True)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.8  # Highest same-sentence wins
+        assert count == 2
+
+    def test_fallback_to_all_when_no_same_sentence(self):
+        """When no same-sentence candidates exist, use all candidates."""
+        candidates = [
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=False
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=True)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.9  # Highest confidence among all
+        assert count == 1
+
+    def test_fallback_when_features_none(self):
+        """Candidates without features should be considered in fallback."""
+        candidates = [
+            ReviewCandidate(
+                filing_id=1,
+                company_id=1,
+                char_position=0,
+                context_text="test",
+                raw_number_text="100",
+                triggering_keyword="test",
+                keyword_distance=10,
+                keyword_position="before",
+                parsed_value=Decimal("100"),
+                suggested_metric_id="cm_arr",
+                suggestion_confidence=0.8,
+                features=None,  # No features = can't determine same-sentence
+            ),
+            ReviewCandidate(
+                filing_id=1,
+                company_id=1,
+                char_position=100,
+                context_text="test2",
+                raw_number_text="100",
+                triggering_keyword="test",
+                keyword_distance=10,
+                keyword_position="before",
+                parsed_value=Decimal("100"),
+                suggested_metric_id="cm_arr",
+                suggestion_confidence=0.6,
+                features=None,
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=True)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.8  # Highest confidence
+        assert count == 1
+
+    def test_mixed_features_and_no_features(self):
+        """Candidate with is_same_sentence=True should win over no features."""
+        same_sentence_candidate = self._make_candidate_with_sentence(
+            Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+        )
+        no_features_candidate = ReviewCandidate(
+            filing_id=1,
+            company_id=1,
+            char_position=100,
+            context_text="test2",
+            raw_number_text="100",
+            triggering_keyword="test",
+            keyword_distance=10,
+            keyword_position="before",
+            parsed_value=Decimal("100"),
+            suggested_metric_id="cm_arr",
+            suggestion_confidence=0.9,
+            features=None,
+        )
+
+        result, count = deduplicate_candidates(
+            [same_sentence_candidate, no_features_candidate],
+            prefer_same_sentence=True,
+        )
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.7  # Same-sentence wins
+        assert count == 1
+
+    def test_default_prefer_same_sentence_is_true(self):
+        """Default value for prefer_same_sentence should be True."""
+        candidates = [
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+            ),
+        ]
+
+        # Call without prefer_same_sentence argument - should default to True
+        result, count = deduplicate_candidates(candidates)
+
+        assert len(result) == 1
+        assert result[0].suggestion_confidence == 0.7  # Same-sentence wins
+        assert result[0].features.is_same_sentence is True
+
+    def test_independent_groups_each_prefer_same_sentence(self):
+        """Each independent group should apply same-sentence preference."""
+        candidates = [
+            # Group 1: (100, cm_arr)
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+            ),
+            # Group 2: (200, cm_arr) - only cross-sentence
+            self._make_candidate_with_sentence(
+                Decimal("200"), "cm_arr", confidence=0.6, is_same_sentence=False
+            ),
+            self._make_candidate_with_sentence(
+                Decimal("200"), "cm_arr", confidence=0.8, is_same_sentence=False
+            ),
+        ]
+
+        result, count = deduplicate_candidates(candidates, prefer_same_sentence=True)
+
+        assert len(result) == 2
+        assert count == 2
+
+        # Find the results by value
+        group1 = [c for c in result if c.parsed_value == Decimal("100")][0]
+        group2 = [c for c in result if c.parsed_value == Decimal("200")][0]
+
+        # Group 1: same-sentence (0.7) wins over cross-sentence (0.9)
+        assert group1.suggestion_confidence == 0.7
+        assert group1.features.is_same_sentence is True
+
+        # Group 2: highest confidence (0.8) wins (no same-sentence available)
+        assert group2.suggestion_confidence == 0.8

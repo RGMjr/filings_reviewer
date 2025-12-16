@@ -176,6 +176,9 @@ class CandidateFeatures:
     # L4: Context-dependent multiplier tracking (E1 optimization)
     context_type: Optional[str] = None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
 
+    # P1.6: Same-sentence tracking for deduplication preference
+    is_same_sentence: bool = False  # True if keyword and value are in the same sentence
+
     def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
@@ -214,6 +217,7 @@ class CandidateFeatures:
             "detected_period": self.detected_period,
             "respectively_confidence": self.respectively_confidence,
             "context_type": self.context_type,
+            "is_same_sentence": self.is_same_sentence,
         }
 
     @classmethod
@@ -236,6 +240,7 @@ class CandidateFeatures:
             detected_period=data.get("detected_period"),  # L1: Respectively pattern
             respectively_confidence=data.get("respectively_confidence"),  # L1
             context_type=data.get("context_type"),  # L4: Context multiplier type
+            is_same_sentence=data.get("is_same_sentence", False),  # P1.6: Same-sentence tracking
         )
 
 

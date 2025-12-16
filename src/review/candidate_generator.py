@@ -460,6 +460,7 @@ class CandidateGenerator:
         Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
 
         Delegates to the standalone deduplicate_candidates function for reusability.
+        P1.6: Passes prefer_same_sentence config setting for same-sentence preference.
 
         Args:
             candidates: List of candidates to deduplicate
@@ -467,7 +468,10 @@ class CandidateGenerator:
         Returns:
             Tuple of (deduplicated_candidates, duplicates_removed_count)
         """
-        return deduplicate_candidates(candidates)
+        return deduplicate_candidates(
+            candidates,
+            prefer_same_sentence=self.config.prefer_same_sentence_in_dedup,
+        )
 
     def _process_segment(
         self,
@@ -617,6 +621,23 @@ class CandidateGenerator:
                         segment_type=segment.get("segment_type"),
                     )
                     features.context_type = context_type
+
+                    # P1.6: Track if keyword and number are in the same sentence
+                    if sentence_boundaries:
+                        number_sentence = self._keyword_matcher._get_boundary_at_position(
+                            num.start, sentence_boundaries
+                        )
+                        keyword_sentence = self._keyword_matcher._get_boundary_at_position(
+                            kw.start, sentence_boundaries
+                        )
+                        features.is_same_sentence = (
+                            number_sentence is not None
+                            and keyword_sentence is not None
+                            and number_sentence == keyword_sentence
+                        )
+                    else:
+                        # Without sentence detection, assume same sentence (conservative)
+                        features.is_same_sentence = True
 
                     # Compute confidence score
                     confidence = None

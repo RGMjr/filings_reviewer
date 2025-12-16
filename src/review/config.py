@@ -252,6 +252,21 @@ class CandidateGenerationConfig:
     """Enable sentence detection for table segments. Default False (high FN risk)."""
 
     # =========================================================================
+    # P1.6 Same-Sentence Deduplication Preference
+    # =========================================================================
+
+    prefer_same_sentence_in_dedup: bool = True
+    """Prefer same-sentence matches during deduplication. P1.6 enhancement.
+
+    When True, candidates where the keyword and value are in the same sentence
+    are preferred over cross-sentence matches during deduplication, even if
+    the cross-sentence match has slightly higher confidence. This reduces
+    false positives where a value is incorrectly associated with a metric
+    keyword from a subsequent sentence.
+
+    When False, deduplication uses pure confidence-based selection."""
+
+    # =========================================================================
     # L1 Respectively Pattern Detection Settings
     # =========================================================================
 
@@ -372,6 +387,8 @@ def get_high_precision_config() -> CandidateGenerationConfig:
         detect_sentences=True,
         respect_sentence_boundaries=True,
         sentence_detection_for_tables=False,
+        # P1.6 enhancement (enabled for precision)
+        prefer_same_sentence_in_dedup=True,
         # L1 enhancements (enabled with high confidence threshold)
         detect_respectively_patterns=True,
         respectively_min_confidence=0.7,  # Higher threshold for precision
@@ -406,6 +423,8 @@ def get_high_recall_config() -> CandidateGenerationConfig:
         detect_sentences=False,
         respect_sentence_boundaries=False,
         sentence_detection_for_tables=False,
+        # P1.6 enhancement (disabled for recall - use pure confidence)
+        prefer_same_sentence_in_dedup=False,
         # L1 enhancements (enabled with low threshold for recall)
         detect_respectively_patterns=True,
         respectively_min_confidence=0.5,  # Lower threshold for recall
@@ -440,6 +459,8 @@ def get_fast_config() -> CandidateGenerationConfig:
         detect_sentences=False,
         respect_sentence_boundaries=False,
         sentence_detection_for_tables=False,
+        # P1.6 enhancement (enabled - no performance cost)
+        prefer_same_sentence_in_dedup=True,
         # L1 enhancements (disabled for speed)
         detect_respectively_patterns=False,  # Skip pattern detection
     )
