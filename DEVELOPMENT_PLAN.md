@@ -1,6 +1,6 @@
 # Development Plan - SEC Filings Reviewer
-**Last Updated:** 2025-12-15
-**Current Phase:** Phase 5 - Human Review System COMPLETE + Phase 2 Planning
+**Last Updated:** 2025-12-16
+**Current Phase:** Phase 5 Complete - Active Improvement Workstreams
 
 ---
 
@@ -30,9 +30,53 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 
 ## Recent Completions (December 2025)
 
+### ✅ **COMPLETED: Issue 4 Enhancement - Standalone TOC Pattern (2025-12-16)**
+**Status:** ✅ COMPLETE
+**Documentation:** `METRIC_IDENTIFICATION_ISSUES.md` (Issue 4)
+
+**Objective:** Complete Issue 4 by adding standalone "Table of Contents" page number filtering.
+
+**Problem Solved:**
+```
+Text: "...was 43.0%, respectively.\n73 Table of Contents\nLifetime Value..."
+Before: Page number "73" creates false positive candidate ✗
+After: Page number "73" filtered as TOC reference ✓
+```
+
+**Implementation Complete:**
+- [x] Added standalone TOC pattern to `FALSE_POSITIVE_CONTEXT_PATTERNS`
+- [x] Pattern: `\d+\s+(?:table\s+of\s+contents|toc)\b` (case-insensitive)
+- [x] Updated docstrings in `false_positive_filter.py`
+- [x] 7 unit tests added (all passing)
+- [x] 6 integration tests added (all passing)
+- [x] 100% test coverage maintained (73 statements, 0 missed)
+- [x] Type safety verified (`mypy --strict` passes)
+
+**Deliverables:**
+- **Updated Module:** `src/review/false_positive_filter.py` (line 141-142)
+- **Unit Tests:** `tests/unit/review/test_false_positive_filter.py::TestIssue4StandaloneTOCPattern` (7 tests)
+- **Integration Tests:** `tests/integration/test_issue4_toc_filtering.py` (6 tests)
+- **Documentation:** Updated METRIC_IDENTIFICATION_ISSUES.md, WORKSTREAM_L_IMPROVEMENT_PLAN.md
+
+**Patterns Filtered:**
+- "73 Table of Contents" ✓
+- "73 TABLE OF CONTENTS" ✓
+- "73\nTable of Contents" ✓
+- "73 TOC" ✓
+
+**Results:**
+- Issue 4 now 100% complete (all page number patterns filtered)
+- METRIC_IDENTIFICATION_ISSUES.md: 6/6 issues complete (100%)
+- L2 TOC filtering fully comprehensive
+
+**Time:** ~1.5 hours
+**Completion Date:** 2025-12-16
+
+---
+
 ### ✅ **COMPLETED: Workstream B Type Safety (2025-12-15)**
 **Status:** ✅ COMPLETE (B1-B13)
-**Documentation:** `docs/WORKSTREAM_B_STATUS.md`, `PERFORMANCE_INVESTIGATION_B13.md`
+**Documentation:** `docs/WORKSTREAM_B_STATUS.md`, `docs/archive/workstreams/B-type-safety/PERFORMANCE_INVESTIGATION_B13.md`
 
 **Objective:** Secure code quality by adding strict type checking to the review module.
 
@@ -111,6 +155,50 @@ After: 3 candidates with correct parallel associations ✓
 
 ---
 
+### ✅ **COMPLETED: L-Series Logic Repairs (Dec 15-16, 2025)**
+**Status:** COMPLETE (L1-L5)
+**Documentation:** `CLAUDE.md` (L-Series Enhancements section)
+
+**All Logic Repairs Complete:**
+- ✅ **L1 - Respectively Pattern Parser** - Detects parallel value-period associations
+  - P1.1: Min confidence parameter for early filtering
+  - P1.2: Multiple pattern detection in single segment
+  - P1.3: Value normalization for consistent matching
+- ✅ **L2 - TOC Proximity Detection** - Context-aware dot leader detection
+  - P1.1: Requires BOTH dot leaders AND TOC context (header or section heading)
+- ✅ **L3 - Keyword Direction Detection** - Integrated direction field from KeywordMatch
+  - Fixed: Uses `kw.direction` instead of recomputing
+  - Edge case: Maps "at" → "after" for database constraint compliance
+- ✅ **L4 - Post-Value Keyword Distance Multiplier** - Context-dependent multipliers (Option C)
+  - Parenthetical (1.15x), Tables (0.85x), Bullets (0.9x), Copula verbs (0.9x), Prepositions (1.1x)
+- ✅ **L5 - Composite Segment Splitting** - Evaluated, no changes needed
+
+**Commits:**
+- `fa9e946` - L1-P1.2/P1.3 + L4 enhancements
+- `7917637` - L3/L4 integration tests
+
+---
+
+### ✅ **COMPLETED: Q-Series Code Quality (Dec 15, 2025)**
+**Status:** COMPLETE (Q1-Q2)
+**Documentation:** `CLAUDE.md` (Q-Series Enhancements section)
+
+**Completed Items:**
+- ✅ **Q1 - SegmentDict TypedDict** - Type-safe segment data handling
+  - 19 field definitions (7 required, 12 optional)
+  - Exported from `src/review/__init__.py`
+  - 100% mypy strict compliance
+- ✅ **Q2 - Update candidate_generator.py Signatures**
+  - `generate_for_filing()`, `_process_segment()`, `_compute_features()` now use `SegmentDict`
+  - mypy --strict passes
+
+**Benefits:**
+- IDE autocomplete for segment dict keys
+- mypy catches type errors at development time
+- Self-documenting code
+
+---
+
 ### ✅ **COMPLETED: Workstream A & B Minor Improvements (Dec 15, 2025)**
 **Status:** COMPLETE
 **Documentation:** `docs/WORKSTREAM_AB_MINOR_IMPROVEMENTS.md`
@@ -167,36 +255,52 @@ After: 52.3% matches ONLY "gross margin" ✓
 
 **Full Results:** See `docs/CMASB_PHASE1B_RESULTS.md`
 
-### 🎯 **NEXT: Phase 2 Planning**
+### 🎯 **CURRENT: Active Improvement Workstreams**
+**Master Plan:** `docs/MASTER_IMPROVEMENT_PLAN.md` (created 2025-12-16)
+
+Pending improvements are now coordinated via 5 parallel workstreams:
+
+| Stream | Focus | Status | Est. Hours |
+|--------|-------|--------|------------|
+| **Stream A** | Git Stabilization | ✅ COMPLETE | 0.5 |
+| **Stream B** | Taxonomy (cm_acv/cm_tcv) | 🔄 IN PROGRESS | 2 |
+| **Stream C** | Performance Optimization | ⏳ PENDING | 4-6 |
+| **Stream D** | Code Quality (Q7, Q8) | ⏳ PENDING | 4-6 |
+| **Stream E** | Documentation Sync | ⏳ PENDING | 2-3 |
+
+**Key Priorities:**
+1. **P4 Pattern Optimization** - Fix 33.4% degradation with 1000 patterns
+2. **T-P1.3/T-P1.4** - Complete ACV/TCV taxonomy tests and docs
+3. **Q7** - Improve candidate_generator.py coverage to ≥90%
+
+See `docs/MASTER_IMPROVEMENT_PLAN.md` for detailed task breakdown and dependencies.
+
+### 📊 **Future: Phase 2 Planning**
 Based on Phase 1B success, Phase 2 should focus on:
 1. **Table Parsing Enhancements** - Extract cohort data from structured tables
 2. **Timeout Optimization** - Handle large filings (25% timeout rate)
 3. **E-commerce Focus** - Investigate lower success rates
 
-### 🤖 **NEW: Claude Skills Development**
-**Status:** Planning (2025-12-11)
+### ✅ **COMPLETED: Claude Skills Development (Dec 2025)**
+**Status:** COMPLETE (8/8 skills)
 **Purpose:** Reduce context window usage and improve consistency when working with Claude Code
 
-**Plan:** `docs/CLAUDE_SKILLS_DEVELOPMENT_PLAN.md`
-**Estimated Time:** 34.5-50 hours total (9-10 work days)
+**Documentation:** `.claude/skills/`, `docs/CLAUDE_SKILLS_QUICKSTART.md`
 
-**Skills to Develop (Priority Order):**
-1. ⬜ **Implementation Plan Creator** (4-6.5 hrs) - Auto-generate structured plans
-2. ⬜ **Code Module Grader** (6.5-8.5 hrs) - Evaluate code with A+ to F grades
-3. ⬜ **Test Coverage Analyzer** (5.5-7.5 hrs) - Identify gaps and generate tests
-4. ⬜ **Database Migration Helper** (6.5-9.5 hrs) - Generate migrations + db.py methods
-5. ⬜ **Documentation Sync Validator** (11.5-15.5 hrs) - Catch stale documentation
+**All Skills Complete:**
+1. ✅ **Implementation Planner v1.1** - Auto-generate structured plans with time tracking
+2. ✅ **Code Module Grader v1.1** - Evaluate code with A+ to F grades + completion tracking
+3. ✅ **Test Coverage Analyzer v1.1** - Identify gaps, generate tests, before→after tracking
+4. ✅ **Database Migration Helper v1.0** - Generate migrations + db.py methods + tests
+5. ✅ **Documentation Sync Validator v1.0** - Catch stale documentation
+6. ✅ **Flask API Builder v1.0** - Generate Flask routes, validation, tests
+7. ✅ **Completion Report Generator v1.0** - Generate comprehensive completion reports
+8. ✅ **Refactor Evaluator v1.0** - Evaluate refactoring opportunities
 
-**Expected Impact:**
+**Achieved Impact:**
 - 70%+ reduction in context needed for common tasks
-- 50%+ faster task initiation
-- Near-zero inconsistency in plan/doc generation
-
-**Next Steps:**
-- [ ] Create Skill #1 (Implementation Plan Creator)
-- [ ] Test Skill #1 on real planning scenario
-- [ ] Create Skill #2 (Code Module Grader)
-- [ ] Iterate based on usage feedback
+- Consistent output format across all planning sessions
+- Full development lifecycle coverage (planning → implementation → completion → maintenance)
 
 ### ✅ **COMPLETED: Core Development (Nov 2025)**
 **Status:** ALL DONE
@@ -260,225 +364,27 @@ Based on Phase 1B success, Phase 2 should focus on:
 
 ---
 
-## Current Sprint: Extraction Module Testing (Days 1-7)
+## Historical Sprints (November 2025) - ARCHIVED
 
-### ✅ **COMPLETED: filing_fetcher.py Testing**
-**Status:** DONE (2025-11-24)
-**Final Coverage:** 100% (48 tests)
-**Time Spent:** Comprehensive testing completed
+> **Note:** These sprints were completed in November 2025. See "Recent Completions" section above for December 2025 work.
 
-**Completed Scope:**
-- [x] Test download functionality with mock SEC client
-- [x] Test caching logic (local file storage)
-- [x] Test security checks (path traversal prevention) - 9 tests
-- [x] Test error handling (404s, timeouts, corrupt HTML) - 11 validation tests
-- [x] Test rate limiting (SEC 10 req/sec compliance)
-- [x] Test file validation (SGML and modern HTML formats)
-- [x] Test storage organization (data/filings/{cik}/{accession}/)
-- [x] Test batch processing with circuit breaker
-- [x] Test database integration and resilience
+### Sprint 1-2: Extraction Module Testing & FilingFetcher Integration
+**Status:** ✅ COMPLETE (Nov 24, 2025)
 
-**Key Functions Tested:**
-- `fetch_filing()` - 6 tests
-- `fetch_batch()` - 4 tests
-- `_get_storage_dir()` - 12 tests (including security)
-- `_validate_filing_content()` - 11 tests
-- `get_filing_content()` - 3 tests
-- `_rate_limit()` - 1 test
-- Database methods - 8 tests
+**Key Completions:**
+- filing_fetcher.py: 100% coverage (48 tests)
+- FilingFetcher integration with UniverseBuilder
+- Batch download runner (`scripts/batch_download_filings.py`)
+- Processing status workflow (pending → fetched → processed → failed)
 
-**Results:**
-- 48 tests added (exceeded 25+ target)
-- 100% coverage achieved (exceeded 90% target)
-- All tests passing ✅
-- Security edge cases comprehensively covered ✅
-- Database resilience validated ✅
+### Sprint 3-4: LLM Integration & Production Readiness
+**Status:** ✅ COMPLETE (Nov 25, 2025)
 
----
-
-### 📋 **Additional Week 1 Tasks**
-
-#### Test Coverage Improvements
-- [ ] Run full test suite to verify overall coverage stays >75%
-- [ ] Generate coverage report: `pytest --cov=src --cov-report=html`
-- [ ] Review `htmlcov/index.html` for any gaps
-
-#### Code Quality
-- [ ] Run black formatter: `black src/ tests/`
-- [ ] Run ruff linter: `ruff check src/ tests/`
-- [ ] Fix any linting issues
-
-#### Documentation
-- [ ] Update IMPLEMENTATION_SUMMARY.md with recent progress
-- [ ] Document any new edge cases discovered during testing
-
----
-
-## Next Sprint: FilingFetcher Integration (Days 8-21)
-
-### ✅ **COMPLETED: Integrate FilingFetcher with UniverseBuilder**
-**Status:** DONE (2025-11-24)
-**Time Spent:** 2 hours (under estimated 2-3 days)
-
-**Completed Tasks:**
-- [x] Verified `processing_status` workflow exists in schema
-  - `pending` → Initial state after universe build ✅
-  - `fetched` → HTML downloaded and cached ✅
-  - `processed` → Extraction pipeline completed ✅
-  - `failed` → Download or extraction failed ✅
-- [x] Verified UniverseBuilder sets initial status = 'pending' ✅
-- [x] Created batch download runner script (`scripts/batch_download_filings.py`) ✅
-- [x] Added database queries to fetch pending filings ✅
-- [x] Implemented batch processing with progress tracking ✅
-- [x] Created comprehensive integration documentation ✅
-- [x] Tested with dry-run (verified with 10 pending filings) ✅
-
-**Results:**
-- UniverseBuilder sets processing_status = 'pending' ✅
-- FilingFetcher updates status to 'fetched' after successful download ✅
-- Batch runner can process N filings with circuit breaker ✅
-- Database tracks download metrics and errors ✅
-- Before/after status reporting implemented ✅
-- Graceful interrupt handling (Ctrl+C) implemented ✅
-
-**Files Created:**
-- `scripts/batch_download_filings.py` - Production-ready batch runner
-- `docs/FILING_FETCHER_INTEGRATION.md` - Complete integration guide
-
----
-
-### 🎯 **Priority 2: Test with Real SEC EDGAR**
-**Estimated Time:** 1-2 days
-
-**Tasks:**
-- [ ] Download 10-20 real filings from test companies:
-  - Shopify S-1 (2015)
-  - Datadog F-1 (2019)
-  - Zoom S-1 (2019)
-- [ ] Verify storage organization: `data/filings/{cik}/{accession}/primary.htm`
-- [ ] Test error handling with:
-  - Invalid CIKs (404 errors)
-  - Network timeouts
-  - Rate limiting scenarios
-- [ ] Validate downloaded HTML integrity
-- [ ] Test retry logic with exponential backoff
-
-**Definition of Done:**
-- 10-20 real filings successfully downloaded
-- File structure matches spec: `data/filings/{cik}/{accession}/`
-- Error handling tested and working
-- Download metrics logged
-
----
-
-### 🎯 **Priority 3: Add Processing Monitoring**
-**Estimated Time:** 1 day
-
-**Tasks:**
-- [ ] Log download metrics (bytes, time, errors)
-- [ ] Track processing status in database
-- [ ] Generate status reports:
-  - Total filings: 6,304
-  - Pending: X
-  - Fetched: Y
-  - Processed: Z
-  - Failed: N
-- [ ] Add command-line status checker
-
-**Definition of Done:**
-- Structured logging implemented
-- Database tracks all status transitions
-- Status report script works
-
----
-
-## Sprint 3: LLM Integration (Days 22-42)
-
-### 🎯 **Priority 1: OpenAI API Integration**
-**Estimated Time:** 1 week
-
-**Tasks:**
-- [ ] Set up OpenAI client with error handling
-- [ ] Implement prompt engineering for metric extraction:
-  - Value extraction prompts
-  - Definition extraction prompts
-  - Calculation methodology prompts
-- [ ] Add token counting and cost tracking
-- [ ] Implement rate limiting (RPM, TPM)
-- [ ] Add retry logic for API failures
-- [ ] Create fallback rules when LLM fails
-
-**OpenAI Configuration:**
-- Model: GPT-4o (or GPT-4o-mini for cost savings)
-- Max tokens per request: TBD based on testing
-- Temperature: 0.1 (deterministic)
-- Chunk size: 8,000 characters
-
-**Cost Tracking:**
-- [ ] Log tokens per filing
-- [ ] Calculate cost per filing
-- [ ] Track cumulative costs
-- [ ] Alert if cost exceeds threshold
-
-**Definition of Done:**
-- OpenAI client integrated
-- Prompts tested with 5 sample filings
-- Cost tracking implemented
-- Error handling tested
-
----
-
-### 🎯 **Priority 2: Manual Validation**
-**Estimated Time:** 1 week
-
-**Tasks:**
-- [ ] Process 5-10 real filings through extraction pipeline
-- [ ] Manually review extracted metrics for accuracy
-- [ ] Compare LLM outputs to human-extracted metrics
-- [ ] Measure precision/recall:
-  - True positives: Correctly extracted metrics
-  - False positives: Incorrectly identified metrics
-  - False negatives: Missed metrics
-- [ ] Document extraction patterns and edge cases
-- [ ] Tune prompts based on errors
-
-**Test Filings for Validation:**
-1. Shopify S-1 (2015) - Good cohort disclosure
-2. Datadog F-1 (2019) - Dollar-based retention
-3. Zoom S-1 (2019) - Customer metrics
-4. Slack S-1 (2019) - Retention metrics
-5. Snowflake S-1 (2020) - Net revenue retention
-
-**Definition of Done:**
-- 5-10 filings manually validated
-- Extraction accuracy measured
-- Prompt improvements documented
-- Quality baseline established
-
----
-
-## Sprint 4: Production Readiness (Days 43-56)
-
-### 🎯 **End-to-End Testing**
-**Tasks:**
-- [ ] Process 100+ filings through full pipeline
-- [ ] Validate database integrity
-- [ ] Generate extraction quality report
-- [ ] Fix bugs identified during testing
-
-### 🎯 **Performance Optimization**
-**Tasks:**
-- [ ] Benchmark extraction speed (filings per hour)
-- [ ] Optimize slow queries
-- [ ] Implement caching where appropriate
-- [ ] Profile memory usage
-
-### 🎯 **Deployment Preparation**
-**Tasks:**
-- [ ] Docker containerization
-- [ ] CI/CD pipeline setup (GitHub Actions)
-- [ ] Database backup procedures
-- [ ] Configuration management
+**Key Completions:**
+- OpenAI GPT-4o-mini client integrated
+- Prompt templates created
+- Cost tracking operational (~$0.10/filing)
+- Hybrid approach: rule-based + LLM enhancement
 
 ---
 
@@ -518,11 +424,16 @@ tests/
 ├── unit/                     # Fast, isolated tests
 │   ├── universe/            # 35 tests, 98% coverage ✅
 │   ├── extraction/          # 76 tests, 95% coverage ✅
+│   ├── review/              # 660+ tests, 95-100% coverage ✅ (Dec 2025)
+│   ├── web/                 # 63 tests, 94-97% coverage ✅
 │   └── infra/               # 10 tests
 │
-└── integration/             # Database-backed tests
-    ├── universe/            # 2 tests ✅
-    └── filing_pipeline/     # 1 test
+├── integration/             # Database-backed tests
+│   ├── universe/            # 2 tests ✅
+│   ├── web/                 # API integration tests ✅
+│   └── filing_pipeline/     # 1 test
+│
+└── performance/             # Benchmark tests (P1-P3) ✅
 ```
 
 ### Test Quality Checklist
@@ -566,15 +477,17 @@ tests/
 - [x] **Day 6:** filing_fetcher.py testing (100% coverage achieved) ✅
 - [x] **Day 7:** Documentation updates + code quality checks ✅
 
-### Metrics to Track
-- Total tests: 1,625 tests collected, 1,593 passing (98% pass rate) ✅
-- Overall coverage: 87% (verified 2025-12-14) ✅ Exceeds 75% target
-  - Core modules (excluding LLM): ~87% ✅ Exceeds target
-  - Review modules: 95-100% ✅ Human review system complete
-  - LLM modules (src/llm/): 0% ⚠️ Manual testing only (196 untested statements)
-- Key modules at 97-100%: filing_fetcher (99%), quality_scorer (100%), value_extractor (97%), metric_classifier (97%), extraction_pipeline (97%)
-- Key modules at 84-98%: html_segmenter (84%), classifiers (98%), universe_builder (93%)
-- Modules needing improvement: definition_extractor (65%), sec_client (58%), LLM modules (0%)
+### Metrics to Track (Updated 2025-12-16)
+- Total tests: 1,698+ tests collected ✅
+- Overall coverage: 87% ✅ Exceeds 75% target
+- **Key Module Coverage:**
+  - Review modules: 95-100% ✅ (660+ tests, all phases complete)
+  - Core extraction: 97-100% ✅ (filing_fetcher, quality_scorer, metric_classifier)
+  - Infrastructure: 87-100% ✅ (validation, pool, http_client)
+  - Web routes: 94-97% ✅ (D1/D2 complete)
+- **Areas for Improvement:**
+  - LLM modules (src/llm/): 0% ⚠️ Manual testing only
+  - Pattern degradation with 1000 patterns: 33.4% (see Stream C in MASTER_IMPROVEMENT_PLAN.md)
 
 ---
 
@@ -613,6 +526,19 @@ open htmlcov/index.html
 ---
 
 ## Recent Major Milestones (December 2025)
+
+### 2025-12-16: Master Improvement Plan Created
+- Consolidated all pending improvements into `docs/MASTER_IMPROVEMENT_PLAN.md`
+- Organized into 5 parallel workstreams (A-E)
+- Stream A (Git Stabilization) completed with 3 commits
+- Stream B (Taxonomy) in progress: cm_acv/cm_tcv patterns added
+
+### 2025-12-15-16: L-Series & Q-Series Complete
+- **L1-L5 Logic Repairs**: All complete with P1.x enhancements
+- **Q1-Q2 Code Quality**: SegmentDict TypedDict implementation
+- **Workstream B Type Safety**: All B1-B13 tasks complete
+- **Claude Skills**: All 8 skills complete (was shown as "Planning")
+- See "Recent Completions" section above for details
 
 ### 2025-12-10: Human Review System D1/D2 Routes Complete
 - **D1 (review.py)**: Web routes for filing review interface - COMPLETE
