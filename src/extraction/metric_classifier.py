@@ -284,6 +284,30 @@ class MetricClassifier:
             r"\breorder\s+rate\b",               # "reorder rate"
             r"\brepurchase\s+rate\b",            # "repurchase rate"
         ],
+        # -----------------------------------------------------------------
+        # Marketplace / Platform Metrics (T7: GMV + Take Rate group)
+        # -----------------------------------------------------------------
+        "cm_gmv": [
+            r"\bgmv\b",                           # "GMV" acronym
+            r"\bgross\s+merchandise\s+value\b",   # "gross merchandise value"
+            r"\bgross\s+merchandise\s+volume\b",  # "gross merchandise volume" variant
+            r"\bgross\s+booking\s+value\b",       # "gross booking value" (ride-sharing)
+            r"\bgross\s+bookings\s+value\b",      # "gross bookings value" variant
+            r"\bgross\s+transaction\s+value\b",   # "gross transaction value"
+            r"\btotal\s+transaction\s+value\b",   # "total transaction value"
+            r"\bgross\s+order\s+value\b",         # "gross order value" (e-commerce)
+            r"\bplatform\s+(?:transaction\s+)?volume\b",  # "platform volume"
+        ],
+        "cm_take_rate": [
+            r"\btake\s+rate\b",                   # "take rate"
+            r"\bplatform\s+take\s+rate\b",        # "platform take rate"
+            r"\bcommission\s+rate\b",             # "commission rate" (marketplace)
+            r"\bnet\s+take\s+rate\b",             # "net take rate"
+            r"\bmonetization\s+rate\b",           # "monetization rate"
+            r"\bservice\s+fee\s+rate\b",          # "service fee rate" (ride-sharing)
+            r"\bplatform\s+fee\s+rate\b",         # "platform fee rate"
+            r"\brevenue\s+as\s+a\s+percentage\s+of\s+gmv\b",  # explicit GMV relationship
+        ],
         # Future Metrics
         "cm_lifetime_value_per_customer": [
             r"\bltv\b",
@@ -326,6 +350,9 @@ class MetricClassifier:
         # T6: E-commerce metrics
         'cm_average_order_value',
         'cm_repeat_purchase_rate',
+        # T7: Marketplace metrics
+        'cm_gmv',
+        'cm_take_rate',
     }
 
     # General customer/metric keywords (for numeric disclosure detection)
