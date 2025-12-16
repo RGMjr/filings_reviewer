@@ -177,3 +177,60 @@ ORDER BY metric_id;
 - No Python code changes required (taxonomy-only)
 - No additional unit tests needed (seed file execution is the test)
 - Integration with extraction pipeline automatic via database lookup
+
+---
+
+## Update: Pattern Detection Complete (2025-12-16)
+
+The pattern detection work that was deferred during T4 has now been completed:
+
+### Implementation
+
+**ACV Patterns** (`src/extraction/metric_classifier.py` lines 314-321):
+- 6 regex patterns covering: "ACV", "acv", "annual contract value", "average contract value", "annualized contract value", "average annual contract", "contract value per customer"
+
+**TCV Patterns** (`src/extraction/metric_classifier.py` lines 322-327):
+- 4 regex patterns covering: "TCV", "tcv", "total contract value", "lifetime contract value", "contract lifetime value"
+
+**CMASB Extended Boost** (`src/extraction/metric_classifier.py` lines 374-375):
+- Both `cm_acv` and `cm_tcv` added to `CMASB_EXTENDED_METRICS` set
+- Provides 0.1 confidence boost for priority metric detection
+
+### Testing
+
+**Test Class:** `TestSaaSContractMetricPatterns` (`tests/unit/extraction/test_metric_classifier.py` lines 1005-1153)
+
+| Test Category | Tests | Status |
+|--------------|-------|--------|
+| ACV Pattern Matching | 6 | PASS |
+| TCV Pattern Matching | 4 | PASS |
+| Combined ACV+TCV | 1 | PASS |
+| Negative Tests (false positives) | 2 | PASS |
+| CMASB Extended Boost | 2 | PASS |
+| Real-World Example | 1 | PASS |
+| **Total** | **16** | **PASS** |
+
+**Full Test Suite:** 104 tests passing (0 regressions)
+
+### Verification Commands
+
+```bash
+# Run ACV/TCV tests
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+python3 -m pytest tests/unit/extraction/test_metric_classifier.py::TestSaaSContractMetricPatterns -v
+
+# Verify patterns are loaded
+python3 -c "from src.extraction.metric_classifier import MetricClassifier; \
+mc = MetricClassifier(); \
+print('cm_acv patterns:', mc.METRIC_KEYWORDS.get('cm_acv')); \
+print('cm_tcv patterns:', mc.METRIC_KEYWORDS.get('cm_tcv')); \
+print('In CMASB_EXTENDED:', 'cm_acv' in mc.CMASB_EXTENDED_METRICS and 'cm_tcv' in mc.CMASB_EXTENDED_METRICS)"
+```
+
+### Status
+
+**T4 is now FULLY COMPLETE:**
+- Database taxonomy: cm_acv and cm_tcv in metrics table
+- Pattern detection: 10 regex patterns in MetricClassifier
+- Confidence boosting: Both metrics in CMASB_EXTENDED_METRICS
+- Unit tests: 16 tests covering all pattern variants

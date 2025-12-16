@@ -308,6 +308,23 @@ class MetricClassifier:
             r"\bplatform\s+fee\s+rate\b",         # "platform fee rate"
             r"\brevenue\s+as\s+a\s+percentage\s+of\s+gmv\b",  # explicit GMV relationship
         ],
+        # -----------------------------------------------------------------
+        # SaaS Contract Metrics (T8: ACV + TCV group)
+        # -----------------------------------------------------------------
+        "cm_acv": [
+            r"\bacv\b",                              # "ACV" acronym
+            r"\bannual\s+contract\s+value\b",        # "annual contract value"
+            r"\baverage\s+contract\s+value\b",       # "average contract value"
+            r"\bannualized\s+contract\s+value\b",    # "annualized contract value"
+            r"\baverage\s+annual\s+contract\b",      # "average annual contract"
+            r"\bcontract\s+value\s+per\s+customer\b", # "contract value per customer"
+        ],
+        "cm_tcv": [
+            r"\btcv\b",                              # "TCV" acronym
+            r"\btotal\s+contract\s+value\b",         # "total contract value"
+            r"\blifetime\s+contract\s+value\b",      # "lifetime contract value"
+            r"\bcontract\s+lifetime\s+value\b",      # "contract lifetime value"
+        ],
         # Future Metrics
         "cm_lifetime_value_per_customer": [
             r"\bltv\b",
@@ -353,6 +370,9 @@ class MetricClassifier:
         # T7: Marketplace metrics
         'cm_gmv',
         'cm_take_rate',
+        # T8: SaaS contract metrics
+        'cm_acv',
+        'cm_tcv',
     }
 
     # General customer/metric keywords (for numeric disclosure detection)
