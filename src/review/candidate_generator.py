@@ -426,10 +426,18 @@ class CandidateGenerator:
                     "filtered_by_learned_rules", 0
                 )
                 stats.candidates_generated += len(segment_candidates)
-            except Exception as e:
+            except SegmentProcessingError as e:
+                # Known segment-level error (validation failures, etc.)
                 stats.segments_failed += 1
                 logger.error(
-                    f"Error processing segment {segment_id} in filing {filing_id}: "
+                    f"Segment processing error for segment {segment_id} in filing {filing_id}: {e}"
+                )
+                # Continue processing other segments
+            except (ValueError, TypeError, AttributeError) as e:
+                # Unexpected but recoverable error in segment processing
+                stats.segments_failed += 1
+                logger.error(
+                    f"Unexpected error processing segment {segment_id} in filing {filing_id}: "
                     f"{type(e).__name__}: {e}"
                 )
                 # Continue processing other segments
@@ -664,10 +672,18 @@ class CandidateGenerator:
                     )
                     candidates.append(candidate)
 
-            except Exception as e:
+            except NumberProcessingError as e:
+                # Known number-level error (already defined but not yet raised internally)
                 segment_stats["numbers_failed"] += 1
                 logger.warning(
-                    f"Error processing number {num.raw_text!r} at position {num.start}: "
+                    f"Number processing error for {num.raw_text!r} at position {num.start}: {e}"
+                )
+                # Continue processing other numbers
+            except (ValueError, TypeError, AttributeError, KeyError) as e:
+                # Unexpected but recoverable error in number processing
+                segment_stats["numbers_failed"] += 1
+                logger.warning(
+                    f"Unexpected error processing number {num.raw_text!r} at position {num.start}: "
                     f"{type(e).__name__}: {e}"
                 )
                 # Continue processing other numbers
@@ -880,19 +896,16 @@ class CandidateGenerator:
             return candidates
 
         # Detect pattern once per segment
+        # L1-P1.1: Pass min_confidence to parser for early filtering
         from src.review.respectively_parser import detect_respectively_pattern
 
-        pattern = detect_respectively_pattern(segment_text)
+        pattern = detect_respectively_pattern(
+            segment_text,
+            min_confidence=self.config.respectively_min_confidence
+        )
 
-        # No pattern found or low confidence
+        # No pattern found (or filtered by confidence)
         if not pattern:
-            return candidates
-
-        if pattern.confidence < self.config.respectively_min_confidence:
-            logger.debug(
-                f"Respectively pattern confidence {pattern.confidence:.2f} below "
-                f"threshold {self.config.respectively_min_confidence}"
-            )
             return candidates
 
         # Build lookup: normalized value -> period

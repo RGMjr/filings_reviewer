@@ -176,15 +176,22 @@ class RespectivelyMatch:
 # =============================================================================
 
 
-def detect_respectively_pattern(text: str) -> Optional[RespectivelyMatch]:
+def detect_respectively_pattern(
+    text: str,
+    min_confidence: float = 0.6
+) -> Optional[RespectivelyMatch]:
     """
     Detect a "respectively" pattern in text and return associations.
 
+    L1-P1.1 Enhancement: Configurable confidence filtering.
+
     Args:
         text: Text to search for pattern
+        min_confidence: Minimum confidence threshold (0.5-1.0). Patterns
+            with confidence below this are filtered out. Default: 0.6
 
     Returns:
-        RespectivelyMatch if pattern found, None otherwise
+        RespectivelyMatch if pattern found with sufficient confidence, None otherwise
 
     Examples:
         >>> text = "Margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
@@ -195,6 +202,11 @@ def detect_respectively_pattern(text: str) -> Optional[RespectivelyMatch]:
         >>> text = "Revenue was $1M in 2015."  # No "respectively"
         >>> detect_respectively_pattern(text)
         None
+
+        >>> text = "For 2015 and 2016 was 33% and 35%, respectively."
+        >>> result = detect_respectively_pattern(text, min_confidence=0.8)
+        >>> result is None  # Low confidence pattern filtered
+        True
     """
     # 1. Check if "respectively" appears
     if "respectively" not in text.lower():
@@ -264,6 +276,15 @@ def detect_respectively_pattern(text: str) -> Optional[RespectivelyMatch]:
 
     # 10. Calculate confidence
     confidence = _calculate_confidence(values, periods, context)
+
+    # L1-P1.1: Filter by minimum confidence
+    if confidence < min_confidence:
+        logger.debug(
+            f"Respectively pattern filtered by confidence: "
+            f"{confidence:.2f} < {min_confidence:.2f}. "
+            f"Periods: {periods}, Values: {values}"
+        )
+        return None
 
     return RespectivelyMatch(
         values=values,

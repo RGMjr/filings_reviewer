@@ -316,6 +316,30 @@ VALUES (
     1
 );
 
+-- Gross Merchandise Value
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_gmv',
+    'Gross Merchandise Value',
+    'extended',
+    'Total value of merchandise sold through the platform over a defined period, before deductions for returns, discounts, or platform fees.',
+    'transaction_volume',
+    'active',
+    1
+);
+
+-- Take Rate
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_take_rate',
+    'Take Rate',
+    'extended',
+    'Percentage of gross merchandise value or transaction value retained by the platform as revenue, representing the platform commission or fee rate.',
+    'unit_economics',
+    'active',
+    1
+);
+
 -- ============================================================================
 -- FUTURE METRICS (Phase 2+)
 -- ============================================================================

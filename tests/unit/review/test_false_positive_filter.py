@@ -207,8 +207,12 @@ class TestTableOfContentsFiltering:
         assert reason == "toc_proximity"
 
     def test_filters_dot_leader_page_references(self, filter):
-        """Should filter numbers preceded by dot leaders (TOC page refs)."""
-        text = "Business Overview.........15"
+        """Should filter numbers preceded by dot leaders (TOC page refs).
+
+        L2-P1.1: Now requires TOC context (header or section heading).
+        """
+        # Add TOC header to provide context
+        text = "TABLE OF CONTENTS\nBusiness Overview.........15"
         number = NumberMatch(
             start=text.find("15"),
             end=text.find("15") + 2,
@@ -218,12 +222,15 @@ class TestTableOfContentsFiltering:
         )
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is True
-        assert reason == "toc_page_reference"
+        assert reason in ("toc_proximity", "toc_page_reference")
 
     def test_filters_multiple_dot_patterns(self, filter):
-        """Should filter various dot leader patterns."""
-        # Three dots (minimum)
-        text1 = "Risk Factors...23"
+        """Should filter various dot leader patterns.
+
+        L2-P1.1: Now requires TOC context (section heading pattern).
+        """
+        # Three dots (minimum) with section heading pattern
+        text1 = "Item 1. Risk Factors...23"
         number1 = NumberMatch(
             start=text1.find("23"),
             end=text1.find("23") + 2,
@@ -235,7 +242,7 @@ class TestTableOfContentsFiltering:
         assert is_fp1 is True
         assert reason1 == "toc_page_reference"
 
-        # Many dots with spaces
+        # Many dots with spaces (section heading provides context)
         text2 = "Item 1A. Risk Factors........ 45"
         number2 = NumberMatch(
             start=text2.find("45"),
@@ -398,8 +405,11 @@ class TestHelperFunctions:
         assert is_near_table_of_contents(text, position) is True
 
     def test_is_toc_page_reference_positive(self):
-        """Should return True for dot leader patterns."""
-        text = "Business Overview.........15"
+        """Should return True for dot leader patterns with TOC context.
+
+        L2-P1.1: Now requires TOC context (header or section heading).
+        """
+        text = "TABLE OF CONTENTS\nBusiness Overview.........15"
         position = text.find("15")
         assert is_toc_page_reference(text, position) is True
 
@@ -410,14 +420,17 @@ class TestHelperFunctions:
         assert is_toc_page_reference(text, position) is False
 
     def test_is_toc_page_reference_minimum_dots(self):
-        """Should require at least 3 dots to match."""
+        """Should require at least 3 dots to match.
+
+        L2-P1.1: Now requires TOC context (section heading pattern).
+        """
         # Two dots - should NOT match
-        text1 = "Section..5"
+        text1 = "Section 1..5"
         position1 = text1.find("5")
         assert is_toc_page_reference(text1, position1) is False
 
-        # Three dots - should match
-        text2 = "Section...5"
+        # Three dots with section heading - should match
+        text2 = "Section 1...5"
         position2 = text2.find("5")
         assert is_toc_page_reference(text2, position2) is True
 
@@ -476,7 +489,11 @@ class TestTOCFilterEdgeCases:
         assert reason != "toc_proximity"
 
     def test_dots_in_non_toc_context(self, filter):
-        """Should NOT filter dots used in regular text (ellipsis)."""
+        """Should NOT filter dots used in regular text (ellipsis).
+
+        L2-P1.1: Fixed by requiring TOC context (header or section heading).
+        Narrative ellipsis without TOC context is no longer filtered.
+        """
         text = "We expect...12 million customers this year"
         number = NumberMatch(
             start=text.find("12"),
@@ -487,12 +504,8 @@ class TestTOCFilterEdgeCases:
         )
 
         is_fp, reason = filter.is_false_positive(text, number)
-        # The three-dot pattern should match, BUT this is an edge case
-        # Current implementation WILL filter this (known limitation)
-        # This test documents the current behavior
-        # TODO: Consider improving pattern to avoid this false positive
-        assert is_fp is True
-        assert reason == "toc_page_reference"
+        # L2-P1.1 FIX: Now correctly NOT filtered (requires TOC context)
+        assert is_fp is False or reason != "toc_page_reference"
 
     def test_multiple_toc_sections_in_document(self, filter):
         """Should filter numbers in any TOC section."""
@@ -714,3 +727,169 @@ class TestConstants:
         """TOC_DOT_LEADER_WINDOW should be reasonable."""
         assert TOC_DOT_LEADER_WINDOW == 50
         assert TOC_DOT_LEADER_WINDOW > 0
+
+class TestL2P11ContextAwareDotLeaders:
+    """Tests for L2-P1.1: Context-aware dot leader detection.
+
+    These tests verify that narrative ellipsis (e.g., "We expect...12 million")
+    is NOT filtered, while genuine TOC page references with dot leaders ARE filtered.
+    """
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_narrative_ellipsis_not_filtered(self, filter):
+        """Narrative ellipsis without TOC context should NOT be filtered."""
+        text = "We expect...12 million customers this year"
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered as toc_page_reference
+        assert reason != "toc_page_reference"
+
+    def test_narrative_ellipsis_variants(self, filter):
+        """Test various narrative ellipsis patterns are NOT filtered."""
+        test_cases = [
+            "The company...50 employees strong",
+            "Revenue growth...100% year over year",
+            "Market share...25% and growing",
+            "Expansion plans...30 new markets",
+        ]
+
+        for text in test_cases:
+            # Find first number in text
+            import re
+            match = re.search(r'\d+', text)
+            if not match:
+                continue
+
+            number = NumberMatch(
+                start=match.start(),
+                end=match.end(),
+                raw_text=match.group(),
+                value=Decimal(match.group()),
+                unit="count",
+            )
+
+            is_fp, reason = filter.is_false_positive(text, number)
+            # None of these should be filtered as TOC references
+            assert reason != "toc_page_reference", f"Failed for: {text}"
+
+    def test_toc_with_header_and_dots_filtered(self, filter):
+        """TOC entries with header AND dot leaders should be filtered."""
+        text = """TABLE OF CONTENTS
+
+Business Overview.........12"""
+
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should be filtered (has both TOC header and dot leaders)
+        # Can be filtered by either toc_proximity or toc_page_reference
+        assert is_fp is True
+        assert reason in ("toc_proximity", "toc_page_reference")
+
+    def test_section_heading_with_dots_filtered(self, filter):
+        """TOC entries with section heading AND dot leaders should be filtered."""
+        test_cases = [
+            "Item 1A. Risk Factors....12",
+            "Part II....50",
+            "Section 3....100",
+            "Chapter 5....25",
+            "ITEM 2....15",  # Case insensitive
+        ]
+
+        for text in test_cases:
+            # Find last number (the page number)
+            import re
+            matches = list(re.finditer(r'\d+', text))
+            if not matches:
+                continue
+            match = matches[-1]  # Last number is the page number
+
+            number = NumberMatch(
+                start=match.start(),
+                end=match.end(),
+                raw_text=match.group(),
+                value=Decimal(match.group()),
+                unit="count",
+            )
+
+            is_fp, reason = filter.is_false_positive(text, number)
+            # Should be filtered (has section heading + dot leaders)
+            assert is_fp is True, f"Failed for: {text}"
+            assert reason == "toc_page_reference", f"Wrong reason for: {text}"
+
+    def test_dots_without_context_not_filtered(self, filter):
+        """Dot leaders without TOC context should NOT be filtered."""
+        # This has dot leaders but no TOC header or section heading
+        text = "The trend continues....50 and rising"
+
+        number = NumberMatch(
+            start=text.find("50"),
+            end=text.find("50") + 2,
+            raw_text="50",
+            value=Decimal("50"),
+            unit="count",
+        )
+
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered (has dots but no TOC context)
+        assert reason != "toc_page_reference"
+
+    def test_section_heading_roman_numerals(self, filter):
+        """Section headings with Roman numerals should work."""
+        test_cases = [
+            "Part II....12",
+            "Part IV....50",
+            "Section IX....100",
+        ]
+
+        for text in test_cases:
+            import re
+            matches = list(re.finditer(r'\d+', text))
+            if not matches:
+                continue
+            match = matches[-1]
+
+            number = NumberMatch(
+                start=match.start(),
+                end=match.end(),
+                raw_text=match.group(),
+                value=Decimal(match.group()),
+                unit="count",
+            )
+
+            is_fp, reason = filter.is_false_positive(text, number)
+            assert is_fp is True, f"Failed for: {text}"
+            assert reason == "toc_page_reference", f"Wrong reason for: {text}"
+
+    def test_section_heading_with_letter_suffix(self, filter):
+        """Section headings with letter suffixes (Item 1A) should work."""
+        text = "Item 1A. Risk Factors....12"
+
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "toc_page_reference"
