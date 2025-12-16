@@ -114,6 +114,8 @@ class HTMLSegmenter:
         r"^(?:and|or|but|which|that|who|where|when)\b",  # Starts with conjunction
         r"^\s*\(",  # Starts with parenthetical
         r"^(?:including|excluding|such\s+as)\b",  # Starts with qualifier
+        r"^(?:Such|These|Those|This)\b",  # Demonstrative pronouns (SEG4)
+        r"^The\s+(?:above|following)\b",  # Referential phrases (SEG4)
     ]
 
     # Limits for definition merging
@@ -786,8 +788,14 @@ class HTMLSegmenter:
             return False
 
         for pattern in self.DEFINITION_CONTINUATION_PATTERNS:
-            if re.search(pattern, text, re.IGNORECASE):
-                return True
+            # First pattern (lowercase start) should NOT use IGNORECASE
+            # All other patterns should use IGNORECASE
+            if pattern == r"^[a-z]":
+                if re.search(pattern, text):  # No IGNORECASE flag
+                    return True
+            else:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return True
         return False
 
     def _merge_definition_segments(

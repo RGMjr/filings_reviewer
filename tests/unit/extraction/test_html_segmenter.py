@@ -1510,6 +1510,42 @@ class TestDefinitionMerging:
             Path(html_path).unlink()
 
 
+class TestDefinitionContinuationPatterns:
+    """Test expanded definition continuation pattern detection (SEG4)."""
+
+    def test_such_pattern_detected(self):
+        """'Such metrics...' should be detected as continuation."""
+        segmenter = HTMLSegmenter()
+        assert segmenter._is_continuation("Such metrics include ARR and MRR.")
+
+    def test_these_pattern_detected(self):
+        """'These calculations...' should be detected as continuation."""
+        segmenter = HTMLSegmenter()
+        assert segmenter._is_continuation("These calculations are performed quarterly.")
+
+    def test_the_above_pattern_detected(self):
+        """'The above definition...' should be detected as continuation."""
+        segmenter = HTMLSegmenter()
+        assert segmenter._is_continuation("The above definition excludes trial users.")
+
+    def test_the_following_pattern_detected(self):
+        """'The following table...' should be detected as continuation."""
+        segmenter = HTMLSegmenter()
+        assert segmenter._is_continuation("The following table summarizes our metrics.")
+
+    def test_mid_text_such_not_continuation(self):
+        """'such' mid-sentence should NOT trigger continuation."""
+        segmenter = HTMLSegmenter()
+        # Starts with capital "We" - not a continuation pattern
+        assert not segmenter._is_continuation("We track such metrics quarterly.")
+
+    def test_normal_the_not_continuation(self):
+        """Normal 'The company...' should NOT trigger continuation."""
+        segmenter = HTMLSegmenter()
+        # "The company" is not a referential phrase
+        assert not segmenter._is_continuation("The company reported revenue growth.")
+
+
 # ===== Phase 4: Large Table Handling Tests =====
 
 
