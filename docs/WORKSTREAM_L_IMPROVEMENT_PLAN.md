@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Workstream L (Metric Logic Repairs) has been comprehensively evaluated against the original requirements in `METRIC_IDENTIFICATION_ISSUES.md` and `MASTER_TASK_LIST.md`. The implementation is **substantially complete** with **L1-L5 all functional**, but several gaps and improvements have been identified.
+Workstream L (Metric Logic Repairs) has been comprehensively evaluated against the original requirements in `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` (archived) and `MASTER_TASK_LIST.md`. The implementation is **substantially complete** with **L1-L5 all functional**, but several gaps and improvements have been identified.
 
 **Key Findings:**
 
@@ -28,7 +28,7 @@ Workstream L (Metric Logic Repairs) has been comprehensively evaluated against t
 
 ### L1: Respectively Pattern Parser
 
-**Source:** METRIC_IDENTIFICATION_ISSUES.md Issue 1
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` Issue 1 (archived)
 **Implementation:** `src/review/respectively_parser.py`
 **Completion:** `docs/archive/workstreams/L-metric-logic-repairs/L1_COMPLETION_SUMMARY.md`
 
@@ -71,7 +71,7 @@ Workstream L (Metric Logic Repairs) has been comprehensively evaluated against t
 
 ### L2: Table of Contents Proximity Filter
 
-**Source:** METRIC_IDENTIFICATION_ISSUES.md Issue 2
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` Issue 2 (archived)
 **Implementation:** `src/review/false_positive_filter.py`
 
 #### Status: Complete
@@ -97,7 +97,7 @@ Workstream L (Metric Logic Repairs) has been comprehensively evaluated against t
 
 ### L3: Keyword Direction Detection
 
-**Source:** METRIC_IDENTIFICATION_ISSUES.md Issue 4
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` Issue 4 (archived)
 **Implementation:** `src/review/keyword_matching.py`, `src/review/candidate_generator.py`
 
 #### Status: Complete with Untracked Tests
@@ -124,7 +124,7 @@ Workstream L (Metric Logic Repairs) has been comprehensively evaluated against t
 
 ### L4: Post-Value Keyword Distance Multiplier
 
-**Source:** METRIC_IDENTIFICATION_ISSUES.md Issue 5
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` Issue 5 (archived)
 **Implementation:** `src/review/keyword_matching.py`, `src/review/config.py`
 
 #### Status: Complete (Option C - Context-Dependent)
@@ -164,7 +164,7 @@ multiplier_default: float = 0.9
 
 ### L5: Composite Segment Splitting
 
-**Source:** METRIC_IDENTIFICATION_ISSUES.md Issue 6
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` Issue 6 (archived)
 **Implementation:** `src/extraction/html_segmenter.py`
 
 #### Status: Complete

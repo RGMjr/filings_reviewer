@@ -1,8 +1,9 @@
 # Metric Identification Issues
 
-**Status**: Mostly Implemented (5/6 issues complete, 1 requires work)
+**Status**: ARCHIVED - All issues addressed (5/6 complete, 1 partial with remaining work deferred)
 **Date Created**: 2025-12-13
 **Last Updated**: 2025-12-16
+**Archived**: 2025-12-16
 **Priority**: Medium (affects review quality but reviewers can correct)
 **Related Documents**:
 - See `docs/WORKSTREAM_L_IMPROVEMENT_PLAN.md` for L1-L5 implementation tracking
@@ -23,7 +24,7 @@ This document tracks known issues with the metric identification and keyword mat
 | Issue 5: No post-value keyword preference | Medium | ✅ **Complete (L3+L4 Option C)** | L3 + L4 | - |
 | Issue 6: HTML segmenter misclassifies tables | Medium | ✅ Complete | - | - |
 
-**Completion Progress:** 6/6 complete (100% complete)
+**Completion Progress:** 5/6 fully complete, 1/6 partial (Issue 1: 2/4 root causes, remaining deferred to P2/P3)
 
 ### Relationship to REMEDIATION_PLAN.md (Archived)
 
@@ -548,29 +549,20 @@ The HTML segmenter creates **composite segments** that bundle narrative text wit
 
 ### Solutions Implemented
 
-**✅ Quick UI Fix (2025-12-13)**:
+**✅ Basic Table Rendering (2025-12-12)**:
 
-Updated `src/web/templates/review.html` to render tables for ALL segment types:
-- Changed condition from `segment_type == 'table'` to `'<table' in segment_html`
-- Now renders tables for definition_block, methodology_block, and paragraph segments
-- Added "Mixed" badge to indicate composite segments (table + narrative text)
-- Benefits **237 additional segments** in Farfetch filing (30% improvement)
+Added HTML table rendering for `segment_type='table'` segments in `src/web/templates/review.html`:
+- Candidates from table segments display with full HTML table structure
+- Added professional table styling with sticky headers and zebra striping
+- Implemented HTML-aware highlighting that preserves table structure (2025-12-14)
 
 **Impact**:
-- Farfetch: 794 segments now show tables (up from 557)
-- Reviewers can now see table structure for 60% of definition_blocks
-- 74% of methodology_blocks now display properly
+- Farfetch: 557 table-type segments now render as proper tables
+- Reviewers can see row/column headers for values from tables
+- Highlighting preserves HTML tags and attributes
 
-**Code Changes**:
-```jinja2
-{% if current_candidate.segment_html and '<table' in current_candidate.segment_html %}
-    {# Render table for ANY segment type containing tables #}
-    <div class="table-context">...</div>
-{% else %}
-    {# Render text context #}
-    <div class="context-text">...</div>
-{% endif %}
-```
+**Note on Composite Segments**:
+The enhanced fix to render tables for ALL segment types containing `<table>` tags (definition_block, methodology_block, paragraph) was planned but not implemented. The current implementation only renders tables for `segment_type='table'`. This is adequate for most use cases since the HTML segmenter correctly classifies 70% of table-containing segments.
 
 ### Remaining Work (Future)
 
@@ -726,16 +718,15 @@ This document tracks the original issues. Implementation was organized into work
 
 **Workstream L (Metric Logic Repairs):**
 - L1: Respectively pattern parser → **Issue 3** ✅
-- L2: Table of Contents proximity filter → **Issue 4** (partial) ⚠️
+- L2: Table of Contents proximity filter → **Issue 4** ✅
 - L3: Keyword direction detection → **Issue 5** ✅
 - L4: Post-value keyword multipliers → **Issue 5** ✅
 - L5: Composite segment splitting → **Issue 6** ✅
 - Master tracking: `docs/WORKSTREAM_L_IMPROVEMENT_PLAN.md`
 - Completion summaries: `docs/archive/workstreams/L-metric-logic-repairs/`
 
-**Still Open:**
+**Still Open (Deferred to P2/P3):**
 - Issue 1: 2/4 root causes fixed (P1, P1.5), 2 remaining (heading text, semantic parsing)
-- Issue 4: Generic filtering complete (L2), TOC standalone pattern still needed
 
 ---
 
@@ -744,5 +735,6 @@ This document tracks the original issues. Implementation was organized into work
 - These issues are observable during human review but don't block the review process
 - Reviewers can reject false positives and select correct metrics from dropdown
 - Pattern analyzer (E1) may learn to auto-reject some of these patterns
-- **5/6 issues now resolved** with L1-L5 and P1/P1.5 implementations
-- Remaining work focused on Issue 1 (root causes 3-4) and Issue 4 (TOC standalone pattern)
+- **5/6 issues fully resolved** with L1-L5 and P1/P1.5 implementations
+- **Issue 1 partially resolved** (2/4 root causes), remaining deferred to P2/P3
+- **ARCHIVED**: This document is now archived as all tracked issues have been addressed
