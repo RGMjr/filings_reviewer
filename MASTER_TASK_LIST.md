@@ -56,7 +56,7 @@
 - [x] **T4. DB:** Update seed file to include `cm_acv`, `cm_tcv` (SaaS metrics). → ✅ **COMPLETE (2025-12-16)**
 - [x] **T5. Code:** Add regex patterns for `cm_bookings` group to `src/extraction/metric_classifier.py`. → ✅ **COMPLETE (2025-12-16)**
 - [x] **T6. Code:** Add regex patterns for `cm_average_order_value`/`cm_repeat_purchase_rate` group to `src/extraction/metric_classifier.py`. → ✅ **COMPLETE (2025-12-16)**
-- [ ] **T7. Code:** Add regex patterns for `cm_gmv`/`cm_take_rate` group.
+- [x] **T7. Code:** Add regex patterns for `cm_gmv`/`cm_take_rate` group to `src/extraction/metric_classifier.py`. → ✅ **COMPLETE (2025-12-16)**
 
 ---
 

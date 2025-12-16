@@ -812,3 +812,191 @@ class TestECommerceMetricPatterns:
         # Should have extended boost (0.1) applied
         # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
         assert result.classifier_confidence >= 0.6
+
+
+# ===== T7: Marketplace Metrics Tests =====
+
+
+class TestMarketplaceMetricPatterns:
+    """Test identification of marketplace/platform metrics (T7)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    # --- Gross Merchandise Value Tests ---
+
+    def test_gmv_acronym(self, classifier, sample_segment):
+        """Test identification via GMV acronym."""
+        sample_segment.raw_text = "GMV increased to $10 billion in fiscal 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_full_phrase(self, classifier, sample_segment):
+        """Test identification via 'gross merchandise value' phrase."""
+        sample_segment.raw_text = "Gross merchandise value grew 25% year-over-year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_volume_variant(self, classifier, sample_segment):
+        """Test identification via 'gross merchandise volume' variant."""
+        sample_segment.raw_text = "Gross merchandise volume reached $5 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_booking_value(self, classifier, sample_segment):
+        """Test identification via 'gross booking value' (ride-sharing)."""
+        sample_segment.raw_text = "Gross booking value for rides was $15 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_transaction_value(self, classifier, sample_segment):
+        """Test identification via 'gross transaction value' variant."""
+        sample_segment.raw_text = "Gross transaction value on our platform was $2 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_total_transaction_value(self, classifier, sample_segment):
+        """Test identification via 'total transaction value' variant."""
+        sample_segment.raw_text = "Total transaction value processed was $8 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_order_value(self, classifier, sample_segment):
+        """Test identification via 'gross order value' e-commerce variant."""
+        sample_segment.raw_text = "Gross order value for Q4 was $1.5 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    def test_gmv_platform_volume(self, classifier, sample_segment):
+        """Test identification via 'platform volume' variant."""
+        sample_segment.raw_text = "Platform transaction volume exceeded $20 billion."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+
+    # --- Take Rate Tests ---
+
+    def test_take_rate_basic(self, classifier, sample_segment):
+        """Test identification of basic take rate mention."""
+        sample_segment.raw_text = "Our take rate improved to 15% in 2024."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_platform(self, classifier, sample_segment):
+        """Test identification via 'platform take rate' variant."""
+        sample_segment.raw_text = "The platform take rate averaged 12% for the year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_commission(self, classifier, sample_segment):
+        """Test identification via 'commission rate' marketplace variant."""
+        sample_segment.raw_text = "Our commission rate on seller transactions is 8%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_net(self, classifier, sample_segment):
+        """Test identification via 'net take rate' variant."""
+        sample_segment.raw_text = "Net take rate after promotions was 10%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_monetization(self, classifier, sample_segment):
+        """Test identification via 'monetization rate' variant."""
+        sample_segment.raw_text = "Our monetization rate increased from 5% to 7%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_service_fee(self, classifier, sample_segment):
+        """Test identification via 'service fee rate' ride-sharing variant."""
+        sample_segment.raw_text = "The service fee rate for rides averaged 25%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_platform_fee(self, classifier, sample_segment):
+        """Test identification via 'platform fee rate' variant."""
+        sample_segment.raw_text = "Platform fee rate was 18% across all categories."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_take_rate_revenue_percentage_gmv(self, classifier, sample_segment):
+        """Test identification via 'revenue as percentage of GMV' variant."""
+        sample_segment.raw_text = "Revenue as a percentage of GMV was 12%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    # --- Combined / Edge Case Tests ---
+
+    def test_gmv_and_take_rate_together(self, classifier, sample_segment):
+        """Test segment with both GMV and take rate metrics."""
+        sample_segment.raw_text = (
+            "Gross merchandise value reached $5 billion while our take rate "
+            "improved to 15%, resulting in $750 million of revenue."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_take_rate" in result.candidate_metric_ids
+
+    def test_gmv_not_gross_margin(self, classifier, sample_segment):
+        """Test that 'gross margin' doesn't match GMV."""
+        sample_segment.raw_text = "Gross margin improved to 45% in the quarter."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" not in result.candidate_metric_ids
+
+    def test_take_rate_not_interest_rate(self, classifier, sample_segment):
+        """Test that 'interest rate' doesn't match take rate."""
+        sample_segment.raw_text = "Interest rate on our credit facility is 5%."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" not in result.candidate_metric_ids
+
+    def test_take_rate_not_churn_rate(self, classifier, sample_segment):
+        """Test that 'churn rate' doesn't match take rate."""
+        sample_segment.raw_text = "Our churn rate decreased to 3% annually."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" not in result.candidate_metric_ids
+
+    def test_gmv_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that GMV receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Gross merchandise value on our platform increased to $10 billion in "
+            "fiscal 2024, representing 30% growth over the prior year. This GMV growth "
+            "was driven by increased transactions and customer engagement."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
+        assert result.classifier_confidence >= 0.6
+
+    def test_take_rate_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that take rate receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Our take rate improved to 15% in 2024, up from 12% in the prior year, "
+            "as we expanded premium services and increased revenue monetization of our "
+            "marketplace platform across all seller categories and transactions."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_take_rate" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        assert result.classifier_confidence >= 0.6
+
+    def test_multiple_marketplace_metrics_real_example(self, classifier, sample_segment):
+        """Test realistic marketplace S-1 disclosure language."""
+        sample_segment.raw_text = (
+            "For the fiscal year ended December 31, 2024, our GMV was $25.3 billion, "
+            "representing a 28% increase compared to the prior year. Our take rate "
+            "was 14.2%, up from 13.5% in 2023, driven by improvements in our "
+            "revenue monetization strategy and transaction optimization."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_take_rate" in result.candidate_metric_ids
+        assert result.contains_numeric_disclosure_flag is True
