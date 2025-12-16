@@ -130,6 +130,10 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 ├── context_extraction.py    # Extract N words around position
 │                            # Supports word-position caching (P1.2 optimization)
 │                            # (34 statements, 97% coverage)
+├── deduplicator.py          # Candidate deduplication utilities (Q4)
+│                            # deduplicate_candidates() function
+│                            # Groups by (value, metric_id, period), keeps highest confidence
+│                            # (50 lines, 100% coverage)
 ├── respectively_parser.py   # Detect "respectively" patterns for parallel value-period associations (L1)
 │                            # Handles patterns like "for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively"
 │                            # Returns parallel associations: [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]

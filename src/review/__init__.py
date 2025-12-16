@@ -18,6 +18,7 @@ from src.review.config import (
     YEAR_MIN,
     YEAR_MAX,
 )
+from src.review.deduplicator import deduplicate_candidates
 from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.exceptions import (
     CandidateGenerationError,
@@ -73,4 +74,6 @@ __all__ = [
     "RISK_FACTORS_PATTERNS",
     # Candidate generation
     "CandidateGenerator",
+    # Deduplication
+    "deduplicate_candidates",
 ]
