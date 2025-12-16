@@ -3096,8 +3096,8 @@ class TestL3KeywordDirectionIntegration:
             f"Keyword: '{candidate.triggering_keyword}', Number: '{candidate.raw_number_text}'"
         )
 
-    def test_direction_at_mapped_to_after(self):
-        """L3: Edge case - keyword at same position as number → maps to 'after'."""
+    def test_direction_at_mapped_to_before(self):
+        """L3: Edge case - keyword at same position as number → maps to 'before'."""
         from src.review.keyword_matching import KeywordMatcher, KeywordMatch
         from src.review.number_parsing import NumberMatch
 
@@ -3135,7 +3135,7 @@ class TestL3KeywordDirectionIntegration:
         for candidate in candidates:
             assert candidate.keyword_position in ("before", "after"), (
                 f"Invalid keyword_position: '{candidate.keyword_position}'. "
-                "L3 should map 'at' edge case to 'after'."
+                "L3 should map 'at' edge case to 'before'."
             )
 
     def test_multiple_candidates_different_directions(self):
@@ -3299,8 +3299,8 @@ class TestL1RespectivelyPatternIntegration:
         assert generator._normalize_value_text("$ 1 M") == "$1m"
         assert generator._normalize_value_text("33.0%") == "33.0%"
         assert generator._normalize_value_text("1.42") == "1.42"
-        assert generator._normalize_value_text("$2.5 Million") == "$2.5million"
-        assert generator._normalize_value_text("100 Billion") == "100billion"
+        assert generator._normalize_value_text("$2.5 Million") == "$2.5m"  # L1-P1.3: standardize suffixes
+        assert generator._normalize_value_text("100 Billion") == "100b"  # L1-P1.3: standardize suffixes
 
     def test_enrich_with_respectively_patterns_disabled_by_config(self):
         """Enrichment skipped when config disables respectively detection."""
@@ -3315,7 +3315,11 @@ class TestL1RespectivelyPatternIntegration:
             company_id=1,
             source_segment_id=1,
             char_position=0,
+            context_text="Test context text",
             raw_number_text="33%",
+            triggering_keyword="margin",
+            keyword_distance=50,
+            keyword_position="before",
             parsed_value=33.0,
             parsed_unit="%",
             features=CandidateFeatures(
@@ -3351,7 +3355,11 @@ class TestL1RespectivelyPatternIntegration:
             company_id=1,
             source_segment_id=1,
             char_position=0,
+            context_text="Test context text",
             raw_number_text="33%",
+            triggering_keyword="margin",
+            keyword_distance=50,
+            keyword_position="before",
             parsed_value=33.0,
             parsed_unit="%",
             features=CandidateFeatures(
@@ -3389,7 +3397,11 @@ class TestL1RespectivelyPatternIntegration:
             company_id=1,
             source_segment_id=1,
             char_position=0,
+            context_text="Test context text",
             raw_number_text="33",
+            triggering_keyword="values",
+            keyword_distance=50,
+            keyword_position="before",
             parsed_value=33.0,
             features=CandidateFeatures(
                 keyword_distance=50,
@@ -3564,3 +3576,100 @@ class TestNumberProcessingExceptionHandling:
         # Should have caught the error
         assert stats.segments_failed == 1
         assert "Unexpected error" in caplog.text
+
+
+class TestL1P13ValueNormalization:
+    """Tests for L1-P1.3: Value normalization for respectively pattern matching."""
+
+    def test_normalize_removes_spaces(self):
+        """Normalization should remove all spaces."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("$ 1M") == "$1m"
+        assert gen._normalize_value_text("$ 1 M") == "$1m"
+        assert gen._normalize_value_text("33 %") == "33%"
+
+    def test_normalize_million_variations(self):
+        """Should standardize 'million' variations to 'm'."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("$1million") == "$1m"
+        assert gen._normalize_value_text("$1 million") == "$1m"
+        assert gen._normalize_value_text("$1Million") == "$1m"
+        assert gen._normalize_value_text("$1MILLION") == "$1m"
+
+    def test_normalize_billion_variations(self):
+        """Should standardize 'billion' variations to 'b'."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("$5billion") == "$5b"
+        assert gen._normalize_value_text("$5 billion") == "$5b"
+        assert gen._normalize_value_text("$5Billion") == "$5b"
+        assert gen._normalize_value_text("$5BILLION") == "$5b"
+
+    def test_normalize_thousand_variations(self):
+        """Should standardize 'thousand' variations to 'k'."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("10thousand") == "10k"
+        assert gen._normalize_value_text("10 thousand") == "10k"
+        assert gen._normalize_value_text("10Thousand") == "10k"
+        assert gen._normalize_value_text("10THOUSAND") == "10k"
+
+    def test_normalize_alternate_short_forms(self):
+        """Should standardize 'mn' and 'bn' to 'm' and 'b'."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("$2mn") == "$2m"
+        assert gen._normalize_value_text("$2MN") == "$2m"
+        assert gen._normalize_value_text("$2 mn") == "$2m"
+
+        assert gen._normalize_value_text("$5bn") == "$5b"
+        assert gen._normalize_value_text("$5BN") == "$5b"
+        assert gen._normalize_value_text("$5 bn") == "$5b"
+
+    def test_normalize_short_forms_lowercase(self):
+        """Should lowercase M, B, K short forms."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("$1M") == "$1m"
+        assert gen._normalize_value_text("$5B") == "$5b"
+        assert gen._normalize_value_text("10K") == "10k"
+
+    def test_normalize_percentages_unchanged(self):
+        """Percentages without magnitude suffixes should remain unchanged."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("33%") == "33%"
+        assert gen._normalize_value_text("33.5%") == "33.5%"
+        assert gen._normalize_value_text("100%") == "100%"
+
+    def test_normalize_decimals_unchanged(self):
+        """Plain decimals should remain unchanged."""
+        gen = CandidateGenerator()
+
+        assert gen._normalize_value_text("1.42") == "1.42"
+        assert gen._normalize_value_text("1.53") == "1.53"
+        assert gen._normalize_value_text("2.7") == "2.7"
+
+    def test_normalize_pattern_candidate_match(self):
+        """Pattern values and candidate values should normalize to same result."""
+        gen = CandidateGenerator()
+
+        # Pattern has "million", candidate has "M"
+        pattern_val = "$1 million"
+        candidate_val = "$1M"
+
+        assert gen._normalize_value_text(pattern_val) == gen._normalize_value_text(candidate_val)
+
+        # Pattern has "billion", candidate has "B"
+        pattern_val = "$5 billion"
+        candidate_val = "$5B"
+
+        assert gen._normalize_value_text(pattern_val) == gen._normalize_value_text(candidate_val)
+
+        # Pattern has "bn", candidate has "B"
+        pattern_val = "$5bn"
+        candidate_val = "$5B"
+
+        assert gen._normalize_value_text(pattern_val) == gen._normalize_value_text(candidate_val)

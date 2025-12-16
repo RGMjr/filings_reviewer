@@ -208,6 +208,296 @@ class PatternAnalyzer:
             "warnings": warnings,
         }
 
+    def analyze_context_performance(
+        self,
+        filing_id: Optional[int] = None,
+        metric_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyze accept/reject rates by context type and keyword direction.
+
+        This method supports E1 multiplier optimization by identifying which
+        contexts and directions produce high-quality candidates.
+
+        Args:
+            filing_id: Optional filter to specific filing
+            metric_id: Optional filter to specific metric
+
+        Returns:
+            Dict with structure:
+                {
+                    "total_decisions": int,
+                    "decisions_with_context": int,
+                    "context_stats": {
+                        "table": {
+                            "total": int,
+                            "accepted": int,
+                            "rejected": int,
+                            "precision": float,
+                            "by_direction": {
+                                "before": {"total": int, "accepted": int, "precision": float},
+                                "after": {"total": int, "accepted": int, "precision": float},
+                            }
+                        },
+                        "parenthetical": {...},
+                        "bullet": {...},
+                        "copula": {...},
+                        "preposition": {...},
+                        "default": {...},
+                    }
+                }
+        """
+        # Load decisions with features
+        decisions_data = self._load_decisions_with_features(filing_id, metric_id)
+
+        if not decisions_data:
+            return {
+                "total_decisions": 0,
+                "decisions_with_context": 0,
+                "context_stats": {},
+            }
+
+        # Initialize stats structure
+        context_stats: Dict[str, Dict[str, Any]] = {}
+        decisions_with_context = 0
+
+        # Process each decision
+        for decision_data in decisions_data:
+            features = decision_data["features"]
+            decision = decision_data["decision"]
+
+            # Skip if no context_type
+            context_type = features.get("context_type")
+            if not context_type:
+                continue
+
+            decisions_with_context += 1
+
+            # Get keyword direction
+            keyword_position = features.get("keyword_position", "unknown")
+
+            # Initialize context if first time seeing it
+            if context_type not in context_stats:
+                context_stats[context_type] = {
+                    "total": 0,
+                    "accepted": 0,
+                    "rejected": 0,
+                    "precision": 0.0,
+                    "by_direction": {
+                        "before": {"total": 0, "accepted": 0, "precision": 0.0},
+                        "after": {"total": 0, "accepted": 0, "precision": 0.0},
+                        "unknown": {"total": 0, "accepted": 0, "precision": 0.0},
+                    }
+                }
+
+            # Update totals
+            context_stats[context_type]["total"] += 1
+
+            # Map direction (normalize 'at' to 'after')
+            direction = keyword_position if keyword_position in ["before", "after"] else "unknown"
+            context_stats[context_type]["by_direction"][direction]["total"] += 1
+
+            # Track accepts
+            is_accepted = decision == "accept"
+            if is_accepted:
+                context_stats[context_type]["accepted"] += 1
+                context_stats[context_type]["by_direction"][direction]["accepted"] += 1
+            else:
+                context_stats[context_type]["rejected"] += 1
+
+        # Compute precision rates
+        for context_type, stats in context_stats.items():
+            if stats["total"] > 0:
+                stats["precision"] = stats["accepted"] / stats["total"]
+
+            for direction, direction_stats in stats["by_direction"].items():
+                if direction_stats["total"] > 0:
+                    direction_stats["precision"] = direction_stats["accepted"] / direction_stats["total"]
+
+        return {
+            "total_decisions": len(decisions_data),
+            "decisions_with_context": decisions_with_context,
+            "context_stats": context_stats,
+        }
+
+    def generate_multiplier_recommendations(
+        self,
+        filing_id: Optional[int] = None,
+        metric_id: Optional[str] = None,
+        min_sample_size: int = 10,
+        baseline_precision: float = 0.5,
+    ) -> Dict[str, Any]:
+        """
+        Generate multiplier recommendations based on context performance data.
+
+        This method analyzes accept/reject rates across context types to recommend
+        optimal multiplier values for L4 context-dependent keyword matching.
+
+        Strategy:
+        - Contexts with higher precision should have lower multipliers (prefer pre-value)
+        - Contexts with lower precision should have higher multipliers (prefer post-value)
+        - Use baseline_precision as reference point (default: 0.5 = no preference)
+
+        Args:
+            filing_id: Optional filter to specific filing
+            metric_id: Optional filter to specific metric
+            min_sample_size: Minimum decisions required per context for recommendation
+            baseline_precision: Precision level for neutral multiplier (1.0)
+
+        Returns:
+            Dict with structure:
+                {
+                    "summary": {
+                        "total_decisions": int,
+                        "baseline_precision": float,
+                        "min_sample_size": int,
+                    },
+                    "current_multipliers": {
+                        "table": float,
+                        "parenthetical": float,
+                        # ... etc
+                    },
+                    "recommendations": {
+                        "table": {
+                            "current": float,
+                            "recommended": float,
+                            "precision": float,
+                            "sample_size": int,
+                            "confidence": str,  # 'high', 'medium', 'low', 'insufficient'
+                            "rationale": str,
+                        },
+                        # ... etc
+                    },
+                    "warnings": List[str],
+                }
+        """
+        # Get current multipliers from config (default values)
+        from src.review.config import CandidateGenerationConfig
+        default_config = CandidateGenerationConfig()
+
+        current_multipliers = {
+            "table": default_config.multiplier_tables,
+            "parenthetical": default_config.multiplier_parenthetical,
+            "bullet": default_config.multiplier_bullet_points,
+            "copula": default_config.multiplier_copula_verb,
+            "preposition": default_config.multiplier_preposition,
+            "default": default_config.multiplier_default,
+        }
+
+        # Analyze context performance
+        performance = self.analyze_context_performance(filing_id, metric_id)
+
+        recommendations = {}
+        warnings = []
+
+        # Generate recommendations for each context
+        for context_type, stats in performance["context_stats"].items():
+            sample_size = stats["total"]
+            precision = stats["precision"]
+            current = current_multipliers.get(context_type, 1.0)
+
+            # Determine confidence based on sample size
+            if sample_size < min_sample_size:
+                confidence = "insufficient"
+                recommended = current  # Keep current value
+                rationale = f"Insufficient data ({sample_size} samples, need {min_sample_size})"
+                warnings.append(
+                    f"Context '{context_type}': Only {sample_size} samples "
+                    f"(need {min_sample_size} for reliable recommendation)"
+                )
+            elif sample_size < min_sample_size * 2:
+                confidence = "low"
+                # Conservative adjustment
+                recommended = self._compute_recommended_multiplier(
+                    precision, baseline_precision, adjustment_factor=0.5
+                )
+                rationale = (
+                    f"Low confidence ({sample_size} samples). "
+                    f"Precision: {precision:.2%}. "
+                    f"Conservative adjustment from baseline."
+                )
+            elif sample_size < min_sample_size * 5:
+                confidence = "medium"
+                # Moderate adjustment
+                recommended = self._compute_recommended_multiplier(
+                    precision, baseline_precision, adjustment_factor=0.75
+                )
+                rationale = (
+                    f"Medium confidence ({sample_size} samples). "
+                    f"Precision: {precision:.2%}. "
+                    f"Moderate adjustment based on data."
+                )
+            else:
+                confidence = "high"
+                # Full adjustment
+                recommended = self._compute_recommended_multiplier(
+                    precision, baseline_precision, adjustment_factor=1.0
+                )
+                rationale = (
+                    f"High confidence ({sample_size} samples). "
+                    f"Precision: {precision:.2%}. "
+                    f"Data-driven multiplier recommendation."
+                )
+
+            recommendations[context_type] = {
+                "current": current,
+                "recommended": recommended,
+                "precision": precision,
+                "sample_size": sample_size,
+                "confidence": confidence,
+                "rationale": rationale,
+                "change": recommended - current,
+            }
+
+        return {
+            "summary": {
+                "total_decisions": performance["total_decisions"],
+                "decisions_with_context": performance["decisions_with_context"],
+                "baseline_precision": baseline_precision,
+                "min_sample_size": min_sample_size,
+            },
+            "current_multipliers": current_multipliers,
+            "recommendations": recommendations,
+            "warnings": warnings,
+        }
+
+    def _compute_recommended_multiplier(
+        self,
+        precision: float,
+        baseline_precision: float,
+        adjustment_factor: float = 1.0,
+    ) -> float:
+        """
+        Compute recommended multiplier based on precision.
+
+        Logic:
+        - precision > baseline → lower multiplier (prefer pre-value keywords)
+        - precision < baseline → higher multiplier (prefer post-value keywords)
+        - precision = baseline → multiplier = 1.0 (no preference)
+
+        Formula:
+        - delta = (baseline - precision) * adjustment_factor
+        - recommended = 1.0 + (delta * 0.5)  # Scale delta to reasonable range
+
+        Examples (baseline=0.5, adjustment_factor=1.0):
+        - precision=0.9 (high quality) → delta=-0.4 → multiplier=0.8 (prefer pre-value)
+        - precision=0.5 (neutral) → delta=0.0 → multiplier=1.0 (no preference)
+        - precision=0.1 (low quality) → delta=0.4 → multiplier=1.2 (prefer post-value)
+
+        Args:
+            precision: Observed precision for context
+            baseline_precision: Reference precision for neutral multiplier
+            adjustment_factor: Scale factor (0-1) for conservative adjustments
+
+        Returns:
+            Recommended multiplier (clamped to 0.7-1.3 range)
+        """
+        delta = (baseline_precision - precision) * adjustment_factor
+        recommended = 1.0 + (delta * 0.5)
+
+        # Clamp to reasonable range
+        return max(0.7, min(1.3, recommended))
+
     def _load_decisions_with_features(
         self,
         filing_id: Optional[int],

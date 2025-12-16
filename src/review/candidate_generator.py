@@ -589,8 +589,10 @@ class CandidateGenerator:
 
                     # Calculate distance and position
                     distance = self._calculate_distance(num, kw)
-                    # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "after")
-                    keyword_position = "after" if kw.direction in ("after", "at") else "before"
+                    # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "before")
+                    # Rationale: When keyword and number are at same position, treat as "before" (no penalty)
+                    # since there's no temporal "after" relationship in reading order
+                    keyword_position = "after" if kw.direction == "after" else "before"
 
                     # Extract context
                     context = self._extract_context(text, num.start)
@@ -604,6 +606,17 @@ class CandidateGenerator:
                         segment=segment,
                         all_numbers=numbers,
                     )
+
+                    # L4/E1: Compute context type for multiplier optimization
+                    context_type = self._keyword_matcher.get_context_type(
+                        text=text,
+                        number_position=num.start,
+                        keyword_position=kw.start,
+                        keyword_direction=kw.direction if kw.direction else keyword_position,
+                        boundaries=boundaries,
+                        segment_type=segment.get("segment_type"),
+                    )
+                    features.context_type = context_type
 
                     # Compute confidence score
                     confidence = None
@@ -923,15 +936,22 @@ class CandidateGenerator:
 
     def _normalize_value_text(self, value_text: str) -> str:
         """
-        Normalize value text for matching (remove spaces, lowercase units).
+        Normalize value text for matching (remove spaces, standardize units).
+
+        L1-P1.3 Enhancement: Standardizes magnitude suffixes for consistent matching.
 
         Used to match candidate raw_number_text with respectively pattern values.
+        Handles variations like "million" vs "M", "billion" vs "B", etc.
 
         Examples:
             "$1M" -> "$1m"
             "$ 1 M" -> "$1m"
+            "$1 million" -> "$1m"
+            "$1Million" -> "$1m"
             "33.0%" -> "33.0%"
             "1.42" -> "1.42"
+            "10 thousand" -> "10k"
+            "5bn" -> "5b"
 
         Args:
             value_text: Raw value text to normalize
@@ -942,9 +962,31 @@ class CandidateGenerator:
         # Remove spaces
         normalized = value_text.replace(" ", "")
 
-        # Lowercase magnitude suffixes
-        for suffix in ["M", "B", "K", "Million", "Billion", "Thousand"]:
-            normalized = normalized.replace(suffix, suffix.lower())
+        # Standardize magnitude suffixes (long form → short form, then lowercase)
+        # Order matters: do long forms first to avoid partial replacements
+        replacements = [
+            ("million", "m"),
+            ("Million", "m"),
+            ("MILLION", "m"),
+            ("billion", "b"),
+            ("Billion", "b"),
+            ("BILLION", "b"),
+            ("thousand", "k"),
+            ("Thousand", "k"),
+            ("THOUSAND", "k"),
+            ("mn", "m"),  # Alternate short form
+            ("MN", "m"),
+            ("Mn", "m"),
+            ("bn", "b"),  # Alternate short form
+            ("BN", "b"),
+            ("Bn", "b"),
+            ("M", "m"),  # Lowercase remaining
+            ("B", "b"),
+            ("K", "k"),
+        ]
+
+        for old, new in replacements:
+            normalized = normalized.replace(old, new)
 
         return normalized
 
