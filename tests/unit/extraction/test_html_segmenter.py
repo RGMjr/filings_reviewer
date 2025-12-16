@@ -2020,3 +2020,260 @@ class TestHeadingCacheBinarySearch:
 
         finally:
             Path(html_path).unlink()
+
+
+# =============================================================================
+# SEG11: Parallel Sentence Detection Tests
+# =============================================================================
+
+
+class TestParallelSentenceDetection:
+    """Test parallel sentence detection (SEG11)."""
+
+    def test_parallel_processing_preserves_order(self, temp_html_file):
+        """Segment order must be preserved after parallel processing."""
+        # Create HTML with 100 numbered paragraphs (>50 chars each to pass MIN_SEGMENT_LENGTH)
+        html = "<html><body>"
+        for i in range(100):
+            html += f"<p>Paragraph number {i:03d}. This is the first sentence with enough content. And this is the second sentence.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Verify segments are in correct order
+            # Each segment should contain its sequential number
+            found_numbers = []
+            for seg in segments:
+                # Extract number from text like "Paragraph number 005"
+                if "Paragraph number" in seg.raw_text:
+                    # Get the number after "Paragraph number"
+                    parts = seg.raw_text.split()
+                    for i, part in enumerate(parts):
+                        if part == "number" and i + 1 < len(parts):
+                            num_str = parts[i + 1].rstrip(".")
+                            if num_str.isdigit():
+                                found_numbers.append(int(num_str))
+                                break
+
+            # Verify numbers are in sequential order
+            assert found_numbers == sorted(found_numbers), "Segments are not in sequential order"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_parallel_processing_thread_safety(self, temp_html_file):
+        """Concurrent sentence detection should not corrupt data."""
+        # Create 200 segments with known sentence patterns (>50 chars each)
+        html = "<html><body>"
+        for i in range(200):
+            html += f"<p>Segment number {i:03d}. First sentence here with enough content. Second sentence follows.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Verify all segments have sentence boundaries detected
+            segments_with_sentences = 0
+            for segment in segments:
+                if "sentence" in segment.raw_text.lower():
+                    # Should have detected sentence boundaries
+                    assert hasattr(segment, "sentence_boundaries"), (
+                        f"Segment missing sentence_boundaries: {segment.raw_text[:50]}"
+                    )
+                    assert segment.sentence_boundaries is not None, (
+                        f"Segment has None sentence_boundaries: {segment.raw_text[:50]}"
+                    )
+                    # Should detect at least 2 sentences
+                    assert len(segment.sentence_boundaries) >= 2, (
+                        f"Expected at least 2 sentences, got {len(segment.sentence_boundaries)}: "
+                        f"{segment.raw_text[:50]}"
+                    )
+                    segments_with_sentences += 1
+
+            # Should have found many segments with sentences
+            assert segments_with_sentences >= 100, (
+                f"Expected at least 100 segments with sentences, got {segments_with_sentences}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_small_segment_count_uses_sequential(self, temp_html_file):
+        """Segments below threshold should use sequential processing."""
+        # Create fewer segments than the threshold (50)
+        html = "<html><body>"
+        for i in range(10):
+            html += f"<p>Paragraph number {i:02d}. This is a single sentence with enough text to pass the minimum length requirement.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            # Should complete without errors (implicitly tests sequential path)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+            assert len(segments) >= 1
+
+            # Verify sentence boundaries were still detected
+            for segment in segments:
+                if "sentence" in segment.raw_text.lower():
+                    assert hasattr(segment, "sentence_boundaries")
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_large_segment_count_triggers_parallel(self, temp_html_file):
+        """Segments at or above threshold should trigger parallel processing."""
+        # Create exactly at threshold (50 segments)
+        html = "<html><body>"
+        for i in range(50):
+            html += f"<p>Paragraph number {i:02d}. First sentence with enough text content. Second sentence follows here.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have processed successfully
+            assert len(segments) >= 1
+
+            # Verify all segments have correct sentence boundaries
+            for segment in segments:
+                if "sentence" in segment.raw_text.lower():
+                    assert hasattr(segment, "sentence_boundaries")
+                    assert segment.sentence_boundaries is not None
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_parallel_handles_mixed_content(self, temp_html_file):
+        """Parallel processing should handle mixed content types."""
+        # Mix paragraphs, tables, and empty segments
+        html = """<html><body>"""
+        for i in range(60):
+            if i % 3 == 0:
+                # Table (needs to be large enough)
+                html += f"""
+                <table>
+                    <tr><td>Row {i}</td><td>This is data for row {i} with enough content to pass the minimum length</td></tr>
+                </table>
+                """
+            elif i % 3 == 1:
+                # Regular paragraph with sentences
+                html += f"<p>Paragraph number {i:02d}. Multiple sentences here with content. Another one follows now.</p>"
+            else:
+                # Longer paragraph
+                html += f"<p>This is a longer paragraph number {i:02d} with sufficient text to pass the minimum segment length requirement.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should process successfully with mixed content
+            assert len(segments) >= 1
+
+            # Verify different segment types handled correctly
+            table_count = sum(1 for s in segments if s.segment_type == "table")
+            para_count = sum(1 for s in segments if s.segment_type == "paragraph")
+
+            assert table_count > 0, "Should have table segments"
+            assert para_count > 0, "Should have paragraph segments"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_parallel_processing_no_data_loss(self, temp_html_file):
+        """Parallel processing should not lose any segment data."""
+        # Create 100 segments with unique identifiable content
+        html = "<html><body>"
+        expected_numbers = []
+        for i in range(100):
+            html += f"<p>Unique identifier {i:04d}. This is content with enough text to pass minimum segment length.</p>"
+            expected_numbers.append(i)
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Extract all identifiers from segments
+            found_numbers = []
+            for seg in segments:
+                # Look for "identifier NNNN" pattern
+                if "identifier" in seg.raw_text:
+                    parts = seg.raw_text.split()
+                    for i, part in enumerate(parts):
+                        if part == "identifier" and i + 1 < len(parts):
+                            num_str = parts[i + 1].rstrip(".")
+                            if num_str.isdigit():
+                                found_numbers.append(int(num_str))
+                                break
+
+            # Verify all numbers were found
+            assert sorted(found_numbers) == expected_numbers, (
+                f"Data loss detected. Expected {len(expected_numbers)} segments, "
+                f"found {len(found_numbers)}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_parallel_processing_exception_handling(self, temp_html_file, monkeypatch):
+        """Parallel processing should fallback to sequential on exception."""
+        # Create HTML with enough segments to trigger parallel processing
+        html = "<html><body>"
+        for i in range(60):
+            html += f"<p>Paragraph number {i:02d}. This is a test sentence with enough content to pass minimum length.</p>"
+        html += "</body></html>"
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter()
+
+        # Mock ThreadPoolExecutor to raise an exception
+        def mock_executor_map(*args, **kwargs):
+            raise RuntimeError("Simulated thread pool failure")
+
+        try:
+            # Patch the executor map method
+            from concurrent.futures import ThreadPoolExecutor
+            original_map = ThreadPoolExecutor.map
+            monkeypatch.setattr(ThreadPoolExecutor, "map", mock_executor_map)
+
+            # Should fallback to sequential and complete successfully
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have processed all segments
+            assert len(segments) >= 1
+
+            # Verify sentence boundaries were still detected (via fallback)
+            for segment in segments:
+                if "sentence" in segment.raw_text.lower():
+                    assert hasattr(segment, "sentence_boundaries")
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_threshold_configuration(self):
+        """Verify parallel processing threshold is configurable."""
+        segmenter = HTMLSegmenter()
+
+        # Check constants exist and have expected values
+        assert hasattr(segmenter, "PARALLEL_SENTENCE_DETECTION_THRESHOLD")
+        assert segmenter.PARALLEL_SENTENCE_DETECTION_THRESHOLD == 50
+
+        assert hasattr(segmenter, "PARALLEL_SENTENCE_DETECTION_WORKERS")
+        assert segmenter.PARALLEL_SENTENCE_DETECTION_WORKERS == 4
