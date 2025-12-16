@@ -35,7 +35,7 @@
 ---
 
 ## 🟠 High Value: Metric Logic Repairs
-**Source:** `METRIC_IDENTIFICATION_ISSUES.md`
+**Source:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` (archived)
 **Objective:** Reduce false positives in the review queue.
 
 - [x] **L1. Issue 3:** Implement logic to detect "Respectively" patterns (e.g., "A, B and C were X, Y and Z respectively"). → ✅ **COMPLETE (2025-12-15)**

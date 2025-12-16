@@ -32,7 +32,7 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 
 ### ✅ **COMPLETED: Issue 4 Enhancement - Standalone TOC Pattern (2025-12-16)**
 **Status:** ✅ COMPLETE
-**Documentation:** `METRIC_IDENTIFICATION_ISSUES.md` (Issue 4)
+**Documentation:** `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` (Issue 4, ARCHIVED)
 
 **Objective:** Complete Issue 4 by adding standalone "Table of Contents" page number filtering.
 
@@ -56,7 +56,7 @@ After: Page number "73" filtered as TOC reference ✓
 - **Updated Module:** `src/review/false_positive_filter.py` (line 141-142)
 - **Unit Tests:** `tests/unit/review/test_false_positive_filter.py::TestIssue4StandaloneTOCPattern` (7 tests)
 - **Integration Tests:** `tests/integration/test_issue4_toc_filtering.py` (6 tests)
-- **Documentation:** Updated METRIC_IDENTIFICATION_ISSUES.md, WORKSTREAM_L_IMPROVEMENT_PLAN.md
+- **Documentation:** Updated `docs/archive/status-reports/METRIC_IDENTIFICATION_ISSUES.md` (archived), `docs/WORKSTREAM_L_IMPROVEMENT_PLAN.md`
 
 **Patterns Filtered:**
 - "73 Table of Contents" ✓
@@ -66,7 +66,7 @@ After: Page number "73" filtered as TOC reference ✓
 
 **Results:**
 - Issue 4 now 100% complete (all page number patterns filtered)
-- METRIC_IDENTIFICATION_ISSUES.md: 6/6 issues complete (100%)
+- METRIC_IDENTIFICATION_ISSUES.md: 5/6 complete + 1 partial (now archived)
 - L2 TOC filtering fully comprehensive
 
 **Time:** ~1.5 hours
