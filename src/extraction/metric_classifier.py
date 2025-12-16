@@ -262,6 +262,28 @@ class MetricClassifier:
             r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
             r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
         ],
+        # -----------------------------------------------------------------
+        # E-Commerce / Consumer Metrics (T6: AOV + Repeat Purchase group)
+        # -----------------------------------------------------------------
+        "cm_average_order_value": [
+            r"\baov\b",                          # "AOV" acronym
+            r"\baverage\s+order\s+value\b",      # "average order value"
+            r"\baverage\s+order\s+size\b",       # "average order size"
+            r"\baverage\s+ticket\s+(?:size|value)?\b",  # "average ticket [size/value]"
+            r"\baverage\s+basket\s+(?:size|value)?\b",  # "average basket [size/value]"
+            r"\border\s+value\s+per\s+(?:customer|user|transaction)\b",  # "order value per customer"
+            r"\baverage\s+transaction\s+value\b",  # "average transaction value"
+        ],
+        "cm_repeat_purchase_rate": [
+            r"\brepeat\s+purchase\s+rate\b",     # "repeat purchase rate"
+            r"\brepeat\s+purchase(?:s)?\b",      # "repeat purchase(s)"
+            r"\bpurchase\s+frequency\b",         # "purchase frequency"
+            r"\brepeat\s+customers?\b",          # "repeat customer(s)"
+            r"\brepeat\s+buyers?\b",             # "repeat buyer(s)"
+            r"\brepeat\s+order\s+rate\b",        # "repeat order rate"
+            r"\breorder\s+rate\b",               # "reorder rate"
+            r"\brepurchase\s+rate\b",            # "repurchase rate"
+        ],
         # Future Metrics
         "cm_lifetime_value_per_customer": [
             r"\bltv\b",
@@ -301,6 +323,9 @@ class MetricClassifier:
         'cm_bookings',
         'cm_billings',
         'cm_deferred_revenue',
+        # T6: E-commerce metrics
+        'cm_average_order_value',
+        'cm_repeat_purchase_rate',
     }
 
     # General customer/metric keywords (for numeric disclosure detection)
