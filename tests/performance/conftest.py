@@ -5,7 +5,8 @@ Provides benchmark database setup and realistic test data for performance testin
 """
 
 import os
-from typing import Dict, List
+import random
+from typing import Any, Dict, List
 
 import pytest
 from dotenv import load_dotenv
@@ -251,3 +252,154 @@ def realistic_segments_500(benchmark_db):
         "company_id": company_id,
         "segments": segments,
     }
+
+
+def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> List[Dict[str, Any]]:
+    """
+    Generate synthetic learned patterns for stress testing.
+
+    Args:
+        count: Number of patterns to generate
+        approved_ratio: Fraction of patterns that should be 'approved' (rest are 'candidate')
+
+    Returns:
+        List of pattern dictionaries ready for insertion
+
+    Pattern Distribution:
+        - 70% reject_rule (most common in production)
+        - 20% accept_rule
+        - 10% feature_weight
+
+    Feature Coverage:
+        - Mix of global patterns (metric_id=None) and metric-specific
+        - Variety of condition operators and field combinations
+    """
+    metrics = [
+        None,  # Global patterns
+        "cm_customer_count",
+        "cm_arr",
+        "cm_mrr",
+        "cm_net_revenue_retention",
+        "cm_churn_rate",
+        "cm_dau",
+        "cm_mau",
+        "cm_arpu",
+        "cm_ltv",
+        "cm_cac",
+    ]
+
+    fields = [
+        ("keyword_distance", "numeric"),
+        ("value_magnitude", "numeric"),
+        ("word_count_before", "numeric"),
+        ("word_count_after", "numeric"),
+        ("is_in_table", "boolean"),
+        ("is_percentage", "boolean"),
+        ("is_currency", "boolean"),
+        ("has_year_reference", "boolean"),
+        ("is_in_risk_factors", "boolean"),
+        ("has_definition_language", "boolean"),
+        ("has_growth_language", "boolean"),
+    ]
+
+    operators_numeric = ["gt", "lt", "gte", "lte", "eq"]
+    operators_boolean = ["eq"]
+
+    patterns = []
+    for i in range(count):
+        # Determine pattern type (70% reject, 20% accept, 10% weight)
+        rand = random.random()
+        if rand < 0.7:
+            pattern_type = "reject_rule"
+        elif rand < 0.9:
+            pattern_type = "accept_rule"
+        else:
+            pattern_type = "feature_weight"
+
+        # Generate 1-3 conditions
+        num_conditions = random.randint(1, 3)
+        conditions = []
+        used_fields = set()
+
+        for _ in range(num_conditions):
+            # Pick unused field
+            available = [f for f in fields if f[0] not in used_fields]
+            if not available:
+                break
+            field_name, field_type = random.choice(available)
+            used_fields.add(field_name)
+
+            if field_type == "numeric":
+                op = random.choice(operators_numeric)
+                if field_name == "keyword_distance":
+                    value = random.randint(10, 150)
+                elif field_name == "value_magnitude":
+                    value = random.randint(1, 10)
+                else:
+                    value = random.randint(1, 50)
+            else:  # boolean
+                op = "eq"
+                value = random.choice([True, False])
+
+            conditions.append({
+                "field": field_name,
+                "op": op,
+                "value": value
+            })
+
+        pattern_definition = {
+            "conditions": conditions,
+            "logic": random.choice(["and", "or"]) if len(conditions) > 1 else "and"
+        }
+
+        # Status: approved_ratio of patterns are approved
+        status = "approved" if random.random() < approved_ratio else "candidate"
+
+        patterns.append({
+            "pattern_type": pattern_type,
+            "pattern_name": f"synthetic_pattern_{i}",
+            "pattern_description": f"Synthetic pattern {i} for stress testing",
+            "pattern_definition": pattern_definition,
+            "metric_id": random.choice(metrics),
+            "precision_score": random.uniform(0.6, 0.99),
+            "recall_score": random.uniform(0.1, 0.5),
+            "f1_score": random.uniform(0.2, 0.7),
+            "sample_count": random.randint(10, 500),
+            "status": status,
+        })
+
+    return patterns
+
+
+@pytest.fixture
+def db_with_1000_patterns(benchmark_db):
+    """
+    Create database with 1000+ synthetic learned patterns for stress testing.
+
+    Pattern breakdown:
+        - ~800 approved patterns (loadable by RuleApplicator)
+        - ~200 candidate patterns (not loaded)
+        - Mix of reject_rule, accept_rule, feature_weight types
+        - Mix of global and metric-specific patterns
+
+    Returns:
+        Tuple of (database_adapter, pattern_count, approved_count)
+    """
+    patterns = _generate_synthetic_patterns(1000, approved_ratio=0.8)
+
+    approved_count = 0
+    for pattern in patterns:
+        status = pattern.pop("status")  # Remove for insert, apply after
+        pattern_id = benchmark_db.insert_learned_pattern(**pattern)
+
+        # Update status if approved
+        if status == "approved":
+            with benchmark_db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %s",
+                        (pattern_id,)
+                    )
+            approved_count += 1
+
+    return benchmark_db, len(patterns), approved_count

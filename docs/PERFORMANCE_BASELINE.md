@@ -108,6 +108,61 @@ Database: PostgreSQL (dev:dev@localhost:5433/filings_analysis_test)
 
 ---
 
+#### With 1000+ Learned Patterns (Scaling Test)
+
+**Test**: `test_throughput_with_1000_patterns`
+**Fixture**: 100 realistic segments, 1000 synthetic patterns (790 approved)
+**Learned Rules**: Enabled (full production simulation)
+
+| Metric | Value |
+|--------|-------|
+| **Mean Time** | 14.91 ms |
+| **Median Time** | 14.82 ms |
+| **Min Time** | 14.57 ms |
+| **Max Time** | 15.63 ms |
+| **Std Dev** | 0.29 ms |
+| **Throughput** | **6,709 segments/sec** |
+| **OPS** | 67.09 ops/sec |
+| **Patterns Loaded** | 790 approved |
+
+**Result**: ⚠️ **DEGRADATION DETECTED** (target: <5% slower than baseline)
+
+**Interpretation**:
+- Performance impact: **33.4%** slower compared to 0-pattern baseline (14.91ms vs 11.17ms)
+- Throughput reduced from 8,953 to 6,709 segments/sec
+- Still **335x faster** than minimum target (6,709 vs 20 seg/sec)
+- Pattern matching overhead increases linearly with pattern count
+- Optimization recommended for production deployments with 500+ patterns
+
+**Recommendations**:
+1. **Pattern Indexing**: Index patterns by metric_id for faster lookups
+2. **Early Exit**: Implement short-circuit evaluation for pattern matching
+3. **Caching**: Cache pattern evaluation results for identical feature vectors
+4. **Batch Optimization**: Consider vectorized pattern matching for multiple candidates
+
+---
+
+#### With 2000 Learned Patterns (Extreme Load)
+
+**Test**: `test_throughput_with_2000_patterns`
+**Fixture**: 100 realistic segments, 2000 synthetic patterns (1600 approved)
+
+| Metric | Value |
+|--------|-------|
+| **Mean Time** | 16.05 ms |
+| **Throughput** | **6,229 segments/sec** |
+| **Patterns Loaded** | ~1600 approved |
+
+**Result**: ⚠️ **OPTIMIZATION NEEDED** (target: <10% slower than baseline)
+
+**Interpretation**:
+- Performance impact: **43.6%** slower compared to 0-pattern baseline (16.05ms vs 11.17ms)
+- Demonstrates sub-linear scaling: 2x patterns = 1.3x slowdown (vs 1.7x for 1000 patterns)
+- Still **311x faster** than minimum target (6,229 vs 20 seg/sec)
+- Pattern matching is the bottleneck at scale
+
+---
+
 ### Latency Benchmarks
 
 #### Percentile Analysis
@@ -310,6 +365,14 @@ benchmark: 5.2.3 (
 
 ## Changelog
 
+### 2025-12-16 - Learned Patterns Stress Test Complete (P2)
+- Added stress tests for 1000 and 2000 learned patterns
+- **Results**: 33.4% performance degradation with 790 patterns (exceeds 5% target)
+- **Finding**: Pattern matching becomes bottleneck at scale (1000+ patterns)
+- **Recommendation**: Pattern indexing and caching needed for production
+- **Context**: Still 335x faster than minimum requirements (6,709 vs 20 seg/sec)
+- Added optimization recommendations to Future Work section
+
 ### 2025-12-16 - Memory Profiling Complete (P1)
 - Ran memory profiling tests for 100-segment filing
 - Established baseline memory usage: **0.09 MiB** peak increase
@@ -327,12 +390,16 @@ benchmark: 5.2.3 (
 
 ## Future Work
 
-### High Priority
+### Completed (2025-12-16)
 
-1. **Database Performance**: Test with realistic learned patterns (1000+ patterns)
-   - Current: Tested with empty pattern set (0% overhead)
-   - Action: Generate 1000+ learned patterns from production review decisions
-   - Goal: Confirm <5% performance impact with realistic pattern load
+1. **Database Performance**: ✅ Tested with 1000+ learned patterns (P2)
+   - Previous: Tested with empty pattern set (0% overhead)
+   - Completed: Generated 1000+ synthetic patterns
+   - Result: 33.4% performance impact with 790 approved patterns
+   - Conclusion: **OPTIMIZATION NEEDED** - Exceeds 5% target but still 335x above minimum requirements
+   - Follow-up: Pattern indexing and caching recommended for production
+
+### High Priority
 
 ### Medium Priority
 

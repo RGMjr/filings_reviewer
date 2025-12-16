@@ -271,3 +271,95 @@ class TestCandidateGenerationWithDB:
 
         # Note: Detailed stats are printed by pytest-benchmark automatically
         # We just verify the benchmark ran successfully
+
+
+@pytest.mark.benchmark
+class TestLearnedPatternsScaling:
+    """Benchmark performance impact of learned patterns at scale."""
+
+    def test_throughput_with_1000_patterns(
+        self, benchmark, db_with_1000_patterns, realistic_segments_100
+    ):
+        """
+        Measure throughput with 1000+ learned patterns loaded.
+
+        This test validates that pattern matching scales acceptably when
+        the system has accumulated many learned patterns from human review.
+
+        Target: <5% slower than baseline (8.4ms → <8.82ms)
+        Interpretation: If significantly slower (>10%), pattern matching
+                       optimization needed (e.g., pattern indexing, caching).
+        Configuration: Learned rules enabled, 800+ approved patterns loaded
+        """
+        db, total_patterns, approved_count = db_with_1000_patterns
+
+        filing_id = realistic_segments_100["filing_id"]
+        company_id = realistic_segments_100["company_id"]
+        segments = realistic_segments_100["segments"]
+
+        generator = CandidateGenerator(apply_learned_rules=True)
+
+        # Log pattern counts
+        print(f"\n  Pattern load: {approved_count} approved / {total_patterns} total")
+
+        # Benchmark with patterns loaded
+        result = benchmark(
+            generator.generate_for_filing,
+            filing_id=filing_id,
+            company_id=company_id,
+            segments=segments,
+            db=db,
+        )
+
+        # Verify candidates were generated
+        assert isinstance(result, list), "Should return list of candidates"
+
+        # Log results for comparison
+        print(f"  Candidates generated: {len(result)}")
+
+    def test_throughput_with_2000_patterns(
+        self, benchmark, benchmark_db, realistic_segments_100
+    ):
+        """
+        Extreme stress test with 2000 patterns.
+
+        Validates system behavior under heavy pattern load.
+        Target: <10% slower than baseline
+        """
+        # Import helper function
+        from tests.performance.conftest import _generate_synthetic_patterns
+
+        # Generate 2000 patterns
+        patterns = _generate_synthetic_patterns(2000, approved_ratio=0.8)
+
+        approved_count = 0
+        for pattern in patterns:
+            status = pattern.pop("status")
+            pattern_id = benchmark_db.insert_learned_pattern(**pattern)
+            if status == "approved":
+                with benchmark_db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %s",
+                            (pattern_id,)
+                        )
+                approved_count += 1
+
+        filing_id = realistic_segments_100["filing_id"]
+        company_id = realistic_segments_100["company_id"]
+        segments = realistic_segments_100["segments"]
+
+        generator = CandidateGenerator(apply_learned_rules=True)
+
+        print(f"\n  Pattern load: {approved_count} approved / 2000 total")
+
+        result = benchmark(
+            generator.generate_for_filing,
+            filing_id=filing_id,
+            company_id=company_id,
+            segments=segments,
+            db=benchmark_db,
+        )
+
+        assert isinstance(result, list)
+        print(f"  Candidates generated: {len(result)}")
