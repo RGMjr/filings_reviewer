@@ -110,3 +110,4 @@
 **Objective:** Optimize and harden the HTML segmentation pipeline.
 
 - [x] **SEG2. Fix:** SGML tag case insensitivity - handle uppercase `<TEXT>` tags in older filings. → ✅ **COMPLETE (2025-12-16)**
+- [x] **SEG3. Perf:** Singleton BoundaryDetector - reduce object allocation overhead by reusing instance. → ✅ **COMPLETE (2025-12-16)**

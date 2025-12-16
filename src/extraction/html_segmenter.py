@@ -135,6 +135,8 @@ class HTMLSegmenter:
         self.min_length = min_length
         self.max_length = max_length
         self._metrics: Optional[SegmentationMetrics] = None
+        # SEG3: Singleton BoundaryDetector to reduce object allocation overhead
+        self._boundary_detector = BoundaryDetector()
 
     def segment_filing(
         self, filing_id: int, html_path: str, raise_on_error: bool = False
@@ -679,8 +681,7 @@ class HTMLSegmenter:
         if not segment.raw_text:
             return segment
 
-        detector = BoundaryDetector()
-        boundaries = detector.find_sentence_boundaries(
+        boundaries = self._boundary_detector.find_sentence_boundaries(
             segment.raw_text,
             segment_type=segment.segment_type
         )
@@ -707,8 +708,7 @@ class HTMLSegmenter:
         if len(text) <= max_length:
             return text
 
-        detector = BoundaryDetector()
-        sentences = detector.find_sentence_boundaries(text)
+        sentences = self._boundary_detector.find_sentence_boundaries(text)
 
         # Find the last complete sentence that fits within max_length
         for boundary in reversed(sentences):
@@ -739,8 +739,7 @@ class HTMLSegmenter:
         if not text:
             return None
 
-        detector = BoundaryDetector()
-        sentences = detector.find_sentence_boundaries(text)
+        sentences = self._boundary_detector.find_sentence_boundaries(text)
 
         if not sentences:
             return None
