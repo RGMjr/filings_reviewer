@@ -329,10 +329,11 @@ class ManualTestSetup:
 
         cik = company_result[0]["cik"]
 
-        # Construct SEC EDGAR URL
+        # Construct SEC EDGAR URL as directory (actual document will be resolved dynamically)
         # Remove leading zeros from CIK for URL (e.g., "0001928446" -> "1928446")
+        # Note: Don't hardcode "primary.htm" - SEC uses different filenames per filing
         cik_for_url = cik.lstrip("0")
-        sec_html_url = f"https://www.sec.gov/Archives/edgar/data/{cik_for_url}/{accession}/primary.htm"
+        sec_html_url = f"https://www.sec.gov/Archives/edgar/data/{cik_for_url}/{accession}/"
 
         # Create filing
         result = self.db.query("""

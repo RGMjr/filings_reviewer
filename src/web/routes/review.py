@@ -183,6 +183,7 @@ class FilingData(TypedDict):
     status: str
     total_pages: Optional[int]
     html_fetched: bool
+    sec_html_url: Optional[str]  # Direct URL to primary HTML document on SEC EDGAR
     created_at: datetime
     updated_at: datetime
 
@@ -368,7 +369,14 @@ def review_filing(filing_id: int):
         if not filing_result:
             abort(404)
 
-        filing = filing_result[0]
+        filing = dict(filing_result[0])  # Make mutable copy
+
+        # Resolve the correct SEC filing URL (database may have incorrect primary.htm URL)
+        filing["sec_html_url"] = _resolve_sec_filing_url(
+            cik=filing.get("cik", ""),
+            accession_number=filing.get("accession_number", ""),
+            stored_url=filing.get("sec_html_url"),
+        )
 
         # Get all candidates for this filing WITH their decisions (single query)
         candidates = db.get_review_candidates_with_decisions(
@@ -720,6 +728,52 @@ def _find_next_candidate(
         return db.get_next_candidate_for_review(filing_id=filing_id)
 
 
+def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optional[str] = None) -> str:
+    """
+    Resolve the correct SEC filing URL for the primary document.
+
+    The stored sec_html_url in the database sometimes uses a hardcoded filename
+    like 'primary.htm' which may not exist. This function resolves the actual
+    primary document URL by querying the SEC EDGAR index.
+
+    Args:
+        cik: Company CIK (can be any format, will be normalized)
+        accession_number: SEC accession number (with dashes)
+        stored_url: Optional stored URL from database (used as fallback)
+
+    Returns:
+        URL to the primary HTML document, or fallback to directory URL
+    """
+    import os
+    from src.infra.sec_client import SECClient
+
+    try:
+        # Create SEC client with user agent from env
+        user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
+        client = SECClient(user_agent=user_agent)
+
+        # Normalize CIK (remove leading zeros for API call, but keep for URL)
+        cik_normalized = cik.lstrip("0") or "0"
+
+        # Resolve the actual primary document URL
+        resolved_url = client.resolve_primary_document_url(cik_normalized, accession_number)
+
+        if resolved_url:
+            logger.debug(f"Resolved SEC URL: {resolved_url}")
+            return resolved_url
+
+    except Exception as e:
+        logger.warning(f"Failed to resolve SEC URL for {cik}/{accession_number}: {e}")
+
+    # Fallback: if stored URL exists and doesn't look like hardcoded primary.htm, use it
+    if stored_url and "primary.htm" not in stored_url.lower():
+        return stored_url
+
+    # Final fallback: directory URL
+    accession_no_dashes = accession_number.replace("-", "")
+    return f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_dashes}/"
+
+
 def _get_active_metrics() -> List[MetricData]:
     """
     Get list of active metrics for dropdown.
@@ -824,3 +878,61 @@ def _highlight_context(
         )
 
     return Markup(safe_text)
+
+
+def _highlight_html(
+    html_content: str,
+    raw_number_text: str,
+    triggering_keyword: str
+) -> Markup:
+    """
+    Highlight number and keyword in HTML content (like tables) for review display.
+
+    Unlike _highlight_context, this function preserves existing HTML structure
+    and only adds highlighting to text content. Use this for segment_html
+    which already contains safe table markup.
+
+    IMPORTANT: This function uses BeautifulSoup to parse and re-serialize the HTML,
+    which auto-closes any truncated/broken tags. This is necessary because segment_html
+    may be truncated at max_length characters, leaving unclosed tags that would break
+    the page layout.
+
+    Args:
+        html_content: HTML content (e.g., table) - may be truncated/have unclosed tags
+        raw_number_text: Exact number text to highlight
+        triggering_keyword: Metric keyword to underline
+
+    Returns:
+        Markup: HTML string with highlighting added and broken tags fixed
+    """
+    import re
+    from bs4 import BeautifulSoup
+
+    # Parse HTML with BeautifulSoup to fix any truncated/unclosed tags
+    # This is critical because segment_html may be cut off mid-tag
+    soup = BeautifulSoup(html_content, 'html.parser')
+    result = str(soup)
+
+    # Highlight the number (case-sensitive exact match)
+    # Use word boundary to avoid partial matches
+    if raw_number_text:
+        escaped_number = re.escape(raw_number_text)
+        result = re.sub(
+            f'({escaped_number})',
+            r'<mark class="extracted-number">\1</mark>',
+            result,
+            count=1  # Only highlight first occurrence
+        )
+
+    # Highlight the keyword (case-insensitive)
+    if triggering_keyword:
+        escaped_keyword = re.escape(triggering_keyword)
+        result = re.sub(
+            f'({escaped_keyword})',
+            r'<u class="triggering-keyword">\1</u>',
+            result,
+            count=1,
+            flags=re.IGNORECASE
+        )
+
+    return Markup(result)

@@ -253,11 +253,75 @@
     font-style: italic;
 }
 
-/* Responsive table wrapper */
+/* Responsive table wrapper - isolates SEC HTML styles */
 .table-context .table-responsive {
     max-height: 600px;
     overflow: auto;
     margin-top: 0.5rem;
+    /* Contain SEC filing styles to prevent layout breaks */
+    contain: layout style;
+    isolation: isolate;
+}
+
+/* Reset problematic SEC HTML wrapper styles */
+.table-context .table-responsive > div {
+    position: static !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+}
+
+/* Ensure SEC tables are reasonably sized */
+.table-context .table-responsive table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+}
+
+/* Override fixed pt widths on table cells */
+.table-context .table-responsive td,
+.table-context .table-responsive th {
+    width: auto !important;
+    min-width: 0 !important;
+}
+
+/* =============================================================================
+   Table Context Fallback (when raw_html not available)
+   ============================================================================= */
+.table-context-fallback {
+    background-color: var(--color-bg-light);
+    padding: 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-border);
+}
+
+.table-text-fallback {
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.8;
+    background-color: white;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--color-border);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Highlighted values in table fallback */
+.table-text-fallback .extracted-number {
+    background-color: var(--highlight-number);
+    border: 2px solid var(--highlight-number-border);
+    border-radius: 0.25rem;
+    padding: 0.125rem 0.375rem;
+    font-weight: 700;
+}
+
+.table-text-fallback .triggering-keyword {
+    background-color: var(--highlight-keyword);
+    border-bottom: 2px solid var(--highlight-keyword-border);
+    padding: 0.125rem 0.25rem;
+    font-style: italic;
 }
 
 /* Sticky table headers for long tables */
