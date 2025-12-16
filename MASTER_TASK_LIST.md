@@ -1,6 +1,6 @@
 # Master Task List: SEC Filings Reviewer
 
-**Last Updated:** 2025-12-15
+**Last Updated:** 2025-12-16
 **Status:** Active
 **Strategy:** "Conservative Scope" for Type Safety; "Aggregate First" for Metrics.
 
@@ -69,7 +69,7 @@
 
 - [x] **Q1. Refactor:** Define `SegmentDict` using `TypedDict` in `src/review/models.py`. → ✅ **COMPLETE (2025-12-15)**
 - [x] **Q2. Refactor:** Update `candidate_generator.py` signatures to use `SegmentDict` instead of `Dict[str, Any]`. → ✅ **COMPLETE (2025-12-15)**
-- [ ] **Q3. Refactor:** Replace generic `except Exception` blocks in `candidate_generator.py` with specific `SegmentProcessingError` handling.
+- [x] **Q3. Refactor:** Replace generic `except Exception` blocks in `candidate_generator.py` with specific `SegmentProcessingError` handling. → ✅ **COMPLETE (2025-12-16)**
 - [ ] **Q4. Refactor:** Extract `_deduplicate_candidates` method into new `src/review/deduplicator.py` module.
 - [ ] **Q5. Test:** Create unit tests for new `deduplicator.py`.
 
