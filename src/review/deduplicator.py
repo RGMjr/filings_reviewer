@@ -16,6 +16,7 @@ Basic Usage:
 Algorithm:
     1. Group candidates by (parsed_value, suggested_metric_id, detected_period)
     2. For each group with multiple candidates:
+       - P1.6: If prefer_same_sentence=True, prefer same-sentence matches
        - Sort by suggestion_confidence (descending, None last)
        - Secondary sort by respectively_confidence (L1 enhancement)
        - Keep the first (highest confidence) candidate
@@ -25,6 +26,11 @@ L1 Enhancement (Respectively Patterns):
     When detecting "respectively" patterns (e.g., "for 2015, 2016 was 33%, 35%"),
     the deduplication key includes `detected_period` to preserve different
     period associations for the same value.
+
+P1.6 Enhancement (Same-Sentence Preference):
+    When prefer_same_sentence=True, candidates where the keyword and value
+    are in the same sentence are preferred over cross-sentence matches,
+    even if the cross-sentence match has slightly higher confidence.
 """
 
 import logging
@@ -37,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 def deduplicate_candidates(
     candidates: List[ReviewCandidate],
+    prefer_same_sentence: bool = True,
 ) -> Tuple[List[ReviewCandidate], int]:
     """
     Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
@@ -44,8 +51,13 @@ def deduplicate_candidates(
     When duplicates exist, keeps the one with highest suggestion_confidence.
     If confidence is equal or None, keeps the first occurrence.
 
+    P1.6 Enhancement: When prefer_same_sentence=True, same-sentence candidates
+    are preferred over cross-sentence candidates within each group.
+
     Args:
         candidates: List of candidates to deduplicate
+        prefer_same_sentence: If True, prefer candidates where keyword and value
+                             are in the same sentence (P1.6 enhancement)
 
     Returns:
         Tuple of (deduplicated_candidates, duplicates_removed_count)
@@ -61,6 +73,12 @@ def deduplicate_candidates(
         >>> unique, count = deduplicate_candidates([])
         >>> assert unique == []
         >>> assert count == 0
+
+        >>> # Same-sentence preference (P1.6)
+        >>> # c1: same sentence, confidence=0.7
+        >>> # c2: cross sentence, confidence=0.8
+        >>> unique, count = deduplicate_candidates([c1, c2], prefer_same_sentence=True)
+        >>> assert unique[0] == c1  # Same-sentence wins despite lower confidence
     """
     if not candidates:
         return [], 0
@@ -97,10 +115,28 @@ def deduplicate_candidates(
         if len(group) == 1:
             deduplicated.append(group[0])
         else:
+            # P1.6: Prefer same-sentence matches if enabled
+            candidates_to_consider = group
+            if prefer_same_sentence:
+                same_sentence_candidates = [
+                    c for c in group
+                    if c.features and c.features.is_same_sentence
+                ]
+                # Only filter if we have same-sentence candidates
+                # (fallback: if none are marked same-sentence, consider all)
+                if same_sentence_candidates:
+                    candidates_to_consider = same_sentence_candidates
+                    if len(group) > len(same_sentence_candidates):
+                        logger.debug(
+                            f"P1.6: Preferring {len(same_sentence_candidates)} same-sentence "
+                            f"candidates over {len(group) - len(same_sentence_candidates)} "
+                            f"cross-sentence candidates"
+                        )
+
             # Sort by confidence (descending), None values last
             # L1: Also consider respectively_confidence when available
             sorted_group = sorted(
-                group,
+                candidates_to_consider,
                 key=lambda c: (
                     c.suggestion_confidence is not None,
                     c.suggestion_confidence or 0,

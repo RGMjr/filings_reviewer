@@ -296,6 +296,13 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
     - [x] `src/review/context_extraction.py` (34 statements, 100% coverage)
     - Result: candidate_generator.py reduced from 428 to 243 statements (-43%)
     - Result: Coverage improved from 23% to 98%
+  - [x] **P1.6** Same-sentence deduplication preference (2025-12-16):
+    - Added `is_same_sentence` field to `CandidateFeatures` model
+    - Added `prefer_same_sentence_in_dedup` config flag (default: True)
+    - Deduplication now prefers same-sentence matches over cross-sentence
+    - Reduces false positives where values are incorrectly associated with
+      metric keywords from subsequent sentences
+    - 9 new unit tests, all passing
 - [x] **B2** Create `src/review/feature_extractor.py`
   - Implementation: 71 statements, 100% coverage, 90 tests passing
   - Features: Keyword proximity, context features, number format, section features, magnitude
