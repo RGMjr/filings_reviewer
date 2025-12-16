@@ -173,7 +173,7 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
 - **Tests**: 27 boundary detection + 10 keyword matching + 8 integration = 45 new tests
 
 **L-Series Enhancements: Metric Logic Repairs (December 2025):**
-- **L1 - Respectively Pattern Parser (COMPLETE 2025-12-15)**:
+- **L1 - Respectively Pattern Parser (COMPLETE 2025-12-15, P1.1 Enhancement 2025-12-16)**:
   - **Problem**: Pattern "for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively" creates 3 candidates but doesn't correctly associate values with periods
   - **Solution**: Standalone parser module (`respectively_parser.py`) detects parallel list structures
   - **Features**:
@@ -181,10 +181,15 @@ candidate_generator.py (orchestrator - ~370 lines, 88% coverage)
     - Supports currency values, percentages, and plain decimals
     - Confidence scoring based on pattern clarity
     - Returns parallel associations: [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]
-  - **Tests**: 31 tests (100% passing, 91% coverage)
-  - **Status**: Standalone module complete, integration with candidate_generator.py pending
-- **L2 - Table of Contents Proximity (COMPLETE 2025-12-15)**:
-  - Added TOC proximity detection to `false_positive_filter.py`
+    - **P1.1**: Configurable min_confidence parameter for early filtering (eliminates post-detection overhead)
+  - **Tests**: 45 tests (100% passing, 92% coverage)
+  - **Status**: Standalone module complete, enrichment integration active (sets `detected_period` in features)
+- **L2 - Table of Contents Proximity (COMPLETE 2025-12-15, P1.1 Enhancement 2025-12-16)**:
+  - **Problem**: TOC page numbers incorrectly filtered; narrative ellipsis ("We expect...12 million") removed valid metrics
+  - **Solution**: Context-aware dot leader detection in `false_positive_filter.py`
+  - **P1.1 Enhancement**: Requires BOTH dot leaders AND TOC context (header within 200 chars OR section heading pattern)
+  - **Impact**: Reduces ellipsis false positive rate from 5-10% to <1%
+  - **Tests**: 50 tests (100% passing, 86% coverage)
 - **L3 - Keyword Direction Detection (COMPLETE 2025-12-15, FIXES APPLIED 2025-12-15)**:
   - **Problem**: Direction field was computed but never used (recomputed in candidate_generator.py)
   - **Solution**: Integrated `direction` field from KeywordMatch into candidate generation pipeline
