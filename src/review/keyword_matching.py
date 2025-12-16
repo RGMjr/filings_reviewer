@@ -567,6 +567,60 @@ class KeywordMatcher:
         else:
             return "at"
 
+    def get_context_type(
+        self,
+        text: str,
+        number_position: int,
+        keyword_position: int,
+        keyword_direction: str,
+        boundaries: Optional[List["TextBoundary"]] = None,
+        segment_type: Optional[str] = None,
+    ) -> str:
+        """
+        Determine which context type applies to this keyword-number pair.
+
+        This is used for E1 multiplier optimization to track which context
+        triggered the multiplier selection.
+
+        Args:
+            text: Full text containing both keyword and number
+            number_position: Character position of the number
+            keyword_position: Character position of the keyword
+            keyword_direction: 'before' or 'after' (from calculate_keyword_direction)
+            boundaries: Optional list of TextBoundary objects
+            segment_type: Optional segment type ('table', 'paragraph', etc.)
+
+        Returns:
+            Context type: 'table', 'parenthetical', 'bullet', 'copula', 'preposition', or 'default'
+        """
+        # For pre-value keywords, context doesn't affect multiplier (always 1.0)
+        # But still track context for analysis
+
+        # Priority 1: Table context (strongest signal)
+        if segment_type == "table" or self._is_in_table(number_position, boundaries):
+            return 'table'
+
+        # Priority 2: Parenthetical text (strong signal for clarifications)
+        if self._is_in_parentheses(number_position, text):
+            return 'parenthetical'
+
+        # Priority 3: Bullet points (strong signal for structured lists)
+        if self._is_in_bullet_point(number_position, boundaries):
+            return 'bullet'
+
+        # Priority 4: Copula verb pattern (moderate signal)
+        if self._has_copula_verb_between(
+            text, min(keyword_position, number_position), max(keyword_position, number_position)
+        ):
+            return 'copula'
+
+        # Priority 5: Prepositional phrase (moderate signal)
+        if keyword_direction == "after" and self._has_preposition_after(text, number_position, keyword_position):
+            return 'preposition'
+
+        # Default: no special context
+        return 'default'
+
     def get_context_multiplier(
         self,
         text: str,
@@ -604,30 +658,22 @@ class KeywordMatcher:
         if keyword_direction != "after":
             return 1.0  # No adjustment for pre-value keywords
 
-        # Priority 1: Table context (strongest signal)
-        if segment_type == "table" or self._is_in_table(number_position, boundaries):
-            return self.multiplier_tables
+        # Get context type and map to multiplier
+        context_type = self.get_context_type(
+            text, number_position, keyword_position, keyword_direction, boundaries, segment_type
+        )
 
-        # Priority 2: Parenthetical text (strong signal for clarifications)
-        if self._is_in_parentheses(number_position, text):
-            return self.multiplier_parenthetical
+        # Map context type to multiplier
+        context_multipliers = {
+            'table': self.multiplier_tables,
+            'parenthetical': self.multiplier_parenthetical,
+            'bullet': self.multiplier_bullet_points,
+            'copula': self.multiplier_copula_verb,
+            'preposition': self.multiplier_preposition,
+            'default': self.multiplier_default,
+        }
 
-        # Priority 3: Bullet points (strong signal for structured lists)
-        if self._is_in_bullet_point(number_position, boundaries):
-            return self.multiplier_bullet_points
-
-        # Priority 4: Copula verb pattern (moderate signal)
-        if self._has_copula_verb_between(
-            text, min(keyword_position, number_position), max(keyword_position, number_position)
-        ):
-            return self.multiplier_copula_verb
-
-        # Priority 5: Prepositional phrase (moderate signal)
-        if self._has_preposition_after(text, number_position, keyword_position):
-            return self.multiplier_preposition
-
-        # Default: use configured default multiplier
-        return self.multiplier_default
+        return context_multipliers.get(context_type, self.multiplier_default)
 
     def _is_in_parentheses(self, position: int, text: str) -> bool:
         """

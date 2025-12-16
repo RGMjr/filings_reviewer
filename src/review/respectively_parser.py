@@ -185,6 +185,9 @@ def detect_respectively_pattern(
 
     L1-P1.1 Enhancement: Configurable confidence filtering.
 
+    Note: Only detects the FIRST pattern in text. For multiple pattern detection,
+    use detect_all_respectively_patterns() instead.
+
     Args:
         text: Text to search for pattern
         min_confidence: Minimum confidence threshold (0.5-1.0). Patterns
@@ -291,7 +294,161 @@ def detect_respectively_pattern(
         periods=periods,
         associations=associations,
         confidence=confidence,
-        span=(0, resp_match.end())
+        span=(resp_sentence.start, resp_match.end())
+    )
+
+
+def detect_all_respectively_patterns(
+    text: str,
+    min_confidence: float = 0.6
+) -> List[RespectivelyMatch]:
+    """
+    Detect ALL "respectively" patterns in text.
+
+    L1-P1.2 Enhancement: Multiple pattern detection.
+
+    This function detects all respectively patterns in the text by processing
+    each sentence independently. Real-world filings may contain multiple
+    patterns (average: 1.4 patterns per segment with "respectively").
+
+    Args:
+        text: Text to search for patterns
+        min_confidence: Minimum confidence threshold (0.5-1.0). Patterns
+            with confidence below this are filtered out. Default: 0.6
+
+    Returns:
+        List of RespectivelyMatch objects, one per detected pattern.
+        Empty list if no patterns found.
+
+    Examples:
+        >>> text = '''
+        ... Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        ... Net margin for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        ... '''
+        >>> results = detect_all_respectively_patterns(text)
+        >>> len(results)
+        2
+        >>> results[0].associations
+        [("33%", "2015"), ("35%", "2016"), ("43%", "2017")]
+        >>> results[1].associations
+        [("10%", "2015"), ("12%", "2016"), ("15%", "2017")]
+    """
+    # Quick check: if "respectively" doesn't appear, return empty list
+    if "respectively" not in text.lower():
+        return []
+
+    patterns: List[RespectivelyMatch] = []
+
+    # Detect sentence boundaries
+    detector = BoundaryDetector()
+    sentences = detector.find_sentence_boundaries(text)
+
+    # Process each sentence that contains "respectively"
+    for sentence in sentences:
+        sentence_text = text[sentence.start:sentence.end]
+
+        if "respectively" not in sentence_text.lower():
+            continue
+
+        # Detect pattern within this sentence
+        pattern = _detect_in_sentence(
+            sentence_text,
+            sentence_offset=sentence.start,
+            min_confidence=min_confidence
+        )
+
+        if pattern:
+            patterns.append(pattern)
+
+    if patterns:
+        logger.debug(
+            f"Detected {len(patterns)} respectively pattern(s) in text "
+            f"({len(text)} chars)"
+        )
+
+    return patterns
+
+
+def _detect_in_sentence(
+    sentence_text: str,
+    sentence_offset: int,
+    min_confidence: float
+) -> Optional[RespectivelyMatch]:
+    """
+    Detect a respectively pattern within a single sentence.
+
+    Helper for detect_all_respectively_patterns().
+
+    Args:
+        sentence_text: Text of sentence to search
+        sentence_offset: Offset of sentence start in original text
+        min_confidence: Minimum confidence threshold
+
+    Returns:
+        RespectivelyMatch if pattern found, None otherwise
+    """
+    # Find "respectively" position within sentence
+    resp_match = re.search(r'\brespectively\b', sentence_text, re.IGNORECASE)
+    if not resp_match:
+        return None
+
+    resp_pos = resp_match.start()
+
+    # Extract text before "respectively" (within same sentence)
+    context = sentence_text[:resp_pos]
+
+    # Find period and value lists
+    periods = _extract_period_list(context)
+    values = _extract_value_list(context)
+
+    # Distance constraint check
+    if values and periods:
+        last_period = periods[-1]
+        first_value = values[0]
+
+        last_period_pos = context.rfind(last_period)
+        first_value_pos = context.find(first_value)
+
+        if last_period_pos >= 0 and first_value_pos >= 0:
+            distance = first_value_pos - last_period_pos
+
+            if distance > MAX_LIST_DISTANCE:
+                logger.debug(
+                    f"Lists too far apart: {distance} > {MAX_LIST_DISTANCE} chars. "
+                    f"Periods: {periods}, Values: {values}"
+                )
+                return None
+
+    # Validate: equal length lists
+    if not values or not periods or len(values) != len(periods):
+        logger.debug(
+            f"Respectively pattern validation failed: "
+            f"{len(values) if values else 0} values vs "
+            f"{len(periods) if periods else 0} periods"
+        )
+        return None
+
+    # Create associations
+    associations = list(zip(values, periods))
+
+    # Calculate confidence
+    confidence = _calculate_confidence(values, periods, context)
+
+    # Filter by minimum confidence
+    if confidence < min_confidence:
+        logger.debug(
+            f"Respectively pattern filtered by confidence: "
+            f"{confidence:.2f} < {min_confidence:.2f}. "
+            f"Periods: {periods}, Values: {values}"
+        )
+        return None
+
+    return RespectivelyMatch(
+        values=values,
+        periods=periods,
+        associations=associations,
+        confidence=confidence,
+        span=(sentence_offset, sentence_offset + resp_match.end())
     )
 
 

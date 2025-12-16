@@ -3,6 +3,7 @@
 import pytest
 from src.review.respectively_parser import (
     detect_respectively_pattern,
+    detect_all_respectively_patterns,
     RespectivelyMatch,
     _extract_value_list,
     _extract_period_list,
@@ -510,3 +511,160 @@ class TestL1P11ConfigurableConfidenceFiltering:
         result = detect_respectively_pattern(text, min_confidence=0.5)
         assert result is not None
         assert result.confidence >= 0.5  # All patterns have at least base confidence
+
+
+class TestL1P12MultiplePatternDetection:
+    """Tests for L1-P1.2: Multiple pattern detection in same segment."""
+
+    def test_detects_two_patterns_same_segment(self):
+        """Should detect both patterns in text with two respectively clauses."""
+        text = """
+        Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Net margin for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 2
+
+        # First pattern: gross margin
+        assert results[0].values == ["33%", "35%", "43%"]
+        assert results[0].periods == ["2015", "2016", "2017"]
+        assert len(results[0].associations) == 3
+
+        # Second pattern: net margin
+        assert results[1].values == ["10%", "12%", "15%"]
+        assert results[1].periods == ["2015", "2016", "2017"]
+        assert len(results[1].associations) == 3
+
+    def test_detects_three_patterns(self):
+        """Should detect all three patterns."""
+        text = """
+        Revenue for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively.
+        Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Net margin for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 3
+        assert all(len(r.associations) == 3 for r in results)
+        assert all(r.periods == ["2015", "2016", "2017"] for r in results)
+
+    def test_returns_empty_list_no_patterns(self):
+        """Should return empty list when no patterns found."""
+        text = "Revenue was $1M in 2015."
+
+        results = detect_all_respectively_patterns(text)
+
+        assert results == []
+
+    def test_filters_low_confidence_patterns(self):
+        """Should filter patterns below min_confidence threshold."""
+        # Create a pattern with deliberately low confidence (missing "and" connectors)
+        text = """
+        Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        For 2020, 2021 was 50%, 60%, respectively.
+        """
+
+        # First pattern has high confidence (0.9+), second has lower (0.6-0.7)
+        all_patterns = detect_all_respectively_patterns(text, min_confidence=0.5)
+        assert len(all_patterns) == 2  # Both detected with low threshold
+
+        # With high threshold (0.8), only high-confidence pattern passes
+        high_conf_patterns = detect_all_respectively_patterns(text, min_confidence=0.8)
+        assert len(high_conf_patterns) == 1
+        assert high_conf_patterns[0].values == ["33%", "35%", "43%"]
+
+    def test_single_pattern_returns_list_of_one(self):
+        """Should return list with single element when one pattern found."""
+        text = "Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 1
+        assert results[0].associations == [
+            ("33%", "2015"),
+            ("35%", "2016"),
+            ("43%", "2017"),
+        ]
+
+    def test_sentence_boundary_isolation(self):
+        """Should detect patterns within sentence boundaries only."""
+        # Each pattern should be detected within its own sentence
+        text = """
+        First metric: for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Second metric: for 2018, 2019 and 2020 was 50%, 55% and 60%, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 2
+
+        # Verify correct period associations (no cross-sentence matching)
+        assert results[0].periods == ["2015", "2016", "2017"]
+        assert results[1].periods == ["2018", "2019", "2020"]
+
+    def test_different_period_types(self):
+        """Should handle different period types in different patterns."""
+        text = """
+        Annual revenue for 2015, 2016 and 2017 was $10M, $12M and $15M, respectively.
+        Quarterly revenue for Q1, Q2 and Q3 was $2M, $3M and $4M, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 2
+
+        # First pattern: years
+        assert all(p.isdigit() for p in results[0].periods)
+
+        # Second pattern: quarters
+        assert all("Q" in p for p in results[1].periods)
+
+    def test_backward_compatible_with_single_detection(self):
+        """detect_respectively_pattern should still work (backward compatibility)."""
+        text = """
+        Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Net margin for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        """
+
+        # Old function: detects only first pattern
+        single_result = detect_respectively_pattern(text)
+        assert single_result is not None
+        assert single_result.values == ["33%", "35%", "43%"]
+
+        # New function: detects both patterns
+        all_results = detect_all_respectively_patterns(text)
+        assert len(all_results) == 2
+
+    def test_confidence_scores_preserved(self):
+        """All patterns should have confidence scores."""
+        text = """
+        Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Net margin for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 2
+        assert all(0.5 <= r.confidence <= 1.0 for r in results)
+
+    def test_span_positions_non_overlapping(self):
+        """Span positions should be valid and non-overlapping."""
+        text = """
+        First: for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively.
+        Second: for 2015, 2016 and 2017 was 10%, 12% and 15%, respectively.
+        """
+
+        results = detect_all_respectively_patterns(text)
+
+        assert len(results) == 2
+
+        # Spans should be non-overlapping
+        span1 = results[0].span
+        span2 = results[1].span
+
+        assert span1[0] < span1[1]  # Valid span
+        assert span2[0] < span2[1]  # Valid span
+        assert span1[1] <= span2[0]  # Non-overlapping

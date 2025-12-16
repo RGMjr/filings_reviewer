@@ -173,6 +173,9 @@ class CandidateFeatures:
     detected_period: Optional[str] = None  # e.g., "2015", "Q1 2016", "FY2017"
     respectively_confidence: Optional[float] = None  # Pattern confidence 0.0-1.0
 
+    # L4: Context-dependent multiplier tracking (E1 optimization)
+    context_type: Optional[str] = None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
+
     def __post_init__(self) -> None:
         """Validate enumerated fields."""
         if self.keyword_position not in KEYWORD_POSITIONS:
@@ -185,6 +188,14 @@ class CandidateFeatures:
                 f"Invalid number_format '{self.number_format}'. "
                 f"Must be one of: {NUMBER_FORMATS}"
             )
+        # Validate context_type if provided
+        if self.context_type is not None:
+            valid_context_types = {'table', 'parenthetical', 'bullet', 'copula', 'preposition', 'default'}
+            if self.context_type not in valid_context_types:
+                raise ValueError(
+                    f"Invalid context_type '{self.context_type}'. "
+                    f"Must be one of: {valid_context_types}"
+                )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSONB storage."""
@@ -202,6 +213,7 @@ class CandidateFeatures:
             "context_word_count": self.context_word_count,
             "detected_period": self.detected_period,
             "respectively_confidence": self.respectively_confidence,
+            "context_type": self.context_type,
         }
 
     @classmethod
@@ -223,6 +235,7 @@ class CandidateFeatures:
             context_word_count=data.get("context_word_count", 0),
             detected_period=data.get("detected_period"),  # L1: Respectively pattern
             respectively_confidence=data.get("respectively_confidence"),  # L1
+            context_type=data.get("context_type"),  # L4: Context multiplier type
         )
 
 

@@ -1205,8 +1205,8 @@ class TestPostValueMultiplier:
         assert len(keywords) >= 1
         # Multiplier shouldn't cause errors even when prefer_closest_keyword=False
 
-    def test_at_direction_treated_as_after(self):
-        """Edge case: keywords at same position as number treated as 'after'."""
+    def test_at_direction_treated_as_before(self):
+        """Edge case: keywords at same position as number treated as 'before'."""
         matcher = KeywordMatcher(
             max_keyword_distance=100,
             prefer_closest_keyword=True,
