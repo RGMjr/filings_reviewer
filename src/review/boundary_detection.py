@@ -137,6 +137,24 @@ class BoundaryDetector:
         "fig",
         "sec",  # Section
         "pp",  # pages
+        # SEC/Financial abbreviations (added for segmentation)
+        "fy",  # FY 2024
+        "q",  # Q1 2024
+        "yr",  # yr ended
+        "mn",  # mn (million)
+        "bn",  # bn (billion)
+        "yoy",  # year-over-year
+        "qoq",  # quarter-over-quarter
+        "ttm",  # trailing twelve months
+        "cagr",  # compound annual growth rate
+        "arr",  # annual recurring revenue
+        "mrr",  # monthly recurring revenue
+        "arpu",  # average revenue per user
+        "ltv",  # lifetime value
+        "cac",  # customer acquisition cost
+        "nrr",  # net revenue retention
+        "grr",  # gross revenue retention
+        "smb",  # small/medium business
     }
 
     def __init__(self) -> None:
