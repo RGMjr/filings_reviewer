@@ -101,4 +101,4 @@
 
 - [x] **P1. Profile:** Run memory profiling tests (`test_memory_usage_baseline`) to establish RAM limits. → ✅ **COMPLETE (2025-12-16)**
 - [x] **P2. Stress Test:** Generate 1000+ synthetic learned patterns in DB to measure impact on extraction speed. → ✅ **COMPLETE (2025-12-16)** - 33.4% degradation with 790 patterns (optimization recommended)
-- [ ] **P3. Concurrency:** Audit `CandidateGenerator` for thread-safety issues to enable parallel filing processing.
+- [x] **P3. Concurrency:** Audit `CandidateGenerator` for thread-safety issues to enable parallel filing processing. → ✅ **COMPLETE (2025-12-16)** - Safe with per-thread instances, 3-7x speedup expected
