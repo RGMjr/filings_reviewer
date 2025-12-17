@@ -30,9 +30,43 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 
 ## Recent Completions (December 2025)
 
+### ✅ **COMPLETED: G9 - Clustering Utilities (2025-12-17)**
+**Status:** ✅ COMPLETE
+**Documentation:** `docs/GOLDMINE_IMPROVEMENT_PLAN.md` (Task G9), `docs/archive/workstreams/G-goldmine-enrichment/WORKER_PROMPT_TASK_G9.md`
+
+**Objective:** Implement clustering utilities to group adjacent goldmine segments and generate cluster statistics.
+
+**Problem Solved:**
+```
+Before: Individual goldmine segments identified but no grouping mechanism
+After: Adjacent goldmines clustered with summary statistics for region analysis
+```
+
+**Implementation Complete:**
+- [x] `cluster_goldmine_segments()`: Groups adjacent high-richness segments
+- [x] `summarize_cluster()`: Generates cluster statistics (segment count, avg richness, metric coverage)
+- [x] Configurable `richness_threshold` (default 6.0) and `max_gap` (default 3)
+- [x] 21 unit tests in clustering test class (all passing)
+- [x] Type safety verified (`mypy --strict` passes)
+
+**Deliverables:**
+- **Updated Module:** `src/extraction/segment_enricher.py` (clustering methods)
+- **Unit Tests:** `tests/unit/extraction/test_segment_enricher.py` (21 clustering tests)
+- **Documentation:** Updated `docs/GOLDMINE_IMPROVEMENT_PLAN.md`
+
+**Results:**
+- Goldmine regions can now be identified as logical units
+- Cluster statistics enable filing-level quality analysis
+- G10 and G11 are now unblocked
+
+**Time:** ~1 hour
+**Completion Date:** 2025-12-17
+
+---
+
 ### ✅ **COMPLETED: G8 - Richness Score Formula (2025-12-17)**
 **Status:** ✅ COMPLETE
-**Documentation:** `docs/GOLDMINE_IMPROVEMENT_PLAN.md` (Task G8), `docs/WORKER_PROMPT_TASK_G8.md`
+**Documentation:** `docs/GOLDMINE_IMPROVEMENT_PLAN.md` (Task G8), `docs/archive/workstreams/G-goldmine-enrichment/WORKER_PROMPT_TASK_G8.md`
 
 **Objective:** Implement the composite richness score formula (0-10 scale) in SegmentEnricher to identify "goldmine" segments for prioritized extraction.
 
