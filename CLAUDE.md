@@ -11,13 +11,13 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, value_extractor
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, value_extractor, segment_enricher
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator
 ├── web/            # Flask app: routes/, templates/, static/
 └── llm/            # OpenAI integration: openai_client.py, prompts.py
 ```
 
-**Pipeline:** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → ValueExtractor → QualityScorer → Database
+**Pipeline:** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
 
 **Review system config:** See `src/review/config.py` for `CandidateGenerationConfig` and presets (`get_high_precision_config()`, etc.)
 
@@ -112,7 +112,7 @@ docker compose down
 ## Testing Standards
 
 - **Coverage**: 75% minimum (enforced), currently 87%
-- **Type safety**: `src/review/` passes `mypy --strict`
+- **Type safety**: `src/review/` and `src/extraction/segment_enricher.py` pass `mypy --strict`
 - **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
 
 ## Key Design Decisions
