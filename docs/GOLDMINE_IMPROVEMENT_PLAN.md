@@ -195,14 +195,15 @@ TASK ID:       G3
 TASK NAME:     Update extraction_pipeline to persist richness fields
 WORKSTREAM:    Data Model Enhancement (Stream A)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Stream A, File 3
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
+COMMIT:        a112d60
 TIME ESTIMATE: 1 hour (implementation 30 min, testing 30 min)
 RISK LEVEL:    Low
 PARALLEL WITH: None (depends on G1, G2)
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**Files to Modify**: `src/extraction/extraction_pipeline.py` (lines 346-375)
+**Files to Modify**: `src/extraction/extraction_pipeline.py` (lines 346-381)
 **Prerequisites**: G1, G2
 
 **Key Requirements**:
@@ -210,9 +211,9 @@ PARALLEL WITH: None (depends on G1, G2)
 - No logic changes (seg.to_dict() already includes fields)
 
 **Acceptance Criteria**:
-- [ ] INSERT includes 6 richness fields
-- [ ] Can insert/query segments with richness_score
-- [ ] All pipeline tests pass
+- [x] INSERT includes 6 richness fields
+- [x] Can insert/query segments with richness_score
+- [x] All pipeline tests pass (12/12 pass)
 
 ---
 
