@@ -89,7 +89,7 @@ The formula (lines 449-489) gives:
 
 | Task ID | Name | Prerequisites | Time Est | Risk | Status |
 |---------|------|---------------|----------|------|--------|
-| GI-4 | Expand Cohort Detection Patterns | GI-1, GI-2 | 2-3 hours | Low | 🟡 Pending |
+| GI-4 | Expand Cohort Detection Patterns | GI-1, GI-2 | 2-3 hours | Low | ✅ Complete |
 | GI-5 | Add SaaS-Specific Detection Patterns | GI-4 | 1-2 hours | Low | 🟡 Pending |
 
 ### Phase 3: Tune Richness Formula (GI-6 to GI-7)
@@ -401,12 +401,24 @@ TASK ID:       GI-4
 TASK NAME:     Expand cohort detection patterns based on GI-1 findings
 WORKSTREAM:    Goldmine Improvement
 SOURCE:        GOLDMINE_1_IMPROVEMENT_PLAN.md
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 2-3 hours (implementation 90 min, testing 60 min)
+ACTUAL TIME:   ~2 hours
 RISK LEVEL:    Low (additive patterns, low regression risk)
 PARALLEL WITH: None
 ═══════════════════════════════════════════════════════════════════════════════
 ```
+
+**COMPLETION NOTES**:
+- Added **19 new patterns** to `COHORT_PATTERNS` (total now 28 patterns)
+- **Priority 1 (9 patterns)**: Net Dollar Retention, NRR/NDRR, fiscal year cohorts, year cohorts, quarter cohorts, ARR/MRR cohort associations
+- **Priority 2 (6 patterns)**: Retention rate with %, percentage retention, cohort year references, expansion revenue, LTV/CAC ratio, LTV cohort association
+- **Priority 3 (4 patterns)**: Paid Customer proper noun, expansion within customer, land and expand, gross/net retention, customer cohort, churn rate, MRR/ARR growth, renewal rate
+- Created **51 unit tests** in `tests/unit/extraction/test_segment_enricher_cohort.py`
+- **100% coverage** for `_detect_cohort_breakdowns()` method
+- **mypy --strict** passes
+- **All 145 existing tests** pass (no regression)
+- Pattern validation: **20/20 test cases pass** (including all Slack S-1 snippets)
 
 #### Objective
 

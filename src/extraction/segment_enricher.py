@@ -103,6 +103,83 @@ class SegmentEnricher:
             re.IGNORECASE,
         ),
         re.compile(r"\bcustomer\s+(?:age|tenure|lifetime)\b", re.IGNORECASE),
+        # =====================================================================
+        # Priority 1 Patterns (GI-4) - High impact for cohort detection
+        # =====================================================================
+        # Net Dollar Retention: "Net Dollar Retention Rate", "net dollar expansion"
+        re.compile(r"\bnet\s+dollar\s+(?:retention|expansion)\b", re.IGNORECASE),
+        # Dollar-based retention: "dollar-based net retention", "dollar based expansion"
+        re.compile(
+            r"\bdollar[- ]?based\s+(?:net\s+)?(?:retention|expansion)\b", re.IGNORECASE
+        ),
+        # NRR/NDRR abbreviations: standalone "NRR" or "NDRR" (common SaaS terms)
+        re.compile(r"\b(?:NRR|NDRR)\b"),
+        # Fiscal year cohort: "fiscal year 2015 cohort", "FY2020 cohort"
+        re.compile(
+            r"\b(?:fiscal\s+year\s*|FY\s*)20\d{2}\s+cohort\b", re.IGNORECASE
+        ),
+        # Year cohort: "the 2019 cohort", "2020 cohort represents"
+        re.compile(r"\b20\d{2}\s+cohort\b", re.IGNORECASE),
+        # Quarter cohort: "Q4 2020 cohort", "Q1 2019 cohort"
+        re.compile(r"\bQ[1-4]\s*20\d{2}\s+cohort\b", re.IGNORECASE),
+        # ARR cohort association: "ARR of each cohort", "ARR by cohort"
+        re.compile(r"\bARR\b.{0,30}\bcohort\b", re.IGNORECASE),
+        # Annual recurring revenue cohort: "annual recurring revenue...cohort"
+        re.compile(
+            r"\bannual\s+recurring\s+revenue\b.{0,30}\bcohort\b", re.IGNORECASE
+        ),
+        # MRR cohort: "MRR for each cohort", "MRR by cohort"
+        re.compile(r"\bMRR\b.{0,30}\bcohort\b", re.IGNORECASE),
+        # =====================================================================
+        # Priority 2 Patterns (GI-4) - Medium impact for cohort detection
+        # =====================================================================
+        # Retention rate with percentage: "retention rate of 143%", "retention rate was 95%"
+        re.compile(
+            r"\bretention\s+rate\s+(?:of\s+|was\s+|is\s+)?\d+(?:\.\d+)?%", re.IGNORECASE
+        ),
+        # Percentage retention rate: "143% retention rate", "95% net retention"
+        re.compile(
+            r"\b\d+(?:\.\d+)?%\s+(?:net\s+)?(?:retention|dollar\s+retention)\b",
+            re.IGNORECASE,
+        ),
+        # Cohort with year reference: "cohort from 2019", "cohort acquired in 2018"
+        re.compile(
+            r"\bcohort\s+(?:of\s+)?(?:customers?\s+)?(?:from|in|acquired\s+in)\s+20\d{2}\b",
+            re.IGNORECASE,
+        ),
+        # Expansion revenue: "expansion revenue", "upsell revenue"
+        re.compile(
+            r"\b(?:expansion|upsell|cross-sell)\s+revenue\b", re.IGNORECASE
+        ),
+        # LTV/CAC ratio: "LTV/CAC", "lifetime value / CAC", "LTV:CAC"
+        re.compile(
+            r"\b(?:LTV|lifetime\s+value)\s*[/:]?\s*CAC\b", re.IGNORECASE
+        ),
+        # LTV cohort association: "LTV of each cohort"
+        re.compile(r"\bLTV\b.{0,30}\bcohort\b", re.IGNORECASE),
+        # =====================================================================
+        # Priority 3 Patterns (GI-4) - Lower impact but valuable
+        # =====================================================================
+        # Paid Customer proper noun (case-sensitive): "Paid Customer base", "Paid Customers"
+        re.compile(r"\bPaid\s+Customers?\b"),
+        # Expansion within customer: "expansion within...customer base"
+        re.compile(
+            r"\bexpansion\s+within\b.{0,30}\b(?:customer|organization)\b", re.IGNORECASE
+        ),
+        # Land and expand: common SaaS sales motion
+        re.compile(r"\bland\s+and\s+expand\b", re.IGNORECASE),
+        # Gross/Net retention standalone: "gross retention", "net retention"
+        re.compile(r"\b(?:gross|net)\s+retention\b", re.IGNORECASE),
+        # Customer cohort generic: "customer cohort", "customer cohorts"
+        re.compile(r"\bcustomer\s+cohorts?\b", re.IGNORECASE),
+        # Churn rate: inverse of retention
+        re.compile(r"\b(?:churn|attrition)\s+rate\b", re.IGNORECASE),
+        # MRR/ARR growth: "ARR growth", "MRR expansion"
+        re.compile(
+            r"\b(?:MRR|ARR)\s+(?:growth|increase|expansion)\b", re.IGNORECASE
+        ),
+        # Renewal rate: related to retention
+        re.compile(r"\brenewal\s+rate\b", re.IGNORECASE),
     ]
 
     def __init__(self) -> None:
