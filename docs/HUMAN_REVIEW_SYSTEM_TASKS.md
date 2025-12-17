@@ -16,10 +16,10 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 
 | Priority | Total | Complete | Remaining |
 |----------|-------|----------|-----------|
-| P1 Critical | 3 | 1 | 2 |
+| P1 Critical | 3 | 2 | 1 |
 | P2 Usability | 5 | 0 | 5 |
 | P3 Nice-to-Have | 4 | 0 | 4 |
-| **Total** | **12** | **1** | **11** |
+| **Total** | **12** | **2** | **10** |
 
 ---
 
@@ -30,7 +30,7 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | Task ID | Name | Prerequisites | Effort | Risk |
 |---------|------|---------------|--------|------|
 | **HRI-1** | ~~Fix Health Check Bug~~ | None | ~~15 min~~ | ✅ Complete |
-| **HRI-2** | Add API Audit Logging | None | 45 min | Low |
+| **HRI-2** | ~~Add API Audit Logging~~ | None | ~~45 min~~ | ✅ Complete |
 | **HRI-3** | Improve Metric Classification Accuracy | None | 2-4 hr | Medium |
 | **HRI-4** | Display Confidence Scores | None | 45 min | None |
 | **HRI-5** | Expand Keyboard Shortcuts | None | 1 hr | None |
@@ -160,10 +160,10 @@ TASK ID:       HRI-2
 TASK NAME:     Add audit logging for POST /api/decisions endpoint
 WORKSTREAM:    Human Review Interface (Critical Fixes)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P1.2
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 45 min (setup 15 min, implementation 20 min, testing 10 min)
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~30 min
 RISK LEVEL:    Low
 PARALLEL WITH: HRI-1
 ═══════════════════════════════════════════════════════════════════════════════
