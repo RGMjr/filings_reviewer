@@ -74,6 +74,17 @@ Human-in-the-loop system for validating and improving extraction quality.
 | **[archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md](archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md)** | E1 pattern analyzer completion (97% coverage) | Developers, QA |
 | **[archive/workstreams/E2-rule-generation/E2_COMPLETION_SUMMARY.md](archive/workstreams/E2-rule-generation/E2_COMPLETION_SUMMARY.md)** | E2 rule applicator completion (100% coverage) | Developers, QA |
 
+### Analysis (Research & Validation)
+
+Analysis documents for system validation and improvement.
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| **[analysis/GI-1_cohort_pattern_gaps.md](analysis/GI-1_cohort_pattern_gaps.md)** | Cohort pattern gap analysis - 479 snippets, 15 new patterns | Developers |
+| **[analysis/GI-2_slack_ground_truth.md](analysis/GI-2_slack_ground_truth.md)** | Slack S-1 ground truth - 25 goldmines identified | Developers, QA |
+| **[analysis/GI-3_richness_distribution.md](analysis/GI-3_richness_distribution.md)** | Richness score distribution - 340 segments analyzed | Developers |
+| **[GOLDMINE_1_IMPROVEMENT_PLAN.md](GOLDMINE_1_IMPROVEMENT_PLAN.md)** | Goldmine improvement plan (GI-1 to GI-8) | All |
+
 ### Archive (Historical Reference)
 
 Historical documents for reference only. Not part of current operations.
@@ -82,6 +93,8 @@ Historical documents for reference only. Not part of current operations.
 |----------|----------|
 | **[archive/](archive/)** | Phase summaries (Phase 2-4, Phase 1 deployment) |
 | **[archive/fix-history/](archive/fix-history/)** | Historical bug fixes and optimizations |
+| **[archive/worker-prompts/](archive/worker-prompts/)** | Completed task worker prompts |
+| **[archive/reports/](archive/reports/)** | Completed task reports |
 
 ---
 
