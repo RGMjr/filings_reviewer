@@ -83,7 +83,7 @@ The formula (lines 449-489) gives:
 |---------|------|---------------|----------|------|--------|
 | GI-1 | Investigate Cohort Pattern Gaps | None | 2-3 hours | Low | ✅ Complete |
 | GI-2 | Manual Slack S-1 Audit | None | 2-3 hours | Low | ✅ Complete |
-| GI-3 | Analyze Richness Score Distribution | GI-1, GI-2 | 1-2 hours | Low | 🟡 Pending |
+| GI-3 | Analyze Richness Score Distribution | GI-1, GI-2 | 1-2 hours | Low | ✅ Complete |
 
 ### Phase 2: Fix Cohort Detection (GI-4 to GI-5)
 
@@ -297,12 +297,28 @@ TASK ID:       GI-3
 TASK NAME:     Statistical analysis of richness score distribution
 WORKSTREAM:    Goldmine Improvement
 SOURCE:        GOLDMINE_1_IMPROVEMENT_PLAN.md
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 1-2 hours (analysis 60 min, documentation 30 min)
+ACTUAL TIME:   ~45 min
 RISK LEVEL:    Low (analysis only, no code changes)
 PARALLEL WITH: None
 ═══════════════════════════════════════════════════════════════════════════════
 ```
+
+**COMPLETION NOTES**:
+- Analyzed **340 segments** across 6 validation filings
+- **CRITICAL FINDING**: Cohort detection is 0% - the +1.5 bonus is NEVER applied
+- Mean richness 2.79, median 1.60, max 7.00 (no segments reach 8.0+)
+- **56% of segments score below 2.0** (left-skewed distribution)
+- Farfetch dominates high scores (avg 5.69) while Slack underperforms (avg 2.28)
+- **4 specific weight recommendations** documented for GI-6:
+  1. Add retention metric keyword bonus (+1.0 for NRR/retention)
+  2. Fix cohort pattern detection (GI-4 prerequisite)
+  3. Increase definition bonus with metric context (+0.5)
+  4. Add usage metric keyword bonus (+0.5 for DAU/MAU)
+- Threshold recommendations: GOLDMINE 6.0→5.5, HIGH_VALUE 8.0→7.5
+- See `docs/analysis/GI-3_richness_distribution.md` (350+ lines)
+- Analysis script: `scripts/gi3_richness_analysis.py`
 
 #### Objective
 
@@ -363,11 +379,11 @@ Analyze the distribution of richness scores and component values across all vali
 
 #### Acceptance Criteria
 
-- [ ] Score distribution calculated for all 6 filings
-- [ ] Per-component analysis completed
-- [ ] Theoretical max score calculated
-- [ ] At least 3 specific weight adjustment recommendations
-- [ ] Analysis document created at `docs/analysis/GI-3_richness_distribution.md`
+- [x] Score distribution calculated for all 6 filings (340 segments)
+- [x] Per-component analysis completed (boolean flags + numeric)
+- [x] Theoretical max score calculated (10.0 theoretical, 8.5 achievable, 7.0 observed)
+- [x] At least 3 specific weight adjustment recommendations (4 provided)
+- [x] Analysis document created at `docs/analysis/GI-3_richness_distribution.md`
 
 #### Do NOT
 
@@ -961,7 +977,10 @@ COHORT_PATTERNS = [
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-12-17 | Claude | Initial plan based on validation results |
+| 1.1 | 2025-12-17 | Claude | GI-1 complete - identified 479 snippets, 15 new patterns proposed |
+| 1.2 | 2025-12-17 | Claude | GI-2 complete - 25 goldmine ground truth, 4% recall at 6.0 |
+| 1.3 | 2025-12-17 | Claude | GI-3 complete - 340 segments analyzed, 4 weight recommendations |
 
 ---
 
-**Next Step**: Have orchestrator generate worker prompt for GI-1 (parallel with GI-2)
+**Next Step**: GI-4 - Expand cohort detection patterns based on GI-1 findings
