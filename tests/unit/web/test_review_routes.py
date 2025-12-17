@@ -273,23 +273,79 @@ def test_next_candidate_finds_next(client, mock_db):
 
 
 def test_next_candidate_uses_db_helper(client, mock_db):
-    """Test next_candidate uses DB helper when no current_id."""
-    mock_db.get_next_candidate_for_review.return_value = {"candidate_id": 5}
+    """Test next_candidate finds first pending when no current_id."""
+    mock_db.get_review_candidates_for_filing.return_value = [
+        {"candidate_id": 5, "review_status": "pending"},
+    ]
 
     response = client.get("/review/1/next")
 
     assert response.status_code == 302
-    mock_db.get_next_candidate_for_review.assert_called_once_with(filing_id=1)
+    assert "candidate_id=5" in response.location
+    mock_db.get_review_candidates_for_filing.assert_called_once_with(
+        filing_id=1, status="pending"
+    )
 
 
 def test_next_candidate_redirects_when_complete(client, mock_db):
     """Test next_candidate redirects to filing list when done."""
-    mock_db.get_next_candidate_for_review.return_value = None
+    mock_db.get_review_candidates_for_filing.return_value = []
 
     response = client.get("/review/1/next")
 
     assert response.status_code == 302
     assert "/filings" in response.location
+
+
+def test_next_candidate_wraps_around(client, mock_db):
+    """Test next_candidate wraps around to lower IDs when no higher pending."""
+    # Current is #100, only pending candidates are #1 and #50 (lower IDs)
+    mock_db.get_review_candidates_for_filing.return_value = [
+        {"candidate_id": 1, "review_status": "pending"},
+        {"candidate_id": 50, "review_status": "pending"},
+    ]
+
+    response = client.get("/review/1/next?current_id=100")
+
+    assert response.status_code == 302
+    # Should wrap around to first pending (candidate #1)
+    assert "candidate_id=1" in response.location
+
+
+def test_next_candidate_sequential_order(client, mock_db):
+    """Test next_candidate goes to next sequential ID, not lowest."""
+    # Current is #10, pending candidates are #5 and #15
+    mock_db.get_review_candidates_for_filing.return_value = [
+        {"candidate_id": 5, "review_status": "pending"},
+        {"candidate_id": 15, "review_status": "pending"},
+    ]
+
+    response = client.get("/review/1/next?current_id=10")
+
+    assert response.status_code == 302
+    # Should go to #15 (next higher), not #5 (lowest)
+    assert "candidate_id=15" in response.location
+
+
+def test_next_candidate_handles_unsorted_db_results(client, mock_db):
+    """Test next_candidate correctly handles DB results ordered by char_position.
+
+    Regression test: DB returns candidates ordered by char_position, not candidate_id.
+    After accepting #9, should go to #10 even if #84 appears first in DB results.
+    """
+    # DB returns candidates ordered by char_position (not candidate_id)
+    # Simulates real scenario: candidate #84 has lower char_position than #10
+    mock_db.get_review_candidates_for_filing.return_value = [
+        {"candidate_id": 84, "review_status": "pending"},  # char_position=100
+        {"candidate_id": 10, "review_status": "pending"},  # char_position=200
+        {"candidate_id": 15, "review_status": "pending"},  # char_position=300
+    ]
+
+    response = client.get("/review/1/next?current_id=9")
+
+    assert response.status_code == 302
+    # Should go to #10 (next sequential), not #84 (first in DB results)
+    assert "candidate_id=10" in response.location
 
 
 # =============================================================================
