@@ -5,9 +5,12 @@ Tests the init_pool() and close_pool() functions in app.py.
 """
 
 import os
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from src.infra.pool import PoolHealthReport
 
 
 class TestInitPool:
@@ -193,3 +196,82 @@ class TestCreateAppPoolIntegration:
                         if call[0][0].__name__ == "close_pool"
                     ]
                     assert len(close_pool_calls) >= 1
+
+
+class TestHealthEndpoint:
+    """Tests for /health endpoint with pool health checks."""
+
+    def test_health_endpoint_healthy_pool(self):
+        """Should return 200 with pool stats when pool is healthy."""
+        with patch("src.infra.pool.create_pool") as mock_create_pool:
+            mock_pool = MagicMock()
+            mock_create_pool.return_value = mock_pool
+
+            with patch.dict(
+                os.environ,
+                {"DATABASE_URL": "postgresql://localhost/test"},
+            ):
+                from src.web.app import create_app
+
+                app = create_app("testing")
+
+                healthy_report = PoolHealthReport(
+                    is_healthy=True,
+                    total_connections=5,
+                    idle_connections=4,
+                    active_connections=1,
+                    test_query_elapsed=0.003,
+                    timestamp=datetime.now(),
+                    error=None,
+                )
+
+                with patch(
+                    "src.infra.pool.check_pool_health", return_value=healthy_report
+                ):
+                    with app.test_client() as client:
+                        response = client.get("/health")
+
+                        assert response.status_code == 200
+                        data = response.get_json()
+                        assert data["status"] == "healthy"
+                        assert data["database"] == "connected"
+                        assert data["pool_stats"]["total_connections"] == 5
+                        assert data["pool_stats"]["idle_connections"] == 4
+                        assert data["pool_stats"]["active_connections"] == 1
+                        assert data["pool_stats"]["test_query_elapsed"] == 0.003
+
+    def test_health_endpoint_unhealthy_pool(self):
+        """Should return 503 with error message when pool is unhealthy."""
+        with patch("src.infra.pool.create_pool") as mock_create_pool:
+            mock_pool = MagicMock()
+            mock_create_pool.return_value = mock_pool
+
+            with patch.dict(
+                os.environ,
+                {"DATABASE_URL": "postgresql://localhost/test"},
+            ):
+                from src.web.app import create_app
+
+                app = create_app("testing")
+
+                unhealthy_report = PoolHealthReport(
+                    is_healthy=False,
+                    total_connections=0,
+                    idle_connections=0,
+                    active_connections=0,
+                    test_query_elapsed=None,
+                    timestamp=datetime.now(),
+                    error="Connection pool exhausted",
+                )
+
+                with patch(
+                    "src.infra.pool.check_pool_health", return_value=unhealthy_report
+                ):
+                    with app.test_client() as client:
+                        response = client.get("/health")
+
+                        assert response.status_code == 503
+                        data = response.get_json()
+                        assert data["status"] == "unhealthy"
+                        assert data["database"] == "error"
+                        assert data["message"] == "Connection pool exhausted"
