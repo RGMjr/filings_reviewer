@@ -1150,3 +1150,277 @@ class TestSaaSContractMetricPatterns:
         assert "cm_acv" in result.candidate_metric_ids
         assert "cm_tcv" in result.candidate_metric_ids
         assert result.contains_numeric_disclosure_flag is True
+
+
+# ===== G10: Goldmine Bonuses Tests =====
+
+
+class TestGoldmineBonuses:
+    """Test goldmine indicator bonuses for classifier confidence (G10)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    # --- Cohort Pattern Detection Tests ---
+
+    def test_cohort_pattern_cohort_keyword(self, classifier):
+        """Test that 'cohort' keyword is detected."""
+        assert classifier._has_cohort_patterns("cohort analysis shows growth") is True
+
+    def test_cohort_pattern_tenure(self, classifier):
+        """Test that 'by tenure' pattern is detected."""
+        assert classifier._has_cohort_patterns("customers by tenure cohort") is True
+
+    def test_cohort_pattern_vintage(self, classifier):
+        """Test that 'by vintage' pattern is detected."""
+        assert classifier._has_cohort_patterns("revenue by vintage year") is True
+
+    def test_cohort_pattern_by_acquisition(self, classifier):
+        """Test that 'by acquisition' pattern is detected."""
+        assert classifier._has_cohort_patterns("customers by acquisition date") is True
+
+    def test_cohort_pattern_new_vs_existing(self, classifier):
+        """Test that 'new vs existing' pattern is detected."""
+        assert classifier._has_cohort_patterns("new vs existing customers breakdown") is True
+
+    def test_cohort_pattern_existing_vs_new(self, classifier):
+        """Test that 'existing vs new' pattern is detected."""
+        assert classifier._has_cohort_patterns("revenue from existing vs new") is True
+
+    def test_cohort_pattern_repeat_customers(self, classifier):
+        """Test that 'repeat customers' pattern is detected."""
+        assert classifier._has_cohort_patterns("repeat customers drove growth") is True
+
+    def test_cohort_pattern_first_year_customers(self, classifier):
+        """Test that 'first year customers' pattern is detected."""
+        assert classifier._has_cohort_patterns("first year customers contributed 30%") is True
+
+    def test_cohort_pattern_customer_age(self, classifier):
+        """Test that 'customer age' pattern is detected."""
+        assert classifier._has_cohort_patterns("segmented by customer age") is True
+
+    def test_cohort_pattern_customer_lifetime(self, classifier):
+        """Test that 'customer lifetime' pattern is detected."""
+        assert classifier._has_cohort_patterns("customer lifetime value analysis") is True
+
+    def test_cohort_pattern_acquired_in_year(self, classifier):
+        """Test that 'acquired in 20XX' pattern is detected."""
+        assert classifier._has_cohort_patterns("customers acquired in 2015") is True
+        assert classifier._has_cohort_patterns("acquired in 2017 cohort") is True
+
+    def test_cohort_pattern_none_found(self, classifier):
+        """Test that generic text returns False."""
+        assert classifier._has_cohort_patterns("our revenue grew significantly") is False
+        assert classifier._has_cohort_patterns("we have many customers") is False
+
+    def test_cohort_pattern_case_insensitive(self, classifier):
+        """Test that cohort pattern detection is case-insensitive."""
+        assert classifier._has_cohort_patterns("COHORT analysis") is True
+        assert classifier._has_cohort_patterns("Cohort Analysis") is True
+        assert classifier._has_cohort_patterns("BY TENURE group") is True
+
+    def test_cohort_pattern_empty_string(self, classifier):
+        """Test that empty string returns False."""
+        assert classifier._has_cohort_patterns("") is False
+
+    def test_cohort_pattern_none_input(self, classifier):
+        """Test that None input returns False."""
+        assert classifier._has_cohort_patterns(None) is False
+
+    # --- Temporal Pattern Detection Tests ---
+
+    def test_temporal_pattern_two_years(self, classifier):
+        """Test that two distinct years returns True."""
+        assert classifier._has_temporal_patterns("grew from 2015 to 2016") is True
+        assert classifier._has_temporal_patterns("2020 and 2021 results") is True
+
+    def test_temporal_pattern_three_years(self, classifier):
+        """Test that three distinct years returns True."""
+        assert classifier._has_temporal_patterns("2015, 2016 and 2017 cohorts") is True
+        assert classifier._has_temporal_patterns("trends across 2018, 2019, 2020") is True
+
+    def test_temporal_pattern_single_year(self, classifier):
+        """Test that single year returns False."""
+        assert classifier._has_temporal_patterns("in fiscal 2024") is False
+        assert classifier._has_temporal_patterns("2017 was a strong year") is False
+
+    def test_temporal_pattern_no_years(self, classifier):
+        """Test that text without years returns False."""
+        assert classifier._has_temporal_patterns("our revenue grew significantly") is False
+        assert classifier._has_temporal_patterns("customers increased") is False
+
+    def test_temporal_pattern_duplicate_years(self, classifier):
+        """Test that duplicate years count as one unique year."""
+        assert classifier._has_temporal_patterns("2017...2017...2017") is False
+        assert classifier._has_temporal_patterns("in 2020 our 2020 results") is False
+
+    def test_temporal_pattern_empty_string(self, classifier):
+        """Test that empty string returns False."""
+        assert classifier._has_temporal_patterns("") is False
+
+    def test_temporal_pattern_none_input(self, classifier):
+        """Test that None input returns False."""
+        assert classifier._has_temporal_patterns(None) is False
+
+    def test_temporal_pattern_many_years(self, classifier):
+        """Test that many distinct years returns True."""
+        text = "2010, 2011, 2012, 2013, 2014, 2015 growth trends"
+        assert classifier._has_temporal_patterns(text) is True
+
+    # --- Confidence Bonus Integration Tests ---
+
+    def test_confidence_cohort_bonus(self, classifier, sample_segment):
+        """Test that segment with cohort patterns gets +0.15 bonus."""
+        # Segment > 100 chars with cohort pattern but no numeric/metric
+        sample_segment.raw_text = (
+            "We analyze our customer base by cohort to understand growth patterns. "
+            "This analysis helps us segment customers by their acquisition date and "
+            "understand their behavior over time. Cohort analysis is key to our strategy."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # No metrics, no flags, but cohort bonus should be applied
+        # Base: 0.0 + 0.15 (cohort) = 0.15
+        assert result.classifier_confidence >= 0.15
+
+    def test_confidence_temporal_bonus(self, classifier, sample_segment):
+        """Test that segment with 2+ years gets +0.10 bonus."""
+        # Segment > 100 chars with temporal pattern and numeric disclosure
+        sample_segment.raw_text = (
+            "Revenue grew from 100 million in 2015 to 200 million in 2017, representing strong "
+            "year-over-year growth in our core business lines. We continued to invest "
+            "in product development throughout this period of expansion."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Has numeric disclosure and temporal bonus
+        # 0.3 (numeric) + 0.10 (temporal) = 0.4 minimum
+        assert result.contains_numeric_disclosure_flag is True
+        assert result.classifier_confidence >= 0.3
+
+    def test_confidence_multi_metric_bonus(self, classifier, sample_segment):
+        """Test that segment with 3+ metrics gets +0.15 bonus."""
+        sample_segment.raw_text = (
+            "We track Active Customers, Average Order Value, and GMV as our key "
+            "performance indicators. These metrics help us understand customer "
+            "engagement and business health across all regions and segments."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should identify 3+ metrics and get multi-metric bonus
+        assert len(result.candidate_metric_ids) >= 3
+        # Base: 0.1 (3+ candidates) + 0.15 (multi-metric) + CMASB extended = higher confidence
+        assert result.classifier_confidence >= 0.25
+
+    def test_confidence_all_bonuses_cumulative(self, classifier, sample_segment):
+        """Test that segment with all goldmine indicators gets cumulative bonuses."""
+        sample_segment.raw_text = (
+            "In 2015 and 2017, by cohort analysis, 44% were Active Customers, "
+            "contributing to GMV and Average Order Value growth. We saw strong "
+            "performance across all customer cohorts and tenure segments during "
+            "this period of accelerated growth and market expansion."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should have:
+        # - numeric disclosure (+0.3)
+        # - 3+ metrics (+0.1) + multi-metric density (+0.15)
+        # - cohort pattern (+0.15)
+        # - temporal pattern (+0.10)
+        # - CMASB extended boost (+0.1)
+        # Total could be up to 0.9+ (capped at 1.0)
+        assert result.classifier_confidence >= 0.5
+
+    def test_confidence_still_capped_at_1(self, classifier, sample_segment):
+        """Test that confidence with bonuses is still capped at 1.0."""
+        sample_segment.raw_text = (
+            "We define new customers acquired as individuals who made their first "
+            "purchase during the period. This metric is calculated by cohort tenure. "
+            "In 2015, 2016, and 2017, we acquired 50,000, 60,000, and 70,000 new "
+            "customers respectively. Active customers and GMV also grew significantly. "
+            "Our customer acquisition cost decreased while retention improved across "
+            "all acquisition cohorts and customer lifetime segments."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should max out at 1.0 even with all bonuses
+        assert result.classifier_confidence <= 1.0
+
+    # --- Regression Tests ---
+
+    def test_existing_behavior_unchanged_no_goldmine(self, classifier, sample_segment):
+        """Test that standard segment without goldmine indicators is unchanged."""
+        sample_segment.raw_text = (
+            "Our customer retention rate improved to 95% in 2024, up from 92% in "
+            "the prior year. This improvement reflects our enhanced customer success "
+            "initiatives and product improvements across all customer segments."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should have numeric + single candidate + CMASB extended = ~0.7
+        # No goldmine bonuses (single year, no cohort keywords)
+        assert "cm_customer_retention_rate" in result.candidate_metric_ids
+        assert result.classifier_confidence >= 0.6
+        assert result.classifier_confidence <= 0.8
+
+    def test_short_segment_penalty_still_applies(self, classifier, sample_segment):
+        """Test that bonuses are applied before short segment penalty."""
+        # Short segment < 100 chars with cohort pattern
+        sample_segment.raw_text = "Customers by cohort in 2015 and 2016."
+        result = classifier.classify_segment(sample_segment)
+        # Should have cohort (+0.15) + temporal (+0.10) = 0.25
+        # Then * 0.7 penalty = 0.175
+        # With numeric if detected, could be higher
+        assert result.classifier_confidence < 0.5  # Short penalty applied
+
+    def test_cmasb_boost_still_works(self, classifier, sample_segment):
+        """Test that CMASB priority boost is unaffected by goldmine bonuses."""
+        sample_segment.raw_text = (
+            "We acquired 10,000 new customers in Q4 2024, representing significant "
+            "growth over the prior quarter when we added 7,500 customers. This strong "
+            "customer acquisition demonstrates the effectiveness of our initiatives."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should have CMASB core metric boost
+        assert "cm_new_customers_acquired" in result.candidate_metric_ids
+        # Base: 0.3 (numeric) + 0.3 (single) + 0.2 (CMASB core) = 0.8
+        assert result.classifier_confidence >= 0.7
+
+    # --- Edge Case Tests ---
+
+    def test_long_text_performance(self, classifier, sample_segment):
+        """Test that very long text doesn't cause performance issues."""
+        # 10KB+ text
+        long_text = (
+            "We analyze customer growth by cohort in 2015, 2016, and 2017. " * 200
+        )
+        sample_segment.raw_text = long_text
+        result = classifier.classify_segment(sample_segment)
+        # Should complete without issues and have bonuses
+        assert result.classifier_confidence > 0
+
+    def test_partial_keyword_no_cohort_bonus(self, classifier):
+        """Test that partial keyword matches don't trigger cohort bonus."""
+        # "customer" alone shouldn't trigger (need "cohort", "tenure", etc.)
+        assert classifier._has_cohort_patterns("we have many customers") is False
+        assert classifier._has_cohort_patterns("customer growth was strong") is False
+
+    def test_goldmine_segment_real_example(self, classifier, sample_segment):
+        """Test realistic goldmine segment from S-1 filing."""
+        sample_segment.raw_text = (
+            "The following table shows the percentage of our total revenue "
+            "contributed by customers who were acquired in 2015, 2016, 2017, "
+            "and 2018 cohorts. Revenue by cohort demonstrates strong retention "
+            "as first year customers continue contributing to overall growth. "
+            "Active customers across all tenure segments grew 25% year-over-year, "
+            "while transactions per customer also increased significantly."
+        )
+        result = classifier.classify_segment(sample_segment)
+        # Should be classified as goldmine with high confidence
+        # Multiple metrics + cohort pattern + temporal pattern + numeric
+        assert result.classifier_confidence >= 0.6
+        assert len(result.candidate_metric_ids) >= 1
