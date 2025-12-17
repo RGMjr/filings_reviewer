@@ -229,28 +229,24 @@ DEFINITION_CONTINUATION_PATTERNS = [
 
 ---
 
-### 6. Hierarchical Section Path Building (Feature)
+### 6. Hierarchical Section Path Building (Feature) ✅ Complete
 
-**Current State:** `section_path` is set to the same value as `section_heading` (nearest heading only).
+**Status:** ✅ Complete (SEG6) - Commit: d59baa0 (2025-12-17)
 
-**Expected:** "Item 1. Business > Customers > Growth Metrics"
+**Implementation:**
+- Added `_build_hierarchical_path()` method that walks backwards through heading cache
+- Modified `_get_section_from_cache()` to build hierarchical paths
+- `section_path` now contains full hierarchy (e.g., "Item 1 > Business > Customers")
+- `section_heading` remains just the nearest heading (unchanged behavior)
+- Level resets handled correctly (new h1 clears previous h2, h3, etc.)
+- Path truncation for very long paths (>500 chars)
 
-**Proposed Solution:**
-```python
-def _build_hierarchical_section_path(self, element: Tag) -> str:
-    """Build full path from h1 -> h2 -> h3 etc."""
-    path_parts = []
-    current = element
-
-    for level in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-        heading = current.find_previous(level)
-        if heading:
-            text = self._normalize_text(heading.get_text())
-            if text and text.lower() not in self.METADATA_HEADINGS:
-                path_parts.insert(0, text)
-
-    return " > ".join(path_parts) if path_parts else None
-```
+**Test Coverage:** 17 new tests added for hierarchical paths covering:
+- Basic hierarchy (2-level, 3-level, single heading)
+- Level resets (h1 clears hierarchy, same-level replaces)
+- Edge cases (no heading, all same level, deep nesting)
+- Formatting (separators, unicode, truncation)
+- Integration tests (full segment_filing, shared path prefix)
 
 **Impact:** Richer navigation context for analysts
 **Effort:** Medium (2-3 hours + tests)
@@ -433,7 +429,7 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
 | 5 | Character offset tracking | 2.5 hr | Source tracking | ✅ Complete |
-| 6 | Hierarchical section paths | 3 hr | Navigation | 🟡 Pending |
+| 6 | Hierarchical section paths | 3 hr | Navigation | ✅ Complete |
 | 8 | Additional element types | 1 hr | Coverage | 🟡 Pending |
 | 10 | HTML selector generation | 2 hr | UI highlighting | 🟡 Pending |
 
