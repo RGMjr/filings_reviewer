@@ -6,7 +6,7 @@ These models represent extracted data before it's written to the database.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from decimal import Decimal
 
 
@@ -51,12 +51,20 @@ class SourceSegment:
     table_truncated_flag: bool = False  # True if table was too large and summarized
     definition_merged_count: int = 0  # Number of segments merged for definition
 
+    # Richness metadata (computed post-classification by SegmentEnricher)
+    metric_density: Optional[float] = None  # Metrics per 100 characters
+    distinct_metric_count: int = 0  # Count of unique metric IDs in segment
+    contains_temporal_trend: bool = False  # True if segment discusses multiple time periods
+    contains_cohort_breakdown: bool = False  # True if segment contains cohort analysis patterns
+    image_count: int = 0  # Count of meaningful images/charts in segment
+    richness_score: Optional[float] = None  # Composite score 0-10 (computed by enricher)
+
     # Database fields (populated after insert)
     source_segment_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -81,6 +89,13 @@ class SourceSegment:
             "sentence_boundaries": self.sentence_boundaries,
             "table_truncated_flag": self.table_truncated_flag,
             "definition_merged_count": self.definition_merged_count,
+            # Richness metadata fields
+            "metric_density": self.metric_density,
+            "distinct_metric_count": self.distinct_metric_count,
+            "contains_temporal_trend": self.contains_temporal_trend,
+            "contains_cohort_breakdown": self.contains_cohort_breakdown,
+            "image_count": self.image_count,
+            "richness_score": self.richness_score,
         }
 
 
@@ -138,7 +153,7 @@ class MetricValue:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -202,7 +217,7 @@ class MetricDefinition:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -262,7 +277,7 @@ class FilingMetricIncidence:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
