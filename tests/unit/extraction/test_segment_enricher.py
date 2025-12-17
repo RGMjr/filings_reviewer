@@ -1998,16 +1998,17 @@ class TestRichnessScore:
 
         enricher.enrich_batch([segment])
 
-        # Expected score:
+        # Expected score (GI-6 calibrated):
         # - Base: 0.85 * 3.0 = 2.55
         # - Density: min(3 * 0.5, 2.0) = 1.5
         # - Temporal: 1.0
         # - Cohort: 1.5
-        # - Definition: 1.0
+        # - Combination (temporal + cohort): 0.5
+        # - Definition: 1.5 (enhanced, metrics >= 2)
         # - Images: 0.5
-        # Total: 2.55 + 1.5 + 1.0 + 1.5 + 1.0 + 0.5 = 8.05
+        # Total: 2.55 + 1.5 + 1.0 + 1.5 + 0.5 + 1.5 + 0.5 = 9.05
         assert segment.richness_score >= 6.0
-        assert segment.richness_score == 8.05
+        assert segment.richness_score == 9.05
 
     def test_maximum_score_capped_at_ten(
         self, enricher: SegmentEnricher
@@ -2064,17 +2065,17 @@ class TestRichnessScore:
 
         enricher.enrich_batch([segment])
 
-        # Expected:
+        # Expected (GI-6 calibrated):
         # - Base: 0.85 * 3.0 = 2.55
         # - Density: min(2 * 0.5, 2.0) = 1.0
         # - Temporal: 1.0 (2015, 2016, 2017)
         # - Cohort: 0 (no cohort language)
-        # - Definition: 1.0
+        # - Definition: 1.5 (enhanced, metrics >= 2)
         # - Images: 0
-        # Total: 2.55 + 1.0 + 1.0 + 0 + 1.0 + 0 = 5.55
-        assert segment.richness_score == 5.55
-        # Just under goldmine threshold
-        assert segment.richness_score < 6.0
+        # Total: 2.55 + 1.0 + 1.0 + 0 + 1.5 + 0 = 6.05
+        assert segment.richness_score == 6.05
+        # Now AT goldmine threshold (GI-6 improvement)
+        assert segment.richness_score >= 6.0
 
     # -------------------------------------------------------------------------
     # Goldmine Threshold Tests (3 tests)
@@ -2104,17 +2105,17 @@ class TestRichnessScore:
         assert segment.richness_score == 5.0
         assert segment.richness_score < SegmentEnricher.GOLDMINE_THRESHOLD
 
-    def test_score_6_0_is_goldmine(
+    def test_score_6_5_is_goldmine(
         self, enricher: SegmentEnricher
     ) -> None:
-        """Score of 6.0 -> IS a goldmine."""
-        # Create segment that scores exactly 6.0
+        """Score of 6.5 -> IS a goldmine (GI-6 calibrated)."""
+        # Create segment that scores 6.5 with enhanced definition bonus
         # Base: 1.0 * 3.0 = 3.0
         # Density: 2 * 0.5 = 1.0
         # Temporal: 1.0 (two years)
-        # Definition: 1.0
+        # Definition: 1.5 (enhanced, metrics >= 2)
         # No cohort, no images
-        # Total: 3.0 + 1.0 + 1.0 + 1.0 = 6.0
+        # Total: 3.0 + 1.0 + 1.0 + 1.5 = 6.5
         segment = SourceSegment(
             filing_id=1,
             segment_type="paragraph",
@@ -2126,21 +2127,22 @@ class TestRichnessScore:
 
         enricher.enrich_batch([segment])
 
-        assert segment.richness_score == 6.0
+        assert segment.richness_score == 6.5
         assert segment.richness_score >= SegmentEnricher.GOLDMINE_THRESHOLD
 
-    def test_score_8_5_is_goldmine(
+    def test_score_9_5_is_goldmine(
         self, enricher: SegmentEnricher
     ) -> None:
-        """Score of 8.5 -> IS a goldmine."""
+        """Score of 9.5 -> IS a goldmine (GI-6 calibrated)."""
         # Create high-value segment
         # Base: 1.0 * 3.0 = 3.0
         # Density: 4 * 0.5 = 2.0
         # Temporal: 1.0
         # Cohort: 1.5
-        # Definition: 1.0
+        # Combination (temporal + cohort): 0.5
+        # Definition: 1.5 (enhanced, metrics >= 2)
         # No images
-        # Total: 3.0 + 2.0 + 1.0 + 1.5 + 1.0 = 8.5
+        # Total: 3.0 + 2.0 + 1.0 + 1.5 + 0.5 + 1.5 = 9.5
         segment = SourceSegment(
             filing_id=1,
             segment_type="paragraph",
@@ -2152,7 +2154,7 @@ class TestRichnessScore:
 
         enricher.enrich_batch([segment])
 
-        assert segment.richness_score == 8.5
+        assert segment.richness_score == 9.5
         assert segment.richness_score >= SegmentEnricher.GOLDMINE_THRESHOLD
 
     # -------------------------------------------------------------------------

@@ -96,7 +96,7 @@ The formula (lines 449-489) gives:
 
 | Task ID | Name | Prerequisites | Time Est | Risk | Status |
 |---------|------|---------------|----------|------|--------|
-| GI-6 | Calibrate Richness Formula Weights | GI-3, GI-4 | 2-3 hours | Medium | 🟡 Pending |
+| GI-6 | Calibrate Richness Formula Weights | GI-3, GI-4 | 2-3 hours | Medium | ✅ Complete |
 | GI-7 | Add High-Value Metric Bonuses | GI-6 | 1-2 hours | Low | 🟡 Pending |
 
 ### Phase 4: Validation (GI-8)
@@ -652,12 +652,27 @@ TASK ID:       GI-6
 TASK NAME:     Calibrate richness formula weights based on analysis
 WORKSTREAM:    Goldmine Improvement
 SOURCE:        GOLDMINE_1_IMPROVEMENT_PLAN.md
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 2-3 hours (analysis 60 min, implementation 60 min, testing 60 min)
+ACTUAL TIME:   ~2 hours
 RISK LEVEL:    Medium (changes score distribution, may affect downstream)
 PARALLEL WITH: None
 ═══════════════════════════════════════════════════════════════════════════════
 ```
+
+**COMPLETION NOTES**:
+- Implemented **4 weight recommendations** from GI-3 distribution analysis:
+  1. **Retention keyword bonus (+1.0)** for NRR/NDRR/gross retention - `RETENTION_KEYWORDS` patterns added
+  2. **Usage keyword bonus (+0.5)** for DAU/MAU/WAU metrics - `USAGE_KEYWORDS` patterns added
+  3. **Enhanced definition bonus (+1.5)** when combined with metrics >= 2 (was +1.0)
+  4. **Combination bonus (+0.5)** for segments with BOTH temporal AND cohort flags
+- Added `HIGH_VALUE_THRESHOLD = 8.0` constant
+- **55 new tests** in `tests/unit/extraction/test_segment_enricher_richness.py`
+- Updated 5 existing tests in `test_segment_enricher.py` and `test_segment_enricher_saas.py`
+- **295 total segment_enricher tests pass**
+- `mypy --strict` passes on segment_enricher.py
+- New theoretical max: 13.0 (capped to 10.0)
+- High-value tier (8.0+) now achievable with NRR + cohort + temporal segments
 
 #### Objective
 
