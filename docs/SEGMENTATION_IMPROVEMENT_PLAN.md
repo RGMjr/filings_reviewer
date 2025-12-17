@@ -32,7 +32,7 @@
 - SEG12: Tri-region sampling for large table summaries ✅
 
 ### Recent Commits
-- `PENDING` SEG12: Implement tri-region sampling for large table summaries (Dec 17)
+- `089b63d` SEG12: Implement tri-region sampling for large table summaries (Dec 17)
 - `9e3ffbe` SEG9: Cache parsed DOM in composite splitting for performance (Dec 17)
 - `be96a98` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
@@ -413,7 +413,7 @@ def segment_filing(self, ...):
 
 ### 12. Table Summary Intelligence (Enhancement) ✅ COMPLETE
 
-**Status:** ✅ Complete (SEG12) - Pending commit (2025-12-17)
+**Status:** ✅ Complete (SEG12) - Commit `089b63d` (2025-12-17)
 
 **Implementation:**
 - Modified `_create_table_summary()` to use tri-region sampling:
