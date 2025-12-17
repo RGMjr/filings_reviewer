@@ -460,7 +460,7 @@ TASK ID:       G11
 TASK NAME:     Integrate SegmentEnricher into extraction pipeline
 WORKSTREAM:    Pipeline Integration (Integration Phase)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Integration Phase, Step 4
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 2-3 hours (integration 90 min, testing 60 min)
 RISK LEVEL:    Medium (changes pipeline flow)
 PARALLEL WITH: None (integration task)
@@ -477,10 +477,10 @@ PARALLEL WITH: None (integration task)
 - Log goldmine statistics
 
 **Acceptance Criteria**:
-- [ ] Enrichment runs after classification
-- [ ] Tiered selection prioritizes goldmines
-- [ ] Logs goldmine counts and clusters
-- [ ] Pipeline end-to-end test passes
+- [x] Enrichment runs after classification
+- [x] Tiered selection prioritizes goldmines
+- [x] Logs goldmine counts and clusters
+- [x] Pipeline end-to-end test passes (32 tests)
 
 ---
 

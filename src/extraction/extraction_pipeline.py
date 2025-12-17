@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from src.infra.db import DatabaseAdapter
 from .html_segmenter import HTMLSegmenter
 from .metric_classifier import MetricClassifier
+from .segment_enricher import SegmentEnricher, cluster_goldmine_segments
 from .value_extractor import ValueExtractor
 from .definition_extractor import DefinitionExtractor
 from .quality_scorer import QualityScorer
@@ -76,14 +77,15 @@ class ExtractionPipeline:
         self.llm_client = llm_client
         self.segmenter = HTMLSegmenter()
         self.classifier = MetricClassifier()
+        self.enricher = SegmentEnricher()
         self.value_extractor = ValueExtractor(llm_client=llm_client)
         self.definition_extractor = DefinitionExtractor(llm_client=llm_client)
         self.quality_scorer = QualityScorer()
 
         if llm_client:
-            logger.info("✓ Pipeline initialized with LLM-enhanced extraction")
+            logger.info("✓ Pipeline initialized with LLM-enhanced extraction and enrichment")
         else:
-            logger.info("✓ Pipeline initialized with rule-based extraction only")
+            logger.info("✓ Pipeline initialized with rule-based extraction and enrichment")
 
     def process_filing(self, filing_id: int) -> ExtractionResult:
         """
@@ -133,54 +135,40 @@ class ExtractionPipeline:
             logger.info(f"  Stage 2: Classifying {len(segments)} segments")
             classified_segments = self.classifier.classify_batch(segments)
 
-            # Step 2b: Filter to high-confidence segments for LLM processing
-            # Keep segments that have:
-            # - High confidence score (≥0.5) OR
-            # - Definition/methodology flags (important content markers)
-            # Also cap at MAX_SEGMENTS to prevent timeout on very large filings
-            CONFIDENCE_THRESHOLD = 0.5
-            MAX_SEGMENTS = 50
-            high_confidence_segments = [
-                seg for seg in classified_segments
-                if (seg.classifier_confidence and seg.classifier_confidence >= CONFIDENCE_THRESHOLD)
-                or seg.contains_definition_flag
-                or seg.contains_methodology_flag
-            ]
-            # Sort by confidence and take top MAX_SEGMENTS
-            high_confidence_segments.sort(
-                key=lambda s: s.classifier_confidence or 0, reverse=True
-            )
-            if len(high_confidence_segments) > MAX_SEGMENTS:
-                logger.info(
-                    f"  Stage 2b: Capping segments from {len(high_confidence_segments)} to {MAX_SEGMENTS}"
-                )
-                high_confidence_segments = high_confidence_segments[:MAX_SEGMENTS]
-            logger.info(
-                f"  Stage 2b: Filtered to {len(high_confidence_segments)} high-confidence segments "
-                f"(from {len(classified_segments)} total, threshold={CONFIDENCE_THRESHOLD}, max={MAX_SEGMENTS})"
-            )
+            # Step 2b: Enrich segments with richness metadata
+            logger.info(f"  Stage 2b: Enriching {len(classified_segments)} segments")
+            self.enricher.enrich_batch(classified_segments)  # mutates in place
 
-            # Step 3: Extract values (only from high-confidence segments)
-            logger.info(f"  Stage 3: Extracting values from {len(high_confidence_segments)} segments")
+            # Step 2c: Tiered segment selection
+            logger.info("  Stage 2c: Selecting segments via tiered prioritization")
+            selected_segments = self._select_segments_tiered(classified_segments)
+
+            # Log goldmine statistics
+            goldmines = [s for s in selected_segments if (s.richness_score or 0) >= 6.0]
+            clusters = cluster_goldmine_segments(goldmines) if goldmines else []
+            logger.info(f"  Identified {len(goldmines)} goldmine segments in {len(clusters)} clusters")
+
+            # Step 3: Extract values (from selected segments)
+            logger.info(f"  Stage 3: Extracting values from {len(selected_segments)} segments")
             all_values = []
-            for seg in high_confidence_segments:
+            for seg in selected_segments:
                 values = self.value_extractor.extract_from_segment(
                     seg, company_id=filing["company_id"]
                 )
                 all_values.extend(values)
 
-            # Step 4: Extract definitions (only from high-confidence segments)
-            logger.info(f"  Stage 4: Extracting definitions from {len(high_confidence_segments)} segments")
+            # Step 4: Extract definitions (from selected segments)
+            logger.info(f"  Stage 4: Extracting definitions from {len(selected_segments)} segments")
             definitions = self.definition_extractor.extract_definitions(
-                high_confidence_segments, company_id=filing["company_id"]
+                selected_segments, company_id=filing["company_id"]
             )
 
-            # Step 5: Compute quality scores (based on high-confidence segments)
+            # Step 5: Compute quality scores (based on selected segments)
             logger.info("  Stage 5: Computing quality scores")
             incidences = self.quality_scorer.score_filing(
                 filing_id=filing_id,
                 company_id=filing["company_id"],
-                segments=high_confidence_segments,
+                segments=selected_segments,
                 values=all_values,
                 definitions=definitions,
             )
@@ -188,19 +176,20 @@ class ExtractionPipeline:
             # Step 6: Write to database
             logger.info("  Stage 6: Writing to database")
             self._write_results(
-                filing_id, high_confidence_segments, all_values, definitions, incidences
+                filing_id, selected_segments, all_values, definitions, incidences
             )
 
             logger.info(f"✓ Successfully processed filing {filing_id}")
             logger.info(
-                f"    Total segments: {len(classified_segments)}, High-confidence: {len(high_confidence_segments)}, "
-                + f"Values: {len(all_values)}, Definitions: {len(definitions)}, Incidences: {len(incidences)}"
+                f"    Total segments: {len(classified_segments)}, Selected: {len(selected_segments)}, "
+                + f"Goldmines: {len(goldmines)}, Values: {len(all_values)}, "
+                + f"Definitions: {len(definitions)}, Incidences: {len(incidences)}"
             )
 
             return ExtractionResult(
                 filing_id=filing_id,
                 success=True,
-                num_segments=len(high_confidence_segments),
+                num_segments=len(selected_segments),
                 num_values=len(all_values),
                 num_definitions=len(definitions),
                 num_incidences=len(incidences),
@@ -306,6 +295,87 @@ class ExtractionPipeline:
             return None
 
         return filing
+
+    def _select_segments_tiered(
+        self, segments: List[SourceSegment]
+    ) -> List[SourceSegment]:
+        """
+        Select segments using tiered prioritization.
+
+        Tiers (processed in order, deduplicated):
+        1. High richness (>= 6.0) - up to 30 segments
+        2. Medium richness (4.0-6.0) - up to 40 segments
+        3. Critical flags (definitions/methodologies) - remainder up to 80 total
+
+        Args:
+            segments: Enriched segments with richness_score populated
+
+        Returns:
+            Selected segments, deduplicated and sorted by richness
+        """
+        RICHNESS_THRESHOLD = 6.0
+        MEDIUM_THRESHOLD = 4.0
+        MAX_HIGH_RICHNESS = 30
+        MAX_MEDIUM_RICHNESS = 40
+        MAX_TOTAL = 80
+
+        selected_ids: set[int] = set()  # Use object id for deduplication
+        result: List[SourceSegment] = []
+
+        # Tier 1: High richness (goldmines)
+        high_richness = sorted(
+            [s for s in segments if (s.richness_score or 0) >= RICHNESS_THRESHOLD],
+            key=lambda s: s.richness_score or 0,
+            reverse=True,
+        )[:MAX_HIGH_RICHNESS]
+
+        for seg in high_richness:
+            if id(seg) not in selected_ids:
+                result.append(seg)
+                selected_ids.add(id(seg))
+
+        high_count = len(result)
+
+        # Tier 2: Medium richness (supporting context)
+        medium_richness = sorted(
+            [
+                s
+                for s in segments
+                if MEDIUM_THRESHOLD <= (s.richness_score or 0) < RICHNESS_THRESHOLD
+            ],
+            key=lambda s: s.richness_score or 0,
+            reverse=True,
+        )[:MAX_MEDIUM_RICHNESS]
+
+        for seg in medium_richness:
+            if id(seg) not in selected_ids:
+                result.append(seg)
+                selected_ids.add(id(seg))
+
+        medium_count = len(result) - high_count
+
+        # Tier 3: Critical flags (definitions/methodologies)
+        critical = [
+            s
+            for s in segments
+            if (s.contains_definition_flag or s.contains_methodology_flag)
+            and id(s) not in selected_ids
+        ]
+
+        critical_count = 0
+        for seg in critical:
+            if len(result) >= MAX_TOTAL:
+                break
+            result.append(seg)
+            selected_ids.add(id(seg))
+            critical_count += 1
+
+        logger.info(
+            f"  Selected: {high_count} high-richness, {medium_count} medium-richness, "
+            f"{critical_count} critical (total: {len(result)})"
+        )
+
+        return result
 
     def _write_results(
         self,
