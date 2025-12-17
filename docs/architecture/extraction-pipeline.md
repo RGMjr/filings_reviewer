@@ -1,7 +1,7 @@
 # Metric Extraction Pipeline
 
-**Version:** 2.0
-**Last Updated:** 2025-12-09
+**Version:** 2.1
+**Last Updated:** 2025-12-17
 **Status:** Production Ready
 
 ---
@@ -45,6 +45,18 @@ This document specifies the architecture and implementation of the metric extrac
 │  - Tag segments with candidate_metric_ids                           │
 │  - Set flags: contains_definition_flag, contains_methodology_flag   │
 │  Output: Updated source_segments with classification metadata       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 2.5: SEGMENT ENRICHMENT (G4-G8)                              │
+│  - Compute metric density (metrics per 100 chars)                   │
+│  - Detect temporal trends (multi-period data)                       │
+│  - Detect cohort breakdowns (customer segmentation)                 │
+│  - Count meaningful images/charts                                   │
+│  - Compute richness score (0-10 composite)                          │
+│  - Identify "goldmine" segments (score >= 6.0)                      │
+│  Output: Enriched source_segments with richness metadata            │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -222,6 +234,78 @@ class MetricClassifier:
    - Match keywords to specific metrics
    - Example: "new customers" → `['cm_new_customers_acquired']`
    - Example: "cohort" + "revenue" → `['cm_revenue_by_cohort']`
+
+---
+
+### 2.5. Segment Enricher (G4-G8)
+
+**Module:** `src/extraction/segment_enricher.py`
+**Class:** `SegmentEnricher`
+**Status:** Complete (98% test coverage)
+
+**Responsibilities:**
+- Compute metric density (unique metrics per 100 characters)
+- Count distinct metric IDs per segment
+- Detect temporal trends (multi-period data mentions)
+- Detect cohort breakdowns (customer segmentation patterns)
+- Count meaningful images/charts (filtering decorative elements)
+- Compute composite richness score (0-10 scale)
+- Identify "goldmine" segments (richness_score >= 6.0)
+
+**Interface:**
+
+```python
+class SegmentEnricher:
+    GOLDMINE_THRESHOLD: float = 6.0  # Score threshold for goldmine identification
+
+    def enrich_batch(self, segments: List[SourceSegment]) -> List[SourceSegment]:
+        """
+        Enrich all segments with richness metadata.
+
+        Updates (mutates in place):
+            - metric_density: float (metrics per 100 chars)
+            - distinct_metric_count: int
+            - contains_temporal_trend: bool
+            - contains_cohort_breakdown: bool
+            - image_count: int
+            - richness_score: float (0.0-10.0)
+
+        Returns:
+            Same segments list with enrichment fields populated
+        """
+```
+
+**Richness Score Formula (0-10 points):**
+
+| Component | Points | Calculation |
+|-----------|--------|-------------|
+| Base confidence | 0-3.0 | `classifier_confidence * 3.0` |
+| Metric density | 0-2.0 | `min(distinct_metric_count * 0.5, 2.0)` |
+| Temporal trends | 1.0 | `1.0 if contains_temporal_trend else 0` |
+| Cohort breakdowns | 1.5 | `1.5 if contains_cohort_breakdown else 0` |
+| Definitions | 1.0 | `1.0 if contains_definition_flag else 0` |
+| Images | 0-1.5 | `min(image_count * 0.5, 1.5)` |
+
+**Goldmine Identification:**
+- Segments with `richness_score >= 6.0` are "goldmines"
+- Goldmines represent high-value disclosure sections
+- Typically 5-10% of segments in a filing qualify
+- Enables prioritized extraction and human review
+
+**Enrichment Methods:**
+- `_compute_metric_density()`: G4 - metrics per 100 chars
+- `_compute_distinct_metric_count()`: G4 - unique metric count
+- `_detect_temporal_trends()`: G5 - multi-year/period detection
+- `_detect_cohort_breakdowns()`: G6 - cohort analysis patterns
+- `_detect_images()`: G7 - meaningful image/chart count
+- `_compute_richness_score()`: G8 - composite scoring
+
+**Design Notes:**
+- Operates on in-memory SourceSegment objects (no database access)
+- Mutates segments in place for efficiency
+- Richness score computed LAST (depends on other enrichments)
+- Logs goldmine statistics after batch processing
+- All methods are stateless (patterns compiled at class level)
 
 ---
 
