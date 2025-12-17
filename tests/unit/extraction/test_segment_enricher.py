@@ -454,3 +454,322 @@ class TestInitialization:
         """Test that enricher initializes properly."""
         enricher = SegmentEnricher()
         assert enricher is not None
+
+
+# =============================================================================
+# Temporal Trend Detection Tests (G5) - 14 tests
+# =============================================================================
+
+
+class TestTemporalTrendDetection:
+    """Tests for temporal trend detection (G5)."""
+
+    # -------------------------------------------------------------------------
+    # Year Detection Tests (5 tests)
+    # -------------------------------------------------------------------------
+
+    def test_single_year_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Single year mentioned -> False (no trend)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="As of December 31, 2023, we had 1.2 million users.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_two_distinct_years_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Two distinct years -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew from $5M in 2021 to $8M in 2023.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_three_distinct_years_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Three distinct years -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Active users: 1M in 2021, 1.5M in 2022, and 2.1M in 2023.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_same_year_repeated_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Same year repeated multiple times -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="In 2023, we expanded our business. Throughout 2023, growth was strong. As of 2023 year-end...",
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Only has year-over-year language which would make it True
+        # But this test is about same year repeated - the "year-end" wouldn't match YoY patterns
+        # Actually, let me reconsider - this text has "2023" repeated 3 times but only 1 distinct year
+        # However, it does NOT have YoY language (year-end is not year-over-year)
+        assert segment.contains_temporal_trend is False
+
+    def test_years_at_boundaries(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Years at start and end of text are detected."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="2021 marked our founding year. We expect continued growth through 2025.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    # -------------------------------------------------------------------------
+    # Fiscal Period Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_fiscal_year_references_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """FY references: 'FY2022 and FY2023' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue increased from FY2022 to FY2023 by 25%.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_quarter_references_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Quarter references: 'Q1 2023 vs Q1 2022' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Q1 2023 revenue compared to Q1 2022 showed 15% improvement.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_single_fiscal_period_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Single fiscal period -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="For FY2023, we reported strong results.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    # -------------------------------------------------------------------------
+    # YoY Language Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_year_over_year_with_single_year_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'year-over-year' with single year -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="In 2023, we achieved 25% year-over-year growth.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_yoy_standalone_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'yoy' as standalone word -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew 30% YoY driven by new customer acquisition.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    def test_yoy_in_other_words_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'yoyo' or 'coyote' should NOT match -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Our yoyo sales and coyote tracking services are growing.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_compared_to_prior_year_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'compared to the prior year' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="User growth compared to the prior year was significant.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is True
+
+    # -------------------------------------------------------------------------
+    # Edge Cases Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_empty_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Empty raw_text -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_none_raw_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """None raw_text -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+        )
+        segment.raw_text = None  # type: ignore[assignment]
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_no_temporal_language_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Text with no years or temporal language -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Our platform enables customers to track their usage metrics efficiently.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_year_embedded_in_number_not_matched(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Year embedded in larger number should not match (word boundary)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Our Part 12023 includes detailed specifications.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_temporal_trend is False
+
+    def test_non_string_raw_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Non-string raw_text -> False with warning (direct method test)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=42,
+        )
+        # Set raw_text to a non-string type to test type checking
+        segment.raw_text = 12345  # type: ignore[assignment]
+
+        # Call _detect_temporal_trends directly to test the isinstance check
+        result = enricher._detect_temporal_trends(segment)
+
+        assert result is False
+
+    # -------------------------------------------------------------------------
+    # Integration Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_full_enrich_batch_sets_temporal_trend(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Full enrich_batch() flow sets contains_temporal_trend correctly."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Revenue grew from 2021 to 2023.",
+                candidate_metric_ids=["cm_revenue"],
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Users as of 2023.",
+                candidate_metric_ids=["cm_active_users_total"],
+            ),
+        ]
+
+        result = enricher.enrich_batch(segments)
+
+        assert result[0].contains_temporal_trend is True
+        assert result[1].contains_temporal_trend is False
+
+    def test_temporal_trend_alongside_density_calculation(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Temporal trend detection works alongside density calculations."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="x" * 100 + " Revenue grew from 2021 to 2023.",  # ~130 chars
+            candidate_metric_ids=["cm_revenue", "cm_arr"],
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Check density and distinct count are still computed
+        assert segment.metric_density is not None
+        assert segment.metric_density > 0
+        assert segment.distinct_metric_count == 2
+
+        # Check temporal trend is detected
+        assert segment.contains_temporal_trend is True

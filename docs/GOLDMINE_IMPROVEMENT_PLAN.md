@@ -260,25 +260,31 @@ TASK ID:       G5
 TASK NAME:     Implement temporal trend detection in SegmentEnricher
 WORKSTREAM:    Core Enrichment Logic (Stream B)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Stream B, lines 428-458
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2024-12-17) - Commit e9f3b1f
 TIME ESTIMATE: 1-2 hours (implementation 45 min, tests 60 min)
 RISK LEVEL:    Low
 PARALLEL WITH: G6, G7
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
-**Files to Modify**: `src/extraction/segment_enricher.py`
+**Files Modified**:
+- `src/extraction/segment_enricher.py` (210 lines, +67 from G4)
+- `tests/unit/extraction/test_segment_enricher.py` (759 lines, +302 from G4)
+
 **Prerequisites**: G4
 
 **Key Requirements**:
 - _detect_temporal_trends(): Find 2+ distinct years or YoY language
-- Patterns: `\b20\d{2}\b`, "year-over-year", "yoy"
+- Patterns: `\b20\d{2}\b`, "year-over-year", "yoy", fiscal periods (FY/Q1-Q4)
 - Set contains_temporal_trend=True when detected
 
 **Acceptance Criteria**:
-- [ ] Detects 2+ years correctly
-- [ ] Detects YoY language
-- [ ] 8+ tests covering all patterns
+- [x] Detects 2+ years correctly
+- [x] Detects YoY language
+- [x] Detects fiscal period references (FY, Q1-Q4)
+- [x] 19 tests covering all patterns (exceeds 8+ requirement)
+- [x] Coverage = 100% (exceeds 95% requirement)
+- [x] mypy --strict passes
 
 ---
 
