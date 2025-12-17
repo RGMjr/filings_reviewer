@@ -1,7 +1,7 @@
 # Human Review Interface Improvement Plan
 
 **Created:** 2025-12-16
-**Last Updated:** 2025-12-16
+**Last Updated:** 2025-12-17
 **Status:** Active
 **Owner:** TBD
 
@@ -18,7 +18,7 @@ Following comprehensive testing of the human review interface, this document tra
 | Reclassify decisions | ✅ Working | Metric reassignment functional |
 | Audit logging (pages) | ✅ Working | 127 entries captured |
 | Audit logging (API) | ⚠️ Gap | POST /api/decisions not logged |
-| Health check | ❌ Bug | PoolHealthReport subscript error |
+| Health check | ✅ Fixed | HRI-1 complete (2025-12-17) |
 
 ---
 
@@ -28,7 +28,7 @@ Following comprehensive testing of the human review interface, this document tra
 
 **Priority:** Critical
 **Effort:** 15 minutes
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Problem:**
 ```
@@ -36,28 +36,35 @@ Health check failed: 'PoolHealthReport' object is not subscriptable
 ```
 The `/health` endpoint returns 503 due to incorrect object access.
 
-**Location:** `src/web/app.py:276-312`
+**Location:** `src/web/app.py:281-298`
 
 **Root Cause:**
 `check_pool_health()` returns a `PoolHealthReport` dataclass, but the code treats it as a dict.
 
-**Fix:**
+**Fix Applied:**
 ```python
-# Current (broken):
+# Before (broken):
 health = check_pool_health(pool)
 if health["healthy"]:
     return jsonify({"pool_stats": health["stats"]})
 
-# Corrected:
+# After (fixed):
 health = check_pool_health(pool)
-if health.healthy:
-    return jsonify({"pool_stats": health.stats})
+if health.is_healthy:
+    return jsonify({"pool_stats": {
+        "total_connections": health.total_connections,
+        "idle_connections": health.idle_connections,
+        "active_connections": health.active_connections,
+        "test_query_elapsed": health.test_query_elapsed,
+    }})
 ```
 
 **Acceptance Criteria:**
-- [ ] `/health` returns 200 when database is connected
-- [ ] Pool stats included in response
-- [ ] Unit test added for health endpoint
+- [x] `/health` returns 200 when database is connected
+- [x] Pool stats included in response
+- [x] Unit tests added for health endpoint (2 tests in `tests/unit/web/test_app_pool.py`)
+
+**Commit:** `82aa9da` - HRI-1: Fix health endpoint PoolHealthReport attribute access
 
 ---
 
@@ -338,6 +345,78 @@ Candidates shown in document order (by candidate_id).
 
 ---
 
+---
+
+## Completed Improvements
+
+### Table Row Filtering & Row Heading Priority (2025-12-17)
+
+**Priority:** P2 (High)
+**Effort:** 4 hours
+**Status:** ✅ Complete
+
+**Problem:**
+During manual testing, users reported that table displays showed values matched with incorrect keywords:
+1. Value from one row matched with keyword from a different row
+2. Row headings (most specific labels) not prioritized over table/section headings
+
+**Example Issue:**
+- Candidate #36 (Farfetch): Value 116,878 in "Gross profit" row was matched with "Gross profit margin" from the next row
+- This created confusing context displays where the highlighted keyword wasn't semantically related to the value
+
+**Solution Implemented:**
+
+1. **Table Row Parser** (`src/review/table_structure.py`):
+   - Added `TableRowParser` class to parse HTML table structure using BeautifulSoup
+   - Maps character positions in extracted text to table row boundaries
+   - Detects row headings (first cell in each row) with position tracking
+   - New fields: `header_text`, `header_start`, `header_end` in `TableRow` dataclass
+   - New method: `is_row_heading(position)` to check if keyword is in first cell
+
+2. **Keyword Matching Enhancements** (`src/review/keyword_matching.py`):
+   - **Phase 2.75**: Table row filtering prevents cross-row matches
+   - **Row Heading Priority**: Applies 0.25x multiplier (75% reduction) to effective distance for row headings
+   - Row headings are now strongly preferred over other keywords in the same table
+   - Falls back to all keywords if none found in same row (prevents over-filtering)
+
+3. **Keyword Pattern Addition** (`src/extraction/metric_classifier.py`):
+   - Added `r"\bgross\s+profit\b"` pattern to enable matching "Gross profit" row headings
+   - Previously only "gross profit margin" was matched, causing fallback to wrong row
+
+4. **HTML Validation** (`src/infra/db.py`):
+   - Added validation check: clears `segment_html` if it doesn't contain the value/keyword
+   - Forces fallback to `context_text` display for truncated HTML segments
+   - Prevents displaying empty or irrelevant table context
+
+**Results:**
+- **Before:** Value 116,878 → "Gross profit margin" (different row, distance=13)
+- **After:** Value 116,878 → "Gross profit" (row heading, same row, distance=1)
+
+**Impact:**
+- Farfetch filing: 52 → 165 candidates (increased due to broader "gross profit" matching)
+- Snowflake filing: 50 → 32 candidates (36% reduction from table row filtering)
+- Improved precision by ensuring values match with most relevant/specific keywords
+- Better user experience: context displays now show semantically correct associations
+
+**Testing:**
+- Verified row heading detection on multi-row financial tables
+- Confirmed "Gross profit" prioritized over "Gross profit margin" in test cases
+- Regenerated candidates for Farfetch and Snowflake filings with new logic
+- Manual testing in web interface confirmed correct keyword highlighting
+
+**Files Modified:**
+- `src/review/table_structure.py` (68 lines added)
+- `src/review/keyword_matching.py` (13 lines added)
+- `src/extraction/metric_classifier.py` (1 line added)
+- `src/infra/db.py` (15 lines added)
+
+**Next Steps:**
+- Monitor candidate quality in production review sessions
+- Consider adding more table-aware patterns (e.g., column header matching)
+- Evaluate if row heading priority should be configurable per metric type
+
+---
+
 ## Implementation Roadmap
 
 ### Phase 1: Critical Fixes (Week 1)
@@ -382,10 +461,10 @@ Candidates shown in document order (by candidate_id).
 
 | Priority | Total | Complete | In Progress | Not Started |
 |----------|-------|----------|-------------|-------------|
-| P1 | 3 | 0 | 0 | 3 |
+| P1 | 3 | 1 | 0 | 2 |
 | P2 | 5 | 0 | 0 | 5 |
 | P3 | 4 | 0 | 0 | 4 |
-| **Total** | **12** | **0** | **0** | **12** |
+| **Total** | **12** | **1** | **0** | **11** |
 
 ---
 
