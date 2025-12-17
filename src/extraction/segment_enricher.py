@@ -7,14 +7,18 @@ This module computes richness metadata for SourceSegments after classification:
 - Temporal trend detection
 - Cohort breakdown detection
 - Image/chart detection
-- (Future: richness score)
+- Richness score (composite 0-10 score identifying "goldmine" segments)
+
+Also provides clustering utilities (module-level functions):
+- cluster_goldmine_segments(): Group adjacent high-richness segments
+- summarize_cluster(): Generate statistics for a cluster
 
 The enricher operates on in-memory objects without database dependencies.
 """
 
 import logging
 import re
-from typing import List, Optional, Pattern
+from typing import Any, Dict, List, Optional, Pattern, Set
 
 from bs4 import BeautifulSoup, Tag
 
@@ -488,3 +492,159 @@ class SegmentEnricher:
 
         # Cap at 10.0 and round to 2 decimal places
         return round(min(score, 10.0), 2)
+
+
+# =============================================================================
+# Clustering Utilities (G9) - Module-level functions
+# =============================================================================
+
+
+def cluster_goldmine_segments(
+    segments: List[SourceSegment],
+    richness_threshold: float = 6.0,
+    max_gap: int = 3,
+) -> List[List[SourceSegment]]:
+    """
+    Group adjacent high-richness segments into clusters.
+
+    Clusters are formed by grouping segments that:
+    1. Meet or exceed the richness_threshold
+    2. Are adjacent within max_gap sequence indices
+
+    Args:
+        segments: List of enriched segments with richness_score populated
+        richness_threshold: Minimum richness_score to include (default 6.0)
+        max_gap: Maximum gap in sequence_index between adjacent segments
+                 in same cluster (default 3)
+
+    Returns:
+        List of clusters, where each cluster is a list of SourceSegments
+        sorted by sequence_index. Empty list if no goldmine segments found.
+
+    Example:
+        >>> enricher = SegmentEnricher()
+        >>> enricher.enrich_batch(segments)
+        >>> clusters = cluster_goldmine_segments(segments)
+        >>> for cluster in clusters:
+        ...     summary = summarize_cluster(cluster)
+        ...     print(f"Cluster: {summary['segment_count']} segments")
+    """
+    if not segments:
+        return []
+
+    # Filter segments meeting threshold, handling None richness_score
+    goldmines: List[SourceSegment] = []
+    for seg in segments:
+        # Skip segments with None sequence_index
+        if seg.sequence_index is None:
+            logger.warning(
+                f"Segment with None sequence_index skipped during clustering "
+                f"(filing_id={seg.filing_id})"
+            )
+            continue
+
+        # Treat None richness_score as 0.0
+        score = seg.richness_score if seg.richness_score is not None else 0.0
+        if score >= richness_threshold:
+            goldmines.append(seg)
+
+    if not goldmines:
+        return []
+
+    # Sort by sequence_index
+    goldmines.sort(key=lambda s: s.sequence_index)
+
+    # Group into clusters based on gap
+    clusters: List[List[SourceSegment]] = []
+    current_cluster: List[SourceSegment] = [goldmines[0]]
+
+    for i in range(1, len(goldmines)):
+        prev_idx = goldmines[i - 1].sequence_index
+        curr_idx = goldmines[i].sequence_index
+        # Type narrowing - we already filtered None values above
+        assert prev_idx is not None and curr_idx is not None
+
+        gap = curr_idx - prev_idx
+        if gap <= max_gap:
+            # Adjacent - add to current cluster
+            current_cluster.append(goldmines[i])
+        else:
+            # Gap too large - start new cluster
+            clusters.append(current_cluster)
+            current_cluster = [goldmines[i]]
+
+    # Don't forget the last cluster
+    clusters.append(current_cluster)
+
+    return clusters
+
+
+def summarize_cluster(cluster: List[SourceSegment]) -> Dict[str, Any]:
+    """
+    Generate summary statistics for a cluster of segments.
+
+    Args:
+        cluster: List of SourceSegments in a cluster (typically from
+                 cluster_goldmine_segments output)
+
+    Returns:
+        Dictionary with cluster statistics:
+        - start_sequence: int - first segment's sequence_index
+        - end_sequence: int - last segment's sequence_index
+        - segment_count: int - number of segments in cluster
+        - section_heading: Optional[str] - first segment's section_heading
+        - avg_richness: float - mean richness_score (rounded to 2 decimals)
+        - unique_metrics: int - count of distinct metric IDs across all segments
+        - has_definition: bool - any segment has contains_definition_flag=True
+        - has_cohorts: bool - any segment has contains_cohort_breakdown=True
+        - has_temporal: bool - any segment has contains_temporal_trend=True
+        - has_images: bool - any segment has image_count > 0
+
+        Returns empty dict if cluster is empty.
+
+    Example:
+        >>> summary = summarize_cluster(cluster)
+        >>> print(f"Cluster spans segments {summary['start_sequence']}-{summary['end_sequence']}")
+        >>> print(f"Average richness: {summary['avg_richness']}")
+    """
+    if not cluster:
+        return {}
+
+    # Sort cluster by sequence_index to ensure correct start/end
+    sorted_cluster = sorted(cluster, key=lambda s: s.sequence_index or 0)
+
+    # Compute sequence range
+    start_seq = sorted_cluster[0].sequence_index or 0
+    end_seq = sorted_cluster[-1].sequence_index or 0
+
+    # Compute average richness (treating None as 0.0)
+    richness_scores = [
+        s.richness_score if s.richness_score is not None else 0.0
+        for s in sorted_cluster
+    ]
+    avg_richness = sum(richness_scores) / len(richness_scores)
+
+    # Collect unique metrics across all segments
+    all_metrics: Set[str] = set()
+    for seg in sorted_cluster:
+        if seg.candidate_metric_ids:
+            all_metrics.update(seg.candidate_metric_ids)
+
+    # Aggregate boolean flags
+    has_definition = any(s.contains_definition_flag for s in sorted_cluster)
+    has_cohorts = any(s.contains_cohort_breakdown for s in sorted_cluster)
+    has_temporal = any(s.contains_temporal_trend for s in sorted_cluster)
+    has_images = any((s.image_count or 0) > 0 for s in sorted_cluster)
+
+    return {
+        "start_sequence": start_seq,
+        "end_sequence": end_seq,
+        "segment_count": len(sorted_cluster),
+        "section_heading": sorted_cluster[0].section_heading,
+        "avg_richness": round(avg_richness, 2),
+        "unique_metrics": len(all_metrics),
+        "has_definition": has_definition,
+        "has_cohorts": has_cohorts,
+        "has_temporal": has_temporal,
+        "has_images": has_images,
+    }

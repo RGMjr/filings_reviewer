@@ -7,7 +7,11 @@ Tests the enrichment of classified segments with richness metadata.
 import pytest
 from unittest.mock import patch
 
-from src.extraction.segment_enricher import SegmentEnricher
+from src.extraction.segment_enricher import (
+    SegmentEnricher,
+    cluster_goldmine_segments,
+    summarize_cluster,
+)
 from src.extraction.models import SourceSegment
 
 
@@ -2259,3 +2263,645 @@ class TestRichnessScore:
         assert segment.richness_score == 0.99
         # Verify it's actually a float with 2 decimal places
         assert str(segment.richness_score) == "0.99"
+
+
+# =============================================================================
+# Clustering Utilities Tests (G9) - 15 tests
+# =============================================================================
+
+
+class TestClusterGoldmineSegments:
+    """Tests for cluster_goldmine_segments() function (G9)."""
+
+    # -------------------------------------------------------------------------
+    # Basic Clustering Tests (8 tests)
+    # -------------------------------------------------------------------------
+
+    def test_empty_segment_list_returns_empty_clusters(self) -> None:
+        """Empty segment list returns empty clusters."""
+        result = cluster_goldmine_segments([])
+        assert result == []
+
+    def test_single_goldmine_segment_returns_single_cluster(self) -> None:
+        """Single goldmine segment returns single cluster with one segment."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+
+        result = cluster_goldmine_segments([segment])
+
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] is segment
+
+    def test_two_adjacent_goldmines_form_one_cluster(self) -> None:
+        """Two adjacent goldmine segments form one cluster."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=8.0,
+        )
+
+        result = cluster_goldmine_segments([seg1, seg2])
+
+        assert len(result) == 1
+        assert len(result[0]) == 2
+
+    def test_goldmines_with_gap_exceeding_max_form_two_clusters(self) -> None:
+        """Two goldmine segments with gap > max_gap form two clusters."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=10,  # Gap of 5 > default max_gap of 3
+            richness_score=8.0,
+        )
+
+        result = cluster_goldmine_segments([seg1, seg2])
+
+        assert len(result) == 2
+        assert len(result[0]) == 1
+        assert len(result[1]) == 1
+
+    def test_segments_below_threshold_excluded(self) -> None:
+        """Segments below threshold are excluded from clusters."""
+        low_score = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Low score",
+            sequence_index=5,
+            richness_score=5.0,  # Below default 6.0 threshold
+        )
+        high_score = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="High score",
+            sequence_index=6,
+            richness_score=7.0,
+        )
+
+        result = cluster_goldmine_segments([low_score, high_score])
+
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] is high_score
+
+    def test_gap_exactly_at_max_gap_same_cluster(self) -> None:
+        """Gap exactly at max_gap threshold stays in same cluster."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=8,  # Gap of 3 == max_gap
+            richness_score=8.0,
+        )
+
+        result = cluster_goldmine_segments([seg1, seg2], max_gap=3)
+
+        assert len(result) == 1  # Same cluster
+        assert len(result[0]) == 2
+
+    def test_mixed_high_low_richness_only_high_clustered(self) -> None:
+        """Mixed high/low richness segments - only high richness clustered."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Test",
+                sequence_index=1,
+                richness_score=7.0,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Test",
+                sequence_index=2,
+                richness_score=3.0,  # Below threshold
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Test",
+                sequence_index=3,
+                richness_score=8.0,
+            ),
+        ]
+
+        result = cluster_goldmine_segments(segments)
+
+        # Segments 1 and 3 are goldmines with gap of 2 (excluding segment 2)
+        assert len(result) == 1
+        assert len(result[0]) == 2
+        assert result[0][0].sequence_index == 1
+        assert result[0][1].sequence_index == 3
+
+    def test_unsorted_input_sorted_correctly(self) -> None:
+        """Unsorted input is sorted correctly by sequence_index."""
+        seg3 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 3",
+            sequence_index=10,
+            richness_score=7.0,
+        )
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=8.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=7,
+            richness_score=6.5,
+        )
+
+        # Pass in unsorted order
+        result = cluster_goldmine_segments([seg3, seg1, seg2])
+
+        assert len(result) == 1  # All within max_gap
+        # Verify sorted order
+        assert result[0][0].sequence_index == 5
+        assert result[0][1].sequence_index == 7
+        assert result[0][2].sequence_index == 10
+
+    # -------------------------------------------------------------------------
+    # Edge Cases Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_segments_with_none_sequence_index_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Segments with None sequence_index are skipped with warning."""
+        import logging
+
+        good_segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Good",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+        bad_segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Bad",
+            richness_score=8.0,
+        )
+        bad_segment.sequence_index = None  # type: ignore[assignment]
+
+        with caplog.at_level(logging.WARNING):
+            result = cluster_goldmine_segments([good_segment, bad_segment])
+
+        # Only good segment should be included
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] is good_segment
+
+        # Warning should have been logged
+        assert "None sequence_index" in caplog.text
+
+    def test_custom_threshold_value(self) -> None:
+        """Custom threshold value (8.0) works correctly."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,  # Below 8.0
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=8.5,  # Above 8.0
+        )
+
+        result = cluster_goldmine_segments([seg1, seg2], richness_threshold=8.0)
+
+        assert len(result) == 1
+        assert len(result[0]) == 1
+        assert result[0][0] is seg2
+
+    def test_large_gap_value(self) -> None:
+        """Large max_gap value groups distant segments together."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=100,  # Very far apart
+            richness_score=8.0,
+        )
+
+        result = cluster_goldmine_segments([seg1, seg2], max_gap=100)
+
+        assert len(result) == 1  # Same cluster due to large max_gap
+        assert len(result[0]) == 2
+
+    def test_score_exactly_at_threshold_included(self) -> None:
+        """Segment with richness_score exactly at threshold is included."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            richness_score=6.0,  # Exactly at default threshold
+        )
+
+        result = cluster_goldmine_segments([segment])
+
+        assert len(result) == 1
+        assert result[0][0] is segment
+
+    def test_score_just_below_threshold_excluded(self) -> None:
+        """Segment with richness_score just below threshold is excluded."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            richness_score=5.99,  # Just below 6.0
+        )
+
+        result = cluster_goldmine_segments([segment])
+
+        assert result == []
+
+    def test_none_richness_score_treated_as_zero(self) -> None:
+        """Segments with None richness_score are treated as 0.0 (excluded)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            richness_score=None,
+        )
+
+        result = cluster_goldmine_segments([segment])
+
+        assert result == []
+
+
+class TestSummarizeCluster:
+    """Tests for summarize_cluster() function (G9)."""
+
+    # -------------------------------------------------------------------------
+    # Basic Summary Tests (6 tests)
+    # -------------------------------------------------------------------------
+
+    def test_empty_cluster_returns_empty_dict(self) -> None:
+        """Empty cluster returns empty dict."""
+        result = summarize_cluster([])
+        assert result == {}
+
+    def test_single_segment_cluster_summary(self) -> None:
+        """Single-segment cluster summary is correct."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            section_heading="Customer Metrics",
+            richness_score=7.5,
+            candidate_metric_ids=["cm_active_users", "cm_revenue"],
+            contains_definition_flag=True,
+            contains_cohort_breakdown=False,
+            contains_temporal_trend=True,
+            image_count=1,
+        )
+
+        result = summarize_cluster([segment])
+
+        assert result["start_sequence"] == 5
+        assert result["end_sequence"] == 5
+        assert result["segment_count"] == 1
+        assert result["section_heading"] == "Customer Metrics"
+        assert result["avg_richness"] == 7.5
+        assert result["unique_metrics"] == 2
+        assert result["has_definition"] is True
+        assert result["has_cohorts"] is False
+        assert result["has_temporal"] is True
+        assert result["has_images"] is True
+
+    def test_multi_segment_cluster_aggregates_correctly(self) -> None:
+        """Multi-segment cluster aggregates statistics correctly."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            section_heading="Section A",
+            richness_score=7.0,
+            candidate_metric_ids=["cm_active_users"],
+            contains_definition_flag=True,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=10,
+            section_heading="Section B",
+            richness_score=9.0,
+            candidate_metric_ids=["cm_revenue", "cm_arr"],
+        )
+
+        result = summarize_cluster([seg1, seg2])
+
+        assert result["start_sequence"] == 5
+        assert result["end_sequence"] == 10
+        assert result["segment_count"] == 2
+        assert result["section_heading"] == "Section A"  # First segment's heading
+        assert result["avg_richness"] == 8.0  # (7.0 + 9.0) / 2
+        assert result["unique_metrics"] == 3  # cm_active_users, cm_revenue, cm_arr
+        assert result["has_definition"] is True
+
+    def test_cluster_with_definition_flag_detected(self) -> None:
+        """Cluster with any definition flag detected."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+            contains_definition_flag=False,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=7.0,
+            contains_definition_flag=True,
+        )
+
+        result = summarize_cluster([seg1, seg2])
+
+        assert result["has_definition"] is True
+
+    def test_cluster_with_mixed_boolean_flags(self) -> None:
+        """Cluster with mixed boolean flags aggregates correctly."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+            contains_temporal_trend=True,
+            contains_cohort_breakdown=False,
+            image_count=0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=7.0,
+            contains_temporal_trend=False,
+            contains_cohort_breakdown=True,
+            image_count=2,
+        )
+
+        result = summarize_cluster([seg1, seg2])
+
+        assert result["has_temporal"] is True  # True in seg1
+        assert result["has_cohorts"] is True  # True in seg2
+        assert result["has_images"] is True  # seg2.image_count > 0
+
+    def test_handles_none_richness_score_in_average(self) -> None:
+        """Handles None richness_score in average calculation (treats as 0)."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=8.0,
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=None,  # Treated as 0.0
+        )
+
+        result = summarize_cluster([seg1, seg2])
+
+        # (8.0 + 0.0) / 2 = 4.0
+        assert result["avg_richness"] == 4.0
+
+    # -------------------------------------------------------------------------
+    # Edge Cases Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_unsorted_cluster_sorted_for_summary(self) -> None:
+        """Unsorted cluster is sorted for correct start/end sequence."""
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=10,
+            section_heading="Later Section",
+            richness_score=7.0,
+        )
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            section_heading="First Section",
+            richness_score=8.0,
+        )
+
+        # Pass in reverse order
+        result = summarize_cluster([seg2, seg1])
+
+        # Should be sorted, so start=5, end=10, heading from first (seq 5)
+        assert result["start_sequence"] == 5
+        assert result["end_sequence"] == 10
+        assert result["section_heading"] == "First Section"
+
+    def test_duplicate_metrics_counted_once(self) -> None:
+        """Duplicate metric IDs across segments counted once."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+            candidate_metric_ids=["cm_active_users", "cm_revenue"],
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=7.0,
+            candidate_metric_ids=["cm_revenue", "cm_arr"],  # cm_revenue is duplicate
+        )
+
+        result = summarize_cluster([seg1, seg2])
+
+        assert result["unique_metrics"] == 3  # cm_active_users, cm_revenue, cm_arr
+
+    def test_none_section_heading_preserved(self) -> None:
+        """None section_heading is preserved in summary."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test",
+            sequence_index=5,
+            section_heading=None,
+            richness_score=7.0,
+        )
+
+        result = summarize_cluster([segment])
+
+        assert result["section_heading"] is None
+
+    def test_empty_candidate_metric_ids_handled(self) -> None:
+        """Empty or None candidate_metric_ids handled correctly."""
+        seg1 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 1",
+            sequence_index=5,
+            richness_score=7.0,
+            candidate_metric_ids=[],
+        )
+        seg2 = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Test 2",
+            sequence_index=6,
+            richness_score=7.0,
+        )
+        seg2.candidate_metric_ids = None  # type: ignore[assignment]
+
+        result = summarize_cluster([seg1, seg2])
+
+        assert result["unique_metrics"] == 0
+
+
+class TestClusteringIntegration:
+    """Integration tests for clustering with enrichment (G9)."""
+
+    def test_full_pipeline_enrich_then_cluster(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Full pipeline: enrich segments then cluster goldmines."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=0,
+                raw_text="Simple boilerplate text.",
+                classifier_confidence=0.5,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=1,
+                raw_text="44.4% of consumers were new customers. Revenue grew from 2021 to 2023.",
+                candidate_metric_ids=["cm_active_users", "cm_revenue", "cm_arr"],
+                classifier_confidence=1.0,
+                contains_definition_flag=True,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=2,
+                raw_text="Our cohort analysis shows strong retention from 2020 to 2022.",
+                candidate_metric_ids=["cm_retention", "cm_cohort_metrics"],
+                classifier_confidence=0.9,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=10,  # Large gap
+                raw_text="Another goldmine: customers acquired in 2021 and 2022.",
+                candidate_metric_ids=["cm_active_users", "cm_new_customers"],
+                classifier_confidence=1.0,
+                contains_definition_flag=True,
+            ),
+        ]
+
+        # Enrich first
+        enricher.enrich_batch(segments)
+
+        # Cluster goldmines
+        clusters = cluster_goldmine_segments(segments)
+
+        # Segment 0 is not a goldmine (low score)
+        # Segments 1, 2 should be in one cluster (adjacent, high score)
+        # Segment 10 should be in separate cluster (gap > 3)
+        assert len(clusters) >= 1  # At least one cluster
+
+        # Get summaries
+        for cluster in clusters:
+            summary = summarize_cluster(cluster)
+            assert summary["segment_count"] >= 1
+            assert summary["avg_richness"] >= 6.0
+
+    def test_no_goldmines_returns_empty_clusters(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Filing with no goldmine segments returns empty clusters."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=0,
+                raw_text="Boilerplate text.",
+                classifier_confidence=0.3,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                sequence_index=1,
+                raw_text="More boilerplate.",
+                classifier_confidence=0.2,
+            ),
+        ]
+
+        enricher.enrich_batch(segments)
+        clusters = cluster_goldmine_segments(segments)
+
+        assert clusters == []
