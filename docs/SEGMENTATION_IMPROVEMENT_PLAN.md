@@ -9,7 +9,7 @@
 
 ## Implementation Status Summary
 
-### Completed (9 of 12 items - 75%)
+### Completed (10 of 12 items - 83%)
 
 **Phase A - Quick Wins:** ✅ **Complete** (3/3 items)
 - SEG2: SGML case insensitivity
@@ -26,11 +26,13 @@
 - SEG8: Additional element types (blockquote, pre, figure)
 - SEG10: CSS selector generation
 
-**Phase D - Polish:** 🟡 **In Progress** (2/3 items)
+**Phase D - Polish:** ✅ **Complete** (3/3 items)
 - SEG7: Robust encoding detection ✅
 - SEG9: Cache parsed DOM in composite splitting ✅
+- SEG12: Tri-region sampling for large table summaries ✅
 
 ### Recent Commits
+- `PENDING` SEG12: Implement tri-region sampling for large table summaries (Dec 17)
 - `9e3ffbe` SEG9: Cache parsed DOM in composite splitting for performance (Dec 17)
 - `be96a98` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
@@ -409,29 +411,36 @@ def segment_filing(self, ...):
 
 ---
 
-### 12. Table Summary Intelligence (Enhancement)
+### 12. Table Summary Intelligence (Enhancement) ✅ COMPLETE
 
-**Current State:** Large table summary includes headers + row count + first 3000 chars.
+**Status:** ✅ Complete (SEG12) - Pending commit (2025-12-17)
 
-**Problem:** May miss important data patterns in the middle/end of large tables.
+**Implementation:**
+- Modified `_create_table_summary()` to use tri-region sampling:
+  - Beginning sample: First ~1000 characters
+  - Middle sample: ~1000 characters from the center of the table
+  - End sample: Last ~1000 characters (captures totals, summaries)
+- Added clear markers between regions: `...[middle sample]...` and `...[end sample]...`
+- Smart boundary handling: each sample truncates at word boundary
+- Handles edge cases: tables with overlapping regions, short tables (<3000 chars unchanged)
+- Fixed bug: tables >25K chars now correctly trigger summary creation
+  (previously truncated in `_create_segment()` before `_handle_large_table()` was called)
+- Added helper method `_truncate_at_word_boundary()` for clean sample breaks
+- Backward compatible: tables ≤3000 chars behave exactly as before
 
-**Proposed Solution:**
-Sample rows from beginning, middle, and end:
-```python
-def _create_table_summary(self, raw_html, raw_text) -> str:
-    ...
-    # Sample first 1000, middle 1000, last 1000 chars
-    if len(raw_text) > 3000:
-        first = raw_text[:1000]
-        mid_start = len(raw_text) // 2 - 500
-        middle = raw_text[mid_start:mid_start + 1000]
-        last = raw_text[-1000:]
-        truncated_text = f"{first}...[middle sample]...{middle}...[end sample]...{last}"
-```
+**Test Coverage:** 10 new tests added in `TestTableSummaryTriRegionSampling` class covering:
+- Tri-region markers present in large tables
+- Beginning, middle, and end samples contain expected content
+- Tables under 25K not truncated (no markers)
+- Tables over 25K trigger summary creation
+- Headers and row count preserved in summary
+- Word boundary truncation
+- Unicode handling at sample boundaries
+- Updated existing test `test_very_large_table_creates_summary`
 
-**Impact:** Better coverage of large table content
-**Effort:** Low (1 hour)
-**Risk:** Low
+**Impact:** ✅ Better coverage of large table content for metric extraction
+**Effort:** 1.5 hours (implementation + 10 tests)
+**Risk:** Low - backward compatible, graceful handling of edge cases
 
 ---
 
@@ -464,14 +473,14 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 
 **Total:** ~8 hours, improved feature set
 
-### Phase D: Polish (As Needed)
+### Phase D: Polish (As Needed) ✅ **Complete**
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
 | 7 | Robust encoding detection | 2 hr | Edge cases | ✅ Complete |
 | 9 | DOM caching | 2 hr | Minor perf | ✅ Complete |
-| 12 | Table summary sampling | 1 hr | Large tables | 🟡 Pending |
+| 12 | Table summary sampling | 1.5 hr | Large tables | ✅ Complete |
 
-**Total:** ~5 hours, edge case handling (2 complete, 1 pending)
+**Total:** ~5.5 hours, edge case handling (3/3 complete)
 
 ---
 
