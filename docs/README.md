@@ -118,7 +118,7 @@ Historical documents for reference only. Not part of current operations.
 | Filing Fetcher | ✅ Complete | 94% | [System Overview](architecture/system-overview.md) |
 | HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Segment Enricher | ✅ Complete | 95% | [Goldmine Plan](GOLDMINE_IMPROVEMENT_PLAN.md) |
+| Segment Enricher | ✅ Complete | 98% | [Goldmine Plan](GOLDMINE_IMPROVEMENT_PLAN.md) |
 | Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
