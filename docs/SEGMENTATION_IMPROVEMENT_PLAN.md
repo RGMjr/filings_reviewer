@@ -29,7 +29,7 @@
 **Phase D - Polish:** 🟡 **Pending** (0/3 items)
 
 ### Recent Commits
-- `pending` SEG10: CSS selector generation (Dec 17)
+- `b6da6b2` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
 - `3ad44c1` SEG11: Parallel sentence detection (Dec 16)
 - `d332a57` SEG1: Binary search for heading cache (Dec 16)
