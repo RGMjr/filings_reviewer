@@ -605,6 +605,9 @@ def _get_next_candidate_info(
     """
     Get next pending candidate for the same filing.
 
+    Navigation order: First try to find the next sequential candidate
+    (candidate_id > current), then wrap around to lower IDs if none found.
+
     Args:
         db: Database adapter
         filing_id: Filing ID
@@ -613,24 +616,36 @@ def _get_next_candidate_info(
     Returns:
         Dict with candidate_id and url, or None if no more pending
     """
-    # Query for next pending candidate (any pending, not just higher IDs)
-    sql = """
+    # First: try to find next pending candidate with higher ID (sequential order)
+    sql_higher = """
         SELECT candidate_id
         FROM review_candidates
         WHERE filing_id = %(filing_id)s
           AND review_status = 'pending'
-          AND candidate_id != %(current_candidate_id)s
+          AND candidate_id > %(current_candidate_id)s
         ORDER BY candidate_id ASC
         LIMIT 1
     """
 
     result = db.query(
-        sql,
+        sql_higher,
         {
             "filing_id": filing_id,
             "current_candidate_id": current_candidate_id,
         },
     )
+
+    # If no higher IDs pending, wrap around to find any pending candidate
+    if not result:
+        sql_any = """
+            SELECT candidate_id
+            FROM review_candidates
+            WHERE filing_id = %(filing_id)s
+              AND review_status = 'pending'
+            ORDER BY candidate_id ASC
+            LIMIT 1
+        """
+        result = db.query(sql_any, {"filing_id": filing_id})
 
     if not result:
         return None

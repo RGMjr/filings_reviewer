@@ -217,6 +217,7 @@ class CandidateData(TypedDict, total=False):
     # Segment fields (from LEFT JOIN to source_segments)
     segment_type: Optional[str]  # 'table', 'paragraph', etc. - NULL if no source_segment_id
     segment_html: Optional[str]  # Raw HTML of segment - NULL if no source_segment_id
+    segment_html_table_only: Optional[str]  # Table HTML preserved for dual display when value is truncated
     features: Optional[Dict]  # JSONB features for ML pattern analysis
 
     # Decision fields (present only if reviewed - from LEFT JOIN)
@@ -702,9 +703,8 @@ def _find_next_candidate(
     """
     Find the next pending candidate for a filing.
 
-    Logic:
-    - If current_id provided: Find first pending candidate with ID > current_id
-    - If no current_id: Use db.get_next_candidate_for_review() to get first pending
+    Navigation order: First try to find the next sequential candidate
+    (candidate_id > current), then wrap around to lower IDs if none found.
 
     Args:
         db: Database adapter instance
@@ -714,18 +714,29 @@ def _find_next_candidate(
     Returns:
         Next candidate dict, or None if no more pending candidates
     """
+    # Get all pending candidates for this filing
+    candidates = db.get_review_candidates_for_filing(
+        filing_id=filing_id, status="pending"
+    )
+
+    if not candidates:
+        return None
+
+    # Sort by candidate_id for sequential navigation
+    # (DB returns ordered by char_position, not candidate_id)
+    sorted_candidates = sorted(candidates, key=lambda c: c["candidate_id"])
+
     if current_id:
-        # Get all pending candidates and find first with ID > current_id
-        candidates = db.get_review_candidates_for_filing(
-            filing_id=filing_id, status="pending"
-        )
-        return next(
-            (c for c in candidates if c["candidate_id"] > current_id),
-            None
-        )
+        # First: try to find next pending candidate with higher ID (sequential)
+        higher_candidates = [c for c in sorted_candidates if c["candidate_id"] > current_id]
+        if higher_candidates:
+            return higher_candidates[0]  # First one after sorting = lowest ID > current
+
+        # Wrap around: return first pending candidate (lowest ID)
+        return sorted_candidates[0]
     else:
-        # Use database method to get first pending
-        return db.get_next_candidate_for_review(filing_id=filing_id)
+        # No current_id: return first pending candidate (lowest ID)
+        return sorted_candidates[0]
 
 
 def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optional[str] = None) -> str:
@@ -779,7 +790,7 @@ def _get_active_metrics() -> List[MetricData]:
     Get list of active metrics for dropdown.
 
     Cached in Flask g object to avoid repeated queries.
-    Returns list sorted by class (core first) then name.
+    Returns list sorted by logical grouping (customer count, transactions, revenue, etc.).
 
     Returns:
         List[MetricData]: Active metrics with metric_id, display_name, metric_class, primary_concept
@@ -791,12 +802,55 @@ def _get_active_metrics() -> List[MetricData]:
             FROM metrics
             WHERE status = 'active'
             ORDER BY
-                CASE metric_class
-                    WHEN 'core' THEN 1
-                    WHEN 'extended' THEN 2
-                    ELSE 3
-                END,
-                display_name
+                CASE metric_id
+                    -- 1. Customer Count Metrics
+                    WHEN 'cm_new_customers_acquired' THEN 1
+                    WHEN 'cm_active_customers_total' THEN 2
+                    WHEN 'cm_customers_period_end_by_tenure' THEN 3
+                    WHEN 'cm_monthly_active_users' THEN 4
+                    WHEN 'cm_daily_active_users' THEN 5
+
+                    -- 2. Transaction & Purchase Behavior
+                    WHEN 'cm_transactions_by_cohort' THEN 10
+                    WHEN 'cm_repeat_purchase_rate' THEN 11
+                    WHEN 'cm_average_order_value' THEN 12
+
+                    -- 3. Revenue Metrics
+                    WHEN 'cm_revenue_by_cohort' THEN 20
+                    WHEN 'cm_revenue_per_customer' THEN 21
+                    WHEN 'cm_arr' THEN 22
+                    WHEN 'cm_mrr' THEN 23
+                    WHEN 'cm_expansion_revenue' THEN 24
+                    WHEN 'cm_gmv' THEN 25
+                    WHEN 'cm_take_rate' THEN 26
+
+                    -- 4. Revenue Predictability & Contracting
+                    WHEN 'cm_bookings' THEN 30
+                    WHEN 'cm_billings' THEN 31
+                    WHEN 'cm_deferred_revenue' THEN 32
+                    WHEN 'cm_acv' THEN 33
+                    WHEN 'cm_tcv' THEN 34
+
+                    -- 5. Revenue Concentration
+                    WHEN 'cm_revenue_concentration' THEN 40
+
+                    -- 6. Gross Margin
+                    WHEN 'cm_gross_margin_overall' THEN 50
+                    WHEN 'cm_gross_margin_by_cohort' THEN 51
+
+                    -- 7. Retention, Churn & Attrition
+                    WHEN 'cm_customer_retention_rate' THEN 60
+                    WHEN 'cm_customer_churn_rate' THEN 61
+                    WHEN 'cm_net_revenue_retention' THEN 62
+                    WHEN 'cm_gross_revenue_retention' THEN 63
+
+                    -- 8. Unit Economics & CAC
+                    WHEN 'cm_customer_acquisition_cost' THEN 70
+                    WHEN 'cm_cac_payback_period' THEN 71
+
+                    -- Future metrics (if any become active)
+                    ELSE 99
+                END
         """
         g.metrics = db.query(metrics_sql)
 
@@ -925,14 +979,42 @@ def _highlight_html(
         )
 
     # Highlight the keyword (case-insensitive)
+    # Use BeautifulSoup to search text nodes to handle keywords split across HTML tags
     if triggering_keyword:
-        escaped_keyword = re.escape(triggering_keyword)
-        result = re.sub(
-            f'({escaped_keyword})',
-            r'<u class="triggering-keyword">\1</u>',
-            result,
-            count=1,
-            flags=re.IGNORECASE
-        )
+        soup = BeautifulSoup(result, 'html.parser')
+        keyword_lower = triggering_keyword.lower()
+
+        # Search through all text nodes to find the keyword
+        # This handles cases where keyword is split across tags or has whitespace
+        for element in soup.find_all(text=True):
+            text = str(element)
+            text_lower = text.lower()
+
+            # Check if keyword appears in this text node
+            if keyword_lower in text_lower:
+                # Find the actual position (case-insensitive)
+                idx = text_lower.find(keyword_lower)
+                if idx != -1:
+                    # Extract the actual keyword with original case from the text
+                    actual_keyword = text[idx:idx + len(triggering_keyword)]
+
+                    # Create highlighted version
+                    highlighted_text = (
+                        text[:idx] +
+                        f'<u class="triggering-keyword">{actual_keyword}</u>' +
+                        text[idx + len(triggering_keyword):]
+                    )
+
+                    # Replace the text node with highlighted version
+                    # BeautifulSoup will parse the HTML we inject
+                    from bs4 import NavigableString
+                    if isinstance(element, NavigableString):
+                        new_soup = BeautifulSoup(highlighted_text, 'html.parser')
+                        element.replace_with(new_soup)
+
+                    # Only highlight first occurrence
+                    break
+
+        result = str(soup)
 
     return Markup(result)
