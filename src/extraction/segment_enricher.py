@@ -57,6 +57,42 @@ class SegmentEnricher:
         ),
     ]
 
+    # Compiled regex patterns for cohort breakdown detection (G6)
+    COHORT_PATTERNS: List[Pattern[str]] = [
+        # Percentage breakdowns with customer/user context
+        # Matches: "44.4% of consumers", "15% of users"
+        re.compile(
+            r"\b\d+(?:\.\d+)?%\s+of\s+(?:customers?|users?|consumers?)\b",
+            re.IGNORECASE,
+        ),
+        # Matches: "X% were new customers", "X% are enterprise users"
+        re.compile(
+            r"\b\d+(?:\.\d+)?%\s+(?:were|are)\s+\w+\s+(?:customers?|users?|consumers?)\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:new|existing|repeat|returning)\s+(?:customers?|users?|consumers?)\s+"
+            r"(?:represented|accounted for)",
+            re.IGNORECASE,
+        ),
+        # Explicit cohort analysis language
+        re.compile(r"\bcohort\s+analysis\b", re.IGNORECASE),
+        re.compile(
+            r"\bby\s+(?:acquisition|tenure|vintage)\s+cohort\b", re.IGNORECASE
+        ),
+        re.compile(r"\bcustomers?\s+acquired\s+in\s+20\d{2}\b", re.IGNORECASE),
+        # Customer segmentation language
+        re.compile(
+            r"\b(?:first|second|third|subsequent)[- ]?year\s+customers?\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:new|existing)\s+vs\.?\s+(?:existing|new)\s+customers?\b",
+            re.IGNORECASE,
+        ),
+        re.compile(r"\bcustomer\s+(?:age|tenure|lifetime)\b", re.IGNORECASE),
+    ]
+
     def __init__(self) -> None:
         """Initialize enricher (stateless, patterns compiled at class level)."""
         pass
@@ -109,8 +145,10 @@ class SegmentEnricher:
         # Detect temporal trends (G5)
         segment.contains_temporal_trend = self._detect_temporal_trends(segment)
 
-        # Future enrichments (G6-G8) will be added here:
-        # - self._detect_cohort_breakdowns(segment)
+        # Detect cohort breakdowns (G6)
+        segment.contains_cohort_breakdown = self._detect_cohort_breakdowns(segment)
+
+        # Future enrichments (G7-G8) will be added here:
         # - self._detect_images(segment)
         # - self._compute_richness_score(segment)
 
@@ -205,6 +243,53 @@ class SegmentEnricher:
         # Check for year-over-year language (tertiary signal)
         for pattern in self.YOY_PATTERNS:
             if pattern.search(text):
+                return True
+
+        return False
+
+    def _detect_cohort_breakdowns(self, segment: SourceSegment) -> bool:
+        """
+        Detect if segment contains cohort analysis patterns.
+
+        Returns True if any of these conditions are met:
+        - Percentage breakdowns with customer/user context
+        - Explicit cohort analysis keywords
+        - New/existing customer segmentation language
+        - 2+ metric IDs containing 'cohort' or 'tenure'
+
+        Args:
+            segment: Segment to analyze for cohort patterns
+
+        Returns:
+            True if cohort breakdown detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            logger.warning(
+                f"Non-string raw_text in segment {segment.sequence_index}: {type(text)}"
+            )
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for cohort language
+        for pattern in self.COHORT_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        # Check for multiple cohort-related metric IDs (quaternary signal)
+        candidate_metric_ids = segment.candidate_metric_ids
+        if candidate_metric_ids:
+            cohort_metrics = [
+                m
+                for m in candidate_metric_ids
+                if "cohort" in m.lower() or "tenure" in m.lower()
+            ]
+            if len(cohort_metrics) >= 2:
                 return True
 
         return False
