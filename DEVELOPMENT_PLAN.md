@@ -1,5 +1,5 @@
 # Development Plan - SEC Filings Reviewer
-**Last Updated:** 2025-12-16
+**Last Updated:** 2025-12-17
 **Current Phase:** Phase 5 Complete - Active Improvement Workstreams
 
 ---
@@ -29,6 +29,50 @@ This document tracks the development roadmap for the SEC Filings Reviewer projec
 ---
 
 ## Recent Completions (December 2025)
+
+### ✅ **COMPLETED: G8 - Richness Score Formula (2025-12-17)**
+**Status:** ✅ COMPLETE
+**Documentation:** `docs/GOLDMINE_IMPROVEMENT_PLAN.md` (Task G8), `docs/WORKER_PROMPT_TASK_G8.md`
+
+**Objective:** Implement the composite richness score formula (0-10 scale) in SegmentEnricher to identify "goldmine" segments for prioritized extraction.
+
+**Problem Solved:**
+```
+Before: Segments have individual enrichment flags but no unified quality metric
+After: Every segment has richness_score (0.0-10.0), goldmines (≥6.0) identifiable
+```
+
+**Implementation Complete:**
+- [x] Added `GOLDMINE_THRESHOLD = 6.0` class constant to SegmentEnricher
+- [x] Implemented `_compute_richness_score()` with 6-component formula:
+  - Base confidence: 0-3 points (classifier_confidence * 3.0)
+  - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
+  - Temporal trends: 1 point (if contains_temporal_trend)
+  - Cohort breakdowns: 1.5 points (if contains_cohort_breakdown)
+  - Definitions: 1 point (if contains_definition_flag)
+  - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
+- [x] Integrated as LAST step in `_enrich_segment()` (after G4-G7 enrichments)
+- [x] Added goldmine statistics logging in `enrich_batch()`
+- [x] 19 unit tests in `TestRichnessScore` class (all passing)
+- [x] Type safety verified (`mypy --strict` passes)
+
+**Deliverables:**
+- **Updated Module:** `src/extraction/segment_enricher.py` (+60 lines)
+- **Unit Tests:** `tests/unit/extraction/test_segment_enricher.py::TestRichnessScore` (19 tests)
+- **Documentation:** Updated `docs/GOLDMINE_IMPROVEMENT_PLAN.md`, `docs/WORKER_PROMPT_TASK_G8.md`
+
+**Results:**
+- All 119 segment_enricher tests passing
+- 98% test coverage for segment_enricher.py
+- SegmentEnricher now computes richness_score for every segment
+- Goldmine segments (score ≥6.0) can be identified and prioritized
+- G9 (Clustering Utilities) is now unblocked
+
+**Time:** ~1.5 hours
+**Completion Date:** 2025-12-17
+**Commit:** 3cdd3ab
+
+---
 
 ### ✅ **COMPLETED: Issue 4 Enhancement - Standalone TOC Pattern (2025-12-16)**
 **Status:** ✅ COMPLETE
