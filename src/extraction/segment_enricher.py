@@ -35,12 +35,16 @@ class SegmentEnricher:
     already been classified by MetricClassifier. It operates on in-memory
     objects and does not require database access.
 
-    Current capabilities (G4-G8):
+    Current capabilities (G4-G8, GI-5 through GI-7):
     - metric_density: metrics per 100 characters
     - distinct_metric_count: count of unique metric IDs
     - contains_temporal_trend: segment discusses multiple time periods (G5)
     - contains_cohort_breakdown: segment contains cohort analysis patterns (G6)
     - image_count: count of meaningful images/charts in segment (G7)
+    - contains_saas_indicator: SaaS-specific terminology detection (GI-5)
+    - contains_retention_keywords: NRR/NDRR/retention keyword detection (GI-6)
+    - contains_usage_keywords: DAU/MAU/WAU usage metric detection (GI-6)
+    - high_value_metrics: count of classified high-value metrics (NRR, LTV/CAC) (GI-7)
     - richness_score: composite score 0-10 identifying "goldmine" segments (G8)
     """
 
@@ -224,6 +228,29 @@ class SegmentEnricher:
 
     # Threshold score for identifying "high-value" segments (GI-6)
     HIGH_VALUE_THRESHOLD: float = 8.0
+
+    # =========================================================================
+    # High-Value Metric IDs (GI-7)
+    # Metrics that provide the deepest insights into company health and unit
+    # economics. Segments containing these classified metrics receive bonus
+    # points (+0.5 per metric, capped at +1.5). These are the "money metrics"
+    # identified in GI-2 and GI-3 analysis.
+    # =========================================================================
+    HIGH_VALUE_METRICS: frozenset[str] = frozenset({
+        # Retention metrics (highest value for investor analysis)
+        "cm_net_revenue_retention",       # Net Dollar Retention / NRR
+        "cm_gross_revenue_retention",     # Gross Revenue Retention / GRR
+        "cm_customer_retention_rate",     # Customer retention rate
+
+        # Unit economics metrics
+        "cm_lifetime_value_per_customer",  # Customer Lifetime Value (LTV)
+        "cm_customer_acquisition_cost",    # Customer Acquisition Cost (CAC)
+        "cm_ltv_to_cac_ratio",             # LTV/CAC ratio
+
+        # Cohort-related metrics
+        "cm_revenue_by_cohort",            # Revenue by cohort
+        "cm_customers_period_end_by_tenure",  # Customers by tenure cohort
+    })
 
     # =========================================================================
     # SaaS-Specific Indicator Patterns (GI-5)
@@ -630,6 +657,32 @@ class SegmentEnricher:
 
         return False
 
+    def _count_high_value_metrics(self, segment: SourceSegment) -> int:
+        """
+        Count unique high-value metrics in segment's candidate_metric_ids.
+
+        High-value metrics include NRR, LTV/CAC, retention rates, and cohort
+        metrics. These represent the "money metrics" that provide the deepest
+        insights into company health for investor analysis.
+
+        Args:
+            segment: Segment to analyze for high-value metrics
+
+        Returns:
+            Count of unique high-value metric IDs (0 if None/empty)
+        """
+        candidate_metric_ids = segment.candidate_metric_ids
+
+        # Handle None or empty list
+        if not candidate_metric_ids:
+            return 0
+
+        # Count unique high-value metrics
+        unique_metrics = set(candidate_metric_ids)
+        high_value_count = len(unique_metrics & self.HIGH_VALUE_METRICS)
+
+        return high_value_count
+
     def _detect_images(self, segment: SourceSegment) -> int:
         """
         Count meaningful images/charts in segment HTML.
@@ -762,7 +815,7 @@ class SegmentEnricher:
         """
         Compute composite richness score (0-10).
 
-        Formula components (theoretical max 13.0, capped at 10.0):
+        Formula components (theoretical max 14.5, capped at 10.0):
         - Base confidence: 0-3 points (classifier_confidence * 3.0)
         - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
         - Temporal trends: 1 point if contains_temporal_trend
@@ -772,6 +825,7 @@ class SegmentEnricher:
         - Retention keyword bonus: 1 point if contains_retention_keywords (GI-6)
         - Usage keyword bonus: 0.5 points if contains_usage_keywords (GI-6)
         - Combination bonus: 0.5 points if BOTH temporal AND cohort (GI-6)
+        - High-value metric bonus: 0-1.5 points (+0.5 per high-value metric, capped) (GI-7)
         - SaaS indicators: 0.5 points if contains_saas_indicator (GI-5)
         - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
 
@@ -827,6 +881,12 @@ class SegmentEnricher:
         # Usage keyword bonus (GI-6 recommendation #4): +0.5 for DAU/MAU/WAU
         if extra_metadata.get("contains_usage_keywords"):
             score += 0.5
+
+        # High-value metric bonus (GI-7): +0.5 per high-value metric, capped at +1.5
+        # Rewards segments where MetricClassifier identified NRR, LTV/CAC, retention,
+        # or cohort metrics. Complements (does not duplicate) GI-6 keyword bonuses.
+        high_value_count = self._count_high_value_metrics(segment)
+        score += min(high_value_count * 0.5, 1.5)
 
         # SaaS indicator bonus (GI-5): +0.5 for SaaS-specific terminology
         if extra_metadata.get("contains_saas_indicator"):
