@@ -279,17 +279,22 @@ def _register_health_check(app: Flask) -> None:
                 from src.infra.pool import check_pool_health
 
                 health = check_pool_health(pool)
-                if health["healthy"]:
+                if health.is_healthy:
                     return jsonify({
                         "status": "healthy",
                         "database": "connected",
-                        "pool_stats": health["stats"],
+                        "pool_stats": {
+                            "total_connections": health.total_connections,
+                            "idle_connections": health.idle_connections,
+                            "active_connections": health.active_connections,
+                            "test_query_elapsed": health.test_query_elapsed,
+                        },
                     }), 200
                 else:
                     return jsonify({
                         "status": "unhealthy",
                         "database": "error",
-                        "message": health["message"],
+                        "message": health.error,
                     }), 503
             else:
                 # No pool, try direct connection
