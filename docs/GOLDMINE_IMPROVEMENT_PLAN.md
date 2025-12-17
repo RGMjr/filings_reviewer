@@ -428,7 +428,7 @@ TASK ID:       G10
 TASK NAME:     Add cohort/temporal bonuses to metric classifier
 WORKSTREAM:    Classifier Enhancements (Stream C)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Stream C
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 2-3 hours (implementation 90 min, tests 60 min)
 RISK LEVEL:    Low
 PARALLEL WITH: G1-G9 (independent module)
@@ -445,10 +445,10 @@ PARALLEL WITH: G1-G9 (independent module)
 - Add helper methods: _has_cohort_patterns(), _has_temporal_patterns()
 
 **Acceptance Criteria**:
-- [ ] Bonuses applied correctly
-- [ ] Confidence still capped at 1.0
-- [ ] All existing tests pass
-- [ ] 4+ new tests for bonuses
+- [x] Bonuses applied correctly
+- [x] Confidence still capped at 1.0
+- [x] All existing tests pass
+- [x] 4+ new tests for bonuses (34 tests added in TestGoldmineBonuses class)
 
 ---
 

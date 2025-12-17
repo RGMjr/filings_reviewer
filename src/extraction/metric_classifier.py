@@ -567,6 +567,62 @@ class MetricClassifier:
 
         return candidates
 
+    def _has_cohort_patterns(self, text: str) -> bool:
+        """
+        Detect cohort analysis language patterns.
+
+        Checks for keywords indicating cohort-based analysis which is a
+        goldmine indicator for high-value metric segments.
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            True if cohort analysis language detected
+        """
+        if not text:
+            return False
+
+        text_lower = text.lower()
+
+        cohort_keywords = [
+            'cohort',
+            'by tenure',
+            'by vintage',
+            'by acquisition',
+            'first year customers',
+            'repeat customers',
+            'new vs existing',
+            'existing vs new',
+            'customer age',
+            'customer lifetime',
+            'acquired in 20',  # matches "acquired in 2015", "acquired in 2017", etc.
+        ]
+
+        return any(kw in text_lower for kw in cohort_keywords)
+
+    def _has_temporal_patterns(self, text: str) -> bool:
+        """
+        Detect temporal trend language patterns.
+
+        Checks for multiple year mentions indicating time-series data
+        which is a goldmine indicator for high-value metric segments.
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            True if multiple time periods detected (2+ distinct years)
+        """
+        if not text:
+            return False
+
+        year_pattern = r'\b20\d{2}\b'
+        years = re.findall(year_pattern, text)
+        unique_years = set(years)
+
+        return len(unique_years) >= 2
+
     def _compute_confidence(self, segment: SourceSegment) -> float:
         """
         Compute classifier confidence score (0-1).
@@ -576,6 +632,7 @@ class MetricClassifier:
         - Length of text (longer text generally more reliable)
         - Number of candidate metrics (too many suggests generic text)
         - CMASB priority boost (Core > Extended > Other)
+        - NEW: Multi-metric density, cohort patterns, temporal trends
         """
         confidence = 0.0
 
@@ -627,8 +684,33 @@ class MetricClassifier:
                 f"(segment {segment.sequence_index})"
             )
 
+        # === Goldmine indicator bonuses ===
+        raw_text = segment.raw_text or ""
+
+        # Multi-metric density bonus (3+ metrics indicates rich segment)
+        if num_candidates >= 3:
+            confidence += 0.15
+            logger.debug(
+                f"Multi-metric density bonus +0.15 ({num_candidates} metrics, "
+                f"segment {segment.sequence_index})"
+            )
+
+        # Cohort analysis bonus
+        if self._has_cohort_patterns(raw_text):
+            confidence += 0.15
+            logger.debug(
+                f"Cohort pattern bonus +0.15 (segment {segment.sequence_index})"
+            )
+
+        # Temporal trend bonus
+        if self._has_temporal_patterns(raw_text):
+            confidence += 0.10
+            logger.debug(
+                f"Temporal trend bonus +0.10 (segment {segment.sequence_index})"
+            )
+
         # Penalize very short segments
-        if len(segment.raw_text) < 100:
+        if len(raw_text) < 100:
             confidence *= 0.7
 
         # Cap at 1.0
