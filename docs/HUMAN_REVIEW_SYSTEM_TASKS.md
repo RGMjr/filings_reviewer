@@ -250,10 +250,10 @@ TASK ID:       HRI-3
 TASK NAME:     Audit and fix metric classification keyword overlaps
 WORKSTREAM:    Human Review Interface (Critical Fixes)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P1.3
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 2-4 hr (investigation 1 hr, fixes 1-2 hr, testing 1 hr)
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~2.5 hr
 RISK LEVEL:    Medium (affects extraction accuracy)
 PARALLEL WITH: None (should run after some review decisions exist)
 ═══════════════════════════════════════════════════════════════════════════════
@@ -316,13 +316,23 @@ PARALLEL WITH: None (should run after some review decisions exist)
    - Ensure fixes don't break existing correct classifications
 
 **Acceptance Criteria:**
-- [ ] Audit of current keyword overlaps completed
-- [ ] Confusion matrix generated from existing decisions
-- [ ] Top 5 misclassification patterns identified and documented
-- [ ] Exclusion keywords added for each identified overlap
-- [ ] 10+ unit tests covering new patterns
-- [ ] Existing tests still pass
-- [ ] `mypy src/review/keyword_matching.py --strict` passes
+- [x] Audit of current keyword overlaps completed
+- [x] Confusion matrix generated from existing decisions
+- [x] Top 5 misclassification patterns identified and documented
+- [x] Exclusion keywords added for each identified overlap
+- [x] 10+ unit tests covering new patterns (34 tests in test_keyword_exclusions.py)
+- [x] Existing tests still pass (901 review unit tests pass)
+- [x] `mypy src/review/keyword_matching.py --strict` passes
+
+**Implementation Summary:**
+- Added `METRIC_EXCLUSION_PATTERNS` dictionary to `keyword_matching.py`
+- Implemented exclusion checking in `find_all_keywords()` method
+- Top patterns fixed:
+  1. "customer acquisition" → excluded from cm_new_customers_acquired when "acquisition cost" present
+  2. margin keywords → excluded from cm_customer_acquisition_cost
+  3. LTV/CAC ratio context → excludes standalone LTV metric
+  4. cohort context → excludes overall gross margin metric
+  5. revenue/dollar retention → excludes customer retention rate
 
 **Do NOT:**
 - Remove existing working keywords without replacement
