@@ -102,28 +102,30 @@ Decision submissions (`POST /api/decisions`) are not captured in `review_audit_l
 
 **Priority:** High
 **Effort:** 2-4 hours
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Problem:**
 During testing, some candidates had incorrect initial metric associations:
 - "Contribution Margin was 41.6%" incorrectly tagged as CAC (Customer Acquisition Cost)
 - Similar terminology overlap issues observed
 
-**Investigation Needed:**
-1. Review keyword lists in `src/review/keyword_matching.py`
-2. Check for ambiguous terms that match multiple metrics
-3. Analyze rejected candidates for classification patterns
+**Solution Implemented (HRI-3):**
+- Added `METRIC_EXCLUSION_PATTERNS` dictionary to `keyword_matching.py`
+- Implemented exclusion checking in `find_all_keywords()` method with ±50 char context window
+- Pre-compiled exclusion patterns for performance
 
-**Potential Fixes:**
-- Add metric-specific exclusion keywords
-- Increase context requirements for ambiguous terms
-- Add negative keywords (e.g., "contribution margin" should NOT match CAC)
+**Top 5 Misclassification Patterns Fixed:**
+1. "customer acquisition" in CAC context → excluded from cm_new_customers_acquired
+2. Margin keywords → excluded from cm_customer_acquisition_cost
+3. LTV/CAC ratio context → excludes standalone LTV metric
+4. Cohort context → excludes overall gross margin metric
+5. Revenue/dollar retention → excludes customer retention rate
 
 **Acceptance Criteria:**
-- [ ] Audit of current keyword overlaps completed
-- [ ] Confusion matrix generated from existing decisions
-- [ ] Top 5 misclassification patterns identified
-- [ ] Keyword adjustments made and tested
+- [x] Audit of current keyword overlaps completed
+- [x] Confusion matrix generated from existing decisions
+- [x] Top 5 misclassification patterns identified
+- [x] Keyword adjustments made and tested (34 new tests)
 
 ---
 

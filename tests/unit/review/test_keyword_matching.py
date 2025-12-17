@@ -227,7 +227,12 @@ class TestSubstringDeduplication:
     """Tests for substring deduplication in keyword matching."""
 
     def test_ltv_cac_ratio_deduplication(self):
-        """LTV/CAC ratio should not create separate LTV and CAC candidates."""
+        """LTV/CAC ratio should not create separate LTV and CAC candidates.
+
+        HRI-3 Update: With exclusion patterns, standalone LTV is now excluded
+        when LTV/CAC context is present. This is the correct behavior - we want
+        the LTV/CAC ratio metric, not the standalone LTV metric.
+        """
         matcher = KeywordMatcher(max_keyword_distance=100)
         text = "Our LTV/CAC ratio was 1.42 for the period."
         number = NumberMatch(start=18, end=22, raw_text="1.42", value=Decimal("1.42"), unit="count")
@@ -235,21 +240,20 @@ class TestSubstringDeduplication:
         # Find all keywords in text
         all_keywords = matcher.find_all_keywords(text)
 
-        # Should find LTV/CAC, LTV, and CAC keywords
-        assert len(all_keywords) >= 3
+        # HRI-3: Should find LTV/CAC and CAC keywords (LTV excluded due to LTV/CAC context)
+        assert len(all_keywords) >= 2
         keywords_text = [kw.keyword for kw in all_keywords]
         assert any("LTV/CAC" in k or "ltv/cac" in k.lower() for k in keywords_text)
-        assert any("LTV" == k.upper() for k in keywords_text)
+        # LTV is now excluded when LTV/CAC ratio is present (HRI-3 improvement)
+        # assert any("LTV" == k.upper() for k in keywords_text)  # Removed - now correctly excluded
         assert any("CAC" == k.upper() for k in keywords_text)
 
-        # With P1 fix: substring filtering only applies within the same metric
-        # So we get matches from all three metrics (LTV/CAC ratio, LTV, CAC)
-        # This is safer/more conservative - human review can select the correct one
+        # With HRI-3: LTV is excluded because LTV/CAC ratio context triggers exclusion
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
 
-        # Should have matches from all three metrics
+        # Should have matches from LTV/CAC ratio and CAC metrics (LTV correctly excluded)
         matched_keywords = [kw.keyword for kw in keywords_near_number]
-        assert len(matched_keywords) == 3, f"Expected 3 keywords (one per metric), got {len(matched_keywords)}: {matched_keywords}"
+        assert len(matched_keywords) == 2, f"Expected 2 keywords (LTV/CAC, CAC), got {len(matched_keywords)}: {matched_keywords}"
 
         # Should include LTV/CAC (the most specific match)
         assert any("LTV/CAC" in kw or "ltv/cac" in kw.lower() for kw in matched_keywords)

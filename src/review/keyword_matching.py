@@ -6,6 +6,8 @@ determine which keywords are near which numbers. It handles:
 - Finding all keyword matches in text
 - Filtering keywords by distance from numbers
 - Calculating distances between text spans
+- Table-aware matching with row boundary filtering (prevents cross-row matches)
+- Row heading priority (prefers keywords in first cell of table rows)
 
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
@@ -86,6 +88,7 @@ from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
     from src.review.boundary_detection import TextBoundary
+    from src.review.table_structure import TableRowParser
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +124,70 @@ SPECIFIC_KEYWORD_PATTERNS = [
     r"daily\s+active\s+users?",
     r"monthly\s+active\s+users?",
 ]
+
+
+# =============================================================================
+# Metric Exclusion Patterns (HRI-3)
+# =============================================================================
+
+# Patterns that should NOT match a metric even if the keyword pattern matches.
+# These prevent misclassifications when ambiguous keywords appear in contexts
+# that clearly indicate a different metric.
+#
+# Format: {metric_id: [list of context patterns that should exclude this metric]}
+#
+# When a keyword matches, we check if any exclusion pattern matches in the
+# surrounding context (±50 chars). If an exclusion pattern matches, we skip
+# that keyword match.
+#
+# Top misclassification patterns addressed:
+# 1. "customer acquisition" (part of "customer acquisition cost") -> cm_new_customers_acquired
+# 2. "margin" keywords incorrectly matching CAC
+# 3. "gross profit" / "gross margin" matching cohort metrics
+# 4. "acquisition cost" substring matching new customers metric
+METRIC_EXCLUSION_PATTERNS: Dict[str, List[str]] = {
+    # cm_new_customers_acquired should NOT match when "acquisition cost" is present
+    # (indicates CAC metric, not new customers acquired)
+    "cm_new_customers_acquired": [
+        r"\bacquisition\s+cost\b",  # Full phrase "acquisition cost" = CAC, not new customers
+        r"\bcac\b",  # CAC acronym nearby = CAC metric context
+        r"\bcost\s+to\s+acquire\b",  # Another CAC phrasing
+    ],
+    # cm_customer_acquisition_cost should NOT match contribution/gross/profit margin
+    # (these are margin metrics, not CAC)
+    "cm_customer_acquisition_cost": [
+        r"\bcontribution\s+margin\b",  # Contribution margin = margin metric
+        r"\bgross\s+margin\b",  # Gross margin = margin metric
+        r"\bprofit\s+margin\b",  # Profit margin = margin metric
+        r"\boperating\s+margin\b",  # Operating margin = margin metric
+        r"\bplatform\s+order\s+contribution\b",  # Farfetch specific pattern
+    ],
+    # cm_lifetime_value_per_customer should NOT match when it's part of LTV/CAC ratio
+    # (the ratio metric should take precedence)
+    "cm_lifetime_value_per_customer": [
+        r"\bltv\s*/\s*cac\b",  # LTV/CAC ratio
+        r"\bltv\s+to\s+cac\b",  # LTV to CAC ratio
+        r"\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b",
+    ],
+    # cm_revenue_per_customer (ARPU) should NOT match cost-per-customer
+    "cm_revenue_per_customer": [
+        r"\bcost\s+per\s+customer\b",  # Cost per customer = CAC, not ARPU
+        r"\bcost\s+per\s+user\b",  # Cost per user = CAC, not ARPU
+    ],
+    # cm_gross_margin_overall should NOT match cohort context
+    "cm_gross_margin_overall": [
+        r"\bby\s+cohort\b",  # Cohort context = cm_gross_margin_by_cohort
+        r"\bcohort\s+margin\b",  # Cohort margin = cm_gross_margin_by_cohort
+        r"\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b",
+    ],
+    # cm_customer_retention_rate should NOT match revenue retention context
+    "cm_customer_retention_rate": [
+        r"\brevenue\s+retention\b",  # Revenue retention = NRR/GRR
+        r"\bdollar\s+retention\b",  # Dollar retention = NRR
+        r"\bnrr\b",  # NRR acronym
+        r"\bgrr\b",  # GRR acronym
+    ],
+}
 
 
 # =============================================================================
@@ -226,6 +293,43 @@ class KeywordMatcher:
                 (re.compile(pattern, re.IGNORECASE), pattern) for pattern in patterns
             ]
 
+        # HRI-3: Pre-compile exclusion patterns for reuse
+        self._compiled_exclusions: Dict[str, List[re.Pattern[str]]] = {}
+        for metric_id, exclusion_patterns in METRIC_EXCLUSION_PATTERNS.items():
+            compiled_list: List[re.Pattern[str]] = []
+            for pattern in exclusion_patterns:
+                try:
+                    compiled_list.append(re.compile(pattern, re.IGNORECASE))
+                except re.error as e:
+                    # Log and skip invalid patterns - don't crash
+                    logger.warning(
+                        f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}"
+                    )
+            if compiled_list:
+                self._compiled_exclusions[metric_id] = compiled_list
+
+    def _is_excluded(self, metric_id: str, context: str) -> bool:
+        """
+        Check if context contains an exclusion pattern for this metric.
+
+        HRI-3 Enhancement: Prevents misclassifications by checking if the
+        surrounding context indicates a different metric should be matched.
+
+        Args:
+            metric_id: The metric ID to check exclusions for
+            context: The surrounding text context (typically ±50 chars)
+
+        Returns:
+            True if any exclusion pattern matches, False otherwise
+        """
+        if metric_id not in self._compiled_exclusions:
+            return False
+
+        for pattern in self._compiled_exclusions[metric_id]:
+            if pattern.search(context):
+                return True
+        return False
+
     def find_all_keywords(self, text: str) -> List[KeywordMatch]:
         """
         Find all metric keywords in text.
@@ -234,6 +338,11 @@ class KeywordMatcher:
         patterns for efficiency, but searches each pattern individually.
         This approach is faster than combining patterns due to regex engine
         behavior with large alternations.
+
+        HRI-3 Enhancement:
+        - Applies exclusion pattern filtering to prevent misclassifications
+        - Checks surrounding context (±50 chars) for exclusion patterns
+        - Skips matches where exclusion pattern indicates wrong metric
 
         Args:
             text: The full text to search
@@ -247,6 +356,20 @@ class KeywordMatcher:
         for metric_id, compiled_patterns in self._compiled_patterns.items():
             for compiled_pattern, pattern_str in compiled_patterns:
                 for match in compiled_pattern.finditer(text):
+                    # HRI-3: Check exclusion patterns before adding match
+                    # Get context around the match (±50 chars)
+                    context_start = max(0, match.start() - 50)
+                    context_end = min(len(text), match.end() + 50)
+                    context = text[context_start:context_end]
+
+                    # Skip if exclusion pattern matches in context
+                    if self._is_excluded(metric_id, context):
+                        logger.debug(
+                            f"Excluded match: '{match.group()}' for {metric_id} "
+                            f"due to exclusion pattern in context"
+                        )
+                        continue
+
                     all_matches.append(
                         KeywordMatch(
                             start=match.start(),
@@ -269,6 +392,7 @@ class KeywordMatcher:
         sentence_boundaries: Optional[List["TextBoundary"]] = None,
         text: str = "",
         segment_type: Optional[str] = None,
+        table_row_parser: Optional["TableRowParser"] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -291,6 +415,10 @@ class KeywordMatcher:
         - Context-dependent multipliers for post-value keywords
         - Different preferences based on textual context (tables, bullets, parentheticals)
 
+        Table Row Filtering Enhancement:
+        - Filters out keywords from different table rows than the number
+        - Prevents false matches where keyword in one row associates with value from another row
+
         Args:
             number: The NumberMatch to search around
             all_keywords: Pre-computed list of all keyword matches in text
@@ -298,6 +426,7 @@ class KeywordMatcher:
             sentence_boundaries: Optional list of sentence boundaries for P1.5 filtering
             text: Optional full text for context detection (L4 Option C)
             segment_type: Optional segment type for context detection (L4 Option C)
+            table_row_parser: Optional TableRowParser for table row filtering
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
@@ -370,6 +499,31 @@ class KeywordMatcher:
                         f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
                     )
 
+        # Phase 2.75: Apply table row constraints (Table Row Filtering Enhancement)
+        if table_row_parser is not None and table_row_parser.is_table():
+            # Filter to keywords in the same table row as the number
+            same_row = [
+                (kw, dist)
+                for kw, dist in candidates_with_distance
+                if table_row_parser.are_in_same_row(kw.start, number.start)
+            ]
+
+            # Only filter if we have same-row candidates
+            # (fallback: if no same-row keywords, keep all)
+            if same_row:
+                if len(same_row) < len(candidates_with_distance):
+                    logger.debug(
+                        f"Table row filtering: {len(same_row)}/{len(candidates_with_distance)} "
+                        f"keywords in same table row as number '{number.raw_text}'"
+                    )
+                candidates_with_distance = same_row
+            else:
+                # No same-row keywords found - keep all candidates (fallback)
+                logger.debug(
+                    f"Table row filtering fallback: no keywords in same row "
+                    f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
+                )
+
         # Phase 3: Sort by distance first, then length (P1 enhancement + L4 multiplier + L4 Option C)
         if self.prefer_closest_keyword:
             # L4 Option C: Compute effective distance using context-dependent multipliers
@@ -395,6 +549,19 @@ class KeywordMatcher:
                 effective_distance = (
                     raw_distance / multiplier if direction == "after" else float(raw_distance)
                 )
+
+                # Row Heading Priority: Keywords in table row headings (first cell) get strong preference
+                # This ensures we match "Gross profit" (row heading) over "Gross profit margin"
+                # (different row) when a value appears in the "Gross profit" row
+                if table_row_parser is not None and table_row_parser.is_table():
+                    if table_row_parser.is_row_heading(kw.start):
+                        # Apply 0.25x multiplier (75% reduction) to effective distance
+                        # This makes row headings strongly preferred over other keywords
+                        effective_distance *= 0.25
+                        logger.debug(
+                            f"Row heading priority: '{kw.keyword}' effective distance "
+                            f"reduced {raw_distance:.1f} → {effective_distance:.1f}"
+                        )
 
                 candidates_with_effective_distance.append(
                     (kw, raw_distance, effective_distance)
