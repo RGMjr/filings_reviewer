@@ -31,7 +31,7 @@
 - SEG9: Cache parsed DOM in composite splitting ✅
 
 ### Recent Commits
-- `PENDING` SEG9: Cache parsed DOM in composite splitting for performance (Dec 17)
+- `9e3ffbe` SEG9: Cache parsed DOM in composite splitting for performance (Dec 17)
 - `be96a98` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
@@ -335,7 +335,7 @@ def _get_segment_type(self, element: Tag) -> str:
 
 ### 9. Cache Parsed DOM in Composite Splitting (Performance) ✅ COMPLETE
 
-**Status:** ✅ Complete (SEG9) - Pending commit (2025-12-17)
+**Status:** ✅ Complete (SEG9) - Commit `9e3ffbe` (2025-12-17)
 
 **Implementation:**
 - Added optional `parsed_element: Optional[Tag]` parameter to `_split_composite_segment()`
