@@ -134,11 +134,14 @@
                             {# 3a. Context Display with highlighting #}
                             {# Pre-compute table detection for badge and display logic #}
                             {% set has_table_html = current_candidate.segment_html and '<table' in current_candidate.segment_html.lower() %}
+                            {% set has_table_only_html = current_candidate.segment_html_table_only and '<table' in current_candidate.segment_html_table_only.lower() %}
                             <h6 class="text-muted mb-2">Context
                                 {% if current_candidate.segment_type == 'table' %}
                                     <span class="badge bg-info ms-2">Table</span>
                                 {% elif has_table_html %}
                                     <span class="badge bg-info ms-2" title="Detected via HTML content">Table</span>
+                                {% elif has_table_only_html %}
+                                    <span class="badge bg-info ms-2" title="Table with truncated value - dual display">Table (Truncated)</span>
                                 {% elif current_candidate.features and current_candidate.features.get('is_in_table') %}
                                     <span class="badge bg-secondary ms-2" title="Detected via features (is_in_table=true)">In Table</span>
                                 {% endif %}
@@ -159,6 +162,38 @@
                                              current_candidate.raw_number_text,
                                              current_candidate.triggering_keyword
                                            )|safe }}
+                                    </div>
+                                </div>
+                            {% elif has_table_only_html %}
+                                {# Dual display mode: Table HTML was truncated, value appears beyond truncation point #}
+                                {# Show both: table structure (keyword highlighted) AND context text (value+keyword highlighted) #}
+                                <div class="table-context-dual mb-4">
+                                    <div class="alert alert-warning mb-2" role="alert">
+                                        <small><i class="bi bi-exclamation-triangle"></i> This value appears in a large table. The table was truncated for storage, so the exact value appears beyond the visible portion.
+                                        <br><strong>Below:</strong> Table structure with keyword highlighted, followed by the extracted context with value highlighted.
+                                        </small>
+                                    </div>
+
+                                    {# Part 1: Table structure (keyword only) #}
+                                    <div class="mb-3">
+                                        <h6 class="text-muted small">Table Structure (keyword highlighted)</h6>
+                                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                            {{ current_candidate.segment_html_table_only|highlight_html(
+                                                 '',
+                                                 current_candidate.triggering_keyword
+                                               )|safe }}
+                                        </div>
+                                    </div>
+
+                                    {# Part 2: Context text with value highlighted #}
+                                    <div>
+                                        <h6 class="text-muted small">Extracted Context (value highlighted)</h6>
+                                        <div class="context-text from-table">
+                                            {{ current_candidate.context_text|highlight_context(
+                                                 current_candidate.raw_number_text,
+                                                 current_candidate.triggering_keyword
+                                               )|safe }}
+                                        </div>
                                     </div>
                                 </div>
                             {% elif current_candidate.segment_type == 'table' %}
@@ -652,9 +687,29 @@
                             <span class="small">Reclassify to different metric</span>
                         </div>
 
-                        <div class="d-flex align-items-center">
+                        <div class="d-flex align-items-center mb-2">
                             <span class="badge bg-secondary me-2">N</span>
                             <span class="small">Next candidate</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">P</span>
+                            <span class="small">Previous candidate</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">Enter</span>
+                            <span class="small">Confirm rejection</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">Esc</span>
+                            <span class="small">Cancel rejection</span>
+                        </div>
+
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-secondary me-2">? / H</span>
+                            <span class="small">Toggle keyboard hints</span>
                         </div>
 
                     </div>
@@ -662,6 +717,51 @@
             </div>
         </div>
     {% endif %}
+
+    {# =================================================================
+       Keyboard Shortcuts Hints Panel (HRI-5)
+       ================================================================= #}
+    <!-- Fixed footer hints bar (initially hidden) -->
+    <div id="keyboard-hints" class="fixed-bottom bg-dark text-light py-2 px-3 d-none" style="font-size: 0.875rem; z-index: 1040;">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <strong>Keyboard Shortcuts:</strong>
+                </div>
+                <div class="col">
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">A</kbd> Accept
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">R</kbd> Reject
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">C</kbd> Reclassify
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">N</kbd> Next
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">P</kbd> Previous
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">Enter</kbd> Confirm
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">Esc</kbd> Cancel
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn-close btn-close-white btn-sm"
+                            id="close-hints" aria-label="Close keyboard shortcuts"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toggle button (keyboard icon in bottom right corner) -->
+    <button type="button" class="btn btn-outline-light btn-sm position-fixed shadow-sm"
+            style="bottom: 20px; right: 20px; z-index: 1030; border-radius: 50%; width: 48px; height: 48px;"
+            id="toggle-hints"
+            title="Toggle keyboard shortcuts (? or H)"
+            aria-label="Toggle keyboard shortcuts">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M14 5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h12zM2 4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H2z"/>
+            <path d="M13 10.25a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm0-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5 0A.25.25 0 0 1 8.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 8 8.75v-.5zm2 0a.25.25 0 0 1 .25-.25h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5a.25.25 0 0 1-.25-.25v-.5zm1 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5-2A.25.25 0 0 1 6.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 6 8.75v-.5zm-2 0A.25.25 0 0 1 4.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 4 8.75v-.5zm-2 0A.25.25 0 0 1 2.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm11-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0A.25.25 0 0 1 9.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 9 6.75v-.5zm-2 0A.25.25 0 0 1 7.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 7 6.75v-.5zm-2 0A.25.25 0 0 1 5.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 5 6.75v-.5zm-3 0A.25.25 0 0 1 2.25 6h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5A.25.25 0 0 1 2 6.75v-.5zm0 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm0 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm2 0a.25.25 0 0 1 .25-.25h5.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-5.5a.25.25 0 0 1-.25-.25v-.5z"/>
+        </svg>
+    </button>
 </div>
 {% endblock %}
 

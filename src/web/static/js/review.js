@@ -6,7 +6,7 @@
  * character counters, review time tracking, and UI feedback.
  *
  * Key Features:
- * - Keyboard shortcuts (A=Accept, R=Reject, C=Reclassify, N=Next)
+ * - Keyboard shortcuts (A=Accept, R=Reject, C=Reclassify, N=Next, P=Previous, Enter=Confirm, Esc=Cancel, ?/H=Hints)
  * - AJAX submission to /api/decisions endpoint
  * - Character counters for textareas
  * - Review time tracking
@@ -50,6 +50,7 @@
         startReviewTimer();
         scrollActiveCandidateIntoView();
         scrollHighlightedNumberIntoView();
+        initializeHintsPanel();
     }
 
     function scrollHighlightedNumberIntoView() {
@@ -553,6 +554,37 @@
                 navigateToNext();
                 break;
 
+            case 'p':
+                event.preventDefault();
+                console.log('Previous shortcut triggered');
+                navigateToPrevious();
+                break;
+
+            case 'enter':
+                // Only confirm if rejection panel is visible
+                if (state.rejectionPanelVisible) {
+                    event.preventDefault();
+                    console.log('Enter - confirming rejection');
+                    handleConfirmRejection();
+                }
+                break;
+
+            case 'escape':
+                // Cancel rejection if panel is visible
+                if (state.rejectionPanelVisible) {
+                    event.preventDefault();
+                    console.log('Escape - cancelling rejection');
+                    handleCancelRejection();
+                }
+                break;
+
+            case '?':
+            case 'h':
+                event.preventDefault();
+                console.log('Toggle keyboard hints');
+                toggleHintsPanel();
+                break;
+
             default:
                 // Unrecognized key, do nothing
                 break;
@@ -628,6 +660,77 @@
         }
 
         console.log('No more pending candidates found');
+    }
+
+    function navigateToPrevious() {
+        // Find all candidate items in the sidebar list
+        const allCandidates = document.querySelectorAll('.list-group-item.list-group-item-action');
+        if (allCandidates.length === 0) {
+            console.log('No candidate list found');
+            return;
+        }
+
+        // Find current active item index
+        let currentIndex = -1;
+        for (let i = 0; i < allCandidates.length; i++) {
+            if (allCandidates[i].classList.contains('active')) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Find previous pending (not reviewed) candidate before current
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            const candidate = allCandidates[i];
+            // Skip reviewed candidates (they have opacity-75 class)
+            if (!candidate.classList.contains('opacity-75')) {
+                console.log('Navigating to previous pending candidate:', candidate.href);
+                window.location.href = candidate.href;
+                return;
+            }
+        }
+
+        // If no pending found before current, wrap around and check from end
+        for (let i = allCandidates.length - 1; i > currentIndex; i--) {
+            const candidate = allCandidates[i];
+            if (!candidate.classList.contains('opacity-75')) {
+                console.log('Wrapping to previous pending candidate:', candidate.href);
+                window.location.href = candidate.href;
+                return;
+            }
+        }
+
+        console.log('No previous pending candidates found');
+    }
+
+    // =========================================================================
+    // Keyboard Shortcuts Hints Panel
+    // =========================================================================
+
+    function toggleHintsPanel() {
+        const hintsPanel = document.getElementById('keyboard-hints');
+        if (hintsPanel) {
+            hintsPanel.classList.toggle('d-none');
+            console.log('Keyboard hints panel toggled');
+        }
+    }
+
+    function initializeHintsPanel() {
+        const toggleBtn = document.getElementById('toggle-hints');
+        const hintsPanel = document.getElementById('keyboard-hints');
+        const closeBtn = document.getElementById('close-hints');
+
+        if (toggleBtn && hintsPanel) {
+            toggleBtn.addEventListener('click', () => {
+                hintsPanel.classList.toggle('d-none');
+            });
+        }
+
+        if (closeBtn && hintsPanel) {
+            closeBtn.addEventListener('click', () => {
+                hintsPanel.classList.add('d-none');
+            });
+        }
     }
 
     // =========================================================================
