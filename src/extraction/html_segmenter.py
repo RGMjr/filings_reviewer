@@ -421,6 +421,116 @@ class HTMLSegmenter:
         # Last resort: use the whole soup
         return soup
 
+    # =========================================================================
+    # CSS Selector Generation Methods (SEG10)
+    # =========================================================================
+
+    def _element_selector(self, element: Tag) -> str:
+        """
+        Generate a CSS selector for a single element.
+
+        Strategy:
+        - If element has ID, use #id (most specific, globally unique)
+        - If element has class(es), use tag.classname (first class only)
+        - Otherwise use tag:nth-of-type(n) for uniqueness among siblings
+
+        Args:
+            element: BeautifulSoup Tag element
+
+        Returns:
+            CSS selector string for this element
+        """
+        tag = element.name
+
+        # ID is most specific - use it alone
+        element_id = element.get("id")
+        if element_id:
+            # Escape special CSS characters in ID
+            escaped_id = self._escape_css_identifier(str(element_id))
+            return f"#{escaped_id}"
+
+        # Class adds specificity - use first class
+        classes = element.get("class", [])
+        if classes and isinstance(classes, list) and len(classes) > 0:
+            # Use first class, escape if needed
+            first_class = self._escape_css_identifier(str(classes[0]))
+            return f"{tag}.{first_class}"
+
+        # Fall back to nth-of-type for uniqueness among siblings
+        # Count same-tag siblings before this element
+        nth = 1
+        if element.parent:
+            for sibling in element.parent.children:
+                if sibling is element:
+                    break
+                if hasattr(sibling, "name") and sibling.name == tag:
+                    nth += 1
+
+        return f"{tag}:nth-of-type({nth})"
+
+    def _escape_css_identifier(self, identifier: str) -> str:
+        """
+        Escape special characters in CSS identifiers.
+
+        CSS selectors need certain characters escaped (colons, periods, etc.)
+
+        Args:
+            identifier: Raw identifier string (ID or class name)
+
+        Returns:
+            Escaped string safe for use in CSS selectors
+        """
+        # Characters that need escaping in CSS identifiers
+        # Note: We escape with backslash for CSS compliance
+        special_chars = [":", ".", "[", "]", "(", ")", "#", ">", "+", "~", " ", ","]
+        result = identifier
+        for char in special_chars:
+            result = result.replace(char, f"\\{char}")
+        return result
+
+    def _generate_css_selector(self, element: Tag) -> Optional[str]:
+        """
+        Generate a CSS selector path to uniquely identify this element.
+
+        Builds a path from the element up toward the root (or to first element
+        with an ID, which terminates the path since IDs are globally unique).
+
+        Path is limited to 6 levels to avoid overly long selectors.
+
+        Args:
+            element: BeautifulSoup Tag element
+
+        Returns:
+            CSS selector string like "#content > div.section > p:nth-of-type(2)"
+            or None if element is invalid
+        """
+        if not element or not hasattr(element, "name") or not element.name:
+            return None
+
+        parts = []
+        current = element
+        depth = 0
+        max_depth = 6
+
+        try:
+            while current and hasattr(current, "name") and current.name and depth < max_depth:
+                selector = self._element_selector(current)
+                parts.insert(0, selector)
+
+                # Stop at element with ID (globally unique, no need to go higher)
+                if current.get("id"):
+                    break
+
+                current = current.parent
+                depth += 1
+
+            return " > ".join(parts) if parts else None
+
+        except Exception as e:
+            # Selector generation is non-critical - log and return None
+            logger.debug(f"Error generating CSS selector: {e}")
+            return None
+
     def _compute_element_offsets(
         self, element: Tag, search_start: int = 0
     ) -> Tuple[Optional[int], Optional[int]]:
@@ -492,8 +602,11 @@ class HTMLSegmenter:
         # Determine segment type
         segment_type = self._get_segment_type(element)
 
-        # Extract text content
-        raw_text = self._normalize_text(element.get_text())
+        # Extract text content (use special extraction for figure elements)
+        if element.name == "figure":
+            raw_text = self._normalize_text(self._extract_figure_text(element))
+        else:
+            raw_text = self._normalize_text(element.get_text())
 
         # Skip segments that are too short
         if len(raw_text) < self.min_length:
@@ -527,6 +640,9 @@ class HTMLSegmenter:
             element, search_start=getattr(self, "_last_search_position", 0)
         )
 
+        # Generate CSS selector for DOM location (SEG10)
+        html_selector = self._generate_css_selector(element)
+
         # Build segment
         segment = SourceSegment(
             filing_id=filing_id,
@@ -536,6 +652,7 @@ class HTMLSegmenter:
             sequence_index=sequence_index,
             raw_text=raw_text,
             raw_html=raw_html,
+            html_selector=html_selector,
             char_start_offset=char_start,
             char_end_offset=char_end,
         )
@@ -712,6 +829,42 @@ class HTMLSegmenter:
 
         # Default to paragraph
         return "paragraph"
+
+    def _extract_figure_text(self, element: Tag) -> str:
+        """
+        Extract text from figure element including alt text and captions.
+
+        Combines:
+        - Alt text from <img> elements
+        - Text from <figcaption> elements
+        - Any other visible text in the figure
+
+        Args:
+            element: BeautifulSoup Tag element (figure)
+
+        Returns:
+            Combined text from figure element
+        """
+        texts = []
+
+        # Get alt text from all images
+        for img in element.find_all("img"):
+            alt = img.get("alt", "")
+            if alt and isinstance(alt, str):
+                texts.append(alt.strip())
+
+        # Get figcaption text
+        for figcaption in element.find_all("figcaption"):
+            caption_text = figcaption.get_text()
+            if caption_text:
+                texts.append(caption_text.strip())
+
+        # If we have specific extracted content, use it
+        if texts:
+            return " ".join(texts)
+
+        # Fallback to standard get_text() for any other text content
+        return element.get_text()
 
     def _is_footnote(self, element: Tag) -> bool:
         """Check if element is a footnote."""
@@ -1243,6 +1396,9 @@ class HTMLSegmenter:
                 li, search_start=getattr(self, "_last_search_position", 0)
             )
 
+            # Generate CSS selector for DOM location (SEG10)
+            html_selector = self._generate_css_selector(li)
+
             segment = SourceSegment(
                 filing_id=filing_id,
                 segment_type="list_item",
@@ -1251,6 +1407,7 @@ class HTMLSegmenter:
                 sequence_index=base_sequence + (i * 0.1),  # Fractional indices
                 raw_text=text,
                 raw_html=str(li)[: self.max_length],
+                html_selector=html_selector,
                 context_prefix=intro_text,  # Include intro as context
                 char_start_offset=char_start,
                 char_end_offset=char_end,

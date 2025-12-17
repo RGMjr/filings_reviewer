@@ -20,11 +20,15 @@
 - SEG1: Heading cache binary search
 - SEG11: Parallel sentence detection
 
-**Phase C - Features:** 🟡 **Pending** (0/4 items)
+**Phase C - Features:** 🟡 **In Progress** (3/4 items)
+- SEG5: Character offset tracking
+- SEG6: Hierarchical section paths
+- SEG8: Additional element types (blockquote, pre, figure)
 
 **Phase D - Polish:** 🟡 **Pending** (0/3 items)
 
 ### Recent Commits
+- `95a7feb` SEG8: Additional element types (Dec 17)
 - `3ad44c1` SEG11: Parallel sentence detection (Dec 16)
 - `d332a57` SEG1: Binary search for heading cache (Dec 16)
 - `1d5c4db` SEG4: Expand definition patterns (Dec 16)
@@ -231,7 +235,7 @@ DEFINITION_CONTINUATION_PATTERNS = [
 
 ### 6. Hierarchical Section Path Building (Feature) ✅ Complete
 
-**Status:** ✅ Complete (SEG6) - Commit: d59baa0 (2025-12-17)
+**Status:** ✅ Complete (SEG6) - Commit: de27f33 (2025-12-17)
 
 **Implementation:**
 - Added `_build_hierarchical_path()` method that walks backwards through heading cache
@@ -430,7 +434,7 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 |---|------|------|--------|--------|
 | 5 | Character offset tracking | 2.5 hr | Source tracking | ✅ Complete |
 | 6 | Hierarchical section paths | 3 hr | Navigation | ✅ Complete |
-| 8 | Additional element types | 1 hr | Coverage | 🟡 Pending |
+| 8 | Additional element types | 1 hr | Coverage | ✅ Complete |
 | 10 | HTML selector generation | 2 hr | UI highlighting | 🟡 Pending |
 
 **Total:** ~9 hours, improved feature set
