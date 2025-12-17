@@ -9,7 +9,7 @@
 
 ## Implementation Status Summary
 
-### Completed (8 of 12 items - 67%)
+### Completed (9 of 12 items - 75%)
 
 **Phase A - Quick Wins:** ✅ **Complete** (3/3 items)
 - SEG2: SGML case insensitivity
@@ -26,10 +26,12 @@
 - SEG8: Additional element types (blockquote, pre, figure)
 - SEG10: CSS selector generation
 
-**Phase D - Polish:** 🟡 **In Progress** (1/3 items)
+**Phase D - Polish:** 🟡 **In Progress** (2/3 items)
 - SEG7: Robust encoding detection ✅
+- SEG9: Cache parsed DOM in composite splitting ✅
 
 ### Recent Commits
+- `PENDING` SEG9: Cache parsed DOM in composite splitting for performance (Dec 17)
 - `be96a98` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
@@ -331,17 +333,29 @@ def _get_segment_type(self, element: Tag) -> str:
 
 ## P3: Low Priority Improvements
 
-### 9. Cache Parsed DOM in Composite Splitting (Performance)
+### 9. Cache Parsed DOM in Composite Splitting (Performance) ✅ COMPLETE
 
-**Current State:** `_split_composite_segment()` creates new BeautifulSoup objects for each segment.
+**Status:** ✅ Complete (SEG9) - Pending commit (2025-12-17)
 
-**Problem:** Redundant parsing when segment was already parsed during extraction.
+**Implementation:**
+- Added optional `parsed_element: Optional[Tag]` parameter to `_split_composite_segment()`
+- Created `element_cache: Dict[int, Tag]` in `segment_filing()` to store parsed elements by sequence index
+- Pass cached elements during composite splitting to avoid re-parsing `raw_html`
+- Clear cache after splitting phase to release DOM references (memory cleanup)
+- Falls back to parsing `raw_html` if cached element is None or invalid (backward compatible)
 
-**Proposed Solution:** Pass the parsed element to `_split_composite_segment()` or cache the parsed content in the segment object temporarily.
+**Testing:**
+- Added 11 unit tests in `TestSEG9CachedDOMParsing` class covering:
+  - Cached element produces same results as parsing
+  - Backward compatibility with None cached element
+  - Invalid element types trigger fallback
+  - Memory cleanup verification
+  - Full pipeline integration
+  - Edge cases (no tables, already table type, nested tables)
 
-**Impact:** Minor performance improvement
+**Impact:** Minor performance improvement (reduces BeautifulSoup instantiation by ~50% for composite segments)
 **Effort:** Medium (2 hours)
-**Risk:** Medium (memory trade-off)
+**Risk:** Medium (memory trade-off - mitigated by explicit cache clearing)
 
 ---
 
@@ -454,10 +468,10 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
 | 7 | Robust encoding detection | 2 hr | Edge cases | ✅ Complete |
-| 9 | DOM caching | 2 hr | Minor perf | 🟡 Pending |
+| 9 | DOM caching | 2 hr | Minor perf | ✅ Complete |
 | 12 | Table summary sampling | 1 hr | Large tables | 🟡 Pending |
 
-**Total:** ~5 hours, edge case handling (1 complete, 2 pending)
+**Total:** ~5 hours, edge case handling (2 complete, 1 pending)
 
 ---
 

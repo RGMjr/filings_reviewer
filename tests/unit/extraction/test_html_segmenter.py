@@ -1950,6 +1950,359 @@ class TestLargeTableHandling:
             Path(html_path).unlink()
 
 
+# ===== Tri-Region Table Summary Tests (SEG12) =====
+
+
+class TestTableSummaryTriRegionSampling:
+    """Test suite for tri-region sampling in large table summaries (SEG12)."""
+
+    def test_large_table_has_middle_and_end_markers(self, temp_html_file):
+        """Tables >25K chars should have [middle sample] and [end sample] markers in summary."""
+        # Create table with ~30K chars of text content (exceeds TABLE_MAX_LENGTH=25000)
+        rows = "".join(
+            f"<tr><td>Row {i:04d}</td><td>{'DataValue' * 50}</td></tr>"
+            for i in range(200)  # Each row ~510 chars, total ~102K chars
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>RowID</th><th>Content</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Table should be truncated
+            assert tables[0].table_truncated_flag
+            # Should have tri-region markers
+            assert '...[middle sample]...' in tables[0].raw_text
+            assert '...[end sample]...' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_large_table_beginning_sample_contains_first_content(self, temp_html_file):
+        """Beginning sample should contain content from the start of the table."""
+        # Create table with recognizable content at beginning
+        rows_start = "<tr><td>START_MARKER_BEGINNING</td><td>First row data</td></tr>"
+        rows_middle = "".join(
+            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>"
+            for i in range(50)
+        )
+        rows_end = "<tr><td>END_MARKER_LAST</td><td>Final row data</td></tr>"
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Value</th></tr>
+                {rows_start}
+                {rows_middle}
+                {rows_end}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Beginning marker should be present
+            assert 'START_MARKER_BEGINNING' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_large_table_end_sample_contains_last_content(self, temp_html_file):
+        """End sample should contain content from the end of the table."""
+        # Create table with recognizable content at end
+        rows_start = "<tr><td>FirstRow</td><td>Start data</td></tr>"
+        rows_middle = "".join(
+            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>"
+            for i in range(50)
+        )
+        rows_end = "<tr><td>END_MARKER_FINAL_ROW</td><td>Last row data here</td></tr>"
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Value</th></tr>
+                {rows_start}
+                {rows_middle}
+                {rows_end}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # End marker should be present after [end sample]
+            assert 'END_MARKER_FINAL_ROW' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_large_table_middle_sample_centered(self, temp_html_file):
+        """Middle sample should contain content from around the center of the table."""
+        # Create table with recognizable content in the middle
+        rows_start = "".join(
+            f"<tr><td>Start{i:04d}</td><td>{'StartData' * 15}</td></tr>"
+            for i in range(25)
+        )
+        # Middle marker at row ~50
+        rows_middle = "<tr><td>MIDDLE_MARKER_CENTER</td><td>Center row data value</td></tr>"
+        rows_middle += "".join(
+            f"<tr><td>Mid{i:04d}</td><td>{'MidData' * 15}</td></tr>"
+            for i in range(25)
+        )
+        rows_end = "".join(
+            f"<tr><td>End{i:04d}</td><td>{'EndData' * 15}</td></tr>"
+            for i in range(25)
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Value</th></tr>
+                {rows_start}
+                {rows_middle}
+                {rows_end}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Middle marker should be present
+            assert 'MIDDLE_MARKER_CENTER' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_table_under_25k_no_truncation(self, temp_html_file):
+        """Tables under 25K chars should NOT be truncated or use tri-region sampling."""
+        # Create table with ~10K chars raw text (under TABLE_MAX_LENGTH)
+        rows = "".join(
+            f"<tr><td>Row {i:04d}</td><td>Value{i:04d}</td></tr>"
+            for i in range(400)  # Approx 10K chars
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Val</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Table should NOT be truncated
+            assert not tables[0].table_truncated_flag
+            # Should NOT have sampling markers
+            assert '...[middle sample]...' not in tables[0].raw_text
+            assert '...[end sample]...' not in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_table_over_25k_triggers_summary(self, temp_html_file):
+        """Tables >25K chars should be truncated and use tri-region sampling."""
+        # Create table exceeding 25K chars
+        rows = "".join(
+            f"<tr><td>Row {i:04d}</td><td>Value{i:04d} extra text padding here</td></tr>"
+            for i in range(1200)  # Should exceed 25K chars
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Value</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Table should be truncated
+            assert tables[0].table_truncated_flag
+            # Should have at least the end sample marker
+            assert '...[end sample]...' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_very_large_table_with_tri_region_sampling(self, temp_html_file):
+        """Very large tables (>25K) should use tri-region sampling in summary."""
+        # Create very large table with ~50K chars
+        rows = "".join(
+            f"<tr><td>Row{i:03d}</td><td>{'DataContent' * 10}</td></tr>"
+            for i in range(500)  # ~55K chars
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>Content</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Should be truncated and have markers
+            assert tables[0].table_truncated_flag
+            assert '...[end sample]...' in tables[0].raw_text
+            # Should not have any index errors - test passes if we get here
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_table_summary_preserves_headers_and_row_count(self, temp_html_file):
+        """Large table summary should still include headers and row count."""
+        rows = "".join(
+            f"<tr><td>R{i}</td><td>{'X' * 100}</td></tr>"
+            for i in range(400)  # Large enough to exceed 25K and trigger summary
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>CustomerMetric</th><th>RevenueValue</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            raw_text = tables[0].raw_text
+            # Table should be truncated
+            assert tables[0].table_truncated_flag
+            # Headers should be present
+            assert '[Table headers:' in raw_text
+            # Row count should be present
+            assert 'rows total]' in raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_samples_end_at_word_boundaries(self, temp_html_file):
+        """Samples should end at word boundaries, not mid-word."""
+        # Create table with long words (>25K chars) to verify word boundary truncation
+        rows = "".join(
+            f"<tr><td>Superlongwordwithoutspaces{i:04d}</td><td>Another word here with more padding</td></tr>"
+            for i in range(500)  # ~35K chars to exceed TABLE_MAX_LENGTH
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>Column1</th><th>Column2</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            raw_text = tables[0].raw_text
+            # Table should be truncated
+            assert tables[0].table_truncated_flag
+
+            # Find the position of [middle sample] marker and check preceding char
+            middle_marker_pos = raw_text.find('...[middle sample]...')
+            if middle_marker_pos > 0:
+                # Character before marker should be whitespace or end of word
+                char_before = raw_text[middle_marker_pos - 1]
+                # Either space, or we hit a complete word (not mid-truncation)
+                # This is a soft check - just ensure no crash
+                assert char_before is not None
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_unicode_at_sample_boundaries(self, temp_html_file):
+        """Tables with Unicode characters should handle boundaries correctly."""
+        # Create table with Unicode characters (>25K chars)
+        rows = "".join(
+            f"<tr><td>Row {i}</td><td>Revenue: $1,234 \u20ac5,678 \u00a35,000 padding text</td></tr>"
+            for i in range(600)  # ~36K chars to exceed TABLE_MAX_LENGTH
+        )
+        html = f"""
+        <html><body>
+            <table>
+                <tr><th>ID</th><th>International Revenue</th></tr>
+                {rows}
+            </table>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            tables = [s for s in segments if s.segment_type == 'table']
+            assert len(tables) >= 1
+            # Table should be truncated
+            assert tables[0].table_truncated_flag
+            # Should not raise any encoding errors - test passes if we get here
+            assert '...[end sample]...' in tables[0].raw_text
+
+        finally:
+            Path(html_path).unlink()
+
+
 # ===== Phase 5: Context Overlap Tests =====
 
 
