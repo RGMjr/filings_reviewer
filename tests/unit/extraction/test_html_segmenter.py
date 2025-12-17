@@ -3126,3 +3126,862 @@ class TestHierarchicalSectionPath:
         assert "..." in section_path
         # section_heading should still be the original nearest heading
         assert section_heading == long_text_3
+
+
+# =============================================================================
+# SEG8: Additional Element Types (blockquote, pre, figure)
+# =============================================================================
+
+
+class TestBlockquoteExtraction:
+    """Test blockquote element extraction (SEG8)."""
+
+    def test_simple_blockquote_extracts_as_segment(self, temp_html_file):
+        """Simple blockquote with text extracts as segment with type 'blockquote'."""
+        html = """
+        <html><body>
+            <blockquote>
+                This is a quoted disclosure about our customer metrics that is long enough to pass the minimum segment length requirement.
+            </blockquote>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            assert len(segments) >= 1
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert len(blockquotes) == 1
+            assert "quoted disclosure" in blockquotes[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_blockquote_with_nested_paragraphs_extracts_as_single_segment(self, temp_html_file):
+        """Blockquote with nested <p> elements extracts as single segment (not multiple)."""
+        html = """
+        <html><body>
+            <blockquote>
+                <p>First paragraph of the quoted material about our customer retention metrics.</p>
+                <p>Second paragraph continuing the disclosure about our annual recurring revenue.</p>
+            </blockquote>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            # Should have one blockquote segment containing both paragraphs
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert len(blockquotes) == 1
+            assert "customer retention" in blockquotes[0].raw_text
+            assert "recurring revenue" in blockquotes[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_blockquote_inside_table_is_skipped(self, temp_html_file):
+        """Blockquote inside table is skipped (not extracted separately)."""
+        html = """
+        <html><body>
+            <table>
+                <tr>
+                    <td>
+                        <blockquote>This blockquote is inside a table cell and should not be extracted separately.</blockquote>
+                    </td>
+                </tr>
+                <tr><td>Regular table data with enough content to pass the minimum segment length requirement.</td></tr>
+            </table>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+            # Should have table segment, no separate blockquote segment
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert len(blockquotes) == 0
+
+            tables = [s for s in segments if s.segment_type == "table"]
+            assert len(tables) >= 1
+            # Table should contain the blockquote text
+            assert "inside a table cell" in tables[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_blockquote_extracts_outer_only(self, temp_html_file):
+        """Nested blockquote inside blockquote extracts outer only."""
+        html = """
+        <html><body>
+            <blockquote>
+                This is the outer blockquote containing important disclosure information about our metrics.
+                <blockquote>
+                    This is the inner nested blockquote with additional commentary on our customer base.
+                </blockquote>
+            </blockquote>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=4, html_path=html_path)
+
+            # Should have only one blockquote segment (outer)
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert len(blockquotes) == 1
+            # Outer should contain both texts
+            assert "outer blockquote" in blockquotes[0].raw_text
+            assert "inner nested blockquote" in blockquotes[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_blockquote_with_citation(self, temp_html_file):
+        """Blockquote with <cite> element inside extracts correctly."""
+        html = """
+        <html><body>
+            <blockquote>
+                We define monthly active users as users who have logged in at least once during the month.
+                <cite>- Company Management Discussion and Analysis</cite>
+            </blockquote>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
+
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert len(blockquotes) == 1
+            assert "monthly active users" in blockquotes[0].raw_text
+            assert "Company Management" in blockquotes[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+
+class TestPreformattedTextExtraction:
+    """Test preformatted text (<pre>) element extraction (SEG8)."""
+
+    def test_pre_element_extracts_as_preformatted(self, temp_html_file):
+        """<pre> element extracts as segment with type 'preformatted'."""
+        html = """
+        <html><body>
+            <pre>
+                Financial Summary:
+                Revenue:     $10,000,000
+                Expenses:    $ 5,000,000
+                Net Income:  $ 5,000,000
+            </pre>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert len(preformatted) == 1
+            assert "Financial Summary" in preformatted[0].raw_text
+            assert "Revenue" in preformatted[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_pre_whitespace_normalized(self, temp_html_file):
+        """Whitespace in <pre> is normalized (consistent with other text handling)."""
+        html = """
+        <html><body>
+            <pre>
+                Line 1 with    multiple    spaces and enough content
+                Line 2 with
+                newlines in between and additional text
+                Line 3 with more content to ensure sufficient segment length
+            </pre>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert len(preformatted) == 1
+            # Whitespace should be normalized
+            assert "    " not in preformatted[0].raw_text  # No quad spaces
+        finally:
+            Path(html_path).unlink()
+
+    def test_pre_with_code_content(self, temp_html_file):
+        """<pre> with code/data content extracts correctly."""
+        html = """
+        <html><body>
+            <pre>
+            Customer Metric Definitions:
+            DAU = Daily Active Users (users who log in at least once per day)
+            MAU = Monthly Active Users (users who log in at least once per month)
+            NRR = Net Revenue Retention (recurring revenue from existing customers)
+            </pre>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert len(preformatted) == 1
+            assert "Daily Active Users" in preformatted[0].raw_text
+            assert "Net Revenue Retention" in preformatted[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_pre_with_only_whitespace_skipped(self, temp_html_file):
+        """<pre> with only whitespace is skipped (below min_length)."""
+        html = """
+        <html><body>
+            <pre>
+
+
+            </pre>
+            <p>This paragraph has enough content to pass the minimum segment length requirement.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=4, html_path=html_path)
+
+            # Should only have paragraph, no preformatted segment
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert len(preformatted) == 0
+
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            assert len(paragraphs) >= 1
+        finally:
+            Path(html_path).unlink()
+
+    def test_pre_inside_table_is_skipped(self, temp_html_file):
+        """<pre> inside table is skipped (not extracted separately)."""
+        html = """
+        <html><body>
+            <table>
+                <tr>
+                    <td>
+                        <pre>Preformatted content inside table cell with sufficient length content.</pre>
+                    </td>
+                </tr>
+                <tr><td>Regular table data with enough content to pass the minimum segment length.</td></tr>
+            </table>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
+
+            # Should have table segment, no separate preformatted segment
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert len(preformatted) == 0
+
+            tables = [s for s in segments if s.segment_type == "table"]
+            assert len(tables) >= 1
+        finally:
+            Path(html_path).unlink()
+
+
+class TestFigureElementExtraction:
+    """Test figure element extraction (SEG8)."""
+
+    def test_figure_with_figcaption_extracts_caption(self, temp_html_file):
+        """<figure> with <figcaption> extracts caption text as segment with type 'figure'."""
+        html = """
+        <html><body>
+            <figure>
+                <img src="chart.png" />
+                <figcaption>Figure 1: Customer growth metrics showing significant year-over-year growth in active users.</figcaption>
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 1
+            assert "Customer growth metrics" in figures[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_figure_with_img_alt_extracts_alt_text(self, temp_html_file):
+        """<figure> with <img alt="..."> extracts alt text."""
+        html = """
+        <html><body>
+            <figure>
+                <img src="revenue_chart.png" alt="Bar chart showing revenue growth from $5M in 2022 to $15M in 2024" />
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 1
+            assert "revenue growth" in figures[0].raw_text.lower()
+        finally:
+            Path(html_path).unlink()
+
+    def test_figure_combines_alt_and_caption(self, temp_html_file):
+        """<figure> with both image alt and figcaption combines both texts."""
+        html = """
+        <html><body>
+            <figure>
+                <img src="metrics.png" alt="Quarterly customer metrics visualization chart" />
+                <figcaption>Figure 2: Monthly active users grew 45% year over year during fiscal 2024.</figcaption>
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 1
+            # Should contain both alt text and caption
+            assert "customer metrics" in figures[0].raw_text.lower()
+            assert "active users grew" in figures[0].raw_text.lower()
+        finally:
+            Path(html_path).unlink()
+
+    def test_empty_figure_image_only_skipped(self, temp_html_file):
+        """Empty figure (image only, no text) is skipped (below min_length)."""
+        html = """
+        <html><body>
+            <figure>
+                <img src="image.png" />
+            </figure>
+            <p>This paragraph has enough content to pass the minimum segment length requirement.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=4, html_path=html_path)
+
+            # Should only have paragraph, no figure segment (no text)
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 0
+
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            assert len(paragraphs) >= 1
+        finally:
+            Path(html_path).unlink()
+
+    def test_figure_with_multiple_images_combines_alt_texts(self, temp_html_file):
+        """<figure> with multiple images combines all alt texts."""
+        html = """
+        <html><body>
+            <figure>
+                <img src="chart1.png" alt="Revenue growth chart showing quarterly trends" />
+                <img src="chart2.png" alt="Customer acquisition cost breakdown by channel" />
+                <figcaption>Figures showing key business metrics and financial performance.</figcaption>
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
+
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 1
+            # Should contain alt text from both images and caption
+            assert "Revenue growth" in figures[0].raw_text
+            assert "acquisition cost" in figures[0].raw_text
+            assert "business metrics" in figures[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_figure_extracts_outer_only(self, temp_html_file):
+        """Nested figure inside figure extracts outer only."""
+        html = """
+        <html><body>
+            <figure>
+                <figcaption>Outer figure caption with customer metrics overview and summary.</figcaption>
+                <figure>
+                    <figcaption>Inner nested figure caption with additional detail information.</figcaption>
+                </figure>
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=6, html_path=html_path)
+
+            # Should have only one figure segment (outer)
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 1
+            # Outer should contain both captions
+            assert "Outer figure" in figures[0].raw_text
+            assert "Inner nested" in figures[0].raw_text
+        finally:
+            Path(html_path).unlink()
+
+    def test_figure_inside_table_is_skipped(self, temp_html_file):
+        """<figure> inside table is skipped (not extracted separately)."""
+        html = """
+        <html><body>
+            <table>
+                <tr>
+                    <td>
+                        <figure>
+                            <figcaption>Figure inside table cell with caption text.</figcaption>
+                        </figure>
+                    </td>
+                </tr>
+                <tr><td>Regular table data with enough content to pass the minimum segment length.</td></tr>
+            </table>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=7, html_path=html_path)
+
+            # Should have table segment, no separate figure segment
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert len(figures) == 0
+
+            tables = [s for s in segments if s.segment_type == "table"]
+            assert len(tables) >= 1
+        finally:
+            Path(html_path).unlink()
+
+
+class TestSEG8Integration:
+    """Integration tests for SEG8 new element types."""
+
+    def test_full_document_with_all_new_element_types(self, temp_html_file):
+        """Full document with all new element types extracts correctly."""
+        html = """
+        <html><body>
+            <h1>Business Overview</h1>
+            <p>We are a technology company providing cloud services to enterprise customers worldwide.</p>
+
+            <blockquote>
+                Management believes that daily active users is a key indicator of customer engagement.
+            </blockquote>
+
+            <pre>
+            Key Metrics Summary:
+            - Daily Active Users: 500,000
+            - Monthly Active Users: 2,000,000
+            - Annual Recurring Revenue: $50M
+            </pre>
+
+            <figure>
+                <img src="growth.png" alt="Chart showing 45% year-over-year growth in users" />
+                <figcaption>Figure 1: User growth trajectory from 2022 to 2024 fiscal years.</figcaption>
+            </figure>
+
+            <p>We continue to invest in customer acquisition and retention strategies for growth.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have multiple segment types
+            segment_types = set(s.segment_type for s in segments)
+
+            assert "paragraph" in segment_types
+            assert "blockquote" in segment_types
+            assert "preformatted" in segment_types
+            assert "figure" in segment_types
+
+            # Verify segment content
+            blockquotes = [s for s in segments if s.segment_type == "blockquote"]
+            assert any("key indicator" in s.raw_text for s in blockquotes)
+
+            preformatted = [s for s in segments if s.segment_type == "preformatted"]
+            assert any("Key Metrics Summary" in s.raw_text for s in preformatted)
+
+            figures = [s for s in segments if s.segment_type == "figure"]
+            assert any("growth trajectory" in s.raw_text.lower() for s in figures)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_new_element_types_have_section_heading(self, temp_html_file):
+        """New element types inherit section heading like other elements."""
+        html = """
+        <html><body>
+            <h1>Risk Factors</h1>
+            <blockquote>
+                We may experience fluctuations in our quarterly operating results due to various factors.
+            </blockquote>
+            <pre>
+            Risk Categories:
+            - Market Risk
+            - Operational Risk
+            - Regulatory Risk
+            </pre>
+            <figure>
+                <figcaption>Figure showing historical risk exposure metrics by category over time.</figcaption>
+            </figure>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            # All segments should have the section heading
+            for segment in segments:
+                if segment.segment_type in ("blockquote", "preformatted", "figure"):
+                    assert segment.section_heading == "Risk Factors"
+
+        finally:
+            Path(html_path).unlink()
+
+
+# =============================================================================
+# SEG10: CSS Selector Generation Tests
+# =============================================================================
+
+
+class TestCSSSelector:
+    """Test suite for CSS selector generation (SEG10).
+
+    Tests the generation of CSS selector paths that uniquely identify
+    each segment's source element in the original HTML document.
+    """
+
+    def test_element_with_id_returns_id_selector(self):
+        """Element with ID returns #id selector."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<div><p id="intro">Content</p></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        assert selector == "#intro"
+
+    def test_element_with_class_returns_tag_dot_class(self):
+        """Element with class returns tag.classname selector."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<div><p class="disclosure summary">Content</p></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Should use first class only
+        assert "p.disclosure" in selector
+
+    def test_element_without_id_or_class_uses_nth_of_type(self):
+        """Element without ID or class uses tag:nth-of-type(n)."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<div><p>First</p><p>Second</p><p>Third</p></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        paragraphs = soup.find_all("p")
+
+        # First paragraph
+        selector1 = segmenter._generate_css_selector(paragraphs[0])
+        assert "p:nth-of-type(1)" in selector1
+
+        # Third paragraph
+        selector3 = segmenter._generate_css_selector(paragraphs[2])
+        assert "p:nth-of-type(3)" in selector3
+
+    def test_multiple_classes_uses_first_only(self):
+        """Element with multiple classes uses only the first class."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<p class="primary secondary tertiary">Content</p>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._element_selector(element)
+        assert selector == "p.primary"
+
+    def test_path_builds_from_element_to_root(self):
+        """Selector path builds from element toward root."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<html><body><div class="content"><p>Nested paragraph</p></div></body></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Should contain path with > separators
+        assert " > " in selector
+        # Should include div and p
+        assert "div.content" in selector
+        assert "p:nth-of-type(1)" in selector
+
+    def test_path_terminates_at_id_element(self):
+        """Selector path terminates at first element with ID."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<html><body><div id="main"><section><p>Deep content</p></section></div></body></html>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Should start with #main (the ID element)
+        assert selector.startswith("#main")
+        # Should not include body or html
+        assert "body" not in selector
+        assert "html" not in selector
+
+    def test_path_limited_to_six_levels(self):
+        """Selector path is limited to 6 levels maximum."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        # Create deeply nested HTML (8 levels)
+        html = """
+        <html><body>
+            <div><div><div><div><div><div><div><div>
+                <p>Very deeply nested</p>
+            </div></div></div></div></div></div></div></div>
+        </body></html>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Count the number of > separators (should be at most 5 for 6 parts)
+        parts = selector.split(" > ")
+        assert len(parts) <= 6
+
+    def test_uses_direct_descendant_combinator(self):
+        """Selector uses ' > ' (direct descendant combinator)."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<div class="outer"><div class="inner"><p>Content</p></div></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Should use direct descendant combinator
+        assert " > " in selector
+        # Should not use space-only (descendant combinator)
+        parts = selector.split(" > ")
+        assert all(part.strip() for part in parts)
+
+    def test_special_characters_in_id_escaped(self):
+        """Special characters in ID are escaped for CSS."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<p id="section:1.2">Content</p>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Colon and period should be escaped
+        assert "\\:" in selector or "\\." in selector
+
+    def test_special_characters_in_class_escaped(self):
+        """Special characters in class are escaped for CSS."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<p class="item:value">Content</p>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._element_selector(element)
+        # Colon should be escaped
+        assert "\\:" in selector
+
+    def test_root_element_returns_single_selector(self):
+        """Root element (no ancestors) returns just the element's selector."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = '<p id="root">Solo element</p>'
+        soup = BeautifulSoup(html, "html.parser")
+        element = soup.find("p")
+
+        selector = segmenter._generate_css_selector(element)
+        # Should just be the ID selector
+        assert selector == "#root"
+
+    def test_invalid_element_returns_none(self):
+        """Invalid or None element returns None."""
+        segmenter = HTMLSegmenter()
+
+        # None element
+        assert segmenter._generate_css_selector(None) is None
+
+        # NavigableString (not Tag) - simulate
+        from bs4 import BeautifulSoup
+
+        html = '<p>Text content</p>'
+        soup = BeautifulSoup(html, "html.parser")
+        text_node = soup.find("p").string  # This is a NavigableString
+
+        result = segmenter._generate_css_selector(text_node)
+        assert result is None
+
+    def test_table_cell_includes_table_and_row(self):
+        """Table cell selector includes parent tr and table in path."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table id="financials">
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>Revenue</td><td>$10M</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        # Get the data cell with "$10M"
+        cell = soup.find_all("td")[1]
+
+        selector = segmenter._generate_css_selector(cell)
+        # Should start at the table ID
+        assert selector.startswith("#financials")
+        # Should include the row
+        assert "tr" in selector
+        # Should include the cell
+        assert "td" in selector
+
+    def test_list_item_selector_specific_to_item(self):
+        """List item gets specific selector, not just parent list."""
+        segmenter = HTMLSegmenter()
+        from bs4 import BeautifulSoup
+
+        html = """
+        <ul id="features">
+            <li>First feature</li>
+            <li>Second feature</li>
+            <li>Third feature</li>
+        </ul>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        list_items = soup.find_all("li")
+
+        # Second list item should have nth-of-type(2)
+        selector = segmenter._generate_css_selector(list_items[1])
+        assert "#features" in selector
+        assert "li:nth-of-type(2)" in selector
+
+    def test_full_segmentation_populates_html_selector(self, temp_html_file):
+        """Full segment_filing() populates html_selector for all segments."""
+        html = """
+        <html><body>
+            <h1>Prospectus Summary</h1>
+            <p id="intro">We are a leading technology company with innovative products and services.</p>
+            <p class="metrics">Our key metrics include daily active users and revenue per user growth.</p>
+            <table id="data">
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>DAU</td><td>1,500,000</td></tr>
+            </table>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # All segments should have html_selector populated
+            for segment in segments:
+                assert segment.html_selector is not None, f"Segment missing selector: {segment.raw_text[:50]}"
+                # Selector should be valid CSS syntax (contains expected patterns)
+                assert any(
+                    pattern in segment.html_selector
+                    for pattern in ["#", ".", "nth-of-type"]
+                ), f"Invalid selector format: {segment.html_selector}"
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_selectors_are_distinct_for_different_elements(self, temp_html_file):
+        """Different segments have distinct selectors (for unique elements)."""
+        html = """
+        <html><body>
+            <div class="content">
+                <p>First paragraph with enough text to meet minimum length requirements for extraction.</p>
+                <p>Second paragraph with different content and sufficient text length as well.</p>
+                <p>Third paragraph also with enough text to be extracted as a separate segment.</p>
+            </div>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=30)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            # Get paragraph segments
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+
+            # Selectors should be unique
+            selectors = [p.html_selector for p in paragraphs]
+            assert len(selectors) == len(set(selectors)), "Selectors should be unique for different elements"
+
+            # Should have different nth-of-type values
+            assert any("nth-of-type(1)" in s for s in selectors)
+            assert any("nth-of-type(2)" in s for s in selectors)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_escape_css_identifier_special_chars(self):
+        """Test _escape_css_identifier handles various special characters."""
+        segmenter = HTMLSegmenter()
+
+        # Colon
+        assert segmenter._escape_css_identifier("section:1") == "section\\:1"
+
+        # Period
+        assert segmenter._escape_css_identifier("item.1") == "item\\.1"
+
+        # Brackets
+        assert segmenter._escape_css_identifier("arr[0]") == "arr\\[0\\]"
+
+        # Parentheses
+        assert segmenter._escape_css_identifier("func(x)") == "func\\(x\\)"
+
+        # Space
+        assert segmenter._escape_css_identifier("my id") == "my\\ id"
+
+        # Multiple special chars
+        assert segmenter._escape_css_identifier("a:b.c[d]") == "a\\:b\\.c\\[d\\]"
