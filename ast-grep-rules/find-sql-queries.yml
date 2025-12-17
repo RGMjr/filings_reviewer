@@ -1,0 +1,11 @@
+# Find all SQL query executions
+# Usage: ast-grep scan --rule ast-grep-rules/find-sql-queries.yml src/
+id: find-sql-queries
+language: python
+severity: hint
+message: "SQL query execution"
+rule:
+  any:
+    - pattern: cursor.execute($$$)
+    - pattern: conn.execute($$$)
+    - pattern: $CONN.execute($$$)

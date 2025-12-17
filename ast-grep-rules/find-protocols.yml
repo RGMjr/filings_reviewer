@@ -1,0 +1,8 @@
+# Find all Protocol definitions (interfaces)
+# Usage: ast-grep scan --rule ast-grep-rules/find-protocols.yml src/
+id: find-protocols
+language: python
+severity: hint
+message: "Protocol interface: $NAME"
+rule:
+  pattern: "class $NAME(Protocol):"

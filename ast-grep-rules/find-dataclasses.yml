@@ -1,0 +1,11 @@
+# Find all dataclass definitions
+# Usage: ast-grep scan --rule ast-grep-rules/find-dataclasses.yml src/
+id: find-dataclasses
+language: python
+severity: hint
+message: "Dataclass: $NAME"
+rule:
+  pattern: |
+    @dataclass
+    class $NAME:
+        $$$BODY
