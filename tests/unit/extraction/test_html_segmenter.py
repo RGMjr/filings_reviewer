@@ -1920,7 +1920,7 @@ class TestHeadingCacheBinarySearch:
         assert result == ("First Heading", "First Heading")
 
     def test_element_between_headings(self):
-        """Element between headings returns preceding heading."""
+        """Element between headings returns hierarchical path and nearest heading (SEG6)."""
         segmenter = HTMLSegmenter()
         segmenter._heading_cache = [
             (100, 1, "First Heading"),
@@ -1928,17 +1928,19 @@ class TestHeadingCacheBinarySearch:
             (300, 3, "Third Heading"),
         ]
         result = segmenter._get_section_from_cache(None, element_position=250)
-        assert result == ("Second Heading", "Second Heading")
+        # section_path includes hierarchy (h1 > h2), section_heading is just nearest
+        assert result == ("First Heading > Second Heading", "Second Heading")
 
     def test_element_after_last_heading(self):
-        """Element after last heading returns last heading."""
+        """Element after last heading returns hierarchical path and nearest heading (SEG6)."""
         segmenter = HTMLSegmenter()
         segmenter._heading_cache = [
             (100, 1, "First Heading"),
             (200, 2, "Last Heading"),
         ]
         result = segmenter._get_section_from_cache(None, element_position=500)
-        assert result == ("Last Heading", "Last Heading")
+        # section_path includes hierarchy (h1 > h2), section_heading is just nearest
+        assert result == ("First Heading > Last Heading", "Last Heading")
 
     def test_single_heading_in_cache(self):
         """Single heading with element after it."""
@@ -1976,14 +1978,15 @@ class TestHeadingCacheBinarySearch:
         assert result == ("First Heading", "First Heading")
 
     def test_boundary_condition_just_after_heading(self):
-        """Element just after a heading position returns that heading."""
+        """Element just after a heading position returns hierarchical path and nearest heading (SEG6)."""
         segmenter = HTMLSegmenter()
         segmenter._heading_cache = [
             (100, 1, "First Heading"),
             (200, 2, "Second Heading"),
         ]
         result = segmenter._get_section_from_cache(None, element_position=201)
-        assert result == ("Second Heading", "Second Heading")
+        # section_path includes hierarchy (h1 > h2), section_heading is just nearest
+        assert result == ("First Heading > Second Heading", "Second Heading")
 
     def test_metadata_headings_filtered_in_cache(self, temp_html_file):
         """Metadata headings should be filtered out during cache building.
@@ -2635,3 +2638,491 @@ class TestCharacterOffsetTracking:
 
         finally:
             Path(html_path).unlink()
+
+
+# ===== SEG6: Hierarchical Section Path Tests =====
+
+
+class TestHierarchicalSectionPath:
+    """Test hierarchical section path building (SEG6)."""
+
+    @pytest.fixture
+    def temp_html_file(self):
+        """Create a temporary HTML file for testing."""
+        def _create_temp_file(html_content: str) -> str:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+                f.write(html_content)
+                return f.name
+        return _create_temp_file
+
+    # --- Basic Hierarchy Tests ---
+
+    def test_two_level_hierarchy(self, temp_html_file):
+        """Two-level hierarchy: h1 → h2 produces 'H1 > H2'."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Customers</h2>
+            <p>We have over 10,000 enterprise customers who use our platform for mission critical operations.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            content_segments = [s for s in segments if "enterprise customers" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            assert seg.section_path == "Item 1. Business > Customers"
+            assert seg.section_heading == "Customers"
+        finally:
+            Path(html_path).unlink()
+
+    def test_three_level_hierarchy(self, temp_html_file):
+        """Three-level hierarchy: h1 → h2 → h3 produces 'H1 > H2 > H3'."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Customers</h2>
+            <h3>Growth Metrics</h3>
+            <p>Our customer base has grown significantly with over 50,000 active users using our platform daily.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=2, html_path=html_path)
+
+            content_segments = [s for s in segments if "active users" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            assert seg.section_path == "Item 1. Business > Customers > Growth Metrics"
+            assert seg.section_heading == "Growth Metrics"
+        finally:
+            Path(html_path).unlink()
+
+    def test_single_heading_path_equals_heading(self, temp_html_file):
+        """Single heading: path equals heading (no hierarchy to build)."""
+        html = """
+        <html><body>
+            <h2>Business Overview</h2>
+            <p>We are a leading provider of enterprise software solutions serving customers worldwide consistently.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=3, html_path=html_path)
+
+            content_segments = [s for s in segments if "enterprise software" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            # With only one heading, path = heading
+            assert seg.section_path == "Business Overview"
+            assert seg.section_heading == "Business Overview"
+        finally:
+            Path(html_path).unlink()
+
+    def test_no_preceding_heading_returns_none(self, temp_html_file):
+        """Element before any heading: returns (None, None)."""
+        html = """
+        <html><body>
+            <p>This introductory content appears before any heading in the document structure and has no section.</p>
+            <h2>First Heading</h2>
+            <p>Content after heading with sufficient length for testing purposes.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=4, html_path=html_path)
+
+            intro_segments = [s for s in segments if "introductory content" in s.raw_text.lower()]
+            if intro_segments:
+                seg = intro_segments[0]
+                assert seg.section_path is None
+                assert seg.section_heading is None
+        finally:
+            Path(html_path).unlink()
+
+    # --- Level Reset Tests ---
+
+    def test_level_reset_h1_clears_hierarchy(self, temp_html_file):
+        """h1 → h2 → h1 → h3: element after second h1 gets 'H1b > H3' (first h1 not included)."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Overview</h2>
+            <p>First section content that discusses our business overview in sufficient detail.</p>
+            <h1>Item 2. Risk Factors</h1>
+            <h3>Market Risk</h3>
+            <p>There are significant market risks that could affect our financial performance going forward.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
+
+            risk_segments = [s for s in segments if "market risks" in s.raw_text.lower()]
+            assert len(risk_segments) >= 1
+
+            seg = risk_segments[0]
+            # After second h1, hierarchy resets - should NOT include Item 1 or Overview
+            assert seg.section_path == "Item 2. Risk Factors > Market Risk"
+            assert seg.section_heading == "Market Risk"
+        finally:
+            Path(html_path).unlink()
+
+    def test_level_reset_same_level_uses_latest(self, temp_html_file):
+        """h1 → h2 → h2: element after second h2 gets 'H1 > H2b' (first h2 not included)."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>First Section</h2>
+            <p>Content in first section with enough text for segment extraction purposes.</p>
+            <h2>Second Section</h2>
+            <p>Content in second section that should reference only Item 1 and Second Section headings.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=6, html_path=html_path)
+
+            second_segments = [s for s in segments if "second section" in s.raw_text.lower()]
+            assert len(second_segments) >= 1
+
+            seg = second_segments[0]
+            assert seg.section_path == "Item 1. Business > Second Section"
+            assert seg.section_heading == "Second Section"
+        finally:
+            Path(html_path).unlink()
+
+    def test_skipped_levels_preserved(self, temp_html_file):
+        """h1 → h4 → h5: skipped levels produce 'H1 > H4 > H5' (no phantom h2/h3)."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h4>Detailed Subsection</h4>
+            <h5>Deep Nested Content</h5>
+            <p>This content is deeply nested but skips h2 and h3 levels in the heading hierarchy.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=7, html_path=html_path)
+
+            content_segments = [s for s in segments if "deeply nested" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            assert seg.section_path == "Item 1. Business > Detailed Subsection > Deep Nested Content"
+            assert seg.section_heading == "Deep Nested Content"
+        finally:
+            Path(html_path).unlink()
+
+    def test_higher_level_after_lower_resets(self, temp_html_file):
+        """h1 → h3 → h2: element after h2 gets 'H1 > H2' (h3 excluded as it's lower level)."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h3>Subsection Details</h3>
+            <p>Content under h3 heading with sufficient text for segment processing.</p>
+            <h2>Main Section</h2>
+            <p>Content under h2 should not include the h3 since h2 is at a higher level in hierarchy.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=8, html_path=html_path)
+
+            main_segments = [s for s in segments if "higher level" in s.raw_text.lower()]
+            assert len(main_segments) >= 1
+
+            seg = main_segments[0]
+            # h3 should not be in path since h2 resets it
+            assert seg.section_path == "Item 1. Business > Main Section"
+            assert seg.section_heading == "Main Section"
+        finally:
+            Path(html_path).unlink()
+
+    # --- Separator and Formatting Tests ---
+
+    def test_path_uses_correct_separator(self, temp_html_file):
+        """Path uses ' > ' as separator (with spaces)."""
+        html = """
+        <html><body>
+            <h1>Part I</h1>
+            <h2>Section A</h2>
+            <p>Content that should have path with correct separator between heading levels.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=9, html_path=html_path)
+
+            content_segments = [s for s in segments if "correct separator" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            # Verify separator is " > " not ">" or " - " etc
+            assert " > " in seg.section_path
+            assert seg.section_path == "Part I > Section A"
+        finally:
+            Path(html_path).unlink()
+
+    def test_unicode_headings_preserved(self, temp_html_file):
+        """Unicode characters in headings are preserved correctly."""
+        html = """
+        <html><body>
+            <h1>第一部分</h1>
+            <h2>Résumé des Activités</h2>
+            <p>This content has unicode headings that should be preserved correctly in the section path output.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=10, html_path=html_path)
+
+            content_segments = [s for s in segments if "unicode headings" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            assert "第一部分" in seg.section_path
+            assert "Résumé des Activités" in seg.section_path
+        finally:
+            Path(html_path).unlink()
+
+    def test_heading_with_separator_in_text(self, temp_html_file):
+        """Heading containing ' > ' in its text should not break parsing."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Revenue > $100M Target</h2>
+            <p>Content under a heading that contains the separator character in its actual text value.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=11, html_path=html_path)
+
+            content_segments = [s for s in segments if "separator character" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            # Path should still work even with > in heading text
+            assert seg.section_path == "Item 1. Business > Revenue > $100M Target"
+            assert seg.section_heading == "Revenue > $100M Target"
+        finally:
+            Path(html_path).unlink()
+
+    # --- Edge Cases ---
+
+    def test_all_same_level_headings(self, temp_html_file):
+        """All same level (h2, h2, h2): each segment gets just nearest h2."""
+        html = """
+        <html><body>
+            <h2>Section One</h2>
+            <p>Content in section one with sufficient text for segment processing operations.</p>
+            <h2>Section Two</h2>
+            <p>Content in section two should only reference Section Two not Section One in path.</p>
+            <h2>Section Three</h2>
+            <p>Content in section three should only reference Section Three heading in the path.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=12, html_path=html_path)
+
+            sec_two_segments = [s for s in segments if "section two should" in s.raw_text.lower()]
+            sec_three_segments = [s for s in segments if "section three should" in s.raw_text.lower()]
+
+            if sec_two_segments:
+                assert sec_two_segments[0].section_path == "Section Two"
+                assert sec_two_segments[0].section_heading == "Section Two"
+
+            if sec_three_segments:
+                assert sec_three_segments[0].section_path == "Section Three"
+                assert sec_three_segments[0].section_heading == "Section Three"
+        finally:
+            Path(html_path).unlink()
+
+    def test_deep_nesting_all_levels(self, temp_html_file):
+        """Deep nesting (h1 → h2 → h3 → h4 → h5 → h6): all levels included."""
+        html = """
+        <html><body>
+            <h1>Level 1</h1>
+            <h2>Level 2</h2>
+            <h3>Level 3</h3>
+            <h4>Level 4</h4>
+            <h5>Level 5</h5>
+            <h6>Level 6</h6>
+            <p>This deeply nested content should have all six heading levels in its section path value.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=13, html_path=html_path)
+
+            content_segments = [s for s in segments if "deeply nested content" in s.raw_text.lower()]
+            assert len(content_segments) >= 1
+
+            seg = content_segments[0]
+            expected_path = "Level 1 > Level 2 > Level 3 > Level 4 > Level 5 > Level 6"
+            assert seg.section_path == expected_path
+            assert seg.section_heading == "Level 6"
+        finally:
+            Path(html_path).unlink()
+
+    def test_element_between_h1_and_h2(self, temp_html_file):
+        """Element between h1 and first h2 (path = just h1)."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <p>This introductory paragraph appears directly under h1 before any h2 subheadings appear.</p>
+            <h2>Overview</h2>
+            <p>This paragraph appears under the h2 Overview heading with full path to display.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=14, html_path=html_path)
+
+            intro_segments = [s for s in segments if "introductory paragraph" in s.raw_text.lower()]
+            overview_segments = [s for s in segments if "under the h2 overview" in s.raw_text.lower()]
+
+            if intro_segments:
+                seg = intro_segments[0]
+                # Only h1 in path - no h2 yet
+                assert seg.section_path == "Item 1. Business"
+                assert seg.section_heading == "Item 1. Business"
+
+            if overview_segments:
+                seg = overview_segments[0]
+                assert seg.section_path == "Item 1. Business > Overview"
+                assert seg.section_heading == "Overview"
+        finally:
+            Path(html_path).unlink()
+
+    # --- Integration Tests ---
+
+    def test_full_segment_filing_hierarchical_paths(self, temp_html_file):
+        """Full segment_filing() produces correct hierarchical paths for multiple segments."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Customers</h2>
+            <p>We serve over 10,000 enterprise customers across multiple industries worldwide consistently.</p>
+            <h2>Revenue</h2>
+            <h3>Subscription Revenue</h3>
+            <p>Our subscription revenue model provides predictable recurring income from customers annually.</p>
+            <h1>Item 2. Risk Factors</h1>
+            <h2>Market Risks</h2>
+            <p>We face significant market risks including competitive pressure from larger technology companies.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=15, html_path=html_path)
+
+            # Find segments by content
+            customer_segs = [s for s in segments if "enterprise customers" in s.raw_text.lower()]
+            revenue_segs = [s for s in segments if "subscription revenue model" in s.raw_text.lower()]
+            risk_segs = [s for s in segments if "market risks including" in s.raw_text.lower()]
+
+            # Verify customer segment path
+            if customer_segs:
+                assert customer_segs[0].section_path == "Item 1. Business > Customers"
+                assert customer_segs[0].section_heading == "Customers"
+
+            # Verify revenue segment path (3 levels)
+            if revenue_segs:
+                assert revenue_segs[0].section_path == "Item 1. Business > Revenue > Subscription Revenue"
+                assert revenue_segs[0].section_heading == "Subscription Revenue"
+
+            # Verify risk segment path (new h1 resets hierarchy)
+            if risk_segs:
+                assert risk_segs[0].section_path == "Item 2. Risk Factors > Market Risks"
+                assert risk_segs[0].section_heading == "Market Risks"
+        finally:
+            Path(html_path).unlink()
+
+    def test_segments_in_same_section_share_path_prefix(self, temp_html_file):
+        """Segments in the same section share the same section path."""
+        html = """
+        <html><body>
+            <h1>Item 1. Business</h1>
+            <h2>Customers</h2>
+            <p>First paragraph about our customers who are primarily enterprise organizations worldwide.</p>
+            <p>Second paragraph about our customers who continue to expand their usage of our platform.</p>
+            <p>Third paragraph about our customers and their satisfaction with our enterprise solutions.</p>
+        </body></html>
+        """
+        html_path = temp_html_file(html)
+
+        try:
+            segmenter = HTMLSegmenter(min_length=30)
+            segments = segmenter.segment_filing(filing_id=16, html_path=html_path)
+
+            # All content paragraphs should have the same path
+            content_segments = [s for s in segments if "about our customers" in s.raw_text.lower()]
+
+            if len(content_segments) >= 2:
+                first_path = content_segments[0].section_path
+                for seg in content_segments[1:]:
+                    assert seg.section_path == first_path
+                    assert seg.section_path == "Item 1. Business > Customers"
+        finally:
+            Path(html_path).unlink()
+
+    def test_very_long_path_truncated(self):
+        """Very long hierarchical paths are truncated to 500 chars (SEG6)."""
+        segmenter = HTMLSegmenter()
+        # Create headings with very long text that would exceed 500 chars total
+        long_text_1 = "A" * 200  # h1 with 200 chars
+        long_text_2 = "B" * 200  # h2 with 200 chars
+        long_text_3 = "C" * 200  # h3 with 200 chars
+        # Total would be 600 chars + separators, exceeds 500
+        segmenter._heading_cache = [
+            (100, 1, long_text_1),
+            (200, 2, long_text_2),
+            (300, 3, long_text_3),
+        ]
+        result = segmenter._get_section_from_cache(None, element_position=350)
+        section_path, section_heading = result
+
+        # Path should be truncated to fit within 500 chars
+        assert len(section_path) <= 500
+        # Should contain truncation markers
+        assert "..." in section_path
+        # section_heading should still be the original nearest heading
+        assert section_heading == long_text_3

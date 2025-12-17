@@ -47,7 +47,8 @@ class SegmentationMetrics:
     def summary(self) -> str:
         """Generate human-readable summary."""
         type_counts = ", ".join(
-            f"{count} {seg_type}s" for seg_type, count in sorted(self.segment_counts_by_type.items())
+            f"{count} {seg_type}s"
+            for seg_type, count in sorted(self.segment_counts_by_type.items())
         )
         return (
             f"{self.total_segments} segments in {self.parse_time_seconds:.3f}s "
@@ -94,16 +95,18 @@ class HTMLSegmenter:
 
     # Metadata headings to skip when determining section context
     # These are navigation/structural elements, not content sections
-    METADATA_HEADINGS = frozenset({
-        'table of contents',
-        'index',
-        'cover page',
-        'prospectus cover',
-        'part of prospectus',
-        'explanatory note',
-        'forward-looking statements',
-        'about this prospectus',
-    })
+    METADATA_HEADINGS = frozenset(
+        {
+            "table of contents",
+            "index",
+            "cover page",
+            "prospectus cover",
+            "part of prospectus",
+            "explanatory note",
+            "forward-looking statements",
+            "about this prospectus",
+        }
+    )
 
     # Definition start patterns - detect when a segment begins a definition
     # that may continue into subsequent segments
@@ -128,9 +131,7 @@ class HTMLSegmenter:
     DEFINITION_LOOKAHEAD_MAX = 3  # Max segments to merge
     DEFINITION_MAX_COMBINED_LENGTH = 2000  # Max combined length
 
-    def __init__(
-        self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH
-    ):
+    def __init__(self, min_length: int = MIN_SEGMENT_LENGTH, max_length: int = MAX_SEGMENT_LENGTH):
         """
         Initialize the HTML segmenter.
 
@@ -235,13 +236,22 @@ class HTMLSegmenter:
         sequence_index = 0
 
         # Extract all segments
-        for element in main_content.find_all(["p", "table", "div", "ul", "ol"], recursive=True):
+        for element in main_content.find_all(
+            ["p", "table", "div", "ul", "ol", "blockquote", "pre", "figure"],
+            recursive=True
+        ):
             # Skip if element is nested inside a table (we'll capture the whole table)
-            if element.name == "p" and element.find_parent("table"):
+            if element.name in ("p", "blockquote", "pre", "figure") and element.find_parent("table"):
                 continue
 
             # Skip list items nested inside another list (we'll handle from outer list)
             if element.name in ["ul", "ol"] and element.find_parent(["ul", "ol"]):
+                continue
+
+            # Skip nested blockquote/figure inside same element type (extract outer only)
+            if element.name == "blockquote" and element.find_parent("blockquote"):
+                continue
+            if element.name == "figure" and element.find_parent("figure"):
                 continue
 
             # Skip elements nested in a div that contains BOTH text and tables (L5 composite splitting)
@@ -321,10 +331,14 @@ class HTMLSegmenter:
         self._metrics.parse_time_seconds = time.time() - start_time
 
         # Enhanced logging
-        logger.info(f"Extracted {len(segments)} segments from filing {filing_id}: {self._metrics.summary()}")
+        logger.info(
+            f"Extracted {len(segments)} segments from filing {filing_id}: {self._metrics.summary()}"
+        )
 
         if self._metrics.warnings:
-            logger.warning(f"Segmentation warnings for filing {filing_id}: {', '.join(self._metrics.warnings)}")
+            logger.warning(
+                f"Segmentation warnings for filing {filing_id}: {', '.join(self._metrics.warnings)}"
+            )
 
         return segments
 
@@ -350,7 +364,7 @@ class HTMLSegmenter:
             return (content, "utf-8")
         except UnicodeDecodeError as e:
             attempted_encodings.append("utf-8")
-            position = e.start if hasattr(e, 'start') else None
+            position = e.start if hasattr(e, "start") else None
             logger.warning(
                 f"UTF-8 decode failed for {html_path} at position {position}: {e}. "
                 f"Trying latin-1 fallback..."
@@ -363,7 +377,7 @@ class HTMLSegmenter:
             return (content, "latin-1")
         except UnicodeDecodeError as e:
             attempted_encodings.append("latin-1")
-            position = e.start if hasattr(e, 'start') else None
+            position = e.start if hasattr(e, "start") else None
 
             # Both encodings failed - raise EncodingError
             raise EncodingError(
@@ -371,7 +385,7 @@ class HTMLSegmenter:
                 f"File may have mixed or invalid encoding.",
                 file_path=html_path,
                 attempted_encodings=attempted_encodings,
-                position=position
+                position=position,
             )
 
     def _read_html_file(self, html_path: str) -> Optional[str]:
@@ -430,7 +444,7 @@ class HTMLSegmenter:
             - Tracks last search position to avoid re-scanning entire file
             - Handles cases where element can't be found gracefully (returns None)
         """
-        if not hasattr(self, '_original_html') or not self._original_html:
+        if not hasattr(self, "_original_html") or not self._original_html:
             return None, None
 
         try:
@@ -487,13 +501,13 @@ class HTMLSegmenter:
 
         # Truncate segments that are too long
         # Tables get a higher limit (TABLE_MAX_LENGTH) than text (max_length)
-        effective_max = self.TABLE_MAX_LENGTH if segment_type == 'table' else self.max_length
+        effective_max = self.TABLE_MAX_LENGTH if segment_type == "table" else self.max_length
 
         if len(raw_text) > effective_max:
             logger.debug(
                 f"Truncating {segment_type} segment from {len(raw_text)} to {effective_max} chars"
             )
-            if segment_type != 'table':
+            if segment_type != "table":
                 # Use sentence-aware truncation to avoid cutting mid-sentence
                 raw_text = self._truncate_at_sentence_boundary(raw_text, effective_max)
             else:
@@ -502,7 +516,7 @@ class HTMLSegmenter:
 
         # Extract raw HTML (limited to avoid huge storage)
         # Tables get higher limit to preserve structure for downstream extraction
-        html_max = self.TABLE_MAX_LENGTH if segment_type == 'table' else self.max_length
+        html_max = self.TABLE_MAX_LENGTH if segment_type == "table" else self.max_length
         raw_html = str(element)[:html_max]
 
         # Extract section path and heading
@@ -510,7 +524,7 @@ class HTMLSegmenter:
 
         # Compute character offsets (SEG5)
         char_start, char_end = self._compute_element_offsets(
-            element, search_start=getattr(self, '_last_search_position', 0)
+            element, search_start=getattr(self, "_last_search_position", 0)
         )
 
         # Build segment
@@ -542,26 +556,26 @@ class HTMLSegmenter:
             List of segments (single segment if no split needed, multiple if split)
         """
         # Quick check: does the segment contain table tags?
-        if not segment.raw_html or '<table' not in segment.raw_html.lower():
+        if not segment.raw_html or "<table" not in segment.raw_html.lower():
             return [segment]
 
         # Check if segment is already a table - don't split tables themselves
-        if segment.segment_type == 'table':
+        if segment.segment_type == "table":
             return [segment]
 
         try:
             # Parse the HTML to identify table boundaries
-            soup = BeautifulSoup(segment.raw_html, 'html.parser')
+            soup = BeautifulSoup(segment.raw_html, "html.parser")
 
             # Find all table elements
             # First, get all tables
-            all_tables = soup.find_all('table')
+            all_tables = soup.find_all("table")
 
             # Filter out tables that are nested within other tables
             tables = []
             for table in all_tables:
                 # Check if this table has a table ancestor (other than itself)
-                parent_tables = table.find_parents('table')
+                parent_tables = table.find_parents("table")
                 if not parent_tables:
                     # Not nested in another table, include it
                     tables.append(table)
@@ -595,26 +609,26 @@ class HTMLSegmenter:
                 if start_pos > current_pos:
                     text_before = full_html[current_pos:start_pos]
                     # Parse it to get clean text
-                    text_soup = BeautifulSoup(text_before, 'html.parser')
+                    text_soup = BeautifulSoup(text_before, "html.parser")
                     text_content = self._normalize_text(text_soup.get_text())
                     if text_content.strip():  # Only add non-empty text
-                        content_pieces.append(('text', text_before, text_content))
+                        content_pieces.append(("text", text_before, text_content))
 
                 # Add the table
-                table_soup = BeautifulSoup(table_html, 'html.parser')
+                table_soup = BeautifulSoup(table_html, "html.parser")
                 table_text = self._normalize_text(table_soup.get_text())
                 if table_text.strip():  # Only add non-empty tables
-                    content_pieces.append(('table', table_html, table_text))
+                    content_pieces.append(("table", table_html, table_text))
 
                 current_pos = end_pos
 
             # Extract text after last table
             if current_pos < len(full_html):
                 text_after = full_html[current_pos:]
-                text_soup = BeautifulSoup(text_after, 'html.parser')
+                text_soup = BeautifulSoup(text_after, "html.parser")
                 text_content = self._normalize_text(text_soup.get_text())
                 if text_content.strip():  # Only add non-empty text
-                    content_pieces.append(('text', text_after, text_content))
+                    content_pieces.append(("text", text_after, text_content))
 
             # If we only have one piece, return the original segment
             if len(content_pieces) <= 1:
@@ -626,16 +640,16 @@ class HTMLSegmenter:
 
             for i, (piece_type, html_content, text_content) in enumerate(content_pieces):
                 # Determine segment type
-                seg_type = 'table' if piece_type == 'table' else 'paragraph'
+                seg_type = "table" if piece_type == "table" else "paragraph"
 
                 # Check if text meets minimum length for paragraphs
-                if seg_type == 'paragraph' and len(text_content) < self.min_length:
+                if seg_type == "paragraph" and len(text_content) < self.min_length:
                     continue
 
                 # Truncate if needed
                 if len(text_content) > self.max_length:
-                    text_content = text_content[:self.max_length]
-                    html_content = html_content[:self.max_length]
+                    text_content = text_content[: self.max_length]
+                    html_content = html_content[: self.max_length]
 
                 # Create new segment with fractional sequence index
                 new_segment = SourceSegment(
@@ -645,7 +659,7 @@ class HTMLSegmenter:
                     section_heading=segment.section_heading,
                     sequence_index=base_sequence + (i * 0.1),  # Use fractional increments
                     raw_text=text_content,
-                    raw_html=html_content[:self.max_length] if html_content else None,
+                    raw_html=html_content[: self.max_length] if html_content else None,
                     html_selector=segment.html_selector,
                     char_start_offset=segment.char_start_offset,
                     char_end_offset=segment.char_end_offset,
@@ -674,6 +688,14 @@ class HTMLSegmenter:
         """Determine segment type from HTML element."""
         if element.name == "table":
             return "table"
+
+        # Handle new element types (SEG8)
+        if element.name == "blockquote":
+            return "blockquote"
+        if element.name == "pre":
+            return "preformatted"
+        if element.name == "figure":
+            return "figure"
 
         # Check for footnote indicators
         if self._is_footnote(element):
@@ -752,15 +774,14 @@ class HTMLSegmenter:
             Same segment with sentence_boundaries populated
         """
         # Tables don't need sentence detection (handled differently)
-        if segment.segment_type == 'table':
+        if segment.segment_type == "table":
             return segment
 
         if not segment.raw_text:
             return segment
 
         boundaries = self._boundary_detector.find_sentence_boundaries(
-            segment.raw_text,
-            segment_type=segment.segment_type
+            segment.raw_text, segment_type=segment.segment_type
         )
 
         # Store as list of (start, end) tuples
@@ -797,9 +818,7 @@ class HTMLSegmenter:
                 list(executor.map(self._apply_sentence_detection, segments))
         except Exception as e:
             # Fallback to sequential processing on any ThreadPoolExecutor failure
-            logger.warning(
-                f"Parallel sentence detection failed, using sequential: {e}"
-            )
+            logger.warning(f"Parallel sentence detection failed, using sequential: {e}")
             for segment in segments:
                 self._apply_sentence_detection(segment)
 
@@ -827,13 +846,12 @@ class HTMLSegmenter:
         # Find the last complete sentence that fits within max_length
         for boundary in reversed(sentences):
             if boundary.end <= max_length:
-                return text[:boundary.end].rstrip()
+                return text[: boundary.end].rstrip()
 
         # No complete sentence fits - fall back to truncation at max_length
         # This should be rare (would mean first sentence is > max_length)
         logger.debug(
-            f"No complete sentence fits within {max_length} chars, "
-            f"truncating mid-sentence"
+            f"No complete sentence fits within {max_length} chars, " f"truncating mid-sentence"
         )
         return text[:max_length]
 
@@ -859,7 +877,7 @@ class HTMLSegmenter:
             return None
 
         last_boundary = sentences[-1]
-        last_sentence = text[last_boundary.start:last_boundary.end].strip()
+        last_sentence = text[last_boundary.start : last_boundary.end].strip()
 
         return last_sentence if last_sentence else None
 
@@ -910,9 +928,7 @@ class HTMLSegmenter:
                     return True
         return False
 
-    def _merge_definition_segments(
-        self, segments: List[SourceSegment]
-    ) -> List[SourceSegment]:
+    def _merge_definition_segments(self, segments: List[SourceSegment]) -> List[SourceSegment]:
         """
         Merge segments that split a definition across HTML elements.
 
@@ -940,8 +956,10 @@ class HTMLSegmenter:
             segment = segments[i]
 
             # Only try to merge paragraph-type segments (not tables, etc.)
-            if segment.segment_type not in ('paragraph', 'definition_block') or \
-               not self._starts_definition(segment.raw_text):
+            if segment.segment_type not in (
+                "paragraph",
+                "definition_block",
+            ) or not self._starts_definition(segment.raw_text):
                 merged.append(segment)
                 i += 1
                 continue
@@ -957,14 +975,16 @@ class HTMLSegmenter:
             merged_start_offset = segment.char_start_offset
             merged_end_offset = segment.char_end_offset
 
-            while (j < len(segments) and
-                   merge_count < self.DEFINITION_LOOKAHEAD_MAX and
-                   len(merged_text) < self.DEFINITION_MAX_COMBINED_LENGTH):
+            while (
+                j < len(segments)
+                and merge_count < self.DEFINITION_LOOKAHEAD_MAX
+                and len(merged_text) < self.DEFINITION_MAX_COMBINED_LENGTH
+            ):
 
                 next_seg = segments[j]
 
                 # Only merge same-type segments that look like continuations
-                if next_seg.segment_type not in ('paragraph', 'definition_block'):
+                if next_seg.segment_type not in ("paragraph", "definition_block"):
                     break
                 if not self._is_continuation(next_seg.raw_text):
                     break
@@ -987,7 +1007,7 @@ class HTMLSegmenter:
             # Update the segment with merged content if we merged anything
             if merge_count > 1:
                 segment.raw_text = merged_text.strip()
-                segment.raw_html = merged_html[:self.max_length] if merged_html else None
+                segment.raw_html = merged_html[: self.max_length] if merged_html else None
                 segment.definition_merged_count = merge_count
                 # Update offsets to span all merged segments (SEG5)
                 segment.char_start_offset = merged_start_offset
@@ -1020,7 +1040,7 @@ class HTMLSegmenter:
         Returns:
             Original segment (if under limit) or segment with summary
         """
-        if segment.segment_type != 'table':
+        if segment.segment_type != "table":
             return segment
 
         if len(segment.raw_text) <= self.TABLE_MAX_LENGTH:
@@ -1041,9 +1061,7 @@ class HTMLSegmenter:
 
         return segment
 
-    def _create_table_summary(
-        self, raw_html: Optional[str], raw_text: str
-    ) -> str:
+    def _create_table_summary(self, raw_html: Optional[str], raw_text: str) -> str:
         """
         Create a summary of a large table.
 
@@ -1064,34 +1082,32 @@ class HTMLSegmenter:
         # Try to extract headers and structure from HTML
         if raw_html:
             try:
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                table = soup.find('table')
+                soup = BeautifulSoup(raw_html, "html.parser")
+                table = soup.find("table")
 
                 if table:
                     # Get header row
-                    thead = table.find('thead')
+                    thead = table.find("thead")
                     header_row = None
                     if thead:
-                        header_row = thead.find('tr')
+                        header_row = thead.find("tr")
                     else:
                         # Try first row with th elements
-                        first_row = table.find('tr')
-                        if first_row and first_row.find('th'):
+                        first_row = table.find("tr")
+                        if first_row and first_row.find("th"):
                             header_row = first_row
 
                     if header_row:
                         headers = [
                             self._normalize_text(cell.get_text())
-                            for cell in header_row.find_all(['th', 'td'])
+                            for cell in header_row.find_all(["th", "td"])
                         ]
                         headers = [h for h in headers if h]  # Remove empty
                         if headers:
-                            summary_parts.append(
-                                f"[Table headers: {' | '.join(headers[:10])}]"
-                            )
+                            summary_parts.append(f"[Table headers: {' | '.join(headers[:10])}]")
 
                     # Count rows
-                    all_rows = table.find_all('tr')
+                    all_rows = table.find_all("tr")
                     row_count = len(all_rows)
                     summary_parts.append(f"[{row_count} rows total]")
 
@@ -1104,7 +1120,7 @@ class HTMLSegmenter:
         if len(raw_text) > max_summary_text:
             truncated_text = raw_text[:max_summary_text].rstrip()
             # Try to end at a reasonable break point
-            last_space = truncated_text.rfind(' ')
+            last_space = truncated_text.rfind(" ")
             if last_space > max_summary_text - 200:
                 truncated_text = truncated_text[:last_space]
             summary_parts.append(truncated_text + "...")
@@ -1117,9 +1133,7 @@ class HTMLSegmenter:
     # Context Enrichment Methods (Phase 5 of redesign)
     # =========================================================================
 
-    def _add_context_overlap(
-        self, segments: List[SourceSegment]
-    ) -> List[SourceSegment]:
+    def _add_context_overlap(self, segments: List[SourceSegment]) -> List[SourceSegment]:
         """
         Add last sentence from previous segment as context_prefix.
 
@@ -1138,7 +1152,7 @@ class HTMLSegmenter:
             prev = segments[i - 1]
 
             # Don't take context from tables (not sentence-structured)
-            if prev.segment_type == 'table':
+            if prev.segment_type == "table":
                 continue
 
             # Extract last sentence from previous segment
@@ -1149,9 +1163,7 @@ class HTMLSegmenter:
 
         return segments
 
-    def _calculate_document_positions(
-        self, segments: List[SourceSegment]
-    ) -> List[SourceSegment]:
+    def _calculate_document_positions(self, segments: List[SourceSegment]) -> List[SourceSegment]:
         """
         Calculate relative position of each segment in the document.
 
@@ -1190,7 +1202,7 @@ class HTMLSegmenter:
         list_element: Tag,
         filing_id: int,
         base_sequence: int,
-        intro_text: Optional[str] = None
+        intro_text: Optional[str] = None,
     ) -> List[SourceSegment]:
         """
         Extract list items as separate segments with context.
@@ -1210,7 +1222,7 @@ class HTMLSegmenter:
         segments = []
 
         # Find all direct child <li> elements (not nested lists)
-        list_items = list_element.find_all('li', recursive=False)
+        list_items = list_element.find_all("li", recursive=False)
 
         for i, li in enumerate(list_items):
             text = self._normalize_text(li.get_text())
@@ -1228,17 +1240,17 @@ class HTMLSegmenter:
 
             # Compute character offsets for this list item (SEG5)
             char_start, char_end = self._compute_element_offsets(
-                li, search_start=getattr(self, '_last_search_position', 0)
+                li, search_start=getattr(self, "_last_search_position", 0)
             )
 
             segment = SourceSegment(
                 filing_id=filing_id,
-                segment_type='list_item',
+                segment_type="list_item",
                 section_path=section_path,
                 section_heading=section_heading,
                 sequence_index=base_sequence + (i * 0.1),  # Fractional indices
                 raw_text=text,
-                raw_html=str(li)[:self.max_length],
+                raw_html=str(li)[: self.max_length],
                 context_prefix=intro_text,  # Include intro as context
                 char_start_offset=char_start,
                 char_end_offset=char_end,
@@ -1262,7 +1274,7 @@ class HTMLSegmenter:
             Intro text, or None if not found
         """
         # Look for the immediately preceding sibling paragraph
-        prev_sibling = list_element.find_previous_sibling(['p', 'div'])
+        prev_sibling = list_element.find_previous_sibling(["p", "div"])
 
         if not prev_sibling:
             return None
@@ -1304,11 +1316,11 @@ class HTMLSegmenter:
 
         for i, element in enumerate(main_content.descendants):
             # Store position for all elements
-            if hasattr(element, 'name'):
+            if hasattr(element, "name"):
                 self._element_position_map[id(element)] = i
 
             # Store headings in cache
-            if hasattr(element, 'name') and element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            if hasattr(element, "name") and element.name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
                 heading_text = self._normalize_text(element.get_text())
                 if heading_text:
                     # Skip metadata headings at cache build time
@@ -1319,11 +1331,79 @@ class HTMLSegmenter:
 
         return headings
 
+    def _build_hierarchical_path(self, nearest_idx: int) -> str:
+        """
+        Build hierarchical section path from heading cache (SEG6).
+
+        Walks backwards from the nearest heading, collecting one heading per level
+        to form a complete document hierarchy path like "Item 1 > Business > Customers".
+
+        Args:
+            nearest_idx: Index of the nearest preceding heading in _heading_cache
+
+        Returns:
+            Hierarchical path string with " > " separators
+
+        Algorithm:
+            1. Start with the nearest heading
+            2. Walk backwards through the cache
+            3. Collect headings at higher levels (lower numbers) than the nearest
+            4. Stop when h1 is collected or no more headings
+            5. Build path from highest to lowest level
+        """
+        if nearest_idx < 0 or nearest_idx >= len(self._heading_cache):
+            return ""
+
+        # Get the nearest heading
+        _, nearest_level, nearest_text = self._heading_cache[nearest_idx]
+
+        # Collect headings: level -> text (nearest heading is always included)
+        collected: Dict[int, str] = {nearest_level: nearest_text}
+
+        # Track the minimum level we've seen so far (to handle level resets)
+        # A heading at level L only contributes if it's at a higher level (smaller number)
+        # than the most recent heading that could affect the hierarchy
+        min_level_seen = nearest_level
+
+        # Walk backwards, collecting higher-level headings
+        for i in range(nearest_idx - 1, -1, -1):
+            _, level, text = self._heading_cache[i]
+
+            # Only collect if this level is higher (smaller number) than what we've seen
+            # and we haven't already collected this level
+            if level < min_level_seen and level not in collected:
+                collected[level] = text
+                min_level_seen = level
+                # Stop if we've collected h1 (can't go higher)
+                if level == 1:
+                    break
+
+        # Build path from highest to lowest level (h1 -> h2 -> h3 -> ...)
+        path_parts = [collected[lvl] for lvl in sorted(collected.keys())]
+
+        # Join with separator, truncating if path exceeds 500 chars
+        path = " > ".join(path_parts)
+        if len(path) > 500:
+            # Truncate individual parts to fit, keeping structure
+            # Account for separators: (n-1) * 3 chars for " > "
+            # Account for ellipsis: 3 chars per truncated part
+            separator_len = (len(path_parts) - 1) * 3
+            available_for_parts = 500 - separator_len
+            # Each truncated part needs 3 chars for "...", so max_part_len is base + "..."
+            max_part_len = max(10, (available_for_parts // len(path_parts)) - 3)
+            truncated_parts = [
+                p[:max_part_len] + "..." if len(p) > max_part_len else p for p in path_parts
+            ]
+            path = " > ".join(truncated_parts)
+
+        return path
+
     def _get_section_from_cache(
         self, element: Optional[Tag], element_position: int
     ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Use binary search to find nearest preceding heading (SEG1).
+        Use binary search to find nearest preceding heading (SEG1) and build
+        hierarchical section path (SEG6).
 
         This replaces the O(n) find_previous() approach with O(log n) binary search
         on the pre-built heading cache, significantly improving performance for
@@ -1334,7 +1414,9 @@ class HTMLSegmenter:
             element_position: Position of element in document (from _element_position_map)
 
         Returns:
-            Tuple of (section_heading, section_path) or (None, None) if no heading found
+            Tuple of (section_path, section_heading) or (None, None) if no heading found
+            - section_path: Full hierarchical path (e.g., "Item 1 > Business > Customers")
+            - section_heading: Just the nearest heading (e.g., "Customers")
 
         Note:
             Metadata headings are already filtered out during cache building.
@@ -1350,13 +1432,14 @@ class HTMLSegmenter:
 
         if idx >= 0:
             pos, level, text = self._heading_cache[idx]
-            return text, text
+            # Build hierarchical path from heading hierarchy (SEG6)
+            section_path = self._build_hierarchical_path(idx)
+            # section_heading remains just the nearest heading
+            return section_path, text
 
         return None, None
 
-    def _extract_section_info(
-        self, element: Tag
-    ) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_section_info(self, element: Tag) -> Tuple[Optional[str], Optional[str]]:
         """
         Extract section path and heading from element's position in DOM.
 
@@ -1374,19 +1457,19 @@ class HTMLSegmenter:
             section_heading: "Customers"
         """
         # Use cache if available (set during segment_filing)
-        if hasattr(self, '_heading_cache') and self._heading_cache is not None:
+        if hasattr(self, "_heading_cache") and self._heading_cache is not None:
             # Get element position from position map (O(1) lookup)
             element_position = self._element_position_map.get(id(element), -1)
             if element_position >= 0:
                 return self._get_section_from_cache(element, element_position)
 
         # Fallback: iterate through previous headings, skipping metadata
-        prev_heading = element.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        prev_heading = element.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
         while prev_heading:
             heading_text = self._normalize_text(prev_heading.get_text())
             if heading_text and heading_text.lower() not in self.METADATA_HEADINGS:
                 return heading_text, heading_text
-            prev_heading = prev_heading.find_previous(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            prev_heading = prev_heading.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
 
         return None, None
 
