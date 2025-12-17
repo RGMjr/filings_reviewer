@@ -31,16 +31,17 @@ class SegmentEnricher:
     already been classified by MetricClassifier. It operates on in-memory
     objects and does not require database access.
 
-    Current capabilities (G4-G7):
+    Current capabilities (G4-G8):
     - metric_density: metrics per 100 characters
     - distinct_metric_count: count of unique metric IDs
     - contains_temporal_trend: segment discusses multiple time periods (G5)
     - contains_cohort_breakdown: segment contains cohort analysis patterns (G6)
     - image_count: count of meaningful images/charts in segment (G7)
-
-    Future capabilities (G8):
-    - richness_score (G8)
+    - richness_score: composite score 0-10 identifying "goldmine" segments (G8)
     """
+
+    # Threshold score for identifying "goldmine" segments (G8)
+    GOLDMINE_THRESHOLD: float = 6.0
 
     # Keywords that indicate a decorative (non-meaningful) image (G7)
     DECORATIVE_KEYWORDS: List[str] = ["icon", "logo", "bullet", "arrow", "spacer"]
@@ -136,6 +137,16 @@ class SegmentEnricher:
             + (f" ({warning_count} warnings)" if warning_count else "")
         )
 
+        # Log goldmine statistics (G8)
+        goldmines = [
+            s for s in segments if (s.richness_score or 0) >= self.GOLDMINE_THRESHOLD
+        ]
+        if goldmines:
+            avg_richness = sum(s.richness_score or 0 for s in goldmines) / len(goldmines)
+            logger.info(
+                f"Found {len(goldmines)} goldmine segments (avg richness: {avg_richness:.1f})"
+            )
+
         return segments
 
     def _enrich_segment(self, segment: SourceSegment) -> None:
@@ -158,8 +169,8 @@ class SegmentEnricher:
         # Detect images/charts (G7)
         segment.image_count = self._detect_images(segment)
 
-        # Future enrichments (G8) will be added here:
-        # - self._compute_richness_score(segment)
+        # Compute richness score (G8) - MUST be last, depends on other enrichments
+        segment.richness_score = self._compute_richness_score(segment)
 
     def _compute_metric_density(self, segment: SourceSegment) -> float:
         """
@@ -430,3 +441,50 @@ class SegmentEnricher:
             return int(value)
 
         return None
+
+    def _compute_richness_score(self, segment: SourceSegment) -> float:
+        """
+        Compute composite richness score (0-10).
+
+        Formula components (max 10 points total):
+        - Base confidence: 0-3 points (classifier_confidence * 3.0)
+        - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
+        - Temporal trends: 1 point if contains_temporal_trend
+        - Cohort breakdowns: 1.5 points if contains_cohort_breakdown
+        - Definitions: 1 point if contains_definition_flag
+        - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
+
+        Segments scoring >= 6.0 are considered "goldmines" - high-value
+        sections with dense metrics, temporal trends, cohort analysis,
+        definitions, and/or visual content.
+
+        Args:
+            segment: Enriched segment with all fields populated
+
+        Returns:
+            Richness score (0.0-10.0), rounded to 2 decimal places
+        """
+        score = 0.0
+
+        # Base confidence (max 3.0)
+        confidence = segment.classifier_confidence or 0.0
+        score += confidence * 3.0
+
+        # Metric density bonus (max 2.0)
+        metric_count = segment.distinct_metric_count or 0
+        score += min(metric_count * 0.5, 2.0)
+
+        # Boolean flag bonuses
+        if segment.contains_temporal_trend:
+            score += 1.0
+        if segment.contains_cohort_breakdown:
+            score += 1.5
+        if segment.contains_definition_flag:
+            score += 1.0
+
+        # Image bonus (max 1.5)
+        image_count = segment.image_count or 0
+        score += min(image_count * 0.5, 1.5)
+
+        # Cap at 10.0 and round to 2 decimal places
+        return round(min(score, 10.0), 2)

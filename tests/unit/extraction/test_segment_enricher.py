@@ -1664,3 +1664,598 @@ class TestDetectImagesErrorHandling:
 
         # BeautifulSoup handles malformed HTML gracefully, so this should still work
         assert segment.image_count >= 0
+
+
+# =============================================================================
+# Richness Score Tests (G8) - 19 tests
+# =============================================================================
+
+
+class TestRichnessScore:
+    """Tests for richness score calculation (G8)."""
+
+    # -------------------------------------------------------------------------
+    # Base Confidence Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_base_confidence_zero(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """classifier_confidence=0.0 -> base score = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Only base confidence, which is 0.0 * 3.0 = 0.0
+        assert segment.richness_score == 0.0
+
+    def test_base_confidence_half(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """classifier_confidence=0.5 -> base score = 1.5."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            classifier_confidence=0.5,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # 0.5 * 3.0 = 1.5
+        assert segment.richness_score == 1.5
+
+    def test_base_confidence_full(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """classifier_confidence=1.0 -> base score = 3.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            classifier_confidence=1.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # 1.0 * 3.0 = 3.0
+        assert segment.richness_score == 3.0
+
+    def test_base_confidence_none(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """classifier_confidence=None -> base score = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            classifier_confidence=None,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # None treated as 0.0
+        assert segment.richness_score == 0.0
+
+    # -------------------------------------------------------------------------
+    # Metric Density Component Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_metric_density_zero_metrics(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """0 metrics -> density bonus = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            candidate_metric_ids=[],
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # 0 * 0.5 = 0.0
+        assert segment.richness_score == 0.0
+
+    def test_metric_density_one_metric(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """1 metric -> density bonus = 0.5."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            candidate_metric_ids=["cm_active_users_total"],
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # 1 * 0.5 = 0.5
+        assert segment.richness_score == 0.5
+
+    def test_metric_density_four_metrics_capped(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """4 metrics -> density bonus = 2.0 (capped)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            candidate_metric_ids=[
+                "cm_active_users_total",
+                "cm_customer_churn_rate",
+                "cm_arr",
+                "cm_mrr",
+            ],
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # min(4 * 0.5, 2.0) = 2.0
+        assert segment.richness_score == 2.0
+
+    def test_metric_density_ten_metrics_capped(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """10 metrics -> density bonus = 2.0 (capped at max)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            candidate_metric_ids=[
+                f"cm_metric_{i}" for i in range(10)
+            ],
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # min(10 * 0.5, 2.0) = 2.0
+        assert segment.richness_score == 2.0
+
+    # -------------------------------------------------------------------------
+    # Boolean Flag Component Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_temporal_trend_adds_1_point(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """contains_temporal_trend=True -> +1.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew from 2021 to 2023.",  # Triggers temporal detection
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Temporal trend detected: +1.0
+        assert segment.richness_score == 1.0
+
+    def test_cohort_breakdown_adds_1_5_points(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """contains_cohort_breakdown=True -> +1.5."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="44.4% of consumers were new customers.",  # Triggers cohort detection
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Cohort breakdown detected: +1.5
+        assert segment.richness_score == 1.5
+
+    def test_definition_flag_adds_1_point(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """contains_definition_flag=True -> +1.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            contains_definition_flag=True,
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Definition flag: +1.0
+        assert segment.richness_score == 1.0
+
+    def test_all_flags_false_no_bonus(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """All flags False -> no bonuses."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Simple text without triggers.",
+            contains_definition_flag=False,
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # No flags set: 0.0
+        assert segment.richness_score == 0.0
+
+    # -------------------------------------------------------------------------
+    # Image Component Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_image_count_zero(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """image_count=0 -> image bonus = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            raw_html="<div>No images</div>",
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+        assert segment.richness_score == 0.0
+
+    def test_image_count_one(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """image_count=1 -> image bonus = 0.5."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            raw_html='<div><img src="chart.png" width="500" height="300"></div>',
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+        # 1 * 0.5 = 0.5
+        assert segment.richness_score == 0.5
+
+    def test_image_count_three_capped(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """image_count=3 -> image bonus = 1.5 (capped)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            raw_html='''
+                <div>
+                    <img src="chart1.png" width="500" height="300">
+                    <img src="chart2.png" width="500" height="300">
+                    <img src="chart3.png" width="500" height="300">
+                </div>
+            ''',
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 3
+        # min(3 * 0.5, 1.5) = 1.5
+        assert segment.richness_score == 1.5
+
+    # -------------------------------------------------------------------------
+    # Composite Score Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_empty_segment_score_zero(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Empty segment -> score = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="",
+            classifier_confidence=0.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.richness_score == 0.0
+
+    def test_typical_goldmine_segment(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Typical goldmine segment -> score >= 6.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            # Triggers temporal (2021, 2023) and cohort (44.4% of consumers)
+            raw_text="44.4% of consumers were new customers. Revenue grew from 2021 to 2023.",
+            candidate_metric_ids=[
+                "cm_active_customers_total",
+                "cm_new_customers_acquired",
+                "cm_revenue",
+            ],
+            contains_definition_flag=True,
+            classifier_confidence=0.85,
+            raw_html='<div><img src="chart.png" width="500" height="300"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Expected score:
+        # - Base: 0.85 * 3.0 = 2.55
+        # - Density: min(3 * 0.5, 2.0) = 1.5
+        # - Temporal: 1.0
+        # - Cohort: 1.5
+        # - Definition: 1.0
+        # - Images: 0.5
+        # Total: 2.55 + 1.5 + 1.0 + 1.5 + 1.0 + 0.5 = 8.05
+        assert segment.richness_score >= 6.0
+        assert segment.richness_score == 8.05
+
+    def test_maximum_score_capped_at_ten(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Maximum everything -> score = 10.0 exactly (not higher)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            # Triggers temporal (2021, 2023) and cohort
+            raw_text="44.4% of consumers were new customers. Revenue grew from 2021 to 2023.",
+            candidate_metric_ids=[f"cm_metric_{i}" for i in range(10)],  # 10 metrics
+            contains_definition_flag=True,
+            classifier_confidence=1.0,  # Max confidence
+            raw_html='''
+                <div>
+                    <img src="chart1.png" width="500" height="300">
+                    <img src="chart2.png" width="500" height="300">
+                    <img src="chart3.png" width="500" height="300">
+                    <img src="chart4.png" width="500" height="300">
+                    <img src="chart5.png" width="500" height="300">
+                </div>
+            ''',  # 5 images
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Expected score (uncapped):
+        # - Base: 1.0 * 3.0 = 3.0
+        # - Density: min(10 * 0.5, 2.0) = 2.0
+        # - Temporal: 1.0
+        # - Cohort: 1.5
+        # - Definition: 1.0
+        # - Images: min(5 * 0.5, 1.5) = 1.5
+        # Total: 3.0 + 2.0 + 1.0 + 1.5 + 1.0 + 1.5 = 10.0 (exactly at cap)
+        assert segment.richness_score == 10.0
+
+    def test_farfetch_like_segment(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Real-world Farfetch-like segment characteristics."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text=(
+                "As of December 31, 2015, 2016 and 2017, we had 0.8 million, "
+                "1.0 million and 1.4 million Active Consumers. We define "
+                "Active Consumers as the total number of unique consumers "
+                "who have placed at least one order on our marketplace."
+            ),
+            candidate_metric_ids=["cm_active_customers_total", "cm_new_customers_acquired"],
+            contains_definition_flag=True,
+            classifier_confidence=0.85,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Expected:
+        # - Base: 0.85 * 3.0 = 2.55
+        # - Density: min(2 * 0.5, 2.0) = 1.0
+        # - Temporal: 1.0 (2015, 2016, 2017)
+        # - Cohort: 0 (no cohort language)
+        # - Definition: 1.0
+        # - Images: 0
+        # Total: 2.55 + 1.0 + 1.0 + 0 + 1.0 + 0 = 5.55
+        assert segment.richness_score == 5.55
+        # Just under goldmine threshold
+        assert segment.richness_score < 6.0
+
+    # -------------------------------------------------------------------------
+    # Goldmine Threshold Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_score_5_9_not_goldmine(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Score of 5.9 -> NOT a goldmine."""
+        # Create segment that scores just under 6.0
+        # Base: 1.0 * 3.0 = 3.0
+        # Density: 2 * 0.5 = 1.0
+        # Temporal: 1.0 (two years)
+        # No cohort, no definition, no images
+        # Total: 3.0 + 1.0 + 1.0 = 5.0
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew from 2021 to 2023.",
+            candidate_metric_ids=["cm_revenue", "cm_arr"],
+            classifier_confidence=1.0,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Score should be 5.0
+        assert segment.richness_score == 5.0
+        assert segment.richness_score < SegmentEnricher.GOLDMINE_THRESHOLD
+
+    def test_score_6_0_is_goldmine(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Score of 6.0 -> IS a goldmine."""
+        # Create segment that scores exactly 6.0
+        # Base: 1.0 * 3.0 = 3.0
+        # Density: 2 * 0.5 = 1.0
+        # Temporal: 1.0 (two years)
+        # Definition: 1.0
+        # No cohort, no images
+        # Total: 3.0 + 1.0 + 1.0 + 1.0 = 6.0
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew from 2021 to 2023.",
+            candidate_metric_ids=["cm_revenue", "cm_arr"],
+            classifier_confidence=1.0,
+            contains_definition_flag=True,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.richness_score == 6.0
+        assert segment.richness_score >= SegmentEnricher.GOLDMINE_THRESHOLD
+
+    def test_score_8_5_is_goldmine(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Score of 8.5 -> IS a goldmine."""
+        # Create high-value segment
+        # Base: 1.0 * 3.0 = 3.0
+        # Density: 4 * 0.5 = 2.0
+        # Temporal: 1.0
+        # Cohort: 1.5
+        # Definition: 1.0
+        # No images
+        # Total: 3.0 + 2.0 + 1.0 + 1.5 + 1.0 = 8.5
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="44.4% of consumers were new in 2021 to 2023.",
+            candidate_metric_ids=["cm_1", "cm_2", "cm_3", "cm_4"],
+            classifier_confidence=1.0,
+            contains_definition_flag=True,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.richness_score == 8.5
+        assert segment.richness_score >= SegmentEnricher.GOLDMINE_THRESHOLD
+
+    # -------------------------------------------------------------------------
+    # Integration Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_full_enrich_batch_sets_richness_score(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Full enrich_batch() flow computes richness_score."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Simple text.",
+                classifier_confidence=0.5,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Revenue grew from 2021 to 2023.",
+                candidate_metric_ids=["cm_revenue"],
+                classifier_confidence=0.8,
+            ),
+        ]
+
+        result = enricher.enrich_batch(segments)
+
+        # All segments should have richness_score set
+        assert result[0].richness_score is not None
+        assert result[1].richness_score is not None
+
+        # First segment: base 0.5 * 3.0 = 1.5
+        assert result[0].richness_score == 1.5
+
+        # Second segment: base 0.8 * 3.0 = 2.4, density 0.5, temporal 1.0
+        # Total: 2.4 + 0.5 + 1.0 = 3.9
+        assert result[1].richness_score == 3.9
+
+    def test_goldmine_logging_outputs_correctly(
+        self, enricher: SegmentEnricher, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Goldmine logging outputs correctly."""
+        import logging
+
+        # Create mix of goldmine and non-goldmine segments
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Simple text.",
+                classifier_confidence=0.5,
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="44.4% of consumers were new in 2021 to 2023.",
+                candidate_metric_ids=["cm_1", "cm_2", "cm_3", "cm_4"],
+                classifier_confidence=1.0,
+                contains_definition_flag=True,
+            ),
+        ]
+
+        with caplog.at_level(logging.INFO):
+            enricher.enrich_batch(segments)
+
+        # Should log goldmine statistics
+        assert "goldmine" in caplog.text.lower()
+        assert "avg richness" in caplog.text.lower()
+
+    # -------------------------------------------------------------------------
+    # Edge Cases (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_all_inputs_at_minimum(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """All inputs at minimum (0/False/None) -> score = 0.0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="",
+            candidate_metric_ids=[],
+            classifier_confidence=None,
+            contains_definition_flag=False,
+            raw_html=None,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.richness_score == 0.0
+
+    def test_floating_point_precision(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Floating point precision - consistent rounding to 2 decimal places."""
+        # 0.33 * 3.0 = 0.99 (should not have floating point issues)
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Sample text",
+            classifier_confidence=0.33,
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Should be exactly 0.99, rounded to 2 decimal places
+        assert segment.richness_score == 0.99
+        # Verify it's actually a float with 2 decimal places
+        assert str(segment.richness_score) == "0.99"
