@@ -135,6 +135,38 @@ class TestExtractionPipelineIntegration:
             for inc in incidences:
                 assert inc["quality_overall_score"] is not None
 
+    def test_richness_fields_persisted(self, clean_extraction_db, setup_test_filing):
+        """Test that richness metadata fields are stored in database."""
+        db = clean_extraction_db
+        filing_info = setup_test_filing
+
+        pipeline = ExtractionPipeline(db=db, llm_client=None)
+        result = pipeline.process_filing(filing_info["filing_id"])
+
+        assert result.success is True
+
+        # Query for richness columns
+        segments = db.query(
+            """
+            SELECT metric_density, distinct_metric_count, contains_temporal_trend,
+                   contains_cohort_breakdown, image_count, richness_score
+            FROM source_segments
+            WHERE filing_id = %(filing_id)s
+            LIMIT 1
+            """,
+            {"filing_id": filing_info["filing_id"]}
+        )
+
+        assert len(segments) > 0
+        seg = segments[0]
+
+        # Initially fields should have defaults (not populated until enricher runs)
+        assert seg["distinct_metric_count"] == 0
+        assert seg["contains_temporal_trend"] is False
+        assert seg["contains_cohort_breakdown"] is False
+        assert seg["image_count"] == 0
+        # metric_density and richness_score may be NULL
+
 
 class TestHTMLSegmenterIntegration:
     """Integration tests for HTML segmentation."""

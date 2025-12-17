@@ -353,7 +353,13 @@ class ExtractionPipeline:
                             contains_definition_flag,
                             contains_methodology_flag,
                             contains_numeric_disclosure_flag,
-                            classifier_confidence
+                            classifier_confidence,
+                            metric_density,
+                            distinct_metric_count,
+                            contains_temporal_trend,
+                            contains_cohort_breakdown,
+                            image_count,
+                            richness_score
                         ) VALUES (
                             %(filing_id)s, %(segment_type)s, %(section_path)s, %(section_heading)s,
                             %(sequence_index)s, %(raw_text)s, %(raw_html)s,
@@ -361,7 +367,13 @@ class ExtractionPipeline:
                             %(contains_definition_flag)s,
                             %(contains_methodology_flag)s,
                             %(contains_numeric_disclosure_flag)s,
-                            %(classifier_confidence)s
+                            %(classifier_confidence)s,
+                            %(metric_density)s,
+                            %(distinct_metric_count)s,
+                            %(contains_temporal_trend)s,
+                            %(contains_cohort_breakdown)s,
+                            %(image_count)s,
+                            %(richness_score)s
                         )
                         RETURNING source_segment_id
                         """,
