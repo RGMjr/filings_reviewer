@@ -773,3 +773,350 @@ class TestTemporalTrendDetection:
 
         # Check temporal trend is detected
         assert segment.contains_temporal_trend is True
+
+
+# =============================================================================
+# Cohort Breakdown Detection Tests (G6) - 16 tests
+# =============================================================================
+
+
+class TestCohortBreakdownDetection:
+    """Tests for cohort breakdown detection (G6)."""
+
+    # -------------------------------------------------------------------------
+    # Percentage Breakdown Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_percentage_of_consumers_new_customers(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'44.4% of consumers were new customers' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="44.4% of consumers were new customers in the fiscal year.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_percentage_of_users_enterprise(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'15% of users are enterprise accounts' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="15% of users are enterprise accounts with annual contracts.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_percentage_revenue_growth_no_customer_context(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'Revenue grew 25%' -> False (no customer breakdown)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue grew 25% compared to the prior period.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    def test_percentage_satisfaction_rate(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'100% satisfaction rate' -> False (not customer segmentation)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="We achieved a 100% satisfaction rate on support tickets.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    # -------------------------------------------------------------------------
+    # Cohort Keyword Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_cohort_analysis_keyword(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'cohort analysis by acquisition year' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="The following table shows cohort analysis by acquisition year.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_customers_acquired_in_year(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'Customers acquired in 2022' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Customers acquired in 2022 showed strong retention rates.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_by_tenure_cohort(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'by tenure cohort' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Metrics are broken down by tenure cohort in the table below.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_customer_lifetime_value(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'customer lifetime value' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="We measure customer lifetime as a key indicator of success.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_cohesive_not_cohort(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'cohesive team' -> False (not cohort)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="We have a cohesive team focused on product development.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    # -------------------------------------------------------------------------
+    # New/Existing Customer Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_new_customers_represented_percentage(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'New customers represented 35% of revenue' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="New customers represented 35% of total revenue in the quarter.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_existing_vs_new_customers(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'existing vs new customers' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="We track metrics for existing vs new customers separately.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_first_year_customers(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'first-year customers' -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="First-year customers typically have lower engagement.",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    # -------------------------------------------------------------------------
+    # Multiple Cohort Metrics Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_multiple_cohort_metrics_returns_true(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with 2+ cohort metrics in candidate_metric_ids -> True."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="See the table below for detailed metrics.",
+            candidate_metric_ids=[
+                "cm_revenue_by_cohort",
+                "cm_transactions_by_cohort",
+            ],
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is True
+
+    def test_single_non_cohort_metric_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with non-cohort metrics only -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="We track active users monthly.",
+            candidate_metric_ids=["cm_active_users_total"],
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    # -------------------------------------------------------------------------
+    # Edge Cases Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_empty_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Empty raw_text -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    def test_none_raw_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """None raw_text -> False."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+        )
+        segment.raw_text = None  # type: ignore[assignment]
+
+        enricher.enrich_batch([segment])
+
+        assert segment.contains_cohort_breakdown is False
+
+    def test_case_insensitive_detection(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'COHORT ANALYSIS' and 'Cohort Analysis' -> True."""
+        segment_upper = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Our COHORT ANALYSIS shows strong performance.",
+        )
+        segment_mixed = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Our Cohort Analysis shows strong performance.",
+        )
+
+        enricher.enrich_batch([segment_upper, segment_mixed])
+
+        assert segment_upper.contains_cohort_breakdown is True
+        assert segment_mixed.contains_cohort_breakdown is True
+
+    def test_non_string_raw_text_returns_false(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Non-string raw_text -> False with warning (direct method test)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=42,
+        )
+        # Set raw_text to a non-string type to test type checking
+        segment.raw_text = 12345  # type: ignore[assignment]
+
+        # Call _detect_cohort_breakdowns directly to test the isinstance check
+        result = enricher._detect_cohort_breakdowns(segment)
+
+        assert result is False
+
+    # -------------------------------------------------------------------------
+    # Integration Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_full_enrich_batch_sets_cohort_breakdown(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Full enrich_batch() flow sets contains_cohort_breakdown correctly."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="44.4% of consumers were new customers.",
+                candidate_metric_ids=["cm_revenue"],
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Total revenue was $10 million.",
+                candidate_metric_ids=["cm_revenue"],
+            ),
+        ]
+
+        result = enricher.enrich_batch(segments)
+
+        assert result[0].contains_cohort_breakdown is True
+        assert result[1].contains_cohort_breakdown is False
+
+    def test_cohort_alongside_temporal_and_density(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Cohort detection works alongside temporal and density calculations."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="x" * 100 + " New customers represented 40% of revenue in 2022 and 2023.",
+            candidate_metric_ids=["cm_revenue", "cm_active_customers"],
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Check density and distinct count are still computed
+        assert segment.metric_density is not None
+        assert segment.metric_density > 0
+        assert segment.distinct_metric_count == 2
+
+        # Check temporal trend is detected (2022 and 2023)
+        assert segment.contains_temporal_trend is True
+
+        # Check cohort breakdown is detected
+        assert segment.contains_cohort_breakdown is True
