@@ -58,6 +58,7 @@ class SourceSegment:
     contains_cohort_breakdown: bool = False  # True if segment contains cohort analysis patterns
     image_count: int = 0  # Count of meaningful images/charts in segment
     richness_score: Optional[float] = None  # Composite score 0-10 (computed by enricher)
+    extra_metadata: Optional[Dict[str, Any]] = None  # Additional enrichment metadata (e.g., SaaS indicators)
 
     # Database fields (populated after insert)
     source_segment_id: Optional[int] = None
@@ -96,6 +97,7 @@ class SourceSegment:
             "contains_cohort_breakdown": self.contains_cohort_breakdown,
             "image_count": self.image_count,
             "richness_score": self.richness_score,
+            "extra_metadata": self.extra_metadata,
         }
 
 

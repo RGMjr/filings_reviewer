@@ -90,7 +90,7 @@ The formula (lines 449-489) gives:
 | Task ID | Name | Prerequisites | Time Est | Risk | Status |
 |---------|------|---------------|----------|------|--------|
 | GI-4 | Expand Cohort Detection Patterns | GI-1, GI-2 | 2-3 hours | Low | ✅ Complete |
-| GI-5 | Add SaaS-Specific Detection Patterns | GI-4 | 1-2 hours | Low | 🟡 Pending |
+| GI-5 | Add SaaS-Specific Detection Patterns | GI-4 | 1-2 hours | Low | ✅ Complete |
 
 ### Phase 3: Tune Richness Formula (GI-6 to GI-7)
 
@@ -550,12 +550,33 @@ TASK ID:       GI-5
 TASK NAME:     Add SaaS-specific metric and disclosure patterns
 WORKSTREAM:    Goldmine Improvement
 SOURCE:        GOLDMINE_1_IMPROVEMENT_PLAN.md
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 1-2 hours (implementation 45 min, testing 45 min)
+ACTUAL TIME:   ~1 hour
 RISK LEVEL:    Low (additive patterns)
 PARALLEL WITH: None
 ═══════════════════════════════════════════════════════════════════════════════
 ```
+
+#### Completion Notes (2025-12-17)
+
+**Patterns Added (16 total in SAAS_PATTERNS):**
+- ARR/MRR with dollar amounts: `ARR of $100 million`, `MRR of $8M`
+- ARR/MRR with growth: `ARR grew 50%`, `ARR increased by 30%`
+- Spelled out forms: `annual recurring revenue`, `monthly recurring revenue`
+- Billings patterns: `calculated billings`, `billings grew`, `deferred revenue`
+- Net expansion: `net expansion rate`, `net revenue expansion rate`
+- Enterprise thresholds: `>$100,000 of ARR`, `customers with ARR over $100K`, `575 enterprise customers`
+- Unit economics: `customer acquisition cost`, `CAC of $`, `payback period`, `high lifetime value`
+
+**Integration:**
+- Added `extra_metadata` field to SourceSegment model for storing SaaS indicator
+- `_detect_saas_indicators()` method matches existing `_detect_cohort_breakdowns()` pattern
+- +0.5 richness bonus added (separate from +1.5 cohort bonus)
+
+**Tests:** 44 unit tests in `tests/unit/extraction/test_segment_enricher_saas.py`
+- 240 total segment_enricher tests passing
+- mypy --strict passes
 
 #### Objective
 
