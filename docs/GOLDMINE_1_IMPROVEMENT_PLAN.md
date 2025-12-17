@@ -97,7 +97,7 @@ The formula (lines 449-489) gives:
 | Task ID | Name | Prerequisites | Time Est | Risk | Status |
 |---------|------|---------------|----------|------|--------|
 | GI-6 | Calibrate Richness Formula Weights | GI-3, GI-4 | 2-3 hours | Medium | ✅ Complete |
-| GI-7 | Add High-Value Metric Bonuses | GI-6 | 1-2 hours | Low | 🟡 Pending |
+| GI-7 | Add High-Value Metric Bonuses | GI-6 | 1-2 hours | Low | ✅ Complete |
 
 ### Phase 4: Validation (GI-8)
 
@@ -772,12 +772,26 @@ TASK ID:       GI-7
 TASK NAME:     Add richness bonuses for high-value metric types
 WORKSTREAM:    Goldmine Improvement
 SOURCE:        GOLDMINE_1_IMPROVEMENT_PLAN.md
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 1-2 hours (implementation 45 min, testing 45 min)
+ACTUAL TIME:   ~1 hour
 RISK LEVEL:    Low (additive bonus)
 PARALLEL WITH: None
 ═══════════════════════════════════════════════════════════════════════════════
 ```
+
+**COMPLETION NOTES**:
+- Defined `HIGH_VALUE_METRICS` frozenset with **8 high-value metric IDs**:
+  - Retention: `cm_net_revenue_retention`, `cm_gross_revenue_retention`, `cm_customer_retention_rate`
+  - Unit economics: `cm_lifetime_value_per_customer`, `cm_customer_acquisition_cost`, `cm_ltv_to_cac_ratio`
+  - Cohort: `cm_revenue_by_cohort`, `cm_customers_period_end_by_tenure`
+- Implemented `_count_high_value_metrics()` method
+- Integrated +0.5 per high-value metric bonus (capped at +1.5) into `_compute_richness_score()`
+- **25 unit tests** in `tests/unit/extraction/test_segment_enricher_high_value.py`
+- **320 total segment_enricher tests pass** (no regression)
+- `mypy --strict` passes on segment_enricher.py
+- New theoretical max: 14.5 (capped to 10.0)
+- High-value metric bonus is complementary to (not duplicative of) GI-6 keyword bonuses
 
 #### Objective
 
@@ -1028,7 +1042,11 @@ COHORT_PATTERNS = [
 | 1.1 | 2025-12-17 | Claude | GI-1 complete - identified 479 snippets, 15 new patterns proposed |
 | 1.2 | 2025-12-17 | Claude | GI-2 complete - 25 goldmine ground truth, 4% recall at 6.0 |
 | 1.3 | 2025-12-17 | Claude | GI-3 complete - 340 segments analyzed, 4 weight recommendations |
+| 1.4 | 2025-12-17 | Claude | GI-4 complete - 19 new cohort patterns, 51 tests |
+| 1.5 | 2025-12-17 | Claude | GI-5 complete - 16 SaaS patterns, +0.5 bonus |
+| 1.6 | 2025-12-17 | Claude | GI-6 complete - 4 weight calibrations, 55 tests |
+| 1.7 | 2025-12-17 | Claude | GI-7 complete - 8 high-value metrics, +0.5/metric bonus (cap 1.5) |
 
 ---
 
-**Next Step**: GI-4 - Expand cohort detection patterns based on GI-1 findings
+**Next Step**: GI-8 - Re-run validation and document results
