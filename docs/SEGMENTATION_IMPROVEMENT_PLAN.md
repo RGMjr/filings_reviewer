@@ -198,33 +198,34 @@ DEFINITION_CONTINUATION_PATTERNS = [
 
 ## P2: Medium Priority Improvements
 
-### 5. Character Offset Tracking (Feature)
+### 5. Character Offset Tracking (Feature) ✅ COMPLETE
 
-**Current State:** `char_start_offset` and `char_end_offset` fields exist in `SourceSegment` but are never populated.
+**Current State:** ~~`char_start_offset` and `char_end_offset` fields exist in `SourceSegment` but are never populated.~~ **IMPLEMENTED** - Offsets now tracked using string matching approach.
 
 **Problem:** Precise source location is useful for:
 - Highlighting in UI
 - Debugging extraction issues
 - Cross-referencing with original document
 
-**Proposed Solution:**
-Track cumulative character position during extraction:
-```python
-def segment_filing(self, ...):
-    ...
-    cumulative_offset = 0
-    for element in main_content.find_all(...):
-        segment = self._extract_segment(element, filing_id, sequence_index)
-        if segment:
-            segment.char_start_offset = cumulative_offset
-            segment.char_end_offset = cumulative_offset + len(segment.raw_text)
-            cumulative_offset = segment.char_end_offset
-            raw_segments.append(segment)
-```
+**Implemented Solution:**
+- Store original HTML content before parsing
+- Use string matching to find element positions in original HTML
+- Compute offsets for paragraphs, tables, and list items
+- Handle merged definitions (use earliest start, latest end offset)
+- Handle composite splits (child segments inherit parent offsets)
+- Graceful degradation (offsets are None if string matching fails)
 
-**Impact:** Enables precise source tracking
-**Effort:** Medium (2-3 hours + tests)
-**Risk:** Low
+**Implementation Details:**
+- Added `_compute_element_offsets()` helper method (html_segmenter.py:410-462)
+- Offsets populated in `_extract_segment()` (html_segmenter.py:511-514)
+- Offsets tracked for list items (html_segmenter.py:1213-1216)
+- Merged definitions span all merged segments (html_segmenter.py:955-998)
+- 12 comprehensive tests added to test_html_segmenter.py
+
+**Impact:** ✅ Enables precise source tracking for UI highlighting and debugging
+**Effort:** 2.5 hours (implementation + 12 tests)
+**Risk:** Low - graceful failure when string matching doesn't work
+**Test Coverage:** 79% for html_segmenter.py (98 tests pass, 3 skipped)
 
 ---
 
@@ -431,7 +432,7 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 ### Phase C: Features (1 Week)
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
-| 5 | Character offset tracking | 3 hr | Source tracking | 🟡 Pending |
+| 5 | Character offset tracking | 2.5 hr | Source tracking | ✅ Complete |
 | 6 | Hierarchical section paths | 3 hr | Navigation | 🟡 Pending |
 | 8 | Additional element types | 1 hr | Coverage | 🟡 Pending |
 | 10 | HTML selector generation | 2 hr | UI highlighting | 🟡 Pending |
