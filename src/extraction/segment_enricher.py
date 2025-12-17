@@ -182,6 +182,70 @@ class SegmentEnricher:
         re.compile(r"\brenewal\s+rate\b", re.IGNORECASE),
     ]
 
+    # =========================================================================
+    # SaaS-Specific Indicator Patterns (GI-5)
+    # Patterns that indicate high-value SaaS metric disclosures without
+    # explicit cohort language. Triggers +0.5 richness bonus (separate from
+    # cohort bonus of +1.5). These patterns capture SaaS-specific terminology
+    # from Slack, Snowflake, DocuSign-style S-1 filings.
+    # =========================================================================
+    SAAS_PATTERNS: List[Pattern[str]] = [
+        # ARR/MRR with dollar amounts: "ARR of $100 million", "$50M in ARR"
+        re.compile(
+            r"\bARR\s+(?:of\s+)?\$[\d,]+(?:\.\d+)?\s*(?:million|billion|M|B|K)?\b",
+            re.IGNORECASE,
+        ),
+        # ARR with percentage: "ARR grew 50%", "ARR increased by 30%"
+        re.compile(
+            r"\bARR\s+(?:grew|increased|declined|decreased)\s+(?:by\s+)?\d+(?:\.\d+)?%",
+            re.IGNORECASE,
+        ),
+        # Annual recurring revenue spelled out: "annual recurring revenue"
+        re.compile(r"\bannual\s+recurring\s+revenue\b", re.IGNORECASE),
+        # MRR with dollar amounts: "MRR of $8 million"
+        re.compile(
+            r"\bMRR\s+(?:of\s+)?\$[\d,]+(?:\.\d+)?\s*(?:million|billion|M|B|K)?\b",
+            re.IGNORECASE,
+        ),
+        # Monthly recurring revenue spelled out: "monthly recurring revenue"
+        re.compile(r"\bmonthly\s+recurring\s+revenue\b", re.IGNORECASE),
+        # Calculated billings: "calculated billings were $200 million"
+        re.compile(r"\bcalculated\s+billings\b", re.IGNORECASE),
+        # Billings with growth/amount: "billings grew 40%", "billings of $X"
+        re.compile(
+            r"\bbillings\s+(?:grew|increased|of\s+\$|were\s+\$)", re.IGNORECASE
+        ),
+        # Deferred revenue in SaaS context (standalone deferred revenue metric)
+        re.compile(r"\bdeferred\s+revenue\s+(?:of|was|were|grew|increased)\b", re.IGNORECASE),
+        # Net expansion rate: "net expansion rate of 130%" (NOT expansion revenue)
+        re.compile(r"\bnet\s+(?:revenue\s+)?expansion\s+rate\b", re.IGNORECASE),
+        # Enterprise customer thresholds: ">$100,000", ">$100K", "over $100,000"
+        re.compile(
+            r"(?:>|greater\s+than|over|exceeding)\s*\$\s*[\d,]+(?:K|k)?\s*(?:of\s+)?(?:ARR|annual\s+recurring\s+revenue)?",
+            re.IGNORECASE,
+        ),
+        # Customers with ARR threshold: "customers with ARR > $X"
+        re.compile(
+            r"\bcustomers?\s+with\s+ARR\s+(?:>|greater\s+than|over|exceeding)\s*\$",
+            re.IGNORECASE,
+        ),
+        # Enterprise customers (as defined term): "575 enterprise customers"
+        re.compile(r"\b\d+\s+enterprise\s+customers?\b", re.IGNORECASE),
+        # Customer acquisition cost standalone: "customer acquisition cost decreased"
+        re.compile(r"\bcustomer\s+acquisition\s+cost\b", re.IGNORECASE),
+        # CAC standalone (not LTV/CAC which is in cohort): "CAC of $X", "CAC decreased"
+        re.compile(
+            r"\bCAC\s+(?:of\s+\$|was\s+\$|decreased|increased|improved)\b",
+            re.IGNORECASE,
+        ),
+        # Payback period: "payback period of 12 months"
+        re.compile(r"\bpayback\s+period\b", re.IGNORECASE),
+        # Lifetime value standalone (not LTV/CAC): "high lifetime value"
+        re.compile(
+            r"\b(?:high|strong|increasing)\s+lifetime\s+value\b", re.IGNORECASE
+        ),
+    ]
+
     def __init__(self) -> None:
         """Initialize enricher (stateless, patterns compiled at class level)."""
         pass
@@ -246,6 +310,12 @@ class SegmentEnricher:
 
         # Detect cohort breakdowns (G6)
         segment.contains_cohort_breakdown = self._detect_cohort_breakdowns(segment)
+
+        # Detect SaaS-specific indicators (GI-5) - store in extra_metadata
+        segment.extra_metadata = segment.extra_metadata or {}
+        segment.extra_metadata["contains_saas_indicator"] = self._detect_saas_indicators(
+            segment
+        )
 
         # Detect images/charts (G7)
         segment.image_count = self._detect_images(segment)
@@ -395,6 +465,47 @@ class SegmentEnricher:
 
         return False
 
+    def _detect_saas_indicators(self, segment: SourceSegment) -> bool:
+        """
+        Detect SaaS-specific indicator patterns in segment.
+
+        Returns True if any SaaS-specific pattern matches:
+        - ARR/MRR with dollar amounts or growth percentages
+        - Calculated billings or deferred revenue metrics
+        - Net expansion rate indicators
+        - Enterprise customer thresholds (>$100K ARR)
+        - Customer acquisition cost / payback period metrics
+
+        This is separate from cohort detection and triggers a lower bonus (+0.5
+        vs +1.5 for cohorts). Patterns are designed to capture SaaS terminology
+        from S-1 filings like Slack, Snowflake, and DocuSign.
+
+        Args:
+            segment: Segment to analyze for SaaS indicators
+
+        Returns:
+            True if SaaS indicator detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            logger.warning(
+                f"Non-string raw_text in segment {segment.sequence_index}: {type(text)}"
+            )
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for SaaS indicators
+        for pattern in self.SAAS_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
     def _detect_images(self, segment: SourceSegment) -> int:
         """
         Count meaningful images/charts in segment HTML.
@@ -532,12 +643,13 @@ class SegmentEnricher:
         - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
         - Temporal trends: 1 point if contains_temporal_trend
         - Cohort breakdowns: 1.5 points if contains_cohort_breakdown
+        - SaaS indicators: 0.5 points if contains_saas_indicator (GI-5)
         - Definitions: 1 point if contains_definition_flag
         - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
 
         Segments scoring >= 6.0 are considered "goldmines" - high-value
         sections with dense metrics, temporal trends, cohort analysis,
-        definitions, and/or visual content.
+        SaaS-specific terminology, definitions, and/or visual content.
 
         Args:
             segment: Enriched segment with all fields populated
@@ -562,6 +674,11 @@ class SegmentEnricher:
             score += 1.5
         if segment.contains_definition_flag:
             score += 1.0
+
+        # SaaS indicator bonus (GI-5): +0.5 for SaaS-specific terminology
+        extra_metadata = segment.extra_metadata or {}
+        if extra_metadata.get("contains_saas_indicator"):
+            score += 0.5
 
         # Image bonus (max 1.5)
         image_count = segment.image_count or 0
