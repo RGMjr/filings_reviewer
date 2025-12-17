@@ -9,7 +9,7 @@
 
 ## Implementation Status Summary
 
-### Completed (7 of 12 items - 58%)
+### Completed (8 of 12 items - 67%)
 
 **Phase A - Quick Wins:** ✅ **Complete** (3/3 items)
 - SEG2: SGML case insensitivity
@@ -26,9 +26,11 @@
 - SEG8: Additional element types (blockquote, pre, figure)
 - SEG10: CSS selector generation
 
-**Phase D - Polish:** 🟡 **Pending** (0/3 items)
+**Phase D - Polish:** 🟡 **In Progress** (1/3 items)
+- SEG7: Robust encoding detection ✅
 
 ### Recent Commits
+- `PENDING` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
 - `3ad44c1` SEG11: Parallel sentence detection (Dec 16)
@@ -260,34 +262,39 @@ DEFINITION_CONTINUATION_PATTERNS = [
 
 ---
 
-### 7. Robust Encoding Detection (Robustness)
+### 7. Robust Encoding Detection (Robustness) ✅ COMPLETE
 
-**Current State:** Tries UTF-8, then Latin-1 fallback.
+**Status:** ✅ Complete (SEG7) - Pending commit (2025-12-17)
 
-**Problem:** Some filings use Windows-1252 or other encodings that Latin-1 won't correctly decode.
+**Implementation:**
+- Added `charset-normalizer>=3.3.0` dependency to requirements.txt
+- Added conditional import with graceful fallback if library unavailable
+- Added `_detect_encoding_auto()` method that:
+  - Reads up to 64KB for encoding detection (handles large files efficiently)
+  - Uses confidence threshold (80%) to avoid low-confidence detections
+  - Returns detected encoding or None if confidence is below threshold
+- Updated `_read_html_file_with_encoding()` with 4-step cascade:
+  1. charset-normalizer auto-detection (if confidence >= 80%)
+  2. UTF-8 explicit attempt
+  3. Latin-1 fallback
+  4. EncodingError (only if all above fail)
+- Added test fixtures in `tests/fixtures/encoding/`:
+  - `utf8_sample.html` - UTF-8 with non-ASCII (€, é, ñ)
+  - `windows1252_sample.html` - Windows-1252 with curly quotes and em-dashes
+  - `latin1_sample.html` - Latin-1 with accented characters
+  - `utf8_bom_sample.html` - UTF-8 with BOM
+  - `ascii_only_sample.html` - Pure ASCII (control case)
+  - `very_short_sample.html` - Short file edge case
 
-**Proposed Solution:**
-Add `charset-normalizer` or `chardet` library:
-```python
-from charset_normalizer import from_path
+**Test Coverage:** 15 new tests added covering:
+- Auto-detection: UTF-8, Windows-1252, Latin-1, UTF-8 BOM
+- Fallback cascade: ASCII files, fallback when detection fails
+- Graceful degradation: mocked unavailable library, empty file, short file
+- Edge cases: encoding in metrics, EncodingError structure, mixed content
 
-def _read_html_file_with_encoding(self, html_path: str) -> Tuple[Optional[str], str]:
-    path = Path(html_path)
-
-    # Try auto-detection first
-    result = from_path(path)
-    if result.best():
-        encoding = result.best().encoding
-        content = path.read_text(encoding=encoding)
-        return content, encoding
-
-    # Fallback to existing logic
-    ...
-```
-
-**Impact:** Handles edge case encodings correctly
-**Effort:** Medium (1-2 hours + dependency)
-**Risk:** Low (new dependency)
+**Impact:** ✅ Correctly handles Windows-1252, ISO-8859-* variants, and other legacy encodings
+**Effort:** 2 hours (implementation + 15 tests + fixtures)
+**Risk:** Low (graceful fallback when library unavailable)
 
 ---
 
@@ -446,11 +453,11 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 ### Phase D: Polish (As Needed)
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
-| 7 | Robust encoding detection | 2 hr | Edge cases | 🟡 Pending |
+| 7 | Robust encoding detection | 2 hr | Edge cases | ✅ Complete |
 | 9 | DOM caching | 2 hr | Minor perf | 🟡 Pending |
 | 12 | Table summary sampling | 1 hr | Large tables | 🟡 Pending |
 
-**Total:** ~5 hours, edge case handling
+**Total:** ~5 hours, edge case handling (1 complete, 2 pending)
 
 ---
 

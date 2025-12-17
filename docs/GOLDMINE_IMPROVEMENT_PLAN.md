@@ -162,7 +162,7 @@ TASK ID:       G2
 TASK NAME:     Create SQL migration to add richness columns to source_segments
 WORKSTREAM:    Data Model Enhancement (Stream A)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Stream A, File 2
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 1-2 hours (SQL 30 min, testing 30 min, rollback 30 min)
 RISK LEVEL:    Low
 PARALLEL WITH: None (depends on G1 for field names)
@@ -171,6 +171,7 @@ PARALLEL WITH: None (depends on G1 for field names)
 
 **Files to Create**: `sql/08_add_richness_metadata.sql`
 **Prerequisites**: G1 (field names defined)
+**Commit**: G2: Add richness metadata columns to source_segments
 
 **Key Requirements**:
 - Add 6 columns matching SourceSegment types
@@ -179,10 +180,10 @@ PARALLEL WITH: None (depends on G1 for field names)
 - Backward compatible (NULL/defaults)
 
 **Acceptance Criteria**:
-- [ ] Migration runs successfully
-- [ ] 6 columns added with correct types
-- [ ] 2 indexes created
-- [ ] Rollback tested
+- [x] Migration runs successfully
+- [x] 6 columns added with correct types
+- [x] 2 indexes created
+- [x] Rollback tested
 
 ---
 

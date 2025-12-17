@@ -25,6 +25,9 @@ requests>=2.31.0
 # HTML parsing - Extracts text and tables from SEC filing HTML documents
 beautifulsoup4>=4.12.0
 
+# Encoding detection - Automatic charset detection for legacy SEC filings
+charset-normalizer>=3.3.0
+
 # Optional: Faster HTML/XML parser for BeautifulSoup (fallback: html.parser)
 # Uncomment if processing speed becomes a bottleneck
 # lxml>=4.9.0

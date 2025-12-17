@@ -22,6 +22,23 @@ from src.review.boundary_detection import BoundaryDetector
 
 logger = logging.getLogger(__name__)
 
+# Conditional import for charset-normalizer (graceful degradation)
+try:
+    from charset_normalizer import from_bytes
+    CHARSET_NORMALIZER_AVAILABLE = True
+except ImportError:
+    CHARSET_NORMALIZER_AVAILABLE = False
+    logger.warning(
+        "charset-normalizer not available, using fallback encoding detection "
+        "(UTF-8 → Latin-1 cascade)"
+    )
+
+# Minimum confidence threshold for auto-detection (0.0 to 1.0)
+ENCODING_CONFIDENCE_THRESHOLD = 0.80
+
+# Maximum bytes to read for encoding detection (64KB for large files)
+ENCODING_DETECTION_MAX_BYTES = 65536
+
 
 @dataclass
 class SegmentationMetrics:
@@ -235,6 +252,11 @@ class HTMLSegmenter:
         raw_segments = []
         sequence_index = 0
 
+        # Cache elements by sequence index for composite splitting (SEG9 optimization)
+        # This avoids redundant BeautifulSoup parsing in _split_composite_segment()
+        # The cache is cleared after splitting to release DOM references
+        element_cache: Dict[int, Tag] = {}
+
         # Extract all segments
         for element in main_content.find_all(
             ["p", "table", "div", "ul", "ol", "blockquote", "pre", "figure"],
@@ -280,14 +302,23 @@ class HTMLSegmenter:
             segment = self._extract_segment(element, filing_id, sequence_index)
             if segment:
                 raw_segments.append(segment)
+                # Cache element for composite splitting (SEG9)
+                element_cache[sequence_index] = element
                 sequence_index += 1
 
         # Apply composite segment splitting (L5 enhancement)
         # This splits segments containing both text and tables into separate segments
+        # Pass cached elements to avoid re-parsing HTML (SEG9 optimization)
         segments = []
         for segment in raw_segments:
-            split_segs = self._split_composite_segment(segment)
+            # Get cached element by integer sequence index
+            cached_element = element_cache.get(int(segment.sequence_index))
+            split_segs = self._split_composite_segment(segment, parsed_element=cached_element)
             segments.extend(split_segs)
+
+        # Clear element cache - DOM elements no longer needed (SEG9 memory cleanup)
+        # This releases references to the parsed DOM tree
+        element_cache.clear()
 
         # Apply definition merging (Phase 3 of redesign)
         # This merges segments that split a definition across HTML elements
@@ -343,7 +374,13 @@ class HTMLSegmenter:
         return segments
 
     def _read_html_file_with_encoding(self, html_path: str) -> Tuple[Optional[str], str]:
-        """Read HTML file with enhanced encoding detection and error reporting.
+        """Read HTML file with automatic encoding detection and fallback cascade.
+
+        Detection order (SEG7):
+        1. charset-normalizer auto-detection (if confidence >= 80%)
+        2. UTF-8 explicit attempt
+        3. Latin-1 fallback
+        4. EncodingError (only if all above fail)
 
         Args:
             html_path: Path to HTML file
@@ -352,41 +389,126 @@ class HTMLSegmenter:
             Tuple of (content, encoding_used)
 
         Raises:
-            EncodingError: If both UTF-8 and latin-1 encodings fail
+            EncodingError: If all encoding attempts fail
         """
         path = Path(html_path)
-        attempted_encodings = []
+        attempted_encodings: List[str] = []
 
-        # Try UTF-8 first
+        # Step 1: Try auto-detection if charset-normalizer is available
+        if CHARSET_NORMALIZER_AVAILABLE:
+            detected_encoding = self._detect_encoding_auto(path)
+            if detected_encoding:
+                try:
+                    content = path.read_text(encoding=detected_encoding)
+                    logger.debug(
+                        f"Successfully read {html_path} with auto-detected "
+                        f"encoding: {detected_encoding}"
+                    )
+                    return (content, detected_encoding)
+                except (UnicodeDecodeError, LookupError) as e:
+                    attempted_encodings.append(detected_encoding)
+                    logger.debug(
+                        f"Auto-detected encoding {detected_encoding} failed for "
+                        f"{html_path}: {e}. Falling back to explicit encodings."
+                    )
+
+        # Step 2: Try UTF-8 explicitly
         try:
             content = path.read_text(encoding="utf-8")
             logger.debug(f"Successfully read {html_path} with UTF-8 encoding")
             return (content, "utf-8")
         except UnicodeDecodeError as e:
-            attempted_encodings.append("utf-8")
+            if "utf-8" not in attempted_encodings:
+                attempted_encodings.append("utf-8")
             position = e.start if hasattr(e, "start") else None
-            logger.warning(
+            logger.debug(
                 f"UTF-8 decode failed for {html_path} at position {position}: {e}. "
                 f"Trying latin-1 fallback..."
             )
 
-        # Fall back to latin-1
+        # Step 3: Fall back to latin-1
         try:
             content = path.read_text(encoding="latin-1")
-            logger.info(f"Successfully read {html_path} with latin-1 encoding (UTF-8 failed)")
+            logger.info(
+                f"Successfully read {html_path} with latin-1 encoding "
+                f"(tried: {', '.join(attempted_encodings)})"
+            )
             return (content, "latin-1")
         except UnicodeDecodeError as e:
-            attempted_encodings.append("latin-1")
+            if "latin-1" not in attempted_encodings:
+                attempted_encodings.append("latin-1")
             position = e.start if hasattr(e, "start") else None
 
-            # Both encodings failed - raise EncodingError
+            # Step 4: All encodings failed - raise EncodingError
             raise EncodingError(
-                f"Failed to decode {html_path} with UTF-8 and latin-1 encodings. "
-                f"File may have mixed or invalid encoding.",
+                f"Failed to decode {html_path}. Attempted encodings: "
+                f"{', '.join(attempted_encodings)}. File may have mixed or invalid encoding.",
                 file_path=html_path,
                 attempted_encodings=attempted_encodings,
                 position=position,
             )
+
+    def _detect_encoding_auto(self, path: Path) -> Optional[str]:
+        """Detect file encoding using charset-normalizer library.
+
+        Reads up to ENCODING_DETECTION_MAX_BYTES (64KB) for detection to handle
+        large files efficiently.
+
+        Args:
+            path: Path to file
+
+        Returns:
+            Detected encoding name if confidence >= threshold, None otherwise
+        """
+        if not CHARSET_NORMALIZER_AVAILABLE:
+            return None
+
+        try:
+            # Read file bytes (limited for large files)
+            file_size = path.stat().st_size
+            bytes_to_read = min(file_size, ENCODING_DETECTION_MAX_BYTES)
+
+            with open(path, "rb") as f:
+                raw_bytes = f.read(bytes_to_read)
+
+            # Empty file - no detection needed
+            if not raw_bytes:
+                return None
+
+            # Run charset detection
+            result = from_bytes(raw_bytes)
+            best_match = result.best()
+
+            if best_match is None:
+                logger.debug(f"charset-normalizer found no encoding match for {path}")
+                return None
+
+            encoding = best_match.encoding
+            # charset-normalizer uses 0.0-1.0 for coherence, but we want confidence
+            # The 'encoding' property returns the encoding, and we can check coherence
+            # from the CharsetMatch object
+            confidence = getattr(best_match, "coherence", 0.0)
+
+            # Adjust threshold check - charset-normalizer's coherence is typically
+            # high for valid text, but we use encoding_aliases for common aliases
+            # Some encodings report as aliases (cp1252 = windows-1252)
+            if confidence < ENCODING_CONFIDENCE_THRESHOLD:
+                logger.debug(
+                    f"Auto-detected {encoding} for {path} but confidence "
+                    f"({confidence:.2f}) below threshold ({ENCODING_CONFIDENCE_THRESHOLD})"
+                )
+                return None
+
+            logger.debug(
+                f"Auto-detected encoding {encoding} for {path} "
+                f"(confidence: {confidence:.2f})"
+            )
+            return encoding
+
+        except Exception as e:
+            # Any error in detection should not break the pipeline
+            logger.debug(f"Encoding auto-detection failed for {path}: {e}")
+            return None
 
     def _read_html_file(self, html_path: str) -> Optional[str]:
         """DEPRECATED: Use _read_html_file_with_encoding() instead.
@@ -659,7 +781,11 @@ class HTMLSegmenter:
 
         return segment
 
-    def _split_composite_segment(self, segment: SourceSegment) -> List[SourceSegment]:
+    def _split_composite_segment(
+        self,
+        segment: SourceSegment,
+        parsed_element: Optional[Tag] = None
+    ) -> List[SourceSegment]:
         """
         Split a segment containing both text and tables into separate segments.
 
@@ -668,6 +794,10 @@ class HTMLSegmenter:
 
         Args:
             segment: Original segment that may contain mixed text and table content
+            parsed_element: Optional pre-parsed Tag element to avoid re-parsing raw_html.
+                           If provided, uses this element directly instead of parsing.
+                           This is a performance optimization (SEG9) - the element is
+                           temporarily cached during extraction and cleared after splitting.
 
         Returns:
             List of segments (single segment if no split needed, multiple if split)
@@ -681,8 +811,12 @@ class HTMLSegmenter:
             return [segment]
 
         try:
-            # Parse the HTML to identify table boundaries
-            soup = BeautifulSoup(segment.raw_html, "html.parser")
+            # Use cached element if available, otherwise parse raw_html (SEG9)
+            # This avoids redundant BeautifulSoup parsing for composite segments
+            if parsed_element is not None and isinstance(parsed_element, Tag):
+                soup = parsed_element
+            else:
+                soup = BeautifulSoup(segment.raw_html, "html.parser")
 
             # Find all table elements
             # First, get all tables
@@ -1216,12 +1350,15 @@ class HTMLSegmenter:
 
     def _create_table_summary(self, raw_html: Optional[str], raw_text: str) -> str:
         """
-        Create a summary of a large table.
+        Create a summary of a large table with tri-region sampling.
+
+        For tables >3000 chars, samples from beginning, middle, and end
+        to provide better coverage of table content.
 
         Includes:
         - Header row(s) if available
         - Row count estimate
-        - First few rows of data
+        - Sampled text from beginning, middle, and end regions
 
         Args:
             raw_html: Original HTML (for structure parsing)
@@ -1267,20 +1404,74 @@ class HTMLSegmenter:
             except Exception as e:
                 logger.debug(f"Could not parse table HTML for summary: {e}")
 
-        # Include truncated raw text for searchability
-        # Take first portion of text (approximately first few rows)
+        # Include sampled raw text for searchability
         max_summary_text = 3000
         if len(raw_text) > max_summary_text:
-            truncated_text = raw_text[:max_summary_text].rstrip()
-            # Try to end at a reasonable break point
-            last_space = truncated_text.rfind(" ")
-            if last_space > max_summary_text - 200:
-                truncated_text = truncated_text[:last_space]
-            summary_parts.append(truncated_text + "...")
+            # Tri-region sampling for better coverage
+            sample_size = 1000
+
+            # Beginning sample (~1000 chars)
+            first_sample = self._truncate_at_word_boundary(
+                raw_text[:sample_size], sample_size
+            )
+
+            # Calculate middle position, ensuring no overlap with beginning
+            text_len = len(raw_text)
+            mid_start = max(sample_size, text_len // 2 - sample_size // 2)
+            mid_end = min(text_len - sample_size, mid_start + sample_size)
+
+            # Check if middle region would overlap with beginning or end
+            if mid_start >= text_len - sample_size:
+                # Text not long enough for distinct middle - skip middle sample
+                middle_sample = ""
+            else:
+                middle_sample = self._truncate_at_word_boundary(
+                    raw_text[mid_start:mid_end], sample_size
+                )
+
+            # End sample (~1000 chars)
+            end_start = max(mid_end if middle_sample else sample_size, text_len - sample_size)
+            last_sample = raw_text[end_start:].strip()
+            # Truncate at word boundary from the start for end sample
+            if len(last_sample) > sample_size:
+                # Find first space after position 0 to start at word boundary
+                first_space = last_sample.find(" ")
+                if 0 < first_space < 100:
+                    last_sample = last_sample[first_space + 1:]
+
+            # Build the summary with markers
+            summary_parts.append(first_sample)
+            if middle_sample:
+                summary_parts.append("...[middle sample]...")
+                summary_parts.append(middle_sample)
+            summary_parts.append("...[end sample]...")
+            summary_parts.append(last_sample)
         else:
             summary_parts.append(raw_text)
 
         return " ".join(summary_parts)
+
+    def _truncate_at_word_boundary(self, text: str, max_length: int) -> str:
+        """
+        Truncate text at a word boundary.
+
+        Args:
+            text: Text to truncate
+            max_length: Maximum length
+
+        Returns:
+            Truncated text ending at a word boundary
+        """
+        if len(text) <= max_length:
+            return text.rstrip()
+
+        truncated = text[:max_length].rstrip()
+        # Look for whitespace within last 100 characters for clean break
+        last_space = truncated.rfind(" ")
+        if last_space > max_length - 100:
+            truncated = truncated[:last_space]
+
+        return truncated
 
     # =========================================================================
     # Context Enrichment Methods (Phase 5 of redesign)
