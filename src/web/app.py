@@ -423,13 +423,13 @@ def _register_template_filters(app: Flask) -> None:
 
 
 # Convenience function for running directly
-def run_dev_server(host: str = "127.0.0.1", port: int = 5000) -> None:
+def run_dev_server(host: str = "127.0.0.1", port: int = 5002) -> None:
     """
     Run the development server.
 
     Args:
         host: Host to bind to (default: 127.0.0.1)
-        port: Port to bind to (default: 5000)
+        port: Port to bind to (default: 5002)
     """
     from dotenv import load_dotenv
 

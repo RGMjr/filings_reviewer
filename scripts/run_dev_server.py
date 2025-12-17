@@ -6,7 +6,7 @@ Usage:
     python scripts/run_dev_server.py [--host HOST] [--port PORT]
 
 Examples:
-    # Start on default host and port (127.0.0.1:5000)
+    # Start on default host and port (127.0.0.1:5002)
     python scripts/run_dev_server.py
 
     # Start on custom host and port
@@ -44,8 +44,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=5000,
-        help="Port to bind to (default: 5000)",
+        default=5002,
+        help="Port to bind to (default: 5002)",
     )
 
     args = parser.parse_args()
