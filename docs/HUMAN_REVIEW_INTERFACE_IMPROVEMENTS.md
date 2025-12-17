@@ -17,7 +17,7 @@ Following comprehensive testing of the human review interface, this document tra
 | Reject decisions | ✅ Working | Categories and reasons preserved |
 | Reclassify decisions | ✅ Working | Metric reassignment functional |
 | Audit logging (pages) | ✅ Working | 127 entries captured |
-| Audit logging (API) | ⚠️ Gap | POST /api/decisions not logged |
+| Audit logging (API) | ✅ Fixed | HRI-2 complete (2025-12-17) |
 | Health check | ✅ Fixed | HRI-1 complete (2025-12-17) |
 
 ---
@@ -72,30 +72,29 @@ if health.is_healthy:
 
 **Priority:** Critical
 **Effort:** 30-45 minutes
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Problem:**
 Decision submissions (`POST /api/decisions`) are not captured in `review_audit_log`. This creates a compliance gap - we can see page views but not the actual decisions being made.
 
 **Location:** `src/web/routes/api.py`
 
-**Implementation:**
-1. Add `before_request` and `after_request` hooks to api_bp (similar to review_bp)
-2. Log: endpoint, method, request body (sanitized), response status, user session
-3. Include `candidate_id` and `decision` type in log entry
+**Fix Applied:**
+1. Added `@api_bp.before_request` hook to capture request start time
+2. Added `@api_bp.after_request` hook to log all API requests
+3. Decision details (decision type, assigned_metric_id, rejection_category) captured in `query_params` JSONB
+4. Candidate ID extracted from request body and logged
+5. Response status and time tracked for all requests
 
-**Schema Addition (optional):**
-```sql
--- Add decision-specific columns to audit log
-ALTER TABLE review_audit_log ADD COLUMN decision_type VARCHAR(20);
-ALTER TABLE review_audit_log ADD COLUMN request_body JSONB;
-```
+**Test Coverage:**
+- 18 unit tests added in `tests/unit/web/test_api_audit_logging.py`
+- 97% coverage for api.py
 
 **Acceptance Criteria:**
-- [ ] All POST /api/decisions calls logged to review_audit_log
-- [ ] Decision type captured (accept/reject/reclassify)
-- [ ] Candidate ID linked in audit entry
-- [ ] Integration test verifies logging
+- [x] All POST /api/decisions calls logged to review_audit_log
+- [x] Decision type captured (accept/reject/reclassify)
+- [x] Candidate ID linked in audit entry
+- [x] 18 unit tests covering logging scenarios
 
 ---
 

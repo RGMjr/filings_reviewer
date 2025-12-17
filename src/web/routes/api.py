@@ -6,10 +6,11 @@ and fetching candidate data. All endpoints return JSON responses.
 """
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import psycopg
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request, session
 
 from src.review.models import (
     DECISION_TYPES,
@@ -19,6 +20,98 @@ from src.web.app import get_db
 
 api_bp = Blueprint("api", __name__)
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Audit Logging Hooks
+# =============================================================================
+# These hooks automatically log all API requests for audit trail and analytics.
+# Logs are stored in review_audit_log table.
+
+
+@api_bp.before_request
+def _log_request_start():
+    """
+    Hook that runs before each request to API routes.
+
+    Captures request start time for response time calculation.
+    Stored in Flask g object for access in after_request hook.
+    """
+    g.request_start_time = time.time()
+
+
+@api_bp.after_request
+def _log_request_complete(response):
+    """
+    Hook that runs after each request to API routes.
+
+    Logs request details to audit_log table including:
+    - Session ID, IP address, user agent
+    - Route name, HTTP method, URL path
+    - Candidate ID if present in request body
+    - Decision details (type, metric_id) for POST /decisions
+    - Response status and time
+
+    Args:
+        response: Flask response object
+
+    Returns:
+        Unmodified response object
+    """
+    try:
+        # Calculate response time
+        response_time_ms = None
+        if hasattr(g, "request_start_time"):
+            response_time_ms = int((time.time() - g.request_start_time) * 1000)
+
+        # Extract IDs and decision info from request
+        candidate_id = None
+        filing_id = None
+        query_params = None
+
+        # Check URL path parameters first (for GET endpoints)
+        if request.view_args:
+            candidate_id = request.view_args.get("candidate_id")
+            filing_id = request.view_args.get("filing_id")
+
+        # For POST requests with JSON body, extract decision details
+        if request.method == "POST" and request.is_json:
+            data = request.get_json(silent=True) or {}
+            # Extract candidate_id from body (overrides URL param if present)
+            if "candidate_id" in data:
+                candidate_id = data.get("candidate_id")
+            # Capture decision-specific fields in query_params
+            query_params = {}
+            if "decision" in data:
+                query_params["decision"] = data["decision"]
+            if "assigned_metric_id" in data:
+                query_params["assigned_metric_id"] = data["assigned_metric_id"]
+            if "rejection_category" in data:
+                query_params["rejection_category"] = data["rejection_category"]
+            # Only store non-empty query_params
+            if not query_params:
+                query_params = None
+
+        # Get database connection and insert audit log
+        db = get_db()
+        db.insert_audit_log(
+            session_id=session.get("_id"),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            route_name=request.endpoint or "unknown",
+            http_method=request.method,
+            url_path=request.path,
+            filing_id=filing_id,
+            candidate_id=candidate_id,
+            query_params=query_params,
+            response_status=response.status_code,
+            response_time_ms=response_time_ms,
+        )
+    except Exception as e:
+        # Log error but don't break the response
+        logger.error(f"Failed to insert audit log: {e}")
+
+    return response
 
 
 # =============================================================================
