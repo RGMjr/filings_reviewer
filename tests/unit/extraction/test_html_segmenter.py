@@ -1888,8 +1888,8 @@ class TestLargeTableHandling:
         finally:
             Path(html_path).unlink()
 
-    def test_very_large_table_truncated_to_limit(self, temp_html_file):
-        """Tables exceeding 25K should be truncated to the limit."""
+    def test_very_large_table_creates_summary(self, temp_html_file):
+        """Tables exceeding 25K should get tri-region summary (SEG12)."""
         # Create very large table (~30K chars)
         rows = "".join(
             f"<tr><td>Row {i}</td><td>{'Data ' * 50}</td></tr>"
@@ -1912,10 +1912,14 @@ class TestLargeTableHandling:
 
             tables = [s for s in segments if s.segment_type == 'table']
             assert len(tables) >= 1
-            # Should be truncated to TABLE_MAX_LENGTH (25000)
-            assert len(tables[0].raw_text) == 25000
-            # Should still contain header row content (not truncated)
-            assert 'Row ID' in tables[0].raw_text or 'Large Content' in tables[0].raw_text
+            # Should be summarized to much less than TABLE_MAX_LENGTH
+            assert len(tables[0].raw_text) < 5000
+            # Should be marked as truncated
+            assert tables[0].table_truncated_flag
+            # Should have tri-region sampling markers
+            assert '...[end sample]...' in tables[0].raw_text
+            # Should still contain header info
+            assert '[Table headers:' in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()

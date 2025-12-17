@@ -745,9 +745,8 @@ class HTMLSegmenter:
             if segment_type != "table":
                 # Use sentence-aware truncation to avoid cutting mid-sentence
                 raw_text = self._truncate_at_sentence_boundary(raw_text, effective_max)
-            else:
-                # Tables: simple truncation here, _handle_large_table() creates summary
-                raw_text = raw_text[:effective_max]
+            # Tables: DON'T truncate here - let _handle_large_table() create summary
+            # which samples from beginning, middle, and end of the table
 
         # Extract raw HTML (limited to avoid huge storage)
         # Tables get higher limit to preserve structure for downstream extraction
