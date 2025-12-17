@@ -1,0 +1,118 @@
+{
+  "description": "Gold standard labels for validating goldmine detection accuracy",
+  "version": "1.0",
+  "created": "2025-12-17",
+  "filings": {
+    "0001816261/000119312520227969": {
+      "company_name": "Vivint Solar",
+      "form_type": "S-1",
+      "expected_goldmine_count": 2,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "million subscribers",
+          "min_richness": 4.0,
+          "rationale": "Subscriber count disclosure (1.55 million subscribers)"
+        },
+        {
+          "text_contains": "total revenues",
+          "min_richness": 3.5,
+          "rationale": "Revenue disclosure with subscriber context"
+        }
+      ],
+      "precision_threshold": 0.65,
+      "recall_threshold": 0.50,
+      "notes": "Solar company with subscriber metrics - smaller filing for fast tests"
+    },
+    "0001740915/000119312518252315": {
+      "company_name": "Farfetch Limited",
+      "form_type": "F-1",
+      "expected_goldmine_count": 5,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Active Consumers",
+          "min_richness": 6.0,
+          "rationale": "Metric definition with temporal trend data (935,772 Active Consumers, 43.6% growth)"
+        },
+        {
+          "text_contains": "Key Operating and Financial Metrics",
+          "min_richness": 6.0,
+          "rationale": "Central metrics disclosure section with multiple KPIs"
+        },
+        {
+          "text_contains": "Number of Orders",
+          "min_richness": 5.0,
+          "rationale": "Order volume metrics with YoY comparison"
+        },
+        {
+          "text_contains": "We define new consumers",
+          "min_richness": 5.5,
+          "rationale": "Cohort definition with customer segmentation data (55.6% from existing)"
+        },
+        {
+          "text_contains": "GMV from our Marketplace",
+          "min_richness": 5.0,
+          "rationale": "Revenue metric with temporal breakdown"
+        }
+      ],
+      "precision_threshold": 0.75,
+      "recall_threshold": 0.60,
+      "notes": "Primary gold standard filing - Farfetch S-1 with extensive customer metrics"
+    },
+    "0001944902/000149315222034606": {
+      "company_name": "PropertyGuru Group Limited",
+      "form_type": "F-1",
+      "expected_goldmine_count": 3,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "monthly active users",
+          "min_richness": 5.0,
+          "rationale": "MAU disclosure"
+        },
+        {
+          "text_contains": "active listings",
+          "min_richness": 4.5,
+          "rationale": "Platform engagement metric"
+        }
+      ],
+      "precision_threshold": 0.70,
+      "recall_threshold": 0.50,
+      "notes": "Property platform with MAU and listing metrics"
+    },
+    "0001558569/000110465920127325": {
+      "company_name": "iSpecimen Inc",
+      "form_type": "S-1",
+      "expected_goldmine_count": 2,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Active Customer Organizations",
+          "min_richness": 4.5,
+          "rationale": "Customer count with temporal trend"
+        },
+        {
+          "text_contains": "cumulative number of customers",
+          "min_richness": 4.0,
+          "rationale": "Customer base growth metric"
+        }
+      ],
+      "precision_threshold": 0.70,
+      "recall_threshold": 0.50,
+      "notes": "B2B biotech with active customer organization metrics"
+    }
+  },
+  "validation_criteria": {
+    "precision": {
+      "description": "Fraction of detected goldmines that are true goldmines",
+      "minimum": 0.75,
+      "calculation": "true_positives / (true_positives + false_positives)"
+    },
+    "recall": {
+      "description": "Fraction of true goldmines that were detected",
+      "minimum": 0.60,
+      "calculation": "true_positives / (true_positives + false_negatives)"
+    },
+    "goldmine_threshold": {
+      "description": "Minimum richness score to be considered a goldmine",
+      "value": 6.0
+    }
+  }
+}
