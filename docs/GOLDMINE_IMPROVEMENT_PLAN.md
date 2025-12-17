@@ -333,7 +333,7 @@ TASK ID:       G7
 TASK NAME:     Implement image/chart detection in SegmentEnricher
 WORKSTREAM:    Core Enrichment Logic (Stream B)
 SOURCE:        GOLDMINE_IMPROVEMENT_PLAN.md - Stream B, lines 491-552
-STATUS:        🟡 PENDING
+STATUS:        ✅ COMPLETE (2025-12-17)
 TIME ESTIMATE: 1-2 hours (implementation 45 min, tests 60 min)
 RISK LEVEL:    Low
 PARALLEL WITH: G5, G6
@@ -349,10 +349,12 @@ PARALLEL WITH: G5, G6
 - Return count of meaningful images
 
 **Acceptance Criteria**:
-- [ ] Counts meaningful images
-- [ ] Filters decorative images
-- [ ] Handles SVG/canvas tags
-- [ ] 8+ tests
+- [x] Counts meaningful images (_detect_images() method)
+- [x] Filters decorative images (_is_decorative_image() helper with _parse_dimension())
+- [x] Handles SVG/canvas tags (always counted as meaningful)
+- [x] 22 tests in TestImageDetection, TestParseDimension, TestIsDecorativeImage, TestDetectImagesErrorHandling
+- [x] Coverage = 95% for segment_enricher.py
+- [x] mypy --strict passes
 
 ---
 

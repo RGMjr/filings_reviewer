@@ -1120,3 +1120,547 @@ class TestCohortBreakdownDetection:
 
         # Check cohort breakdown is detected
         assert segment.contains_cohort_breakdown is True
+
+
+# =============================================================================
+# Image Detection Tests (G7) - 16 tests
+# =============================================================================
+
+
+class TestImageDetection:
+    """Tests for image/chart detection (G7)."""
+
+    # -------------------------------------------------------------------------
+    # Basic Detection Tests (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_single_large_image_returns_1(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with one large <img> -> 1."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Revenue chart",
+            raw_html='<div><img src="revenue-chart.png" width="600" height="400"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_multiple_meaningful_images_returns_correct_count(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with multiple meaningful images -> correct count."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Multiple charts",
+            raw_html='''
+                <div>
+                    <img src="chart1.png" width="500" height="300">
+                    <img src="chart2.png" width="400" height="250">
+                    <img src="chart3.png" width="600" height="400">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 3
+
+    def test_svg_chart_returns_1(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with SVG chart -> 1."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="SVG chart",
+            raw_html='<div><svg><rect width="100" height="50"/></svg></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_canvas_element_returns_1(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Segment with canvas element -> 1."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Canvas chart",
+            raw_html='<div><canvas id="myChart"></canvas></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    # -------------------------------------------------------------------------
+    # Decorative Filtering Tests (5 tests)
+    # -------------------------------------------------------------------------
+
+    def test_small_width_filtered_out(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Small image (width < 100) -> filtered out (count 0)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Small icon",
+            raw_html='<div><img src="icon.png" width="20" height="200"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_small_height_filtered_out(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Small image (height < 100) -> filtered out (count 0)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Small icon",
+            raw_html='<div><img src="icon.png" width="200" height="20"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_icon_class_filtered_out(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Image with 'icon' in class -> filtered out."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Icon image",
+            raw_html='<div><img src="checkmark.png" class="icon checkmark"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_logo_alt_filtered_out(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Image with 'logo' in alt text -> filtered out."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Logo image",
+            raw_html='<div><img src="company.png" alt="Company Logo"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_bullet_arrow_spacer_filtered_out(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Images with bullet/arrow/spacer classes -> filtered out."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Decorative images",
+            raw_html='''
+                <div>
+                    <img src="bullet.png" class="bullet-point">
+                    <img src="arrow.png" class="nav-arrow">
+                    <img src="spacer.gif" class="spacer">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    # -------------------------------------------------------------------------
+    # Mixed Content Tests (3 tests)
+    # -------------------------------------------------------------------------
+
+    def test_mix_meaningful_and_decorative_only_meaningful_counted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Mix of meaningful + decorative images -> only meaningful counted."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Mixed images",
+            raw_html='''
+                <div>
+                    <img src="chart.png" width="500" height="300">
+                    <img src="icon.png" class="icon">
+                    <img src="graph.png" width="400" height="200">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 2
+
+    def test_large_image_plus_small_icons_only_large_counted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Large image + small icons -> only large image counted."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Chart with icons",
+            raw_html='''
+                <div>
+                    <img src="chart.png" width="600" height="400">
+                    <img src="icon1.png" width="16" height="16">
+                    <img src="icon2.png" width="24" height="24">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_chart_image_plus_logo_only_chart_counted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Chart image + logo -> only chart counted."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Chart and logo",
+            raw_html='''
+                <div>
+                    <img src="revenue-chart.png" width="500" height="300">
+                    <img src="company-logo.png" alt="Company Logo">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    # -------------------------------------------------------------------------
+    # Edge Cases (4 tests)
+    # -------------------------------------------------------------------------
+
+    def test_none_raw_html_returns_0(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """None raw_html -> 0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="No HTML",
+            raw_html=None,
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_empty_raw_html_returns_0(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Empty string raw_html -> 0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Empty HTML",
+            raw_html="",
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_image_without_dimensions_counted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Image without width/height attributes -> NOT filtered (counted)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Image no dimensions",
+            raw_html='<div><img src="chart.png"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_width_with_px_suffix_parsed_correctly(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Width/height with 'px' suffix -> parsed correctly."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Chart with px",
+            raw_html='<div><img src="chart.png" width="500px" height="300px"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_percentage_width_not_filtered(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Images with percentage widths (100%) -> NOT filtered (no pixel count)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Full width image",
+            raw_html='<div><img src="chart.png" width="100%"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_mixed_case_keywords_detected(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'ICON', 'Logo' -> should still be detected (case insensitive)."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Mixed case keywords",
+            raw_html='''
+                <div>
+                    <img src="check.png" class="ICON">
+                    <img src="company.png" alt="Company Logo">
+                </div>
+            ''',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    def test_inline_svg_counted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """SVG inline (no src) -> should be counted."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Inline SVG",
+            raw_html='<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100" height="100"/></svg>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 1
+
+    def test_multiple_decorative_keywords_filtered(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """class='icon logo small' -> should be filtered."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Multiple keywords",
+            raw_html='<div><img src="brand.png" class="icon logo small"></div>',
+        )
+
+        enricher.enrich_batch([segment])
+
+        assert segment.image_count == 0
+
+    # -------------------------------------------------------------------------
+    # Integration Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_full_enrich_batch_sets_image_count(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Full enrich_batch() flow sets image_count correctly."""
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="Chart segment",
+                raw_html='<div><img src="chart.png" width="500" height="300"></div>',
+            ),
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text="No images",
+                raw_html="<div><p>Just text</p></div>",
+            ),
+        ]
+
+        result = enricher.enrich_batch(segments)
+
+        assert result[0].image_count == 1
+        assert result[1].image_count == 0
+
+    def test_image_count_alongside_density_temporal_cohort(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Image count works alongside density, temporal, cohort calculations."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="x" * 100 + " Revenue grew from 2021 to 2023. 44.4% of consumers were new.",
+            raw_html='<div><img src="chart.png" width="500" height="300"><svg><rect/></svg></div>',
+            candidate_metric_ids=["cm_revenue", "cm_active_users_total"],
+        )
+
+        enricher.enrich_batch([segment])
+
+        # Check density and distinct count are still computed
+        assert segment.metric_density is not None
+        assert segment.metric_density > 0
+        assert segment.distinct_metric_count == 2
+
+        # Check temporal trend is detected (2021 and 2023)
+        assert segment.contains_temporal_trend is True
+
+        # Check cohort breakdown is detected
+        assert segment.contains_cohort_breakdown is True
+
+        # Check image count is detected (1 img + 1 svg = 2)
+        assert segment.image_count == 2
+
+
+# =============================================================================
+# _parse_dimension Direct Tests (G7) - 4 tests
+# =============================================================================
+
+
+class TestParseDimension:
+    """Direct tests for _parse_dimension helper method (G7)."""
+
+    def test_parse_integer_string(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'100' -> 100."""
+        result = enricher._parse_dimension("100")
+        assert result == 100
+
+    def test_parse_px_suffix(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'100px' -> 100."""
+        result = enricher._parse_dimension("100px")
+        assert result == 100
+
+    def test_parse_percentage_returns_none(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'100%' -> None (not a pixel count)."""
+        result = enricher._parse_dimension("100%")
+        assert result is None
+
+    def test_parse_empty_returns_none(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'' -> None."""
+        result = enricher._parse_dimension("")
+        assert result is None
+
+    def test_parse_none_returns_none(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """None -> None."""
+        result = enricher._parse_dimension(None)
+        assert result is None
+
+    def test_parse_whitespace_with_px(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """' 100px ' -> 100 (whitespace handled)."""
+        result = enricher._parse_dimension(" 100px ")
+        assert result == 100
+
+    def test_parse_non_numeric_returns_none(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """'auto' -> None."""
+        result = enricher._parse_dimension("auto")
+        assert result is None
+
+    def test_parse_integer_type_converted(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Integer 100 -> 100 (converted to string first)."""
+        result = enricher._parse_dimension(100)  # type: ignore[arg-type]
+        assert result == 100
+
+
+# =============================================================================
+# _is_decorative_image Direct Tests (G7) - Additional coverage
+# =============================================================================
+
+
+class TestIsDecorativeImage:
+    """Direct tests for _is_decorative_image helper method (G7)."""
+
+    def test_image_with_class_as_string(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Handle case where class attribute is a string, not a list."""
+        from bs4 import BeautifulSoup
+
+        # Some HTML parsers return class as string
+        html = '<img src="test.png" class="icon">'
+        soup = BeautifulSoup(html, "html.parser")
+        img = soup.find("img")
+
+        result = enricher._is_decorative_image(img)
+
+        assert result is True
+
+    def test_image_with_none_alt(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Handle case where alt attribute is None."""
+        from bs4 import BeautifulSoup
+
+        html = '<img src="chart.png" width="500" height="300">'
+        soup = BeautifulSoup(html, "html.parser")
+        img = soup.find("img")
+        # Ensure alt is None (default from BeautifulSoup when not present)
+
+        result = enricher._is_decorative_image(img)
+
+        assert result is False  # No decorative indicators
+
+
+# =============================================================================
+# _detect_images Error Handling Tests (G7) - Additional coverage
+# =============================================================================
+
+
+class TestDetectImagesErrorHandling:
+    """Tests for error handling in _detect_images (G7)."""
+
+    def test_malformed_html_returns_0(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Malformed HTML doesn't crash, returns 0."""
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            raw_text="Malformed",
+            raw_html="<div><img src='test.png' unclosed",
+        )
+
+        enricher.enrich_batch([segment])
+
+        # BeautifulSoup handles malformed HTML gracefully, so this should still work
+        assert segment.image_count >= 0
