@@ -30,7 +30,7 @@
 - SEG7: Robust encoding detection ✅
 
 ### Recent Commits
-- `PENDING` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
+- `be96a98` SEG7: Robust encoding detection with charset-normalizer (Dec 17)
 - `b6da6b2` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
 - `3ad44c1` SEG11: Parallel sentence detection (Dec 16)
@@ -264,7 +264,7 @@ DEFINITION_CONTINUATION_PATTERNS = [
 
 ### 7. Robust Encoding Detection (Robustness) ✅ COMPLETE
 
-**Status:** ✅ Complete (SEG7) - Pending commit (2025-12-17)
+**Status:** ✅ Complete (SEG7) - Commit: be96a98 (2025-12-17)
 
 **Implementation:**
 - Added `charset-normalizer>=3.3.0` dependency to requirements.txt
