@@ -9,7 +9,7 @@
 
 ## Implementation Status Summary
 
-### Completed (6 of 12 items - 50%)
+### Completed (7 of 12 items - 58%)
 
 **Phase A - Quick Wins:** ✅ **Complete** (3/3 items)
 - SEG2: SGML case insensitivity
@@ -20,14 +20,16 @@
 - SEG1: Heading cache binary search
 - SEG11: Parallel sentence detection
 
-**Phase C - Features:** 🟡 **In Progress** (3/4 items)
+**Phase C - Features:** ✅ **Complete** (4/4 items)
 - SEG5: Character offset tracking
 - SEG6: Hierarchical section paths
 - SEG8: Additional element types (blockquote, pre, figure)
+- SEG10: CSS selector generation
 
 **Phase D - Polish:** 🟡 **Pending** (0/3 items)
 
 ### Recent Commits
+- `pending` SEG10: CSS selector generation (Dec 17)
 - `95a7feb` SEG8: Additional element types (Dec 17)
 - `3ad44c1` SEG11: Parallel sentence detection (Dec 16)
 - `d332a57` SEG1: Binary search for heading cache (Dec 16)
@@ -336,30 +338,32 @@ def _get_segment_type(self, element: Tag) -> str:
 
 ---
 
-### 10. HTML Selector Generation (Feature)
+### 10. HTML Selector Generation (Feature) ✅ COMPLETE
 
-**Current State:** `html_selector` field exists but is never populated.
+**Status:** ✅ Complete (SEG10) - Pending commit (2025-12-17)
 
-**Proposed Solution:**
-```python
-def _generate_css_selector(self, element: Tag) -> str:
-    """Generate a CSS selector path to this element."""
-    parts = []
-    current = element
-    while current and hasattr(current, 'name') and current.name:
-        selector = current.name
-        if current.get('id'):
-            selector += f"#{current['id']}"
-        elif current.get('class'):
-            selector += f".{current['class'][0]}"
-        parts.insert(0, selector)
-        current = current.parent
-    return " > ".join(parts[-5:])  # Last 5 levels
-```
+**Implementation:**
+- Added `_element_selector()` helper method that generates CSS selector for single element:
+  - Elements with ID: returns `#id` (globally unique, terminates path)
+  - Elements with class: returns `tag.classname` (first class only)
+  - Otherwise: returns `tag:nth-of-type(n)` for uniqueness among siblings
+- Added `_escape_css_identifier()` to escape special CSS characters (`:`, `.`, `[`, `]`, etc.)
+- Added `_generate_css_selector()` method that builds path from element toward root:
+  - Terminates at element with ID (no need to go higher)
+  - Limited to 6 levels to avoid overly long selectors
+  - Uses direct descendant combinator (` > `)
+- Integrated into `_extract_segment()` and `_extract_list_segments()`
 
-**Impact:** Enables DOM highlighting in UI
-**Effort:** Medium (1-2 hours)
-**Risk:** Low
+**Test Coverage:** 17 new tests added covering:
+- ID selectors, class selectors, nth-of-type fallback
+- Path building and termination at ID elements
+- Depth limiting, special character escaping
+- Integration with full segment_filing()
+- Selector uniqueness verification
+
+**Impact:** ✅ Enables DOM highlighting in UI
+**Effort:** 1.5 hours (implementation + 17 tests)
+**Risk:** Low - graceful fallback to None on error
 
 ---
 
@@ -429,15 +433,15 @@ def _create_table_summary(self, raw_html, raw_text) -> str:
 
 **Total:** ~3 hours, significant for large filings
 
-### Phase C: Features (1 Week)
+### Phase C: Features (1 Week) ✅ **Complete**
 | # | Item | Time | Impact | Status |
 |---|------|------|--------|--------|
 | 5 | Character offset tracking | 2.5 hr | Source tracking | ✅ Complete |
 | 6 | Hierarchical section paths | 3 hr | Navigation | ✅ Complete |
 | 8 | Additional element types | 1 hr | Coverage | ✅ Complete |
-| 10 | HTML selector generation | 2 hr | UI highlighting | 🟡 Pending |
+| 10 | HTML selector generation | 1.5 hr | UI highlighting | ✅ Complete |
 
-**Total:** ~9 hours, improved feature set
+**Total:** ~8 hours, improved feature set
 
 ### Phase D: Polish (As Needed)
 | # | Item | Time | Impact | Status |
