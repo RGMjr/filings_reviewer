@@ -169,37 +169,41 @@ During testing, some candidates had incorrect initial metric associations:
 
 ---
 
-### P2.2: Display Confidence Scores
+### P2.2: Display Confidence Scores in Sidebar
 
 **Priority:** Medium
 **Effort:** 30-45 minutes
 **Status:** Not Started
 
 **Problem:**
-Candidates have confidence scores computed (`CandidateFeatures.confidence_score`) but not displayed in the review UI.
+Confidence scores are displayed on the main candidate card but NOT in the sidebar candidate list. Reviewers must click into each candidate to see its confidence level, which slows down triage.
+
+**Current Behavior:**
+- ✅ Main candidate card shows confidence badge (implemented, lines 271-292 of review.html)
+- ❌ Sidebar candidate list does NOT show confidence (lines 533-564 of review.html)
 
 **Benefit:**
-- Helps reviewers prioritize low-confidence candidates
-- Provides transparency into system recommendations
-- Enables sorting/filtering by confidence
+- Helps reviewers prioritize low-confidence candidates at a glance
+- Provides transparency into system recommendations during navigation
+- Enables faster triage without clicking into each candidate
 
 **Implementation:**
-1. Pass confidence score to template in `src/web/routes/review.py`
-2. Display as badge/indicator on candidate card
-3. Use color coding: green (>0.8), yellow (0.5-0.8), red (<0.5)
+1. Add confidence badge to sidebar candidate items (review.html:533-564)
+2. Use same color coding as main card: green (≥0.7), yellow (0.4-0.7), red (<0.4)
+3. Show compact percentage (e.g., "87%") next to status badge
 
-**UI Mock:**
+**UI Mock (Sidebar):**
 ```
-┌─────────────────────────────────────────┐
-│ Candidate #1181            [🟢 87%]     │
-│ Metric: Revenue Concentration           │
-│ Value: 15%                              │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────┐
+│ #1 Revenue Conc.  [87%] [Pending]│
+│ #2 Gross Margin   [45%] [✓]     │
+│ #3 CAC            [23%] [Pending]│
+└─────────────────────────────────┘
 ```
 
 **Acceptance Criteria:**
-- [ ] Confidence score displayed on all candidates
-- [ ] Color coding applied
+- [ ] Confidence badge shown in sidebar for each candidate
+- [ ] Color coding matches main card (green/yellow/red)
 - [ ] Tooltip explains score meaning
 - [ ] Score visible in candidate list sidebar
 
