@@ -183,6 +183,49 @@ class SegmentEnricher:
     ]
 
     # =========================================================================
+    # Retention Metric Keyword Patterns (GI-6)
+    # Patterns that indicate high-value retention metrics like NRR, NDRR,
+    # gross/net retention. Triggers +1.0 richness bonus. Based on GI-3
+    # analysis showing 87 retention-related snippets in the filings.
+    # =========================================================================
+    RETENTION_KEYWORDS: List[Pattern[str]] = [
+        # Net Dollar Retention spelled out
+        re.compile(r"\bnet\s+dollar\s+retention\b", re.IGNORECASE),
+        # Dollar-based retention variants
+        re.compile(r"\bdollar[- ]?based\s+retention\b", re.IGNORECASE),
+        # NRR/NDRR acronyms (word boundaries)
+        re.compile(r"\b(?:NRR|NDRR)\b"),
+        # Gross retention rate (distinct from generic "gross retention" in cohort patterns)
+        re.compile(r"\bgross\s+retention\s+rate\b", re.IGNORECASE),
+    ]
+
+    # =========================================================================
+    # Usage Metric Keyword Patterns (GI-6)
+    # Patterns that indicate DAU/MAU/WAU and engagement metrics.
+    # Triggers +0.5 richness bonus. Based on GI-2 showing Slack's
+    # "10 million daily active users" segment scores only 3.90.
+    # =========================================================================
+    USAGE_KEYWORDS: List[Pattern[str]] = [
+        # Daily active users (spelled out or DAU)
+        re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
+        re.compile(r"\bDAU\b"),
+        # Monthly active users (spelled out or MAU)
+        re.compile(r"\bmonthly\s+active\s+users?\b", re.IGNORECASE),
+        re.compile(r"\bMAU\b"),
+        # Weekly active users (spelled out or WAU)
+        re.compile(r"\bweekly\s+active\s+users?\b", re.IGNORECASE),
+        re.compile(r"\bWAU\b"),
+        # Generic active users with count context
+        re.compile(
+            r"\b\d+(?:\.\d+)?\s*(?:million|billion|M|B)?\s+active\s+users?\b",
+            re.IGNORECASE,
+        ),
+    ]
+
+    # Threshold score for identifying "high-value" segments (GI-6)
+    HIGH_VALUE_THRESHOLD: float = 8.0
+
+    # =========================================================================
     # SaaS-Specific Indicator Patterns (GI-5)
     # Patterns that indicate high-value SaaS metric disclosures without
     # explicit cohort language. Triggers +0.5 richness bonus (separate from
@@ -314,6 +357,16 @@ class SegmentEnricher:
         # Detect SaaS-specific indicators (GI-5) - store in extra_metadata
         segment.extra_metadata = segment.extra_metadata or {}
         segment.extra_metadata["contains_saas_indicator"] = self._detect_saas_indicators(
+            segment
+        )
+
+        # Detect retention keywords (GI-6) - store in extra_metadata
+        segment.extra_metadata["contains_retention_keywords"] = (
+            self._detect_retention_keywords(segment)
+        )
+
+        # Detect usage keywords (GI-6) - store in extra_metadata
+        segment.extra_metadata["contains_usage_keywords"] = self._detect_usage_keywords(
             segment
         )
 
@@ -506,6 +559,77 @@ class SegmentEnricher:
 
         return False
 
+    def _detect_retention_keywords(self, segment: SourceSegment) -> bool:
+        """
+        Detect retention metric keywords in segment.
+
+        Returns True if any retention keyword pattern matches:
+        - "Net Dollar Retention" (case-insensitive)
+        - "Dollar-based retention"
+        - NRR or NDRR acronyms (case-sensitive)
+        - "Gross retention rate"
+
+        This is separate from cohort detection and triggers +1.0 bonus.
+        Based on GI-3 recommendation #1 identifying 87 retention-related snippets.
+
+        Args:
+            segment: Segment to analyze for retention keywords
+
+        Returns:
+            True if retention keyword detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for retention keywords
+        for pattern in self.RETENTION_KEYWORDS:
+            if pattern.search(text):
+                return True
+
+        return False
+
+    def _detect_usage_keywords(self, segment: SourceSegment) -> bool:
+        """
+        Detect usage metric keywords (DAU/MAU/WAU) in segment.
+
+        Returns True if any usage keyword pattern matches:
+        - "daily active users" or DAU
+        - "monthly active users" or MAU
+        - "weekly active users" or WAU
+        - Active users with numeric context (e.g., "10 million active users")
+
+        This triggers +0.5 bonus. Based on GI-3 recommendation #4.
+
+        Args:
+            segment: Segment to analyze for usage keywords
+
+        Returns:
+            True if usage keyword detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for usage keywords
+        for pattern in self.USAGE_KEYWORDS:
+            if pattern.search(text):
+                return True
+
+        return False
+
     def _detect_images(self, segment: SourceSegment) -> int:
         """
         Count meaningful images/charts in segment HTML.
@@ -638,18 +762,25 @@ class SegmentEnricher:
         """
         Compute composite richness score (0-10).
 
-        Formula components (max 10 points total):
+        Formula components (theoretical max 13.0, capped at 10.0):
         - Base confidence: 0-3 points (classifier_confidence * 3.0)
         - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
         - Temporal trends: 1 point if contains_temporal_trend
         - Cohort breakdowns: 1.5 points if contains_cohort_breakdown
+        - Definition bonus: 1 point if contains_definition_flag,
+          or 1.5 points if contains_definition_flag AND distinct_metric_count >= 2 (GI-6)
+        - Retention keyword bonus: 1 point if contains_retention_keywords (GI-6)
+        - Usage keyword bonus: 0.5 points if contains_usage_keywords (GI-6)
+        - Combination bonus: 0.5 points if BOTH temporal AND cohort (GI-6)
         - SaaS indicators: 0.5 points if contains_saas_indicator (GI-5)
-        - Definitions: 1 point if contains_definition_flag
         - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
 
         Segments scoring >= 6.0 are considered "goldmines" - high-value
         sections with dense metrics, temporal trends, cohort analysis,
+        retention metrics (NRR/NDRR), usage metrics (DAU/MAU/WAU),
         SaaS-specific terminology, definitions, and/or visual content.
+
+        Segments scoring >= 8.0 are considered "high-value" goldmines.
 
         Args:
             segment: Enriched segment with all fields populated
@@ -672,11 +803,32 @@ class SegmentEnricher:
             score += 1.0
         if segment.contains_cohort_breakdown:
             score += 1.5
+
+        # Enhanced definition bonus (GI-6 recommendation #3):
+        # +1.5 if definition AND metrics >= 2, else +1.0 if just definition
         if segment.contains_definition_flag:
+            if metric_count >= 2:
+                score += 1.5  # Enhanced bonus for definition with metric context
+            else:
+                score += 1.0  # Standard definition bonus
+
+        # Combination bonus (GI-6): +0.5 if BOTH temporal AND cohort
+        # Rewards segments with both time series and cohort analysis
+        if segment.contains_temporal_trend and segment.contains_cohort_breakdown:
+            score += 0.5
+
+        # Get extra_metadata for keyword bonuses
+        extra_metadata = segment.extra_metadata or {}
+
+        # Retention keyword bonus (GI-6 recommendation #1): +1.0 for NRR/NDRR/retention
+        if extra_metadata.get("contains_retention_keywords"):
             score += 1.0
 
+        # Usage keyword bonus (GI-6 recommendation #4): +0.5 for DAU/MAU/WAU
+        if extra_metadata.get("contains_usage_keywords"):
+            score += 0.5
+
         # SaaS indicator bonus (GI-5): +0.5 for SaaS-specific terminology
-        extra_metadata = segment.extra_metadata or {}
         if extra_metadata.get("contains_saas_indicator"):
             score += 0.5
 

@@ -429,11 +429,13 @@ class TestRichnessScoreIntegration:
         )
         enricher._enrich_segment(segment)
 
-        # Expected: 3.0 (confidence) + 1.5 (cohort) + 0.5 (saas) = 5.0
-        assert segment.richness_score == 5.0
+        # Expected (GI-6 calibrated):
+        # 3.0 (confidence) + 1.5 (cohort) + 0.5 (saas) + 1.0 (retention keywords) = 6.0
+        assert segment.richness_score == 6.0
         assert segment.contains_cohort_breakdown is True
         assert segment.extra_metadata is not None
         assert segment.extra_metadata.get("contains_saas_indicator") is True
+        assert segment.extra_metadata.get("contains_retention_keywords") is True
 
     def test_no_saas_indicator_no_bonus(self, enricher: SegmentEnricher) -> None:
         """No SaaS indicator means no +0.5 bonus."""
