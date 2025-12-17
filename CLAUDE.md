@@ -45,7 +45,42 @@ ruff check src/ tests/
 
 # Type checking (review module)
 mypy src/review/ --strict
+
+# Structural code search (ast-grep)
+ast-grep scan .                                    # Run all rules
+ast-grep run --pattern 'PATTERN' --lang python .  # Pattern search
 ```
+
+## Code Search with ast-grep
+
+Use ast-grep for structural code searches. Prefer ast-grep over grep/ripgrep when:
+- Searching for function/class definitions or calls
+- Finding specific code patterns (e.g., all methods with certain decorators)
+- Refactoring: locating all usages of a pattern
+
+**Examples:**
+```bash
+# Find all function definitions
+ast-grep run --pattern 'def $FUNC($$$ARGS):' --lang python src/
+
+# Find all class definitions
+ast-grep run --pattern 'class $NAME:' --lang python src/
+
+# Find all uses of a specific function
+ast-grep run --pattern 'extract_metrics($$$)' --lang python .
+
+# Find decorated functions
+ast-grep run --pattern '@pytest.fixture
+def $NAME($$$):' --lang python tests/
+
+# Find try/except blocks
+ast-grep run --pattern 'try:
+    $$$BODY
+except $EXC:
+    $$$HANDLER' --lang python src/
+```
+
+**Configuration:** `sgconfig.yml` in project root. Custom rules in `ast-grep-rules/`.
 
 ## Environment Setup
 

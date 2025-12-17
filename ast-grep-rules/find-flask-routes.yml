@@ -1,0 +1,11 @@
+# Find all Flask route definitions
+# Usage: ast-grep scan --rule ast-grep-rules/find-flask-routes.yml src/web/
+id: find-flask-routes
+language: python
+severity: hint
+message: "Route defined"
+rule:
+  any:
+    - pattern: "@app.route($$$ARGS)"
+    - pattern: "@bp.route($$$ARGS)"
+    - pattern: "@blueprint.route($$$ARGS)"

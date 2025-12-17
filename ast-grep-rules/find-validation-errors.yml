@@ -1,0 +1,8 @@
+# Find all ValidationError raises - useful when modifying validation logic
+# Usage: ast-grep scan --rule ast-grep-rules/find-validation-errors.yml src/
+id: find-validation-errors
+language: python
+severity: hint
+message: "ValidationError raised"
+rule:
+  pattern: raise ValidationError($$$)

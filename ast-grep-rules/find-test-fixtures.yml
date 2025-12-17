@@ -1,0 +1,11 @@
+# Find all pytest fixtures
+# Usage: ast-grep scan --rule ast-grep-rules/find-test-fixtures.yml tests/
+id: find-test-fixtures
+language: python
+severity: hint
+message: "Pytest fixture: $NAME"
+rule:
+  pattern: |
+    @pytest.fixture
+    def $NAME($$$ARGS):
+        $$$BODY
