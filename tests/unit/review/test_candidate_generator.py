@@ -3953,3 +3953,136 @@ class TestContextPrefixMatching:
 
         # Both numbers should potentially match ARR from context
         assert len(arr_candidates) >= 1  # At least one match
+
+# =============================================================================
+# EI-1: Definition Segment Filtering Tests
+# =============================================================================
+
+
+class TestDefinitionFiltering:
+    """EI-1: Definition segment filtering tests.
+    
+    Tests that segments with contains_definition_flag=True are filtered out
+    and do not generate candidates, while segments with False/None/missing
+    flags continue to generate candidates normally.
+    """
+
+    @pytest.fixture
+    def generator(self):
+        """Create generator with basic configuration."""
+        config = CandidateGenerationConfig(
+            max_keyword_distance=100,
+            min_metric_value=1,
+            filter_false_positives=False,
+            compute_confidence=False,
+        )
+        return CandidateGenerator(config=config)
+
+    def test_definition_segment_generates_no_candidates(self, generator):
+        """Segment with contains_definition_flag=True should generate zero candidates."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We define daily active users as users active in a 24-hour period.",
+                "segment_type": "paragraph",
+                "contains_definition_flag": True,
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should generate 0 candidates even though "24" is present
+        assert len(candidates) == 0
+
+    def test_non_definition_segment_generates_candidates(self, generator):
+        """Segment with contains_definition_flag=False should generate candidates normally."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our daily active users reached 50,000 in Q4.",
+                "segment_type": "paragraph",
+                "contains_definition_flag": False,
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should generate candidates normally
+        assert len(candidates) >= 1
+        # Should find the number 50000
+        values = [c.parsed_value for c in candidates]
+        assert Decimal("50000") in values
+
+    def test_missing_definition_flag_generates_candidates(self, generator):
+        """Segment without contains_definition_flag key should generate candidates normally."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our daily active users reached 50,000 in Q4.",
+                "segment_type": "paragraph",
+                # contains_definition_flag is missing
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should generate candidates normally (backward compatible)
+        assert len(candidates) >= 1
+        # Should find the number 50000
+        values = [c.parsed_value for c in candidates]
+        assert Decimal("50000") in values
+
+    def test_definition_flag_none_generates_candidates(self, generator):
+        """Segment with contains_definition_flag=None should generate candidates normally."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our daily active users reached 50,000 in Q4.",
+                "segment_type": "paragraph",
+                "contains_definition_flag": None,
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should generate candidates normally
+        assert len(candidates) >= 1
+        # Should find the number 50000
+        values = [c.parsed_value for c in candidates]
+        assert Decimal("50000") in values
+
+    def test_definition_segment_with_multiple_numbers(self, generator):
+        """Definition segment with multiple numbers should still generate zero candidates."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We define monthly active users as users active in 30 days and daily active users as users active in 24 hours.",
+                "segment_type": "paragraph",
+                "contains_definition_flag": True,
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should generate 0 candidates even though "30" and "24" are present
+        assert len(candidates) == 0

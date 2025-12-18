@@ -519,6 +519,15 @@ class CandidateGenerator:
             )
 
         source_segment_id = segment.get("source_segment_id")
+
+        # Skip definition segments - they explain metrics but don't contain values (EI-1)
+        if segment.get("contains_definition_flag"):
+            logger.debug(
+                f"Skipping definition segment {source_segment_id}: "
+                "contains_definition_flag is True"
+            )
+            return [], segment_stats
+
         candidates = []
 
         # Find all numbers in the segment
@@ -565,6 +574,18 @@ class CandidateGenerator:
                         f"Detected {len(sentence_boundaries)} sentences in segment"
                     )
 
+        # Pre-compute table row structure for table row filtering
+        # This prevents keywords in one row from matching with numbers in another row
+        table_row_parser = None
+        raw_html = segment.get("raw_html", "")
+        if raw_html and ('<table' in raw_html.lower()):
+            from src.review.table_structure import TableRowParser
+            table_row_parser = TableRowParser(raw_html, text)
+            if table_row_parser.is_table():
+                logger.debug(
+                    f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
+                )
+
         # Track (number_position, metric_id) pairs to avoid duplicates
         seen: Set[Tuple[int, str]] = set()
 
@@ -581,7 +602,7 @@ class CandidateGenerator:
                     continue
 
                 keyword_matches = self._find_keywords_near_number(
-                    num, all_keywords, boundaries, sentence_boundaries
+                    num, all_keywords, boundaries, sentence_boundaries, segment, table_row_parser
                 )
 
                 # Phase 7: If no nearby keywords found, check context_prefix
@@ -810,6 +831,8 @@ class CandidateGenerator:
         all_keywords: List[KeywordMatch],
         boundaries: Optional[List[Any]] = None,
         sentence_boundaries: Optional[List[Any]] = None,
+        segment: Optional[Dict[str, Any]] = None,
+        table_row_parser: Optional[Any] = None,
     ) -> List[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -821,12 +844,24 @@ class CandidateGenerator:
             all_keywords: Pre-computed list of all keyword matches in text
             boundaries: Optional list of TextBoundary objects for boundary-aware matching (P1 enhancement)
             sentence_boundaries: Optional list of TextBoundary objects for sentence-aware matching (P1.5 enhancement)
+            segment: Optional segment dict for context (L4 Option C)
+            table_row_parser: Optional TableRowParser for table row filtering
 
         Returns:
             List of KeywordMatch objects within range (one per metric)
         """
+        # Extract text and segment_type for L4 Option C context detection
+        text = segment.get("raw_text", "") if segment else ""
+        segment_type = segment.get("segment_type") if segment else None
+
         return self._keyword_matcher.find_keywords_near_number(
-            number, all_keywords, boundaries, sentence_boundaries
+            number,
+            all_keywords,
+            boundaries,
+            sentence_boundaries,
+            text=text,
+            segment_type=segment_type,
+            table_row_parser=table_row_parser,
         )
 
     def _calculate_distance(self, number: NumberMatch, keyword: KeywordMatch) -> int:
