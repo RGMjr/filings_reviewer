@@ -35,7 +35,7 @@ class SegmentEnricher:
     already been classified by MetricClassifier. It operates on in-memory
     objects and does not require database access.
 
-    Current capabilities (G4-G8, GI-5 through GI-7):
+    Current capabilities (G4-G8, GI-5 through GI-10):
     - metric_density: metrics per 100 characters
     - distinct_metric_count: count of unique metric IDs
     - contains_temporal_trend: segment discusses multiple time periods (G5)
@@ -44,6 +44,7 @@ class SegmentEnricher:
     - contains_saas_indicator: SaaS-specific terminology detection (GI-5)
     - contains_retention_keywords: NRR/NDRR/retention keyword detection (GI-6)
     - contains_usage_keywords: DAU/MAU/WAU usage metric detection (GI-6)
+    - contains_usage_with_count: usage metrics with numeric values (GI-10)
     - high_value_metrics: count of classified high-value metrics (NRR, LTV/CAC) (GI-7)
     - richness_score: composite score 0-10 identifying "goldmine" segments (G8)
     """
@@ -226,6 +227,52 @@ class SegmentEnricher:
         ),
     ]
 
+    # =========================================================================
+    # Usage Metric with Count Patterns (GI-10)
+    # More specific patterns for usage metrics with numeric values.
+    # Triggers tiered bonus: +1.0 (vs +0.5 for basic usage keyword).
+    # Identifies high-value disclosures like "10 million daily active users".
+    # =========================================================================
+    USAGE_WITH_COUNT_PATTERNS: List[Pattern[str]] = [
+        # DAU/MAU/WAU with numeric prefix: "10 million daily active users"
+        re.compile(
+            r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
+            r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"(?:daily|monthly|weekly)\s+active\s+users?\b",
+            re.IGNORECASE,
+        ),
+        # Numeric + active users: "600,000 organizations with daily active users"
+        re.compile(
+            r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\s+"
+            r"(?:\w+\s+)?(?:with\s+)?(?:daily|monthly|weekly)\s+active\s+users?\b",
+            re.IGNORECASE,
+        ),
+        # DAU/MAU/WAU acronym with numeric prefix: "5M MAU", "DAU of 8.5 million"
+        re.compile(
+            r"\b(?:DAU|MAU|WAU)\s+(?:of\s+|at\s+|reached\s+)?"
+            r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\b",
+            re.IGNORECASE,
+        ),
+        # Reverse pattern: "8.5 million DAU"
+        re.compile(
+            r"\b\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"(?:DAU|MAU|WAU)\b",
+            re.IGNORECASE,
+        ),
+        # Active users with percentage change: "daily active users grew 50%"
+        re.compile(
+            r"\b(?:daily|monthly|weekly)\s+active\s+users?\s+"
+            r"(?:grew|increased|decreased|declined)\s+\d+%",
+            re.IGNORECASE,
+        ),
+        # Percentage change before active users: "50% growth in daily active users"
+        re.compile(
+            r"\b\d+%\s+(?:growth|increase|decrease|decline)\s+in\s+"
+            r"(?:daily|monthly|weekly)\s+active\s+users?\b",
+            re.IGNORECASE,
+        ),
+    ]
+
     # Threshold score for identifying "high-value" segments (GI-6)
     HIGH_VALUE_THRESHOLD: float = 8.0
 
@@ -395,6 +442,11 @@ class SegmentEnricher:
         # Detect usage keywords (GI-6) - store in extra_metadata
         segment.extra_metadata["contains_usage_keywords"] = self._detect_usage_keywords(
             segment
+        )
+
+        # Detect usage metrics with count (GI-10) - store in extra_metadata
+        segment.extra_metadata["contains_usage_with_count"] = (
+            self._detect_usage_with_count(segment)
         )
 
         # Detect images/charts (G7)
@@ -657,6 +709,42 @@ class SegmentEnricher:
 
         return False
 
+    def _detect_usage_with_count(self, segment: SourceSegment) -> bool:
+        """
+        Detect usage metrics with numeric values (DAU/MAU/WAU + count).
+
+        Returns True if segment contains usage metrics with numeric disclosures:
+        - "10 million daily active users"
+        - "DAU of 8.5 million"
+        - "daily active users grew 50%"
+        - "600,000 organizations with daily active users"
+
+        This is more specific than basic usage keyword detection and triggers
+        a higher bonus (+1.0 vs +0.5). Based on GI-10 tiered bonus enhancement.
+
+        Args:
+            segment: Segment to analyze for usage metrics with counts
+
+        Returns:
+            True if usage metric with count detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for usage metrics with numeric values
+        for pattern in self.USAGE_WITH_COUNT_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
     def _count_high_value_metrics(self, segment: SourceSegment) -> int:
         """
         Count unique high-value metrics in segment's candidate_metric_ids.
@@ -848,7 +936,10 @@ class SegmentEnricher:
           * 1.5 points if definition AND distinct_metric_count >= 2
           * 1.0 point if just contains_definition_flag
         - Retention keyword bonus: 1 point if contains_retention_keywords (GI-6)
-        - Usage keyword bonus: 0.5 points if contains_usage_keywords (GI-6)
+        - Usage keyword bonus (tiered, GI-6/GI-10):
+          * 1.0 point if usage metric with numeric value (e.g., "10M DAU")
+          * 0.75 points if usage keyword with definition or metric context
+          * 0.5 points if basic usage keyword only
         - Combination bonus: 0.5 points if BOTH temporal AND cohort (GI-6)
         - High-value metric bonus: 0-1.5 points (+0.5 per high-value metric, capped) (GI-7)
         - SaaS indicators: 0.5 points if contains_saas_indicator (GI-5)
@@ -910,9 +1001,19 @@ class SegmentEnricher:
         if extra_metadata.get("contains_retention_keywords"):
             score += 1.0
 
-        # Usage keyword bonus (GI-6 recommendation #4): +0.5 for DAU/MAU/WAU
-        if extra_metadata.get("contains_usage_keywords"):
-            score += 0.5
+        # Usage keyword bonus with tiering (GI-6, GI-10):
+        # Tiered bonus rewards rich usage metric disclosures:
+        # +1.0 for usage metric with numeric value (e.g., "10 million DAU")
+        # +0.75 for usage keyword + definition or metric context
+        # +0.5 for basic usage keyword (backward compatible)
+        if extra_metadata.get("contains_usage_with_count"):
+            score += 1.0  # Highest tier: usage metric with count (GI-10)
+        elif extra_metadata.get("contains_usage_keywords"):
+            # Mid or base tier based on context
+            if segment.contains_definition_flag or metric_count >= 1:
+                score += 0.75  # Mid tier: usage keyword with metric context
+            else:
+                score += 0.5  # Base tier: basic usage keyword (GI-6)
 
         # High-value metric bonus (GI-7): +0.5 per high-value metric, capped at +1.5
         # Rewards segments where MetricClassifier identified NRR, LTV/CAC, retention,
