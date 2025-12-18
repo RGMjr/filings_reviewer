@@ -1,4 +1,4 @@
-# WORKER PROMPT TEMPLATE (v2.2)
+# WORKER PROMPT TEMPLATE (v2.3)
 
 **Purpose**: This template provides a consistent, concise format for worker prompts. It emphasizes requirements over implementation details, allowing developers autonomy while ensuring clear acceptance criteria.
 
@@ -23,6 +23,10 @@ COMPLETION:    [Path to completion summary, if complete]
 TIME ESTIMATE: [Range in hours] (e.g., 2-3 hours, breakdown: investigation 30 min, implementation 60 min, testing 45 min)
 TIME ACTUAL:   [Actual time taken, if complete]
 RISK LEVEL:    [None | Low | Medium | High] (explain if Medium/High)
+TASK SIZE:     [XS | S | M | L | XL] (XS=<30min, S=30min-2hr, M=2-4hr, L=4-8hr, XL=>8hr)
+DEPENDS ON:    [Comma-separated task IDs] (e.g., "L1, L2" or "None")
+UNLOCKS:       [Tasks that become available after this] (e.g., "L4, L5" or "None")
+BLOCKS:        [Tasks blocked by this one] (e.g., "L3" or "None")
 PARALLEL WITH: [Other tasks that can run simultaneously, or "None"]
 ═══════════════════════════════════════════════════════════════════════════════
 ```
@@ -346,6 +350,10 @@ Before finalizing a worker prompt, verify:
 - [ ] Verification commands are copy-pasteable
 - [ ] Example code is in collapsed `<details>` section
 - [ ] Total length is 80-150 lines (not 400+)
+- [ ] TASK SIZE matches TIME ESTIMATE (XS=<30min, S=30min-2hr, M=2-4hr, L=4-8hr, XL=>8hr)
+- [ ] DEPENDS ON lists all prerequisite task IDs (or "None")
+- [ ] UNLOCKS lists tasks that become available after completion
+- [ ] BLOCKS lists tasks that cannot start until this completes
 - [ ] If task changes data format, backward compatibility section included
 - [ ] If task modifies public APIs, deprecation strategy specified
 - [ ] If task is high-risk (Medium/High), feature flag strategy considered
@@ -354,6 +362,15 @@ Before finalizing a worker prompt, verify:
 ---
 
 ## Version History
+
+- **v2.3** (2025-12-18): Added dependency visualization and task size categories
+  - Added TASK SIZE field (XS/S/M/L/XL) with time ranges
+  - Added DEPENDS ON field for prerequisite task IDs
+  - Added UNLOCKS field for tasks enabled after completion
+  - Added BLOCKS field for blocked tasks
+  - Added 4 new checklist items for dependency tracking
+  - Enables critical path computation and parallel work identification
+  - Based on ORCHESTRATOR_IMPROVEMENTS.md Phase 1 recommendations
 
 - **v2.2** (2025-12-17): Added backward compatibility guidance and enhanced risk communication
   - Added "Backward Compatibility" section after Performance Requirements
