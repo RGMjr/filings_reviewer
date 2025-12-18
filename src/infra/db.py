@@ -1809,6 +1809,62 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
+    def get_daily_decision_counts(self, days: int = 7) -> List[Dict]:
+        """
+        Get decision counts by day for the last N days.
+
+        Returns a time series of decision counts suitable for chart visualization.
+        Includes days with zero decisions to ensure continuous timeline.
+
+        Args:
+            days: Number of days to include (default: 7)
+
+        Returns:
+            List of dicts with:
+            - date: Date (datetime.date object)
+            - count: Number of decisions made on that date
+
+            Results are ordered by date ascending (oldest first).
+
+        Example:
+            >>> db.get_daily_decision_counts(days=7)
+            [
+                {"date": date(2025, 12, 10), "count": 5},
+                {"date": date(2025, 12, 11), "count": 0},
+                {"date": date(2025, 12, 12), "count": 12},
+                ...
+            ]
+        """
+        sql = """
+            WITH date_series AS (
+                -- Generate series of dates for last N days
+                SELECT generate_series(
+                    CURRENT_DATE - %(days)s + 1,
+                    CURRENT_DATE,
+                    '1 day'::interval
+                )::date AS date
+            ),
+            daily_counts AS (
+                -- Count decisions per day
+                -- Use DATE() to convert timestamps to dates for grouping
+                SELECT
+                    DATE(created_at) AS date,
+                    COUNT(*) AS count
+                FROM review_decisions
+                WHERE DATE(created_at) >= CURRENT_DATE - %(days)s + 1
+                GROUP BY DATE(created_at)
+            )
+            -- Left join to include days with zero decisions
+            SELECT
+                ds.date,
+                COALESCE(dc.count, 0) AS count
+            FROM date_series ds
+            LEFT JOIN daily_counts dc ON ds.date = dc.date
+            ORDER BY ds.date ASC
+        """
+
+        return self.query(sql, {"days": days})
+
     # =========================================================================
     # Learned Patterns Methods
     # =========================================================================

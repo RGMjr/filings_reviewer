@@ -479,6 +479,45 @@ def review_filing(filing_id: int):
         return redirect(url_for("review.filing_list"))
 
 
+@review_bp.route("/stats")
+def stats():
+    """Display statistics dashboard for review progress."""
+    db = get_db()
+
+    try:
+        # Get overall decision statistics
+        overall_stats = db.get_decision_statistics()
+
+        # Get decision breakdown by metric
+        metric_stats = db.get_decision_stats_by_metric()
+
+        # Get daily decision counts for trend chart
+        daily_counts = db.get_daily_decision_counts(days=7)
+
+        # Get overall review progress (reviewed vs total candidates)
+        progress = db.get_review_progress()
+
+        # Render template with documented data contract
+        # Template: stats.html
+        # Data contract:
+        #   - overall_stats: Dict - Total decisions, accept/reject/reclassify counts & percentages
+        #   - metric_stats: List[Dict] - Decision breakdown by metric type
+        #   - daily_counts: List[Dict] - Daily decision counts for last 7 days
+        #   - progress: Dict - Overall review progress (reviewed/total candidates)
+        return render_template(
+            "stats.html",
+            overall_stats=overall_stats,
+            metric_stats=metric_stats,
+            daily_counts=daily_counts,
+            progress=progress,
+        )
+
+    except Exception as e:
+        logger.error(f"Error loading statistics dashboard: {e}")
+        flash("Error loading statistics. Please try again.", "danger")
+        return redirect(url_for("review.filing_list"))
+
+
 # =============================================================================
 # Navigation Routes
 # =============================================================================
