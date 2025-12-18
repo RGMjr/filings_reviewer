@@ -1,7 +1,7 @@
 # Human Review Interface Improvement Plan
 
 **Created:** 2025-12-16
-**Last Updated:** 2025-12-17
+**Last Updated:** 2025-12-17 (HRI-9 complete)
 **Status:** Active
 **Owner:** TBD
 
@@ -311,16 +311,26 @@ Candidates shown in document order (by candidate_id).
 
 **Priority:** Low
 **Effort:** 1 hour
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Feature:**
 - "Show more context" button reveals surrounding paragraphs
 - "View in SEC filing" link opens original document
 
 **Implementation:**
-- Store segment position in database
-- Fetch adjacent segments on demand
-- Construct SEC EDGAR URL from filing metadata
+- ✅ Database method `get_expanded_context_for_candidate()` fetches adjacent segments
+- ✅ API endpoint `GET /api/candidates/<id>/expanded-context` returns expanded context
+- ✅ JavaScript handler with expand/collapse toggle functionality
+- ✅ "View in SEC" button on each candidate card
+- ✅ 5 comprehensive tests covering edge cases
+
+**Delivered:**
+- Expands context from ~50 words to ~150+ words on demand
+- Opens SEC EDGAR filing in new tab for verification
+- Handles edge cases: no source segment, filing boundaries, errors
+- Full test coverage with error handling
+
+**Commit:** `2284dd1` - HRI-9: Add context expansion and SEC filing links
 
 ---
 
