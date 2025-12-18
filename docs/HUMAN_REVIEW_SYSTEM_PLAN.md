@@ -460,3 +460,56 @@ C1 ──> C2 ──> C3 ──> C4 ─┘
 9. Iterate until precision > 80% and recall is acceptable:
    - Review new candidates → E1 discovers new patterns → Approve patterns → E2 applies patterns
 10. Expand to new filings, continue monitoring for false negatives
+
+---
+
+## Post-Implementation Enhancements
+
+### Table Row Filtering & Row Heading Priority (2025-12-17)
+
+**Problem:** Values in table rows were incorrectly matched with keywords from different rows.
+
+**Example Issue:**
+```
+Row: "Cost of revenues | 450,069 | 500,000"
+Row: "Gross profit | 262,431 | 300,000"
+```
+System incorrectly matched 450,069 → "Gross profit" (cross-row match)
+
+**Solution Implemented:**
+
+1. **Table Row Filtering** (`src/review/table_structure.py`):
+   - Added `TableRowParser` class to parse HTML table structure
+   - Maps character positions in extracted text to table rows
+   - Prevents cross-row keyword matches
+   - Fallback: If no keywords found in same row, keeps all candidates
+
+2. **Row Heading Priority** (`src/review/keyword_matching.py`):
+   - Extended `TableRow` with `header_text`, `header_start`, `header_end` fields
+   - Added `is_row_heading()` method to detect if keyword is in first cell (row heading)
+   - Row headings get 0.25x multiplier (75% reduction) on effective distance
+   - Ensures "Gross profit" (row heading) preferred over "Gross profit margin" (different row)
+
+3. **Keyword Pattern Addition** (`src/extraction/metric_classifier.py`):
+   - Added `r"\bgross\s+profit\b"` pattern to `cm_gross_margin_overall`
+   - Enables matching of "Gross profit" row headings in financial tables
+
+**Results:**
+- **Before:** Value 116,878 → matched with "Gross profit margin" (different row, distance=13)
+- **After:** Value 116,878 → matched with "Gross profit" (row heading, same row, distance=1)
+
+**Impact:**
+- Farfetch filing: 52 → 165 candidates (increased due to new "gross profit" pattern)
+- Snowflake filing: 50 → 32 candidates (36% reduction from table row filtering)
+- Improved precision by prioritizing most specific/relevant keywords (row headings)
+
+**Files Modified:**
+- `src/review/table_structure.py`: Added header position tracking and `is_row_heading()` method
+- `src/review/keyword_matching.py`: Added row heading priority logic (Phase 3)
+- `src/extraction/metric_classifier.py`: Added "gross profit" keyword pattern
+- `src/infra/db.py`: Added HTML validation fallback for truncated segments
+
+**Testing:**
+- Verified row heading detection works correctly
+- Confirmed "Gross profit" prioritized over "Gross profit margin"
+- Regenerated Farfetch and Snowflake candidates with new logic
