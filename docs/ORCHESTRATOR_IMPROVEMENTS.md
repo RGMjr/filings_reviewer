@@ -570,12 +570,13 @@ python scripts/validate_plan.py docs/GOLDMINE_REMEDIATION_PLAN.md
 
 ## Implementation Priority
 
-### Phase 1: Critical Improvements (Do First)
-1. **Dependency Visualization** - Enables better task selection
-2. **Progress Tracker** - Essential for multi-task projects
-3. **Task Size Categories** - Better planning
+### Phase 1: Critical Improvements (Do First) ✅ COMPLETE (2025-12-18)
+1. **Dependency Visualization** ✅ - Added DEPENDS ON, UNLOCKS, BLOCKS fields to template v2.3
+2. **Progress Tracker** ✅ - Added Progress Tracker table format to orchestrator instructions
+3. **Task Size Categories** ✅ - Added TASK SIZE field (XS/S/M/L/XL) to template v2.3
 
 **Effort**: 2-3 hours to update templates and orchestrator instructions
+**Actual**: ~1 hour (implemented 2025-12-18)
 
 ### Phase 2: Quality of Life (Do Soon)
 4. **Parallel Suggestions** - Maximize efficiency

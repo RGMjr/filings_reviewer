@@ -121,6 +121,81 @@ After each task is assigned, update your mental model:
 - Which tasks are now unblocked and available
 - What the critical path is
 
+## Progress Tracker
+
+Maintain a Progress Tracker table in each plan document to visualize task status:
+
+```markdown
+## Progress Tracker
+
+**Last Updated**: YYYY-MM-DD
+
+| Task ID | Status | Size | Assignee | Started | Completed | Notes |
+|---------|--------|------|----------|---------|-----------|-------|
+| EI-1    | ✅     | S    | Claude   | 12-17   | 12-17     | Deployed |
+| EI-2    | ✅     | S    | Claude   | 12-17   | 12-17     | Deployed |
+| EI-3    | 🔵     | M    | Claude   | 12-18   | -         | In progress |
+| EI-4    | 🟡     | M    | -        | -       | -         | Ready (EI-3 done) |
+| EI-5    | ⚪     | L    | -        | -       | -         | Blocked by EI-4 |
+
+**Legend**: ⚪ Blocked | 🟡 Ready | 🔵 In Progress | ✅ Complete | ❌ Cancelled
+```
+
+### After Task Assignment
+
+1. Update the Progress Tracker table in the plan document
+2. Change task status from 🟡 READY → 🔵 IN PROGRESS
+3. Add assignee name and start date
+4. Save the plan document
+5. Generate worker prompt
+
+### After Task Completion
+
+1. Update Progress Tracker (status ✅, completion date)
+2. Check UNLOCKS field → update newly unblocked tasks to 🟡 READY
+3. Suggest next available tasks to user
+
+## Using Dependency Fields
+
+When generating worker prompts, use the dependency fields to communicate task relationships:
+
+### TASK SIZE Guidelines
+
+| Size | Time Range | Examples |
+|------|------------|----------|
+| XS   | <30 min    | Add single pattern, fix typo, add validation |
+| S    | 30min-2hr  | Add pattern list, simple filter, config change |
+| M    | 2-4hr      | New module feature, integration, refactor |
+| L    | 4-8hr      | Complex feature, multi-file changes |
+| XL   | >8hr       | **Should be split** into smaller tasks |
+
+**Rule**: If a task is XL, suggest breaking it down before generating the prompt.
+
+### DEPENDS ON / UNLOCKS / BLOCKS
+
+These fields enable critical path analysis:
+
+```
+DEPENDS ON:    EI-1, EI-2    ← This task cannot start until EI-1 AND EI-2 complete
+UNLOCKS:       EI-5, EI-6    ← When this completes, EI-5 and EI-6 become available
+BLOCKS:        EI-4          ← EI-4 cannot start until this completes
+```
+
+**When suggesting next task**:
+1. Check which tasks have all DEPENDS ON satisfied
+2. Prioritize tasks that UNLOCK the most other tasks (critical path)
+3. Mention PARALLEL WITH options if multiple tasks are ready
+
+### Quick Win Identification
+
+Tasks that are good "quick wins" for momentum:
+- SIZE = XS or S
+- RISK LEVEL = None or Low
+- DEPENDS ON = None (or all satisfied)
+- PARALLEL WITH = multiple options
+
+When user asks "what's a quick win?", filter for these criteria.
+
 ## When Plans Are Missing Task Breakdowns
 
 If a plan document does NOT have a "Task Breakdown for Orchestrator/Architect" section:
