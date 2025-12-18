@@ -18,8 +18,8 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 |----------|-------|----------|-----------|
 | P1 Critical | 3 | 3 | 0 |
 | P2 Usability | 5 | 5 | 0 |
-| P3 Nice-to-Have | 4 | 0 | 4 |
-| **Total** | **12** | **8** | **4** |
+| P3 Nice-to-Have | 4 | 2 | 2 |
+| **Total** | **12** | **10** | **2** |
 
 ---
 
@@ -37,8 +37,8 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | **HRI-6** | ~~Add Filtering and Sorting~~ | None | ~~2 hr~~ | ✅ Complete |
 | **HRI-7** | ~~Add Decision History Panel~~ | None | ~~2 hr~~ | ✅ Complete |
 | **HRI-8** | ~~Add Bulk Actions~~ | HRI-6 | ~~3 hr~~ | ✅ Complete |
-| **HRI-9** | Add Context Expansion | None | 1 hr | Low |
-| **HRI-10** | Add Session Persistence | None | 1 hr | None |
+| **HRI-9** | ~~Add Context Expansion~~ | None | ~~1 hr~~ | ✅ Complete |
+| **HRI-10** | ~~Add Session Persistence~~ | None | ~~1 hr~~ | ✅ Complete |
 | **HRI-11** | Add Statistics Dashboard | 30+ decisions | 3 hr | Low |
 | **HRI-12** | Add Inter-Rater Agreement | Multi-user support | 4 hr | High |
 
@@ -63,8 +63,8 @@ HRI-12 ─┘ (blocked: requires multi-user)
 
 **Phase 1 (Critical Fixes):** ~~HRI-1 → HRI-2 → HRI-3~~ ✅ Complete
 **Phase 2 (Quick UX Wins):** ~~HRI-4, HRI-5, HRI-6, HRI-7, HRI-8~~ ✅ Complete
-**Phase 3 (Advanced Features):** HRI-9
-**Phase 4 (Future):** HRI-10, HRI-11, HRI-12
+**Phase 3 (Advanced Features):** ~~HRI-9, HRI-10~~ ✅ Complete
+**Phase 4 (Future):** HRI-11, HRI-12
 
 ---
 
@@ -959,10 +959,10 @@ TASK ID:       HRI-10
 TASK NAME:     Remember last viewed filing/candidate for "resume where left off"
 WORKSTREAM:    Human Review Interface (Nice-to-Have)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P3.3
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 1 hr
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~45 min
 RISK LEVEL:    None
 PARALLEL WITH: HRI-11
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1011,11 +1011,15 @@ PARALLEL WITH: HRI-11
    - Verify handles invalid positions
 
 **Acceptance Criteria:**
-- [ ] Last position saved to localStorage
-- [ ] "Resume" button shows on return visit
-- [ ] Clicking resume navigates to last position
-- [ ] Invalid positions handled gracefully
-- [ ] Manual testing complete
+- [x] Last position saved to localStorage
+- [x] "Resume" button shows on return visit
+- [x] Clicking resume navigates to last position
+- [x] Invalid positions handled gracefully
+- [x] Position cleared when filing review is 100% complete
+- [x] 30-day expiration implemented
+- [x] URL parameter ?candidate=N supported
+- [x] JavaScript syntax valid (node --check)
+- [x] No test regressions
 
 **Do NOT:**
 - Store session data server-side (use localStorage only)
