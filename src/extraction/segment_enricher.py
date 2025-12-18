@@ -683,6 +683,29 @@ class SegmentEnricher:
 
         return high_value_count
 
+    def _has_high_value_metric(self, segment: SourceSegment) -> bool:
+        """
+        Check if segment contains at least one high-value metric.
+
+        Used to determine eligibility for enhanced definition bonus (GI-9).
+        Segments that define high-value metrics (NRR, LTV, CAC, etc.) receive
+        +2.0 bonus instead of standard +1.0/+1.5 definition bonus.
+
+        Args:
+            segment: Segment to check for high-value metrics
+
+        Returns:
+            True if segment has at least one high-value metric in candidate_metric_ids
+        """
+        candidate_metric_ids = segment.candidate_metric_ids
+
+        # Handle None or empty list
+        if not candidate_metric_ids:
+            return False
+
+        # Check if any candidate metric is in HIGH_VALUE_METRICS
+        return any(m in self.HIGH_VALUE_METRICS for m in candidate_metric_ids)
+
     def _detect_images(self, segment: SourceSegment) -> int:
         """
         Count meaningful images/charts in segment HTML.
@@ -815,13 +838,15 @@ class SegmentEnricher:
         """
         Compute composite richness score (0-10).
 
-        Formula components (theoretical max 14.5, capped at 10.0):
+        Formula components (theoretical max 15.0, capped at 10.0):
         - Base confidence: 0-3 points (classifier_confidence * 3.0)
         - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
         - Temporal trends: 1 point if contains_temporal_trend
         - Cohort breakdowns: 1.5 points if contains_cohort_breakdown
-        - Definition bonus: 1 point if contains_definition_flag,
-          or 1.5 points if contains_definition_flag AND distinct_metric_count >= 2 (GI-6)
+        - Definition bonus (tiered, GI-9):
+          * 2.0 points if defines high-value metric (NRR, LTV, CAC, etc.)
+          * 1.5 points if definition AND distinct_metric_count >= 2
+          * 1.0 point if just contains_definition_flag
         - Retention keyword bonus: 1 point if contains_retention_keywords (GI-6)
         - Usage keyword bonus: 0.5 points if contains_usage_keywords (GI-6)
         - Combination bonus: 0.5 points if BOTH temporal AND cohort (GI-6)
@@ -858,11 +883,18 @@ class SegmentEnricher:
         if segment.contains_cohort_breakdown:
             score += 1.5
 
-        # Enhanced definition bonus (GI-6 recommendation #3):
-        # +1.5 if definition AND metrics >= 2, else +1.0 if just definition
+        # Enhanced definition bonus with high-value metric tier (GI-9):
+        # +2.0 if definition of high-value metric (NRR, LTV, CAC, etc.)
+        # +1.5 if definition AND metrics >= 2
+        # +1.0 if just definition
+        # Rationale: GI-8 validation showed 6/12 false negatives were definition
+        # sections for DAU/NRR that scored 3.9-5.5. The +2.0 tier pushes these
+        # critical disclosures above the 6.0 goldmine threshold.
         if segment.contains_definition_flag:
-            if metric_count >= 2:
-                score += 1.5  # Enhanced bonus for definition with metric context
+            if self._has_high_value_metric(segment):
+                score += 2.0  # High-value metric definition (GI-9)
+            elif metric_count >= 2:
+                score += 1.5  # Enhanced bonus for definition with metric context (GI-6)
             else:
                 score += 1.0  # Standard definition bonus
 

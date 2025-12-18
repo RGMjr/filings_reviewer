@@ -105,7 +105,14 @@ The formula (lines 449-489) gives:
 |---------|------|---------------|----------|------|--------|
 | GI-8 | Re-run Validation and Document Results | GI-4, GI-6 | 1-2 hours | None | ✅ Complete |
 
-**Total Estimated Time**: 12-18 hours
+### Phase 5: Incremental Improvements (GI-9+)
+
+| Task ID | Name | Prerequisites | Time Est | Risk | Status |
+|---------|------|---------------|----------|------|--------|
+| GI-9 | High-Value Definition Bonus Enhancement | GI-8 | 2-3 hours | Low | ✅ Complete |
+| GI-10 | Usage Metric Boost | GI-9 | 1-2 hours | Low | 🟡 Pending |
+
+**Total Estimated Time**: 15-23 hours (including Phase 5)
 
 ---
 
@@ -1060,16 +1067,21 @@ COHORT_PATTERNS = [
 | 1.6 | 2025-12-17 | Claude | GI-6 complete - 4 weight calibrations, 55 tests |
 | 1.7 | 2025-12-17 | Claude | GI-7 complete - 8 high-value metrics, +0.5/metric bonus (cap 1.5) |
 | 1.8 | 2025-12-17 | Claude | GI-8 complete - ALL targets exceeded: 75 cohort segments, 13 Slack goldmines, 37 high-value, 52% recall |
+| 1.9 | 2025-12-17 | Claude | Added Phase 5 (GI-9, GI-10) for incremental improvements |
+| 1.10 | 2025-12-17 | Claude | GI-9 complete - Tiered definition bonus (+2.0 HV, +1.5 multi-metric, +1.0 generic), 27 new tests, all tests pass |
 
 ---
 
-**Status**: ✅ **COMPLETE** - All GI-1 through GI-8 tasks finished successfully.
+**Status**: 🔵 **PHASE 5 IN PROGRESS** - Core objectives (GI-1 to GI-8) complete. Optional improvement tasks available.
 
-**Summary**: The GOLDMINE_1 improvement plan achieved all objectives:
+**Phase 1-4 Summary** (Complete):
 - Fixed zero cohort detection bug (0 → 75 segments)
 - Improved Slack goldmine identification 13x (1 → 13)
 - Populated high-value tier (0 → 37 segments ≥8.0)
 - Achieved 52% recall on Slack ground truth (exceeds 50% target)
 - No regressions in existing filings
 
-**Next Steps**: Optional GI-9+ tasks for incremental improvements (definition bonuses, usage metrics), but system is production-ready for goldmine detection.
+**Phase 5 (In Progress)**: Optional incremental improvements to push recall from 52% to 60-65%.
+
+**Completed Tasks**: GI-1 through GI-9
+**Next Task**: GI-10 - Usage Metric Boost (optional)
