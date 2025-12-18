@@ -570,6 +570,102 @@ class DatabaseAdapter:
         results = self.query(sql, {"candidate_id": candidate_id})
         return results[0] if results else None
 
+    def get_expanded_context_for_candidate(
+        self, candidate_id: int, num_adjacent: int = 2
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get expanded context for a candidate by fetching adjacent segments.
+
+        Fetches segments before and after the candidate's source segment
+        and concatenates their text to provide broader context.
+
+        Args:
+            candidate_id: Candidate ID to expand context for
+            num_adjacent: Number of adjacent segments to fetch on each side (default: 2)
+
+        Returns:
+            Dict with:
+                - expanded_context: str - Concatenated text from adjacent segments
+                - segment_count: int - Number of segments included
+                - can_expand: bool - Whether expansion was possible
+            Or None if candidate or source segment not found
+        """
+        # First, get the candidate and its source segment info
+        candidate = self.get_review_candidate(candidate_id)
+        if not candidate:
+            return None
+
+        source_segment_id = candidate.get("source_segment_id")
+        if not source_segment_id:
+            # No source segment linked - return current context only
+            return {
+                "expanded_context": candidate.get("context_text", ""),
+                "segment_count": 0,
+                "can_expand": False,
+            }
+
+        # Get the source segment to find its filing_id and sequence_index
+        segment_sql = """
+            SELECT filing_id, sequence_index
+            FROM source_segments
+            WHERE source_segment_id = %(source_segment_id)s
+        """
+        segment_results = self.query(
+            segment_sql, {"source_segment_id": source_segment_id}
+        )
+
+        if not segment_results:
+            # Source segment not found - return current context
+            return {
+                "expanded_context": candidate.get("context_text", ""),
+                "segment_count": 0,
+                "can_expand": False,
+            }
+
+        filing_id = segment_results[0]["filing_id"]
+        sequence_index = segment_results[0]["sequence_index"]
+
+        # Fetch adjacent segments (num_adjacent before and after)
+        adjacent_sql = """
+            SELECT sequence_index, raw_text
+            FROM source_segments
+            WHERE filing_id = %(filing_id)s
+              AND sequence_index >= %(min_index)s
+              AND sequence_index <= %(max_index)s
+            ORDER BY sequence_index ASC
+        """
+
+        min_index = max(0, sequence_index - num_adjacent)
+        max_index = sequence_index + num_adjacent
+
+        adjacent_results = self.query(
+            adjacent_sql,
+            {
+                "filing_id": filing_id,
+                "min_index": min_index,
+                "max_index": max_index,
+            },
+        )
+
+        if not adjacent_results:
+            # No adjacent segments found - return current context
+            return {
+                "expanded_context": candidate.get("context_text", ""),
+                "segment_count": 0,
+                "can_expand": False,
+            }
+
+        # Concatenate all segment texts with separator
+        expanded_text = " ... ".join(
+            seg["raw_text"] for seg in adjacent_results if seg["raw_text"]
+        )
+
+        return {
+            "expanded_context": expanded_text,
+            "segment_count": len(adjacent_results),
+            "can_expand": True,
+        }
+
     def get_review_candidates_for_filing(
         self,
         filing_id: int,
@@ -1229,6 +1325,164 @@ class DatabaseAdapter:
             f"candidate_id={candidate_id}, decision={decision}"
         )
         return decision_id
+
+    def insert_bulk_review_decisions(
+        self,
+        candidate_ids: List[int],
+        decision: str,
+        assigned_metric_id: Optional[str] = None,
+        rejection_category: Optional[str] = None,
+        rejection_reason: Optional[str] = None,
+        reviewer_id: Optional[str] = None,
+        reviewer_notes: Optional[str] = None,
+    ) -> tuple[List[int], List[Dict[str, Any]]]:
+        """
+        Insert multiple review decisions in a single transaction.
+
+        All candidates must be pending. Uses a single transaction to ensure
+        atomicity - either all decisions are created or none. Each candidate's
+        status is updated to 'reviewed' atomically with its decision insert.
+
+        Only 'accept' and 'reject' decisions are supported for bulk operations.
+        Reclassify requires individual review since each may need different metric_ids.
+
+        Args:
+            candidate_ids: List of candidate IDs to process (1-20 candidates)
+            decision: "accept" or "reject" (NOT "reclassify")
+            assigned_metric_id: Metric ID for all accept decisions
+            rejection_category: Category for all reject decisions
+            rejection_reason: Reason text for all reject decisions
+            reviewer_id: Identifier for who made these decisions
+            reviewer_notes: Optional notes applied to all decisions
+
+        Returns:
+            Tuple of (decision_ids, failed_candidates):
+            - decision_ids: List of successfully created decision_ids
+            - failed_candidates: List of {"candidate_id": int, "error": str} for failures
+
+        Raises:
+            ValidationError: If decision is not 'accept' or 'reject'
+            ValidationError: If accept without assigned_metric_id
+            ValidationError: If reject without rejection_category
+
+        Note:
+            Skips candidates that already have decisions (returns in failed list).
+            All other database errors cause full transaction rollback.
+        """
+        # Validate decision type - only accept/reject allowed for bulk
+        if decision not in ("accept", "reject"):
+            raise ValidationError(
+                f"Bulk operations only support 'accept' or 'reject', got '{decision}'"
+            )
+
+        # Business rule: accept requires assigned_metric_id
+        if decision == "accept" and not assigned_metric_id:
+            raise ValidationError("Bulk accept requires assigned_metric_id")
+
+        # Business rule: reject requires rejection_category
+        if decision == "reject" and not rejection_category:
+            raise ValidationError("Bulk reject requires rejection_category")
+
+        # Validate rejection_category if provided
+        if rejection_category is not None:
+            validate_enum(
+                rejection_category, REJECTION_CATEGORIES, "rejection_category"
+            )
+
+        decision_ids = []
+        failed_candidates = []
+
+        # Fetch candidates to verify they exist and are pending
+        fetch_sql = """
+            SELECT candidate_id, review_status
+            FROM review_candidates
+            WHERE candidate_id = ANY(%(candidate_ids)s)
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Fetch candidate statuses
+                cur.execute(fetch_sql, {"candidate_ids": candidate_ids})
+                candidates_data = {row["candidate_id"]: row for row in cur.fetchall()}
+
+                # Check each candidate
+                for candidate_id in candidate_ids:
+                    # Skip if candidate doesn't exist
+                    if candidate_id not in candidates_data:
+                        failed_candidates.append(
+                            {
+                                "candidate_id": candidate_id,
+                                "error": "Candidate not found",
+                            }
+                        )
+                        continue
+
+                    # Skip if already reviewed
+                    if candidates_data[candidate_id]["review_status"] != "pending":
+                        failed_candidates.append(
+                            {
+                                "candidate_id": candidate_id,
+                                "error": f"Already reviewed (status: {candidates_data[candidate_id]['review_status']})",
+                            }
+                        )
+                        continue
+
+                    # Insert decision for this candidate
+                    try:
+                        insert_sql = """
+                            INSERT INTO review_decisions (
+                                candidate_id, decision, assigned_metric_id,
+                                rejection_reason, rejection_category,
+                                reviewer_id, reviewer_notes
+                            )
+                            VALUES (
+                                %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
+                                %(rejection_reason)s, %(rejection_category)s,
+                                %(reviewer_id)s, %(reviewer_notes)s
+                            )
+                            RETURNING decision_id
+                        """
+
+                        update_status_sql = """
+                            UPDATE review_candidates
+                            SET review_status = 'reviewed', updated_at = now()
+                            WHERE candidate_id = %(candidate_id)s
+                        """
+
+                        # Insert decision
+                        cur.execute(
+                            insert_sql,
+                            {
+                                "candidate_id": candidate_id,
+                                "decision": decision,
+                                "assigned_metric_id": assigned_metric_id,
+                                "rejection_reason": rejection_reason,
+                                "rejection_category": rejection_category,
+                                "reviewer_id": reviewer_id,
+                                "reviewer_notes": reviewer_notes,
+                            },
+                        )
+                        result = cur.fetchone()
+                        decision_id = result["decision_id"]
+
+                        # Update candidate status - SAME TRANSACTION
+                        cur.execute(update_status_sql, {"candidate_id": candidate_id})
+
+                        decision_ids.append(decision_id)
+
+                    except Exception as e:
+                        # If any unexpected error, let it bubble up to rollback entire transaction
+                        logger.error(
+                            f"Error inserting decision for candidate {candidate_id}: {e}"
+                        )
+                        raise
+
+        logger.info(
+            f"Bulk {decision}: processed {len(decision_ids)} of {len(candidate_ids)} candidates, "
+            f"{len(failed_candidates)} failed/skipped"
+        )
+
+        return decision_ids, failed_candidates
 
     def get_decision_for_candidate(self, candidate_id: int) -> Optional[Dict]:
         """

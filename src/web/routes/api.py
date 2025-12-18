@@ -528,6 +528,303 @@ def undo_decision(decision_id: int):
         )
 
 
+@api_bp.route("/bulk-decisions", methods=["POST"])
+def create_bulk_decisions():
+    """
+    Record multiple review decisions in one request (bulk accept or reject).
+
+    Only 'accept' and 'reject' are allowed - 'reclassify' requires individual review.
+    Maximum 20 candidates per request for safety.
+
+    Request Body:
+        {
+            "candidate_ids": [int, ...],    # Required: 1-20 candidate IDs
+            "decision": "accept" | "reject", # Required: only accept/reject allowed
+            "assigned_metric_id": str,       # Required for accept
+            "rejection_category": str,       # Required for reject
+            "rejection_reason": str          # Optional for reject
+        }
+
+    Returns:
+        200: Bulk operation completed (partial success possible)
+        {
+            "status": "success",
+            "processed_count": int,
+            "decision_ids": [int, ...],
+            "failed_candidates": [
+                {"candidate_id": int, "error": str}
+            ],
+            "message": "Processed N of M candidates"
+        }
+
+        400: Validation errors
+        {
+            "status": "error",
+            "errors": {
+                "field_name": "Error message"
+            }
+        }
+
+        403: Safety limit exceeded
+        {
+            "status": "error",
+            "message": "Maximum 20 candidates per bulk action"
+        }
+
+        500: Internal server error
+        {
+            "status": "error",
+            "message": "Internal server error"
+        }
+    """
+    db = get_db()
+
+    try:
+        # Parse request JSON
+        if not request.is_json:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Request must be JSON",
+                    }
+                ),
+                400,
+            )
+
+        data = request.get_json()
+
+        # Validate request
+        errors = _validate_bulk_decision_request(data)
+        if errors:
+            return jsonify({"status": "error", "errors": errors}), 400
+
+        # Extract and deduplicate candidate IDs
+        candidate_ids = list(set(data["candidate_ids"]))
+        decision = data["decision"]
+
+        # Safety limit - maximum 20 candidates per bulk action
+        if len(candidate_ids) > 20:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Maximum 20 candidates per bulk action",
+                    }
+                ),
+                403,
+            )
+
+        # Verify all candidates are from same filing
+        candidates = []
+        for cid in candidate_ids:
+            cand = db.get_review_candidate(cid)
+            if cand:
+                candidates.append(cand)
+
+        if not candidates:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "No valid candidates found",
+                    }
+                ),
+                400,
+            )
+
+        filing_ids = set(c["filing_id"] for c in candidates)
+        if len(filing_ids) > 1:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "All candidates must be from same filing",
+                    }
+                ),
+                400,
+            )
+
+        # Process bulk decision
+        decision_ids, failed = db.insert_bulk_review_decisions(
+            candidate_ids=candidate_ids,
+            decision=decision,
+            assigned_metric_id=data.get("assigned_metric_id"),
+            rejection_category=data.get("rejection_category"),
+            rejection_reason=data.get("rejection_reason"),
+        )
+
+        logger.info(
+            f"Bulk {decision}: processed {len(decision_ids)} of {len(candidate_ids)} candidates"
+        )
+
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "processed_count": len(decision_ids),
+                    "decision_ids": decision_ids,
+                    "failed_candidates": failed,
+                    "message": f"Processed {len(decision_ids)} of {len(candidate_ids)} candidates",
+                }
+            ),
+            200,
+        )
+
+    except ValidationError as e:
+        logger.warning(f"Validation error in bulk decision: {e}")
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": str(e),
+                    "error_type": "validation_error",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.errors.ForeignKeyViolation as e:
+        logger.warning(f"Foreign key violation in bulk decision: {e}")
+        metric_id = data.get("assigned_metric_id", "unknown")
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Invalid metric_id: '{metric_id}' does not exist",
+                    "error_type": "foreign_key_violation",
+                }
+            ),
+            400,
+        )
+
+    except psycopg.DatabaseError as e:
+        logger.error(f"Database error in bulk decision: {e}", exc_info=True)
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Database error occurred",
+                    "error_type": "database_error",
+                }
+            ),
+            500,
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error in bulk decision: {e}", exc_info=True)
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Internal server error",
+                    "error_type": "internal_error",
+                }
+            ),
+            500,
+        )
+
+
+# =============================================================================
+# Context Expansion
+# =============================================================================
+
+
+@api_bp.route("/candidates/<int:candidate_id>/expanded-context", methods=["GET"])
+def get_expanded_context(candidate_id: int):
+    """
+    Get expanded context for a candidate.
+
+    Fetches adjacent segments to provide broader context beyond the default
+    ~50 word window shown in the review interface.
+
+    Args:
+        candidate_id: Candidate ID
+
+    Returns:
+        200: Expanded context
+        {
+            "status": "success",
+            "expanded_context": str,
+            "segment_count": int,
+            "can_expand": bool
+        }
+
+        404: Candidate not found
+        {
+            "status": "error",
+            "message": "Candidate not found"
+        }
+
+        500: Internal server error
+        {
+            "status": "error",
+            "message": "Internal server error"
+        }
+    """
+    db = get_db()
+
+    try:
+        # Get expanded context from database
+        result = db.get_expanded_context_for_candidate(candidate_id)
+
+        if result is None:
+            logger.warning(f"Candidate not found for context expansion: {candidate_id}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Candidate not found"
+                    }
+                ),
+                404,
+            )
+
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "expanded_context": result["expanded_context"],
+                    "segment_count": result["segment_count"],
+                    "can_expand": result["can_expand"],
+                }
+            ),
+            200,
+        )
+
+    except psycopg.DatabaseError as e:
+        logger.error(
+            f"Database error fetching expanded context for candidate {candidate_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Database error occurred",
+                    "error_type": "database_error",
+                }
+            ),
+            500,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error fetching expanded context for candidate {candidate_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Internal server error",
+                    "error_type": "internal_error",
+                }
+            ),
+            500,
+        )
+
+
 # =============================================================================
 # Candidate Retrieval (Future Enhancement)
 # =============================================================================
@@ -630,6 +927,60 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
 
     if error := _validate_review_time(data.get("review_time_seconds")):
         errors["review_time_seconds"] = error
+
+    return errors
+
+
+def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Validate bulk decision request data.
+
+    Args:
+        data: Request JSON data
+
+    Returns:
+        Dict of field_name -> error message
+        Empty dict if validation passes
+    """
+    errors: Dict[str, str] = {}
+
+    # Validate candidate_ids
+    candidate_ids = data.get("candidate_ids")
+    if not candidate_ids:
+        errors["candidate_ids"] = "Required field"
+    elif not isinstance(candidate_ids, list):
+        errors["candidate_ids"] = "Must be an array"
+    elif not all(isinstance(id, int) and id > 0 for id in candidate_ids):
+        errors["candidate_ids"] = "All IDs must be positive integers"
+    elif len(candidate_ids) < 1:
+        errors["candidate_ids"] = "Must select at least 1 candidate"
+    elif len(candidate_ids) > 20:
+        errors["candidate_ids"] = "Maximum 20 candidates per bulk action"
+
+    # Validate decision type - only accept/reject allowed for bulk
+    decision = data.get("decision")
+    if not decision:
+        errors["decision"] = "Required field"
+    elif decision not in ("accept", "reject"):
+        errors["decision"] = "Bulk actions only support 'accept' or 'reject'"
+
+    # Decision-specific validation
+    if decision == "accept":
+        if not data.get("assigned_metric_id"):
+            errors["assigned_metric_id"] = "Required for bulk accept"
+    elif decision == "reject":
+        if not data.get("rejection_category"):
+            errors["rejection_category"] = "Required for bulk reject"
+        elif data["rejection_category"] not in REJECTION_CATEGORIES:
+            errors["rejection_category"] = (
+                f"Must be one of: {', '.join(REJECTION_CATEGORIES)}"
+            )
+
+    # Validate optional rejection_reason
+    if error := _validate_text_field(
+        data.get("rejection_reason"), "rejection_reason", max_length=500
+    ):
+        errors["rejection_reason"] = error
 
     return errors
 
