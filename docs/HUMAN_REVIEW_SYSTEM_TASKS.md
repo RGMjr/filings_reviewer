@@ -17,9 +17,9 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | Priority | Total | Complete | Remaining |
 |----------|-------|----------|-----------|
 | P1 Critical | 3 | 3 | 0 |
-| P2 Usability | 5 | 3 | 2 |
+| P2 Usability | 5 | 4 | 1 |
 | P3 Nice-to-Have | 4 | 0 | 4 |
-| **Total** | **12** | **6** | **6** |
+| **Total** | **12** | **7** | **5** |
 
 ---
 
@@ -35,7 +35,7 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | **HRI-4** | ~~Display Confidence Scores in Sidebar~~ | None | ~~45 min~~ | ✅ Complete |
 | **HRI-5** | ~~Expand Keyboard Shortcuts~~ | None | ~~1 hr~~ | ✅ Complete |
 | **HRI-6** | ~~Add Filtering and Sorting~~ | None | ~~2 hr~~ | ✅ Complete |
-| **HRI-7** | Add Decision History Panel | None | 2 hr | Low |
+| **HRI-7** | ~~Add Decision History Panel~~ | None | ~~2 hr~~ | ✅ Complete |
 | **HRI-8** | Add Bulk Actions | HRI-6 | 3 hr | Medium |
 | **HRI-9** | Add Context Expansion | None | 1 hr | Low |
 | **HRI-10** | Add Session Persistence | None | 1 hr | None |
@@ -669,12 +669,13 @@ TASK ID:       HRI-7
 TASK NAME:     Add sidebar panel showing recent decisions with undo capability
 WORKSTREAM:    Human Review Interface (Usability)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P2.3
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 2 hr (backend 30 min, frontend 1 hr, testing 30 min)
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~2 hr
 RISK LEVEL:    Low
 PARALLEL WITH: HRI-9
+COMMIT:        (pending)
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 

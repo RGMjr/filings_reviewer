@@ -3,7 +3,7 @@
 {% block title %}Review - {{ filing.company_name if filing else 'Filing' }}{% endblock %}
 
 {% block content %}
-<div class="container review-container mt-4">
+<div class="container review-container mt-4" data-filing-id="{{ filing.filing_id if filing else '' }}">
     {% if not candidates or candidates|length == 0 %}
         {# Empty state: No candidates for this filing #}
         <div class="alert alert-info">
@@ -669,6 +669,29 @@
                                 </a>
                             {% endfor %}
                         </div>
+                    </div>
+                </div>
+
+                {# =============================================================
+                   Section 5: Decision History Panel (HRI-7)
+                   ============================================================= #}
+                <div class="card mt-3" id="decision-history-panel">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center"
+                         style="cursor: pointer"
+                         data-bs-toggle="collapse"
+                         data-bs-target="#history-body"
+                         aria-expanded="true"
+                         aria-controls="history-body">
+                        <span class="fw-semibold small">Decision History</span>
+                        <i class="bi bi-chevron-down" id="history-chevron"></i>
+                    </div>
+                    <div class="collapse show" id="history-body">
+                        <ul class="list-group list-group-flush small" id="history-list">
+                            {# Populated by JavaScript #}
+                            <li class="list-group-item text-muted fst-italic">
+                                No decisions yet this session
+                            </li>
+                        </ul>
                     </div>
                 </div>
 
