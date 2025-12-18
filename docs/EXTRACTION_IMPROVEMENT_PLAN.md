@@ -85,6 +85,24 @@ if features.contains_definition_language:
 
 ---
 
+## Progress Tracker
+
+**Last Updated**: 2025-12-18
+
+| Task ID | Status | Size | Assignee | Started | Completed | Notes |
+|---------|--------|------|----------|---------|-----------|-------|
+| EI-1    | ✅     | S    | Claude   | 12-18   | 12-18     | Definition filtering deployed |
+| EI-2    | ✅     | S    | Claude   | 12-18   | 12-18     | Measurement unit patterns deployed |
+| EI-3    | ✅     | M    | Claude   | 12-18   | 12-18     | FalsePositiveFilter integrated |
+| EI-4    | ✅     | M    | Claude   | 12-18   | 12-18     | TableRowParser integrated, 12 tests added |
+| EI-5    | 🟡     | L    | -        | -       | -         | Ready (no dependencies) |
+| EI-6    | 🟡     | M    | -        | -       | -         | Ready (EI-4 complete, can test with EI-5 later) |
+| EI-7    | ⚪     | S    | -        | -       | -         | Blocked by EI-6 |
+
+**Legend**: ⚪ Blocked | 🟡 Ready | 🔵 In Progress | ✅ Complete | ❌ Cancelled
+
+---
+
 ## Task Breakdown for Orchestrator/Architect
 
 ### Phase 1: Incremental Fixes (Immediate Priority)
@@ -96,10 +114,10 @@ All 5 fixes integrate existing proven components with minimal architectural chan
 | **EI-1** | Filter Definition Segments | None | 1 hour | Low | ✅ COMPLETE (2025-12-18) |
 | **EI-2** | Add Measurement Unit Patterns | None | 1-2 hours | Low | ✅ COMPLETE (2025-12-18) |
 | **EI-3** | Integrate FalsePositiveFilter in ValueExtractor | None | 3-4 hours | Low | ✅ COMPLETE (2025-12-18) |
-| **EI-4** | Add TableRowParser Validation to ValueExtractor | EI-3 | 4-5 hours | Medium | 🟡 PENDING |
-| **EI-5** | Add Cell Boundary Markers to HTMLSegmenter | None | 6-8 hours | Medium | 🟡 PENDING |
-| **EI-6** | Integration Testing & Validation | EI-1 to EI-5 | 4-6 hours | Low | 🟡 PENDING |
-| **EI-7** | Re-extraction on All Filings | EI-6 | 2-4 hours | Low | 🟡 PENDING |
+| **EI-4** | Add TableRowParser Validation to ValueExtractor | EI-3 | 4-5 hours | Medium | ✅ COMPLETE (2025-12-18) |
+| **EI-5** | Add Cell Boundary Markers to HTMLSegmenter | None | 6-8 hours | Medium | 🟡 READY |
+| **EI-6** | Integration Testing & Validation | EI-1 to EI-5 | 4-6 hours | Low | 🟡 READY (can start) |
+| **EI-7** | Re-extraction on All Filings | EI-6 | 2-4 hours | Low | ⚪ BLOCKED |
 
 **Total Phase 1 Time**: 21-31 hours (3-4 days)
 

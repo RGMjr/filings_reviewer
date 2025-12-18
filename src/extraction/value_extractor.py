@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 from .models import SourceSegment, MetricValue
 from ..review.false_positive_filter import FalsePositiveFilter
 from ..review.number_parsing import NumberMatch
+from ..review.table_structure import TableRowParser
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -464,6 +465,18 @@ class ValueExtractor:
         if len(rows) < 2:  # Need at least header + 1 data row
             return []
 
+        # EI-4: Create TableRowParser for row boundary validation
+        row_parser: Optional[TableRowParser] = None
+        if segment.raw_html and segment.raw_text:
+            try:
+                row_parser = TableRowParser(segment.raw_html, segment.raw_text)
+                logger.debug(f"TableRowParser created for segment {segment.source_segment_id}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create TableRowParser for segment {segment.source_segment_id}: {e}. "
+                    "Proceeding without row validation."
+                )
+
         # Parse header row to identify columns
         header_row = rows[0]
         headers = [
@@ -482,7 +495,7 @@ class ValueExtractor:
                 continue  # Skip malformed rows
 
             row_values = self._parse_table_row(
-                cells, headers, column_info, segment, company_id
+                cells, headers, column_info, segment, company_id, row_parser
             )
             values.extend(row_values)
 
@@ -504,29 +517,74 @@ class ValueExtractor:
         Returns:
             List of MetricValue objects
         """
+        if not segment.raw_text:
+            return []
+
         values = []
         candidate_metrics = segment.candidate_metric_ids or []
         filtered_count = 0
+        
+        # Helper to check if a number looks like a year (e.g., 1990-2030)
+        def is_likely_year(val_str: str) -> bool:
+            # If it has currency symbol, not a year
+            if "$" in val_str or "USD" in val_str.upper():
+                return False
+            # If it has decimal point, not a year (usually)
+            if "." in val_str:
+                return False
+            # Check pattern 4 digits
+            if re.match(r"^(?:19|20)\d{2}$", val_str.strip()):
+                return True
+            return False
 
-        # For each candidate metric, look for associated numbers
-        for metric_id in candidate_metrics:
-            # Find numbers in the text
-            numbers = self._number_regex.findall(segment.raw_text)
+        # Split text into sentences for strict context validation
+        # Simple splitting on periods and newlines
+        sentences = re.split(r'[.\n]+', segment.raw_text)
 
-            if numbers:
-                # Create a value for the first number found
-                # (in production, would use more sophisticated matching)
-                value_str = numbers[0]
-                numeric_value = self._parse_number(value_str)
+        # Import metric classifier to access patterns
+        from .metric_classifier import MetricClassifier
+        classifier = MetricClassifier()
 
-                if numeric_value is not None:
-                    # EI-3: Check if value is a false positive before creating MetricValue
-                    position = segment.raw_text.find(value_str) if value_str else None
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Find numbers in this sentence
+            numbers = self._number_regex.findall(sentence)
+            if not numbers:
+                continue
+                
+            # For each candidate metric, check if keywords exist in THIS sentence
+            for metric_id in candidate_metrics:
+                # Check if metric keywords are present in this specific sentence
+                has_keyword = False
+                patterns = classifier._metric_patterns.get(metric_id, [])
+                for pattern in patterns:
+                    if pattern.search(sentence):
+                        has_keyword = True
+                        break
+                
+                if not has_keyword:
+                    continue
+                    
+                # Found metric keyword + number in same sentence. Extract values.
+                for value_str in numbers:
+                    # filtering: Skip likely years unless they have currency attached
+                    if is_likely_year(value_str):
+                        continue
+                        
+                    numeric_value = self._parse_number(value_str)
+                    if numeric_value is None:
+                        continue
+
+                    # EI-3: Check if value is a false positive
+                    position_in_full_text = segment.raw_text.find(sentence) + sentence.find(value_str)
                     is_fp, reason = self._is_false_positive_value(
                         value_str=value_str,
-                        position=position,
+                        position=position_in_full_text,
                         context_text=segment.raw_text,
-                        unit=None  # Will be inferred in helper
+                        unit=None
                     )
 
                     if is_fp:
@@ -535,28 +593,33 @@ class ValueExtractor:
                             f"value='{value_str}' metric={metric_id} reason={reason}"
                         )
                         filtered_count += 1
-                        continue  # Skip this value
+                        continue
 
-                    # Try to extract period
-                    period_end = self._extract_period_from_text(segment.raw_text)
-
+                    # Determine unit
+                    unit = self._infer_unit(value_str, metric_id)
+                    
+                    # Create value
                     value = MetricValue(
                         filing_id=segment.filing_id,
                         company_id=company_id,
                         metric_id=metric_id,
-                        source_segment_id=segment.sequence_index,  # Store sequence_index temporarily
+                        source_segment_id=segment.sequence_index,
                         source_type="text",
-                        extraction_method="llm_text",  # Using rule-based text extraction
+                        extraction_method="rule_text_strict",
                         value_numeric=numeric_value,
                         value_text=value_str,
-                        period_end=period_end,
+                        unit=unit,
+                        period_end=self._extract_period_from_text(sentence), # Look for period in same sentence
                         qa_status="unreviewed",
                     )
                     values.append(value)
-                    break  # Only extract one value per segment for now
+                    
+                # If we found matches for this metric in this sentence, move to next sentence
+                # (Assuming one metric mention per sentence usually)
+                break 
 
         if filtered_count > 0:
-            logger.debug(f"Filtered {filtered_count} false positive(s) from text segment")
+            logger.debug(f"Filtered {filtered_count} false positive(s) from strict text extraction")
 
         return values
 
@@ -975,6 +1038,7 @@ class ValueExtractor:
         column_info: dict,
         segment: SourceSegment,
         company_id: int,
+        row_parser: Optional[TableRowParser] = None,
     ) -> List[MetricValue]:
         """
         Parse a single table row to extract metric values.
@@ -985,6 +1049,7 @@ class ValueExtractor:
             column_info: Column type information
             segment: Source segment
             company_id: Company ID
+            row_parser: Optional TableRowParser for row boundary validation (EI-4)
 
         Returns:
             List of MetricValue objects from this row
@@ -995,15 +1060,20 @@ class ValueExtractor:
         cohort_label = None
         cohort_type = None
         cohort_normalized = None
+        cohort_position = None  # EI-4: Track cohort position for row validation
 
         for i, info in column_info.items():
             if info["type"] == "cohort" and i < len(cells):
                 cohort_label = self._clean_text(cells[i].get_text())
                 cohort_type, cohort_normalized = self.parse_cohort_label(cohort_label)
+                # EI-4: Find position of cohort label for row validation
+                if cohort_label and segment.raw_text:
+                    cohort_position = segment.raw_text.find(cohort_label)
                 break
 
         # Extract values from value columns
         filtered_count = 0
+        row_boundary_filtered_count = 0  # EI-4: Track cross-row rejections
         for i, info in column_info.items():
             if info["type"] != "value" or i >= len(cells):
                 continue
@@ -1032,8 +1102,56 @@ class ValueExtractor:
                 filtered_count += 1
                 continue  # Skip this value
 
+            # EI-4: Validate row boundary - check if cohort/label and value are in same row
+            if row_parser is not None and cohort_position is not None and cohort_position != -1:
+                value_position = position  # Already calculated above
+                if value_position is not None and value_position != -1:
+                    try:
+                        if not row_parser.are_in_same_row(cohort_position, value_position):
+                            logger.debug(
+                                f"Cross-row match rejected: cohort='{cohort_label}' at pos {cohort_position}, "
+                                f"value='{cell_text}' at pos {value_position}"
+                            )
+                            row_boundary_filtered_count += 1
+                            continue  # Skip this value - cross-row match
+                    except Exception as e:
+                        # Fallback: if row validation fails, proceed with extraction
+                        logger.debug(
+                            f"Row boundary validation failed for value '{cell_text}': {e}. "
+                            "Proceeding with extraction."
+                        )
+
             # Determine which metric this value belongs to
-            metric_id = self._infer_metric_from_context(segment, headers, i)
+            # STRICT: Check row label for metric keywords
+            row_metric_id = None
+            
+            # Find the row label (first text cell usually)
+            row_label_text = ""
+            for cell in cells:
+                txt = self._clean_text(cell.get_text())
+                # Skip if it looks like a number
+                if self._parse_number(txt) is None and txt:
+                    row_label_text = txt
+                    break
+            
+            # Check if row label matches any candidate metric
+            if segment.candidate_metric_ids:
+                from .metric_classifier import MetricClassifier
+                classifier = MetricClassifier()
+                for cid in segment.candidate_metric_ids:
+                    patterns = classifier._metric_patterns.get(cid, [])
+                    for pattern in patterns:
+                        if pattern.search(row_label_text):
+                            row_metric_id = cid
+                            break
+                    if row_metric_id: break
+            
+            # Also check if column header implies metric (e.g. "Revenue")
+            col_metric_id = self._infer_metric_from_context(segment, headers, i)
+            
+            # Combine: Row label match takes precedence, then Column header match
+            metric_id = row_metric_id or col_metric_id
+            
             if not metric_id:
                 continue
 
@@ -1059,55 +1177,49 @@ class ValueExtractor:
 
         if filtered_count > 0:
             logger.debug(f"Filtered {filtered_count} false positive(s) from table row")
+        if row_boundary_filtered_count > 0:
+            logger.debug(f"Filtered {row_boundary_filtered_count} cross-row match(es) from table row")
 
         return values
 
-    def _infer_metric_from_context(
-        self, segment: SourceSegment, headers: List[str], column_index: int
-    ) -> Optional[str]:
-        """
-        Infer which metric a value belongs to based on context.
-
-        Uses:
-        1. Candidate metrics from segment
-        2. Header text
-        3. Section path
-
-        Returns:
-            Metric ID or None
-        """
-        candidate_metrics = segment.candidate_metric_ids or []
-
-        # If only one candidate metric, use it
-        if len(candidate_metrics) == 1:
-            return candidate_metrics[0]
-
-        # Check header text for metric keywords
+        # Strict Row-Only Logic:
+        # A value belongs to a metric IF AND ONLY IF:
+        # 1. The column header explicity names it (e.g. "Revenue")
+        # 2. OR The row label explicitily matches the metric keywords
+        
+        # 1. Check Column Header
         if column_index < len(headers):
             header = headers[column_index].lower()
+            
+            # Direct header matches
+            if "revenue" in header and "cohort" in header: return "cm_revenue_by_cohort"
+            if "transaction" in header and "cohort" in header: return "cm_transactions_by_cohort"
+            if "customer" in header and "tenure" in header: return "cm_customers_period_end_by_tenure"
+            
+            # If the segment has candidates, check if header matches one of them
+            if segment.candidate_metric_ids:
+                from .metric_classifier import MetricClassifier
+                classifier = MetricClassifier()
+                
+                for metric_id in segment.candidate_metric_ids:
+                    patterns = classifier._metric_patterns.get(metric_id, [])
+                    for pattern in patterns:
+                         if pattern.search(header):
+                             return metric_id
 
-            # Revenue keywords
-            if "revenue" in header and "cm_revenue_by_cohort" in candidate_metrics:
-                return "cm_revenue_by_cohort"
-
-            # Transaction keywords
-            if (
-                "transaction" in header
-                and "cm_transactions_by_cohort" in candidate_metrics
-            ):
-                return "cm_transactions_by_cohort"
-
-            # Customer count keywords
-            if (
-                any(kw in header for kw in ["customers", "users"])
-                and "cm_customers_period_end_by_tenure" in candidate_metrics
-            ):
-                return "cm_customers_period_end_by_tenure"
-
-        # Fall back to first candidate metric
-        if candidate_metrics:
-            return candidate_metrics[0]
-
+        # 2. Check Row Label (we need the row cells for this, which we don't present in this signature)
+        # However, _infer_metric_from_context is called from _parse_table_row where we scan the row.
+        # We need to change the call signature or logic in _parse_table_row to pass the row label matches.
+        
+        # Note: We are currently inside `_infer_metric_from_context` which is being called by `_parse_table_row`.
+        # The caller `_parse_table_row` iterates cells. 
+        # We should move the "Row Label" detection logic up to `_parse_table_row` and pass the *detected_metric* down, 
+        # or rely on `_identify_columns` to have done the work.
+        
+        # Current fallback (RESTRICTED):
+        # We DO NOT fallback to "candidate_metrics[0]" blindly anymore.
+        # If we can't find a match in the header, we return None (unless the table is VERY simple).
+        
         return None
 
     def _infer_unit(self, value_text: str, metric_id: str) -> Optional[str]:

@@ -196,6 +196,168 @@ Tasks that are good "quick wins" for momentum:
 
 When user asks "what's a quick win?", filter for these criteria.
 
+## Parallel Suggestions (Enhanced)
+
+When suggesting tasks, actively identify parallelization opportunities:
+
+### After Task Completion
+
+When user completes a task:
+
+1. **Mark task complete** in Progress Tracker
+2. **Check UNLOCKS field** - which tasks are now unblocked?
+3. **Check PARALLEL WITH** - which tasks can run with those unblocked?
+4. **Suggest options with parallel context**:
+   ```
+   "EI-2 is now complete! This unlocks EI-4.
+
+   Available tasks that can run in parallel:
+   - EI-4 (M) - Filter integration [unlocked by EI-2]
+   - EI-3 (S) - Value extractor fix [independent]
+   - EI-6 (XS) - Config update [independent]
+
+   Would you like to:
+   1. Work on EI-4 next (critical path)
+   2. Generate prompts for all 3 parallel tasks
+   3. Start with a quick win (EI-6)"
+   ```
+
+### Multi-Task Assignment
+
+If user wants to work on parallel tasks:
+
+1. Generate WORKER PROMPT for each task
+2. Number them: "### Task 1/3: EI-4", "### Task 2/3: EI-3", etc.
+3. User can assign each to different workers or queue them
+4. Mark all assigned tasks as 🔵 IN PROGRESS
+
+## Batch Task Assignment
+
+For highly parallel phases, support batch prompt generation:
+
+### When to Offer Batch Assignment
+
+- 3+ tasks are ready with no interdependencies
+- User says "generate prompts for X, Y, Z"
+- Phase has multiple independent tasks (e.g., all pattern additions)
+
+### Batch Output Format
+
+```markdown
+# Batch Assignment: [N] Parallel Tasks
+
+These tasks can all run in parallel (no dependencies between them).
+**Phase**: [Phase name]
+**Total Estimated Time**: [Sum of estimates]
+
+---
+
+## Task 1/[N]: [ID] - [Short Title]
+
+[Full worker prompt]
+
+---
+
+## Task 2/[N]: [ID] - [Short Title]
+
+[Full worker prompt]
+
+---
+
+[Continue for all tasks...]
+
+---
+
+**Execution Strategy**:
+- Assign each task to different worker, OR
+- Queue all tasks for single worker
+- Each task is independently verifiable
+- All tasks contribute to [Phase/Milestone]
+
+**Coordination Notes**:
+- [Any shared files to be aware of]
+- [Integration points after completion]
+```
+
+### Batch Assignment Checklist
+
+Before generating batch prompts:
+- [ ] Verified all tasks have no interdependencies
+- [ ] Verified all have completed prerequisites
+- [ ] Checked for shared file conflicts (add to "Do NOT" sections if needed)
+- [ ] Numbered tasks clearly (1/N, 2/N, etc.)
+- [ ] Listed execution strategy
+
+## Quick Win Fast-Track
+
+For small, low-risk tasks, use a streamlined workflow:
+
+### Criteria for Fast-Track
+
+A task qualifies for fast-track when ALL of these apply:
+- **SIZE**: XS or S (≤2 hours)
+- **RISK LEVEL**: None or Low
+- **DEPENDS ON**: None, or all dependencies complete
+- **Complexity**: Single file change, clear implementation
+
+### Fast-Track Workflow
+
+Instead of generating a full worker prompt:
+
+1. **Provide 3-5 sentence summary**
+2. **List specific changes** (file, line, what to change)
+3. **Provide verification command**
+4. **User executes immediately**
+
+### Fast-Track Format
+
+```markdown
+## Quick Win: [ID] - [Name] (SIZE: [XS/S], RISK: [None/Low])
+
+**What to do**:
+[2-3 sentences describing the change]
+
+**Changes**:
+1. `path/to/file.py` line [N]: [specific change]
+2. `tests/path/to/test.py`: Add test for [scenario]
+
+**Verify**:
+```bash
+[single verification command]
+```
+
+**Ready to execute?**
+```
+
+### Example Fast-Track
+
+```markdown
+## Quick Win: EI-6 - Add NaN Validation (SIZE: XS, RISK: None)
+
+**What to do**:
+Add validation in segment_enricher.py to handle NaN/Inf scores gracefully.
+Return 0.0 for invalid scores instead of propagating errors.
+
+**Changes**:
+1. `src/extraction/segment_enricher.py` line 1033: Add `if math.isnan(score) or math.isinf(score): return 0.0`
+2. `tests/unit/extraction/test_segment_enricher.py`: Add 2 tests for NaN and Inf cases
+
+**Verify**:
+```bash
+pytest tests/unit/extraction/test_segment_enricher.py -k "nan or inf" -v
+```
+
+**Ready to execute?**
+```
+
+### When NOT to Fast-Track
+
+Even if criteria match, use full prompt when:
+- Task has complex edge cases
+- Multiple code paths affected
+- Integration points with other modules
+- Worker is unfamiliar with the codebase
+
 ## When Plans Are Missing Task Breakdowns
 
 If a plan document does NOT have a "Task Breakdown for Orchestrator/Architect" section:
