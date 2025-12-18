@@ -117,6 +117,9 @@ class MetricClassifier:
             r"\bacquisition\s+of\s+customers?\b",
             r"\bnew\s+users?\s+acquired\b",
             r"\bacquired\s+users?\b",
+            r"\bnew\s+accounts?\s+acquired\b", # Added synonym
+            r"\bnew\s+clients?\s+acquired\b", # Added synonym
+            r"\bnew\s+logos?\b", # Added synonym
         ],
         "cm_customers_period_end_by_tenure": [
             r"\bcustomers?\s+by\s+tenure\b",
@@ -142,6 +145,10 @@ class MetricClassifier:
             r"\bactive\s+customers?\b",
             r"\btotal\s+customers?\b",
             r"\bcustomer\s+base\b",
+            r"\bactive\s+accounts?\b", # Added synonym
+            r"\btotal\s+accounts?\b", # Added synonym
+            r"\bactive\s+clients?\b", # Added synonym
+            r"\btotal\s+clients?\b", # Added synonym
         ],
         "cm_revenue_per_customer": [
             r"\barpu\b",
@@ -200,6 +207,7 @@ class MetricClassifier:
             r"\bgross\s+profit\s+margin\b",
             r"\bgross\s+margin\s+(?:percentage|rate)\b",
             r"\b(?<!cohort\s)(?<!by\s)gross\s+margin\b",
+            r"\bgross\s+profit\b",  # Added for row headings in financial tables
         ],
         "cm_gross_margin_by_cohort": [
             r"\bgross\s+margin\s+by\s+cohort\b",

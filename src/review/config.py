@@ -209,6 +209,16 @@ class CandidateGenerationConfig:
     confidence_format_match_bonus: float = 0.10
     """Bonus if number format matches metric type expectation."""
 
+    confidence_format_mismatch_penalty: float = 0.25
+    """Penalty when number format conflicts with metric expectation.
+
+    Applied when a metric has expected formats defined but the number's
+    format doesn't match. For example, currency values ($94,348) matched
+    to margin metrics (which expect percentages) receive this penalty.
+    This helps filter false positives where "gross profit" values are
+    incorrectly matched to "gross profit margin" keywords.
+    """
+
     confidence_specific_keyword_bonus: float = 0.10
     """Bonus for multi-word specific keywords."""
 
@@ -319,6 +329,7 @@ class CandidateGenerationConfig:
             "definition_bonus": self.confidence_definition_bonus,
             "period_bonus": self.confidence_period_bonus,
             "format_match_bonus": self.confidence_format_match_bonus,
+            "format_mismatch_penalty": self.confidence_format_mismatch_penalty,
             "specific_keyword_bonus": self.confidence_specific_keyword_bonus,
             "risk_factors_penalty": self.confidence_risk_factors_penalty,
             "surrounding_numbers_penalty_max": self.confidence_surrounding_numbers_penalty_max,

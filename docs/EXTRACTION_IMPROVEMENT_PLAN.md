@@ -96,7 +96,7 @@ if features.contains_definition_language:
 | EI-3    | ✅     | M    | Claude   | 12-18   | 12-18     | FalsePositiveFilter integrated |
 | EI-4    | ✅     | M    | Claude   | 12-18   | 12-18     | TableRowParser integrated, 12 tests added |
 | EI-5    | 🟡     | L    | -        | -       | -         | Ready (no dependencies) |
-| EI-6    | 🟡     | M    | -        | -       | -         | Ready (EI-4 complete, can test with EI-5 later) |
+| EI-6    | 🔵     | M    | Claude   | 12-18   | -         | In progress - worker prompt generated |
 | EI-7    | ⚪     | S    | -        | -       | -         | Blocked by EI-6 |
 
 **Legend**: ⚪ Blocked | 🟡 Ready | 🔵 In Progress | ✅ Complete | ❌ Cancelled

@@ -297,28 +297,18 @@ def attempt_decision_recovery(
         })
 
         if matches:
-            # Recreate decision
+            # Recreate decision using insert_review_decision to ensure status update
             new_candidate_id = matches[0]["candidate_id"]
-            db.execute("""
-                INSERT INTO review_decisions (
-                    candidate_id, decision, assigned_metric_id,
-                    rejection_category, rejection_reason, reviewer_notes,
-                    reviewer_id, review_time_seconds
-                ) VALUES (
-                    %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
-                    %(rejection_category)s, %(rejection_reason)s, %(reviewer_notes)s,
-                    %(reviewer_id)s, %(review_time_seconds)s
-                )
-            """, {
-                "candidate_id": new_candidate_id,
-                "decision": decision["decision"],
-                "assigned_metric_id": decision["assigned_metric_id"],
-                "rejection_category": decision["rejection_category"],
-                "rejection_reason": decision["rejection_reason"],
-                "reviewer_notes": decision["reviewer_notes"],
-                "reviewer_id": decision["reviewer_id"],
-                "review_time_seconds": decision["review_time_seconds"],
-            })
+            db.insert_review_decision(
+                candidate_id=new_candidate_id,
+                decision=decision["decision"],
+                assigned_metric_id=decision["assigned_metric_id"],
+                rejection_category=decision["rejection_category"],
+                rejection_reason=decision["rejection_reason"],
+                reviewer_notes=decision["reviewer_notes"],
+                reviewer_id=decision["reviewer_id"],
+                review_time_seconds=decision["review_time_seconds"],
+            )
             recovered += 1
             logger.debug(f"Recovered decision {decision['decision_id']} -> new candidate {new_candidate_id}")
         else:

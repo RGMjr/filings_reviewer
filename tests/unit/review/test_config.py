@@ -79,6 +79,7 @@ class TestCandidateGenerationConfig:
             "definition_bonus",
             "period_bonus",
             "format_match_bonus",
+            "format_mismatch_penalty",
             "specific_keyword_bonus",
             "risk_factors_penalty",
             "surrounding_numbers_penalty_max",
