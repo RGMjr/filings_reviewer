@@ -1,6 +1,6 @@
 # Master Task List: SEC Filings Reviewer
 
-**Last Updated:** 2025-12-16
+**Last Updated:** 2025-12-17
 **Status:** Active
 **Strategy:** "Conservative Scope" for Type Safety; "Aggregate First" for Metrics.
 
@@ -106,8 +106,34 @@
 ---
 
 ## 🔵 HTML Segmentation Improvements
-**Source:** `docs/SEGMENTATION_IMPROVEMENT_PLAN.md`
+**Source:** `docs/archive/workstreams/SEG-segmentation-improvements/SEGMENTATION_IMPROVEMENT_PLAN.md` (archived)
+**Status:** ✅ **COMPLETE (12/12 items)**
 **Objective:** Optimize and harden the HTML segmentation pipeline.
+**Completion Date:** 2025-12-17
 
+**Phase A - Quick Wins:**
 - [x] **SEG2. Fix:** SGML tag case insensitivity - handle uppercase `<TEXT>` tags in older filings. → ✅ **COMPLETE (2025-12-16)**
 - [x] **SEG3. Perf:** Singleton BoundaryDetector - reduce object allocation overhead by reusing instance. → ✅ **COMPLETE (2025-12-16)**
+- [x] **SEG4. Accuracy:** Expand definition continuation patterns to capture more valid continuations. → ✅ **COMPLETE (2025-12-16)**
+
+**Phase B - Performance:**
+- [x] **SEG1. Perf:** Heading cache binary search - reduce section lookup from O(n) to O(log n). → ✅ **COMPLETE (2025-12-16)**
+- [x] **SEG11. Perf:** Parallel sentence detection - 2-4x faster for large filings. → ✅ **COMPLETE (2025-12-16)**
+
+**Phase C - Features:**
+- [x] **SEG5. Feature:** Character offset tracking - enable precise source highlighting in UI. → ✅ **COMPLETE (2025-12-17)**
+- [x] **SEG6. Feature:** Hierarchical section path building - richer navigation context. → ✅ **COMPLETE (2025-12-17)**
+- [x] **SEG8. Feature:** Additional element types - support blockquote, pre, figure tags. → ✅ **COMPLETE (2025-12-17)**
+- [x] **SEG10. Feature:** HTML selector generation - enable DOM highlighting in UI. → ✅ **COMPLETE (2025-12-17)**
+
+**Phase D - Polish:**
+- [x] **SEG7. Robustness:** Robust encoding detection with charset-normalizer library. → ✅ **COMPLETE (2025-12-17)**
+- [x] **SEG9. Perf:** Cache parsed DOM in composite splitting - reduce BeautifulSoup instantiation. → ✅ **COMPLETE (2025-12-17)**
+- [x] **SEG12. Enhancement:** Tri-region table sampling - better coverage of large table content. → ✅ **COMPLETE (2025-12-17)**
+
+**Results:**
+- ✅ All 12 improvements implemented and tested
+- ✅ 100+ new tests added, maintaining 87% coverage
+- ✅ Performance: O(n²) → O(n log n) for section lookups, 2-4x faster sentence detection
+- ✅ Features: Character offsets, hierarchical paths, CSS selectors for UI highlighting
+- ✅ Robustness: Handles legacy encodings, large tables, additional HTML elements
