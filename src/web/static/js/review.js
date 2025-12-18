@@ -28,7 +28,9 @@
         rejectionPanelVisible: false,
         selectedRejectionCategory: null,
         decisionHistory: [],
-        filingId: null
+        filingId: null,
+        selectedCandidates: new Set(), // HRI-8: Track selected candidates for bulk actions
+        bulkDecision: null // HRI-8: 'accept' or 'reject' for pending bulk operation
     };
 
     // =========================================================================
@@ -175,6 +177,254 @@
 
         // Form submit backup (prevent default submission)
         elements.form.addEventListener('submit', handleFormSubmit);
+
+        // HRI-8: Bulk action event handlers
+        initializeBulkActions();
+    }
+
+    // =========================================================================
+    // Bulk Actions (HRI-8)
+    // =========================================================================
+
+    function initializeBulkActions() {
+        // Select all checkbox
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', handleSelectAll);
+        }
+
+        // Candidate checkboxes (event delegation)
+        document.addEventListener('change', function(event) {
+            if (event.target.classList.contains('candidate-checkbox')) {
+                handleCandidateCheckboxChange(event);
+            }
+        });
+
+        // Bulk action buttons
+        const bulkAcceptBtn = document.getElementById('bulk-accept-btn');
+        if (bulkAcceptBtn) {
+            bulkAcceptBtn.addEventListener('click', handleBulkAccept);
+        }
+
+        const bulkRejectBtn = document.getElementById('bulk-reject-btn');
+        if (bulkRejectBtn) {
+            bulkRejectBtn.addEventListener('click', handleBulkReject);
+        }
+
+        const clearSelectionBtn = document.getElementById('clear-selection-btn');
+        if (clearSelectionBtn) {
+            clearSelectionBtn.addEventListener('click', clearSelection);
+        }
+
+        // Bulk confirmation button
+        const bulkConfirmBtn = document.getElementById('bulk-confirm-btn');
+        if (bulkConfirmBtn) {
+            bulkConfirmBtn.addEventListener('click', handleBulkConfirm);
+        }
+    }
+
+    function handleSelectAll(event) {
+        const checked = event.target.checked;
+        const checkboxes = document.querySelectorAll('.candidate-checkbox');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = checked;
+            const candidateId = parseInt(checkbox.dataset.candidateId, 10);
+
+            if (checked) {
+                state.selectedCandidates.add(candidateId);
+            } else {
+                state.selectedCandidates.delete(candidateId);
+            }
+        });
+
+        updateBulkActionBar();
+    }
+
+    function handleCandidateCheckboxChange(event) {
+        const checkbox = event.target;
+        const candidateId = parseInt(checkbox.dataset.candidateId, 10);
+
+        if (checkbox.checked) {
+            state.selectedCandidates.add(candidateId);
+        } else {
+            state.selectedCandidates.delete(candidateId);
+        }
+
+        updateBulkActionBar();
+        updateSelectAllCheckbox();
+    }
+
+    function updateBulkActionBar() {
+        const bar = document.getElementById('bulk-action-bar');
+        const countSpan = document.getElementById('bulk-selection-count');
+        const count = state.selectedCandidates.size;
+
+        if (count > 0) {
+            bar.classList.remove('d-none');
+            countSpan.textContent = `${count} candidate${count > 1 ? 's' : ''} selected`;
+        } else {
+            bar.classList.add('d-none');
+        }
+    }
+
+    function updateSelectAllCheckbox() {
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        if (!selectAllCheckbox) return;
+
+        const checkboxes = document.querySelectorAll('.candidate-checkbox');
+        const checkedCount = document.querySelectorAll('.candidate-checkbox:checked').length;
+
+        if (checkedCount === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCount === checkboxes.length) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+
+    function clearSelection() {
+        state.selectedCandidates.clear();
+
+        const checkboxes = document.querySelectorAll('.candidate-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+
+        updateBulkActionBar();
+        updateSelectAllCheckbox();
+    }
+
+    function handleBulkAccept() {
+        if (state.selectedCandidates.size === 0) {
+            alert('No candidates selected');
+            return;
+        }
+
+        if (state.selectedCandidates.size > 20) {
+            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+            return;
+        }
+
+        // Get the metric ID from the first selected candidate
+        const firstCheckbox = document.querySelector('.candidate-checkbox:checked');
+        const metricId = firstCheckbox ? firstCheckbox.dataset.metricId : null;
+
+        if (!metricId) {
+            alert('Unable to determine metric ID for bulk accept');
+            return;
+        }
+
+        state.bulkDecision = 'accept';
+        state.bulkMetricId = metricId;
+
+        // Show confirmation modal
+        const modal = new bootstrap.Modal(document.getElementById('bulk-confirm-modal'));
+        const messageEl = document.getElementById('bulk-confirm-message');
+        const categoryGroup = document.getElementById('bulk-reject-category-group');
+
+        messageEl.textContent = `You are about to accept ${state.selectedCandidates.size} candidates as "${metricId.replace('cm_', '').replace(/_/g, ' ')}".`;
+        categoryGroup.classList.add('d-none');
+
+        modal.show();
+    }
+
+    function handleBulkReject() {
+        if (state.selectedCandidates.size === 0) {
+            alert('No candidates selected');
+            return;
+        }
+
+        if (state.selectedCandidates.size > 20) {
+            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+            return;
+        }
+
+        state.bulkDecision = 'reject';
+
+        // Show confirmation modal with rejection category
+        const modal = new bootstrap.Modal(document.getElementById('bulk-confirm-modal'));
+        const messageEl = document.getElementById('bulk-confirm-message');
+        const categoryGroup = document.getElementById('bulk-reject-category-group');
+
+        messageEl.textContent = `You are about to reject ${state.selectedCandidates.size} candidates. Please select a rejection category:`;
+        categoryGroup.classList.remove('d-none');
+
+        modal.show();
+    }
+
+    async function handleBulkConfirm() {
+        const confirmBtn = document.getElementById('bulk-confirm-btn');
+        const loadingSpinner = document.getElementById('bulk-loading-spinner');
+        const btnText = document.getElementById('bulk-confirm-btn-text');
+
+        // Validate rejection category if rejecting
+        if (state.bulkDecision === 'reject') {
+            const category = document.getElementById('bulk-rejection-category').value;
+            if (!category) {
+                alert('Please select a rejection category');
+                return;
+            }
+        }
+
+        // Disable button and show spinner
+        confirmBtn.disabled = true;
+        loadingSpinner.classList.remove('d-none');
+        btnText.textContent = 'Processing...';
+
+        try {
+            const payload = {
+                candidate_ids: Array.from(state.selectedCandidates),
+                decision: state.bulkDecision
+            };
+
+            if (state.bulkDecision === 'accept') {
+                payload.assigned_metric_id = state.bulkMetricId;
+            } else if (state.bulkDecision === 'reject') {
+                payload.rejection_category = document.getElementById('bulk-rejection-category').value;
+                const reason = document.getElementById('bulk-rejection-reason').value;
+                if (reason) {
+                    payload.rejection_reason = reason;
+                }
+            }
+
+            const response = await fetch('/api/bulk-decisions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('bulk-confirm-modal'));
+                modal.hide();
+
+                // Show success message
+                showSuccess(data.message);
+
+                // Reload page to see updated statuses
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                // Show error
+                alert(`Error: ${data.message || JSON.stringify(data.errors)}`);
+            }
+        } catch (error) {
+            console.error('Bulk decision error:', error);
+            alert('Network error - please try again');
+        } finally {
+            // Re-enable button
+            confirmBtn.disabled = false;
+            loadingSpinner.classList.add('d-none');
+            btnText.textContent = 'Confirm';
+        }
     }
 
     // =========================================================================

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import psycopg
 from flask import Blueprint, g, jsonify, request, session
 
+from src.infra.validation import ValidationError
 from src.review.models import (
     DECISION_TYPES,
     REJECTION_CATEGORIES,
@@ -954,8 +955,6 @@ def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
         errors["candidate_ids"] = "All IDs must be positive integers"
     elif len(candidate_ids) < 1:
         errors["candidate_ids"] = "Must select at least 1 candidate"
-    elif len(candidate_ids) > 20:
-        errors["candidate_ids"] = "Maximum 20 candidates per bulk action"
 
     # Validate decision type - only accept/reject allowed for bulk
     decision = data.get("decision")
