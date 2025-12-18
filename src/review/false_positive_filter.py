@@ -4,6 +4,10 @@ False Positive Filter - Identify and filter out false positive number matches.
 This module provides functionality to identify numbers that are unlikely to be
 metrics, such as dates, years, page numbers, and other reference numbers.
 
+Enhanced with temporal context patterns (2025-12-17) to improve date detection
+in SEC filings by recognizing common temporal phrases like "as of", "ended",
+"for the period ended", etc.
+
 Extracted from candidate_generator.py as part of P1.3 module splitting
 for improved maintainability and testability.
 
@@ -66,16 +70,20 @@ Disabling False Positive Filtering (high recall):
 Understanding Filter Reasons:
     >>> # Filter returns tuple (is_false_positive: bool, reason: str)
     >>> # Possible reasons:
-    >>> # - "year_value": Number in year range (1990-2100)
-    >>> # - "small_value": Number below min_metric_value threshold
-    >>> # - "date_context": Part of a date (12/31/2023)
-    >>> # - "page_reference": Page number ("page 123")
-    >>> # - "note_reference": Note reference ("Note 5")
-    >>> # - "version_number": Version number ("Version 2.0")
+    >>> # - "likely_year": Number in year range (1990-2100) and 4-digit format
+    >>> # - "below_min_value": Number below min_metric_value threshold
+    >>> # - "part_of_date": Part of a date (e.g., "31" from "January 31, 2019")
     >>> # - "toc_proximity": Number near "Table of Contents" header
     >>> # - "toc_page_reference": Dot leader pattern (section name ... page number)
     >>> # - "reference_number": Matches FALSE_POSITIVE_CONTEXT_PATTERNS (page/note/section refs, TOC links)
     >>> # - None: Not a false positive
+    >>> #
+    >>> # Temporal phrases recognized (enhanced 2025-12-17):
+    >>> # - "as of January 31, 2019"
+    >>> # - "ended January 31, 2019"
+    >>> # - "Year Ended January 31, 2019"
+    >>> # - "Three Months Ended April 30, 2018"
+    >>> # - "beginning January 31, 2019"
 
 See Also:
     - candidate_generator.py: Uses FalsePositiveFilter internally
@@ -113,6 +121,36 @@ DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
         r"September|October|November|December)\s+\d{4}",
         re.IGNORECASE,
     ),
+    # Temporal phrases with dates - "as of January 31, 2019"
+    re.compile(
+        r"\bas\s+of\s+(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        re.IGNORECASE,
+    ),
+    # "ended January 31, 2019"
+    re.compile(
+        r"\bended\s+(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        re.IGNORECASE,
+    ),
+    # "beginning January 31, 2019" or "beginning of period"
+    re.compile(
+        r"\bbeginning\s+(?:of\s+)?(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        re.IGNORECASE,
+    ),
+    # Fiscal year references - "Year Ended January 31, 2019"
+    re.compile(
+        r"\byear\s+ended\s+(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        re.IGNORECASE,
+    ),
+    # Quarter references - "Three Months Ended April 30, 2018"
+    re.compile(
+        r"\b(?:three|six|nine|twelve)\s+months\s+ended\s+(?:January|February|March|"
+        r"April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        re.IGNORECASE,
+    ),
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)
@@ -141,6 +179,11 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     re.compile(r"\bparts?\s+(?:I{1,3}|IV|V|VI{0,3}|\d+)", re.IGNORECASE),
     # Table of Contents references: "73 Table of Contents" (Issue 4 - standalone pattern)
     re.compile(r"\d+\s+(?:table\s+of\s+contents|toc)\b", re.IGNORECASE),
+    # Measurement unit patterns (EI-2) - numbers within time units are not metrics
+    # Matches: "24-hour", "30-day", "7 days", "12-month", "90-second"
+    # These describe measurement timeframes, not actual metric values
+    re.compile(r"\b\d+[-\s]?(?:hour|day|week|month|year|period|quarter)s?\b", re.IGNORECASE),
+    re.compile(r"\b\d+[-\s]?(?:minute|second)s?\b", re.IGNORECASE),
 ]
 
 # Year range - numbers in this range are likely years, not metrics
