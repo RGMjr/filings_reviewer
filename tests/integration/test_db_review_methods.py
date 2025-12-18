@@ -1697,6 +1697,146 @@ class TestAnalysisViewMethods:
         assert reason["common_keyword_position"] == "after"  # Matches candidate
 
 
+class TestDailyDecisionCounts:
+    """Tests for get_daily_decision_counts() method."""
+
+    def test_get_daily_decision_counts_empty(self, clean_db):
+        """Test with no decisions - should return 7 days with count 0."""
+        daily_counts = clean_db.get_daily_decision_counts(days=7)
+
+        assert len(daily_counts) == 7
+        # All days should have count 0
+        assert all(row["count"] == 0 for row in daily_counts)
+        # Should be ordered by date ascending
+        dates = [row["date"] for row in daily_counts]
+        assert dates == sorted(dates)
+
+    def test_get_daily_decision_counts_with_data(self, clean_db):
+        """Test with decisions made over several days."""
+        from datetime import date, timedelta
+
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Create candidates
+        candidate_ids = []
+        for i in range(5):
+            _, _, cid = create_test_candidate(
+                clean_db,
+                filing_id=filing_id,
+                company_id=company_id,
+                char_position=i * 100,
+                context_text=f"Test context {i}",
+                raw_number_text=str(1000 + i),
+            )
+            candidate_ids.append(cid)
+
+        # Define dates
+        today = date.today()
+        two_days_ago = today - timedelta(days=2)
+        five_days_ago = today - timedelta(days=5)
+
+        # Add decisions using the standard method
+        # Insert 3 decisions "today"
+        for i in range(3):
+            clean_db.insert_review_decision(
+                candidate_id=candidate_ids[i],
+                decision="accept",
+                assigned_metric_id="cm_new_customers_acquired",
+            )
+
+        # Manually backdate two decisions for testing
+        clean_db.insert_review_decision(
+            candidate_id=candidate_ids[3],
+            decision="accept",
+            assigned_metric_id="cm_new_customers_acquired",
+        )
+        clean_db.insert_review_decision(
+            candidate_id=candidate_ids[4],
+            decision="reject",
+            rejection_category="not_a_metric",
+        )
+
+        # Backdate the last two using raw SQL
+        with clean_db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Find the last two decision IDs
+                cur.execute(
+                    """
+                    SELECT decision_id FROM review_decisions
+                    WHERE candidate_id IN (%s, %s)
+                    ORDER BY created_at DESC
+                    """,
+                    (candidate_ids[3], candidate_ids[4])
+                )
+                decision_ids = [row["decision_id"] for row in cur.fetchall()]
+
+                # Backdate them
+                if len(decision_ids) >= 2:
+                    cur.execute(
+                        "UPDATE review_decisions SET created_at = %s WHERE decision_id = %s",
+                        (two_days_ago, decision_ids[0])
+                    )
+                    cur.execute(
+                        "UPDATE review_decisions SET created_at = %s WHERE decision_id = %s",
+                        (five_days_ago, decision_ids[1])
+                    )
+
+        # Query daily counts
+        daily_counts = clean_db.get_daily_decision_counts(days=7)
+
+        # Basic structure check
+        assert len(daily_counts) == 7
+        assert all("date" in row and "count" in row for row in daily_counts)
+
+        # Verify total decisions = 5
+        total = sum(r["count"] for r in daily_counts)
+        assert total == 5, f"Expected 5 total decisions, got {total}"
+
+        # Find specific dates - they should exist
+        counts_by_date = {row["date"]: row["count"] for row in daily_counts}
+        assert today in counts_by_date
+        assert two_days_ago in counts_by_date
+        assert five_days_ago in counts_by_date
+
+    def test_get_daily_decision_counts_fills_gaps(self, clean_db):
+        """Test that days with no decisions are included with count 0."""
+        from datetime import date, timedelta
+
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+        _, _, candidate_id = create_test_candidate(
+            clean_db,
+            filing_id=filing_id,
+            company_id=company_id,
+        )
+
+        # Add one decision today using standard method
+        clean_db.insert_review_decision(
+            candidate_id=candidate_id,
+            decision="accept",
+            assigned_metric_id="cm_new_customers_acquired",
+        )
+
+        # Query 7 days
+        daily_counts = clean_db.get_daily_decision_counts(days=7)
+
+        # Should have exactly 7 entries
+        assert len(daily_counts) == 7
+
+        # Total should be 1
+        total = sum(r["count"] for r in daily_counts)
+        assert total == 1, f"Expected 1 total decision, got {total}"
+
+        # All dates should be present and consecutive
+        counts_by_date = {row["date"]: row["count"] for row in daily_counts}
+        actual_dates = sorted(counts_by_date.keys())
+
+        # Check we have 7 consecutive dates
+        assert len(actual_dates) == 7
+        for i in range(1, 7):
+            # Each date should be exactly 1 day after the previous
+            assert (actual_dates[i] - actual_dates[i-1]).days == 1
+
+
 class TestTransactionContext:
     """Tests for the transaction() context manager."""
 

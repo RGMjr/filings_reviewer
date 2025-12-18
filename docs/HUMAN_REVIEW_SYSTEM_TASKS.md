@@ -18,8 +18,8 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 |----------|-------|----------|-----------|
 | P1 Critical | 3 | 3 | 0 |
 | P2 Usability | 5 | 5 | 0 |
-| P3 Nice-to-Have | 4 | 2 | 2 |
-| **Total** | **12** | **10** | **2** |
+| P3 Nice-to-Have | 4 | 3 | 1 |
+| **Total** | **12** | **11** | **1** |
 
 ---
 
@@ -39,7 +39,7 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | **HRI-8** | ~~Add Bulk Actions~~ | HRI-6 | ~~3 hr~~ | ✅ Complete |
 | **HRI-9** | ~~Add Context Expansion~~ | None | ~~1 hr~~ | ✅ Complete |
 | **HRI-10** | ~~Add Session Persistence~~ | None | ~~1 hr~~ | ✅ Complete |
-| **HRI-11** | Add Statistics Dashboard | 30+ decisions | 3 hr | Low |
+| **HRI-11** | ~~Add Statistics Dashboard~~ | 30+ decisions | ~~3 hr~~ | ✅ Complete |
 | **HRI-12** | Add Inter-Rater Agreement | Multi-user support | 4 hr | High |
 
 ### Dependency Graph

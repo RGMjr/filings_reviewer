@@ -988,3 +988,121 @@ def test_highlight_context_with_special_chars():
 
     # Check keyword is highlighted
     assert '<u class="triggering-keyword">revenue</u>' in result
+
+
+# =============================================================================
+# Test stats() route (HRI-11)
+# =============================================================================
+
+def test_stats_returns_200(client, mock_db, mock_render_template):
+    """Test that /review/stats route returns 200 status."""
+    # Mock all required database methods
+    mock_db.get_decision_statistics.return_value = {
+        "total_decisions": 10,
+        "accept_count": 6,
+        "reject_count": 3,
+        "reclassify_count": 1,
+        "accept_pct": 60.0,
+        "reject_pct": 30.0,
+        "avg_review_time_seconds": 25.5,
+    }
+    mock_db.get_decision_stats_by_metric.return_value = []
+    mock_db.get_daily_decision_counts.return_value = []
+    mock_db.get_review_progress.return_value = {
+        "total_candidates": 100,
+        "pending_count": 50,
+        "reviewed_count": 50,
+        "skipped_count": 0,
+        "review_pct": 50.0,
+        "total_filings": 5,
+        "filings_with_pending": 3,
+    }
+
+    response = client.get("/stats")
+
+    assert response.status_code == 200
+    mock_render_template.assert_called_once()
+
+
+def test_stats_passes_correct_context(client, mock_db, mock_render_template):
+    """Test that stats route passes expected context variables to template."""
+    overall_stats = {
+        "total_decisions": 10,
+        "accept_count": 6,
+        "reject_count": 3,
+        "reclassify_count": 1,
+        "accept_pct": 60.0,
+        "reject_pct": 30.0,
+        "avg_review_time_seconds": 25.5,
+    }
+    metric_stats = [
+        {"suggested_metric": "cm_new_customers_acquired", "decision": "accept", "decision_count": 5, "pct_of_metric": 100.0}
+    ]
+    daily_counts = [
+        {"date": "2025-12-17", "count": 3},
+        {"date": "2025-12-16", "count": 2},
+    ]
+    progress = {
+        "total_candidates": 100,
+        "pending_count": 50,
+        "reviewed_count": 50,
+        "skipped_count": 0,
+        "review_pct": 50.0,
+        "total_filings": 5,
+        "filings_with_pending": 3,
+    }
+
+    mock_db.get_decision_statistics.return_value = overall_stats
+    mock_db.get_decision_stats_by_metric.return_value = metric_stats
+    mock_db.get_daily_decision_counts.return_value = daily_counts
+    mock_db.get_review_progress.return_value = progress
+
+    response = client.get("/stats")
+
+    assert response.status_code == 200
+
+    # Verify render_template was called with correct context
+    mock_render_template.assert_called_once_with(
+        "stats.html",
+        overall_stats=overall_stats,
+        metric_stats=metric_stats,
+        daily_counts=daily_counts,
+        progress=progress,
+    )
+
+
+def test_stats_handles_empty_database(client, mock_db, mock_render_template):
+    """Test that stats route handles empty database gracefully."""
+    # Mock empty statistics
+    mock_db.get_decision_statistics.return_value = {
+        "total_decisions": 0,
+        "accept_count": 0,
+        "reject_count": 0,
+        "reclassify_count": 0,
+        "accept_pct": 0,
+        "reject_pct": 0,
+        "avg_review_time_seconds": None,
+    }
+    mock_db.get_decision_stats_by_metric.return_value = []
+    mock_db.get_daily_decision_counts.return_value = [
+        {"date": f"2025-12-{17-i}", "count": 0} for i in range(7)
+    ]
+    mock_db.get_review_progress.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "review_pct": 0,
+        "total_filings": 0,
+        "filings_with_pending": 0,
+    }
+
+    response = client.get("/stats")
+
+    assert response.status_code == 200
+    mock_render_template.assert_called_once()
+
+    # Verify template was called with empty data
+    call_args = mock_render_template.call_args
+    assert call_args[1]["overall_stats"]["total_decisions"] == 0
+    assert call_args[1]["metric_stats"] == []
