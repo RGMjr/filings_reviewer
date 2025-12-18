@@ -95,7 +95,7 @@ if features.contains_definition_language:
 | EI-2    | ✅     | S    | Claude   | 12-18   | 12-18     | Measurement unit patterns deployed |
 | EI-3    | ✅     | M    | Claude   | 12-18   | 12-18     | FalsePositiveFilter integrated |
 | EI-4    | ✅     | M    | Claude   | 12-18   | 12-18     | TableRowParser integrated, 12 tests added |
-| EI-5    | 🟡     | L    | -        | -       | -         | Ready (no dependencies) |
+| EI-5    | ✅     | L    | Claude   | 12-18   | 12-18     | Cell boundary markers deployed, 23 tests added |
 | EI-6    | 🔵     | M    | Claude   | 12-18   | -         | In progress - worker prompt generated |
 | EI-7    | ⚪     | S    | -        | -       | -         | Blocked by EI-6 |
 
