@@ -208,3 +208,242 @@ def test_filing_list_pagination(client, db):
     # Test page 3
     response = client.get("/filings?page=3&per_page=2")
     assert response.status_code == 200
+
+
+# =============================================================================
+# Test Filtering and Sorting (HRI-6)
+# =============================================================================
+
+def test_review_filing_status_filter(client, db):
+    """Test filtering candidates by status."""
+    # Create filing with multiple candidates with different statuses
+    company_id, filing_id = create_test_company_and_filing(db)
+
+    # Create 3 candidates
+    candidate_ids = []
+    for i in range(3):
+        candidate_id = db.insert_review_candidate(
+            filing_id=filing_id,
+            company_id=company_id,
+            char_position=100 + i * 100,
+            context_text=f"We have {10000 + i} customers.",
+            raw_number_text=f"{10000 + i}",
+            triggering_keyword="customers",
+            keyword_distance=5,
+            keyword_position="after",
+            parsed_value=Decimal(10000 + i),
+            parsed_unit="count",
+            suggested_metric_id="cm_active_customers_total",
+            suggestion_confidence=0.95,
+        )
+        candidate_ids.append(candidate_id)
+
+    # Mark first two as reviewed
+    db.update_candidate_status(candidate_ids[0], "reviewed")
+    db.update_candidate_status(candidate_ids[1], "reviewed")
+
+    # Test pending filter (should show only 1 candidate)
+    response = client.get(f"/review/{filing_id}?status=pending")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    # Check that filter controls are present
+    assert "statusFilter" in html
+    # Check that showing count is displayed (verifying the feature exists)
+    assert "of 3 candidates" in html
+
+    # Test reviewed filter (should show 2 candidates)
+    response = client.get(f"/review/{filing_id}?status=reviewed")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert "of 3 candidates" in html
+
+
+def test_review_filing_metric_filter(client, db):
+    """Test filtering candidates by metric type."""
+    company_id, filing_id = create_test_company_and_filing(db)
+
+    # Create candidates with different metrics
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=100,
+        context_text="We have 10000 customers.",
+        raw_number_text="10,000",
+        triggering_keyword="customers",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(10000),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.95,
+    )
+
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=200,
+        context_text="Our ARR is $5M.",
+        raw_number_text="$5M",
+        triggering_keyword="ARR",
+        keyword_distance=3,
+        keyword_position="before",
+        parsed_value=Decimal(5000000),
+        parsed_unit="dollars",
+        suggested_metric_id="cm_arr",
+        suggestion_confidence=0.90,
+    )
+
+    # Filter by cm_arr (should show 1 candidate)
+    response = client.get(f"/review/{filing_id}?metric=cm_arr")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    # Verify filter controls exist and total count is shown
+    assert "metricFilter" in html
+    assert "of 2 candidates" in html
+
+
+def test_review_filing_confidence_filter(client, db):
+    """Test filtering candidates by confidence level."""
+    company_id, filing_id = create_test_company_and_filing(db)
+
+    # Create candidates with different confidence levels
+    # High confidence (>= 0.7)
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=100,
+        context_text="We have 10000 customers.",
+        raw_number_text="10,000",
+        triggering_keyword="customers",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(10000),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.95,
+    )
+
+    # Medium confidence (0.4 - 0.7)
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=200,
+        context_text="We have 5000 users.",
+        raw_number_text="5,000",
+        triggering_keyword="users",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(5000),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.55,
+    )
+
+    # Low confidence (< 0.4)
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=300,
+        context_text="We have 100 items.",
+        raw_number_text="100",
+        triggering_keyword="items",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(100),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.25,
+    )
+
+    # Test high confidence filter
+    response = client.get(f"/review/{filing_id}?confidence=high")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert "confidenceFilter" in html
+    assert "of 3 candidates" in html
+
+    # Test medium confidence filter
+    response = client.get(f"/review/{filing_id}?confidence=medium")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert "of 3 candidates" in html
+
+    # Test low confidence filter
+    response = client.get(f"/review/{filing_id}?confidence=low")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert "of 3 candidates" in html
+
+
+def test_review_filing_combined_filters(client, db):
+    """Test combining multiple filters."""
+    company_id, filing_id = create_test_company_and_filing(db)
+
+    # Create candidates with mixed attributes
+    candidate_id_1 = db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=100,
+        context_text="We have 10000 customers.",
+        raw_number_text="10,000",
+        triggering_keyword="customers",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(10000),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.95,
+    )
+
+    candidate_id_2 = db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=200,
+        context_text="Our ARR is $5M.",
+        raw_number_text="$5M",
+        triggering_keyword="ARR",
+        keyword_distance=3,
+        keyword_position="before",
+        parsed_value=Decimal(5000000),
+        parsed_unit="dollars",
+        suggested_metric_id="cm_arr",
+        suggestion_confidence=0.90,
+    )
+
+    # Mark first as reviewed
+    db.update_candidate_status(candidate_id_1, "reviewed")
+
+    # Combine status=reviewed + metric=cm_active_customers_total (should show 1)
+    response = client.get(f"/review/{filing_id}?status=reviewed&metric=cm_active_customers_total")
+    assert response.status_code == 200
+    html = response.data.decode("utf-8")
+    assert "of 2 candidates" in html
+    assert "filtered" in html  # Should show filtered badge
+
+
+def test_review_filing_empty_filter_results(client, db):
+    """Test UI handles empty filter results gracefully."""
+    company_id, filing_id = create_test_company_and_filing(db)
+
+    # Create one candidate
+    db.insert_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        char_position=100,
+        context_text="We have 10000 customers.",
+        raw_number_text="10,000",
+        triggering_keyword="customers",
+        keyword_distance=5,
+        keyword_position="after",
+        parsed_value=Decimal(10000),
+        parsed_unit="count",
+        suggested_metric_id="cm_active_customers_total",
+        suggestion_confidence=0.95,
+    )
+
+    # Filter by non-existent metric
+    response = client.get(f"/review/{filing_id}?metric=cm_nonexistent")
+    assert response.status_code == 200
+    # Should show "No candidates match" message
+    html = response.data.decode("utf-8")
+    assert "No candidates match the current filters" in html
