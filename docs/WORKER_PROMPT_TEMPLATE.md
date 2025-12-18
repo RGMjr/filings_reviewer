@@ -1,4 +1,4 @@
-# WORKER PROMPT TEMPLATE (v2.0)
+# WORKER PROMPT TEMPLATE (v2.2)
 
 **Purpose**: This template provides a consistent, concise format for worker prompts. It emphasizes requirements over implementation details, allowing developers autonomy while ensuring clear acceptance criteria.
 
@@ -97,6 +97,32 @@ PARALLEL WITH: [Other tasks that can run simultaneously, or "None"]
 - [Specific performance target] (e.g., "Complete in <100ms for typical input")
 - [Scalability requirement] (e.g., "Handle files up to 100KB")
 - [Optimization guidance] (e.g., "Use non-backtracking regex")
+
+### Backward Compatibility
+
+[Include when task modifies existing data formats or APIs]
+
+- **API Changes**: [How to maintain compatibility during transition]
+  - Example: "Old `extract_from_segment()` still works; new `extract_with_filters()` added"
+
+- **Data Format Changes**: [How existing data migrates to new format]
+  - Example: "Existing segments without [CELL] markers still parseable"
+
+- **Parallel Code Paths**: [If old and new code must coexist temporarily]
+  - Example: "Use `use_cell_markers` config flag to enable/disable new format"
+
+- **Deprecation Strategy**: [What gets deprecated and when]
+  - Example: "Old format deprecated in v2.0, removed in v3.0"
+
+- **Feature Flags**: [How to enable/disable new behavior for staged rollout]
+  - Example: "`config.enable_row_validation = True` in production after staging validation"
+
+**When to Include**:
+- Task changes data format stored in database
+- Task modifies public API signatures
+- Task requires migration of existing data
+- Task introduces breaking changes
+- Task needs phased rollout due to risk
 
 ## Test Requirements
 
@@ -320,10 +346,33 @@ Before finalizing a worker prompt, verify:
 - [ ] Verification commands are copy-pasteable
 - [ ] Example code is in collapsed `<details>` section
 - [ ] Total length is 80-150 lines (not 400+)
+- [ ] If task changes data format, backward compatibility section included
+- [ ] If task modifies public APIs, deprecation strategy specified
+- [ ] If task is high-risk (Medium/High), feature flag strategy considered
+- [ ] If task depends on other in-progress work, conflicts identified in "Do NOT" section
 
 ---
 
 ## Version History
+
+- **v2.2** (2025-12-17): Added backward compatibility guidance and enhanced risk communication
+  - Added "Backward Compatibility" section after Performance Requirements
+  - Added 4 new checklist items for backward compatibility validation
+  - Addresses breaking changes, data format migrations, and feature flags
+  - Critical for architectural changes that modify data formats or APIs
+  - Enhanced RISK LEVEL guidance: explanations should include:
+    - **What could go wrong**: Specific failure modes
+    - **Impact if it fails**: Scope of damage
+    - **Likelihood**: Based on similar past work
+    - **Mitigation**: How the task reduces risk
+  - Example risk explanation:
+    ```
+    RISK LEVEL:    Medium - Changes text extraction format
+                   - Risk: TableRowParser position mapping could break
+                   - Impact: Cross-row validation fails, false positives return
+                   - Likelihood: Medium (text format change)
+                   - Mitigation: Extensive position mapping tests in acceptance criteria
+    ```
 
 - **v2.1** (2025-12-16): Added risk and quick-task support
   - Added RISK LEVEL field (None/Low/Medium/High)

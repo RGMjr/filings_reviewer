@@ -15,6 +15,7 @@ The project has multiple improvement plans. You will work on the plan specified 
 - **`docs/SEGMENTATION_IMPROVEMENT_PLAN.md`** - HTML segmentation enhancements (SEG-series tasks)
 - **`docs/GOLDMINE_IMPROVEMENT_PLAN.md`** - Goldmine section identification (G-series tasks)
 - **`docs/GOLDMINE_1_IMPROVEMENT_PLAN.md`** - Cohort detection, Slack review, richness tuning (GI-series tasks)
+- **`docs/EXTRACTION_IMPROVEMENT_PLAN.md`** - Extraction & candidate quality fixes (EI-series tasks)
 - **`docs/HUMAN_REVIEW_SYSTEM_TASKS.md`**
 - **[Other plans as added]**
 
@@ -39,7 +40,22 @@ When suggesting the next task:
 
 1. **Check Prerequisites**: Only suggest tasks whose prerequisites are complete
 2. **Prefer Foundation First**: Data model changes before logic changes
+   - Low-risk tasks before high-risk tasks when no dependencies
+   - Proven components (reused from existing code) before new components
+
+   **Risk Levels Guide**:
+   - **None**: Read-only analysis, no code changes
+   - **Low**: Reusing existing components, additive changes only, no format changes
+   - **Medium**: Modifying extraction logic, changing data formats, complex integration
+   - **High**: Breaking changes, database schema changes, architectural refactoring
+
 3. **Enable Parallelization**: If multiple tasks have completed prerequisites, suggest those that enable parallel work
+
+   **Parallelization Examples**:
+   - ✅ **Safe Parallel**: EI-1 (candidate_generator.py), EI-2 (false_positive_filter.py), EI-3 (value_extractor.py) - different files
+   - ❌ **Sequential Required**: EI-3 must complete before EI-4 - EI-4 builds on EI-3's filter integration
+   - ⚠️ **Coordination Needed**: EI-4 and EI-5 can run parallel but must coordinate for integration testing
+
 4. **Follow Dependency Graph**: Respect the task index and dependencies
 5. **Ask When Unclear**: If multiple valid options exist, present choices to user
 
