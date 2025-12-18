@@ -173,39 +173,52 @@ During testing, some candidates had incorrect initial metric associations:
 
 **Priority:** Medium
 **Effort:** 30-45 minutes
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Problem:**
-Confidence scores are displayed on the main candidate card but NOT in the sidebar candidate list. Reviewers must click into each candidate to see its confidence level, which slows down triage.
-
-**Current Behavior:**
-- ✅ Main candidate card shows confidence badge (implemented, lines 271-292 of review.html)
-- ❌ Sidebar candidate list does NOT show confidence (lines 533-564 of review.html)
-
-**Benefit:**
-- Helps reviewers prioritize low-confidence candidates at a glance
-- Provides transparency into system recommendations during navigation
-- Enables faster triage without clicking into each candidate
+Confidence scores were displayed on the main candidate card but NOT in the sidebar candidate list. Reviewers had to click into each candidate to see its confidence level, which slowed down triage.
 
 **Implementation:**
-1. Add confidence badge to sidebar candidate items (review.html:533-564)
-2. Use same color coding as main card: green (≥0.7), yellow (0.4-0.7), red (<0.4)
-3. Show compact percentage (e.g., "87%") next to status badge
+- ✅ Added confidence badge to sidebar candidate items (review.html:546-565)
+- ✅ Color coding matches main card: green (≥0.7), yellow (0.4-0.7), red (<0.4)
+- ✅ Shows compact percentage (e.g., "87%") with small font size
+- ✅ Added tooltip: "{{ conf_label }} confidence - System's confidence in this metric classification"
+- ✅ Added ARIA label for screen readers
+- ✅ Gracefully handles missing confidence (no badge shown if None)
 
-**UI Mock (Sidebar):**
-```
-┌─────────────────────────────────┐
-│ #1 Revenue Conc.  [87%] [Pending]│
-│ #2 Gross Margin   [45%] [✓]     │
-│ #3 CAC            [23%] [Pending]│
-└─────────────────────────────────┘
+**UI Implementation (Sidebar):**
+```jinja2
+{# Confidence badge (HRI-4) #}
+{% if candidate.suggestion_confidence is not none %}
+    {% set conf = candidate.suggestion_confidence %}
+    {% if conf >= 0.7 %}
+        {% set conf_color = 'success' %}
+        {% set conf_label = 'High' %}
+    {% elif conf >= 0.4 %}
+        {% set conf_color = 'warning' %}
+        {% set conf_label = 'Medium' %}
+    {% else %}
+        {% set conf_color = 'danger' %}
+        {% set conf_label = 'Low' %}
+    {% endif %}
+    <span class="badge bg-{{ conf_color }} ms-1"
+          style="font-size: 0.65rem;"
+          title="{{ conf_label }} confidence - System's confidence..."
+          aria-label="{{ conf_label }} confidence: {{ "{:.0f}".format(conf * 100) }} percent">
+        {{ "{:.0f}".format(conf * 100) }}%
+    </span>
+{% endif %}
 ```
 
 **Acceptance Criteria:**
-- [ ] Confidence badge shown in sidebar for each candidate
-- [ ] Color coding matches main card (green/yellow/red)
-- [ ] Tooltip explains score meaning
-- [ ] Score visible in candidate list sidebar
+- [x] Confidence badge shown in sidebar for each candidate
+- [x] Color coding matches main card (green/yellow/red)
+- [x] Tooltip explains score meaning
+- [x] ARIA label for accessibility
+- [x] All 37 web route tests pass
+- [x] Template-only change (no backend modifications)
+
+**Commit:** HRI-4
 
 ---
 
@@ -440,7 +453,7 @@ During manual testing, users reported that table displays showed values matched 
 ### Phase 2: Quick UX Wins (Week 2)
 | Task | Effort | Dependencies | Status |
 |------|--------|--------------|--------|
-| P2.2 Confidence display | 45 min | None | Not Started |
+| P2.2 Confidence display | 45 min | None | ✅ Complete |
 | P2.1 Keyboard shortcuts | 1 hr | None | ✅ Complete |
 | P2.5 Filtering/sorting | 2 hr | None | Not Started |
 
@@ -473,9 +486,9 @@ During manual testing, users reported that table displays showed values matched 
 | Priority | Total | Complete | In Progress | Not Started |
 |----------|-------|----------|-------------|-------------|
 | P1 | 3 | 3 | 0 | 0 |
-| P2 | 5 | 1 | 0 | 4 |
+| P2 | 5 | 2 | 0 | 3 |
 | P3 | 4 | 0 | 0 | 4 |
-| **Total** | **12** | **4** | **0** | **8** |
+| **Total** | **12** | **5** | **0** | **7** |
 
 ---
 
