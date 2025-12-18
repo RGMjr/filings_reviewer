@@ -122,7 +122,12 @@ docker compose down
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
 5. **Table-aware matching**: Row structure parsing prevents cross-row keyword matches and prioritizes row headings
-6. **Enhanced date filtering** (2025-12-17): Comprehensive false positive filters eliminate years (1990-2100) and date components using:
+6. **Tiered richness scoring** (2025-12-17): Usage metrics (DAU/MAU/WAU) receive context-aware bonuses:
+   - +1.0 for usage metrics with numeric values ("10 million daily active users")
+   - +0.75 for usage keywords with definitions or metric context
+   - +0.5 for basic usage keyword matches (backward compatible)
+   - Similar tiered bonuses apply to definition flags based on high-value metric presence
+7. **Enhanced date filtering** (2025-12-17): Comprehensive false positive filters eliminate years (1990-2100) and date components using:
    - 4-digit year detection
    - Date pattern matching ("January 31, 2019")
    - Temporal phrase recognition ("as of", "ended", "for the period", etc.)
