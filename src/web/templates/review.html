@@ -542,6 +542,27 @@
                                             <span class="small text-muted ms-2">
                                                 {{ candidate.suggested_metric_id|replace('_', ' ')|title|truncate(25) if candidate.suggested_metric_id else 'Unknown' }}
                                             </span>
+
+                                            {# Confidence badge (HRI-4) #}
+                                            {% if candidate.suggestion_confidence is not none %}
+                                                {% set conf = candidate.suggestion_confidence %}
+                                                {% if conf >= 0.7 %}
+                                                    {% set conf_color = 'success' %}
+                                                    {% set conf_label = 'High' %}
+                                                {% elif conf >= 0.4 %}
+                                                    {% set conf_color = 'warning' %}
+                                                    {% set conf_label = 'Medium' %}
+                                                {% else %}
+                                                    {% set conf_color = 'danger' %}
+                                                    {% set conf_label = 'Low' %}
+                                                {% endif %}
+                                                <span class="badge bg-{{ conf_color }} ms-1"
+                                                      style="font-size: 0.65rem;"
+                                                      title="{{ conf_label }} confidence - System's confidence in this metric classification"
+                                                      aria-label="{{ conf_label }} confidence: {{ "{:.0f}".format(conf * 100) }} percent">
+                                                    {{ "{:.0f}".format(conf * 100) }}%
+                                                </span>
+                                            {% endif %}
                                         </div>
 
                                         {# Status badge #}

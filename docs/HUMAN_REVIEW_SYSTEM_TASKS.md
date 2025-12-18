@@ -17,9 +17,9 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | Priority | Total | Complete | Remaining |
 |----------|-------|----------|-----------|
 | P1 Critical | 3 | 3 | 0 |
-| P2 Usability | 5 | 1 | 4 |
+| P2 Usability | 5 | 2 | 3 |
 | P3 Nice-to-Have | 4 | 0 | 4 |
-| **Total** | **12** | **4** | **8** |
+| **Total** | **12** | **5** | **7** |
 
 ---
 
@@ -32,7 +32,7 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | **HRI-1** | ~~Fix Health Check Bug~~ | None | ~~15 min~~ | ✅ Complete |
 | **HRI-2** | ~~Add API Audit Logging~~ | None | ~~45 min~~ | ✅ Complete |
 | **HRI-3** | ~~Improve Metric Classification Accuracy~~ | None | ~~2-4 hr~~ | ✅ Complete |
-| **HRI-4** | Display Confidence Scores | None | 45 min | None |
+| **HRI-4** | ~~Display Confidence Scores in Sidebar~~ | None | ~~45 min~~ | ✅ Complete |
 | **HRI-5** | ~~Expand Keyboard Shortcuts~~ | None | ~~1 hr~~ | ✅ Complete |
 | **HRI-6** | Add Filtering and Sorting | None | 2 hr | Low |
 | **HRI-7** | Add Decision History Panel | None | 2 hr | Low |
@@ -62,7 +62,7 @@ HRI-12 ─┘ (blocked: requires multi-user)
 ### Recommended Execution Order
 
 **Phase 1 (Critical Fixes):** ~~HRI-1 → HRI-2 → HRI-3~~ ✅ Complete
-**Phase 2 (Quick UX Wins):** HRI-4, ~~HRI-5~~, HRI-6 (HRI-5 complete, others in parallel)
+**Phase 2 (Quick UX Wins):** ~~HRI-4, HRI-5~~, HRI-6 (HRI-4 & HRI-5 complete, HRI-6 pending)
 **Phase 3 (Advanced Features):** HRI-7, HRI-8 (depends on HRI-6), HRI-9
 **Phase 4 (Future):** HRI-10, HRI-11, HRI-12
 
@@ -372,15 +372,16 @@ mypy src/review/keyword_matching.py --strict
 ```
 ═══════════════════════════════════════════════════════════════════════════════
 TASK ID:       HRI-4
-TASK NAME:     Display confidence scores on candidate cards in review UI
+TASK NAME:     Display confidence scores in candidate sidebar with color-coded badges
 WORKSTREAM:    Human Review Interface (Usability)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P2.2
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
-TIME ESTIMATE: 45 min (backend 15 min, frontend 30 min)
-TIME ACTUAL:   N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
+TIME ESTIMATE: 30-45 min (frontend 20 min, testing 15 min)
+TIME ACTUAL:   ~25 min
 RISK LEVEL:    None
 PARALLEL WITH: HRI-5, HRI-6
+COMMIT:        0417cc7
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 
