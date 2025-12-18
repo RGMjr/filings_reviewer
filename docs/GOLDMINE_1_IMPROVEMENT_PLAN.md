@@ -110,9 +110,9 @@ The formula (lines 449-489) gives:
 | Task ID | Name | Prerequisites | Time Est | Risk | Status |
 |---------|------|---------------|----------|------|--------|
 | GI-9 | High-Value Definition Bonus Enhancement | GI-8 | 2-3 hours | Low | ✅ Complete |
-| GI-10 | Usage Metric Boost | GI-9 | 1-2 hours | Low | 🟡 Pending |
+| GI-10 | Usage Metric Boost (Tiered Bonus) | GI-9 | 1-2 hours | Low | ✅ Complete |
 
-**Total Estimated Time**: 15-23 hours (including Phase 5)
+**Total Estimated Time**: 17-25 hours (including Phase 5)
 
 ---
 
@@ -1069,10 +1069,11 @@ COHORT_PATTERNS = [
 | 1.8 | 2025-12-17 | Claude | GI-8 complete - ALL targets exceeded: 75 cohort segments, 13 Slack goldmines, 37 high-value, 52% recall |
 | 1.9 | 2025-12-17 | Claude | Added Phase 5 (GI-9, GI-10) for incremental improvements |
 | 1.10 | 2025-12-17 | Claude | GI-9 complete - Tiered definition bonus (+2.0 HV, +1.5 multi-metric, +1.0 generic), 27 new tests, all tests pass |
+| 1.11 | 2025-12-17 | Claude | GI-10 complete - Tiered usage metric bonus (+1.0 with count, +0.75 with context, +0.5 base), 6 USAGE_WITH_COUNT_PATTERNS, 32 new tests, all 379 segment_enricher tests pass |
 
 ---
 
-**Status**: 🔵 **PHASE 5 IN PROGRESS** - Core objectives (GI-1 to GI-8) complete. Optional improvement tasks available.
+**Status**: ✅ **PHASE 5 COMPLETE** - All GI-1 through GI-10 tasks complete. Core objectives and incremental improvements delivered.
 
 **Phase 1-4 Summary** (Complete):
 - Fixed zero cohort detection bug (0 → 75 segments)
@@ -1081,7 +1082,9 @@ COHORT_PATTERNS = [
 - Achieved 52% recall on Slack ground truth (exceeds 50% target)
 - No regressions in existing filings
 
-**Phase 5 (In Progress)**: Optional incremental improvements to push recall from 52% to 60-65%.
+**Phase 5 (Complete)**: Optional incremental improvements delivered:
+- GI-9: Tiered definition bonus with high-value metric detection (+2.0 / +1.5 / +1.0)
+- GI-10: Tiered usage metric bonus with numeric value detection (+1.0 / +0.75 / +0.5)
 
-**Completed Tasks**: GI-1 through GI-9
-**Next Task**: GI-10 - Usage Metric Boost (optional)
+**Completed Tasks**: GI-1 through GI-10
+**Next Steps**: Consider re-running validation to measure impact of Phase 5 improvements
