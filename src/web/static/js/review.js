@@ -30,7 +30,9 @@
         decisionHistory: [],
         filingId: null,
         selectedCandidates: new Set(), // HRI-8: Track selected candidates for bulk actions
-        bulkDecision: null // HRI-8: 'accept' or 'reject' for pending bulk operation
+        bulkDecision: null, // HRI-8: 'accept' or 'reject' for pending bulk operation
+        currentCandidateIndex: null, // HRI-10: Track current candidate index for persistence
+        totalCandidates: 0 // HRI-10: Total number of candidates
     };
 
     // =========================================================================
@@ -44,6 +46,21 @@
     // =========================================================================
 
     function init() {
+        // Initialize state from page data
+        const container = document.querySelector('.review-container');
+        if (container) {
+            const filingIdStr = container.dataset.filingId;
+            if (filingIdStr) {
+                state.filingId = parseInt(filingIdStr, 10);
+            }
+        }
+
+        // Extract current candidate index from URL or DOM
+        extractCurrentCandidateIndex();
+
+        // Check for URL parameter to navigate to specific candidate
+        checkUrlParameter();
+
         // Early return if no decision form present (e.g., already reviewed)
         if (!document.getElementById('decision-form')) {
             // Still initialize history even if no decision form
@@ -60,6 +77,9 @@
         initializeHintsPanel();
         initializeHistoryPanel();
         initializeContextExpansion();
+
+        // Save current position to localStorage
+        saveReviewProgress();
     }
 
     function scrollHighlightedNumberIntoView() {
@@ -591,7 +611,8 @@
                 window.location.href = data.next_candidate.url;
             }, 500);
         } else {
-            // No more candidates, return to filing list
+            // No more candidates, filing is complete - clear saved position
+            clearReviewProgress();
             setTimeout(() => {
                 window.location.href = '/filings';
             }, 1500);
@@ -1026,18 +1047,20 @@
     // =========================================================================
 
     function initializeHistoryPanel() {
-        // Get filing ID from container
-        const container = document.querySelector('.review-container');
-        if (!container) {
-            return;
-        }
+        // Filing ID should already be set in init(), but double-check
+        if (!state.filingId) {
+            const container = document.querySelector('.review-container');
+            if (!container) {
+                return;
+            }
 
-        const filingIdStr = container.dataset.filingId;
-        if (!filingIdStr) {
-            return;
-        }
+            const filingIdStr = container.dataset.filingId;
+            if (!filingIdStr) {
+                return;
+            }
 
-        state.filingId = parseInt(filingIdStr, 10);
+            state.filingId = parseInt(filingIdStr, 10);
+        }
 
         // Restore history from sessionStorage
         const storageKey = `decisionHistory_${state.filingId}`;
@@ -1224,6 +1247,130 @@
     // Expose handleUndo to global scope for onclick handlers
     window.reviewApp = window.reviewApp || {};
     window.reviewApp.handleUndo = handleUndo;
+
+    // =========================================================================
+    // Session Persistence (HRI-10)
+    // =========================================================================
+
+    /**
+     * Extract current candidate index from the DOM
+     */
+    function extractCurrentCandidateIndex() {
+        // Count total candidates
+        const allCandidates = document.querySelectorAll('.list-group-item[data-candidate-id]');
+        state.totalCandidates = allCandidates.length;
+
+        // Find current active candidate index (0-based)
+        for (let i = 0; i < allCandidates.length; i++) {
+            if (allCandidates[i].classList.contains('active')) {
+                state.currentCandidateIndex = i;
+                break;
+            }
+        }
+    }
+
+    /**
+     * Save current review position to localStorage
+     */
+    function saveReviewProgress() {
+        if (!state.filingId || state.currentCandidateIndex === null || state.currentCandidateIndex === undefined) {
+            return;
+        }
+
+        // Get filing name from page
+        const filingNameEl = document.querySelector('.review-container h2');
+        const filingName = filingNameEl ? filingNameEl.textContent.trim() : 'Unknown Filing';
+
+        const progressData = {
+            filingId: state.filingId,
+            candidateIndex: state.currentCandidateIndex,
+            candidateId: state.candidateId,
+            filingName: filingName,
+            lastUpdated: new Date().toISOString()
+        };
+
+        try {
+            localStorage.setItem('reviewProgress', JSON.stringify(progressData));
+            console.log('Review progress saved:', progressData);
+        } catch (e) {
+            // localStorage unavailable (private browsing, quota exceeded, etc.)
+            // Fail silently as per requirements
+            console.warn('Unable to save review progress to localStorage:', e);
+        }
+    }
+
+    /**
+     * Clear review progress from localStorage
+     */
+    function clearReviewProgress() {
+        try {
+            localStorage.removeItem('reviewProgress');
+            console.log('Review progress cleared');
+        } catch (e) {
+            console.warn('Unable to clear review progress from localStorage:', e);
+        }
+    }
+
+    /**
+     * Check if filing review is 100% complete and clear position if so
+     */
+    function checkAndClearIfComplete() {
+        // Check if all candidates are reviewed
+        const progressBar = document.querySelector('.progress-bar.bg-success');
+        if (!progressBar) return;
+
+        const ariaValueNow = parseInt(progressBar.getAttribute('aria-valuenow'), 10);
+        const ariaValueMax = parseInt(progressBar.getAttribute('aria-valuemax'), 10);
+
+        if (ariaValueNow === ariaValueMax && ariaValueMax > 0) {
+            // Filing is 100% complete, clear saved position
+            clearReviewProgress();
+        }
+    }
+
+    /**
+     * Check URL parameter for ?candidate=N and navigate if present
+     */
+    function checkUrlParameter() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const candidateParam = urlParams.get('candidate');
+
+        if (candidateParam !== null) {
+            const candidateIndex = parseInt(candidateParam, 10);
+            if (!isNaN(candidateIndex)) {
+                selectCandidateByIndex(candidateIndex);
+            }
+        }
+    }
+
+    /**
+     * Select a candidate by index (0-based)
+     */
+    function selectCandidateByIndex(index) {
+        const allCandidates = document.querySelectorAll('.list-group-item[data-candidate-id]');
+
+        if (index < 0 || index >= allCandidates.length) {
+            console.warn('Candidate index out of range:', index);
+            // Fallback to first unreviewed candidate
+            for (let i = 0; i < allCandidates.length; i++) {
+                if (!allCandidates[i].classList.contains('opacity-75')) {
+                    const link = allCandidates[i].querySelector('a');
+                    if (link) {
+                        window.location.href = link.href;
+                    }
+                    return;
+                }
+            }
+            return;
+        }
+
+        // Navigate to the candidate at the specified index
+        const targetCandidate = allCandidates[index];
+        const link = targetCandidate.querySelector('a');
+        if (link) {
+            window.location.href = link.href;
+        }
+    }
 
     // =========================================================================
     // Context Expansion (HRI-9)

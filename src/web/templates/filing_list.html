@@ -10,6 +10,34 @@
   </div>
 </div>
 
+{# Resume Where You Left Off Section (HRI-10) #}
+<div class="row mb-4" id="resume-section" style="display: none;">
+  <div class="col-12">
+    <div class="card border-primary">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <h5 class="card-title mb-2">
+              <i class="bi bi-bookmark-check"></i> Resume Where You Left Off
+            </h5>
+            <p class="mb-0 text-muted" id="resume-filing-info">
+              <!-- Populated by JavaScript -->
+            </p>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="start-fresh-btn">
+              Start Fresh
+            </button>
+            <button type="button" class="btn btn-primary" id="resume-btn">
+              Resume Review
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {# Overall Progress Section #}
 <div class="row mb-4">
   <div class="col-12">
@@ -268,4 +296,108 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+
+    // HRI-10: Session Persistence - Resume Review Progress
+    const EXPIRATION_DAYS = 30;
+
+    function init() {
+        checkAndShowResumeButton();
+    }
+
+    function checkAndShowResumeButton() {
+        try {
+            const progressData = loadReviewProgress();
+            if (!progressData) {
+                return; // No saved progress
+            }
+
+            // Check if data is expired (>30 days old)
+            const lastUpdated = new Date(progressData.lastUpdated);
+            const now = new Date();
+            const daysSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60 * 24);
+
+            if (daysSinceUpdate > EXPIRATION_DAYS) {
+                console.log('Review progress expired, clearing');
+                clearReviewProgress();
+                return;
+            }
+
+            // Check if filing still has pending candidates
+            // We can't easily validate this without a server call, so we'll trust the data
+            // and handle gracefully if the filing is gone
+
+            showResumeSection(progressData);
+        } catch (e) {
+            console.error('Error checking review progress:', e);
+        }
+    }
+
+    function loadReviewProgress() {
+        try {
+            const stored = localStorage.getItem('reviewProgress');
+            if (!stored) {
+                return null;
+            }
+            return JSON.parse(stored);
+        } catch (e) {
+            console.warn('Unable to load review progress from localStorage:', e);
+            return null;
+        }
+    }
+
+    function clearReviewProgress() {
+        try {
+            localStorage.removeItem('reviewProgress');
+        } catch (e) {
+            console.warn('Unable to clear review progress:', e);
+        }
+    }
+
+    function showResumeSection(progressData) {
+        const resumeSection = document.getElementById('resume-section');
+        const resumeInfo = document.getElementById('resume-filing-info');
+        const resumeBtn = document.getElementById('resume-btn');
+        const startFreshBtn = document.getElementById('start-fresh-btn');
+
+        if (!resumeSection || !resumeInfo || !resumeBtn || !startFreshBtn) {
+            return;
+        }
+
+        // Build info text
+        const filingName = progressData.filingName || 'Unknown Filing';
+        const candidateIndex = progressData.candidateIndex || 0;
+        resumeInfo.textContent = `${filingName} - Continue from candidate #${candidateIndex + 1}`;
+
+        // Set up resume button
+        resumeBtn.addEventListener('click', function() {
+            const url = `/review/filings/${progressData.filingId}?candidate=${progressData.candidateIndex}`;
+            window.location.href = url;
+        });
+
+        // Set up start fresh button
+        startFreshBtn.addEventListener('click', function() {
+            if (confirm('Clear saved position and start fresh?')) {
+                clearReviewProgress();
+                resumeSection.style.display = 'none';
+            }
+        });
+
+        // Show the section
+        resumeSection.style.display = 'block';
+    }
+
+    // Initialize on page load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
 {% endblock %}

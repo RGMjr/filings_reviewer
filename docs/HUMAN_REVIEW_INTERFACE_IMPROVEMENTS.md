@@ -355,12 +355,19 @@ Candidates shown in document order (by candidate_id).
 
 **Priority:** Low
 **Effort:** 1 hour
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-17)
 
 **Feature:**
 - Remember last viewed filing and candidate
 - "Resume where you left off" on return visit
 - Store in browser localStorage or server-side session
+
+**Implementation Notes:**
+- localStorage persistence with 30-day expiration
+- Resume button on filing list page
+- URL parameter support (?candidate=N)
+- Auto-clear when filing 100% complete
+- Graceful degradation in private browsing
 
 ---
 
