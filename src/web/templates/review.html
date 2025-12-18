@@ -101,6 +101,94 @@
         </div>
 
         {# =================================================================
+           Section 2.5: Filter and Sort Controls
+           ================================================================= #}
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <form method="GET" class="row g-2 align-items-center">
+                    {# Preserve candidate_id if present #}
+                    {% if current_candidate %}
+                        <input type="hidden" name="candidate_id" value="{{ current_candidate.candidate_id }}">
+                    {% endif %}
+
+                    {# Status Filter #}
+                    <div class="col-auto">
+                        <label class="visually-hidden" for="statusFilter">Status</label>
+                        <select name="status" id="statusFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_filters.status == 'all' %}selected{% endif %}>All Status</option>
+                            <option value="pending" {% if current_filters.status == 'pending' %}selected{% endif %}>Pending</option>
+                            <option value="reviewed" {% if current_filters.status == 'reviewed' %}selected{% endif %}>Reviewed</option>
+                            <option value="in_progress" {% if current_filters.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                            <option value="skipped" {% if current_filters.status == 'skipped' %}selected{% endif %}>Skipped</option>
+                        </select>
+                    </div>
+
+                    {# Metric Filter #}
+                    <div class="col-auto">
+                        <label class="visually-hidden" for="metricFilter">Metric</label>
+                        <select name="metric" id="metricFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_filters.metric == 'all' %}selected{% endif %}>All Metrics</option>
+                            {% for metric_id in available_metrics %}
+                                <option value="{{ metric_id }}" {% if current_filters.metric == metric_id %}selected{% endif %}>
+                                    {{ metric_id|replace('cm_', '')|replace('_', ' ')|title|truncate(30) }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    {# Confidence Filter #}
+                    <div class="col-auto">
+                        <label class="visually-hidden" for="confidenceFilter">Confidence</label>
+                        <select name="confidence" id="confidenceFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="all" {% if current_filters.confidence == 'all' %}selected{% endif %}>All Confidence</option>
+                            <option value="high" {% if current_filters.confidence == 'high' %}selected{% endif %}>High (70%+)</option>
+                            <option value="medium" {% if current_filters.confidence == 'medium' %}selected{% endif %}>Medium (40-70%)</option>
+                            <option value="low" {% if current_filters.confidence == 'low' %}selected{% endif %}>Low (&lt;40%)</option>
+                        </select>
+                    </div>
+
+                    {# Sort Dropdown #}
+                    <div class="col-auto">
+                        <label class="visually-hidden" for="sortBy">Sort By</label>
+                        <select name="sort" id="sortBy" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="position" {% if current_filters.sort == 'position' %}selected{% endif %}>Document Order</option>
+                            <option value="confidence_asc" {% if current_filters.sort == 'confidence_asc' %}selected{% endif %}>Confidence (Low First)</option>
+                            <option value="confidence_desc" {% if current_filters.sort == 'confidence_desc' %}selected{% endif %}>Confidence (High First)</option>
+                            <option value="value_asc" {% if current_filters.sort == 'value_asc' %}selected{% endif %}>Value (Low First)</option>
+                            <option value="value_desc" {% if current_filters.sort == 'value_desc' %}selected{% endif %}>Value (High First)</option>
+                        </select>
+                    </div>
+
+                    {# Clear Filters Button #}
+                    {% if current_filters.has_active_filters %}
+                        <div class="col-auto">
+                            <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id) }}"
+                               class="btn btn-outline-secondary btn-sm">Clear All</a>
+                        </div>
+                    {% endif %}
+                </form>
+
+                {# Results Count #}
+                <div class="text-muted small mt-2">
+                    Showing {{ total_candidates }} of {{ total_candidates_unfiltered }} candidates
+                    {% if current_filters.has_active_filters %}
+                        <span class="badge bg-info ms-1">filtered</span>
+                    {% endif %}
+                </div>
+
+                {# Empty Results Message #}
+                {% if total_candidates == 0 and total_candidates_unfiltered > 0 %}
+                    <div class="alert alert-warning mt-2 mb-0" role="alert">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        No candidates match the current filters.
+                        <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id) }}" class="alert-link">Clear filters</a>
+                        to see all candidates.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# =================================================================
            Main Content and Sidebar Layout
            ================================================================= #}
         <div class="row">

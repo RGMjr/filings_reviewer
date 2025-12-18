@@ -379,13 +379,40 @@ def review_filing(filing_id: int):
             stored_url=filing.get("sec_html_url"),
         )
 
-        # Get all candidates for this filing WITH their decisions (single query)
+        # Parse filter and sort URL parameters
+        filter_status = request.args.get("status", "all")
+        filter_metric = request.args.get("metric", "all")
+        filter_confidence = request.args.get("confidence", "all")
+        sort_by = request.args.get("sort", "position")
+
+        # Validate and convert filter values for database query
+        # Invalid values fall back to defaults (no filter)
+        db_status = filter_status if filter_status in REVIEW_STATUSES else None
+        db_metric_id = filter_metric if filter_metric != "all" else None
+        db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
+        db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
+
+        # Get total candidate count (unfiltered) for "Showing X of Y" display
+        all_candidates = db.get_review_candidates_with_decisions(
+            filing_id=filing_id, limit=None
+        )
+        total_candidates_unfiltered = len(all_candidates)
+
+        # Get filtered candidates for this filing WITH their decisions
         candidates = db.get_review_candidates_with_decisions(
-            filing_id=filing_id, limit=None  # Get all
+            filing_id=filing_id,
+            status=db_status,
+            metric_id=db_metric_id,
+            confidence_level=db_confidence,
+            sort_by=db_sort_by,
+            limit=None  # Get all matching candidates
         )
 
         # Get active metrics for reclassify dropdown
         metrics = _get_active_metrics()
+
+        # Get unique metrics in this filing for filter dropdown
+        available_metrics = _get_unique_metrics_for_filing(all_candidates)
 
         # Validate and get candidate_id parameter
         candidate_id_raw = request.args.get("candidate_id", type=int)
@@ -396,25 +423,39 @@ def review_filing(filing_id: int):
         # Select current candidate using extracted helper
         current_candidate = _select_current_candidate(candidates, candidate_id_param)
 
-        # Calculate progress using extracted helper
+        # Calculate progress using extracted helper (on filtered candidates)
         total_candidates, reviewed_count, pending_count = _calculate_review_progress(candidates)
 
         # Extract decision from current candidate using extracted helper
         existing_decision = _extract_decision_from_candidate(current_candidate)
 
+        # Build current_filters dict for template
+        has_active_filters = (filter_status != "all" or filter_metric != "all" or
+                             filter_confidence != "all" or sort_by != "position")
+        current_filters = {
+            "status": filter_status,
+            "metric": filter_metric,
+            "confidence": filter_confidence,
+            "sort": sort_by,
+            "has_active_filters": has_active_filters,
+        }
+
         # Render template with documented data contract
         # Template: review.html
         # Data contract:
         #   - filing: FilingData - Filing metadata (company, accession, etc.)
-        #   - candidates: List[CandidateData] - All candidates for this filing
+        #   - candidates: List[CandidateData] - Filtered candidates for this filing
         #   - current_candidate: CandidateData | None - Candidate currently being reviewed
         #   - existing_decision: DecisionData | None - Existing decision if already reviewed
         #   - metrics: List[MetricData] - Active metrics for reclassify dropdown
+        #   - available_metrics: List[str] - Unique metrics in this filing for filter dropdown
+        #   - current_filters: Dict - Current filter state
         #   - decision_types: Tuple[str, str, str] - Valid decision types ('accept', 'reject', 'reclassify')
         #   - rejection_categories: Tuple[str, ...] - Valid rejection categories
-        #   - total_candidates: int - Total number of candidates for this filing
-        #   - pending_count: int - Number of pending candidates
-        #   - reviewed_count: int - Number of reviewed candidates
+        #   - total_candidates: int - Number of candidates matching filters
+        #   - total_candidates_unfiltered: int - Total number of candidates (unfiltered)
+        #   - pending_count: int - Number of pending candidates (in filtered set)
+        #   - reviewed_count: int - Number of reviewed candidates (in filtered set)
         return render_template(
             "review.html",
             filing=filing,
@@ -422,9 +463,12 @@ def review_filing(filing_id: int):
             current_candidate=current_candidate,
             existing_decision=existing_decision,
             metrics=metrics,
+            available_metrics=available_metrics,
+            current_filters=current_filters,
             decision_types=DECISION_TYPES,
             rejection_categories=REJECTION_CATEGORIES,
             total_candidates=total_candidates,
+            total_candidates_unfiltered=total_candidates_unfiltered,
             pending_count=pending_count,
             reviewed_count=reviewed_count,
         )
@@ -855,6 +899,24 @@ def _get_active_metrics() -> List[MetricData]:
         g.metrics = db.query(metrics_sql)
 
     return g.metrics
+
+
+def _get_unique_metrics_for_filing(candidates: List[Dict]) -> List[str]:
+    """
+    Extract unique metric IDs from candidates for filter dropdown.
+
+    Args:
+        candidates: List of candidate dicts with suggested_metric_id
+
+    Returns:
+        Sorted list of unique metric IDs present in candidates
+    """
+    unique_metrics = set()
+    for candidate in candidates:
+        metric_id = candidate.get("suggested_metric_id")
+        if metric_id:
+            unique_metrics.add(metric_id)
+    return sorted(unique_metrics)
 
 
 def _highlight_context(

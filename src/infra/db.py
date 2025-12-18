@@ -619,6 +619,9 @@ class DatabaseAdapter:
         self,
         filing_id: int,
         status: Optional[str] = None,
+        metric_id: Optional[str] = None,
+        confidence_level: Optional[str] = None,
+        sort_by: str = "position",
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> List[Dict]:
@@ -632,6 +635,10 @@ class DatabaseAdapter:
         Args:
             filing_id: Filing to get candidates for
             status: Optional filter by review_status
+            metric_id: Optional filter by suggested_metric_id
+            confidence_level: Optional filter by confidence tier ('high', 'medium', 'low')
+            sort_by: Sort order ('position', 'confidence_asc', 'confidence_desc',
+                     'value_asc', 'value_desc')
             limit: Maximum number to return
             offset: Number to skip (for pagination)
 
@@ -688,14 +695,83 @@ class DatabaseAdapter:
             sql += " AND rc.review_status = %(status)s"
             params["status"] = status
 
-        sql += " ORDER BY rc.char_position"
+        # Add metric filter
+        if metric_id:
+            sql += " AND rc.suggested_metric_id = %(metric_id)s"
+            params["metric_id"] = metric_id
+
+        # Add confidence filter
+        if confidence_level == "high":
+            sql += " AND rc.suggestion_confidence >= 0.7"
+        elif confidence_level == "medium":
+            sql += " AND rc.suggestion_confidence >= 0.4 AND rc.suggestion_confidence < 0.7"
+        elif confidence_level == "low":
+            sql += " AND rc.suggestion_confidence < 0.4"
+
+        # Dynamic ORDER BY based on sort_by parameter
+        sort_clauses = {
+            "position": "rc.char_position",
+            "confidence_asc": "rc.suggestion_confidence ASC, rc.char_position",
+            "confidence_desc": "rc.suggestion_confidence DESC, rc.char_position",
+            "value_asc": "rc.parsed_value ASC, rc.char_position",
+            "value_desc": "rc.parsed_value DESC, rc.char_position",
+        }
+        order_by = sort_clauses.get(sort_by, "rc.char_position")
+        sql += f" ORDER BY {order_by}"
 
         if limit:
             sql += " LIMIT %(limit)s OFFSET %(offset)s"
             params["limit"] = limit
             params["offset"] = offset
 
-        return self.query(sql, params)
+        results = self.query(sql, params)
+
+        # Post-process: Check if segment HTML contains the value/keyword
+        # If not, clear segment_html so the UI falls back to context_text display.
+        # This handles cases where:
+        # - HTML is truncated and the number appears beyond the truncation point
+        # - Number appears in context_prefix from a different segment
+        # - HTML markup inflates size, causing earlier truncation than raw_text
+        for result in results:
+            segment_html = result.get('segment_html')
+            raw_number_text = result.get('raw_number_text')
+            triggering_keyword = result.get('triggering_keyword')
+
+            # Initialize dual display field
+            result['segment_html_table_only'] = None
+
+            # Check any segment with HTML (regardless of segment_type)
+            if segment_html and raw_number_text and triggering_keyword:
+                # Check if the HTML actually contains the value and keyword
+                # If not, clear it so UI falls back to context_text (which always has them)
+                has_value = raw_number_text in segment_html
+                # Case-insensitive keyword check to match _highlight_html behavior
+                has_keyword = triggering_keyword.lower() in segment_html.lower()
+
+                if not (has_value and has_keyword):
+                    # Check if the HTML contains a table - if so, preserve it for dual display
+                    # This allows showing table structure alongside context_text with highlighting
+                    has_table = '<table' in segment_html.lower()
+
+                    if has_table and has_keyword:
+                        # Table structure is useful even without the value highlighted
+                        # Store it for dual display mode in the UI
+                        logger.debug(
+                            f"Segment HTML for candidate {result.get('candidate_id')} has table "
+                            f"with keyword but value is truncated. Enabling dual display mode."
+                        )
+                        result['segment_html_table_only'] = segment_html
+                    else:
+                        logger.debug(
+                            f"Segment HTML for candidate {result.get('candidate_id')} doesn't contain "
+                            f"value={has_value}, keyword={has_keyword}. Clearing for context_text fallback."
+                        )
+
+                    # Clear segment_html to force display of context_text instead
+                    result['segment_html'] = None
+                    result['segment_type'] = None
+
+        return results
 
     def get_all_reviewed_candidates_with_decisions(
         self,

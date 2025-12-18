@@ -17,9 +17,9 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | Priority | Total | Complete | Remaining |
 |----------|-------|----------|-----------|
 | P1 Critical | 3 | 3 | 0 |
-| P2 Usability | 5 | 2 | 3 |
+| P2 Usability | 5 | 3 | 2 |
 | P3 Nice-to-Have | 4 | 0 | 4 |
-| **Total** | **12** | **5** | **7** |
+| **Total** | **12** | **6** | **6** |
 
 ---
 
@@ -34,7 +34,7 @@ The core Human Review System (Streams A-E) is **COMPLETE**. This document tracks
 | **HRI-3** | ~~Improve Metric Classification Accuracy~~ | None | ~~2-4 hr~~ | ✅ Complete |
 | **HRI-4** | ~~Display Confidence Scores in Sidebar~~ | None | ~~45 min~~ | ✅ Complete |
 | **HRI-5** | ~~Expand Keyboard Shortcuts~~ | None | ~~1 hr~~ | ✅ Complete |
-| **HRI-6** | Add Filtering and Sorting | None | 2 hr | Low |
+| **HRI-6** | ~~Add Filtering and Sorting~~ | None | ~~2 hr~~ | ✅ Complete |
 | **HRI-7** | Add Decision History Panel | None | 2 hr | Low |
 | **HRI-8** | Add Bulk Actions | HRI-6 | 3 hr | Medium |
 | **HRI-9** | Add Context Expansion | None | 1 hr | Low |
@@ -62,7 +62,7 @@ HRI-12 ─┘ (blocked: requires multi-user)
 ### Recommended Execution Order
 
 **Phase 1 (Critical Fixes):** ~~HRI-1 → HRI-2 → HRI-3~~ ✅ Complete
-**Phase 2 (Quick UX Wins):** ~~HRI-4, HRI-5~~, HRI-6 (HRI-4 & HRI-5 complete, HRI-6 pending)
+**Phase 2 (Quick UX Wins):** ~~HRI-4, HRI-5, HRI-6~~ ✅ Complete
 **Phase 3 (Advanced Features):** HRI-7, HRI-8 (depends on HRI-6), HRI-9
 **Phase 4 (Future):** HRI-10, HRI-11, HRI-12
 
@@ -563,10 +563,10 @@ TASK ID:       HRI-6
 TASK NAME:     Add candidate filtering and sorting options to review interface
 WORKSTREAM:    Human Review Interface (Usability)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P2.5
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 2 hr (backend 45 min, frontend 45 min, testing 30 min)
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~2.5 hr
 RISK LEVEL:    Low
 PARALLEL WITH: HRI-4, HRI-5
 ═══════════════════════════════════════════════════════════════════════════════
