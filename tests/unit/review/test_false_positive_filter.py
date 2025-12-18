@@ -1016,3 +1016,277 @@ class TestIssue4StandaloneTOCPattern:
             assert is_fp == expected_fp, f"Failed for: {text}"
             if expected_reason:
                 assert reason == expected_reason, f"Wrong reason for: {text}"
+
+
+# =============================================================================
+# EI-2: Measurement Unit Pattern Tests
+# =============================================================================
+
+
+class TestMeasurementUnitPatterns:
+    """EI-2: Measurement unit pattern filtering tests.
+
+    Numbers that are part of measurement units (e.g., "24" in "24-hour period")
+    should be filtered as false positives, as they describe measurement timeframes
+    rather than actual metric values.
+    """
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_24_hour_period_filtered(self, filter):
+        """24-hour period should filter out 24."""
+        text = "We define daily active users as users active in a 24-hour period"
+        number = NumberMatch(
+            start=text.find("24"),
+            end=text.find("24") + 2,
+            raw_text="24",
+            value=Decimal("24"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_30_day_window_filtered(self, filter):
+        """30-day window should filter out 30."""
+        text = "Users active within a 30-day window"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_12_month_period_filtered(self, filter):
+        """12-month period should filter out 12."""
+        text = "Retention measured over a 12-month period"
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_7_week_average_filtered(self, filter):
+        """7-week average should filter out 7.
+
+        Note: 7 is below MIN_METRIC_VALUE by default, but we're testing
+        that the pattern matches correctly.
+        """
+        text = "Computed as a 7-week average"
+        number = NumberMatch(
+            start=text.find("7"),
+            end=text.find("7") + 1,
+            raw_text="7",
+            value=Decimal("7"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        # Could be filtered by either below_min_value or reference_number
+        assert reason in ("below_min_value", "reference_number")
+
+    def test_24_hour_space_filtered(self, filter):
+        """24 hour period (space) should filter out 24."""
+        text = "Active within 24 hour timeframe"
+        number = NumberMatch(
+            start=text.find("24"),
+            end=text.find("24") + 2,
+            raw_text="24",
+            value=Decimal("24"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_30_day_space_filtered(self, filter):
+        """30 day retention (space) should filter out 30."""
+        text = "30 day retention metric"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_90_second_filtered(self, filter):
+        """90-second timeout should filter out 90."""
+        text = "Session timeout set to 90-second interval"
+        number = NumberMatch(
+            start=text.find("90"),
+            end=text.find("90") + 2,
+            raw_text="90",
+            value=Decimal("90"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_5_minute_filtered(self, filter):
+        """5-minute interval should filter out 5.
+
+        Note: 5 is below MIN_METRIC_VALUE, but testing pattern match.
+        """
+        text = "Data refreshed every 5-minute interval"
+        number = NumberMatch(
+            start=text.find("5"),
+            end=text.find("5") + 1,
+            raw_text="5",
+            value=Decimal("5"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        # Could be filtered by either below_min_value or reference_number
+        assert reason in ("below_min_value", "reference_number")
+
+    def test_plural_days_filtered(self, filter):
+        """30 days should filter out 30."""
+        text = "Measured over 30 days"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_plural_months_filtered(self, filter):
+        """12 months should filter out 12."""
+        text = "Calculated over 12 months"
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_24000_customers_not_filtered(self, filter):
+        """24,000 customers should NOT be filtered by measurement units."""
+        text = "We grew to 24,000 customers"
+        number = NumberMatch(
+            start=text.find("24,000"),
+            end=text.find("24,000") + 6,
+            raw_text="24,000",
+            value=Decimal("24000"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+        assert reason is None
+
+    def test_numeric_value_not_filtered(self, filter):
+        """30% year over year should NOT be filtered."""
+        text = "Revenue grew 30% year over year"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="percent",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # 30 may be filtered as below_min_value, but NOT by measurement unit
+        # The key is that "30% year" doesn't match "30-year" or "30 year"
+        if is_fp:
+            assert reason == "below_min_value", "Should only be filtered by min value, not measurement unit"
+        else:
+            assert reason is None
+
+    def test_standalone_number_not_filtered(self, filter):
+        """We have 12 million users should NOT be filtered by measurement units."""
+        text = "We have 12 million users"
+        # Use a larger number to avoid below_min_value
+        number = NumberMatch(
+            start=text.find("12"),
+            end=text.find("12") + 2,
+            raw_text="12",
+            value=Decimal("12000000"),  # 12 million
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should not be filtered by measurement unit patterns
+        assert reason != "reference_number" or reason is None
+
+    def test_quarter_filtered(self, filter):
+        """4-quarter period should filter out 4."""
+        text = "Rolling 4-quarter average"
+        # Use larger number to avoid below_min_value filter
+        number = NumberMatch(
+            start=text.find("4"),
+            end=text.find("4") + 1,
+            raw_text="4",
+            value=Decimal("4"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        # Could be filtered by either below_min_value or reference_number
+        assert reason in ("below_min_value", "reference_number")
+
+    def test_year_singular_filtered(self, filter):
+        """1-year period should filter out 1."""
+        text = "Over a 1-year period"
+        number = NumberMatch(
+            start=text.find("1"),
+            end=text.find("1") + 1,
+            raw_text="1",
+            value=Decimal("1"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        # Could be filtered by either below_min_value or reference_number
+        assert reason in ("below_min_value", "reference_number")
+
+    def test_case_insensitive(self, filter):
+        """Measurement unit patterns should be case insensitive."""
+        # Uppercase
+        text1 = "Within 24-HOUR period"
+        number1 = NumberMatch(
+            start=text1.find("24"),
+            end=text1.find("24") + 2,
+            raw_text="24",
+            value=Decimal("24"),
+            unit="count",
+        )
+        is_fp1, reason1 = filter.is_false_positive(text1, number1)
+        assert is_fp1 is True
+        assert reason1 == "reference_number"
+
+        # Mixed case
+        text2 = "Within 30-Day window"
+        number2 = NumberMatch(
+            start=text2.find("30"),
+            end=text2.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp2, reason2 = filter.is_false_positive(text2, number2)
+        assert is_fp2 is True
+        assert reason2 == "reference_number"
