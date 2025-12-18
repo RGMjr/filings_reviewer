@@ -871,12 +871,13 @@ TASK ID:       HRI-9
 TASK NAME:     Add "Show more context" and "View in SEC filing" links
 WORKSTREAM:    Human Review Interface (Nice-to-Have)
 SOURCE:        HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md P3.1
-STATUS:        🟡 PENDING
-COMPLETION:    N/A
+STATUS:        ✅ COMPLETE
+COMPLETION:    2025-12-17
 TIME ESTIMATE: 1 hr (backend 20 min, frontend 40 min)
-TIME ACTUAL:   N/A
+TIME ACTUAL:   ~1 hr
 RISK LEVEL:    Low
 PARALLEL WITH: HRI-7
+COMMIT:        (pending)
 ═══════════════════════════════════════════════════════════════════════════════
 ```
 

@@ -904,3 +904,108 @@ class TestValidationHelpers:
         assert response.status_code == 400
         data = json.loads(response.data)
         assert "reviewer_notes" in data["errors"]
+
+
+# =============================================================================
+# TestExpandedContext - Context expansion endpoint tests (HRI-9)
+# =============================================================================
+
+
+class TestExpandedContext:
+    """Test GET /api/candidates/<id>/expanded-context endpoint."""
+
+    def test_expanded_context_success(self, client, mock_db):
+        """Test successful expanded context fetch."""
+        # Setup mock
+        mock_db.get_expanded_context_for_candidate.return_value = {
+            "expanded_context": "This is expanded context with more surrounding text...",
+            "segment_count": 5,
+            "can_expand": True,
+        }
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.get("/api/candidates/123/expanded-context")
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["expanded_context"] == "This is expanded context with more surrounding text..."
+        assert data["segment_count"] == 5
+        assert data["can_expand"] is True
+
+        # Verify database call
+        mock_db.get_expanded_context_for_candidate.assert_called_once_with(123)
+
+    def test_expanded_context_no_source_segment(self, client, mock_db):
+        """Test expanded context when candidate has no source_segment_id."""
+        # Setup mock - returns current context only when no source segment
+        mock_db.get_expanded_context_for_candidate.return_value = {
+            "expanded_context": "Current context only",
+            "segment_count": 0,
+            "can_expand": False,
+        }
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.get("/api/candidates/456/expanded-context")
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["can_expand"] is False
+        assert data["segment_count"] == 0
+
+    def test_expanded_context_candidate_not_found(self, client, mock_db):
+        """Test expanded context when candidate doesn't exist."""
+        # Setup mock - returns None when candidate not found
+        mock_db.get_expanded_context_for_candidate.return_value = None
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.get("/api/candidates/999/expanded-context")
+
+        # Verify response
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert data["message"] == "Candidate not found"
+
+    def test_expanded_context_database_error(self, client, mock_db):
+        """Test expanded context handles database errors."""
+        # Setup mock to raise database error
+        mock_db.get_expanded_context_for_candidate.side_effect = psycopg.DatabaseError(
+            "Connection lost"
+        )
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.get("/api/candidates/123/expanded-context")
+
+        # Verify response
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert data["error_type"] == "database_error"
+
+    def test_expanded_context_at_filing_boundary(self, client, mock_db):
+        """Test expanded context when segment is at beginning/end of filing."""
+        # Setup mock - fewer segments available at boundary
+        mock_db.get_expanded_context_for_candidate.return_value = {
+            "expanded_context": "Limited context at filing start...",
+            "segment_count": 2,  # Only 2 segments available instead of 5
+            "can_expand": True,
+        }
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.get("/api/candidates/789/expanded-context")
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["segment_count"] == 2
+        assert data["can_expand"] is True

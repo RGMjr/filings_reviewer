@@ -46,6 +46,7 @@
         if (!document.getElementById('decision-form')) {
             // Still initialize history even if no decision form
             initializeHistoryPanel();
+            initializeContextExpansion();
             return;
         }
 
@@ -56,6 +57,7 @@
         scrollHighlightedNumberIntoView();
         initializeHintsPanel();
         initializeHistoryPanel();
+        initializeContextExpansion();
     }
 
     function scrollHighlightedNumberIntoView() {
@@ -972,6 +974,107 @@
     // Expose handleUndo to global scope for onclick handlers
     window.reviewApp = window.reviewApp || {};
     window.reviewApp.handleUndo = handleUndo;
+
+    // =========================================================================
+    // Context Expansion (HRI-9)
+    // =========================================================================
+
+    function initializeContextExpansion() {
+        const showMoreBtn = document.getElementById('show-more-context-btn');
+        if (!showMoreBtn) {
+            return;
+        }
+
+        let isExpanded = false;
+
+        showMoreBtn.addEventListener('click', async () => {
+            if (isExpanded) {
+                // Collapse - hide expanded context
+                collapseContext();
+                isExpanded = false;
+            } else {
+                // Expand - fetch and show expanded context
+                await expandContext();
+                isExpanded = true;
+            }
+        });
+    }
+
+    async function expandContext() {
+        const showMoreBtn = document.getElementById('show-more-context-btn');
+        const expandedContainer = document.getElementById('expanded-context-container');
+        const expandedText = document.getElementById('expanded-context-text');
+        const loading = document.getElementById('expanded-context-loading');
+        const showMoreText = document.getElementById('show-more-text');
+        const showLessText = document.getElementById('show-less-text');
+
+        if (!showMoreBtn || !expandedContainer || !expandedText || !loading) {
+            return;
+        }
+
+        const candidateId = showMoreBtn.dataset.candidateId;
+        if (!candidateId) {
+            console.error('No candidate ID found on show more button');
+            return;
+        }
+
+        try {
+            // Show loading state
+            loading.style.display = 'block';
+            expandedContainer.style.display = 'block';
+            showMoreBtn.disabled = true;
+
+            // Fetch expanded context
+            const response = await fetch(`/api/candidates/${candidateId}/expanded-context`);
+            const data = await response.json();
+
+            if (response.ok && data.status === 'success') {
+                // Display expanded context
+                expandedText.textContent = data.expanded_context;
+
+                // Update button text
+                showMoreText.style.display = 'none';
+                showLessText.style.display = 'inline';
+
+                console.log(`Expanded context: ${data.segment_count} segments`);
+            } else {
+                // Handle error
+                expandedText.innerHTML = `<div class="alert alert-warning mb-0">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    ${data.message || 'Unable to load expanded context'}
+                </div>`;
+                console.error('Failed to fetch expanded context:', data);
+            }
+
+        } catch (error) {
+            console.error('Network error fetching expanded context:', error);
+            expandedText.innerHTML = `<div class="alert alert-danger mb-0">
+                <i class="bi bi-exclamation-circle"></i>
+                Network error - please try again
+            </div>`;
+        } finally {
+            // Hide loading state
+            loading.style.display = 'none';
+            showMoreBtn.disabled = false;
+        }
+    }
+
+    function collapseContext() {
+        const expandedContainer = document.getElementById('expanded-context-container');
+        const showMoreText = document.getElementById('show-more-text');
+        const showLessText = document.getElementById('show-less-text');
+
+        if (!expandedContainer || !showMoreText || !showLessText) {
+            return;
+        }
+
+        // Hide expanded context
+        expandedContainer.style.display = 'none';
+
+        // Update button text
+        showMoreText.style.display = 'inline';
+        showLessText.style.display = 'none';
+    }
 
     // =========================================================================
     // Auto-Initialize

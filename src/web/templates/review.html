@@ -207,11 +207,22 @@
                        ============================================================= #}
                     <div class="card candidate-card mb-3">
                         <div class="card-body">
-                            {# Candidate header with status #}
+                            {# Candidate header with status and SEC link #}
                             <div class="d-flex justify-content-between align-items-center mb-3">
-                                <span class="candidate-number fw-bold">
-                                    Candidate #{{ current_index.value }}
-                                </span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="candidate-number fw-bold">
+                                        Candidate #{{ current_index.value }}
+                                    </span>
+                                    {# View in SEC link #}
+                                    {% set sec_url = filing.sec_html_url if filing.sec_html_url else 'https://www.sec.gov/Archives/edgar/data/' ~ filing.cik ~ '/' ~ filing.accession_number|replace('-', '') ~ '/' %}
+                                    <a href="{{ sec_url }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="btn btn-outline-secondary btn-sm"
+                                       title="Open this filing in SEC EDGAR (new tab)">
+                                        <i class="bi bi-box-arrow-up-right"></i> View in SEC
+                                    </a>
+                                </div>
                                 {% if current_candidate.review_status == 'reviewed' %}
                                     <span class="badge bg-success">Reviewed</span>
                                 {% else %}
@@ -306,11 +317,34 @@
                             {% else %}
                                 {# Display text context - add from-table class if features indicate table origin #}
                                 {% set is_from_table = current_candidate.features and current_candidate.features.get('is_in_table') %}
-                                <div class="context-text mb-4 {{ 'from-table' if is_from_table else '' }}">
+                                <div class="context-text mb-4 {{ 'from-table' if is_from_table else '' }}" id="context-display">
                                     {{ current_candidate.context_text|highlight_context(
                                          current_candidate.raw_number_text,
                                          current_candidate.triggering_keyword
                                        )|safe }}
+                                </div>
+                            {% endif %}
+
+                            {# Show more context button #}
+                            {% if current_candidate.source_segment_id %}
+                                <div class="mb-3 text-center">
+                                    <button type="button"
+                                            class="btn btn-outline-primary btn-sm"
+                                            id="show-more-context-btn"
+                                            data-candidate-id="{{ current_candidate.candidate_id }}"
+                                            title="Expand to show more surrounding context">
+                                        <span id="show-more-text">Show more context</span>
+                                        <span id="show-less-text" style="display: none;">Show less</span>
+                                    </button>
+                                    <div id="expanded-context-container" style="display: none;" class="mt-3 p-3 bg-light border rounded">
+                                        <div id="expanded-context-loading" style="display: none;" class="text-center">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            Loading expanded context...
+                                        </div>
+                                        <div id="expanded-context-text" class="context-text"></div>
+                                    </div>
                                 </div>
                             {% endif %}
 
