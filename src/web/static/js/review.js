@@ -26,7 +26,9 @@
         submitting: false,
         candidateId: null,
         rejectionPanelVisible: false,
-        selectedRejectionCategory: null
+        selectedRejectionCategory: null,
+        decisionHistory: [],
+        filingId: null
     };
 
     // =========================================================================
@@ -42,6 +44,8 @@
     function init() {
         // Early return if no decision form present (e.g., already reviewed)
         if (!document.getElementById('decision-form')) {
+            // Still initialize history even if no decision form
+            initializeHistoryPanel();
             return;
         }
 
@@ -51,6 +55,7 @@
         scrollActiveCandidateIntoView();
         scrollHighlightedNumberIntoView();
         initializeHintsPanel();
+        initializeHistoryPanel();
     }
 
     function scrollHighlightedNumberIntoView() {
@@ -307,7 +312,7 @@
             const data = await response.json();
 
             if (response.ok) {
-                handleSubmitSuccess(data);
+                handleSubmitSuccess(data, decisionData);
             } else {
                 handleSubmitError(response.status, data);
             }
@@ -320,8 +325,11 @@
         }
     }
 
-    function handleSubmitSuccess(data) {
+    function handleSubmitSuccess(data, decisionData) {
         console.log('Decision submitted successfully:', data);
+
+        // Add to decision history before redirecting
+        addToHistory(data, decisionData);
 
         showSuccessFlash(data.decision_id);
 
@@ -760,6 +768,210 @@
         console.warn('Form submit event triggered - this should not happen in normal flow');
         return false;
     }
+
+    // =========================================================================
+    // Decision History Panel (HRI-7)
+    // =========================================================================
+
+    function initializeHistoryPanel() {
+        // Get filing ID from container
+        const container = document.querySelector('.review-container');
+        if (!container) {
+            return;
+        }
+
+        const filingIdStr = container.dataset.filingId;
+        if (!filingIdStr) {
+            return;
+        }
+
+        state.filingId = parseInt(filingIdStr, 10);
+
+        // Restore history from sessionStorage
+        const storageKey = `decisionHistory_${state.filingId}`;
+        const stored = sessionStorage.getItem(storageKey);
+        if (stored) {
+            try {
+                state.decisionHistory = JSON.parse(stored);
+                renderHistoryPanel();
+            } catch (e) {
+                console.error('Failed to parse decision history from sessionStorage:', e);
+                state.decisionHistory = [];
+            }
+        }
+
+        // Bind toggle chevron rotation
+        const historyBody = document.getElementById('history-body');
+        const chevron = document.getElementById('history-chevron');
+        if (historyBody && chevron) {
+            historyBody.addEventListener('shown.bs.collapse', () => {
+                chevron.classList.remove('bi-chevron-right');
+                chevron.classList.add('bi-chevron-down');
+            });
+            historyBody.addEventListener('hidden.bs.collapse', () => {
+                chevron.classList.remove('bi-chevron-down');
+                chevron.classList.add('bi-chevron-right');
+            });
+        }
+    }
+
+    function addToHistory(responseData, decisionData) {
+        if (!state.filingId) {
+            return;
+        }
+
+        // Get metric name from DOM if available
+        let metricName = 'Unknown';
+        if (decisionData.assigned_metric_id) {
+            // Try to find the metric name from the dropdown
+            const metricOption = document.querySelector(
+                `.metric-option[data-metric-id="${decisionData.assigned_metric_id}"]`
+            );
+            if (metricOption) {
+                const nameDiv = metricOption.querySelector('div:nth-child(2)');
+                if (nameDiv) {
+                    metricName = nameDiv.textContent.trim();
+                }
+            }
+        }
+
+        const entry = {
+            decisionId: responseData.decision_id,
+            candidateId: responseData.candidate_id,
+            decision: decisionData.decision,
+            metricId: decisionData.assigned_metric_id || null,
+            metricName: metricName,
+            timestamp: Date.now(),
+            url: `/review/${state.filingId}/candidate/${responseData.candidate_id}`
+        };
+
+        state.decisionHistory.unshift(entry);
+
+        // Limit to 10 entries
+        if (state.decisionHistory.length > 10) {
+            state.decisionHistory.pop();
+        }
+
+        // Persist to sessionStorage
+        const storageKey = `decisionHistory_${state.filingId}`;
+        sessionStorage.setItem(storageKey, JSON.stringify(state.decisionHistory));
+
+        renderHistoryPanel();
+    }
+
+    function renderHistoryPanel() {
+        const historyList = document.getElementById('history-list');
+        if (!historyList) {
+            return;
+        }
+
+        if (state.decisionHistory.length === 0) {
+            historyList.innerHTML = `
+                <li class="list-group-item text-muted fst-italic">
+                    No decisions yet this session
+                </li>
+            `;
+            return;
+        }
+
+        const now = Date.now();
+        historyList.innerHTML = state.decisionHistory
+            .map((entry, index) => {
+                const badgeClass = entry.decision === 'accept' ? 'bg-success' :
+                                   entry.decision === 'reject' ? 'bg-danger' :
+                                   'bg-primary';
+                const badgeText = entry.decision === 'accept' ? '✓ Accept' :
+                                  entry.decision === 'reject' ? '✗ Reject' :
+                                  '⟲ Reclassify';
+
+                const relativeTime = formatRelativeTime(now - entry.timestamp);
+
+                // Only show undo button on the first (most recent) entry
+                const undoButton = index === 0 ? `
+                    <button class="btn btn-sm btn-outline-danger ms-2"
+                            onclick="event.preventDefault(); event.stopPropagation(); window.reviewApp.handleUndo(${entry.decisionId});"
+                            title="Undo this decision">
+                        Undo
+                    </button>
+                ` : '';
+
+                return `
+                    <li class="list-group-item list-group-item-action p-2"
+                        style="cursor: pointer;"
+                        onclick="window.location.href='${entry.url}'">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="flex-grow-1">
+                                <span class="badge ${badgeClass} me-2">${badgeText}</span>
+                                <span class="small">${entry.metricName}</span>
+                            </div>
+                            ${undoButton}
+                        </div>
+                        <div class="small text-muted mt-1">${relativeTime}</div>
+                    </li>
+                `;
+            })
+            .join('');
+    }
+
+    function formatRelativeTime(ms) {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+        if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        if (minutes > 0) return `${minutes} min${minutes > 1 ? 's' : ''} ago`;
+        return 'Just now';
+    }
+
+    function handleUndo(decisionId) {
+        if (!confirm('Are you sure you want to undo this decision? The candidate will return to pending status.')) {
+            return;
+        }
+
+        // Show loading state
+        const historyList = document.getElementById('history-list');
+        if (historyList) {
+            const originalContent = historyList.innerHTML;
+            historyList.innerHTML = `
+                <li class="list-group-item text-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    Undoing decision...
+                </li>
+            `;
+
+            fetch(`/api/decisions/${decisionId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Remove from local history
+                        state.decisionHistory = state.decisionHistory.filter(
+                            d => d.decisionId !== decisionId
+                        );
+                        const storageKey = `decisionHistory_${state.filingId}`;
+                        sessionStorage.setItem(storageKey, JSON.stringify(state.decisionHistory));
+
+                        // Navigate to the candidate
+                        window.location.href = data.candidate_url;
+                    } else {
+                        alert(`Undo failed: ${data.message}`);
+                        historyList.innerHTML = originalContent;
+                    }
+                })
+                .catch(error => {
+                    console.error('Undo error:', error);
+                    alert('Network error - please try again');
+                    historyList.innerHTML = originalContent;
+                });
+        }
+    }
+
+    // Expose handleUndo to global scope for onclick handlers
+    window.reviewApp = window.reviewApp || {};
+    window.reviewApp.handleUndo = handleUndo;
 
     // =========================================================================
     // Auto-Initialize

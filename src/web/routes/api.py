@@ -414,6 +414,120 @@ def create_decision():
         )
 
 
+@api_bp.route("/decisions/<int:decision_id>", methods=["DELETE"])
+def undo_decision(decision_id: int):
+    """
+    Undo (delete) a review decision.
+
+    Resets the candidate status back to 'pending'.
+    Only the most recent decision should be undone (enforced client-side).
+
+    Args:
+        decision_id: Decision ID to undo
+
+    Returns:
+        200: Decision undone successfully
+        {
+            "status": "success",
+            "message": "Decision reverted",
+            "candidate_id": int,
+            "candidate_url": str
+        }
+
+        404: Decision not found
+        {
+            "status": "error",
+            "message": "Decision not found"
+        }
+
+        500: Internal server error
+        {
+            "status": "error",
+            "message": "Internal server error"
+        }
+    """
+    db = get_db()
+
+    try:
+        # Get decision details
+        decision = db.get_decision_by_id(decision_id)
+        if not decision:
+            logger.warning(f"Decision not found for undo: {decision_id}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Decision not found"
+                    }
+                ),
+                404,
+            )
+
+        candidate_id = decision["candidate_id"]
+        filing_id = decision["filing_id"]
+
+        # Delete decision and reset candidate status
+        success = db.delete_review_decision(decision_id)
+
+        if not success:
+            logger.error(f"Failed to delete decision {decision_id}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Failed to undo decision"
+                    }
+                ),
+                500,
+            )
+
+        logger.info(f"Undid decision {decision_id} for candidate {candidate_id}")
+
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "message": "Decision reverted",
+                    "candidate_id": candidate_id,
+                    "candidate_url": f"/review/{filing_id}/candidate/{candidate_id}"
+                }
+            ),
+            200,
+        )
+
+    except psycopg.DatabaseError as e:
+        logger.error(
+            f"Database error undoing decision {decision_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Database error occurred",
+                    "error_type": "database_error",
+                }
+            ),
+            500,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error undoing decision {decision_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Internal server error",
+                    "error_type": "internal_error",
+                }
+            ),
+            500,
+        )
+
+
 # =============================================================================
 # Candidate Retrieval (Future Enhancement)
 # =============================================================================

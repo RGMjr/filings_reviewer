@@ -1249,6 +1249,72 @@ class DatabaseAdapter:
         results = self.query(sql, {"candidate_id": candidate_id})
         return results[0] if results else None
 
+    def get_decision_by_id(self, decision_id: int) -> Optional[Dict]:
+        """
+        Get a decision by its ID.
+
+        Args:
+            decision_id: Primary key of the decision
+
+        Returns:
+            Decision record with candidate_id and filing_id, or None if not found
+        """
+        sql = """
+            SELECT rd.*, rc.filing_id
+            FROM review_decisions rd
+            JOIN review_candidates rc ON rd.candidate_id = rc.candidate_id
+            WHERE rd.decision_id = %(decision_id)s
+        """
+        results = self.query(sql, {"decision_id": decision_id})
+        return results[0] if results else None
+
+    def delete_review_decision(self, decision_id: int) -> bool:
+        """
+        Delete a review decision and reset candidate status to 'pending'.
+
+        Performs in single transaction:
+        1. Get candidate_id from decision
+        2. Delete from review_decisions
+        3. Update review_candidates.review_status = 'pending'
+
+        Args:
+            decision_id: Primary key of the decision to delete
+
+        Returns:
+            True if deleted successfully, False if decision not found
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Get candidate_id before deleting
+                cur.execute(
+                    "SELECT candidate_id FROM review_decisions WHERE decision_id = %s",
+                    (decision_id,)
+                )
+                result = cur.fetchone()
+
+                if not result:
+                    logger.debug(f"Decision {decision_id} not found")
+                    return False
+
+                candidate_id = result["candidate_id"]
+
+                # Delete decision
+                cur.execute(
+                    "DELETE FROM review_decisions WHERE decision_id = %s",
+                    (decision_id,)
+                )
+
+                # Reset candidate status to pending
+                cur.execute(
+                    "UPDATE review_candidates SET review_status = 'pending', updated_at = now() WHERE candidate_id = %s",
+                    (candidate_id,)
+                )
+
+        logger.info(
+            f"Deleted decision {decision_id}, reset candidate {candidate_id} to pending"
+        )
+        return True
+
     def get_decisions_for_filing(self, filing_id: int) -> List[Dict]:
         """
         Get all review decisions for a filing.
