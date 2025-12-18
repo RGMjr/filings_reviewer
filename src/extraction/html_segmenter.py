@@ -724,10 +724,15 @@ class HTMLSegmenter:
         # Determine segment type
         segment_type = self._get_segment_type(element)
 
-        # Extract text content (use special extraction for figure elements)
+        # Extract text content with appropriate method based on element type
         if element.name == "figure":
+            # Special extraction for figure elements
             raw_text = self._normalize_text(self._extract_figure_text(element))
+        elif segment_type == "table" or element.name == "table":
+            # Use marker extraction for table elements to preserve cell boundaries
+            raw_text = self._extract_table_text_with_markers(element)
         else:
+            # Standard normalization for non-table elements
             raw_text = self._normalize_text(element.get_text())
 
         # Skip segments that are too short
@@ -1039,6 +1044,89 @@ class HTMLSegmenter:
         text = text.strip()
 
         return text
+
+    def _extract_table_text_with_markers(self, element: Tag) -> str:
+        """
+        Extract table text with cell/row boundary markers.
+
+        Preserves table cell boundaries by adding [CELL] and [ROW] markers
+        during HTML-to-text conversion. This prevents adjacent numeric values
+        from merging together when table structure is lost.
+
+        Args:
+            element: BeautifulSoup Tag element (table or element containing table)
+
+        Returns:
+            Text with cell boundaries marked: "Value [CELL] 171% [CELL] 152% [ROW] ..."
+            Empty string if table has no content or parsing fails
+
+        Marker format:
+            - Cell separator: " [CELL] " between cells in same row
+            - Row separator: " [ROW] " between table rows
+            - Empty/whitespace-only cells are skipped (no empty markers)
+            - No markers at start or end of text (only between content)
+
+        Example:
+            Input HTML:
+                <table>
+                  <tr><td>Metric</td><td>2023</td><td>2022</td></tr>
+                  <tr><td>Retention Rate</td><td>171%</td><td>152%</td></tr>
+                </table>
+
+            Output text:
+                "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%"
+        """
+        try:
+            # Find the table element (may be element itself or nested)
+            table = element if element.name == "table" else element.find("table")
+
+            if not table:
+                # No table found - fall back to standard normalization
+                logger.debug("No table found in element, using standard normalization")
+                return self._normalize_text(element.get_text())
+
+            # Find all table rows
+            tr_elements = table.find_all("tr", recursive=True)
+
+            if not tr_elements:
+                # Table with no rows - return empty string
+                logger.debug("Table found but no <tr> elements")
+                return ""
+
+            # Extract text from each row
+            row_texts = []
+            for tr in tr_elements:
+                # Find all cells (both <td> and <th>)
+                cells = tr.find_all(["td", "th"], recursive=False)
+
+                if not cells:
+                    # Row with no cells - skip it
+                    continue
+
+                # Extract and normalize text from each cell
+                cell_texts = []
+                for cell in cells:
+                    cell_text = self._normalize_text(cell.get_text())
+                    # Skip empty cells (no empty markers)
+                    if cell_text:
+                        cell_texts.append(cell_text)
+
+                # Join cells with [CELL] marker
+                if cell_texts:
+                    row_text = " [CELL] ".join(cell_texts)
+                    row_texts.append(row_text)
+
+            # Join rows with [ROW] marker
+            if row_texts:
+                return " [ROW] ".join(row_texts)
+            else:
+                # Empty table - no content
+                return ""
+
+        except Exception as e:
+            # Any error in table parsing should fall back to standard normalization
+            logger.warning(f"Error extracting table text with markers: {e}, falling back to standard normalization")
+            return self._normalize_text(element.get_text())
 
     # =========================================================================
     # Sentence Detection Methods (Phase 2 of redesign)

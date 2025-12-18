@@ -352,6 +352,25 @@ class ExtractionPipeline:
                 result.append(seg)
                 selected_ids.add(id(seg))
 
+        # NEW: Direct Hit Tier (Specific matches with lower richness)
+        # Allows short segments that are highly specific (e.g. "Churn rate was 5%")
+        # Threshold: 3.0 (Lower than medium)
+        DIRECT_HIT_THRESHOLD = 3.0
+        direct_hits = [
+            s for s in segments
+            if (s.richness_score or 0) >= DIRECT_HIT_THRESHOLD
+            and (s.richness_score or 0) < MEDIUM_THRESHOLD
+            and s.candidate_metric_ids
+            and len(s.candidate_metric_ids) == 1 # Very specific
+            and s.contains_numeric_disclosure_flag # Must have numbers
+        ]
+        
+        for seg in direct_hits:
+            if len(result) >= MAX_TOTAL: break
+            if id(seg) not in selected_ids:
+                result.append(seg)
+                selected_ids.add(id(seg))
+
         medium_count = len(result) - high_count
 
         # Tier 3: Critical flags (definitions/methodologies)
