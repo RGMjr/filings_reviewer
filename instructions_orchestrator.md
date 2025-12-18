@@ -153,7 +153,10 @@ Maintain a Progress Tracker table in each plan document to visualize task status
 
 1. Update Progress Tracker (status ✅, completion date)
 2. Check UNLOCKS field → update newly unblocked tasks to 🟡 READY
-3. Suggest next available tasks to user
+3. **Request completion report** (for M/L/XL tasks):
+   - Use template: `docs/COMPLETION_REPORT_TEMPLATE.md`
+   - Save to: `docs/completion/[TASK-ID]_COMPLETION_SUMMARY.md`
+4. Suggest next available tasks to user
 
 ## Using Dependency Fields
 
@@ -357,6 +360,47 @@ Even if criteria match, use full prompt when:
 - Multiple code paths affected
 - Integration points with other modules
 - Worker is unfamiliar with the codebase
+
+## Plan Validation
+
+Before starting work on a plan, validate its structure:
+
+### Validation Command
+
+```bash
+python scripts/validate_plan.py docs/[PLAN_NAME].md
+```
+
+### What It Checks
+
+- **Required sections**: Task Breakdown, Success Criteria, Progress Tracker
+- **Valid references**: No dangling task dependencies
+- **Circular dependencies**: Detects dependency cycles
+- **Required fields**: Time Estimate, Risk Level, DEPENDS ON for each task
+- **Size/estimate consistency**: TASK SIZE matches TIME ESTIMATE range
+
+### Handling Validation Issues
+
+**Errors** (❌): Must be fixed before proceeding
+- Missing Task Breakdown section → Create one or ask user to add
+- Dangling references → Task referenced but not defined
+- Circular dependencies → Reorder or restructure tasks
+
+**Warnings** (⚠️): Should be addressed but non-blocking
+- Missing fields → Add when generating worker prompt
+- Size/estimate mismatch → Adjust one or the other
+
+### Example Output
+
+```
+📄 docs/EXTRACTION_IMPROVEMENT_PLAN.md
+────────────────────────────────────────────────────────────
+  ❌ ERROR: Missing section: 'Task Breakdown'
+  ⚠️ WARNING: Task EI-1 missing field: 'DEPENDS ON'
+
+════════════════════════════════════════════════════════════
+Summary: 1 error(s), 1 warning(s)
+```
 
 ## When Plans Are Missing Task Breakdowns
 

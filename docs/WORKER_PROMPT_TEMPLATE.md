@@ -1,4 +1,4 @@
-# WORKER PROMPT TEMPLATE (v2.3)
+# WORKER PROMPT TEMPLATE (v2.4)
 
 **Purpose**: This template provides a consistent, concise format for worker prompts. It emphasizes requirements over implementation details, allowing developers autonomy while ensuring clear acceptance criteria.
 
@@ -199,6 +199,50 @@ TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
   python3 -m pytest tests/unit/[module]/ --no-cov -q
 ```
 
+## Auto-Generated Verification Script
+
+**[Optional section - include for M/L/XL tasks or when many acceptance criteria]**
+
+Copy this entire block to verify all acceptance criteria in one command:
+
+```bash
+#!/bin/bash
+# Auto-generated verification for Task [ID]: [Name]
+# Run: bash verify_[id].sh
+
+set -e  # Exit on any error
+echo "═══════════════════════════════════════════════════════════════"
+echo "Verifying Task [ID]: [Name]"
+echo "═══════════════════════════════════════════════════════════════"
+
+# Criterion 1: [Description]
+echo "✓ Checking: [criterion 1]..."
+[command to verify criterion 1]
+
+# Criterion 2: [Description]
+echo "✓ Checking: [criterion 2]..."
+[command to verify criterion 2]
+
+# Test coverage (must be ≥ [X]%)
+echo "✓ Checking: Test coverage ≥ [X]%..."
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+  python3 -m pytest [test path] \
+  --cov=[module] --cov-report=term --cov-fail-under=[X] -q
+
+# Type safety
+echo "✓ Checking: mypy passes..."
+mypy [module path] --strict
+
+# Full test suite
+echo "✓ Running full test suite..."
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+  python3 -m pytest tests/unit/[module]/ --no-cov -q
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "✅ All acceptance criteria verified for Task [ID]!"
+echo "═══════════════════════════════════════════════════════════════"
+```
+
 ## Integration Plan (Post-[Task ID])
 
 **[Optional section - only if integration is separate from implementation]**
@@ -247,6 +291,97 @@ def example_function(input: Type) -> ReturnType:
 
 **Last Updated**: [YYYY-MM-DD]
 **Format Version**: 2.0 (concise requirements-focused format)
+```
+
+---
+
+## Risk Level Guidelines
+
+### NONE / LOW Risk Tasks
+
+Standard workflow applies:
+- Single reviewer sufficient
+- No special precautions needed
+- Can proceed directly to implementation
+
+### MEDIUM Risk Tasks
+
+**Additional Requirements** (include in worker prompt):
+
+```markdown
+## Medium Risk Precautions
+
+- [ ] Create feature flag for rollback: `config.[feature_name]_enabled = True`
+- [ ] Add integration test covering rollback scenario
+- [ ] Test on staging environment before production
+- [ ] Document rollback procedure below
+- [ ] Two reviewers required before merge
+
+### Rollback Procedure
+1. Set `config.[feature_name]_enabled = False`
+2. Restart service
+3. Verify rollback with: `[verification command]`
+```
+
+**Example Feature Flag**:
+```python
+# For EI-5 (pipeline integration - MEDIUM risk)
+class ExtractionConfig:
+    enable_tiered_selection: bool = True  # Set False to rollback
+
+if config.enable_tiered_selection:
+    # New tiered logic
+else:
+    # Old single-threshold logic (fallback)
+```
+
+### HIGH Risk Tasks
+
+**Flag for Decomposition First**:
+- HIGH risk usually means task is too large or too impactful
+- Suggest: "This task is HIGH risk. Should we break it into smaller tasks?"
+
+**If keeping HIGH risk**, add these requirements to worker prompt:
+
+```markdown
+## High Risk Precautions
+
+- [ ] Create detailed rollback plan (see below)
+- [ ] Feature flag required and tested
+- [ ] Staging deployment mandatory before production
+- [ ] A/B test if user-facing (or canary deployment)
+- [ ] Three reviewers required
+- [ ] Document all risks in completion report
+- [ ] Backup affected data before deployment
+
+### Rollback Plan
+**Trigger conditions** (when to rollback):
+- [Condition 1, e.g., "Error rate > 1%"]
+- [Condition 2, e.g., "Latency > 500ms"]
+
+**Rollback steps**:
+1. [Step 1]
+2. [Step 2]
+3. [Verification command]
+
+**Data recovery** (if applicable):
+- [How to restore data if corrupted]
+```
+
+### Risk Level Decision Tree
+
+```
+Is this a read-only analysis? ──────────────────────> NONE
+                │
+Does it modify existing behavior? ──────────────────> LOW (if additive only)
+                │
+Does it change data formats or APIs? ───────────────> MEDIUM
+                │
+Does it require database migration? ────────────────> MEDIUM-HIGH
+                │
+Could it cause data loss or corruption? ────────────> HIGH
+                │
+Is rollback complex or impossible? ─────────────────> HIGH (consider splitting)
 ```
 
 ---
@@ -362,6 +497,12 @@ Before finalizing a worker prompt, verify:
 ---
 
 ## Version History
+
+- **v2.4** (2025-12-18): Added Phase 3 improvements
+  - Added Risk Level Guidelines section with MEDIUM/HIGH risk checklists
+  - Added Risk Level Decision Tree for risk assessment
+  - Added Auto-Generated Verification Script section to template
+  - Based on ORCHESTRATOR_IMPROVEMENTS.md Phase 3 recommendations
 
 - **v2.3** (2025-12-18): Added dependency visualization and task size categories
   - Added TASK SIZE field (XS/S/M/L/XL) with time ranges
