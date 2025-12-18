@@ -15,6 +15,8 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 from bs4 import BeautifulSoup
 
 from .models import SourceSegment, MetricValue
+from ..review.false_positive_filter import FalsePositiveFilter
+from ..review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -295,6 +297,89 @@ class ValueExtractor:
         self._acquisition_cohort_regex = re.compile(self.ACQUISITION_COHORT_PATTERN)
         self.llm_client = llm_client
 
+        # Initialize false positive filter (EI-3: prevent extracting page numbers, years, dates)
+        try:
+            self._fp_filter = FalsePositiveFilter()
+            logger.debug("False positive filter initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize false positive filter: {e}. Extraction will continue without filtering.")
+            self._fp_filter = None
+
+    def _is_false_positive_value(
+        self,
+        value_str: str,
+        position: Optional[int],
+        context_text: str,
+        unit: Optional[str] = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Check if an extracted value is a false positive.
+
+        Args:
+            value_str: The raw value string (e.g., "2019", "45")
+            position: Character position in context_text (None if unknown)
+            context_text: The full text containing the value
+            unit: Optional unit type ('count', 'currency', 'percentage')
+
+        Returns:
+            Tuple of (is_false_positive, reason_string)
+        """
+        # If filter not available, don't filter (fail open)
+        if self._fp_filter is None:
+            return False, None
+
+        # If position not available, try to find it in context
+        if position is None:
+            try:
+                position = context_text.find(value_str)
+                if position == -1:
+                    logger.debug(f"Could not find value '{value_str}' in context for false positive check")
+                    return False, None  # Can't filter without position
+            except Exception as e:
+                logger.debug(f"Error finding position for value '{value_str}': {e}")
+                return False, None
+
+        # Create NumberMatch for the filter
+        try:
+            # Parse the numeric value to get a Decimal
+            parsed_value = self._parse_number(value_str)
+
+            # Determine unit if not provided
+            if unit is None:
+                if "$" in value_str or "usd" in value_str.lower():
+                    unit = "currency"
+                elif "%" in value_str or "percent" in value_str.lower():
+                    unit = "percentage"
+                else:
+                    unit = "count"
+
+            # Create NumberMatch
+            number_match = NumberMatch(
+                start=position,
+                end=position + len(value_str),
+                raw_text=value_str,
+                value=parsed_value,
+                unit=unit
+            )
+
+            # Check if it's a false positive
+            is_fp, reason = self._fp_filter.is_false_positive(context_text, number_match)
+
+            if is_fp:
+                logger.debug(
+                    f"False positive detected: value='{value_str}' reason={reason} "
+                    f"context={context_text[max(0, position-30):min(len(context_text), position+30)]!r}"
+                )
+
+            return is_fp, reason
+
+        except Exception as e:
+            logger.warning(
+                f"Error checking false positive for value '{value_str}': {e}. "
+                "Proceeding without filtering."
+            )
+            return False, None  # Don't block extraction on filter errors
+
     def extract_from_segment(
         self, segment: SourceSegment, company_id: int
     ) -> List[MetricValue]:
@@ -421,6 +506,7 @@ class ValueExtractor:
         """
         values = []
         candidate_metrics = segment.candidate_metric_ids or []
+        filtered_count = 0
 
         # For each candidate metric, look for associated numbers
         for metric_id in candidate_metrics:
@@ -434,6 +520,23 @@ class ValueExtractor:
                 numeric_value = self._parse_number(value_str)
 
                 if numeric_value is not None:
+                    # EI-3: Check if value is a false positive before creating MetricValue
+                    position = segment.raw_text.find(value_str) if value_str else None
+                    is_fp, reason = self._is_false_positive_value(
+                        value_str=value_str,
+                        position=position,
+                        context_text=segment.raw_text,
+                        unit=None  # Will be inferred in helper
+                    )
+
+                    if is_fp:
+                        logger.debug(
+                            f"Skipping false positive in text extraction: "
+                            f"value='{value_str}' metric={metric_id} reason={reason}"
+                        )
+                        filtered_count += 1
+                        continue  # Skip this value
+
                     # Try to extract period
                     period_end = self._extract_period_from_text(segment.raw_text)
 
@@ -451,6 +554,9 @@ class ValueExtractor:
                     )
                     values.append(value)
                     break  # Only extract one value per segment for now
+
+        if filtered_count > 0:
+            logger.debug(f"Filtered {filtered_count} false positive(s) from text segment")
 
         return values
 
@@ -499,11 +605,30 @@ class ValueExtractor:
 
             # Convert LLM response to MetricValue objects
             values = []
+            filtered_count = 0
             for item in data:
                 # Parse the numeric value
                 numeric_value = self._parse_number(item["value"])
                 if numeric_value is None:
                     continue
+
+                # EI-3: Check if value is a false positive before further processing
+                value_str = item["value"]
+                position = segment.raw_text.find(value_str) if value_str else None
+                is_fp, fp_reason = self._is_false_positive_value(
+                    value_str=value_str,
+                    position=position,
+                    context_text=segment.raw_text,
+                    unit=item.get("units")
+                )
+
+                if is_fp:
+                    logger.debug(
+                        f"Skipping false positive in LLM text extraction: "
+                        f"value='{value_str}' reason={fp_reason}"
+                    )
+                    filtered_count += 1
+                    continue  # Skip this value
 
                 # Parse period if available
                 period_end = None
@@ -604,6 +729,9 @@ class ValueExtractor:
                 )
                 values.append(value)
 
+            if filtered_count > 0:
+                logger.debug(f"Filtered {filtered_count} false positive(s) from LLM text extraction")
+
             logger.info(f"LLM extracted {len(values)} values from text segment")
             return values
 
@@ -662,11 +790,31 @@ class ValueExtractor:
 
             # Convert LLM response to MetricValue objects
             values = []
+            filtered_count = 0
             for item in data:
                 # Parse the numeric value
                 numeric_value = self._parse_number(item["value"])
                 if numeric_value is None:
                     continue
+
+                # EI-3: Check if value is a false positive before further processing
+                value_str = item["value"]
+                source_for_filtering = segment.raw_text or table_text
+                position = source_for_filtering.find(value_str) if value_str else None
+                is_fp, fp_reason = self._is_false_positive_value(
+                    value_str=value_str,
+                    position=position,
+                    context_text=source_for_filtering,
+                    unit=item.get("units")
+                )
+
+                if is_fp:
+                    logger.debug(
+                        f"Skipping false positive in LLM table extraction: "
+                        f"value='{value_str}' reason={fp_reason}"
+                    )
+                    filtered_count += 1
+                    continue  # Skip this value
 
                 # Parse period if available
                 period_end = None
@@ -780,6 +928,9 @@ class ValueExtractor:
                 )
                 values.append(value)
 
+            if filtered_count > 0:
+                logger.debug(f"Filtered {filtered_count} false positive(s) from LLM table extraction")
+
             logger.info(f"LLM extracted {len(values)} values from table segment")
             return values
 
@@ -852,6 +1003,7 @@ class ValueExtractor:
                 break
 
         # Extract values from value columns
+        filtered_count = 0
         for i, info in column_info.items():
             if info["type"] != "value" or i >= len(cells):
                 continue
@@ -861,6 +1013,24 @@ class ValueExtractor:
 
             if numeric_value is None:
                 continue  # Skip non-numeric cells
+
+            # EI-3: Check if value is a false positive before creating MetricValue
+            # Use segment.raw_text as context for table filtering
+            position = segment.raw_text.find(cell_text) if cell_text and segment.raw_text else None
+            is_fp, reason = self._is_false_positive_value(
+                value_str=cell_text,
+                position=position,
+                context_text=segment.raw_text or "",
+                unit=None  # Will be inferred
+            )
+
+            if is_fp:
+                logger.debug(
+                    f"Skipping false positive in table extraction: "
+                    f"value='{cell_text}' reason={reason}"
+                )
+                filtered_count += 1
+                continue  # Skip this value
 
             # Determine which metric this value belongs to
             metric_id = self._infer_metric_from_context(segment, headers, i)
@@ -886,6 +1056,9 @@ class ValueExtractor:
             )
 
             values.append(value)
+
+        if filtered_count > 0:
+            logger.debug(f"Filtered {filtered_count} false positive(s) from table row")
 
         return values
 
