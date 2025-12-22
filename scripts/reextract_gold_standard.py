@@ -76,7 +76,8 @@ def extract_from_filing(html_path: Path, llm_client: OpenAIClient) -> list:
 
     # Segment HTML
     segmenter = HTMLSegmenter()
-    segments = segmenter.segment_filing(filing_id=0, html_path=str(html_path))
+    # Use a positive dummy filing_id to pass validation
+    segments = segmenter.segment_filing(filing_id=1, html_path=str(html_path))
     logger.info(f"  Segmented into {len(segments)} segments")
 
     # Classify segments
@@ -148,6 +149,11 @@ def main():
     if args.company:
         companies = [c for c in companies if args.company.lower() in c["company_name"].lower()]
         logger.info(f"Filtered to {len(companies)} companies matching '{args.company}'")
+    else:
+        # Default to the new companies we care about
+        targets = ["Slack Technologies", "Farfetch Ltd", "Samsara Vision Inc."]
+        companies = [c for c in companies if c["company_name"] in targets]
+        logger.info(f"Filtered to {len(companies)} target companies: {targets}")
 
     if not companies:
         print("No companies to process")
@@ -165,6 +171,10 @@ def main():
         print(f"\n{'='*60}")
         print(f"Processing: {company['company_name']}")
         print(f"{'='*60}")
+
+        if "local_path" not in company:
+            logger.warning(f"  Missing 'local_path' in metadata for {company['company_name']}, skipping.")
+            continue
 
         html_path = base_dir / company["local_path"]
 

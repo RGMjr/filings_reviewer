@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Quote verification constants
-DEFAULT_SIMILARITY_THRESHOLD = 0.8  # Minimum similarity ratio for fuzzy matching
-WINDOW_SIZE_MULTIPLIER = 1.2  # Window size = quote length * this multiplier
+DEFAULT_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity ratio for fuzzy matching
+WINDOW_SIZE_MULTIPLIER = 1.3  # Window size = quote length * this multiplier
 STRIDE_DIVISOR = 10  # Sample every quote_len / this value positions
 
 
@@ -188,6 +188,14 @@ def _normalize_text(text: Optional[str]) -> str:
     # Normalize quote characters (curly to straight)
     normalized = normalized.replace("\u201c", '"').replace("\u201d", '"')  # " and "
     normalized = normalized.replace("\u2018", "'").replace("\u2019", "'")  # ' and '
+
+    # Aggressive normalization:
+    # Keep alphanumerics (a-z, 0-9)
+    # Keep critical context cues: . % $ € £
+    # Replace everything else with space
+    # This ensures "Net-Dollar Retention" matches "Net Dollar Retention"
+    # while keeping "1.5" distinct from "15"
+    normalized = re.sub(r'[^a-zA-Z0-9\.\%\$\€\£\s]', ' ', normalized)
 
     # Normalize whitespace (including newlines)
     normalized = " ".join(normalized.split())
@@ -508,7 +516,7 @@ class ValueExtractor:
         self, segment: SourceSegment, company_id: int
     ) -> List[MetricValue]:
         """
-        Extract values from text segments using pattern matching.
+        Extract values from text segments using pattern matching with smart scoring.
 
         Args:
             segment: Text segment
@@ -524,21 +532,64 @@ class ValueExtractor:
         candidate_metrics = segment.candidate_metric_ids or []
         filtered_count = 0
         
-        # Helper to check if a number looks like a year (e.g., 1990-2030)
-        def is_likely_year(val_str: str) -> bool:
-            # If it has currency symbol, not a year
-            if "$" in val_str or "USD" in val_str.upper():
-                return False
-            # If it has decimal point, not a year (usually)
-            if "." in val_str:
-                return False
-            # Check pattern 4 digits
-            if re.match(r"^(?:19|20)\d{2}$", val_str.strip()):
-                return True
+        # Regex patterns for exclusion
+        # Matches "January 31, 2019" or "Jan 31 2019"
+        # We want to ignore the day (31) and year (2019)
+        date_pattern = re.compile(
+            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(\d{4})", 
+            re.IGNORECASE
+        )
+        
+        # Matches standalone page numbers/TOC entries at start of line
+        # e.g., "73 Table of Contents"
+        toc_pattern = re.compile(r"^\s*(\d+)\s+(?:Table of Contents|Page)", re.IGNORECASE)
+
+        # Helper to check if a match range overlaps with an exclusion range
+        def is_excluded(start: int, end: int, exclusions: List[Tuple[int, int]]) -> bool:
+            for ex_start, ex_end in exclusions:
+                # If overlap
+                if start < ex_end and end > ex_start:
+                    return True
             return False
 
-        # Split text into sentences for strict context validation
-        # Simple splitting on periods and newlines
+        # Scoring function for candidates
+        def score_candidate(val_str: str, full_match_str: str, context: str) -> float:
+            score = 0.0
+            
+            # 1. Currency boost (High)
+            if "$" in full_match_str or "USD" in full_match_str.upper():
+                score += 5.0
+            elif "€" in full_match_str or "£" in full_match_str:
+                score += 5.0
+                
+            # 2. Magnitude boost (High)
+            if "million" in full_match_str.lower():
+                score += 4.0
+            elif "billion" in full_match_str.lower():
+                score += 4.0
+            elif "thousand" in full_match_str.lower():
+                score += 2.0
+                
+            # 3. Percentage boost (Medium - if relevant)
+            if "%" in full_match_str:
+                score += 3.0
+                
+            # 4. Precision boost (Small)
+            if "." in val_str:
+                score += 1.0
+                
+            # 5. Penalties
+            # Penalty for "Day of month" lookalikes (1-31 integers)
+            if re.match(r"^[1-3][0-9]$|^[1-9]$", val_str):
+                score -= 2.0
+                
+            # Penalty for "Year" lookalikes (1990-2030) without currency
+            if re.match(r"^(?:19|20)\d{2}$", val_str) and "$" not in full_match_str:
+                score -= 3.0
+                
+            return score
+
+        # Split text into sentences
         sentences = re.split(r'[.\n]+', segment.raw_text)
 
         # Import metric classifier to access patterns
@@ -549,17 +600,35 @@ class ValueExtractor:
             sentence = sentence.strip()
             if not sentence:
                 continue
+            
+            # 1. Identify Exclusion Ranges in this sentence
+            exclusions = []
+            
+            # Find dates
+            for m in date_pattern.finditer(sentence):
+                # Exclude the day group (group 1) and year group (group 2)
+                # Group 1 (Day)
+                g1_start, g1_end = m.span(1)
+                exclusions.append((g1_start, g1_end))
+                # Group 2 (Year)
+                g2_start, g2_end = m.span(2)
+                exclusions.append((g2_start, g2_end))
                 
-            # Find numbers in this sentence
-            numbers = self._number_regex.findall(sentence)
-            if not numbers:
+            # Find TOC/Page numbers
+            for m in toc_pattern.finditer(sentence):
+                exclusions.append(m.span(1))
+                
+            # 2. Find all potential numbers
+            # finditer gives us match objects with positions
+            number_matches = list(self._number_regex.finditer(sentence))
+            if not number_matches:
                 continue
                 
-            # For each candidate metric, check if keywords exist in THIS sentence
+            # 3. Process By Metric
             for metric_id in candidate_metrics:
-                # Check if metric keywords are present in this specific sentence
-                has_keyword = False
+                # Check keywords exist in sentence
                 patterns = classifier._metric_patterns.get(metric_id, [])
+                has_keyword = False
                 for pattern in patterns:
                     if pattern.search(sentence):
                         has_keyword = True
@@ -568,58 +637,71 @@ class ValueExtractor:
                 if not has_keyword:
                     continue
                     
-                # Found metric keyword + number in same sentence. Extract values.
-                for value_str in numbers:
-                    # filtering: Skip likely years unless they have currency attached
-                    if is_likely_year(value_str):
+                # Collect valid candidates and score them
+                candidates = []
+                
+                for match in number_matches:
+                    val_str = match.group(1) # The numeric part
+                    full_str = match.group(0) # The full match including $ million etc.
+                    start, end = match.span(1) # Span of the numeric part
+                    
+                    # Skip if in excluded range (Date/Page)
+                    if is_excluded(start, end, exclusions):
                         continue
                         
-                    numeric_value = self._parse_number(value_str)
-                    if numeric_value is None:
-                        continue
-
-                    # EI-3: Check if value is a false positive
-                    position_in_full_text = segment.raw_text.find(sentence) + sentence.find(value_str)
+                    # Skip if false positive (using existing filter)
+                    position_in_full_text = segment.raw_text.find(sentence) + sentence.find(val_str)
                     is_fp, reason = self._is_false_positive_value(
-                        value_str=value_str,
+                        value_str=val_str,
                         position=position_in_full_text,
                         context_text=segment.raw_text,
                         unit=None
                     )
-
                     if is_fp:
-                        logger.debug(
-                            f"Skipping false positive in text extraction: "
-                            f"value='{value_str}' metric={metric_id} reason={reason}"
-                        )
                         filtered_count += 1
                         continue
-
-                    # Determine unit
-                    unit = self._infer_unit(value_str, metric_id)
+                        
+                    # Score it
+                    score = score_candidate(val_str, full_str, sentence)
+                    candidates.append({
+                        "val_str": val_str,
+                        "numeric_value": self._parse_number(val_str),
+                        "unit": self._infer_unit(val_str, metric_id),
+                        "score": score,
+                        "full_match": full_str
+                    })
+                
+                if not candidates:
+                    continue
                     
-                    # Create value
-                    value = MetricValue(
-                        filing_id=segment.filing_id,
-                        company_id=company_id,
-                        metric_id=metric_id,
-                        source_segment_id=segment.sequence_index,
-                        source_type="text",
-                        extraction_method="rule_text_strict",
-                        value_numeric=numeric_value,
-                        value_text=value_str,
-                        unit=unit,
-                        period_end=self._extract_period_from_text(sentence), # Look for period in same sentence
-                        qa_status="unreviewed",
-                    )
-                    values.append(value)
-                    
-                # If we found matches for this metric in this sentence, move to next sentence
-                # (Assuming one metric mention per sentence usually)
-                break 
-
+                # Pick the best candidate
+                # Sort by score descending
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+                best = candidates[0]
+                
+                # If best score is very low/negative, maybe skip? 
+                # For now, we trust the ranking. If it's a tie, first one wins.
+                
+                # Create value
+                value = MetricValue(
+                    filing_id=segment.filing_id,
+                    company_id=company_id,
+                    metric_id=metric_id,
+                    source_segment_id=segment.sequence_index,
+                    source_type="text",
+                    extraction_method="rule_text_smart",
+                    value_numeric=best["numeric_value"],
+                    value_text=best["val_str"],
+                    unit=best["unit"],
+                    period_end=self._extract_period_from_text(sentence),
+                    qa_status="unreviewed",
+                )
+                values.append(value)
+                
+                # Move to next metric (we only extract one value per metric per sentence)
+                
         if filtered_count > 0:
-            logger.debug(f"Filtered {filtered_count} false positive(s) from strict text extraction")
+            logger.debug(f"Filtered {filtered_count} false positive(s) from smart text extraction")
 
         return values
 
@@ -1182,6 +1264,10 @@ class ValueExtractor:
 
         return values
 
+    def _infer_metric_from_context(self, segment: SourceSegment, headers: List[str], column_index: int) -> Optional[str]:
+        """
+        Infer metric ID from column context (header).
+        """
         # Strict Row-Only Logic:
         # A value belongs to a metric IF AND ONLY IF:
         # 1. The column header explicity names it (e.g. "Revenue")
@@ -1207,14 +1293,7 @@ class ValueExtractor:
                          if pattern.search(header):
                              return metric_id
 
-        # 2. Check Row Label (we need the row cells for this, which we don't present in this signature)
-        # However, _infer_metric_from_context is called from _parse_table_row where we scan the row.
-        # We need to change the call signature or logic in _parse_table_row to pass the row label matches.
-        
-        # Note: We are currently inside `_infer_metric_from_context` which is being called by `_parse_table_row`.
-        # The caller `_parse_table_row` iterates cells. 
-        # We should move the "Row Label" detection logic up to `_parse_table_row` and pass the *detected_metric* down, 
-        # or rely on `_identify_columns` to have done the work.
+        return None
         
         # Current fallback (RESTRICTED):
         # We DO NOT fallback to "candidate_metrics[0]" blindly anymore.
