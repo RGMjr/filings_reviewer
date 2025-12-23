@@ -7,7 +7,7 @@ and request history tracking.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
 
 import requests
 
@@ -41,12 +41,12 @@ class MockHTTPClient:
         >>> assert response.status_code == 200
     """
 
-    responses: Dict[str, HTTPResponse] = field(default_factory=dict)
-    failures: Dict[str, Exception] = field(default_factory=dict)
-    request_history: List[str] = field(default_factory=list)
-    response_factory: Optional[Callable[[str], HTTPResponse]] = None
+    responses: dict[str, HTTPResponse] = field(default_factory=dict)
+    failures: dict[str, Exception] = field(default_factory=dict)
+    request_history: list[str] = field(default_factory=list)
+    response_factory: Callable[[str], HTTPResponse] | None = None
 
-    def get(self, url: str, *, headers: Optional[Dict[str, str]] = None, timeout: float = 10.0) -> HTTPResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
         """Mock GET request.
 
         Args:
@@ -78,7 +78,7 @@ class MockHTTPClient:
         # Default: raise 404
         raise requests.HTTPError(f"No mock response configured for {url}")
 
-    def add_response(self, url: str, status_code: int, content: bytes, headers: Optional[Dict[str, str]] = None) -> None:
+    def add_response(self, url: str, status_code: int, content: bytes, headers: dict[str, str] | None = None) -> None:
         """Helper to add a response.
 
         Args:
@@ -104,7 +104,7 @@ class MockHTTPClient:
         """Clear request history."""
         self.request_history.clear()
 
-    def get_request_count(self, url: Optional[str] = None) -> int:
+    def get_request_count(self, url: str | None = None) -> int:
         """Get count of requests.
 
         Args:

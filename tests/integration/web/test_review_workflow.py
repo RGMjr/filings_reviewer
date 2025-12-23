@@ -4,13 +4,12 @@ Integration tests for Flask review routes (D1).
 Tests the complete review workflow with a real database.
 """
 
-from datetime import datetime
 from decimal import Decimal
 
 import pytest
 
 from src.infra.db import DatabaseAdapter
-from src.review.models import ReviewCandidate, CandidateFeatures
+from src.review.models import CandidateFeatures
 from src.web.app import create_app
 from tests.integration.conftest import create_test_company_and_filing
 
@@ -110,7 +109,6 @@ def test_full_review_workflow(client, test_filing):
 
 def test_filing_list_shows_correct_counts(client, db, test_filing):
     """Test filing list displays accurate candidate counts."""
-    filing_id = test_filing["filing_id"]
 
     # All should be pending initially
     response = client.get("/filings")
@@ -184,7 +182,7 @@ def test_filing_list_pagination(client, db):
             filing_id=filing_id,
             company_id=company_id,
             char_position=100,
-            context_text=f"We have 10000 customers.",
+            context_text="We have 10000 customers.",
             raw_number_text="10,000",
             triggering_keyword="customers",
             keyword_distance=5,
@@ -395,7 +393,7 @@ def test_review_filing_combined_filters(client, db):
         suggestion_confidence=0.95,
     )
 
-    candidate_id_2 = db.insert_review_candidate(
+    _candidate_id_2 = db.insert_review_candidate(
         filing_id=filing_id,
         company_id=company_id,
         char_position=200,

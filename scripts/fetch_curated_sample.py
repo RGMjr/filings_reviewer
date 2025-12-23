@@ -23,10 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import FilingMetadata
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
+from src.infra.sec_client import FilingMetadata
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)

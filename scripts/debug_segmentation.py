@@ -37,7 +37,7 @@ def main():
     segments = segmenter.segment_filing(filing_id=1, html_path=str(html_path))
 
     logger.info(f"Generated {len(segments)} segments.")
-    
+
     # Analyze Quotes
     if args.quote:
         logger.info(f"Searching for quote: '{args.quote}'")
@@ -49,7 +49,7 @@ def main():
                 logger.info("-" * 40)
                 logger.info(seg.raw_text)
                 logger.info("-" * 40)
-                
+
                 # Show context if requested
                 if args.context > 0:
                     start = max(0, i - args.context)
@@ -57,7 +57,7 @@ def main():
                     for j in range(start, end):
                         if j == i: continue
                         logger.info(f"[Context Seg {j}] ({segments[j].segment_type}): {segments[j].raw_text[:100]}...")
-        
+
         if not found:
             logger.warning("Quote NOT found in any single segment.")
             # Partial match check?
@@ -68,8 +68,6 @@ def main():
             if len(parts) > 5:
                 # Check start and end
                 start_phrase = " ".join(parts[:5])
-                end_phrase = " ".join(parts[-5:])
-                
                 for i, seg in enumerate(segments):
                     if start_phrase in seg.raw_text:
                         logger.info(f"Found START of quote in Segment {i}: ...{seg.raw_text[-50:]}")

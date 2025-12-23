@@ -1,13 +1,14 @@
 """Tests for respectively_parser module (L1)."""
 
 import pytest
+
 from src.review.respectively_parser import (
-    detect_respectively_pattern,
-    detect_all_respectively_patterns,
     RespectivelyMatch,
-    _extract_value_list,
-    _extract_period_list,
     _calculate_confidence,
+    _extract_period_list,
+    _extract_value_list,
+    detect_all_respectively_patterns,
+    detect_respectively_pattern,
 )
 
 
@@ -456,16 +457,6 @@ class TestRespectivelyMatchDataclass:
 class TestL1P11ConfigurableConfidenceFiltering:
     """Tests for L1-P1.1: Configurable confidence filtering."""
 
-    def test_min_confidence_parameter_filters_low_confidence(self):
-        """Should filter patterns below min_confidence threshold."""
-        # This pattern has moderate confidence (~0.6-0.7)
-        text = "For 2015 and 2016 was 33% and 35%, respectively."
-
-
-
-class TestL1P11ConfigurableConfidenceFiltering:
-    """Tests for L1-P1.1: Configurable confidence filtering."""
-
     def test_min_confidence_parameter_filters_patterns(self):
         """Should filter patterns below min_confidence threshold."""
         # Any valid pattern should be filterable with high enough threshold
@@ -475,13 +466,12 @@ class TestL1P11ConfigurableConfidenceFiltering:
         result_low = detect_respectively_pattern(text, min_confidence=0.5)
         assert result_low is not None
 
-        # Should still accept with threshold below actual confidence  
+        # Should still accept with threshold below actual confidence
         result_match = detect_respectively_pattern(text, min_confidence=0.9)
         assert result_match is not None
-
         # Test filtering: if we set threshold above ANY possible confidence
         # No pattern would pass (but 1.0 is max, so this tests the mechanism)
-        
+
     def test_min_confidence_default_is_0_6(self):
         """Default min_confidence should be 0.6."""
         # High quality pattern should pass with default

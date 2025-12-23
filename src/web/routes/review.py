@@ -9,9 +9,9 @@ import logging
 import time
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Dict, Optional, Tuple, TypedDict
+from typing import TypedDict
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for, session
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
 from markupsafe import Markup, escape
 
 from src.review.models import (
@@ -181,9 +181,9 @@ class FilingData(TypedDict):
     filing_date: datetime
     file_path: str
     status: str
-    total_pages: Optional[int]
+    total_pages: int | None
     html_fetched: bool
-    sec_html_url: Optional[str]  # Direct URL to primary HTML document on SEC EDGAR
+    sec_html_url: str | None  # Direct URL to primary HTML document on SEC EDGAR
     created_at: datetime
     updated_at: datetime
 
@@ -208,28 +208,28 @@ class CandidateData(TypedDict, total=False):
     keyword_distance: int
     keyword_position: str
     parsed_value: Decimal
-    parsed_unit: Optional[str]
+    parsed_unit: str | None
     suggested_metric_id: str
     suggestion_confidence: float
     review_status: str  # 'pending', 'reviewed', 'skipped'
     created_at: datetime
 
     # Segment fields (from LEFT JOIN to source_segments)
-    segment_type: Optional[str]  # 'table', 'paragraph', etc. - NULL if no source_segment_id
-    segment_html: Optional[str]  # Raw HTML of segment - NULL if no source_segment_id
-    segment_html_table_only: Optional[str]  # Table HTML preserved for dual display when value is truncated
-    features: Optional[Dict]  # JSONB features for ML pattern analysis
+    segment_type: str | None  # 'table', 'paragraph', etc. - NULL if no source_segment_id
+    segment_html: str | None  # Raw HTML of segment - NULL if no source_segment_id
+    segment_html_table_only: str | None  # Table HTML preserved for dual display when value is truncated
+    features: dict | None  # JSONB features for ML pattern analysis
 
     # Decision fields (present only if reviewed - from LEFT JOIN)
-    decision_id: Optional[int]
-    decision: Optional[str]  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: Optional[str]
-    rejection_category: Optional[str]
-    rejection_reason: Optional[str]
-    reviewer_notes: Optional[str]
-    reviewer_id: Optional[str]
-    review_time_seconds: Optional[int]
-    decision_created_at: Optional[datetime]
+    decision_id: int | None
+    decision: str | None  # 'accept', 'reject', 'reclassify'
+    assigned_metric_id: str | None
+    rejection_category: str | None
+    rejection_reason: str | None
+    reviewer_notes: str | None
+    reviewer_id: str | None
+    review_time_seconds: int | None
+    decision_created_at: datetime | None
 
 
 class DecisionData(TypedDict):
@@ -239,13 +239,13 @@ class DecisionData(TypedDict):
     """
     decision_id: int
     decision: str  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: Optional[str]
-    rejection_category: Optional[str]
-    rejection_reason: Optional[str]
-    reviewer_notes: Optional[str]
-    reviewer_id: Optional[str]
-    review_time_seconds: Optional[int]
-    created_at: Optional[datetime]
+    assigned_metric_id: str | None
+    rejection_category: str | None
+    rejection_reason: str | None
+    reviewer_notes: str | None
+    reviewer_id: str | None
+    review_time_seconds: int | None
+    created_at: datetime | None
 
 
 class MetricData(TypedDict):
@@ -592,12 +592,12 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 
 def _validate_positive_int(
     param_name: str,
-    value: Optional[int],
-    default: Optional[int],
+    value: int | None,
+    default: int | None,
     min_value: int = 1,
-    max_value: Optional[int] = None,
+    max_value: int | None = None,
     flash_errors: bool = True,
-) -> Optional[int]:
+) -> int | None:
     """
     Validate and sanitize a positive integer query parameter.
 
@@ -648,7 +648,7 @@ def _validate_positive_int(
 
 
 def _paginate(
-    page: int = 1, per_page: int = 50, total_count: Optional[int] = None
+    page: int = 1, per_page: int = 50, total_count: int | None = None
 ) -> PaginationData:
     """
     Calculate pagination metadata.
@@ -683,9 +683,9 @@ def _paginate(
 
 
 def _select_current_candidate(
-    candidates: List[CandidateData],
-    requested_id: Optional[int]
-) -> Optional[CandidateData]:
+    candidates: list[CandidateData],
+    requested_id: int | None
+) -> CandidateData | None:
     """
     Select the current candidate to display from a list of candidates.
 
@@ -725,8 +725,8 @@ def _select_current_candidate(
 
 
 def _calculate_review_progress(
-    candidates: List[CandidateData]
-) -> Tuple[int, int, int]:
+    candidates: list[CandidateData]
+) -> tuple[int, int, int]:
     """
     Calculate review progress from a list of candidates.
 
@@ -748,8 +748,8 @@ def _calculate_review_progress(
 
 
 def _extract_decision_from_candidate(
-    candidate: Optional[CandidateData]
-) -> Optional[DecisionData]:
+    candidate: CandidateData | None
+) -> DecisionData | None:
     """
     Extract decision data from a candidate record.
 
@@ -781,8 +781,8 @@ def _extract_decision_from_candidate(
 def _find_next_candidate(
     db,
     filing_id: int,
-    current_id: Optional[int]
-) -> Optional[Dict]:
+    current_id: int | None
+) -> dict | None:
     """
     Find the next pending candidate for a filing.
 
@@ -822,7 +822,7 @@ def _find_next_candidate(
         return sorted_candidates[0]
 
 
-def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optional[str] = None) -> str:
+def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | None = None) -> str:
     """
     Resolve the correct SEC filing URL for the primary document.
 
@@ -839,6 +839,7 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optiona
         URL to the primary HTML document, or fallback to directory URL
     """
     import os
+
     from src.infra.sec_client import SECClient
 
     try:
@@ -868,7 +869,7 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optiona
     return f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_dashes}/"
 
 
-def _get_active_metrics() -> List[MetricData]:
+def _get_active_metrics() -> list[MetricData]:
     """
     Get list of active metrics for dropdown.
 
@@ -940,7 +941,7 @@ def _get_active_metrics() -> List[MetricData]:
     return g.metrics
 
 
-def _get_unique_metrics_for_filing(candidates: List[Dict]) -> List[str]:
+def _get_unique_metrics_for_filing(candidates: list[dict]) -> list[str]:
     """
     Extract unique metric IDs from candidates for filter dropdown.
 
@@ -1061,6 +1062,7 @@ def _highlight_html(
         Markup: HTML string with highlighting added and broken tags fixed
     """
     import re
+
     from bs4 import BeautifulSoup
 
     # Parse HTML with BeautifulSoup to fix any truncated/unclosed tags

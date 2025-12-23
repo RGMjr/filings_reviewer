@@ -7,8 +7,6 @@ performance baselines and detect regressions.
 Run with: pytest tests/performance/ -v --benchmark-only
 """
 
-import time
-from typing import Dict, List
 
 import pytest
 from memory_profiler import memory_usage
@@ -171,14 +169,14 @@ class TestCandidateGenerationMemory:
         peak_mem = max(mem_usage)
         mem_increase = peak_mem - baseline_mem
 
-        print(f"\n  Memory usage:")
+        print("\n  Memory usage:")
         print(f"    Baseline: {baseline_mem:.2f} MiB")
         print(f"    Peak: {peak_mem:.2f} MiB")
         print(f"    Increase: {mem_increase:.2f} MiB")
 
         # Target: <100MB increase
         if mem_increase > 100:
-            print(f"  WARNING: Memory usage above target (100 MiB)")
+            print("  WARNING: Memory usage above target (100 MiB)")
 
         # Verify memory increase is reasonable (not a memory leak)
         assert mem_increase < 500, "Memory usage should not exceed 500 MiB"
@@ -220,14 +218,14 @@ class TestCandidateGenerationMemory:
         final_mem = mem_usage[-1]
         mem_growth = final_mem - baseline_mem
 
-        print(f"\n  Memory growth over 5 iterations:")
+        print("\n  Memory growth over 5 iterations:")
         print(f"    Baseline: {baseline_mem:.2f} MiB")
         print(f"    Final: {final_mem:.2f} MiB")
         print(f"    Growth: {mem_growth:.2f} MiB")
 
         # Target: <50MB growth over 5 iterations (indicates no major leak)
         if mem_growth > 50:
-            print(f"  WARNING: Possible memory leak detected (>50 MiB growth)")
+            print("  WARNING: Possible memory leak detected (>50 MiB growth)")
 
         # Fail test if memory growth is excessive (likely a leak)
         assert mem_growth < 200, "Excessive memory growth suggests memory leak"

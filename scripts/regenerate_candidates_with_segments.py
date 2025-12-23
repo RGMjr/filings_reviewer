@@ -29,7 +29,6 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -106,7 +105,7 @@ def export_review_decisions(db: DatabaseAdapter, output_path: str) -> int:
     return len(decisions)
 
 
-def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = None) -> List[Dict]:
+def get_affected_filings(db: DatabaseAdapter, filing_ids: list[int] | None = None) -> list[dict]:
     """
     Get filings that have review candidates.
 
@@ -134,7 +133,7 @@ def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = 
         WHERE 1=1
     """
 
-    params: Dict = {}
+    params: dict = {}
     if filing_ids:
         query += " AND f.filing_id = ANY(%(filing_ids)s)"
         params["filing_ids"] = filing_ids
@@ -154,7 +153,7 @@ def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = 
     return db.query(query, params)
 
 
-def delete_candidates(db: DatabaseAdapter, filing_ids: Optional[List[int]] = None) -> Tuple[int, int]:
+def delete_candidates(db: DatabaseAdapter, filing_ids: list[int] | None = None) -> tuple[int, int]:
     """
     Delete review candidates (cascades to decisions).
 
@@ -239,7 +238,7 @@ def regenerate_candidates_for_filing(
     config.filter_false_positives = True
     config.filter_years = True  # Filter 1990-2030 unless currency
     config.min_metric_value = 10 # Baseline
-    
+
     generator = CandidateGenerator(config=config)
     candidates = generator.generate_for_filing(
         filing_id=filing_id,
@@ -262,7 +261,7 @@ def regenerate_candidates_for_filing(
 def attempt_decision_recovery(
     db: DatabaseAdapter,
     decisions_export_path: str
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Attempt to restore review decisions by matching to new candidates.
 

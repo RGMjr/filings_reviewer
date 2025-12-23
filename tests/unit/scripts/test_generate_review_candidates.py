@@ -4,18 +4,19 @@ Unit tests for B3 candidate generation script.
 Tests helper functions, argument parsing, and query building.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
 import sys
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add scripts to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "scripts"))
 
 from generate_review_candidates import (
-    parse_filing_ids,
     get_filings_by_ids,
     get_filings_needing_candidates,
+    parse_filing_ids,
     process_filings,
     report_summary,
 )

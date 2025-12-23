@@ -7,10 +7,11 @@ pair appears.
 """
 
 import pytest
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import SegmentDict
-from src.infra.db import DatabaseAdapter
 
 
 @pytest.fixture

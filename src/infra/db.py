@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -49,7 +49,7 @@ class DatabaseAdapter:
     def __init__(
         self,
         connection_string: str,
-        pool: Optional["ConnectionPool"] = None,
+        pool: "ConnectionPool" | None = None,
     ):
         """
         Initialize the database adapter.
@@ -153,7 +153,7 @@ class DatabaseAdapter:
             if ".." in sql_file_path:
                 raise ValueError("Path traversal not allowed in SQL script paths")
         except (ValueError, OSError) as e:
-            raise ValueError(f"Invalid SQL script path: {e}")
+            raise ValueError(f"Invalid SQL script path: {e}") from e
 
         # Validate file extension
         if not sql_file_path.endswith(".sql"):
@@ -163,7 +163,7 @@ class DatabaseAdapter:
         if not path.exists():
             raise ValueError(f"SQL script file not found: {sql_file_path}")
 
-        with open(sql_file_path, "r") as f:
+        with open(sql_file_path) as f:
             sql = f.read()
 
         with self.get_connection() as conn:
@@ -176,10 +176,10 @@ class DatabaseAdapter:
         self,
         cik: str,
         company_name: str,
-        ticker: Optional[str] = None,
-        country_of_domicile: Optional[str] = None,
-        industry_code: Optional[str] = None,
-        industry_classification_source: Optional[str] = None,
+        ticker: str | None = None,
+        country_of_domicile: str | None = None,
+        industry_code: str | None = None,
+        industry_classification_source: str | None = None,
     ) -> int:
         """
         Insert or update a company record.
@@ -239,16 +239,16 @@ class DatabaseAdapter:
         form_type: str,
         filing_date: str,
         sec_html_url: str,
-        period_end_date: Optional[str] = None,
-        sec_txt_url: Optional[str] = None,
+        period_end_date: str | None = None,
+        sec_txt_url: str | None = None,
         is_in_scope_phase1: bool = False,
-        is_first_time_issuer: Optional[bool] = None,
-        is_spac: Optional[bool] = None,
-        is_post_combination: Optional[bool] = None,
-        is_investment_vehicle: Optional[bool] = None,
-        is_resource_extraction: Optional[bool] = None,
-        offering_type: Optional[str] = None,
-        classification_method: Optional[str] = None,
+        is_first_time_issuer: bool | None = None,
+        is_spac: bool | None = None,
+        is_post_combination: bool | None = None,
+        is_investment_vehicle: bool | None = None,
+        is_resource_extraction: bool | None = None,
+        offering_type: str | None = None,
+        classification_method: str | None = None,
         processing_status: str = "pending",
     ) -> int:
         """
@@ -345,10 +345,10 @@ class DatabaseAdapter:
     def execute(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         *,
         fetch: bool = False,
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """
         Execute a SQL statement.
 
@@ -367,7 +367,7 @@ class DatabaseAdapter:
                     return cur.fetchall()
         return None
 
-    def query(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict]:
+    def query(self, sql: str, params: dict[str, Any] | None = None) -> list[dict]:
         """
         Execute a SELECT query and return results as list of dicts.
 
@@ -381,7 +381,7 @@ class DatabaseAdapter:
         result = self.execute(sql, params, fetch=True)
         return result or []
 
-    def get_company_by_cik(self, cik: str) -> Optional[Dict]:
+    def get_company_by_cik(self, cik: str) -> dict | None:
         """
         Get a company record by CIK.
 
@@ -395,7 +395,7 @@ class DatabaseAdapter:
         results = self.query(sql, {"cik": cik})
         return results[0] if results else None
 
-    def get_first_ipo_filing_date(self, cik: str) -> Optional[str]:
+    def get_first_ipo_filing_date(self, cik: str) -> str | None:
         """
         Get the filing date of the first IPO-type filing for a CIK.
 
@@ -467,13 +467,13 @@ class DatabaseAdapter:
         triggering_keyword: str,
         keyword_distance: int,
         keyword_position: str,
-        source_segment_id: Optional[int] = None,
-        parsed_value: Optional[Any] = None,
-        parsed_unit: Optional[str] = None,
-        suggested_metric_id: Optional[str] = None,
-        suggestion_confidence: Optional[float] = None,
-        features: Optional[Dict[str, Any]] = None,
-        review_batch_id: Optional[int] = None,
+        source_segment_id: int | None = None,
+        parsed_value: Any | None = None,
+        parsed_unit: str | None = None,
+        suggested_metric_id: str | None = None,
+        suggestion_confidence: float | None = None,
+        features: dict[str, Any] | None = None,
+        review_batch_id: int | None = None,
     ) -> int:
         """
         Insert a new review candidate.
@@ -556,7 +556,7 @@ class DatabaseAdapter:
         logger.debug(f"Inserted review candidate: candidate_id={candidate_id}")
         return candidate_id
 
-    def get_review_candidate(self, candidate_id: int) -> Optional[Dict]:
+    def get_review_candidate(self, candidate_id: int) -> dict | None:
         """
         Get a review candidate by ID.
 
@@ -572,7 +572,7 @@ class DatabaseAdapter:
 
     def get_expanded_context_for_candidate(
         self, candidate_id: int, num_adjacent: int = 2
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get expanded context for a candidate by fetching adjacent segments.
 
@@ -669,10 +669,10 @@ class DatabaseAdapter:
     def get_review_candidates_for_filing(
         self,
         filing_id: int,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
+        status: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get review candidates for a filing.
 
@@ -696,7 +696,7 @@ class DatabaseAdapter:
             SELECT * FROM review_candidates
             WHERE filing_id = %(filing_id)s
         """
-        params: Dict[str, Any] = {"filing_id": filing_id}
+        params: dict[str, Any] = {"filing_id": filing_id}
 
         if status:
             sql += " AND review_status = %(status)s"
@@ -714,13 +714,13 @@ class DatabaseAdapter:
     def get_review_candidates_with_decisions(
         self,
         filing_id: int,
-        status: Optional[str] = None,
-        metric_id: Optional[str] = None,
-        confidence_level: Optional[str] = None,
+        status: str | None = None,
+        metric_id: str | None = None,
+        confidence_level: str | None = None,
         sort_by: str = "position",
-        limit: Optional[int] = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get review candidates for a filing WITH their decisions (if any).
 
@@ -785,7 +785,7 @@ class DatabaseAdapter:
             ) rd ON rc.candidate_id = rd.candidate_id
             WHERE rc.filing_id = %(filing_id)s
         """
-        params: Dict[str, Any] = {"filing_id": filing_id}
+        params: dict[str, Any] = {"filing_id": filing_id}
 
         if status:
             sql += " AND rc.review_status = %(status)s"
@@ -871,10 +871,10 @@ class DatabaseAdapter:
 
     def get_all_reviewed_candidates_with_decisions(
         self,
-        metric_id: Optional[str] = None,
-        limit: Optional[int] = None,
+        metric_id: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get all reviewed candidates with decisions across all filings.
 
@@ -936,7 +936,7 @@ class DatabaseAdapter:
             ) rd ON rc.candidate_id = rd.candidate_id
             WHERE 1=1
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if metric_id:
             sql += " AND rc.suggested_metric_id = %(metric_id)s"
@@ -953,10 +953,10 @@ class DatabaseAdapter:
 
     def get_pending_candidates(
         self,
-        filing_id: Optional[int] = None,
-        batch_id: Optional[int] = None,
+        filing_id: int | None = None,
+        batch_id: int | None = None,
         limit: int = 50,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get candidates pending review.
 
@@ -975,7 +975,7 @@ class DatabaseAdapter:
             JOIN companies c ON rc.company_id = c.company_id
             WHERE rc.review_status = 'pending'
         """
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
 
         if filing_id:
             sql += " AND rc.filing_id = %(filing_id)s"
@@ -1025,7 +1025,7 @@ class DatabaseAdapter:
         return updated
 
     def bulk_update_candidate_status(
-        self, candidate_ids: List[int], status: str
+        self, candidate_ids: list[int], status: str
     ) -> int:
         """
         Update status for multiple candidates efficiently.
@@ -1068,8 +1068,8 @@ class DatabaseAdapter:
         return rows_updated
 
     def bulk_insert_review_candidates(
-        self, candidates: List[Dict[str, Any]]
-    ) -> List[int]:
+        self, candidates: list[dict[str, Any]]
+    ) -> list[int]:
         """
         Bulk insert multiple review candidates efficiently.
 
@@ -1222,12 +1222,12 @@ class DatabaseAdapter:
         self,
         candidate_id: int,
         decision: str,
-        assigned_metric_id: Optional[str] = None,
-        rejection_reason: Optional[str] = None,
-        rejection_category: Optional[str] = None,
-        reviewer_id: Optional[str] = None,
-        reviewer_notes: Optional[str] = None,
-        review_time_seconds: Optional[int] = None,
+        assigned_metric_id: str | None = None,
+        rejection_reason: str | None = None,
+        rejection_category: str | None = None,
+        reviewer_id: str | None = None,
+        reviewer_notes: str | None = None,
+        review_time_seconds: int | None = None,
     ) -> int:
         """
         Record a human review decision.
@@ -1328,14 +1328,14 @@ class DatabaseAdapter:
 
     def insert_bulk_review_decisions(
         self,
-        candidate_ids: List[int],
+        candidate_ids: list[int],
         decision: str,
-        assigned_metric_id: Optional[str] = None,
-        rejection_category: Optional[str] = None,
-        rejection_reason: Optional[str] = None,
-        reviewer_id: Optional[str] = None,
-        reviewer_notes: Optional[str] = None,
-    ) -> tuple[List[int], List[Dict[str, Any]]]:
+        assigned_metric_id: str | None = None,
+        rejection_category: str | None = None,
+        rejection_reason: str | None = None,
+        reviewer_id: str | None = None,
+        reviewer_notes: str | None = None,
+    ) -> tuple[list[int], list[dict[str, Any]]]:
         """
         Insert multiple review decisions in a single transaction.
 
@@ -1484,7 +1484,7 @@ class DatabaseAdapter:
 
         return decision_ids, failed_candidates
 
-    def get_decision_for_candidate(self, candidate_id: int) -> Optional[Dict]:
+    def get_decision_for_candidate(self, candidate_id: int) -> dict | None:
         """
         Get the latest decision for a candidate.
 
@@ -1503,7 +1503,7 @@ class DatabaseAdapter:
         results = self.query(sql, {"candidate_id": candidate_id})
         return results[0] if results else None
 
-    def get_decision_by_id(self, decision_id: int) -> Optional[Dict]:
+    def get_decision_by_id(self, decision_id: int) -> dict | None:
         """
         Get a decision by its ID.
 
@@ -1569,7 +1569,7 @@ class DatabaseAdapter:
         )
         return True
 
-    def get_decisions_for_filing(self, filing_id: int) -> List[Dict]:
+    def get_decisions_for_filing(self, filing_id: int) -> list[dict]:
         """
         Get all review decisions for a filing.
 
@@ -1590,8 +1590,8 @@ class DatabaseAdapter:
         return self.query(sql, {"filing_id": filing_id})
 
     def get_decision_statistics(
-        self, filing_id: Optional[int] = None
-    ) -> Dict[str, Any]:
+        self, filing_id: int | None = None
+    ) -> dict[str, Any]:
         """
         Get statistics on review decisions.
 
@@ -1602,7 +1602,7 @@ class DatabaseAdapter:
             Dict with decision counts and percentages
         """
         where_clause = ""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if filing_id:
             where_clause = """
@@ -1650,11 +1650,11 @@ class DatabaseAdapter:
     def get_decisions_by_reviewer(
         self,
         reviewer_id: str,
-        decision: Optional[str] = None,
-        limit: Optional[int] = None,
+        decision: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
         include_total: bool = False,
-    ) -> Union[List[Dict], Dict[str, Any]]:
+    ) -> list[dict] | dict[str, Any]:
         """
         Get all review decisions made by a specific reviewer.
 
@@ -1689,7 +1689,7 @@ class DatabaseAdapter:
             raise ValidationError(f"offset must be >= 0, got {offset}")
 
         conditions = ["rd.reviewer_id = %(reviewer_id)s"]
-        params: Dict[str, Any] = {"reviewer_id": reviewer_id}
+        params: dict[str, Any] = {"reviewer_id": reviewer_id}
 
         if decision:
             conditions.append("rd.decision = %(decision)s")
@@ -1747,8 +1747,8 @@ class DatabaseAdapter:
     # =========================================================================
 
     def get_decision_stats_by_metric(
-        self, metric_id: Optional[str] = None
-    ) -> List[Dict]:
+        self, metric_id: str | None = None
+    ) -> list[dict]:
         """
         Get decision statistics grouped by suggested metric.
 
@@ -1767,7 +1767,7 @@ class DatabaseAdapter:
             - pct_of_metric: Percentage of this decision within the metric
         """
         sql = "SELECT * FROM v_decision_stats_by_metric"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if metric_id:
             sql += " WHERE suggested_metric = %(metric_id)s"
@@ -1778,8 +1778,8 @@ class DatabaseAdapter:
         return self.query(sql, params)
 
     def get_rejection_reasons(
-        self, metric_id: Optional[str] = None
-    ) -> List[Dict]:
+        self, metric_id: str | None = None
+    ) -> list[dict]:
         """
         Get rejection reason statistics grouped by metric.
 
@@ -1799,7 +1799,7 @@ class DatabaseAdapter:
             - common_keyword_position: Most common keyword position ('before'/'after')
         """
         sql = "SELECT * FROM v_rejection_reasons"
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if metric_id:
             sql += " WHERE suggested_metric = %(metric_id)s"
@@ -1809,7 +1809,7 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
-    def get_daily_decision_counts(self, days: int = 7) -> List[Dict]:
+    def get_daily_decision_counts(self, days: int = 7) -> list[dict]:
         """
         Get decision counts by day for the last N days.
 
@@ -1873,13 +1873,13 @@ class DatabaseAdapter:
         self,
         pattern_type: str,
         pattern_name: str,
-        pattern_definition: Dict[str, Any],
-        metric_id: Optional[str] = None,
-        pattern_description: Optional[str] = None,
-        precision_score: Optional[float] = None,
-        recall_score: Optional[float] = None,
-        f1_score: Optional[float] = None,
-        sample_count: Optional[int] = None,
+        pattern_definition: dict[str, Any],
+        metric_id: str | None = None,
+        pattern_description: str | None = None,
+        precision_score: float | None = None,
+        recall_score: float | None = None,
+        f1_score: float | None = None,
+        sample_count: int | None = None,
     ) -> int:
         """
         Insert a new learned pattern.
@@ -1946,7 +1946,7 @@ class DatabaseAdapter:
         logger.debug(f"Inserted learned pattern: pattern_id={pattern_id}")
         return pattern_id
 
-    def get_learned_pattern(self, pattern_id: int) -> Optional[Dict]:
+    def get_learned_pattern(self, pattern_id: int) -> dict | None:
         """
         Get a learned pattern by ID.
 
@@ -1963,9 +1963,9 @@ class DatabaseAdapter:
     def get_learned_patterns(
         self,
         status: str = "approved",
-        pattern_type: Optional[str] = None,
-        metric_id: Optional[str] = None,
-    ) -> List[Dict]:
+        pattern_type: str | None = None,
+        metric_id: str | None = None,
+    ) -> list[dict]:
         """
         Get learned patterns with flexible filtering.
 
@@ -2005,7 +2005,7 @@ class DatabaseAdapter:
             SELECT * FROM learned_patterns
             WHERE status = %(status)s
         """
-        params: Dict[str, Any] = {"status": status}
+        params: dict[str, Any] = {"status": status}
 
         if pattern_type:
             sql += " AND pattern_type = %(pattern_type)s"
@@ -2021,9 +2021,9 @@ class DatabaseAdapter:
 
     def get_approved_patterns(
         self,
-        pattern_type: Optional[str] = None,
-        metric_id: Optional[str] = None,
-    ) -> List[Dict]:
+        pattern_type: str | None = None,
+        metric_id: str | None = None,
+    ) -> list[dict]:
         """
         Get approved patterns for use in extraction.
 
@@ -2045,7 +2045,7 @@ class DatabaseAdapter:
             SELECT * FROM learned_patterns
             WHERE status = 'approved'
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if pattern_type:
             sql += " AND pattern_type = %(pattern_type)s"
@@ -2061,11 +2061,11 @@ class DatabaseAdapter:
 
     def get_candidate_patterns(
         self,
-        pattern_type: Optional[str] = None,
-        metric_id: Optional[str] = None,
-        min_precision: Optional[float] = None,
-        min_sample_count: Optional[int] = None,
-    ) -> List[Dict]:
+        pattern_type: str | None = None,
+        metric_id: str | None = None,
+        min_precision: float | None = None,
+        min_sample_count: int | None = None,
+    ) -> list[dict]:
         """
         Get patterns pending approval (status='candidate').
 
@@ -2096,7 +2096,7 @@ class DatabaseAdapter:
             SELECT * FROM learned_patterns
             WHERE status = 'candidate'
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if pattern_type:
             sql += " AND pattern_type = %(pattern_type)s"
@@ -2122,7 +2122,7 @@ class DatabaseAdapter:
         self,
         pattern_id: int,
         status: str,
-        approved_by: Optional[str] = None,
+        approved_by: str | None = None,
     ) -> bool:
         """
         Update a pattern's status.
@@ -2166,7 +2166,7 @@ class DatabaseAdapter:
     # Filing and Segment Retrieval Methods (for Candidate Generation)
     # =========================================================================
 
-    def get_filing_with_company(self, filing_id: int) -> Optional[Dict]:
+    def get_filing_with_company(self, filing_id: int) -> dict | None:
         """
         Get filing information including company details.
 
@@ -2191,9 +2191,9 @@ class DatabaseAdapter:
     def get_source_segments_for_filing(
         self,
         filing_id: int,
-        segment_types: Optional[List[str]] = None,
-        with_numeric_disclosure: Optional[bool] = None,
-    ) -> List[Dict]:
+        segment_types: list[str] | None = None,
+        with_numeric_disclosure: bool | None = None,
+    ) -> list[dict]:
         """
         Get all source segments for a filing.
 
@@ -2218,7 +2218,7 @@ class DatabaseAdapter:
             FROM source_segments
             WHERE filing_id = %(filing_id)s
         """
-        params: Dict[str, Any] = {"filing_id": filing_id}
+        params: dict[str, Any] = {"filing_id": filing_id}
 
         if segment_types:
             sql += " AND segment_type = ANY(%(segment_types)s)"
@@ -2236,7 +2236,7 @@ class DatabaseAdapter:
         self,
         limit: int = 100,
         exclude_with_candidates: bool = True,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get filings eligible for candidate generation.
 
@@ -2256,7 +2256,7 @@ class DatabaseAdapter:
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.is_in_scope_phase1 = true
         """
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
 
         if exclude_with_candidates:
             sql += """
@@ -2279,10 +2279,10 @@ class DatabaseAdapter:
 
     def get_filings_with_candidates(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Get filings that have review candidates.
 
@@ -2304,7 +2304,7 @@ class DatabaseAdapter:
             validate_enum(status, REVIEW_STATUSES, "review_status")
 
         status_filter = ""
-        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
 
         if status:
             status_filter = "AND rc.review_status = %(status)s"
@@ -2331,7 +2331,7 @@ class DatabaseAdapter:
 
     def get_filings_with_candidates_count(
         self,
-        status: Optional[str] = None,
+        status: str | None = None,
     ) -> int:
         """
         Get count of filings that have review candidates.
@@ -2349,7 +2349,7 @@ class DatabaseAdapter:
             validate_enum(status, REVIEW_STATUSES, "review_status")
 
         status_filter = ""
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if status:
             status_filter = "AND rc.review_status = %(status)s"
@@ -2365,7 +2365,7 @@ class DatabaseAdapter:
         result = self.query(sql, params)
         return result[0]["count"] if result else 0
 
-    def get_review_progress(self) -> Dict[str, Any]:
+    def get_review_progress(self) -> dict[str, Any]:
         """
         Get overall review progress statistics.
 
@@ -2410,8 +2410,8 @@ class DatabaseAdapter:
         }
 
     def get_next_candidate_for_review(
-        self, filing_id: Optional[int] = None
-    ) -> Optional[Dict]:
+        self, filing_id: int | None = None
+    ) -> dict | None:
         """
         Get the next candidate needing review.
 
@@ -2428,7 +2428,7 @@ class DatabaseAdapter:
             JOIN companies c ON rc.company_id = c.company_id
             WHERE rc.review_status = 'pending'
         """
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
 
         if filing_id:
             sql += " AND rc.filing_id = %(filing_id)s"
@@ -2441,17 +2441,17 @@ class DatabaseAdapter:
 
     def insert_audit_log(
         self,
-        session_id: Optional[str],
-        ip_address: Optional[str],
-        user_agent: Optional[str],
+        session_id: str | None,
+        ip_address: str | None,
+        user_agent: str | None,
         route_name: str,
         http_method: str,
         url_path: str,
-        filing_id: Optional[int],
-        candidate_id: Optional[int],
-        query_params: Optional[Dict[str, Any]],
+        filing_id: int | None,
+        candidate_id: int | None,
+        query_params: dict[str, Any] | None,
         response_status: int,
-        response_time_ms: Optional[int],
+        response_time_ms: int | None,
     ) -> int:
         """
         Insert an audit log entry for a review route request.
@@ -2515,7 +2515,7 @@ class DatabaseAdapter:
 # =============================================================================
 
 
-def create_pooled_adapter(connection_string: Optional[str] = None) -> DatabaseAdapter:
+def create_pooled_adapter(connection_string: str | None = None) -> DatabaseAdapter:
     """
     Create a DatabaseAdapter backed by the shared connection pool.
 

@@ -11,14 +11,14 @@ Requires:
 - Review schema applied (sql/07_create_review_schema.sql)
 """
 
-import pytest
 from decimal import Decimal
+
+import pytest
 
 from src.infra.validation import ValidationError
 from tests.integration.conftest import (
-    create_test_company,
-    create_test_company_and_filing,
     create_test_candidate,
+    create_test_company_and_filing,
 )
 
 
@@ -951,7 +951,7 @@ class TestLearnedPatternsMethods:
 
     def test_get_candidate_patterns_min_precision(self, clean_db):
         """Test filtering candidate patterns by minimum precision."""
-        low_precision_id = clean_db.insert_learned_pattern(
+        _low_precision_id = clean_db.insert_learned_pattern(
             pattern_type="accept_rule",
             pattern_name="Low precision",
             pattern_definition={"conditions": []},
@@ -975,7 +975,7 @@ class TestLearnedPatternsMethods:
 
     def test_get_candidate_patterns_min_sample_count(self, clean_db):
         """Test filtering candidate patterns by minimum sample count."""
-        low_sample_id = clean_db.insert_learned_pattern(
+        _low_sample_id = clean_db.insert_learned_pattern(
             pattern_type="accept_rule",
             pattern_name="Low samples",
             pattern_definition={"conditions": []},
@@ -1800,7 +1800,6 @@ class TestDailyDecisionCounts:
 
     def test_get_daily_decision_counts_fills_gaps(self, clean_db):
         """Test that days with no decisions are included with count 0."""
-        from datetime import date, timedelta
 
         company_id, filing_id = create_test_company_and_filing(clean_db)
         _, _, candidate_id = create_test_candidate(

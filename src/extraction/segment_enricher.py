@@ -18,7 +18,8 @@ The enricher operates on in-memory objects without database dependencies.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Pattern, Set
+from typing import Any
+from re import Pattern
 
 from bs4 import BeautifulSoup, Tag
 
@@ -53,7 +54,7 @@ class SegmentEnricher:
     GOLDMINE_THRESHOLD: float = 6.0
 
     # Keywords that indicate a decorative (non-meaningful) image (G7)
-    DECORATIVE_KEYWORDS: List[str] = ["icon", "logo", "bullet", "arrow", "spacer"]
+    DECORATIVE_KEYWORDS: list[str] = ["icon", "logo", "bullet", "arrow", "spacer"]
 
     # Compiled regex patterns for temporal trend detection (G5)
     # Year pattern: 4-digit years in range 2000-2099
@@ -65,7 +66,7 @@ class SegmentEnricher:
     )
 
     # Year-over-year language patterns (case-insensitive)
-    YOY_PATTERNS: List[Pattern[str]] = [
+    YOY_PATTERNS: list[Pattern[str]] = [
         re.compile(r"\byear[- ]over[- ]year\b", re.IGNORECASE),
         re.compile(r"\byoy\b", re.IGNORECASE),
         re.compile(
@@ -75,7 +76,7 @@ class SegmentEnricher:
     ]
 
     # Compiled regex patterns for cohort breakdown detection (G6)
-    COHORT_PATTERNS: List[Pattern[str]] = [
+    COHORT_PATTERNS: list[Pattern[str]] = [
         # Percentage breakdowns with customer/user context
         # Matches: "44.4% of consumers", "15% of users"
         re.compile(
@@ -193,7 +194,7 @@ class SegmentEnricher:
     # gross/net retention. Triggers +1.0 richness bonus. Based on GI-3
     # analysis showing 87 retention-related snippets in the filings.
     # =========================================================================
-    RETENTION_KEYWORDS: List[Pattern[str]] = [
+    RETENTION_KEYWORDS: list[Pattern[str]] = [
         # Net Dollar Retention spelled out
         re.compile(r"\bnet\s+dollar\s+retention\b", re.IGNORECASE),
         # Dollar-based retention variants
@@ -210,7 +211,7 @@ class SegmentEnricher:
     # Triggers +0.5 richness bonus. Based on GI-2 showing Slack's
     # "10 million daily active users" segment scores only 3.90.
     # =========================================================================
-    USAGE_KEYWORDS: List[Pattern[str]] = [
+    USAGE_KEYWORDS: list[Pattern[str]] = [
         # Daily active users (spelled out or DAU)
         re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
         re.compile(r"\bDAU\b"),
@@ -233,7 +234,7 @@ class SegmentEnricher:
     # Triggers tiered bonus: +1.0 (vs +0.5 for basic usage keyword).
     # Identifies high-value disclosures like "10 million daily active users".
     # =========================================================================
-    USAGE_WITH_COUNT_PATTERNS: List[Pattern[str]] = [
+    USAGE_WITH_COUNT_PATTERNS: list[Pattern[str]] = [
         # DAU/MAU/WAU with numeric prefix: "10 million daily active users"
         re.compile(
             r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
@@ -306,7 +307,7 @@ class SegmentEnricher:
     # cohort bonus of +1.5). These patterns capture SaaS-specific terminology
     # from Slack, Snowflake, DocuSign-style S-1 filings.
     # =========================================================================
-    SAAS_PATTERNS: List[Pattern[str]] = [
+    SAAS_PATTERNS: list[Pattern[str]] = [
         # ARR/MRR with dollar amounts: "ARR of $100 million", "$50M in ARR"
         re.compile(
             r"\bARR\s+(?:of\s+)?\$[\d,]+(?:\.\d+)?\s*(?:million|billion|M|B|K)?\b",
@@ -367,7 +368,7 @@ class SegmentEnricher:
         """Initialize enricher (stateless, patterns compiled at class level)."""
         pass
 
-    def enrich_batch(self, segments: List[SourceSegment]) -> List[SourceSegment]:
+    def enrich_batch(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Enrich all segments with richness metadata.
 
@@ -881,7 +882,7 @@ class SegmentEnricher:
 
         return False
 
-    def _parse_dimension(self, value: object) -> Optional[int]:
+    def _parse_dimension(self, value: object) -> int | None:
         """
         Parse width/height attribute, returning None if not a pixel value.
 
@@ -1039,10 +1040,10 @@ class SegmentEnricher:
 
 
 def cluster_goldmine_segments(
-    segments: List[SourceSegment],
+    segments: list[SourceSegment],
     richness_threshold: float = 6.0,
     max_gap: int = 3,
-) -> List[List[SourceSegment]]:
+) -> list[list[SourceSegment]]:
     """
     Group adjacent high-richness segments into clusters.
 
@@ -1072,7 +1073,7 @@ def cluster_goldmine_segments(
         return []
 
     # Filter segments meeting threshold, handling None richness_score
-    goldmines: List[SourceSegment] = []
+    goldmines: list[SourceSegment] = []
     for seg in segments:
         # Skip segments with None sequence_index
         if seg.sequence_index is None:
@@ -1094,8 +1095,8 @@ def cluster_goldmine_segments(
     goldmines.sort(key=lambda s: s.sequence_index)
 
     # Group into clusters based on gap
-    clusters: List[List[SourceSegment]] = []
-    current_cluster: List[SourceSegment] = [goldmines[0]]
+    clusters: list[list[SourceSegment]] = []
+    current_cluster: list[SourceSegment] = [goldmines[0]]
 
     for i in range(1, len(goldmines)):
         prev_idx = goldmines[i - 1].sequence_index
@@ -1118,7 +1119,7 @@ def cluster_goldmine_segments(
     return clusters
 
 
-def summarize_cluster(cluster: List[SourceSegment]) -> Dict[str, Any]:
+def summarize_cluster(cluster: list[SourceSegment]) -> dict[str, Any]:
     """
     Generate summary statistics for a cluster of segments.
 
@@ -1164,7 +1165,7 @@ def summarize_cluster(cluster: List[SourceSegment]) -> Dict[str, Any]:
     avg_richness = sum(richness_scores) / len(richness_scores)
 
     # Collect unique metrics across all segments
-    all_metrics: Set[str] = set()
+    all_metrics: set[str] = set()
     for seg in sorted_cluster:
         if seg.candidate_metric_ids:
             all_metrics.update(seg.candidate_metric_ids)

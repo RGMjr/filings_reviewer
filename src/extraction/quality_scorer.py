@@ -6,13 +6,12 @@ and computes quality scores across multiple dimensions.
 """
 
 import logging
-from typing import List
 
 from .models import (
-    SourceSegment,
-    MetricValue,
-    MetricDefinition,
     FilingMetricIncidence,
+    MetricDefinition,
+    MetricValue,
+    SourceSegment,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,10 +37,10 @@ class QualityScorer:
         self,
         filing_id: int,
         company_id: int,
-        segments: List[SourceSegment],
-        values: List[MetricValue],
-        definitions: List[MetricDefinition],
-    ) -> List[FilingMetricIncidence]:
+        segments: list[SourceSegment],
+        values: list[MetricValue],
+        definitions: list[MetricDefinition],
+    ) -> list[FilingMetricIncidence]:
         """
         Compute incidence and quality scores for all metrics in a filing.
 
@@ -70,9 +69,9 @@ class QualityScorer:
 
     def _get_all_metrics(
         self,
-        segments: List[SourceSegment],
-        values: List[MetricValue],
-        definitions: List[MetricDefinition],
+        segments: list[SourceSegment],
+        values: list[MetricValue],
+        definitions: list[MetricDefinition],
     ) -> set:
         """Get set of all metrics mentioned in filing."""
         metrics = set()
@@ -96,9 +95,9 @@ class QualityScorer:
         filing_id: int,
         company_id: int,
         metric_id: str,
-        segments: List[SourceSegment],
-        values: List[MetricValue],
-        definitions: List[MetricDefinition],
+        segments: list[SourceSegment],
+        values: list[MetricValue],
+        definitions: list[MetricDefinition],
     ) -> FilingMetricIncidence:
         """
         Compute incidence and quality for a specific filing × metric pair.
@@ -201,8 +200,8 @@ class QualityScorer:
 
     def _compute_overall_quality(
         self,
-        values: List[MetricValue],
-        definitions: List[MetricDefinition],
+        values: list[MetricValue],
+        definitions: list[MetricDefinition],
         has_cohort_breakdown: bool,
     ) -> int:
         """
@@ -230,7 +229,7 @@ class QualityScorer:
         else:
             return 1  # Minimal
 
-    def _compute_definition_quality(self, definitions: List[MetricDefinition]) -> int:
+    def _compute_definition_quality(self, definitions: list[MetricDefinition]) -> int:
         """
         Compute definition quality score (0-3).
 
@@ -259,7 +258,7 @@ class QualityScorer:
         else:
             return 1  # Vague or not aligned
 
-    def _compute_methodology_quality(self, definitions: List[MetricDefinition]) -> int:
+    def _compute_methodology_quality(self, definitions: list[MetricDefinition]) -> int:
         """
         Compute methodology quality score (0-3).
 
@@ -295,7 +294,7 @@ class QualityScorer:
             return 1
 
     def _compute_completeness_quality(
-        self, values: List[MetricValue], has_cohort_breakdown: bool
+        self, values: list[MetricValue], has_cohort_breakdown: bool
     ) -> int:
         """
         Compute completeness quality score (0-3).
@@ -321,7 +320,7 @@ class QualityScorer:
             return 1
 
     def _compute_comparability_quality(
-        self, definitions: List[MetricDefinition]
+        self, definitions: list[MetricDefinition]
     ) -> int:
         """
         Compute comparability quality score (0-3).
@@ -351,10 +350,10 @@ class QualityScorer:
 def score_filing(
     filing_id: int,
     company_id: int,
-    segments: List[SourceSegment],
-    values: List[MetricValue],
-    definitions: List[MetricDefinition],
-) -> List[FilingMetricIncidence]:
+    segments: list[SourceSegment],
+    values: list[MetricValue],
+    definitions: list[MetricDefinition],
+) -> list[FilingMetricIncidence]:
     """
     Convenience function to score a filing.
 

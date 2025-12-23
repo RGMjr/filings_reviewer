@@ -8,12 +8,13 @@ clearly indicate a different metric.
 Coverage Target: ≥95% for new exclusion-related code paths.
 """
 
-import pytest
 import re
 
+import pytest
+
 from src.review.keyword_matching import (
-    KeywordMatcher,
     METRIC_EXCLUSION_PATTERNS,
+    KeywordMatcher,
 )
 
 
@@ -33,7 +34,7 @@ class TestMetricExclusionPatternsStructure:
         for metric_id, patterns in METRIC_EXCLUSION_PATTERNS.items():
             assert isinstance(patterns, list), f"{metric_id} patterns should be a list"
             for pattern in patterns:
-                assert isinstance(pattern, str), f"Pattern should be string"
+                assert isinstance(pattern, str), "Pattern should be string"
                 # Should not raise re.error
                 compiled = re.compile(pattern, re.IGNORECASE)
                 assert compiled is not None
@@ -412,7 +413,6 @@ Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios"""
         for match in ltv_matches:
             # Standalone LTV should be excluded near LTV/CAC
             if match.metric_id == "cm_lifetime_value_per_customer":
-                context = text[max(0, match.start - 50):match.end + 50].lower()
                 # The "Lifetime Value" in the heading is far from LTV/CAC, check if excluded
                 # This specific case may or may not be excluded depending on context window
                 pass  # Allow either behavior for heading text

@@ -27,7 +27,6 @@ Usage:
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +160,7 @@ class BoundaryDetector:
         """Initialize the boundary detector."""
         pass
 
-    def find_boundaries(self, text: str) -> List[TextBoundary]:
+    def find_boundaries(self, text: str) -> list[TextBoundary]:
         """
         Find all semantic boundaries in the given text.
 
@@ -186,10 +185,10 @@ class BoundaryDetector:
             return []
 
         lines = text.split("\n")
-        boundaries: List[TextBoundary] = []
-        current_boundary_start: Optional[int] = None
-        current_boundary_type: Optional[str] = None
-        current_boundary_marker: Optional[str] = None
+        boundaries: list[TextBoundary] = []
+        current_boundary_start: int | None = None
+        current_boundary_type: str | None = None
+        current_boundary_marker: str | None = None
         current_pos = 0
 
         for i, line in enumerate(lines):
@@ -263,8 +262,8 @@ class BoundaryDetector:
         return boundaries
 
     def get_boundary_at_position(
-        self, pos: int, boundaries: List[TextBoundary]
-    ) -> Optional[TextBoundary]:
+        self, pos: int, boundaries: list[TextBoundary]
+    ) -> TextBoundary | None:
         """
         Find the boundary that contains the given character position.
 
@@ -285,8 +284,8 @@ class BoundaryDetector:
     # ==========================================================================
 
     def find_sentence_boundaries(
-        self, text: str, segment_type: Optional[str] = None
-    ) -> List[TextBoundary]:
+        self, text: str, segment_type: str | None = None
+    ) -> list[TextBoundary]:
         """
         Find sentence boundaries within text.
 
@@ -330,7 +329,7 @@ class BoundaryDetector:
                 )
             ]
 
-        boundaries: List[TextBoundary] = []
+        boundaries: list[TextBoundary] = []
         current_start = 0
 
         # Find potential sentence endings
@@ -477,7 +476,7 @@ class BoundaryDetector:
         # Not followed by uppercase - probably not a sentence end
         return False
 
-    def _get_line_boundary_type(self, line: str) -> tuple[Optional[str], Optional[str]]:
+    def _get_line_boundary_type(self, line: str) -> tuple[str | None, str | None]:
         """
         Check if a line starts a semantic boundary and return its type.
 
@@ -495,7 +494,7 @@ class BoundaryDetector:
                 return marker, boundary_type
         return None, None
 
-    def _is_continuation_line(self, line: str, all_lines: List[str], line_index: int) -> bool:
+    def _is_continuation_line(self, line: str, all_lines: list[str], line_index: int) -> bool:
         """
         Determine if a line is a continuation of the previous boundary.
 
@@ -533,8 +532,6 @@ class BoundaryDetector:
                         break
 
                 if marker_match:
-                    # Indentation of text after marker
-                    marker_end = marker_match.end()
                     # Current line is continuation if indented at least as much as marker text
                     # or if it has some minimum indentation
                     return current_indent >= self.MIN_CONTINUATION_INDENT
@@ -549,7 +546,7 @@ class BoundaryDetector:
 # =============================================================================
 
 
-def in_same_boundary(pos1: int, pos2: int, boundaries: List[TextBoundary]) -> bool:
+def in_same_boundary(pos1: int, pos2: int, boundaries: list[TextBoundary]) -> bool:
     """
     Check if two positions are in the same semantic boundary.
 

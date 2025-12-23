@@ -7,9 +7,9 @@ for metrics from classified segments.
 
 import logging
 import re
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from .models import SourceSegment, MetricDefinition
+from .models import MetricDefinition, SourceSegment
 from .value_extractor import map_llm_name_to_metric_id, verify_quote_in_source
 
 if TYPE_CHECKING:
@@ -86,8 +86,8 @@ class DefinitionExtractor:
         self.llm_client = llm_client
 
     def extract_definitions(
-        self, segments: List[SourceSegment], company_id: int
-    ) -> List[MetricDefinition]:
+        self, segments: list[SourceSegment], company_id: int
+    ) -> list[MetricDefinition]:
         """
         Extract definitions for all metrics found in segments.
 
@@ -118,7 +118,7 @@ class DefinitionExtractor:
         logger.info(f"Extracted {len(definitions)} metric definitions")
         return definitions
 
-    def _group_segments_by_metric(self, segments: List[SourceSegment]) -> dict:
+    def _group_segments_by_metric(self, segments: list[SourceSegment]) -> dict:
         """
         Group segments by the metrics they mention.
 
@@ -135,7 +135,7 @@ class DefinitionExtractor:
 
         return metric_segments
 
-    def _get_priority_metric_ids(self, segments: List[SourceSegment]) -> set[str]:
+    def _get_priority_metric_ids(self, segments: list[SourceSegment]) -> set[str]:
         """
         Build a priority set combining filing high-confidence candidates and CMASB metrics.
         """
@@ -160,13 +160,13 @@ class DefinitionExtractor:
         return high_confidence_candidates | set(cmasb_priority)
 
     def _filter_metric_segments(
-        self, metric_segments: dict[str, List[SourceSegment]], preferred_metric_ids: set[str]
-    ) -> dict[str, List[SourceSegment]]:
+        self, metric_segments: dict[str, list[SourceSegment]], preferred_metric_ids: set[str]
+    ) -> dict[str, list[SourceSegment]]:
         """
         Keep top-confidence segments per metric and prefer priority candidates.
         """
 
-        filtered: dict[str, List[SourceSegment]] = {}
+        filtered: dict[str, list[SourceSegment]] = {}
 
         for metric_id, segs in metric_segments.items():
             sorted_segs = sorted(
@@ -193,9 +193,9 @@ class DefinitionExtractor:
 
     def _select_verified_snippet(
         self,
-        candidate_segments: List[SourceSegment],
-        all_segments: List[SourceSegment],
-    ) -> tuple[Optional[str], Optional[int], Optional[str]]:
+        candidate_segments: list[SourceSegment],
+        all_segments: list[SourceSegment],
+    ) -> tuple[str | None, int | None, str | None]:
         """
         Select the first candidate whose snippet can be verified in the source set.
         """
@@ -216,8 +216,8 @@ class DefinitionExtractor:
         return None, None, None
 
     def _extract_metric_definition(
-        self, metric_id: str, segments: List[SourceSegment], company_id: int
-    ) -> Optional[MetricDefinition]:
+        self, metric_id: str, segments: list[SourceSegment], company_id: int
+    ) -> MetricDefinition | None:
         """
         Extract definition for a specific metric from its segments.
 
@@ -297,8 +297,8 @@ class DefinitionExtractor:
         return definition
 
     def _extract_definition_with_llm(
-        self, metric_id: str, segments: List[SourceSegment], company_id: int
-    ) -> Optional[MetricDefinition]:
+        self, metric_id: str, segments: list[SourceSegment], company_id: int
+    ) -> MetricDefinition | None:
         """
         Extract definition using LLM.
 
@@ -435,7 +435,7 @@ class DefinitionExtractor:
 
         return normalized
 
-    def assess_alignment(self, metric_id: str, issuer_definition: Optional[str]) -> str:
+    def assess_alignment(self, metric_id: str, issuer_definition: str | None) -> str:
         """
         Assess alignment between issuer and CMASB canonical definitions.
 
@@ -474,8 +474,8 @@ class DefinitionExtractor:
 
 # Convenience function
 def extract_definitions(
-    segments: List[SourceSegment], company_id: int
-) -> List[MetricDefinition]:
+    segments: list[SourceSegment], company_id: int
+) -> list[MetricDefinition]:
     """
     Convenience function to extract definitions from segments.
 

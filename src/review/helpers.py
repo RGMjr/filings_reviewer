@@ -88,7 +88,7 @@ See Also:
 """
 
 import logging
-from typing import Any, List, Optional, cast
+from typing import cast
 
 from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
@@ -100,10 +100,10 @@ logger = logging.getLogger(__name__)
 def generate_candidates_for_filing(
     db: DatabaseAdapter,
     filing_id: int,
-    generator: Optional[CandidateGenerator] = None,
+    generator: CandidateGenerator | None = None,
     save: bool = False,
-    batch_id: Optional[int] = None,
-) -> List[ReviewCandidate]:
+    batch_id: int | None = None,
+) -> list[ReviewCandidate]:
     """
     Generate and optionally save candidates for a filing.
 
@@ -145,7 +145,7 @@ def generate_candidates_for_filing(
         db=db,
     )
     # Cast to clarify type for mypy (we know it's List[ReviewCandidate] when return_stats=False)
-    candidates: List[ReviewCandidate] = cast(List[ReviewCandidate], candidates_result)
+    candidates: list[ReviewCandidate] = cast(list[ReviewCandidate], candidates_result)
 
     # Optionally save to database
     if save and candidates:

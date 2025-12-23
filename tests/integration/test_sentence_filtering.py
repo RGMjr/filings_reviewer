@@ -5,17 +5,14 @@ Tests the end-to-end pipeline with sentence boundary detection enabled,
 verifying that cross-sentence false positives are filtered correctly.
 """
 
-import pytest
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Any
 
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import (
     CandidateGenerationConfig,
-    DEFAULT_CONFIG,
     get_high_precision_config,
     get_high_recall_config,
-    get_fast_config,
 )
 
 
@@ -24,7 +21,7 @@ class TestSentenceFilteringIntegration:
 
     def _make_segment(
         self, text: str, segment_type: str = "paragraph"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a test segment dict."""
         return {
             "source_segment_id": 1,

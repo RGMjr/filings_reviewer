@@ -4,8 +4,9 @@ Integration tests for bulk decision workflow (HRI-8).
 Tests the complete end-to-end bulk review workflow with a real database.
 """
 
-import pytest
 from decimal import Decimal
+
+import pytest
 
 from src.infra.db import DatabaseAdapter
 from src.web.app import create_app

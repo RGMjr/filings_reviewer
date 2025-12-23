@@ -4,12 +4,13 @@ Unit tests for E2 Rule Applicator.
 Tests pattern loading, caching, filtering logic, and metric precedence.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
+import pytest
+
+from src.review.models import CandidateFeatures, ReviewCandidate
 from src.review.rule_applicator import RuleApplicator
-from src.review.models import CandidateFeatures, LearnedPattern, ReviewCandidate
 
 
 class TestRuleApplicatorInit:
@@ -617,7 +618,7 @@ class TestGetStats:
         applicator._last_reload = datetime.now() - timedelta(seconds=2)
 
         # get_stats should trigger reload
-        stats = applicator.get_stats()
+        applicator.get_stats()
 
         # Should have reloaded
         assert mock_db.get_learned_patterns.call_count == 2

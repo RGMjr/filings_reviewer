@@ -32,9 +32,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
+from src.infra.logging_config import configure_logging
 from src.infra.sec_client import SECClient
 from src.universe.universe_builder import UniverseBuilder
-from src.infra.logging_config import configure_logging
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ def main():
         )
 
         logger.info("=" * 80)
-        logger.info(f"✓ Universe build complete!")
+        logger.info("✓ Universe build complete!")
         logger.info(f"  In-scope Phase 1 filings: {in_scope_count}")
         logger.info("=" * 80)
 

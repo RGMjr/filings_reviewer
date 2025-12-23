@@ -5,9 +5,8 @@ Verifies end-to-end that standalone page numbers before "Table of Contents"
 are filtered during candidate generation.
 """
 
-import pytest
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any
 
 from src.review.candidate_generator import CandidateGenerator
 
@@ -17,7 +16,7 @@ class TestIssue4StandaloneTOCFiltering:
 
     def _make_segment(
         self, text: str, segment_type: str = "paragraph"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a test segment dict."""
         return {
             "source_segment_id": 1,

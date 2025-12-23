@@ -82,7 +82,7 @@ class TestCreatePool:
         mock_pool_class.return_value = mock_pool
 
         with patch.dict(os.environ, {}, clear=True):
-            result = create_pool(
+            create_pool(
                 "postgresql://localhost/test",
                 min_size=5,
                 max_size=25,
@@ -213,7 +213,7 @@ class TestCheckPoolHealth:
 
     def test_healthy_pool(self):
         """Should return healthy PoolHealthReport when pool works."""
-        from src.infra.pool import check_pool_health, PoolHealthReport
+        from src.infra.pool import PoolHealthReport, check_pool_health
 
         mock_pool = MagicMock()
         mock_conn = MagicMock()
@@ -235,7 +235,7 @@ class TestCheckPoolHealth:
 
     def test_unhealthy_pool(self):
         """Should return unhealthy PoolHealthReport when pool fails."""
-        from src.infra.pool import check_pool_health, PoolHealthReport
+        from src.infra.pool import PoolHealthReport, check_pool_health
 
         mock_pool = MagicMock()
         mock_pool.connection.side_effect = Exception("Connection failed")
@@ -366,8 +366,8 @@ class TestExecuteBatch:
 
     def test_execute_batch_one_task_fails_raises_error(self):
         """Should raise PoolExecutionError when a task fails."""
-        from src.infra.pool import execute_batch
         from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         def task1():
             return "result1"
@@ -394,9 +394,10 @@ class TestExecuteBatch:
 
     def test_execute_batch_fail_fast_cancels_remaining(self):
         """Should cancel remaining tasks when fail_fast=True."""
-        from src.infra.pool import execute_batch
-        from src.infra.exceptions import PoolExecutionError
         import time
+
+        from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         executed = []
         started = []
@@ -429,9 +430,10 @@ class TestExecuteBatch:
 
     def test_execute_batch_timeout_raises_timeout_error(self):
         """Should raise PoolTimeoutError when execution exceeds timeout."""
-        from src.infra.pool import execute_batch
-        from src.infra.exceptions import PoolTimeoutError
         import time
+
+        from src.infra.exceptions import PoolTimeoutError
+        from src.infra.pool import execute_batch
 
         def slow_task():
             time.sleep(2.0)
@@ -446,9 +448,10 @@ class TestExecuteBatch:
 
     def test_execute_batch_cancellation_stops_pending(self):
         """Should cancel pending tasks when failure occurs."""
-        from src.infra.pool import execute_batch
-        from src.infra.exceptions import PoolExecutionError
         import time
+
+        from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         started = []
         completed = []
@@ -475,8 +478,8 @@ class TestExecuteBatch:
 
     def test_execute_batch_error_summary_readable(self):
         """Should provide readable error summary."""
-        from src.infra.pool import execute_batch
         from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         def failing_task():
             raise ValueError("Something went wrong")
@@ -510,7 +513,7 @@ class TestExecuteBatch:
 
     def test_pool_health_report_structure(self):
         """Should return PoolHealthReport with expected structure."""
-        from src.infra.pool import check_pool_health, PoolHealthReport
+        from src.infra.pool import PoolHealthReport, check_pool_health
 
         mock_pool = MagicMock()
         mock_conn = MagicMock()
@@ -562,8 +565,8 @@ class TestExecuteBatch:
 
     def test_pool_cleanup_logging(self):
         """Should log pool cleanup with timing information."""
-        from src.infra.pool import close_shared_pool, get_shared_pool
         from src.infra import pool
+        from src.infra.pool import close_shared_pool, get_shared_pool
 
         # Create a shared pool
         with patch("src.infra.pool.create_pool") as mock_create_pool:
@@ -589,8 +592,8 @@ class TestExecuteBatch:
 
     def test_task_descriptions_in_error_messages(self):
         """Should include task descriptions in error messages."""
-        from src.infra.pool import execute_batch
         from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         def failing_task():
             raise RuntimeError("Database connection failed")
@@ -612,8 +615,8 @@ class TestExecuteBatch:
 
     def test_partial_results_when_fail_fast_false(self):
         """Should return partial results when fail_fast=False."""
-        from src.infra.pool import execute_batch
         from src.infra.exceptions import PoolExecutionError
+        from src.infra.pool import execute_batch
 
         def task1():
             return "result1"

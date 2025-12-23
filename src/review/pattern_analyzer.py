@@ -28,14 +28,13 @@ Usage:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from src.infra.db import DatabaseAdapter
 from src.review.models import CandidateFeatures, LearnedPattern
 from src.review.statistical_tests import (
     chi_squared_test,
     compute_performance_metrics,
-    interpret_significance,
     t_test_independent,
 )
 
@@ -123,9 +122,9 @@ class PatternAnalyzer:
 
     def analyze_decisions(
         self,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        filing_id: int | None = None,
+        metric_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Analyze review decisions and compute feature importance.
 
@@ -175,7 +174,7 @@ class PatternAnalyzer:
             )
 
         # Count decisions by type
-        decision_counts: Dict[str, int] = {}
+        decision_counts: dict[str, int] = {}
         for d in decisions_data:
             decision = d["decision"]
             decision_counts[decision] = decision_counts.get(decision, 0) + 1
@@ -210,9 +209,9 @@ class PatternAnalyzer:
 
     def analyze_context_performance(
         self,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        filing_id: int | None = None,
+        metric_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Analyze accept/reject rates by context type and keyword direction.
 
@@ -258,7 +257,7 @@ class PatternAnalyzer:
             }
 
         # Initialize stats structure
-        context_stats: Dict[str, Dict[str, Any]] = {}
+        context_stats: dict[str, dict[str, Any]] = {}
         decisions_with_context = 0
 
         # Process each decision
@@ -322,11 +321,11 @@ class PatternAnalyzer:
 
     def generate_multiplier_recommendations(
         self,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
+        filing_id: int | None = None,
+        metric_id: str | None = None,
         min_sample_size: int = 10,
         baseline_precision: float = 0.5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate multiplier recommendations based on context performance data.
 
@@ -500,9 +499,9 @@ class PatternAnalyzer:
 
     def _load_decisions_with_features(
         self,
-        filing_id: Optional[int],
-        metric_id: Optional[str],
-    ) -> List[Dict[str, Any]]:
+        filing_id: int | None,
+        metric_id: str | None,
+    ) -> list[dict[str, Any]]:
         """
         Load decisions with features from database.
 
@@ -583,8 +582,8 @@ class PatternAnalyzer:
     def _compute_categorical_importance(
         self,
         feature_name: str,
-        decisions_data: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        decisions_data: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
         """
         Compute importance for categorical feature using chi-squared test.
 
@@ -647,7 +646,7 @@ class PatternAnalyzer:
             return None
 
         # Build value distribution
-        value_distribution: Dict[Any, Dict[str, int]] = {}
+        value_distribution: dict[Any, dict[str, int]] = {}
         for fval, dval in zip(feature_values, decision_values):
             if fval not in value_distribution:
                 value_distribution[fval] = {}
@@ -667,8 +666,8 @@ class PatternAnalyzer:
     def _compute_numeric_importance(
         self,
         feature_name: str,
-        decisions_data: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
+        decisions_data: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
         """
         Compute importance for numeric feature using t-test (accept vs reject).
 
@@ -704,7 +703,7 @@ class PatternAnalyzer:
         # Extract feature values by decision type
         accept_values = []
         reject_values = []
-        all_values_by_decision: Dict[str, List[float]] = {
+        all_values_by_decision: dict[str, list[float]] = {
             "accept": [],
             "reject": [],
             "reclassify": [],
@@ -770,9 +769,9 @@ class PatternAnalyzer:
 
     def _stratified_k_fold_split(
         self,
-        decisions_data: List[Dict[str, Any]],
+        decisions_data: list[dict[str, Any]],
         k: int = 5,
-    ) -> List[Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
+    ) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
         """
         Perform stratified k-fold split of decision data.
 
@@ -794,7 +793,7 @@ class PatternAnalyzer:
         import random
 
         # Group by decision type
-        decision_groups: Dict[str, List[Dict[str, Any]]] = {}
+        decision_groups: dict[str, list[dict[str, Any]]] = {}
         for d in decisions_data:
             decision = d["decision"]
             if decision not in decision_groups:
@@ -841,8 +840,8 @@ class PatternAnalyzer:
 
     def _get_significant_features(
         self,
-        decisions_data: List[Dict[str, Any]],
-    ) -> Set[str]:
+        decisions_data: list[dict[str, Any]],
+    ) -> set[str]:
         """
         Identify statistically significant features.
 
@@ -939,12 +938,12 @@ class PatternAnalyzer:
 
     def discover_patterns(
         self,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
-        pattern_type: Optional[str] = None,
+        filing_id: int | None = None,
+        metric_id: str | None = None,
+        pattern_type: str | None = None,
         use_db_evaluation: bool = False,
         include_two_feature_patterns: bool = False,
-    ) -> List[LearnedPattern]:
+    ) -> list[LearnedPattern]:
         """
         Discover high-precision patterns from review decisions.
 
@@ -1121,13 +1120,13 @@ class PatternAnalyzer:
 
     def discover_patterns_with_cross_validation(
         self,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
-        pattern_type: Optional[str] = None,
+        filing_id: int | None = None,
+        metric_id: str | None = None,
+        pattern_type: str | None = None,
         k: int = 5,
         max_variance: float = 0.1,
         min_cv_sample_size: int = 30,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Discover patterns using k-fold cross-validation for stability assessment.
 
@@ -1196,7 +1195,7 @@ class PatternAnalyzer:
 
         # Store metrics for each pattern across folds
         # Key: pattern_name -> Dict with "pattern" and "fold_metrics" List[Dict]
-        pattern_fold_metrics: Dict[str, Dict[str, Any]] = {}
+        pattern_fold_metrics: dict[str, dict[str, Any]] = {}
 
         # Evaluate each fold
         for fold_idx, (train_data, test_data) in enumerate(splits):
@@ -1349,8 +1348,8 @@ class PatternAnalyzer:
         return cv_results
 
     def detect_pattern_conflicts(
-        self, patterns: List[LearnedPattern]
-    ) -> Dict[str, Any]:
+        self, patterns: list[LearnedPattern]
+    ) -> dict[str, Any]:
         """
         Detect contradictory and redundant patterns.
 
@@ -1373,9 +1372,9 @@ class PatternAnalyzer:
             - Both have same pattern_type
             - Example: is_in_table=True → reject (general) vs is_in_table=True AND keyword_distance>50 → reject (specific)
         """
-        contradictory_pairs: List[Tuple[LearnedPattern, LearnedPattern]] = []
-        redundant_pairs: List[Tuple[LearnedPattern, LearnedPattern]] = []
-        warnings: List[str] = []
+        contradictory_pairs: list[tuple[LearnedPattern, LearnedPattern]] = []
+        redundant_pairs: list[tuple[LearnedPattern, LearnedPattern]] = []
+        warnings: list[str] = []
 
         # Check all pairs of patterns
         for i, pattern1 in enumerate(patterns):
@@ -1428,7 +1427,7 @@ class PatternAnalyzer:
         }
 
     def _conditions_equivalent(
-        self, cond1: List[Dict[str, Any]], cond2: List[Dict[str, Any]]
+        self, cond1: list[dict[str, Any]], cond2: list[dict[str, Any]]
     ) -> bool:
         """
         Check if two condition lists are equivalent (same field, op, value).
@@ -1444,7 +1443,7 @@ class PatternAnalyzer:
             return False
 
         # Normalize conditions for comparison (sort by field name)
-        def normalize(cond: Dict[str, Any]) -> Tuple[Any, Any, Any]:
+        def normalize(cond: dict[str, Any]) -> tuple[Any, Any, Any]:
             return (cond.get("field"), cond.get("op"), cond.get("value"))
 
         norm1 = sorted([normalize(c) for c in cond1])
@@ -1453,7 +1452,7 @@ class PatternAnalyzer:
         return norm1 == norm2
 
     def _is_subset_conditions(
-        self, general: List[Dict[str, Any]], specific: List[Dict[str, Any]]
+        self, general: list[dict[str, Any]], specific: list[dict[str, Any]]
     ) -> bool:
         """
         Check if general conditions are a subset of specific conditions.
@@ -1470,7 +1469,7 @@ class PatternAnalyzer:
             return False  # Not a proper subset
 
         # Normalize conditions
-        def normalize(cond: Dict[str, Any]) -> Tuple[Any, Any, Any]:
+        def normalize(cond: dict[str, Any]) -> tuple[Any, Any, Any]:
             return (cond.get("field"), cond.get("op"), cond.get("value"))
 
         gen_set = set([normalize(c) for c in general])
@@ -1481,10 +1480,10 @@ class PatternAnalyzer:
 
     def _generate_single_feature_patterns(
         self,
-        decisions_data: List[Dict[str, Any]],
+        decisions_data: list[dict[str, Any]],
         target_decision: str,
-        significant_features: Optional[Set[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        significant_features: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Generate single-feature candidate patterns.
 
@@ -1600,11 +1599,11 @@ class PatternAnalyzer:
 
     def _generate_two_feature_patterns(
         self,
-        decisions_data: List[Dict[str, Any]],
+        decisions_data: list[dict[str, Any]],
         target_decision: str,
-        significant_features: Optional[Set[str]] = None,
+        significant_features: set[str] | None = None,
         max_features: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Generate two-feature conjunctive patterns (P2.1).
 
@@ -1787,10 +1786,10 @@ class PatternAnalyzer:
 
     def _evaluate_pattern(
         self,
-        pattern_definition: Dict[str, Any],
-        decisions_data: List[Dict[str, Any]],
+        pattern_definition: dict[str, Any],
+        decisions_data: list[dict[str, Any]],
         target_decision: str,
-    ) -> Optional[LearnedPattern]:
+    ) -> LearnedPattern | None:
         """
         Evaluate pattern performance against decisions.
 
@@ -1867,8 +1866,8 @@ class PatternAnalyzer:
         )
 
     def _build_jsonb_where_clause(
-        self, pattern_definition: Dict[str, Any]
-    ) -> tuple[str, List[Any]]:
+        self, pattern_definition: dict[str, Any]
+    ) -> tuple[str, list[Any]]:
         """
         Build SQL WHERE clause from pattern conditions using JSONB operators.
 
@@ -1970,11 +1969,11 @@ class PatternAnalyzer:
 
     def _evaluate_pattern_db_side(
         self,
-        pattern_definition: Dict[str, Any],
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
+        pattern_definition: dict[str, Any],
+        filing_id: int | None = None,
+        metric_id: str | None = None,
         target_decision: str = "reject",
-    ) -> Optional[LearnedPattern]:
+    ) -> LearnedPattern | None:
         """
         Evaluate pattern performance using database-side queries.
 
@@ -2012,8 +2011,8 @@ class PatternAnalyzer:
         )
 
         # Build base WHERE clause for filing/metric filters
-        base_where_parts: List[str] = []
-        base_params: List[Any] = []
+        base_where_parts: list[str] = []
+        base_params: list[Any] = []
 
         if filing_id is not None:
             base_where_parts.append("rc.filing_id = %s")
@@ -2069,19 +2068,6 @@ class PatternAnalyzer:
             cursor.execute(fn_query, fn_params)
             false_negatives = cursor.fetchone()[0]
 
-            # Count true negatives (pattern doesn't match AND decision != target)
-            tn_query = f"""
-                SELECT COUNT(*)
-                FROM review_candidates rc
-                INNER JOIN review_decisions rd ON rc.candidate_id = rd.candidate_id
-                WHERE {base_where}
-                  AND NOT ({pattern_where})
-                  AND rd.decision != %s
-            """
-            tn_params = base_params + pattern_params + [target_decision]
-            cursor.execute(tn_query, tn_params)
-            true_negatives = cursor.fetchone()[0]
-
         finally:
             cursor.close()
 
@@ -2124,7 +2110,7 @@ class PatternAnalyzer:
 
     def generate_pattern_name(
         self,
-        pattern_definition: Dict[str, Any],
+        pattern_definition: dict[str, Any],
         pattern_type: str,
     ) -> str:
         """
@@ -2187,9 +2173,9 @@ class PatternAnalyzer:
 
     def save_patterns(
         self,
-        patterns: List[LearnedPattern],
-        auto_approve_threshold: Optional[float] = None,
-    ) -> Dict[str, int]:
+        patterns: list[LearnedPattern],
+        auto_approve_threshold: float | None = None,
+    ) -> dict[str, int]:
         """
         Save patterns to database.
 
@@ -2253,8 +2239,8 @@ class PatternAnalyzer:
     def generate_pattern_explanation(
         self,
         pattern: LearnedPattern,
-        filing_id: Optional[int] = None,
-        metric_id: Optional[str] = None,
+        filing_id: int | None = None,
+        metric_id: str | None = None,
         num_examples: int = 3,
     ) -> str:
         """
@@ -2361,7 +2347,7 @@ class PatternAnalyzer:
                 main_desc += f"  {i}. {desc}\n"
             return main_desc.rstrip()
 
-    def _describe_condition(self, condition: Dict[str, Any]) -> str:
+    def _describe_condition(self, condition: dict[str, Any]) -> str:
         """
         Convert a single condition to natural language.
 
@@ -2419,10 +2405,10 @@ class PatternAnalyzer:
     def _get_pattern_examples(
         self,
         pattern: LearnedPattern,
-        filing_id: Optional[int],
-        metric_id: Optional[str],
+        filing_id: int | None,
+        metric_id: str | None,
         num_examples: int,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get example candidates that match the pattern.
 

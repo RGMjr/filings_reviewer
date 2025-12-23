@@ -2,9 +2,13 @@
 Tests for extraction exceptions.
 """
 
-import pytest
 
-from src.extraction.exceptions import EncodingError, ExtractionError, HTMLParsingError, ValidationError
+from src.extraction.exceptions import (
+    EncodingError,
+    ExtractionError,
+    HTMLParsingError,
+    ValidationError,
+)
 
 
 class TestHTMLParsingError:

@@ -529,7 +529,6 @@ def test_encoding_both_fail_raises_error():
     """Test that EncodingError is raised when both UTF-8 and latin-1 fail."""
     # This test is difficult to create because latin-1 accepts all byte values (0-255)
     # So we'll test raise_on_error behavior instead with a corrupted file
-    from src.extraction.exceptions import EncodingError
 
     # Create binary file that will fail parsing
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".html", delete=False) as f:
@@ -775,7 +774,7 @@ class TestSEG7GracefulDegradation:
             pytest.skip("Test fixture not found: very_short_sample.html")
 
         segmenter = HTMLSegmenter(min_length=5)  # Lower min_length for short file
-        segments = segmenter.segment_filing(filing_id=1, html_path=str(html_path))
+        segmenter.segment_filing(filing_id=1, html_path=str(html_path))
 
         # May or may not have segments depending on min_length filtering
         # But should not raise any errors
@@ -2916,7 +2915,6 @@ class TestParallelSentenceDetection:
         try:
             # Patch the executor map method
             from concurrent.futures import ThreadPoolExecutor
-            original_map = ThreadPoolExecutor.map
             monkeypatch.setattr(ThreadPoolExecutor, "map", mock_executor_map)
 
             # Should fallback to sequential and complete successfully
@@ -4658,7 +4656,8 @@ class TestSEG9CachedDOMParsing:
 
     def test_split_with_cached_element_same_results(self, temp_html_file):
         """Splitting with cached element produces identical results to parsing raw_html."""
-        from bs4 import BeautifulSoup, Tag
+        from bs4 import BeautifulSoup
+
         from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
@@ -4700,9 +4699,10 @@ class TestSEG9CachedDOMParsing:
 
     def test_cached_element_avoids_parsing(self, temp_html_file, monkeypatch):
         """When cached element provided, BeautifulSoup is not called for main parsing."""
-        from bs4 import BeautifulSoup, Tag
-        from src.extraction.models import SourceSegment
+        from bs4 import BeautifulSoup
+
         import src.extraction.html_segmenter as segmenter_module
+        from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
 
@@ -4966,6 +4966,7 @@ class TestSEG9CachedDOMParsing:
     def test_nested_tables_only_top_level_extracted(self, temp_html_file):
         """Only top-level tables are extracted, nested tables within tables are skipped."""
         from bs4 import BeautifulSoup
+
         from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
@@ -5241,6 +5242,7 @@ class TestTableCellMarkers:
     def test_table_row_parser_works_with_markers(self):
         """TableRowParser should correctly parse text with markers."""
         from bs4 import BeautifulSoup
+
         from src.review.table_structure import TableRowParser
 
         html = """
@@ -5257,7 +5259,7 @@ class TestTableCellMarkers:
 
         # TableRowParser works with original HTML and marker text
         # It should still be able to parse the structure
-        parser = TableRowParser(str(table), text)
+        TableRowParser(str(table), text)
 
         # Verify text has markers
         assert "[CELL]" in text
@@ -5267,6 +5269,7 @@ class TestTableCellMarkers:
     def test_number_parsing_finds_values_with_markers(self):
         """Number parsing regex should find values despite markers."""
         import re
+
         from bs4 import BeautifulSoup
 
         html = """
@@ -5337,6 +5340,7 @@ class TestTableCellMarkers:
     def test_are_in_same_row_works_with_markers(self):
         """TableRowParser.are_in_same_row should work with marker text."""
         from bs4 import BeautifulSoup
+
         from src.review.table_structure import TableRowParser
 
         html = """

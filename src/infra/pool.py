@@ -27,10 +27,11 @@ import os
 import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+from collections.abc import Callable
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -40,8 +41,8 @@ from src.infra.exceptions import PoolExecutionError, PoolTimeoutError, TaskFailu
 logger = logging.getLogger(__name__)
 
 # Module-level singleton pool with thread-safe access
-_shared_pool: Optional[ConnectionPool] = None
-_shared_pool_conninfo: Optional[str] = None
+_shared_pool: ConnectionPool | None = None
+_shared_pool_conninfo: str | None = None
 _shared_pool_lock = threading.Lock()
 
 
@@ -63,9 +64,9 @@ class PoolHealthReport:
     total_connections: int
     idle_connections: int
     active_connections: int
-    test_query_elapsed: Optional[float] = None
+    test_query_elapsed: float | None = None
     timestamp: datetime = None
-    error: Optional[str] = None
+    error: str | None = None
 
     def __post_init__(self):
         """Set timestamp if not provided."""
@@ -74,13 +75,13 @@ class PoolHealthReport:
 
 
 def execute_batch(
-    tasks: List[Callable],
+    tasks: list[Callable],
     *,
-    max_workers: Optional[int] = None,
-    timeout: Optional[float] = None,
-    task_descriptions: Optional[List[str]] = None,
+    max_workers: int | None = None,
+    timeout: float | None = None,
+    task_descriptions: list[str] | None = None,
     fail_fast: bool = True,
-) -> List[Any]:
+) -> list[Any]:
     """Execute tasks concurrently using ThreadPoolExecutor with fail-fast error handling.
 
     This function provides structured error handling for concurrent task execution:
@@ -128,9 +129,9 @@ def execute_batch(
     if max_workers is None:
         max_workers = min(32, len(tasks))
 
-    results: List[Any] = [None] * len(tasks)
-    failures: List[TaskFailure] = []
-    future_to_index: Dict[Future, int] = {}
+    results: list[Any] = [None] * len(tasks)
+    failures: list[TaskFailure] = []
+    future_to_index: dict[Future, int] = {}
 
     start_time = time.time()
 
@@ -217,7 +218,7 @@ def execute_batch(
         )
 
 
-def get_pool_config() -> Dict[str, Any]:
+def get_pool_config() -> dict[str, Any]:
     """
     Load pool configuration from environment variables.
 
@@ -235,11 +236,11 @@ def get_pool_config() -> Dict[str, Any]:
 
 def create_pool(
     connection_string: str,
-    min_size: Optional[int] = None,
-    max_size: Optional[int] = None,
-    timeout: Optional[float] = None,
-    max_idle: Optional[float] = None,
-    reconnect_timeout: Optional[float] = None,
+    min_size: int | None = None,
+    max_size: int | None = None,
+    timeout: float | None = None,
+    max_idle: float | None = None,
+    reconnect_timeout: float | None = None,
     open_pool: bool = True,
 ) -> ConnectionPool:
     """
@@ -393,7 +394,7 @@ def close_shared_pool() -> None:
                 _shared_pool_conninfo = None
 
 
-def get_pool_stats(pool: ConnectionPool) -> Dict[str, Any]:
+def get_pool_stats(pool: ConnectionPool) -> dict[str, Any]:
     """
     Get statistics about a connection pool.
 

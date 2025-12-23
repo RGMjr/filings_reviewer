@@ -5,10 +5,10 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
-from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
-
+from src.review.number_parsing import NUMBER_REGEX, NumberParser
 
 # =============================================================================
 # NUMBER_REGEX Tests

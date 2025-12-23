@@ -7,14 +7,12 @@ Provides database setup/teardown and fixture loading utilities.
 import json
 import os
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import pytest
 from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import FilingMetadata, MockSECClient
-
 
 # =============================================================================
 # Test Data Helper Functions
@@ -28,8 +26,8 @@ def create_test_company(
     db: DatabaseAdapter,
     cik: str = "0001234567",
     company_name: str = "Test Corp",
-    ticker: Optional[str] = None,
-    industry_code: Optional[str] = None,
+    ticker: str | None = None,
+    industry_code: str | None = None,
 ) -> int:
     """
     Create a test company and return company_id.
@@ -51,14 +49,14 @@ def create_test_company(
 
 def create_test_company_and_filing(
     db: DatabaseAdapter,
-    company_id: Optional[int] = None,
+    company_id: int | None = None,
     cik: str = "0001234567",
     accession_number: str = "0001234567-24-000001",
     form_type: str = "S-1",
     filing_date: str = "2024-01-15",
     company_name: str = "Test Corp",
-    industry_code: Optional[str] = None,
-) -> Tuple[int, int]:
+    industry_code: str | None = None,
+) -> tuple[int, int]:
     """
     Create a test company and filing.
 
@@ -96,16 +94,16 @@ def create_test_company_and_filing(
 
 def create_test_candidate(
     db: DatabaseAdapter,
-    filing_id: Optional[int] = None,
-    company_id: Optional[int] = None,
+    filing_id: int | None = None,
+    company_id: int | None = None,
     char_position: int = 100,
     context_text: str = "We have 10,000 customers.",
     raw_number_text: str = "10,000",
     triggering_keyword: str = "customers",
     keyword_distance: int = 15,
     keyword_position: str = "after",
-    suggested_metric_id: Optional[str] = None,
-) -> Tuple[int, int, int]:
+    suggested_metric_id: str | None = None,
+) -> tuple[int, int, int]:
     """
     Create a test candidate (with company and filing if needed).
 
@@ -143,14 +141,14 @@ def create_test_candidate(
 
 def create_test_decision(
     db: DatabaseAdapter,
-    candidate_id: Optional[int] = None,
+    candidate_id: int | None = None,
     decision: str = "accept",
-    assigned_metric_id: Optional[str] = "test_metric",
-    rejection_reason: Optional[str] = None,
-    rejection_category: Optional[str] = None,
-    reviewer_id: Optional[str] = None,
-    review_time_seconds: Optional[int] = None,
-) -> Tuple[int, int, int, int]:
+    assigned_metric_id: str | None = "test_metric",
+    rejection_reason: str | None = None,
+    rejection_category: str | None = None,
+    reviewer_id: str | None = None,
+    review_time_seconds: int | None = None,
+) -> tuple[int, int, int, int]:
     """
     Create a test review decision (with candidate, filing, company if needed).
 
@@ -288,7 +286,7 @@ def clean_db(test_db_adapter):
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
 
-def load_fixture_metadata(fixture_name: str) -> Dict:
+def load_fixture_metadata(fixture_name: str) -> dict:
     """
     Load fixture metadata from JSON file.
 
@@ -310,7 +308,7 @@ def load_fixture_metadata(fixture_name: str) -> Dict:
         return json.load(f)
 
 
-def metadata_to_filing_metadata(metadata: Dict) -> FilingMetadata:
+def metadata_to_filing_metadata(metadata: dict) -> FilingMetadata:
     """
     Convert fixture metadata to FilingMetadata object.
 

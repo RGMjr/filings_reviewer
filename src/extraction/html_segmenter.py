@@ -12,13 +12,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+
 from bs4 import BeautifulSoup, Tag
 
+from src.review.boundary_detection import BoundaryDetector
+
+from .exceptions import EncodingError, HTMLParsingError, ValidationError
 from .models import SourceSegment
 from .validators import SegmentValidator
-from .exceptions import ValidationError, EncodingError, HTMLParsingError
-from src.review.boundary_detection import BoundaryDetector
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,11 @@ class SegmentationMetrics:
 
     filing_id: int
     total_segments: int = 0
-    segment_counts_by_type: Dict[str, int] = field(default_factory=dict)
+    segment_counts_by_type: dict[str, int] = field(default_factory=dict)
     total_text_length: int = 0
     parse_time_seconds: float = 0.0
     encoding_used: str = "utf-8"
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def avg_segment_length(self) -> float:
         """Calculate average segment text length."""
@@ -160,13 +161,13 @@ class HTMLSegmenter:
         SegmentValidator.validate_min_max_length(min_length, max_length)
         self.min_length = min_length
         self.max_length = max_length
-        self._metrics: Optional[SegmentationMetrics] = None
+        self._metrics: SegmentationMetrics | None = None
         # SEG3: Singleton BoundaryDetector to reduce object allocation overhead
         self._boundary_detector = BoundaryDetector()
 
     def segment_filing(
         self, filing_id: int, html_path: str, raise_on_error: bool = False
-    ) -> List[SourceSegment]:
+    ) -> list[SourceSegment]:
         """
         Parse filing HTML and return list of source segments.
 
@@ -255,7 +256,7 @@ class HTMLSegmenter:
         # Cache elements by sequence index for composite splitting (SEG9 optimization)
         # This avoids redundant BeautifulSoup parsing in _split_composite_segment()
         # The cache is cleared after splitting to release DOM references
-        element_cache: Dict[int, Tag] = {}
+        element_cache: dict[int, Tag] = {}
 
         # Extract all segments
         for element in main_content.find_all(
@@ -373,7 +374,7 @@ class HTMLSegmenter:
 
         return segments
 
-    def _read_html_file_with_encoding(self, html_path: str) -> Tuple[Optional[str], str]:
+    def _read_html_file_with_encoding(self, html_path: str) -> tuple[str | None, str]:
         """Read HTML file with automatic encoding detection and fallback cascade.
 
         Detection order (SEG7):
@@ -392,7 +393,7 @@ class HTMLSegmenter:
             EncodingError: If all encoding attempts fail
         """
         path = Path(html_path)
-        attempted_encodings: List[str] = []
+        attempted_encodings: list[str] = []
 
         # Step 1: Try auto-detection if charset-normalizer is available
         if CHARSET_NORMALIZER_AVAILABLE:
@@ -448,7 +449,7 @@ class HTMLSegmenter:
                 position=position,
             )
 
-    def _detect_encoding_auto(self, path: Path) -> Optional[str]:
+    def _detect_encoding_auto(self, path: Path) -> str | None:
         """Detect file encoding using charset-normalizer library.
 
         Reads up to ENCODING_DETECTION_MAX_BYTES (64KB) for detection to handle
@@ -510,7 +511,7 @@ class HTMLSegmenter:
             logger.debug(f"Encoding auto-detection failed for {path}: {e}")
             return None
 
-    def _read_html_file(self, html_path: str) -> Optional[str]:
+    def _read_html_file(self, html_path: str) -> str | None:
         """DEPRECATED: Use _read_html_file_with_encoding() instead.
 
         Kept for backward compatibility with external callers.
@@ -521,7 +522,7 @@ class HTMLSegmenter:
         except EncodingError:
             return None
 
-    def _find_main_content(self, soup: BeautifulSoup) -> Optional[Tag]:
+    def _find_main_content(self, soup: BeautifulSoup) -> Tag | None:
         """
         Find the main content area of the filing.
 
@@ -610,7 +611,7 @@ class HTMLSegmenter:
             result = result.replace(char, f"\\{char}")
         return result
 
-    def _generate_css_selector(self, element: Tag) -> Optional[str]:
+    def _generate_css_selector(self, element: Tag) -> str | None:
         """
         Generate a CSS selector path to uniquely identify this element.
 
@@ -655,7 +656,7 @@ class HTMLSegmenter:
 
     def _compute_element_offsets(
         self, element: Tag, search_start: int = 0
-    ) -> Tuple[Optional[int], Optional[int]]:
+    ) -> tuple[int | None, int | None]:
         """
         Compute character offsets for an HTML element in the original HTML.
 
@@ -709,7 +710,7 @@ class HTMLSegmenter:
 
     def _extract_segment(
         self, element: Tag, filing_id: int, sequence_index: int
-    ) -> Optional[SourceSegment]:
+    ) -> SourceSegment | None:
         """
         Extract a single segment from an HTML element.
 
@@ -788,8 +789,8 @@ class HTMLSegmenter:
     def _split_composite_segment(
         self,
         segment: SourceSegment,
-        parsed_element: Optional[Tag] = None
-    ) -> List[SourceSegment]:
+        parsed_element: Tag | None = None
+    ) -> list[SourceSegment]:
         """
         Split a segment containing both text and tables into separate segments.
 
@@ -1021,7 +1022,7 @@ class HTMLSegmenter:
 
         return False
 
-    def _matches_patterns(self, text: str, patterns: List[str]) -> bool:
+    def _matches_patterns(self, text: str, patterns: list[str]) -> bool:
         """Check if text matches any of the given regex patterns."""
         text_lower = text.lower()
         for pattern in patterns:
@@ -1164,8 +1165,8 @@ class HTMLSegmenter:
         return segment
 
     def _apply_sentence_detection_parallel(
-        self, segments: List[SourceSegment]
-    ) -> List[SourceSegment]:
+        self, segments: list[SourceSegment]
+    ) -> list[SourceSegment]:
         """
         Apply sentence detection in parallel for performance (SEG11).
 
@@ -1229,7 +1230,7 @@ class HTMLSegmenter:
         )
         return text[:max_length]
 
-    def _extract_last_sentence(self, text: str) -> Optional[str]:
+    def _extract_last_sentence(self, text: str) -> str | None:
         """
         Extract the last sentence from text.
 
@@ -1302,7 +1303,7 @@ class HTMLSegmenter:
                     return True
         return False
 
-    def _merge_definition_segments(self, segments: List[SourceSegment]) -> List[SourceSegment]:
+    def _merge_definition_segments(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Merge segments that split a definition across HTML elements.
 
@@ -1323,7 +1324,7 @@ class HTMLSegmenter:
         if not segments:
             return segments
 
-        merged: List[SourceSegment] = []
+        merged: list[SourceSegment] = []
         i = 0
 
         while i < len(segments):
@@ -1435,7 +1436,7 @@ class HTMLSegmenter:
 
         return segment
 
-    def _create_table_summary(self, raw_html: Optional[str], raw_text: str) -> str:
+    def _create_table_summary(self, raw_html: str | None, raw_text: str) -> str:
         """
         Create a summary of a large table with tri-region sampling.
 
@@ -1564,7 +1565,7 @@ class HTMLSegmenter:
     # Context Enrichment Methods (Phase 5 of redesign)
     # =========================================================================
 
-    def _add_context_overlap(self, segments: List[SourceSegment]) -> List[SourceSegment]:
+    def _add_context_overlap(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Add last sentence from previous segment as context_prefix.
 
@@ -1594,7 +1595,7 @@ class HTMLSegmenter:
 
         return segments
 
-    def _calculate_document_positions(self, segments: List[SourceSegment]) -> List[SourceSegment]:
+    def _calculate_document_positions(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Calculate relative position of each segment in the document.
 
@@ -1633,8 +1634,8 @@ class HTMLSegmenter:
         list_element: Tag,
         filing_id: int,
         base_sequence: int,
-        intro_text: Optional[str] = None,
-    ) -> List[SourceSegment]:
+        intro_text: str | None = None,
+    ) -> list[SourceSegment]:
         """
         Extract list items as separate segments with context.
 
@@ -1695,7 +1696,7 @@ class HTMLSegmenter:
 
         return segments
 
-    def _get_list_intro_text(self, list_element: Tag) -> Optional[str]:
+    def _get_list_intro_text(self, list_element: Tag) -> str | None:
         """
         Get the introductory text before a list.
 
@@ -1727,7 +1728,7 @@ class HTMLSegmenter:
 
         return None
 
-    def _build_heading_cache(self, main_content: Tag) -> List[Tuple[int, str, str]]:
+    def _build_heading_cache(self, main_content: Tag) -> list[tuple[int, str, str]]:
         """
         Pre-build a cache of all headings with their source line positions.
 
@@ -1747,7 +1748,7 @@ class HTMLSegmenter:
         """
         headings = []
         # Build position map for all elements (enables O(1) position lookup)
-        self._element_position_map: Dict[int, int] = {}
+        self._element_position_map: dict[int, int] = {}
 
         for i, element in enumerate(main_content.descendants):
             # Store position for all elements
@@ -1793,7 +1794,7 @@ class HTMLSegmenter:
         _, nearest_level, nearest_text = self._heading_cache[nearest_idx]
 
         # Collect headings: level -> text (nearest heading is always included)
-        collected: Dict[int, str] = {nearest_level: nearest_text}
+        collected: dict[int, str] = {nearest_level: nearest_text}
 
         # Track the minimum level we've seen so far (to handle level resets)
         # A heading at level L only contributes if it's at a higher level (smaller number)
@@ -1834,8 +1835,8 @@ class HTMLSegmenter:
         return path
 
     def _get_section_from_cache(
-        self, element: Optional[Tag], element_position: int
-    ) -> Tuple[Optional[str], Optional[str]]:
+        self, element: Tag | None, element_position: int
+    ) -> tuple[str | None, str | None]:
         """
         Use binary search to find nearest preceding heading (SEG1) and build
         hierarchical section path (SEG6).
@@ -1874,7 +1875,7 @@ class HTMLSegmenter:
 
         return None, None
 
-    def _extract_section_info(self, element: Tag) -> Tuple[Optional[str], Optional[str]]:
+    def _extract_section_info(self, element: Tag) -> tuple[str | None, str | None]:
         """
         Extract section path and heading from element's position in DOM.
 
@@ -1927,7 +1928,7 @@ class HTMLSegmenter:
         text = soup.get_text()
         return self._normalize_text(text)
 
-    def get_metrics(self) -> Optional[SegmentationMetrics]:
+    def get_metrics(self) -> SegmentationMetrics | None:
         """Get metrics from most recent segmentation.
 
         Returns:
@@ -1943,7 +1944,7 @@ class HTMLSegmenter:
 
 
 # Convenience function
-def segment_filing_html(filing_id: int, html_path: str) -> List[SourceSegment]:
+def segment_filing_html(filing_id: int, html_path: str) -> list[SourceSegment]:
     """
     Convenience function to segment a filing HTML file.
 

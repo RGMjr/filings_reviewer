@@ -13,7 +13,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
 
 import requests
 
@@ -38,8 +37,8 @@ class FilingContent:
     cik: str
     accession_number: str
     html_path: str
-    txt_path: Optional[str] = None
-    fetched_at: Optional[datetime] = None
+    txt_path: str | None = None
+    fetched_at: datetime | None = None
 
 
 class FilingFetcher:
@@ -130,7 +129,7 @@ class FilingFetcher:
 
     def _validate_filing_content(
         self, html: str, cik: str, accession_number: str
-    ) -> tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Validate that HTML content is a real SEC filing, not an error page.
 
@@ -262,7 +261,7 @@ class FilingFetcher:
 
     def fetch_filing(
         self, filing_metadata: FilingMetadata, fetch_txt: bool = True
-    ) -> Optional[FilingContent]:
+    ) -> FilingContent | None:
         """
         Download and cache a single filing.
 
@@ -422,8 +421,8 @@ class FilingFetcher:
     def _update_database(
         self,
         content: FilingContent,
-        error: Optional[str],
-        resolved_url: Optional[str] = None,
+        error: str | None,
+        resolved_url: str | None = None,
     ) -> bool:
         """
         Update database to mark filing as fetched.
@@ -505,7 +504,7 @@ class FilingFetcher:
 
     def get_filing_content(
         self, cik: str, accession_number: str
-    ) -> Optional[FilingContent]:
+    ) -> FilingContent | None:
         """
         Get cached filing content if it exists.
 
@@ -532,7 +531,7 @@ class FilingFetcher:
 
     def fetch_batch(
         self,
-        filings: List[FilingMetadata],
+        filings: list[FilingMetadata],
         fetch_txt: bool = True,
         max_failures: int = 10,
     ) -> dict:
@@ -589,7 +588,7 @@ class FilingFetcher:
         logger.info(f"Batch fetch complete: {stats}")
         return stats
 
-    def get_unfetched_filings(self, limit: int = 100) -> List[dict]:
+    def get_unfetched_filings(self, limit: int = 100) -> list[dict]:
         """
         Get list of in-scope filings that haven't been fetched yet.
 

@@ -6,8 +6,7 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 
 import pytest
 
-from src.review.context_extraction import ContextExtractor, DEFAULT_CONTEXT_WORDS
-
+from src.review.context_extraction import DEFAULT_CONTEXT_WORDS, ContextExtractor
 
 # =============================================================================
 # ContextExtractor.extract_context Tests

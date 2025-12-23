@@ -1,7 +1,7 @@
 """Tests for prompt templates module."""
 
+
 import pytest
-import json
 
 from src.llm.prompts import PromptTemplates
 

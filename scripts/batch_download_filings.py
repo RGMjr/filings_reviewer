@@ -37,10 +37,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import SECClient, FilingMetadata
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging, get_timestamped_log_path
+from src.infra.sec_client import FilingMetadata, SECClient
 
 # Configure logging with file output for batch operations
 configure_logging(
@@ -342,7 +342,7 @@ def main():
 
         # Next steps guidance
         if stats_after.get("pending", 0) > 0:
-            logger.info(f"Next steps:")
+            logger.info("Next steps:")
             logger.info(
                 f"  • {stats_after['pending']} filings still pending - run again to continue"
             )

@@ -5,14 +5,14 @@ These cover basic text extraction behavior and guard against regressions in the
 extraction_method flag expected by the analysis schema.
 """
 
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
 
 from src.extraction.models import SourceSegment
 from src.extraction.value_extractor import (
     ValueExtractor,
-    verify_quote_in_source,
     _normalize_text,
+    verify_quote_in_source,
 )
 
 
@@ -1155,11 +1155,6 @@ class TestFalsePositiveFiltering:
 
     def test_filter_exception_handled(self):
         """Extraction continues if filter raises exception."""
-        segment = build_segment(
-            raw_text="We had 5000 active customers.",
-            candidate_metric_ids=["cm_active_customers_total"],
-        )
-
         extractor = ValueExtractor()
 
         # Force an exception scenario by passing invalid data

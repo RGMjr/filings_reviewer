@@ -7,7 +7,7 @@ and fetching candidate data. All endpoints return JSON responses.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import psycopg
 from flask import Blueprint, g, jsonify, request, session
@@ -893,7 +893,7 @@ def get_filing_progress(filing_id: int):
 # =============================================================================
 
 
-def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_decision_request(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate decision request data.
 
@@ -906,7 +906,7 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
         Dict of field_name -> error message
         Empty dict if validation passes
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     # Validate required fields
     if error := _validate_candidate_id(data.get("candidate_id")):
@@ -932,7 +932,7 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_bulk_decision_request(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate bulk decision request data.
 
@@ -943,7 +943,7 @@ def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
         Dict of field_name -> error message
         Empty dict if validation passes
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     # Validate candidate_ids
     candidate_ids = data.get("candidate_ids")
@@ -984,7 +984,7 @@ def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_candidate_id(value: Any) -> Optional[str]:
+def _validate_candidate_id(value: Any) -> str | None:
     """
     Validate candidate_id field.
 
@@ -1001,7 +1001,7 @@ def _validate_candidate_id(value: Any) -> Optional[str]:
     return None
 
 
-def _validate_decision_type(value: Any) -> Optional[str]:
+def _validate_decision_type(value: Any) -> str | None:
     """
     Validate decision type field.
 
@@ -1019,8 +1019,8 @@ def _validate_decision_type(value: Any) -> Optional[str]:
 
 
 def _validate_decision_specific_fields(
-    decision: str, data: Dict[str, Any]
-) -> Dict[str, str]:
+    decision: str, data: dict[str, Any]
+) -> dict[str, str]:
     """
     Validate fields specific to the decision type.
 
@@ -1039,8 +1039,8 @@ def _validate_decision_specific_fields(
 
 
 def _validate_accept_or_reclassify_decision(
-    decision: str, data: Dict[str, Any]
-) -> Dict[str, str]:
+    decision: str, data: dict[str, Any]
+) -> dict[str, str]:
     """
     Validate fields required for accept or reclassify decisions.
 
@@ -1051,7 +1051,7 @@ def _validate_accept_or_reclassify_decision(
     Returns:
         Dict of field_name -> error message
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     if error := _validate_assigned_metric_id(
         data.get("assigned_metric_id"), decision
@@ -1061,7 +1061,7 @@ def _validate_accept_or_reclassify_decision(
     return errors
 
 
-def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_reject_decision(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate fields required for reject decisions.
 
@@ -1071,7 +1071,7 @@ def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
     Returns:
         Dict of field_name -> error message
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     if error := _validate_rejection_category(data.get("rejection_category")):
         errors["rejection_category"] = error
@@ -1084,7 +1084,7 @@ def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_assigned_metric_id(value: Any, decision: str) -> Optional[str]:
+def _validate_assigned_metric_id(value: Any, decision: str) -> str | None:
     """
     Validate assigned_metric_id field.
 
@@ -1102,7 +1102,7 @@ def _validate_assigned_metric_id(value: Any, decision: str) -> Optional[str]:
     return None
 
 
-def _validate_rejection_category(value: Any) -> Optional[str]:
+def _validate_rejection_category(value: Any) -> str | None:
     """
     Validate rejection_category field.
 
@@ -1123,7 +1123,7 @@ def _validate_rejection_category(value: Any) -> Optional[str]:
 
 def _validate_text_field(
     value: Any, field_name: str, max_length: int
-) -> Optional[str]:
+) -> str | None:
     """
     Validate optional text field with maximum length.
 
@@ -1140,7 +1140,7 @@ def _validate_text_field(
     return None
 
 
-def _validate_review_time(value: Any) -> Optional[str]:
+def _validate_review_time(value: Any) -> str | None:
     """
     Validate review_time_seconds field.
 
@@ -1158,7 +1158,7 @@ def _validate_review_time(value: Any) -> Optional[str]:
 
 def _get_next_candidate_info(
     db, filing_id: int, current_candidate_id: int
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Get next pending candidate for the same filing.
 

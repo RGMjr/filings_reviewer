@@ -8,8 +8,6 @@ import os
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.infra.pool import PoolHealthReport
 
 
@@ -183,9 +181,9 @@ class TestCreateAppPoolIntegration:
                     os.environ,
                     {"DATABASE_URL": "postgresql://localhost/test"},
                 ):
-                    from src.web.app import close_pool, create_app
+                    from src.web.app import create_app
 
-                    app = create_app("testing")
+                    _app = create_app("testing")
 
                     # Verify atexit.register was called with close_pool and app
                     mock_atexit.assert_called()

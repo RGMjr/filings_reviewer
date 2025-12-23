@@ -8,10 +8,8 @@ and assertion utilities for comparing extraction results.
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
 
 from src.extraction.models import SourceSegment
-
 
 # Directory for golden files
 GOLDEN_DIR = Path(__file__).parent / "golden"
@@ -67,7 +65,7 @@ def create_temp_html_file(content: str, suffix: str = ".html") -> str:
         return f.name
 
 
-def assert_segments_match(actual: List[SourceSegment], expected: dict, tolerance: float = 0.05) -> None:
+def assert_segments_match(actual: list[SourceSegment], expected: dict, tolerance: float = 0.05) -> None:
     """Assert segments match golden file expectations.
 
     Compares actual segmentation results against expected values from golden file.
@@ -104,7 +102,7 @@ def assert_segments_match(actual: List[SourceSegment], expected: dict, tolerance
     ), f"Segment count {len(actual)} not in expected range [{min_count}, {max_count}] (target: {expected_count})"
 
     # Check segment type distribution
-    actual_types: Dict[str, int] = {}
+    actual_types: dict[str, int] = {}
     for segment in actual:
         actual_types[segment.segment_type] = actual_types.get(segment.segment_type, 0) + 1
 

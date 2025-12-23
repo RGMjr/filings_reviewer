@@ -33,9 +33,8 @@ Usage:
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +48,9 @@ class TableRow:
     text_end: int  # Character position where row text ends
     row_text: str  # The actual text content of this row
     has_header: bool  # Whether this row contains a row header (first cell)
-    header_text: Optional[str] = None  # Text content of the row header (first cell)
-    header_start: Optional[int] = None  # Start position of header text
-    header_end: Optional[int] = None  # End position of header text
+    header_text: str | None = None  # Text content of the row header (first cell)
+    header_start: int | None = None  # Start position of header text
+    header_end: int | None = None  # End position of header text
 
 
 class TableRowParser:
@@ -72,7 +71,7 @@ class TableRowParser:
         """
         self.html = html
         self.extracted_text = extracted_text
-        self.rows: Optional[List[TableRow]] = None
+        self.rows: list[TableRow] | None = None
         self._parse_rows()
 
     def _parse_rows(self) -> None:
@@ -195,7 +194,7 @@ class TableRowParser:
 
         return -1
 
-    def get_row_at_position(self, position: int) -> Optional[TableRow]:
+    def get_row_at_position(self, position: int) -> TableRow | None:
         """
         Get the table row that contains the given character position.
 
@@ -237,7 +236,7 @@ class TableRowParser:
 
         return row1.row_index == row2.row_index
 
-    def get_rows(self) -> List[TableRow]:
+    def get_rows(self) -> list[TableRow]:
         """Get list of all parsed table rows."""
         return self.rows or []
 
