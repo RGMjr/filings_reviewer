@@ -28,13 +28,17 @@ beautifulsoup4>=4.12.0
 # Encoding detection - Automatic charset detection for legacy SEC filings
 charset-normalizer>=3.3.0
 
-# Classical ML used by the learned metric classifier prototype
-scikit-learn>=1.4.0
-joblib>=1.3.0
-
 # Optional: Faster HTML/XML parser for BeautifulSoup (fallback: html.parser)
 # Uncomment if processing speed becomes a bottleneck
 # lxml>=4.9.0
+
+# -----------------------------------------------------------------------------
+# Machine Learning Utilities
+# -----------------------------------------------------------------------------
+
+# Lightweight TF-IDF + logistic regression metric classifier tooling
+joblib>=1.3.0
+scikit-learn>=1.4.0
 
 # -----------------------------------------------------------------------------
 # LLM Integration

@@ -106,11 +106,22 @@ METRIC_NAME_MAPPING = {
     "net_revenue_retention": "cm_net_revenue_retention",
     "nrr": "cm_net_revenue_retention",
     "net_dollar_retention": "cm_net_revenue_retention",
+    "net_dollar_retention_rate": "cm_net_revenue_retention",
     "ndr": "cm_net_revenue_retention",
     "revenue_retention": "cm_net_revenue_retention",
 
     "gross_revenue_retention": "cm_gross_revenue_retention",
     "grr": "cm_gross_revenue_retention",
+
+    # Extended metrics - customer counts specific
+    "paid_customers": "cm_customers_period_end",
+    "total_paid_customers": "cm_customers_period_end",
+    "paid_customer_count": "cm_customers_period_end",
+    
+    "paid_customers_100k": "cm_large_customers_period_end",
+    "paid_customers_100k+": "cm_large_customers_period_end",
+    "customers_over_100k": "cm_large_customers_period_end",
+    "large_customers": "cm_large_customers_period_end",
 }
 
 # Create reverse mapping for validation
@@ -733,6 +744,7 @@ class ValueExtractor:
         prompt = PromptTemplates.value_extraction_from_text(
             segment_text=segment.raw_text[:8000],  # Limit to 8000 chars
             metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response
@@ -917,7 +929,10 @@ class ValueExtractor:
         table_html = segment.raw_html[:4000]  # Limit HTML
 
         prompt = PromptTemplates.value_extraction_from_table(
-            table_text=table_text, table_html=table_html, metric_names=metric_names
+            table_text=table_text,
+            table_html=table_html,
+            metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response

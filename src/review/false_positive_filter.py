@@ -111,44 +111,44 @@ DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}"),
     # Month DD, YYYY
     re.compile(
-        r"(?:January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|"
+        r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # DD Month YYYY
     re.compile(
-        r"\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{4}",
+        r"\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Temporal phrases with dates - "as of January 31, 2019"
     re.compile(
-        r"\bas\s+of\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bas\s+of\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # "ended January 31, 2019"
     re.compile(
-        r"\bended\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # "beginning January 31, 2019" or "beginning of period"
     re.compile(
-        r"\bbeginning\s+(?:of\s+)?(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bbeginning\s+(?:of\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Fiscal year references - "Year Ended January 31, 2019"
     re.compile(
-        r"\byear\s+ended\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\byear\s+ended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Quarter references - "Three Months Ended April 30, 2018"
     re.compile(
-        r"\b(?:three|six|nine|twelve)\s+months\s+ended\s+(?:January|February|March|"
-        r"April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\b(?:three|six|nine|twelve)\s+months\s+ended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|"
+        r"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
 ]
@@ -428,12 +428,19 @@ class FalsePositiveFilter:
                     return True, "likely_year"
 
         # Check if number appears near "Table of Contents" header
-        if is_near_table_of_contents(text, start, self.toc_proximity_chars):
-            logger.debug(
-                f"TOC proximity filter: number={number.raw_text} "
-                f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
-            )
-            return True, "toc_proximity"
+        # Only filter if it looks like a page number (small integer, no currency/decimals)
+        # Real metrics (e.g. "31.0 million") often appear on pages with TOC headers
+        is_plain_count = number.unit == "count"
+        is_integer_format = "." not in number.raw_text
+        is_small_value = value is not None and abs(float(value)) < 1000
+        
+        if is_plain_count and is_integer_format and is_small_value:
+            if is_near_table_of_contents(text, start, self.toc_proximity_chars):
+                logger.debug(
+                    f"TOC proximity filter: number={number.raw_text} "
+                    f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+                )
+                return True, "toc_proximity"
 
         # Check if number is part of a TOC page reference with dot leaders
         if is_toc_page_reference(text, start, self.toc_dot_leader_window):
@@ -444,9 +451,9 @@ class FalsePositiveFilter:
             return True, "toc_page_reference"
 
         # Check if number is part of a date pattern
-        # Look at surrounding context (30 chars each side)
-        context_start = max(0, start - 30)
-        context_end = min(len(text), end + 30)
+        # Look at surrounding context (100 chars each side to catch longer phrases)
+        context_start = max(0, start - 100)
+        context_end = min(len(text), end + 100)
         local_context = text[context_start:context_end]
 
         # Calculate the number's position relative to the local context
@@ -454,16 +461,16 @@ class FalsePositiveFilter:
         num_rel_end = end - context_start
 
         for pattern in DATE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
+            # FIX: Use finditer to check ALL matches in the context, not just the first one
+            for match in pattern.finditer(local_context):
                 # Check if our number overlaps with the date match (in local coords)
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "part_of_date"
 
         # Check for false positive context patterns (page refs, notes, etc.)
         for pattern in FALSE_POSITIVE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
+            # FIX: Use finditer to check ALL matches inside the context
+            for match in pattern.finditer(local_context):
                 # Check if our number overlaps with the reference pattern
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "reference_number"

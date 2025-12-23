@@ -7,22 +7,50 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Set
+from typing import Callable, List, Optional, Set
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from joblib import load
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.preprocessing import MultiLabelBinarizer
 
-from src.extraction.metric_classifier import MetricClassifier, MetricClassifierConfig
+from src.extraction.metric_classifier import MetricClassifier
 from src.extraction.models import SourceSegment
 
 
 LabelSet = Set[str]
 
 
-def load_dataset(csv_path: Path) -> List[tuple]:
+class LearnedMetricClassifier:
+    """Lightweight wrapper for the trained TF-IDF + logistic regression model."""
+
+    def __init__(
+        self,
+        model_path: Path,
+        fallback_predictor: Optional[Callable[[str], LabelSet]] = None,
+    ) -> None:
+        bundle = load(model_path)
+        self.vectorizer = bundle["vectorizer"]
+        self.classifier = bundle["classifier"]
+        self.label_binarizer = bundle["label_binarizer"]
+        self._fallback_predictor = fallback_predictor
+
+    def predict_labels(self, text: str) -> LabelSet:
+        features = self.vectorizer.transform([text])
+        prediction = self.classifier.predict(features)
+        inverse = self.label_binarizer.inverse_transform(prediction)
+        learned_labels = set(inverse[0]) if inverse else set()
+
+        if self._fallback_predictor is not None:
+            # Mimic the historical "regex fallback" behavior.
+            return learned_labels | self._fallback_predictor(text)
+
+        return learned_labels
+
+
+def load_dataset(csv_path: Path) -> List[tuple[str, LabelSet]]:
     dataset = []
     with csv_path.open() as f:
         reader = csv.DictReader(f)
@@ -54,14 +82,14 @@ def labels_from_segment(segment: SourceSegment) -> LabelSet:
 
 
 def evaluate(
-    classifier: MetricClassifier, dataset: List[tuple]
+    dataset: List[tuple[str, LabelSet]],
+    predict_fn: Callable[[str], LabelSet],
 ) -> tuple[float, float, float]:
     predictions: List[LabelSet] = []
     truths: List[LabelSet] = []
 
     for text, labels in dataset:
-        segment = classifier.classify_segment(segment_from_text(text), validate=False)
-        predictions.append(labels_from_segment(segment))
+        predictions.append(predict_fn(text))
         truths.append(labels)
 
     binarizer = MultiLabelBinarizer()
@@ -105,16 +133,20 @@ def main() -> None:
     dataset = load_dataset(args.data)
 
     baseline_classifier = MetricClassifier()
-    learned_classifier = MetricClassifier(
-        config=MetricClassifierConfig(
-            use_learned_classifier=True,
-            learned_model_path=str(args.model),
-            use_regex_fallback=True,
-        )
+
+    def predict_with_baseline(text: str) -> LabelSet:
+        segment = baseline_classifier.classify_segment(segment_from_text(text), validate=False)
+        return labels_from_segment(segment)
+
+    learned_classifier = LearnedMetricClassifier(
+        args.model,
+        fallback_predictor=predict_with_baseline,
     )
 
-    base_precision, base_recall, base_f1 = evaluate(baseline_classifier, dataset)
-    learned_precision, learned_recall, learned_f1 = evaluate(learned_classifier, dataset)
+    base_precision, base_recall, base_f1 = evaluate(dataset, predict_with_baseline)
+    learned_precision, learned_recall, learned_f1 = evaluate(
+        dataset, learned_classifier.predict_labels
+    )
 
     print("Rule-based baseline (regex + heuristics):")
     print(f"  Precision: {base_precision:.3f}\n  Recall:    {base_recall:.3f}\n  F1:        {base_f1:.3f}\n")

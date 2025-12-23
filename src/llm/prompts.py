@@ -73,17 +73,24 @@ Your task is to find and extract how companies define their customer metrics. Lo
 Extract the exact wording used in the filing."""
 
     @staticmethod
-    def value_extraction_from_text(segment_text: str, metric_names: str) -> str:
+    def value_extraction_from_text(
+        segment_text: str, metric_names: str, context_text: str = None
+    ) -> str:
         """
         Prompt for extracting metric values from text segments.
 
         Args:
             segment_text: The text segment to analyze
             metric_names: Comma-separated list of metric names to look for
+            context_text: Optional preceding text context (e.g. from previous segment)
 
         Returns:
             Formatted prompt
         """
+        context_section = ""
+        if context_text and len(context_text) > 10:
+            context_section = f"\nPRECEDING CONTEXT (for setup/date reference only - do not extract values from here):\n{context_text}\n"
+
         return f"""Extract customer metric values from this SEC filing text.
 
 STRICT RULES - ONLY extract values that meet ALL criteria:
@@ -104,6 +111,7 @@ The revenue value is near CAC but does NOT represent CAC.
 
 Metrics to look for: {metric_names}
 
+{context_section}
 TEXT SEGMENT:
 {segment_text}
 
@@ -136,7 +144,10 @@ Example output:
 
     @staticmethod
     def value_extraction_from_table(
-        table_text: str, table_html: str, metric_names: str
+        table_text: str,
+        table_html: str,
+        metric_names: str,
+        context_text: str = None,
     ) -> str:
         """
         Prompt for extracting metric values from table segments.
@@ -145,10 +156,15 @@ Example output:
             table_text: The table content as text
             table_html: The table HTML for structure
             metric_names: Comma-separated list of metric names
+            context_text: Optional preceding text context
 
         Returns:
             Formatted prompt
         """
+        context_section = ""
+        if context_text and len(context_text) > 10:
+            context_section = f"\nPRECEDING CONTEXT (for setup/date reference only - do not extract values from here):\n{context_text}\n"
+
         return f"""Extract customer metric values from this SEC filing table.
 
 STRICT RULES - ONLY extract values that meet ALL criteria:
@@ -167,6 +183,7 @@ UNIT RULES (values with wrong units are INVALID):
 
 Metrics to look for: {metric_names}
 
+{context_section}
 TABLE TEXT:
 {table_text}
 
