@@ -3185,7 +3185,7 @@ class TestCharacterOffsetTracking:
         html_path = temp_html_file(html)
 
         # Read the HTML content
-        with open(html_path, 'r') as f:
+        with open(html_path) as f:
             html_content = f.read()
 
         segmenter = HTMLSegmenter()

@@ -310,7 +310,7 @@ class TestExclusionPatternCompilation:
     def test_compiled_exclusions_are_patterns(self) -> None:
         """Verify compiled exclusions are regex patterns."""
         matcher = KeywordMatcher()
-        for metric_id, patterns in matcher._compiled_exclusions.items():
+        for _metric_id, patterns in matcher._compiled_exclusions.items():
             assert isinstance(patterns, list)
             for pattern in patterns:
                 assert isinstance(pattern, re.Pattern)

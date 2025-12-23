@@ -91,7 +91,7 @@ def main():
     company_data = defaultdict(list)
     company_urls = {}
 
-    with open(input_csv, 'r', encoding='utf-8-sig') as f:
+    with open(input_csv, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             company_name = row.get("Company", "").strip()
@@ -124,7 +124,7 @@ def main():
         metadata_path = target_dir / "metadata.json"
         meta = {}
         if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path) as f:
                 meta = json.load(f)
 
         # If new or needs update

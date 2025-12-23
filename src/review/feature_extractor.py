@@ -116,8 +116,8 @@ import logging
 import math
 import re
 from decimal import Decimal
-from typing import Any
 from re import Pattern
+from typing import Any
 
 from src.review.models import CandidateFeatures
 

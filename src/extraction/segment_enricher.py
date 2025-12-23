@@ -18,8 +18,8 @@ The enricher operates on in-memory objects without database dependencies.
 
 import logging
 import re
-from typing import Any
 from re import Pattern
+from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 

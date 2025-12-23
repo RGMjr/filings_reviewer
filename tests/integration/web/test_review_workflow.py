@@ -174,7 +174,7 @@ def test_filing_list_pagination(client, db):
     """Test filing list pagination with multiple filings."""
     # Create multiple companies and filings with candidates
     filing_ids = []
-    for i in range(5):
+    for _ in range(5):
         company_id, filing_id = create_test_company_and_filing(db)
 
         # Create 1 candidate per filing

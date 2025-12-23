@@ -274,7 +274,7 @@ def detect_respectively_pattern(
         return None
 
     # 9. Create associations (pair values with periods in order)
-    associations = list(zip(values, periods))
+    associations = list(zip(values, periods, strict=True))
 
     # 10. Calculate confidence
     confidence = _calculate_confidence(values, periods, context)
@@ -428,7 +428,7 @@ def _detect_in_sentence(
         return None
 
     # Create associations
-    associations = list(zip(values, periods))
+    associations = list(zip(values, periods, strict=True))
 
     # Calculate confidence
     confidence = _calculate_confidence(values, periods, context)

@@ -161,7 +161,7 @@ def generate_candidates_for_filing(
         candidate_ids = db.bulk_insert_review_candidates(candidate_dicts)
 
         # Update candidate objects with their IDs
-        for candidate, cid in zip(candidates, candidate_ids):
+        for candidate, cid in zip(candidates, candidate_ids, strict=True):
             candidate.candidate_id = cid
 
         logger.info(

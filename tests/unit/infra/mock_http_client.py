@@ -6,8 +6,8 @@ for use in tests. Supports predefined responses, simulated failures,
 and request history tracking.
 """
 
-from dataclasses import dataclass, field
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import requests
 

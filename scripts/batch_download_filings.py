@@ -257,7 +257,7 @@ def main():
     logger.info("-" * 80)
     logger.info(f"{'Company':<30} {'Form':<10} {'Date':<12} {'Status':<10}")
     logger.info("-" * 80)
-    for i, f in enumerate(filings_data[:10], 1):
+    for f in filings_data[:10]:
         logger.info(
             f"{f['company_name'][:28]:<30} {f['form_type']:<10} {str(f['filing_date']):<12} {f['processing_status']:<10}"
         )

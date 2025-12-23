@@ -55,8 +55,11 @@ def main():
                     start = max(0, i - args.context)
                     end = min(len(segments), i + args.context + 1)
                     for j in range(start, end):
-                        if j == i: continue
-                        logger.info(f"[Context Seg {j}] ({segments[j].segment_type}): {segments[j].raw_text[:100]}...")
+                        if j == i:
+                            continue
+                        logger.info(
+                            f"[Context Seg {j}] ({segments[j].segment_type}): {segments[j].raw_text[:100]}..."
+                        )
 
         if not found:
             logger.warning("Quote NOT found in any single segment.")
@@ -71,7 +74,7 @@ def main():
                 for i, seg in enumerate(segments):
                     if start_phrase in seg.raw_text:
                         logger.info(f"Found START of quote in Segment {i}: ...{seg.raw_text[-50:]}")
-                        if i+1 < len(segments):
+                        if i + 1 < len(segments):
                             logger.info(f"Next Segment {i+1}: {segments[i+1].raw_text[:50]}...")
     else:
         # Just dump first 10 segments

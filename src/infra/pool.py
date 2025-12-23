@@ -27,11 +27,11 @@ import os
 import threading
 import time
 import traceback
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from collections.abc import Callable
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -180,7 +180,7 @@ def execute_batch(
                             completed_count=completed_count,
                             total_count=len(tasks),
                             partial_results=None,  # Don't return partial results in fail-fast mode
-                        )
+                        ) from e
 
             # If we reach here without fail_fast or all succeeded
             if failures:
@@ -215,7 +215,7 @@ def execute_batch(
             failures=failures,
             completed_count=sum(1 for r in results if r is not None),
             total_count=len(tasks),
-        )
+        ) from e
 
 
 def get_pool_config() -> dict[str, Any]:

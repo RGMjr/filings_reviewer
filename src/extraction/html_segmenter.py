@@ -231,7 +231,9 @@ class HTMLSegmenter:
         except Exception as e:
             msg = f"Failed to parse HTML for filing {filing_id}: {e}"
             if raise_on_error:
-                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+                raise HTMLParsingError(
+                    msg, filing_id=filing_id, html_path=str(validated_path)
+                ) from e
             logger.error(msg)
             self._metrics.warnings.append(f"Parse error: {e}")
             return []
@@ -447,7 +449,7 @@ class HTMLSegmenter:
                 file_path=html_path,
                 attempted_encodings=attempted_encodings,
                 position=position,
-            )
+            ) from e
 
     def _detect_encoding_auto(self, path: Path) -> str | None:
         """Detect file encoding using charset-normalizer library.

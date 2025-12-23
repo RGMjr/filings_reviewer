@@ -220,7 +220,7 @@ class TestContextPerformanceAnalysis:
         assert len(context_stats) > 0
 
         # Check structure of first context
-        for context_type, stats in context_stats.items():
+        for _context_type, stats in context_stats.items():
             assert "total" in stats
             assert "accepted" in stats
             assert "rejected" in stats

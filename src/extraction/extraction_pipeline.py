@@ -203,7 +203,7 @@ class ExtractionPipeline:
             )
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
-        except (IOError, OSError) as e:
+        except OSError as e:
             # File system errors - HTML file not found or unreadable
             logger.error(
                 f"✗ File error processing filing {filing_id}: {e}", exc_info=True
@@ -367,7 +367,8 @@ class ExtractionPipeline:
         ]
 
         for seg in direct_hits:
-            if len(result) >= MAX_TOTAL: break
+            if len(result) >= MAX_TOTAL:
+                break
             if id(seg) not in selected_ids:
                 result.append(seg)
                 selected_ids.add(id(seg))

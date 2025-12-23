@@ -1242,7 +1242,8 @@ class ValueExtractor:
                         if pattern.search(row_label_text):
                             row_metric_id = cid
                             break
-                    if row_metric_id: break
+                    if row_metric_id:
+                        break
 
             # Also check if column header implies metric (e.g. "Revenue")
             col_metric_id = self._infer_metric_from_context(segment, headers, i)
@@ -1294,9 +1295,12 @@ class ValueExtractor:
             header = headers[column_index].lower()
 
             # Direct header matches
-            if "revenue" in header and "cohort" in header: return "cm_revenue_by_cohort"
-            if "transaction" in header and "cohort" in header: return "cm_transactions_by_cohort"
-            if "customer" in header and "tenure" in header: return "cm_customers_period_end_by_tenure"
+            if "revenue" in header and "cohort" in header:
+                return "cm_revenue_by_cohort"
+            if "transaction" in header and "cohort" in header:
+                return "cm_transactions_by_cohort"
+            if "customer" in header and "tenure" in header:
+                return "cm_customers_period_end_by_tenure"
 
             # If the segment has candidates, check if header matches one of them
             if segment.candidate_metric_ids:

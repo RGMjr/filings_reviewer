@@ -4,6 +4,8 @@ Database adapter for Customer Metrics Filings Analysis.
 Provides a clean interface for database operations using psycopg3.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
