@@ -75,15 +75,24 @@ class MetricClassifier:
     """
 
     # Definition indicators
+    # Note: Patterns must be specific enough to avoid false positives.
+    # For example, "\bmeans\b" alone matches "this means that" (implication),
+    # not just "X means Y" (definition). Use patterns that require definition context.
     DEFINITION_PATTERNS = [
         r"\bwe\s+define\b",
         r"\bdefined\s+as\b",
         r"\bdefinition\s+of\b",
         r"\brefers\s+to\b",
-        r"\bmeans\b",
-        r"\bmeaning\b",
+        # "means" only when in clear definition context:
+        # 1. Quoted term followed by "means" (handles straight ", curly "", and « quotes)
+        r'[\u0022\u201c\u201d\u00ab\u00bb]\w[^\u0022\u201c\u201d\u00ab\u00bb]*[\u0022\u201c\u201d\u00ab\u00bb]\s*means\b',
+        # 2. Bullet point definition at start: • "Term" means (limited to 50 chars for term)
+        r'(?:^|[\n\u2022])\s*[\u0022\u201c\u201d][^\u0022\u201c\u201d]{1,50}[\u0022\u201c\u201d]\s*means\b',
+        r"\bmeaning\s+of\b",  # More specific than just "meaning"
         r"\bmetric\s+definitions?\b",
         r"\bis\s+defined\b",
+        # 3. Explicit "the term" definition pattern
+        r'\bthe\s+term\s+[\u0022\u201c\u201d][^\u0022\u201c\u201d]+[\u0022\u201c\u201d]\s*means\b',
     ]
 
     # Methodology/calculation indicators
