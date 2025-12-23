@@ -256,7 +256,7 @@ class SECClient:
                         f"Invalid JSON response from {url}: {e}",
                         url=url,
                         response_preview=preview
-                    )
+                    ) from e
 
             except requests.HTTPError as e:
                 elapsed = time.time() - request_start_time
@@ -269,7 +269,7 @@ class SECClient:
                 # Handle rate limiting (429)
                 if status_code == 429:
                     logger.warning(f"Rate limit exceeded for {url}")
-                    raise SECRateLimitError(f"Rate limit exceeded: {url}")
+                    raise SECRateLimitError(f"Rate limit exceeded: {url}") from e
 
                 # 4xx errors (client errors) - don't retry
                 if status_code and 400 <= status_code < 500:

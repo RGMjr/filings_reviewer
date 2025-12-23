@@ -6,9 +6,9 @@ CIKs, accession numbers, SIC codes, dates, and form types.
 """
 
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TypeVar
-from collections.abc import Sequence
 
 T = TypeVar("T")
 
@@ -159,7 +159,7 @@ def validate_date(date_str: str, field_name: str = "date") -> datetime:
     except ValueError as e:
         raise ValidationError(
             f"Invalid {field_name} format: expected YYYY-MM-DD, got '{date_str}': {e}"
-        )
+        ) from e
 
 
 def validate_date_range(

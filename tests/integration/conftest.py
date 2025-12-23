@@ -304,7 +304,7 @@ def load_fixture_metadata(fixture_name: str) -> dict:
     if not json_path.exists():
         raise FileNotFoundError(f"Fixture not found: {json_path}")
 
-    with open(json_path, "r") as f:
+    with open(json_path) as f:
         return json.load(f)
 
 
@@ -375,5 +375,4 @@ def mock_sec_client_with_fixtures(all_fixtures):
     ]
 
     return MockSECClient(mock_filings=filing_metadata_list)
-
 

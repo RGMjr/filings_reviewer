@@ -19,7 +19,7 @@ from src.review.keyword_matching import (
     SPECIFIC_KEYWORD_PATTERNS,
     KeywordMatch,
 )
-from src.review.models import CandidateFeatures, ProcessingStats
+from src.review.models import CandidateFeatures, ProcessingStats, ReviewCandidate
 from src.review.number_parsing import NUMBER_REGEX, NumberMatch
 
 # =============================================================================
@@ -2150,9 +2150,8 @@ class TestDeduplicateCandidates:
         parsed_value: Decimal,
         metric_id: str,
         confidence: float = None,
-    ) -> "ReviewCandidate":
+    ) -> ReviewCandidate:
         """Helper to create test candidates."""
-        from src.review.models import ReviewCandidate
 
         return ReviewCandidate(
             filing_id=1,
@@ -2244,8 +2243,6 @@ class TestDeduplicateCandidates:
 
     def test_handles_none_parsed_value(self, generator):
         """Should handle candidates with None parsed_value."""
-        from src.review.models import ReviewCandidate
-
         candidates = [
             ReviewCandidate(
                 filing_id=1,
@@ -3281,8 +3278,6 @@ class TestL1RespectivelyPatternIntegration:
         generator = CandidateGenerator(config=config)
 
         # Create a mock candidate
-        from src.review.models import CandidateFeatures, ReviewCandidate
-
         candidate = ReviewCandidate(
             filing_id=1,
             company_id=1,
@@ -3320,8 +3315,6 @@ class TestL1RespectivelyPatternIntegration:
         """Returns candidates unchanged when no respectively pattern found."""
         config = CandidateGenerationConfig(detect_respectively_patterns=True)
         generator = CandidateGenerator(config=config)
-
-        from src.review.models import CandidateFeatures, ReviewCandidate
 
         candidate = ReviewCandidate(
             filing_id=1,
@@ -3362,8 +3355,6 @@ class TestL1RespectivelyPatternIntegration:
             respectively_min_confidence=0.9,  # Very high threshold
         )
         generator = CandidateGenerator(config=config)
-
-        from src.review.models import CandidateFeatures, ReviewCandidate
 
         candidate = ReviewCandidate(
             filing_id=1,
@@ -3807,7 +3798,7 @@ class TestContextPrefixMatching:
 
         if cac_candidates:
             # Context prefix matches are never same sentence
-            for c in cac_candidates:
+            for _candidate in cac_candidates:
                 # The is_same_sentence is stored in features (not directly on candidate)
                 # But we can verify through the confidence score behavior
                 pass  # is_same_sentence affects features, not directly testable here

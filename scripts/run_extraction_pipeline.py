@@ -169,7 +169,7 @@ def fetch_clean_text_from_file(html_path: str) -> str:
     Returns:
         Cleaned text content (first 100K chars)
     """
-    with open(html_path, "r", encoding="utf-8") as f:
+    with open(html_path, encoding="utf-8") as f:
         html_content = f.read()
 
     soup = BeautifulSoup(html_content, "html.parser")

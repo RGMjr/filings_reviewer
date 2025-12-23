@@ -22,8 +22,8 @@ except ImportError:
 
 try:
     from openai import APIConnectionError, APIError, OpenAI, RateLimitError
-except ImportError:
-    raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken")
+except ImportError as e:
+    raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken") from e
 
 logger = logging.getLogger(__name__)
 

@@ -138,7 +138,7 @@ class PoolExecutionError(InfrastructureError):
         """
         lines = [f"Pool execution failed: {len(self.failures)} errors out of {self.total_count} tasks"]
 
-        for i, failure in enumerate(self.failures[:max_errors]):
+        for _, failure in enumerate(self.failures[:max_errors]):
             lines.append(
                 f"  Task {failure.task_index} ({failure.task_description}): "
                 f"{type(failure.exception).__name__}: {failure.exception}"

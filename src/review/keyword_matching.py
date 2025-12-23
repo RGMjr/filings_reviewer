@@ -601,7 +601,7 @@ class KeywordMatcher:
         matches: list[KeywordMatch] = []
         seen_metrics: set[str] = set()
 
-        for kw, raw_dist, eff_dist in candidates_with_effective_distance:
+        for kw, _raw_dist, _eff_dist in candidates_with_effective_distance:
             # Skip if we already have a match for this metric
             if kw.metric_id in seen_metrics:
                 continue

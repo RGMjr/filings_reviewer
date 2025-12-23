@@ -67,7 +67,7 @@ class TestCreateTempHtmlFile:
             assert Path(path).exists()
 
             # Verify content
-            with open(path, "r") as f:
+            with open(path) as f:
                 actual_content = f.read()
             assert actual_content == content
 

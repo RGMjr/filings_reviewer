@@ -305,11 +305,11 @@ class PatternAnalyzer:
                 context_stats[context_type]["rejected"] += 1
 
         # Compute precision rates
-        for context_type, stats in context_stats.items():
+        for _context_type, stats in context_stats.items():
             if stats["total"] > 0:
                 stats["precision"] = stats["accepted"] / stats["total"]
 
-            for direction, direction_stats in stats["by_direction"].items():
+            for _direction, direction_stats in stats["by_direction"].items():
                 if direction_stats["total"] > 0:
                     direction_stats["precision"] = direction_stats["accepted"] / direction_stats["total"]
 
@@ -647,7 +647,7 @@ class PatternAnalyzer:
 
         # Build value distribution
         value_distribution: dict[Any, dict[str, int]] = {}
-        for fval, dval in zip(feature_values, decision_values):
+        for fval, dval in zip(feature_values, decision_values, strict=True):
             if fval not in value_distribution:
                 value_distribution[fval] = {}
             value_distribution[fval][dval] = value_distribution[fval].get(dval, 0) + 1
@@ -801,7 +801,7 @@ class PatternAnalyzer:
             decision_groups[decision].append(d)
 
         # Shuffle each group (for randomization)
-        for decision_type, items in decision_groups.items():
+        for _decision_type, items in decision_groups.items():
             random.shuffle(items)
 
         # Split each group into k folds
@@ -827,7 +827,7 @@ class PatternAnalyzer:
             train_data = []
             test_data = []
 
-            for decision_type, folds in folds_by_decision.items():
+            for _decision_type, folds in folds_by_decision.items():
                 for fold_idx, fold in enumerate(folds):
                     if fold_idx == test_fold_idx:
                         test_data.extend(fold)
@@ -1666,7 +1666,7 @@ class PatternAnalyzer:
                 result = chi_squared_test(feature_values[:len(decisions)], decisions)
                 if result["is_valid"]:
                     feature_importance.append((feature_name, result["chi_squared"], "categorical"))
-            except:
+            except Exception:
                 continue
 
         # Compute importance for numeric features
@@ -1686,7 +1686,7 @@ class PatternAnalyzer:
                             accept_values.append(numeric_val)
                         elif d["decision"] == "reject":
                             reject_values.append(numeric_val)
-                    except:
+                    except Exception:
                         continue
 
             if len(accept_values) < 2 or len(reject_values) < 2:
@@ -1696,7 +1696,7 @@ class PatternAnalyzer:
                 result = t_test_independent(accept_values, reject_values)
                 if result["is_valid"]:
                     feature_importance.append((feature_name, abs(result["effect_size"]), "numeric"))
-            except:
+            except Exception:
                 continue
 
         # Step 2: Select top N features by importance
@@ -1717,7 +1717,7 @@ class PatternAnalyzer:
         # Step 3: Generate single-feature conditions for top features
         feature_conditions = {}  # feature_name -> List[condition_dict]
 
-        for feature_name, importance, feature_type in top_features:
+        for feature_name, _importance, feature_type in top_features:
             conditions = []
 
             if feature_type == "categorical":
@@ -1741,7 +1741,7 @@ class PatternAnalyzer:
                     if val is not None:
                         try:
                             values.append(float(val))
-                        except:
+                        except Exception:
                             continue
 
                 if len(values) >= 4:

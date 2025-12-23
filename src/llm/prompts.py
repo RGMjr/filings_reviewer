@@ -347,7 +347,7 @@ Example:
                 except json.JSONDecodeError:
                     pass
 
-            raise ValueError(f"Failed to parse JSON response: {e}\n\nResponse: {text}")
+            raise ValueError(f"Failed to parse JSON response: {e}\n\nResponse: {text}") from e
 
     @staticmethod
     def validate_value_extraction_response(data: Any) -> bool:

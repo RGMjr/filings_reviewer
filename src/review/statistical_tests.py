@@ -127,7 +127,7 @@ def _approximate_t_test_p_value(t_statistic: float, df: float) -> float | None:
 
 def interpret_significance(
     p_value: float | None,
-    alpha_levels: list[float] = [0.001, 0.01, 0.05],
+    alpha_levels: list[float] | None = None,
 ) -> dict[str, Any]:
     """
     Interpret statistical significance at common alpha levels.
@@ -157,6 +157,9 @@ def interpret_significance(
         }
 
     # Sort alpha levels in ascending order
+    if alpha_levels is None:
+        alpha_levels = [0.001, 0.01, 0.05]
+
     sorted_alphas = sorted(alpha_levels)
 
     # Determine significance level
@@ -238,7 +241,7 @@ def chi_squared_test(
 
     # Build contingency table: feature_value × decision
     contingency: dict[Any, dict[str, int]] = {}
-    for fval, dval in zip(feature_values, decision_values):
+    for fval, dval in zip(feature_values, decision_values, strict=True):
         if fval not in contingency:
             contingency[fval] = {}
         contingency[fval][dval] = contingency[fval].get(dval, 0) + 1
@@ -504,7 +507,7 @@ def compute_performance_metrics(
     false_negatives = 0
     true_negatives = 0
 
-    for true_label, pred_label in zip(true_labels, predicted_labels):
+    for true_label, pred_label in zip(true_labels, predicted_labels, strict=True):
         if true_label == positive_label and pred_label == positive_label:
             true_positives += 1
         elif true_label != positive_label and pred_label == positive_label:

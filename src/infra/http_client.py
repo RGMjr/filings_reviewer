@@ -117,5 +117,5 @@ class RequestsHTTPClient:
             raise
 
         except requests.RequestException as e:
-            # Convert other requests exceptions to IOError for network issues
-            raise IOError(f"Network error requesting {url}: {e}") from e
+            # Convert other requests exceptions to OSError for network issues
+            raise OSError(f"Network error requesting {url}: {e}") from e

@@ -41,7 +41,7 @@ def load_golden_file(name: str, subdir: str = "") -> dict:
     if not golden_path.exists():
         raise FileNotFoundError(f"Golden file not found: {golden_path}")
 
-    with open(golden_path, "r", encoding="utf-8") as f:
+    with open(golden_path, encoding="utf-8") as f:
         return json.load(f)
 
 

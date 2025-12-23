@@ -72,7 +72,7 @@ class TestCostTracker:
         """Test adding multiple requests to cost tracker."""
         tracker = CostTracker()
 
-        for i in range(3):
+        for _ in range(3):
             response = LLMResponse(
                 content="Test",
                 model="gpt-4o-mini",

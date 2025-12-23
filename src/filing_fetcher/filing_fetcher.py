@@ -395,7 +395,7 @@ class FilingFetcher:
 
             return None
 
-        except (IOError, OSError) as e:
+        except OSError as e:
             # File system errors - may be recoverable
             error_msg = f"File system error for {cik}/{accession_number}: {e}"
             logger.error(error_msg, exc_info=True)

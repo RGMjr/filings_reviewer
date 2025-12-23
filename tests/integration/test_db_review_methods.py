@@ -13,6 +13,7 @@ Requires:
 
 from decimal import Decimal
 
+import psycopg
 import pytest
 
 from src.infra.validation import ValidationError
@@ -1941,7 +1942,7 @@ class TestAtomicReviewDecision:
         # Use a non-existent candidate_id
         invalid_candidate_id = 999999
 
-        with pytest.raises(Exception):  # Foreign key violation
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
             clean_db.insert_review_decision(
                 candidate_id=invalid_candidate_id,
                 decision="accept",
