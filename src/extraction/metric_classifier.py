@@ -9,16 +9,100 @@ This module scans source segments to identify:
 """
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
+
+from joblib import load
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.preprocessing import MultiLabelBinarizer
 
 from .models import SourceSegment
 from .validators import ClassificationValidator
 from .exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MetricClassifierConfig:
+    """Configuration for toggling learned classifier support."""
+
+    use_learned_classifier: bool = False
+    learned_model_path: Optional[str] = None
+    learned_decision_threshold: float = 0.45
+    use_regex_fallback: bool = True
+
+
+@dataclass
+class LearnedPrediction:
+    """Structured output from the learned classifier backend."""
+
+    contains_definition: bool
+    contains_methodology: bool
+    contains_numeric: bool
+    candidate_metric_ids: List[str]
+    raw_scores: Dict[str, float] = field(default_factory=dict)
+    average_score: float = 0.0
+
+
+class LearnedClassifierBackend:
+    """Lightweight multi-label classifier built on TF-IDF embeddings."""
+
+    def __init__(self, model_path: str, threshold: float = 0.45):
+        self.model_path = model_path
+        self.threshold = threshold
+        self._vectorizer: Optional[TfidfVectorizer] = None
+        self._classifier: Optional[OneVsRestClassifier] = None
+        self._label_binarizer: Optional[MultiLabelBinarizer] = None
+        self._labels: List[str] = []
+        self._load_model()
+
+    def _load_model(self) -> None:
+        bundle = load(self.model_path)
+        self._vectorizer = bundle["vectorizer"]
+        self._classifier = bundle["classifier"]
+        self._label_binarizer = bundle["label_binarizer"]
+        self._labels = list(self._label_binarizer.classes_)
+        logger.info(
+            "Loaded learned metric classifier from %s with %d labels",
+            self.model_path,
+            len(self._labels),
+        )
+
+    def predict(self, text: str) -> LearnedPrediction:
+        if not text.strip():
+            return LearnedPrediction(False, False, False, [], {}, 0.0)
+
+        vector = self._vectorizer.transform([text])
+        probabilities = self._classifier.predict_proba(vector)[0]
+
+        selected_labels: Set[str] = set()
+        scored_labels: Dict[str, float] = {}
+
+        for label, prob in zip(self._labels, probabilities):
+            scored_labels[label] = float(prob)
+            if prob >= self.threshold:
+                selected_labels.add(label)
+
+        metrics = [
+            label.replace("metric:", "", 1)
+            for label in selected_labels
+            if label.startswith("metric:")
+        ]
+
+        return LearnedPrediction(
+            contains_definition="definition" in selected_labels,
+            contains_methodology="methodology" in selected_labels,
+            contains_numeric="numeric" in selected_labels,
+            candidate_metric_ids=metrics,
+            raw_scores=scored_labels,
+            average_score=float(sum(probabilities) / len(probabilities)),
+        )
 
 
 @dataclass
@@ -33,6 +117,8 @@ class ClassificationMetrics:
     methodologies: int = 0
     numeric_disclosures: int = 0
     total_confidence: float = 0.0
+    learned_assisted_segments: int = 0
+    regex_fallback_segments: int = 0
     metric_id_counts: Dict[str, int] = field(default_factory=dict)
     classification_time_seconds: float = 0.0
 
@@ -61,6 +147,7 @@ class ClassificationMetrics:
             f"{self.total_segments} segments in {self.classification_time_seconds:.3f}s "
             f"({self.definitions} definitions, {self.methodologies} methodologies, "
             f"{self.numeric_disclosures} numeric, avg confidence: {self.avg_confidence():.2f}, "
+            f"learned-assisted: {self.learned_assisted_segments}, regex-fallback: {self.regex_fallback_segments}, "
             f"top metrics: {top_metrics_str})"
         )
 
@@ -397,8 +484,37 @@ class MetricClassifier:
     # Number patterns
     NUMBER_PATTERN = r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
 
-    def __init__(self):
+    def __init__(
+        self,
+        config: Optional[MetricClassifierConfig] = None,
+        learned_backend: Optional[LearnedClassifierBackend] = None,
+    ):
         """Initialize the metric classifier."""
+        if config is None:
+            env_flag = os.getenv("USE_LEARNED_METRIC_CLASSIFIER", "false").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            env_model_path = os.getenv("LEARNED_METRIC_MODEL_PATH")
+            env_threshold = os.getenv("LEARNED_METRIC_THRESHOLD")
+            try:
+                threshold = float(env_threshold) if env_threshold else None
+            except ValueError:
+                logger.warning(
+                    "Invalid LEARNED_METRIC_THRESHOLD=%s, using default.", env_threshold
+                )
+                threshold = None
+            config = MetricClassifierConfig(
+                use_learned_classifier=env_flag,
+                learned_model_path=env_model_path,
+                learned_decision_threshold=threshold
+                if threshold is not None
+                else MetricClassifierConfig.learned_decision_threshold,
+            )
+
+        self.config = config
+
         # Compile all patterns for performance
         self._definition_regex = [
             re.compile(p, re.IGNORECASE) for p in self.DEFINITION_PATTERNS
@@ -421,6 +537,33 @@ class MetricClassifier:
         # Metrics tracking
         self._metrics: Optional[ClassificationMetrics] = None
 
+        # Optional learned classifier backend
+        self._learned_backend: Optional[LearnedClassifierBackend] = None
+        if self.config.use_learned_classifier:
+            self._learned_backend = learned_backend or self._init_learned_backend()
+
+    def _init_learned_backend(self) -> Optional[LearnedClassifierBackend]:
+        """Safely initialize the learned classifier backend."""
+
+        if not self.config.learned_model_path:
+            logger.warning(
+                "Learned classifier requested but no model path provided; using regex rules only."
+            )
+            return None
+
+        try:
+            return LearnedClassifierBackend(
+                model_path=self.config.learned_model_path,
+                threshold=self.config.learned_decision_threshold,
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning(
+                "Failed to load learned metric classifier from %s: %s. Using regex fallback.",
+                self.config.learned_model_path,
+                exc,
+            )
+            return None
+
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
         Classify a single segment.
@@ -441,7 +584,8 @@ class MetricClassifier:
         if validate:
             ClassificationValidator.validate_segment_for_classification(segment)
 
-        text = segment.raw_text.lower()
+        raw_text = segment.raw_text or ""
+        text = raw_text.lower()
 
         # Check for definition
         segment.contains_definition_flag = self._has_definition(text)
@@ -455,10 +599,53 @@ class MetricClassifier:
         # Identify candidate metrics
         segment.candidate_metric_ids = self._identify_candidate_metrics(text)
 
+        learned_prediction: Optional[LearnedPrediction] = None
+        if self._learned_backend:
+            learned_prediction = self._learned_backend.predict(raw_text)
+            self._apply_learned_prediction(segment, learned_prediction)
+            if self._metrics:
+                self._metrics.learned_assisted_segments += 1
+        elif self.config.use_learned_classifier and self._metrics:
+            # Config requested learned classifier, but no model was available.
+            self._metrics.regex_fallback_segments += 1
+
         # Compute confidence score
-        segment.classifier_confidence = self._compute_confidence(segment)
+        learned_score = learned_prediction.average_score if learned_prediction else None
+        segment.classifier_confidence = self._compute_confidence(
+            segment, learned_score=learned_score
+        )
 
         return segment
+
+    def _apply_learned_prediction(
+        self, segment: SourceSegment, prediction: Optional[LearnedPrediction]
+    ) -> None:
+        """Merge learned classifier output into the rule-based result."""
+
+        if not prediction:
+            return
+
+        if prediction.contains_definition:
+            segment.contains_definition_flag = True
+
+        if prediction.contains_methodology:
+            segment.contains_methodology_flag = True
+
+        if prediction.contains_numeric:
+            segment.contains_numeric_disclosure_flag = True
+
+        # Merge metric IDs, preserving deterministic order
+        merged_ids = sorted(
+            set(segment.candidate_metric_ids) | set(prediction.candidate_metric_ids)
+        )
+        segment.candidate_metric_ids = merged_ids
+
+        # Attach raw scores for downstream debugging/analysis
+        if prediction.raw_scores:
+            extra_metadata = segment.extra_metadata or {}
+            extra_metadata["learned_classifier_scores"] = prediction.raw_scores
+            extra_metadata["learned_classifier_average_score"] = prediction.average_score
+            segment.extra_metadata = extra_metadata
 
     def classify_batch(self, segments: List[SourceSegment], validate: bool = True) -> List[SourceSegment]:
         """
@@ -631,7 +818,9 @@ class MetricClassifier:
 
         return len(unique_years) >= 2
 
-    def _compute_confidence(self, segment: SourceSegment) -> float:
+    def _compute_confidence(
+        self, segment: SourceSegment, learned_score: Optional[float] = None
+    ) -> float:
         """
         Compute classifier confidence score (0-1).
 
@@ -716,6 +905,9 @@ class MetricClassifier:
             logger.debug(
                 f"Temporal trend bonus +0.10 (segment {segment.sequence_index})"
             )
+
+        if learned_score is not None:
+            confidence += min(max(learned_score, 0.0), 1.0) * 0.25
 
         # Penalize very short segments
         if len(raw_text) < 100:
