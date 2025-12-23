@@ -7,7 +7,7 @@ are captured in review_audit_log for compliance and debugging.
 
 import json
 import time
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -322,7 +322,7 @@ class TestAuditLogContent:
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
-            response = client.post(
+            client.post(
                 "/api/decisions",
                 json={
                     "candidate_id": 123,
@@ -455,7 +455,7 @@ class TestAuditLogMetadata:
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
-            response = client.post(
+            client.post(
                 "/api/decisions",
                 json={"candidate_id": 123, "decision": "accept", "assigned_metric_id": "test"},
             )
@@ -470,7 +470,7 @@ class TestAuditLogMetadata:
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
-            response = client.post(
+            client.post(
                 "/api/decisions",
                 json={"candidate_id": 123, "decision": "accept", "assigned_metric_id": "test"},
                 headers={"User-Agent": "TestBrowser/1.0"},

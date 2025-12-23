@@ -10,11 +10,11 @@ Tests the weight adjustments based on GI-3 distribution analysis:
 Test coverage target: >= 95% for _compute_richness_score() and detection methods.
 """
 
-import pytest
-from typing import Optional
 
-from src.extraction.segment_enricher import SegmentEnricher
+import pytest
+
 from src.extraction.models import SourceSegment
+from src.extraction.segment_enricher import SegmentEnricher
 
 
 @pytest.fixture
@@ -28,12 +28,12 @@ def make_segment(
     raw_html: str = "",
     classifier_confidence: float = 0.5,
     distinct_metric_count: int = 0,
-    candidate_metric_ids: Optional[list[str]] = None,
+    candidate_metric_ids: list[str] | None = None,
     contains_temporal_trend: bool = False,
     contains_cohort_breakdown: bool = False,
     contains_definition_flag: bool = False,
     image_count: int = 0,
-    extra_metadata: Optional[dict[str, bool]] = None,
+    extra_metadata: dict[str, bool] | None = None,
 ) -> SourceSegment:
     """Factory for creating test segments with specified attributes."""
     segment = SourceSegment(
@@ -297,7 +297,7 @@ class TestBoundaryValues:
             contains_definition_flag=True,  # +1.0 (only 3 metrics, need <2 for standard)
             extra_metadata={"contains_retention_keywords": True},  # +1.0
         )
-        score = enricher._compute_richness_score(segment)
+        _ = enricher._compute_richness_score(segment)
         # 1.5 + 1.5 + 1.0 + 1.5 (enhanced, 3>=2) + 1.0 = 6.5
         # Need to adjust - try different combo
         segment2 = make_segment(

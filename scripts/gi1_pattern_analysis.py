@@ -10,11 +10,11 @@ Usage:
 """
 
 import re
-from pathlib import Path
-from typing import Dict, List, Pattern, Tuple
 from dataclasses import dataclass
+from pathlib import Path
+from re import Pattern
+
 from bs4 import BeautifulSoup
-import json
 
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -24,7 +24,7 @@ SLACK_FILING = PROJECT_ROOT / "data/filings/0001764925/000162828019004786/primar
 FARFETCH_FILING = PROJECT_ROOT / "data/filings/0001740915/000119312518252315/primary.htm"
 
 # Current COHORT_PATTERNS from segment_enricher.py (lines 73-106)
-COHORT_PATTERNS: Dict[str, Pattern[str]] = {
+COHORT_PATTERNS: dict[str, Pattern[str]] = {
     "pct_of_customers": re.compile(
         r"\b\d+(?:\.\d+)?%\s+of\s+(?:customers?|users?|consumers?)\b",
         re.IGNORECASE,
@@ -104,7 +104,7 @@ class Snippet:
 
 def extract_text_from_html(filepath: Path) -> str:
     """Extract all text from an HTML filing."""
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+    with open(filepath, mode="r", encoding="utf-8", errors="replace") as f:
         html = f.read()
 
     soup = BeautifulSoup(html, "html.parser")
@@ -122,9 +122,9 @@ def extract_text_from_html(filepath: Path) -> str:
     return text
 
 
-def extract_paragraphs(filepath: Path) -> List[str]:
+def extract_paragraphs(filepath: Path) -> list[str]:
     """Extract paragraphs from an HTML filing."""
-    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+    with open(filepath, encoding="utf-8", errors="replace") as f:
         html = f.read()
 
     soup = BeautifulSoup(html, "html.parser")
@@ -141,7 +141,7 @@ def extract_paragraphs(filepath: Path) -> List[str]:
     return paragraphs
 
 
-def find_snippets_with_context(text: str, search_terms: List[str], source: str) -> List[Snippet]:
+def find_snippets_with_context(text: str, search_terms: list[str], source: str) -> list[Snippet]:
     """Find text snippets containing search terms with surrounding context."""
     snippets = []
     seen_texts = set()
@@ -178,9 +178,9 @@ def find_snippets_with_context(text: str, search_terms: List[str], source: str) 
 
 
 def test_patterns_against_snippets(
-    snippets: List[Snippet],
-    patterns: Dict[str, Pattern[str]]
-) -> Dict[str, Dict]:
+    snippets: list[Snippet],
+    patterns: dict[str, Pattern[str]]
+) -> dict[str, dict]:
     """Test each pattern against all snippets and record results."""
     results = {}
 
@@ -207,7 +207,7 @@ def test_patterns_against_snippets(
     return results
 
 
-def categorize_snippets(snippets: List[Snippet]) -> Dict[str, List[Snippet]]:
+def categorize_snippets(snippets: list[Snippet]) -> dict[str, list[Snippet]]:
     """Categorize snippets by type of cohort language."""
     categories = {
         "fiscal_year_cohorts": [],
@@ -278,9 +278,9 @@ def categorize_snippets(snippets: List[Snippet]) -> Dict[str, List[Snippet]]:
 
 
 def generate_report(
-    snippets: List[Snippet],
-    pattern_results: Dict[str, Dict],
-    categories: Dict[str, List[Snippet]],
+    snippets: list[Snippet],
+    pattern_results: dict[str, dict],
+    categories: dict[str, list[Snippet]],
 ) -> str:
     """Generate the analysis report."""
 
@@ -456,7 +456,7 @@ def main():
     # Extract text from filings
     print("\n1. Extracting text from filings...")
 
-    all_snippets: List[Snippet] = []
+    all_snippets: list[Snippet] = []
 
     for filepath, name in [(SLACK_FILING, "Slack S-1"), (FARFETCH_FILING, "Farfetch S-1")]:
         print(f"   Processing {name}...")
@@ -508,7 +508,7 @@ def main():
     print(f"Total snippets analyzed: {len(unique_snippets)}")
     print(f"Patterns with zero matches: {sum(1 for r in pattern_results.values() if r['match_count'] == 0)}/9")
     print(f"Total pattern matches: {sum(r['match_count'] for r in pattern_results.values())}")
-    print(f"\nAnalysis document created at:")
+    print("\nAnalysis document created at:")
     print(f"  {output_path}")
 
 

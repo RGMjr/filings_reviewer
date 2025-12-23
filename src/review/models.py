@@ -8,10 +8,10 @@ Schema alignment: sql/07_create_review_schema.sql
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, NotRequired, Optional, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +89,18 @@ class SegmentDict(TypedDict):
     updated_at: datetime
 
     # Optional fields (nullable in database or not always present)
-    section_path: NotRequired[Optional[str]]
-    section_heading: NotRequired[Optional[str]]
-    html_selector: NotRequired[Optional[str]]
-    char_start_offset: NotRequired[Optional[int]]
-    char_end_offset: NotRequired[Optional[int]]
-    page_number: NotRequired[Optional[int]]
-    raw_html: NotRequired[Optional[str]]
-    candidate_metric_ids: NotRequired[Optional[List[str]]]
-    contains_definition_flag: NotRequired[Optional[bool]]
-    contains_methodology_flag: NotRequired[Optional[bool]]
-    contains_numeric_disclosure_flag: NotRequired[Optional[bool]]
-    classifier_confidence: NotRequired[Optional[float]]
+    section_path: NotRequired[str | None]
+    section_heading: NotRequired[str | None]
+    html_selector: NotRequired[str | None]
+    char_start_offset: NotRequired[int | None]
+    char_end_offset: NotRequired[int | None]
+    page_number: NotRequired[int | None]
+    raw_html: NotRequired[str | None]
+    candidate_metric_ids: NotRequired[list[str] | None]
+    contains_definition_flag: NotRequired[bool | None]
+    contains_methodology_flag: NotRequired[bool | None]
+    contains_numeric_disclosure_flag: NotRequired[bool | None]
+    classifier_confidence: NotRequired[float | None]
 
 
 # =============================================================================
@@ -160,21 +160,21 @@ class CandidateFeatures:
 
     # Number features
     number_format: str  # 'integer' | 'decimal' | 'percentage' | 'currency'
-    value_magnitude: Optional[float] = None  # Log10 of absolute value
+    value_magnitude: float | None = None  # Log10 of absolute value
     surrounding_numbers_count: int = 0  # Other numbers within context window
 
     # Section features
-    section_name: Optional[str] = None  # Section heading if available
+    section_name: str | None = None  # Section heading if available
 
     # Additional computed features
     context_word_count: int = 0
 
     # L1: Respectively pattern detection (Phase 2)
-    detected_period: Optional[str] = None  # e.g., "2015", "Q1 2016", "FY2017"
-    respectively_confidence: Optional[float] = None  # Pattern confidence 0.0-1.0
+    detected_period: str | None = None  # e.g., "2015", "Q1 2016", "FY2017"
+    respectively_confidence: float | None = None  # Pattern confidence 0.0-1.0
 
     # L4: Context-dependent multiplier tracking (E1 optimization)
-    context_type: Optional[str] = None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
+    context_type: str | None = None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
 
     # P1.6: Same-sentence tracking for deduplication preference
     is_same_sentence: bool = False  # True if keyword and value are in the same sentence
@@ -203,7 +203,7 @@ class CandidateFeatures:
                     f"Must be one of: {valid_context_types}"
                 )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSONB storage."""
         return {
             "keyword_distance": self.keyword_distance,
@@ -225,7 +225,7 @@ class CandidateFeatures:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CandidateFeatures":
+    def from_dict(cls, data: dict[str, Any]) -> "CandidateFeatures":
         """Create from dictionary (e.g., from JSONB)."""
         return cls(
             keyword_distance=data.get("keyword_distance", 0),
@@ -277,27 +277,27 @@ class ReviewCandidate:
     keyword_position: str  # 'before' | 'after' (required per schema)
 
     # Optional foreign key
-    source_segment_id: Optional[int] = None
+    source_segment_id: int | None = None
 
     # Parsed value (may fail to parse)
-    parsed_value: Optional[Decimal] = None
-    parsed_unit: Optional[str] = None  # 'count' | '%' | 'usd' | etc.
+    parsed_value: Decimal | None = None
+    parsed_unit: str | None = None  # 'count' | '%' | 'usd' | etc.
 
     # Classification
-    suggested_metric_id: Optional[str] = None
-    suggestion_confidence: Optional[float] = None
+    suggested_metric_id: str | None = None
+    suggestion_confidence: float | None = None
 
     # ML features (stored as JSONB)
-    features: Optional[CandidateFeatures] = None
+    features: CandidateFeatures | None = None
 
     # Status
     review_status: str = "pending"  # 'pending' | 'in_progress' | 'reviewed' | 'skipped'
-    review_batch_id: Optional[int] = None
+    review_batch_id: int | None = None
 
     # Database fields
-    candidate_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    candidate_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate enumerated fields."""
@@ -318,7 +318,7 @@ class ReviewCandidate:
                     f"got {self.suggestion_confidence}"
                 )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -340,7 +340,7 @@ class ReviewCandidate:
         }
 
     @classmethod
-    def from_row(cls, row: Dict[str, Any]) -> "ReviewCandidate":
+    def from_row(cls, row: dict[str, Any]) -> "ReviewCandidate":
         """Create from database row."""
         features_data = row.get("features")
         features = (
@@ -388,19 +388,19 @@ class ReviewDecision:
     decision: str  # 'accept' | 'reject' | 'reclassify'
 
     # Metric assignment (required for accept/reclassify per schema)
-    assigned_metric_id: Optional[str] = None
+    assigned_metric_id: str | None = None
 
     # Rejection details (when decision='reject')
-    rejection_reason: Optional[str] = None  # Free text explanation
-    rejection_category: Optional[str] = None  # Categorical reason
+    rejection_reason: str | None = None  # Free text explanation
+    rejection_category: str | None = None  # Categorical reason
 
     # Reviewer metadata
-    reviewer_notes: Optional[str] = None
-    review_time_seconds: Optional[int] = None
+    reviewer_notes: str | None = None
+    review_time_seconds: int | None = None
 
     # Database fields
-    decision_id: Optional[int] = None
-    created_at: Optional[datetime] = None
+    decision_id: int | None = None
+    created_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate decision type, rejection category, and business rules."""
@@ -429,7 +429,7 @@ class ReviewDecision:
                 f"got decision='{self.decision}'"
             )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "candidate_id": self.candidate_id,
@@ -442,7 +442,7 @@ class ReviewDecision:
         }
 
     @classmethod
-    def from_row(cls, row: Dict[str, Any]) -> "ReviewDecision":
+    def from_row(cls, row: dict[str, Any]) -> "ReviewDecision":
         """Create from database row."""
         return cls(
             decision_id=row.get("decision_id"),
@@ -474,29 +474,29 @@ class LearnedPattern:
     # Required fields
     pattern_type: str  # 'accept_rule' | 'reject_rule' | 'feature_weight'
     pattern_name: str  # Human-readable name
-    pattern_definition: Dict[str, Any]  # Rule definition as JSONB
+    pattern_definition: dict[str, Any]  # Rule definition as JSONB
 
     # Optional metric scope
-    metric_id: Optional[str] = None  # If pattern is metric-specific
+    metric_id: str | None = None  # If pattern is metric-specific
 
     # Description
-    pattern_description: Optional[str] = None  # Longer description
+    pattern_description: str | None = None  # Longer description
 
     # Performance metrics (aligned with schema column names)
-    precision_score: Optional[float] = None  # Precision on training data
-    recall_score: Optional[float] = None  # Recall on training data
-    f1_score: Optional[float] = None  # F1 score
-    sample_count: Optional[int] = None  # Number of samples matched
+    precision_score: float | None = None  # Precision on training data
+    recall_score: float | None = None  # Recall on training data
+    f1_score: float | None = None  # F1 score
+    sample_count: int | None = None  # Number of samples matched
 
     # Status and approval
     status: str = "candidate"  # 'candidate' | 'approved' | 'rejected' | 'deprecated'
-    approved_at: Optional[datetime] = None
-    approved_by: Optional[str] = None
+    approved_at: datetime | None = None
+    approved_by: str | None = None
 
     # Database fields
-    pattern_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    pattern_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate pattern type and status."""
@@ -521,7 +521,7 @@ class LearnedPattern:
                     f"{score_name} must be between 0 and 1, got {score_val}"
                 )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "pattern_type": self.pattern_type,
@@ -539,7 +539,7 @@ class LearnedPattern:
         }
 
     @classmethod
-    def from_row(cls, row: Dict[str, Any]) -> "LearnedPattern":
+    def from_row(cls, row: dict[str, Any]) -> "LearnedPattern":
         """Create from database row."""
         return cls(
             pattern_id=row.get("pattern_id"),
@@ -586,7 +586,7 @@ class LearnedPattern:
             return False
 
         features_dict = features.to_dict()
-        results: List[bool] = []
+        results: list[bool] = []
 
         for condition in conditions:
             field_name = condition.get("field")

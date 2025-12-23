@@ -12,8 +12,8 @@ in S-1 filings, including:
 
 import pytest
 
-from src.extraction.segment_enricher import SegmentEnricher
 from src.extraction.models import SourceSegment
+from src.extraction.segment_enricher import SegmentEnricher
 
 
 @pytest.fixture

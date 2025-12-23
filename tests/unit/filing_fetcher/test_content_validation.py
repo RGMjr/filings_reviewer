@@ -3,6 +3,7 @@ Unit tests for filing content validation.
 """
 
 import pytest
+
 from src.filing_fetcher.filing_fetcher import FilingFetcher
 
 

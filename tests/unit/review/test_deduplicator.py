@@ -5,11 +5,10 @@ Tests the standalone deduplicate_candidates() function directly,
 independent of CandidateGenerator.
 """
 
-import pytest
 from decimal import Decimal
 
 from src.review.deduplicator import deduplicate_candidates
-from src.review.models import ReviewCandidate, CandidateFeatures
+from src.review.models import CandidateFeatures, ReviewCandidate
 
 
 class TestDeduplicateCandidatesImport:

@@ -5,23 +5,23 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
 from src.review.false_positive_filter import (
     DATE_CONTEXT_PATTERNS,
     FALSE_POSITIVE_CONTEXT_PATTERNS,
-    FalsePositiveFilter,
     MIN_METRIC_VALUE,
-    TOC_PROXIMITY_CHARS,
     TOC_DOT_LEADER_WINDOW,
     TOC_HEADERS,
-    YEAR_MIN,
+    TOC_PROXIMITY_CHARS,
     YEAR_MAX,
+    YEAR_MIN,
+    FalsePositiveFilter,
     is_near_table_of_contents,
     is_toc_page_reference,
 )
 from src.review.number_parsing import NumberMatch
-
 
 # =============================================================================
 # FalsePositiveFilter.is_false_positive Tests

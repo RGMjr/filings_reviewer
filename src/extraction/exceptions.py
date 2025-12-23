@@ -5,7 +5,7 @@ Custom exception hierarchy for extraction layer modules (html_segmenter, metric_
 Provides specific exception types for better error handling and debugging.
 """
 
-from typing import Any, List, Optional
+from typing import Any
 
 
 class ExtractionError(Exception):
@@ -25,7 +25,7 @@ class HTMLParsingError(ExtractionError):
     - Invalid nesting or structure
     """
 
-    def __init__(self, message: str, filing_id: Optional[int] = None, html_path: Optional[str] = None):
+    def __init__(self, message: str, filing_id: int | None = None, html_path: str | None = None):
         """Initialize HTML parsing error.
 
         Args:
@@ -50,7 +50,7 @@ class EncodingError(ExtractionError):
     """
 
     def __init__(
-        self, message: str, file_path: str, attempted_encodings: Optional[List[str]] = None, position: Optional[int] = None
+        self, message: str, file_path: str, attempted_encodings: list[str] | None = None, position: int | None = None
     ):
         """Initialize encoding error.
 
@@ -78,7 +78,7 @@ class ValidationError(ExtractionError):
     - Confidence score out of [0, 1] range
     """
 
-    def __init__(self, message: str, field_name: Optional[str] = None, invalid_value: Optional[Any] = None):
+    def __init__(self, message: str, field_name: str | None = None, invalid_value: Any | None = None):
         """Initialize validation error.
 
         Args:

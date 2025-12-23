@@ -68,6 +68,7 @@ class TestPoolCreation:
         try:
             stats = pool.get_stats()
             assert pool.max_size == 2
+            assert stats["pool_size"] <= 2
         finally:
             pool.close()
 

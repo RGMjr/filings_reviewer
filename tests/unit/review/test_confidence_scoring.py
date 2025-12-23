@@ -7,9 +7,8 @@ confidence scores for review candidates.
 
 import pytest
 
-from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
+from src.review.confidence_scoring import METRIC_EXPECTED_FORMATS, ConfidenceScorer
 from src.review.models import CandidateFeatures
-
 
 # =============================================================================
 # ConfidenceScorer Tests

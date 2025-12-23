@@ -53,7 +53,6 @@ See Also:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
 
 
 @dataclass
@@ -148,7 +147,7 @@ class CandidateGenerationConfig:
     ambiguity_threshold: int = 10
     """Character distance to consider keywords "equally close" for ambiguity logging."""
 
-    metric_distance_overrides: Dict[str, int] = field(default_factory=dict)
+    metric_distance_overrides: dict[str, int] = field(default_factory=dict)
     """Optional per-metric distance overrides. Format: {metric_id: distance}. For future use."""
 
     # =========================================================================
@@ -315,7 +314,7 @@ class CandidateGenerationConfig:
     cache_word_positions: bool = True
     """Whether to cache word positions for context extraction (P1.2 optimization)."""
 
-    def to_confidence_weights(self) -> Dict[str, float]:
+    def to_confidence_weights(self) -> dict[str, float]:
         """
         Export confidence scoring weights as a dictionary.
 

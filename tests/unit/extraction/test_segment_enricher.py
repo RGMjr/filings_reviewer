@@ -4,15 +4,16 @@ Unit tests for SegmentEnricher.
 Tests the enrichment of classified segments with richness metadata.
 """
 
-import pytest
 from unittest.mock import patch
 
+import pytest
+
+from src.extraction.models import SourceSegment
 from src.extraction.segment_enricher import (
     SegmentEnricher,
     cluster_goldmine_segments,
     summarize_cluster,
 )
-from src.extraction.models import SourceSegment
 
 
 @pytest.fixture

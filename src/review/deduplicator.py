@@ -34,7 +34,6 @@ P1.6 Enhancement (Same-Sentence Preference):
 """
 
 import logging
-from typing import Dict, List, Tuple
 
 from src.review.models import ReviewCandidate
 
@@ -42,9 +41,9 @@ logger = logging.getLogger(__name__)
 
 
 def deduplicate_candidates(
-    candidates: List[ReviewCandidate],
+    candidates: list[ReviewCandidate],
     prefer_same_sentence: bool = True,
-) -> Tuple[List[ReviewCandidate], int]:
+) -> tuple[list[ReviewCandidate], int]:
     """
     Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
 
@@ -85,7 +84,7 @@ def deduplicate_candidates(
 
     # Group candidates by (parsed_value, suggested_metric_id, detected_period)
     # Use string representation of Decimal to handle None values
-    groups: Dict[Tuple[str, str, str], List[ReviewCandidate]] = {}
+    groups: dict[tuple[str, str, str], list[ReviewCandidate]] = {}
 
     for candidate in candidates:
         # Create key - convert Decimal to string for hashing

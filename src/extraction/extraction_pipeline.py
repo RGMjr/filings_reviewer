@@ -11,23 +11,24 @@ This module orchestrates the complete extraction pipeline:
 """
 
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional, TYPE_CHECKING
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 from src.infra.db import DatabaseAdapter
+
+from .definition_extractor import DefinitionExtractor
 from .html_segmenter import HTMLSegmenter
 from .metric_classifier import MetricClassifier
+from .models import (
+    FilingMetricIncidence,
+    MetricDefinition,
+    MetricValue,
+    SourceSegment,
+)
+from .quality_scorer import QualityScorer
 from .segment_enricher import SegmentEnricher, cluster_goldmine_segments
 from .value_extractor import ValueExtractor
-from .definition_extractor import DefinitionExtractor
-from .quality_scorer import QualityScorer
-from .models import (
-    SourceSegment,
-    MetricValue,
-    MetricDefinition,
-    FilingMetricIncidence,
-)
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -41,7 +42,7 @@ class ExtractionResult:
 
     filing_id: int
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
     num_segments: int = 0
     num_values: int = 0
     num_definitions: int = 0
@@ -202,7 +203,7 @@ class ExtractionPipeline:
             )
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
-        except (IOError, OSError) as e:
+        except OSError as e:
             # File system errors - HTML file not found or unreadable
             logger.error(
                 f"✗ File error processing filing {filing_id}: {e}", exc_info=True
@@ -218,7 +219,7 @@ class ExtractionPipeline:
             )
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
-    def process_batch(self, filing_ids: List[int]) -> Dict[str, int]:
+    def process_batch(self, filing_ids: list[int]) -> dict[str, int]:
         """
         Process multiple filings.
 
@@ -270,7 +271,7 @@ class ExtractionPipeline:
 
         return stats
 
-    def _get_filing_metadata(self, filing_id: int) -> Optional[dict]:
+    def _get_filing_metadata(self, filing_id: int) -> dict | None:
         """Fetch filing metadata from database."""
         result = self.db.query(
             """
@@ -297,8 +298,8 @@ class ExtractionPipeline:
         return filing
 
     def _select_segments_tiered(
-        self, segments: List[SourceSegment]
-    ) -> List[SourceSegment]:
+        self, segments: list[SourceSegment]
+    ) -> list[SourceSegment]:
         """
         Select segments using tiered prioritization.
 
@@ -320,7 +321,7 @@ class ExtractionPipeline:
         MAX_TOTAL = 80
 
         selected_ids: set[int] = set()  # Use object id for deduplication
-        result: List[SourceSegment] = []
+        result: list[SourceSegment] = []
 
         # Tier 1: High richness (goldmines)
         high_richness = sorted(
@@ -364,9 +365,10 @@ class ExtractionPipeline:
             and len(s.candidate_metric_ids) == 1 # Very specific
             and s.contains_numeric_disclosure_flag # Must have numbers
         ]
-        
+
         for seg in direct_hits:
-            if len(result) >= MAX_TOTAL: break
+            if len(result) >= MAX_TOTAL:
+                break
             if id(seg) not in selected_ids:
                 result.append(seg)
                 selected_ids.add(id(seg))
@@ -399,10 +401,10 @@ class ExtractionPipeline:
     def _write_results(
         self,
         filing_id: int,
-        segments: List[SourceSegment],
-        values: List[MetricValue],
-        definitions: List[MetricDefinition],
-        incidences: List[FilingMetricIncidence],
+        segments: list[SourceSegment],
+        values: list[MetricValue],
+        definitions: list[MetricDefinition],
+        incidences: list[FilingMetricIncidence],
     ):
         """
         Write all extraction results to database in a transaction.
@@ -431,7 +433,7 @@ class ExtractionPipeline:
                     cur.execute(statement, {"filing_id": filing_id})
 
                 # Insert source segments
-                segment_id_map: Dict[int, int] = {}
+                segment_id_map: dict[int, int] = {}
                 for seg in segments:
                     cur.execute(
                         """
@@ -475,7 +477,7 @@ class ExtractionPipeline:
                         seg.source_segment_id = db_id
 
                 # Update values with actual segment IDs
-                valid_values: List[MetricValue] = []
+                valid_values: list[MetricValue] = []
                 for val in values:
                     if val.source_segment_id in segment_id_map:
                         val.source_segment_id = segment_id_map[val.source_segment_id]
@@ -513,7 +515,7 @@ class ExtractionPipeline:
                     )
 
                 # Update definitions with actual segment IDs
-                valid_definitions: List[MetricDefinition] = []
+                valid_definitions: list[MetricDefinition] = []
                 for defn in definitions:
                     if (
                         defn.definition_segment_id is not None

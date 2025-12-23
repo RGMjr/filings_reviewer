@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import re
 import sys
-from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
+from pathlib import Path
 
 
 @dataclass
@@ -28,7 +27,7 @@ class ValidationIssue:
 
     severity: str  # "error" or "warning"
     message: str
-    line: Optional[int] = None
+    line: int | None = None
 
     def __str__(self) -> str:
         loc = f" (line {self.line})" if self.line else ""
@@ -162,7 +161,7 @@ def check_circular_dependencies(content: str) -> list[ValidationIssue]:
         deps[task_id] = {d.upper() for d in dep_ids}
 
     # Check for cycles using DFS
-    def has_cycle(node: str, visited: set[str], path: set[str]) -> Optional[list[str]]:
+    def has_cycle(node: str, visited: set[str], path: set[str]) -> list[str] | None:
         if node in path:
             return [node]
         if node in visited:

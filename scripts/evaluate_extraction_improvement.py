@@ -35,10 +35,8 @@ import json
 import logging
 import os
 import sys
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -81,8 +79,8 @@ class ComparisonResult:
 
 
 def get_filings_with_decisions(
-    db: DatabaseAdapter, min_decisions: int = 5, filing_ids: Optional[List[int]] = None
-) -> List[Dict]:
+    db: DatabaseAdapter, min_decisions: int = 5, filing_ids: list[int] | None = None
+) -> list[dict]:
     """
     Get filings that have review decisions (ground truth).
 
@@ -110,7 +108,7 @@ def get_filings_with_decisions(
         WHERE 1=1
     """
 
-    params: Dict = {"min_decisions": min_decisions}
+    params: dict = {"min_decisions": min_decisions}
 
     if filing_ids:
         query += " AND f.filing_id = ANY(%(filing_ids)s)"
@@ -125,7 +123,7 @@ def get_filings_with_decisions(
     return db.query(query, params)
 
 
-def get_ground_truth_decisions(db: DatabaseAdapter, filing_id: int) -> Dict[str, List[Dict]]:
+def get_ground_truth_decisions(db: DatabaseAdapter, filing_id: int) -> dict[str, list[dict]]:
     """
     Load review decisions for a filing (ground truth).
 
@@ -159,7 +157,7 @@ def get_ground_truth_decisions(db: DatabaseAdapter, filing_id: int) -> Dict[str,
 
 def generate_candidates_for_evaluation(
     db: DatabaseAdapter, filing_id: int, company_id: int, apply_learned_rules: bool
-) -> List[ReviewCandidate]:
+) -> list[ReviewCandidate]:
     """
     Generate candidates for evaluation.
 
@@ -200,8 +198,8 @@ def generate_candidates_for_evaluation(
 
 
 def match_candidate_to_decision(
-    candidate: ReviewCandidate, decisions: List[Dict]
-) -> Optional[Dict]:
+    candidate: ReviewCandidate, decisions: list[dict]
+) -> dict | None:
     """
     Match candidate to a review decision based on position and value.
 
@@ -224,7 +222,7 @@ def match_candidate_to_decision(
 
 
 def evaluate_candidates(
-    candidates: List[ReviewCandidate], ground_truth: Dict[str, List[Dict]]
+    candidates: list[ReviewCandidate], ground_truth: dict[str, list[dict]]
 ) -> EvaluationMetrics:
     """
     Evaluate candidate quality against ground truth decisions.
@@ -251,7 +249,7 @@ def evaluate_candidates(
             matched_accepted.add(accepted_match["decision_id"])
         else:
             # Check if matches a rejected decision (also FP)
-            rejected_match = match_candidate_to_decision(candidate, rejected_decisions)
+            match_candidate_to_decision(candidate, rejected_decisions)
             false_positives += 1
 
     # False negatives = accepted decisions that weren't generated
@@ -350,7 +348,7 @@ def evaluate_filing(
     )
 
 
-def calculate_aggregate_metrics(results: List[ComparisonResult]) -> Dict:
+def calculate_aggregate_metrics(results: list[ComparisonResult]) -> dict:
     """
     Aggregate metrics across all filings.
 
@@ -445,7 +443,7 @@ def calculate_aggregate_metrics(results: List[ComparisonResult]) -> Dict:
     }
 
 
-def print_report(aggregate: Dict, results: List[ComparisonResult], detailed: bool = False):
+def print_report(aggregate: dict, results: list[ComparisonResult], detailed: bool = False):
     """
     Print evaluation report.
 

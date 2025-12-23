@@ -14,15 +14,14 @@ Test Strategy:
 - Verify database schema compliance (direction constraint)
 """
 
-import pytest
 from decimal import Decimal
-from typing import List
 
+import pytest
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
-from src.review.models import ReviewCandidate, SegmentDict
-from src.infra.db import DatabaseAdapter
-
+from src.review.models import SegmentDict
 
 # =============================================================================
 # Fixtures

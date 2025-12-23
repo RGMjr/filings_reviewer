@@ -6,11 +6,12 @@ by context type and keyword direction to inform multiplier optimization.
 """
 
 import pytest
-from src.review.pattern_analyzer import PatternAnalyzer
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import SegmentDict
-from src.infra.db import DatabaseAdapter
+from src.review.pattern_analyzer import PatternAnalyzer
 
 
 @pytest.fixture
@@ -219,7 +220,7 @@ class TestContextPerformanceAnalysis:
         assert len(context_stats) > 0
 
         # Check structure of first context
-        for context_type, stats in context_stats.items():
+        for _context_type, stats in context_stats.items():
             assert "total" in stats
             assert "accepted" in stats
             assert "rejected" in stats

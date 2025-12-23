@@ -310,7 +310,7 @@ def main():
     args = parser.parse_args()
 
     checker = DocsChecker(quiet=args.quiet)
-    success = checker.run_all()
+    checker.run_all()
 
     if args.ci and (checker.warnings or checker.errors):
         sys.exit(1)

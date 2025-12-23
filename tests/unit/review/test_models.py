@@ -9,24 +9,24 @@ Tests validation, serialization, and business rules for:
 - ProcessingStats
 """
 
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 
 import pytest
 
 from src.review.models import (
-    CandidateFeatures,
-    ReviewCandidate,
-    ReviewDecision,
-    LearnedPattern,
-    ProcessingStats,
+    DECISION_TYPES,
     KEYWORD_POSITIONS,
     NUMBER_FORMATS,
-    REVIEW_STATUSES,
-    DECISION_TYPES,
-    REJECTION_CATEGORIES,
-    PATTERN_TYPES,
     PATTERN_STATUSES,
+    PATTERN_TYPES,
+    REJECTION_CATEGORIES,
+    REVIEW_STATUSES,
+    CandidateFeatures,
+    LearnedPattern,
+    ProcessingStats,
+    ReviewCandidate,
+    ReviewDecision,
 )
 
 

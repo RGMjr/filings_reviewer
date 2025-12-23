@@ -11,13 +11,14 @@ import logging
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 from bs4 import BeautifulSoup
 
-from .models import SourceSegment, MetricValue
 from ..review.false_positive_filter import FalsePositiveFilter
 from ..review.number_parsing import NumberMatch
 from ..review.table_structure import TableRowParser
+from .models import MetricValue, SourceSegment
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -106,11 +107,22 @@ METRIC_NAME_MAPPING = {
     "net_revenue_retention": "cm_net_revenue_retention",
     "nrr": "cm_net_revenue_retention",
     "net_dollar_retention": "cm_net_revenue_retention",
+    "net_dollar_retention_rate": "cm_net_revenue_retention",
     "ndr": "cm_net_revenue_retention",
     "revenue_retention": "cm_net_revenue_retention",
 
     "gross_revenue_retention": "cm_gross_revenue_retention",
     "grr": "cm_gross_revenue_retention",
+
+    # Extended metrics - customer counts specific
+    "paid_customers": "cm_customers_period_end",
+    "total_paid_customers": "cm_customers_period_end",
+    "paid_customer_count": "cm_customers_period_end",
+
+    "paid_customers_100k": "cm_large_customers_period_end",
+    "paid_customers_100k+": "cm_large_customers_period_end",
+    "customers_over_100k": "cm_large_customers_period_end",
+    "large_customers": "cm_large_customers_period_end",
 }
 
 # Create reverse mapping for validation
@@ -119,8 +131,8 @@ VALID_METRIC_IDS = set(METRIC_NAME_MAPPING.values())
 
 def map_llm_name_to_metric_id(
     llm_name: str,
-    candidate_metric_ids: Optional[List[str]] = None
-) -> Optional[str]:
+    candidate_metric_ids: list[str] | None = None
+) -> str | None:
     """
     Map an LLM-returned metric name to a canonical metric ID.
 
@@ -171,7 +183,7 @@ def map_llm_name_to_metric_id(
     return None
 
 
-def _normalize_text(text: Optional[str]) -> str:
+def _normalize_text(text: str | None) -> str:
     """
     Normalize text for comparison.
 
@@ -317,10 +329,10 @@ class ValueExtractor:
     def _is_false_positive_value(
         self,
         value_str: str,
-        position: Optional[int],
+        position: int | None,
         context_text: str,
-        unit: Optional[str] = None
-    ) -> Tuple[bool, Optional[str]]:
+        unit: str | None = None
+    ) -> tuple[bool, str | None]:
         """
         Check if an extracted value is a false positive.
 
@@ -391,7 +403,7 @@ class ValueExtractor:
 
     def extract_from_segment(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract all metric values from a segment.
 
@@ -446,7 +458,7 @@ class ValueExtractor:
 
     def extract_from_table(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract structured data from table segments.
 
@@ -474,7 +486,7 @@ class ValueExtractor:
             return []
 
         # EI-4: Create TableRowParser for row boundary validation
-        row_parser: Optional[TableRowParser] = None
+        row_parser: TableRowParser | None = None
         if segment.raw_html and segment.raw_text:
             try:
                 row_parser = TableRowParser(segment.raw_html, segment.raw_text)
@@ -514,7 +526,7 @@ class ValueExtractor:
 
     def extract_from_text(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract values from text segments using pattern matching with smart scoring.
 
@@ -531,21 +543,21 @@ class ValueExtractor:
         values = []
         candidate_metrics = segment.candidate_metric_ids or []
         filtered_count = 0
-        
+
         # Regex patterns for exclusion
         # Matches "January 31, 2019" or "Jan 31 2019"
         # We want to ignore the day (31) and year (2019)
         date_pattern = re.compile(
-            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(\d{4})", 
+            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(\d{4})",
             re.IGNORECASE
         )
-        
+
         # Matches standalone page numbers/TOC entries at start of line
         # e.g., "73 Table of Contents"
         toc_pattern = re.compile(r"^\s*(\d+)\s+(?:Table of Contents|Page)", re.IGNORECASE)
 
         # Helper to check if a match range overlaps with an exclusion range
-        def is_excluded(start: int, end: int, exclusions: List[Tuple[int, int]]) -> bool:
+        def is_excluded(start: int, end: int, exclusions: list[tuple[int, int]]) -> bool:
             for ex_start, ex_end in exclusions:
                 # If overlap
                 if start < ex_end and end > ex_start:
@@ -555,13 +567,13 @@ class ValueExtractor:
         # Scoring function for candidates
         def score_candidate(val_str: str, full_match_str: str, context: str) -> float:
             score = 0.0
-            
+
             # 1. Currency boost (High)
             if "$" in full_match_str or "USD" in full_match_str.upper():
                 score += 5.0
             elif "€" in full_match_str or "£" in full_match_str:
                 score += 5.0
-                
+
             # 2. Magnitude boost (High)
             if "million" in full_match_str.lower():
                 score += 4.0
@@ -569,24 +581,24 @@ class ValueExtractor:
                 score += 4.0
             elif "thousand" in full_match_str.lower():
                 score += 2.0
-                
+
             # 3. Percentage boost (Medium - if relevant)
             if "%" in full_match_str:
                 score += 3.0
-                
+
             # 4. Precision boost (Small)
             if "." in val_str:
                 score += 1.0
-                
+
             # 5. Penalties
             # Penalty for "Day of month" lookalikes (1-31 integers)
             if re.match(r"^[1-3][0-9]$|^[1-9]$", val_str):
                 score -= 2.0
-                
+
             # Penalty for "Year" lookalikes (1990-2030) without currency
             if re.match(r"^(?:19|20)\d{2}$", val_str) and "$" not in full_match_str:
                 score -= 3.0
-                
+
             return score
 
         # Split text into sentences
@@ -600,10 +612,10 @@ class ValueExtractor:
             sentence = sentence.strip()
             if not sentence:
                 continue
-            
+
             # 1. Identify Exclusion Ranges in this sentence
             exclusions = []
-            
+
             # Find dates
             for m in date_pattern.finditer(sentence):
                 # Exclude the day group (group 1) and year group (group 2)
@@ -613,17 +625,17 @@ class ValueExtractor:
                 # Group 2 (Year)
                 g2_start, g2_end = m.span(2)
                 exclusions.append((g2_start, g2_end))
-                
+
             # Find TOC/Page numbers
             for m in toc_pattern.finditer(sentence):
                 exclusions.append(m.span(1))
-                
+
             # 2. Find all potential numbers
             # finditer gives us match objects with positions
             number_matches = list(self._number_regex.finditer(sentence))
             if not number_matches:
                 continue
-                
+
             # 3. Process By Metric
             for metric_id in candidate_metrics:
                 # Check keywords exist in sentence
@@ -633,22 +645,22 @@ class ValueExtractor:
                     if pattern.search(sentence):
                         has_keyword = True
                         break
-                
+
                 if not has_keyword:
                     continue
-                    
+
                 # Collect valid candidates and score them
                 candidates = []
-                
+
                 for match in number_matches:
                     val_str = match.group(1) # The numeric part
                     full_str = match.group(0) # The full match including $ million etc.
                     start, end = match.span(1) # Span of the numeric part
-                    
+
                     # Skip if in excluded range (Date/Page)
                     if is_excluded(start, end, exclusions):
                         continue
-                        
+
                     # Skip if false positive (using existing filter)
                     position_in_full_text = segment.raw_text.find(sentence) + sentence.find(val_str)
                     is_fp, reason = self._is_false_positive_value(
@@ -660,7 +672,7 @@ class ValueExtractor:
                     if is_fp:
                         filtered_count += 1
                         continue
-                        
+
                     # Score it
                     score = score_candidate(val_str, full_str, sentence)
                     candidates.append({
@@ -670,18 +682,18 @@ class ValueExtractor:
                         "score": score,
                         "full_match": full_str
                     })
-                
+
                 if not candidates:
                     continue
-                    
+
                 # Pick the best candidate
                 # Sort by score descending
                 candidates.sort(key=lambda x: x["score"], reverse=True)
                 best = candidates[0]
-                
-                # If best score is very low/negative, maybe skip? 
+
+                # If best score is very low/negative, maybe skip?
                 # For now, we trust the ranking. If it's a tie, first one wins.
-                
+
                 # Create value
                 value = MetricValue(
                     filing_id=segment.filing_id,
@@ -697,9 +709,9 @@ class ValueExtractor:
                     qa_status="unreviewed",
                 )
                 values.append(value)
-                
+
                 # Move to next metric (we only extract one value per metric per sentence)
-                
+
         if filtered_count > 0:
             logger.debug(f"Filtered {filtered_count} false positive(s) from smart text extraction")
 
@@ -707,7 +719,7 @@ class ValueExtractor:
 
     def extract_from_text_with_llm(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract values from text segments using LLM.
 
@@ -733,6 +745,7 @@ class ValueExtractor:
         prompt = PromptTemplates.value_extraction_from_text(
             segment_text=segment.raw_text[:8000],  # Limit to 8000 chars
             metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response
@@ -822,11 +835,11 @@ class ValueExtractor:
                 # CRITICAL: Validate quote contains metric keyword AND value
                 # This prevents extracting unrelated nearby numbers
                 from .extraction_validation import (
-                    validate_extraction,
-                    should_reject_extraction,
-                    get_rejection_reason,
-                    validate_quote_contains_metric_keyword,
                     ValidationResult,
+                    get_rejection_reason,
+                    should_reject_extraction,
+                    validate_extraction,
+                    validate_quote_contains_metric_keyword,
                 )
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
@@ -886,7 +899,7 @@ class ValueExtractor:
 
     def extract_from_table_with_llm(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract values from table segments using LLM.
 
@@ -917,7 +930,10 @@ class ValueExtractor:
         table_html = segment.raw_html[:4000]  # Limit HTML
 
         prompt = PromptTemplates.value_extraction_from_table(
-            table_text=table_text, table_html=table_html, metric_names=metric_names
+            table_text=table_text,
+            table_html=table_html,
+            metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response
@@ -1018,11 +1034,11 @@ class ValueExtractor:
                 # CRITICAL: Validate quote contains metric keyword AND value
                 # This prevents extracting unrelated nearby numbers
                 from .extraction_validation import (
-                    validate_extraction,
-                    should_reject_extraction,
-                    get_rejection_reason,
-                    validate_quote_contains_metric_keyword,
                     ValidationResult,
+                    get_rejection_reason,
+                    should_reject_extraction,
+                    validate_extraction,
+                    validate_quote_contains_metric_keyword,
                 )
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
@@ -1083,7 +1099,7 @@ class ValueExtractor:
             logger.error(f"Failed to parse LLM response: {e}")
             return []
 
-    def _identify_columns(self, headers: List[str]) -> dict:
+    def _identify_columns(self, headers: list[str]) -> dict:
         """
         Identify the type of each column based on header text.
 
@@ -1116,12 +1132,12 @@ class ValueExtractor:
     def _parse_table_row(
         self,
         cells: list,
-        headers: List[str],
+        headers: list[str],
         column_info: dict,
         segment: SourceSegment,
         company_id: int,
-        row_parser: Optional[TableRowParser] = None,
-    ) -> List[MetricValue]:
+        row_parser: TableRowParser | None = None,
+    ) -> list[MetricValue]:
         """
         Parse a single table row to extract metric values.
 
@@ -1206,7 +1222,7 @@ class ValueExtractor:
             # Determine which metric this value belongs to
             # STRICT: Check row label for metric keywords
             row_metric_id = None
-            
+
             # Find the row label (first text cell usually)
             row_label_text = ""
             for cell in cells:
@@ -1215,7 +1231,7 @@ class ValueExtractor:
                 if self._parse_number(txt) is None and txt:
                     row_label_text = txt
                     break
-            
+
             # Check if row label matches any candidate metric
             if segment.candidate_metric_ids:
                 from .metric_classifier import MetricClassifier
@@ -1226,14 +1242,15 @@ class ValueExtractor:
                         if pattern.search(row_label_text):
                             row_metric_id = cid
                             break
-                    if row_metric_id: break
-            
+                    if row_metric_id:
+                        break
+
             # Also check if column header implies metric (e.g. "Revenue")
             col_metric_id = self._infer_metric_from_context(segment, headers, i)
-            
+
             # Combine: Row label match takes precedence, then Column header match
             metric_id = row_metric_id or col_metric_id
-            
+
             if not metric_id:
                 continue
 
@@ -1264,7 +1281,7 @@ class ValueExtractor:
 
         return values
 
-    def _infer_metric_from_context(self, segment: SourceSegment, headers: List[str], column_index: int) -> Optional[str]:
+    def _infer_metric_from_context(self, segment: SourceSegment, headers: list[str], column_index: int) -> str | None:
         """
         Infer metric ID from column context (header).
         """
@@ -1272,21 +1289,24 @@ class ValueExtractor:
         # A value belongs to a metric IF AND ONLY IF:
         # 1. The column header explicity names it (e.g. "Revenue")
         # 2. OR The row label explicitily matches the metric keywords
-        
+
         # 1. Check Column Header
         if column_index < len(headers):
             header = headers[column_index].lower()
-            
+
             # Direct header matches
-            if "revenue" in header and "cohort" in header: return "cm_revenue_by_cohort"
-            if "transaction" in header and "cohort" in header: return "cm_transactions_by_cohort"
-            if "customer" in header and "tenure" in header: return "cm_customers_period_end_by_tenure"
-            
+            if "revenue" in header and "cohort" in header:
+                return "cm_revenue_by_cohort"
+            if "transaction" in header and "cohort" in header:
+                return "cm_transactions_by_cohort"
+            if "customer" in header and "tenure" in header:
+                return "cm_customers_period_end_by_tenure"
+
             # If the segment has candidates, check if header matches one of them
             if segment.candidate_metric_ids:
                 from .metric_classifier import MetricClassifier
                 classifier = MetricClassifier()
-                
+
                 for metric_id in segment.candidate_metric_ids:
                     patterns = classifier._metric_patterns.get(metric_id, [])
                     for pattern in patterns:
@@ -1294,14 +1314,14 @@ class ValueExtractor:
                              return metric_id
 
         return None
-        
+
         # Current fallback (RESTRICTED):
         # We DO NOT fallback to "candidate_metrics[0]" blindly anymore.
         # If we can't find a match in the header, we return None (unless the table is VERY simple).
-        
+
         return None
 
-    def _infer_unit(self, value_text: str, metric_id: str) -> Optional[str]:
+    def _infer_unit(self, value_text: str, metric_id: str) -> str | None:
         """Infer the unit from value text and metric type."""
         value_lower = value_text.lower()
 
@@ -1326,7 +1346,7 @@ class ValueExtractor:
 
         return None
 
-    def parse_cohort_label(self, raw_label: str) -> Tuple[Optional[str], Optional[str]]:
+    def parse_cohort_label(self, raw_label: str) -> tuple[str | None, str | None]:
         """
         Parse cohort label into type and normalized bucket.
 
@@ -1380,7 +1400,7 @@ class ValueExtractor:
         # Could not parse
         return "other", raw_label
 
-    def _parse_number(self, text: str) -> Optional[Decimal]:
+    def _parse_number(self, text: str) -> Decimal | None:
         """
         Parse numeric value from text.
 
@@ -1418,7 +1438,7 @@ class ValueExtractor:
         except (InvalidOperation, ValueError):
             return None
 
-    def _extract_period_from_text(self, text: str) -> Optional[date]:
+    def _extract_period_from_text(self, text: str) -> date | None:
         """
         Extract period end date from text.
 
@@ -1465,7 +1485,7 @@ class ValueExtractor:
 
 
 # Convenience function
-def extract_values(segment: SourceSegment, company_id: int) -> List[MetricValue]:
+def extract_values(segment: SourceSegment, company_id: int) -> list[MetricValue]:
     """
     Convenience function to extract values from a segment.
 

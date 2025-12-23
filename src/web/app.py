@@ -10,7 +10,7 @@ Creates and configures the Flask application with:
 import atexit
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 from flask import Flask, current_app, g, jsonify, render_template, request
 
@@ -61,7 +61,7 @@ class ProductionConfig(Config):
 
 
 # Configuration mapping
-config_by_name: Dict[str, type] = {
+config_by_name: dict[str, type] = {
     "development": DevelopmentConfig,
     "testing": TestingConfig,
     "production": ProductionConfig,
@@ -89,7 +89,7 @@ def get_db() -> DatabaseAdapter:
     return g.db
 
 
-def close_db(e: Optional[Exception] = None) -> None:
+def close_db(e: Exception | None = None) -> None:
     """
     Clean up database adapter at end of request.
 
@@ -171,7 +171,7 @@ def close_pool(app: Flask) -> None:
             app.config["_db_pool"] = None
 
 
-def create_app(config_name: Optional[str] = None, config_override: Optional[Dict[str, Any]] = None) -> Flask:
+def create_app(config_name: str | None = None, config_override: dict[str, Any] | None = None) -> Flask:
     """
     Create and configure the Flask application.
 

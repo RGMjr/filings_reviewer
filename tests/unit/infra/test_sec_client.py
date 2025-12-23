@@ -4,10 +4,10 @@ Unit tests for SEC client pattern matching, URL resolution, retry logic, and met
 
 import json
 import time
+from unittest.mock import Mock, patch
 
 import pytest
 import requests
-from unittest.mock import Mock, patch
 
 from src.infra.exceptions import SECDataError, SECRateLimitError
 from src.infra.http_client import HTTPResponse
@@ -821,7 +821,6 @@ class TestSearchFilings:
 
     def test_search_filings_success_with_results(self):
         """Test successful search with filings found."""
-        from datetime import datetime
 
         # Create mock daily index response
         index_text = """

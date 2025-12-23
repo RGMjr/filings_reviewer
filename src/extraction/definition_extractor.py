@@ -7,9 +7,9 @@ for metrics from classified segments.
 
 import logging
 import re
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from .models import SourceSegment, MetricDefinition
+from .models import MetricDefinition, SourceSegment
 from .value_extractor import map_llm_name_to_metric_id, verify_quote_in_source
 
 if TYPE_CHECKING:
@@ -27,6 +27,9 @@ class DefinitionExtractor:
     2. Methodology text (how it's calculated)
     3. Assesses alignment with CMASB canonical definitions
     """
+
+    TOP_SEGMENTS_PER_METRIC = 3
+    HIGH_CONFIDENCE_THRESHOLD = 0.75
 
     # Canonical definitions for alignment assessment
     CANONICAL_DEFINITIONS = {
@@ -83,8 +86,8 @@ class DefinitionExtractor:
         self.llm_client = llm_client
 
     def extract_definitions(
-        self, segments: List[SourceSegment], company_id: int
-    ) -> List[MetricDefinition]:
+        self, segments: list[SourceSegment], company_id: int
+    ) -> list[MetricDefinition]:
         """
         Extract definitions for all metrics found in segments.
 
@@ -99,6 +102,10 @@ class DefinitionExtractor:
 
         # Group segments by metric
         metric_segments = self._group_segments_by_metric(segments)
+        priority_metric_ids = self._get_priority_metric_ids(segments)
+        metric_segments = self._filter_metric_segments(
+            metric_segments, priority_metric_ids
+        )
 
         # Extract definition for each metric
         for metric_id, metric_segs in metric_segments.items():
@@ -111,7 +118,7 @@ class DefinitionExtractor:
         logger.info(f"Extracted {len(definitions)} metric definitions")
         return definitions
 
-    def _group_segments_by_metric(self, segments: List[SourceSegment]) -> dict:
+    def _group_segments_by_metric(self, segments: list[SourceSegment]) -> dict:
         """
         Group segments by the metrics they mention.
 
@@ -128,9 +135,89 @@ class DefinitionExtractor:
 
         return metric_segments
 
+    def _get_priority_metric_ids(self, segments: list[SourceSegment]) -> set[str]:
+        """
+        Build a priority set combining filing high-confidence candidates and CMASB metrics.
+        """
+
+        high_confidence_candidates = {
+            metric_id
+            for seg in segments
+            if (seg.classifier_confidence or 0) >= self.HIGH_CONFIDENCE_THRESHOLD
+            for metric_id in seg.candidate_metric_ids or []
+        }
+
+        try:
+            from .metric_classifier import MetricClassifier
+
+            cmasb_priority = (
+                MetricClassifier.CMASB_CORE_METRICS
+                | MetricClassifier.CMASB_EXTENDED_METRICS
+            )
+        except Exception:
+            cmasb_priority = set()
+
+        return high_confidence_candidates | set(cmasb_priority)
+
+    def _filter_metric_segments(
+        self, metric_segments: dict[str, list[SourceSegment]], preferred_metric_ids: set[str]
+    ) -> dict[str, list[SourceSegment]]:
+        """
+        Keep top-confidence segments per metric and prefer priority candidates.
+        """
+
+        filtered: dict[str, list[SourceSegment]] = {}
+
+        for metric_id, segs in metric_segments.items():
+            sorted_segs = sorted(
+                segs,
+                key=lambda s: s.classifier_confidence or 0.0,
+                reverse=True,
+            )
+
+            is_priority_metric = metric_id in preferred_metric_ids
+            preferred = [
+                seg
+                for seg in sorted_segs
+                if is_priority_metric
+                and metric_id in (seg.candidate_metric_ids or [])
+            ]
+
+            preferred_ids = {id(seg) for seg in preferred}
+            fallback = [seg for seg in sorted_segs if id(seg) not in preferred_ids]
+            ordered = preferred + fallback
+
+            filtered[metric_id] = ordered[: self.TOP_SEGMENTS_PER_METRIC]
+
+        return filtered
+
+    def _select_verified_snippet(
+        self,
+        candidate_segments: list[SourceSegment],
+        all_segments: list[SourceSegment],
+    ) -> tuple[str | None, int | None, str | None]:
+        """
+        Select the first candidate whose snippet can be verified in the source set.
+        """
+
+        if not candidate_segments:
+            return None, None, None
+
+        combined_text = " ".join(seg.raw_text for seg in all_segments if seg.raw_text)
+
+        for seg in candidate_segments:
+            snippet = seg.raw_text or ""
+            if not snippet:
+                continue
+
+            if verify_quote_in_source(snippet, combined_text):
+                return self._normalize_definition_text(snippet), seg.sequence_index, snippet
+
+        return None, None, None
+
     def _extract_metric_definition(
-        self, metric_id: str, segments: List[SourceSegment], company_id: int
-    ) -> Optional[MetricDefinition]:
+        self, metric_id: str, segments: list[SourceSegment], company_id: int
+    ) -> MetricDefinition | None:
         """
         Extract definition for a specific metric from its segments.
 
@@ -176,26 +263,17 @@ class DefinitionExtractor:
         # Fall back to rule-based extraction
         logger.debug(f"Using rule-based definition extraction for {metric_id}")
 
-        # Extract and normalize text
-        definition_text = None
-        definition_segment_id = None
-        if definition_segments:
-            # Use the first definition segment
-            seg = definition_segments[0]
-            definition_text = self._normalize_definition_text(seg.raw_text)
-            definition_segment_id = (
-                seg.sequence_index
-            )  # Store sequence_index temporarily
+        # Extract and normalize text from verified snippets
+        definition_text, definition_segment_id, definition_raw_text = (
+            self._select_verified_snippet(definition_segments, segments)
+        )
 
-        methodology_text = None
-        methodology_segment_id = None
-        if methodology_segments:
-            # Use the first methodology segment
-            seg = methodology_segments[0]
-            methodology_text = self._normalize_definition_text(seg.raw_text)
-            methodology_segment_id = (
-                seg.sequence_index
-            )  # Store sequence_index temporarily
+        methodology_text, methodology_segment_id, methodology_raw_text = (
+            self._select_verified_snippet(methodology_segments, segments)
+        )
+
+        if not definition_text and not methodology_text:
+            return None
 
         # Assess alignment with canonical definition
         alignment_flag = self.assess_alignment(metric_id, definition_text)
@@ -209,12 +287,8 @@ class DefinitionExtractor:
             metric_id=metric_id,
             definition_text_normalized=definition_text,
             methodology_text_normalized=methodology_text,
-            definition_raw_text=(
-                definition_segments[0].raw_text if definition_segments else None
-            ),
-            methodology_raw_text=(
-                methodology_segments[0].raw_text if methodology_segments else None
-            ),
+            definition_raw_text=definition_raw_text,
+            methodology_raw_text=methodology_raw_text,
             definition_segment_id=definition_segment_id,
             methodology_segment_id=methodology_segment_id,
             alignment_flag=alignment_flag,
@@ -223,8 +297,8 @@ class DefinitionExtractor:
         return definition
 
     def _extract_definition_with_llm(
-        self, metric_id: str, segments: List[SourceSegment], company_id: int
-    ) -> Optional[MetricDefinition]:
+        self, metric_id: str, segments: list[SourceSegment], company_id: int
+    ) -> MetricDefinition | None:
         """
         Extract definition using LLM.
 
@@ -361,7 +435,7 @@ class DefinitionExtractor:
 
         return normalized
 
-    def assess_alignment(self, metric_id: str, issuer_definition: Optional[str]) -> str:
+    def assess_alignment(self, metric_id: str, issuer_definition: str | None) -> str:
         """
         Assess alignment between issuer and CMASB canonical definitions.
 
@@ -400,8 +474,8 @@ class DefinitionExtractor:
 
 # Convenience function
 def extract_definitions(
-    segments: List[SourceSegment], company_id: int
-) -> List[MetricDefinition]:
+    segments: list[SourceSegment], company_id: int
+) -> list[MetricDefinition]:
     """
     Convenience function to extract definitions from segments.
 

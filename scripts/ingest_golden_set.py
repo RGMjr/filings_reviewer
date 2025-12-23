@@ -9,13 +9,12 @@ Usage:
 import csv
 import json
 import logging
-import os
 import shutil
-import urllib.request
 import ssl
-from pathlib import Path
+import urllib.request
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ def parse_period(period_str):
     """Attempt to parse period string to standardized date format"""
     if not period_str:
         return "", "", ""
-    
+
     # Try common formats
     formats = ["%d-%b-%y", "%Y-%m-%d", "%m/%d/%Y"]
     for fmt in formats:
@@ -72,8 +71,8 @@ def parse_period(period_str):
             return "", dt.strftime("%Y-%m-%d"), "" # Start, End, Type
         except ValueError:
             continue
-    
-    # If explicit range or other text, just return as is? 
+
+    # If explicit range or other text, just return as is?
     # For now assume mostly end dates in the input
     return "", period_str, ""
 
@@ -92,7 +91,7 @@ def main():
     company_data = defaultdict(list)
     company_urls = {}
 
-    with open(input_csv, 'r', encoding='utf-8-sig') as f:
+    with open(input_csv, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             company_name = row.get("Company", "").strip()
@@ -107,7 +106,7 @@ def main():
                     if k in company_name or company_name in k:
                         mapped_name = v
                         break
-            
+
             if not mapped_name:
                 logger.warning(f"Could not map company '{company_name}', skipping row.")
                 continue
@@ -120,14 +119,14 @@ def main():
     for dir_name, rows in company_data.items():
         target_dir = gold_dir / dir_name
         target_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Ensure metadata.json exists and has local_path
         metadata_path = target_dir / "metadata.json"
         meta = {}
         if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path) as f:
                 meta = json.load(f)
-        
+
         # If new or needs update
         needs_save = False
         if not meta:
@@ -146,7 +145,7 @@ def main():
         # Check/Download HTML
         local_path = meta.get("local_path")
         full_local_path = base_dir / local_path if local_path else None
-        
+
         if not local_path or not full_local_path.exists():
             source_url = meta.get("source_url") or company_urls.get(dir_name)
             if source_url:
@@ -155,21 +154,21 @@ def main():
                     # Save to target_dir/filing.html
                     filename = "filing.html"
                     save_path = target_dir / filename
-                    
+
                     # Add User-Agent to avoid 403 from SEC
                     req = urllib.request.Request(
-                        source_url, 
+                        source_url,
                         headers={'User-Agent': 'FilingsReviewer/1.0 (antigravity_agent@google.com)'}
                     )
-                    
+
                     # Bypass SSL verification
                     ctx = ssl.create_default_context()
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
-                    
+
                     with urllib.request.urlopen(req, context=ctx) as response, open(save_path, 'wb') as out_file:
                         shutil.copyfileobj(response, out_file)
-                    
+
                     # Update metadata with relative path from base_dir
                     rel_path = save_path.relative_to(base_dir)
                     meta["local_path"] = str(rel_path)
@@ -189,12 +188,12 @@ def main():
 
         # Create/Overwrite extracted_values.csv
         output_csv = target_dir / "extracted_values.csv"
-        
+
         extracted_rows = []
         for i, row in enumerate(rows):
             # Map columns
             period_start, period_end, _ = parse_period(row.get("Period"))
-            
+
             # Logic to determine actual metric name to use
             metric_id = row.get("Standard Metric Name") or row.get("New standard metric?")
             # Basic cleaning of metric_id to be snake_case if it isn't
@@ -224,7 +223,7 @@ def main():
             writer = csv.DictWriter(f, fieldnames=TARGET_FIELDNAMES)
             writer.writeheader()
             writer.writerows(extracted_rows)
-        
+
         logger.info(f"Wrote {len(extracted_rows)} rows to {output_csv}")
 
 if __name__ == "__main__":
