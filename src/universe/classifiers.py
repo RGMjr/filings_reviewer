@@ -9,7 +9,6 @@ Implements heuristic rules for classifying filings as:
 
 import logging
 import re
-from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,8 @@ SPAC_REGEXES = [re.compile(pattern, re.IGNORECASE) for pattern in SPAC_NAME_PATT
 
 
 def classify_spac(
-    company_name: str, filing_text: Optional[str] = None
-) -> Tuple[bool, str]:
+    company_name: str, filing_text: str | None = None
+) -> tuple[bool, str]:
     """
     Classify whether a company is a SPAC based on name and filing content.
 
@@ -82,8 +81,8 @@ def classify_spac(
 def classify_first_time_issuer(
     cik: str,
     filing_date: str,
-    previous_ipo_date: Optional[str] = None,
-) -> Tuple[bool, str]:
+    previous_ipo_date: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether this is a first-time public equity issuer.
 
@@ -119,8 +118,8 @@ def classify_first_time_issuer(
 
 
 def classify_offering_type(
-    filing_text: Optional[str] = None,
-) -> Tuple[Optional[str], str]:
+    filing_text: str | None = None,
+) -> tuple[str | None, str]:
     """
     Classify the offering type as primary, secondary, or mixed.
 
@@ -174,10 +173,10 @@ def classify_offering_type(
 
 def detect_post_combination(
     company_name: str,
-    filing_text: Optional[str],
+    filing_text: str | None,
     is_spac: bool,
     has_prior_spac_filing: bool,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Detect if this is a post-business-combination SPAC filing (de-SPAC).
 
@@ -250,8 +249,8 @@ def detect_post_combination(
 
 def classify_investment_vehicle(
     company_name: str,
-    sic_code: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is an investment vehicle (ETF, REIT, closed-end fund).
 
@@ -305,8 +304,8 @@ def classify_investment_vehicle(
 
 def classify_resource_extraction(
     company_name: str,
-    sic_code: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is in resource extraction (oil, gas, mining).
 
@@ -378,9 +377,9 @@ def classify_resource_extraction(
 
 def classify_saas_software(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is SaaS or enterprise software.
 
@@ -435,9 +434,9 @@ def classify_saas_software(
 
 def classify_ecommerce_marketplace(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is e-commerce or marketplace business.
 
@@ -488,9 +487,9 @@ def classify_ecommerce_marketplace(
 
 def classify_fintech_crypto(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is fintech or cryptocurrency platform.
 
@@ -515,7 +514,6 @@ def classify_fintech_crypto(
     # EXCLUSION 1: Investment vehicles (ETFs, funds, trusts)
     # These report AUM/NAV, not customer metrics
     investment_vehicle_keywords = ["etf", "fund", "trust"]
-    investment_vehicle_sics = ["6221", "6726", "6722"]  # Investment advisors, unit trusts, etc.
 
     for keyword in investment_vehicle_keywords:
         if keyword in name_lower:
@@ -576,9 +574,9 @@ def classify_fintech_crypto(
 
 def classify_healthcare_tech(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is healthcare technology.
 
@@ -631,9 +629,9 @@ def classify_healthcare_tech(
 
 def classify_media_subscription(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is media or subscription services.
 
@@ -684,8 +682,8 @@ def classify_media_subscription(
 
 def classify_telecom(
     company_name: str,
-    sic_code: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is telecommunications.
 
@@ -724,9 +722,9 @@ def classify_telecom(
 
 def classify_platform_network(
     company_name: str,
-    sic_code: Optional[str] = None,
-    filing_text: Optional[str] = None,
-) -> Tuple[bool, str]:
+    sic_code: str | None = None,
+    filing_text: str | None = None,
+) -> tuple[bool, str]:
     """
     Classify whether a company is a platform or network business.
 
@@ -775,7 +773,7 @@ def classify_platform_network(
 def is_in_scope_phase1(
     is_spac: bool,
     is_first_time_issuer: bool,
-    offering_type: Optional[str],
+    offering_type: str | None,
     form_type: str,
     is_post_combination: bool = False,
     is_investment_vehicle: bool = False,

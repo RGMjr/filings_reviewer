@@ -5,8 +5,8 @@ Tests the end-to-end workflow of learned pattern filtering during
 candidate generation.
 """
 
+
 import pytest
-from decimal import Decimal
 
 from src.review.candidate_generator import CandidateGenerator
 
@@ -477,7 +477,7 @@ class TestE2CandidateFiltering:
         assert elapsed < 10.0, f"Large filing processing took too long: {elapsed:.2f}s"
 
         # Print performance stats
-        print(f"\n  Large filing performance:")
+        print("\n  Large filing performance:")
         print(f"    Segments: {stats.segments_processed}")
         print(f"    Time: {elapsed:.2f}s")
         print(f"    Throughput: {stats.segments_processed/elapsed:.1f} seg/sec")

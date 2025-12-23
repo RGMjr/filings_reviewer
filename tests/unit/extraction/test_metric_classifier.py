@@ -515,7 +515,7 @@ def test_metrics_collection(classifier):
         ),
     ]
 
-    result = classifier.classify_batch(segments)
+    classifier.classify_batch(segments)
     metrics = classifier.get_metrics()
 
     # Metrics should exist

@@ -17,9 +17,8 @@ Usage:
 import argparse
 import csv
 import json
-from pathlib import Path
 from collections import defaultdict
-
+from pathlib import Path
 
 # Sanity check rules: expected unit types per metric
 METRIC_UNIT_RULES = {

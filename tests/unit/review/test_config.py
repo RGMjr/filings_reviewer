@@ -4,14 +4,13 @@ Unit tests for configuration module.
 Tests for configuration dataclass, presets, and P1 enhancements.
 """
 
-import pytest
 
 from src.review.config import (
-    CandidateGenerationConfig,
     DEFAULT_CONFIG,
+    CandidateGenerationConfig,
+    get_fast_config,
     get_high_precision_config,
     get_high_recall_config,
-    get_fast_config,
 )
 
 
@@ -178,11 +177,11 @@ class TestBackwardCompatibility:
     def test_individual_constants_exported(self):
         """Individual constants should be exported for backward compatibility."""
         from src.review.config import (
-            MAX_KEYWORD_DISTANCE,
             DEFAULT_CONTEXT_WORDS,
+            MAX_KEYWORD_DISTANCE,
             MIN_METRIC_VALUE,
-            YEAR_MIN,
             YEAR_MAX,
+            YEAR_MIN,
         )
 
         # Should match DEFAULT_CONFIG values

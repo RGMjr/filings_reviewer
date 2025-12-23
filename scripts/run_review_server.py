@@ -44,14 +44,17 @@ import signal
 import sys
 from pathlib import Path
 
-# Add project root to Python path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 from dotenv import load_dotenv
 
-from src.infra.logging_config import configure_logging
-from src.web.app import create_app
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load environment variables and make src imports possible."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,11 @@ def shutdown_handler(signum, frame):
 
 def main():
     """Parse arguments, validate environment, and start production server."""
+    prepare_environment()
+
+    from src.infra.logging_config import configure_logging
+    from src.web.app import create_app
+
     parser = argparse.ArgumentParser(
         description="Start Flask production server for human review interface"
     )

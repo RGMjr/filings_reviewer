@@ -2,7 +2,6 @@
 Tests for infrastructure exceptions.
 """
 
-import pytest
 
 from src.infra.exceptions import (
     HTTPError,

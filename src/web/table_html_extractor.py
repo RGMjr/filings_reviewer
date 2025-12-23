@@ -6,7 +6,6 @@ contains the extracted value and keyword, not just the first N bytes.
 """
 
 import logging
-from typing import Optional, Tuple
 
 from bs4 import BeautifulSoup, Tag
 

@@ -3,22 +3,30 @@
 
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.metric_classifier import MetricClassifier
-from src.extraction.value_extractor import ValueExtractor
-from src.llm.openai_client import OpenAIClient
+def prepare_environment() -> None:
+    """Load .env configuration and make src package importable."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 
 def main():
+    prepare_environment()
+
+    from src.extraction.html_segmenter import HTMLSegmenter
+    from src.extraction.metric_classifier import MetricClassifier
+    from src.extraction.value_extractor import ValueExtractor
+    from src.llm.openai_client import OpenAIClient
+
     # Load the Farfetch filing
-    filing_path = project_root / "data/filings/0001740915/000119312518252315/primary.htm"
+    filing_path = PROJECT_ROOT / "data/filings/0001740915/000119312518252315/primary.htm"
 
     print(f"Loading filing: {filing_path}")
 

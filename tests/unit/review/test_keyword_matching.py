@@ -5,6 +5,7 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
 from src.review.keyword_matching import (
@@ -14,7 +15,6 @@ from src.review.keyword_matching import (
     KeywordMatcher,
 )
 from src.review.number_parsing import NumberMatch
-
 
 # =============================================================================
 # KeywordMatcher.find_all_keywords Tests
@@ -393,7 +393,6 @@ class TestP1BoundaryAwareMatching:
         assert len(keywords) >= 1
 
         # Verify that matched keywords are from same boundary as number
-        number_boundary = detector.get_boundary_at_position(number.start, boundaries)
         for kw in keywords:
             kw_boundary = detector.get_boundary_at_position(kw.start, boundaries)
             # In most cases, should be same boundary (may have fallback)
@@ -505,7 +504,7 @@ class TestP1AmbiguityLogging:
 
         matcher = KeywordMatcher(log_ambiguous_matches=False)
         all_keywords = matcher.find_all_keywords(text)
-        keywords = matcher.find_keywords_near_number(number, all_keywords)
+        matcher.find_keywords_near_number(number, all_keywords)
 
         # Should not log ambiguity messages
         ambiguity_logs = [record for record in caplog.records if "Ambiguous match" in record.message]
@@ -873,7 +872,6 @@ class TestP15SentenceAwareMatching:
         )
 
         # May find both "active customers" and "gross margin" since they're in same sentence
-        metric_ids = {kw.metric_id for kw in keywords}
         # At minimum, should find the closest keyword
         assert len(keywords) >= 1
 
@@ -1355,7 +1353,6 @@ class TestL4ContextDependentMultipliers:
 
         # Should find "revenue" (after "of")
         assert len(keywords) >= 1
-        revenue_kw = [kw for kw in keywords if "revenue" in kw.keyword.lower()]
         # Note: revenue might match, depends on metric keywords
         # This test verifies multiplier is applied, not specific keyword selection
 

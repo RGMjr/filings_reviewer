@@ -13,11 +13,11 @@ were definition sections scoring 3.9-5.5 (below 6.0 goldmine threshold).
 The +2.0 tier pushes these critical disclosures above threshold.
 """
 
-import pytest
-from typing import Optional
 
-from src.extraction.segment_enricher import SegmentEnricher
+import pytest
+
 from src.extraction.models import SourceSegment
+from src.extraction.segment_enricher import SegmentEnricher
 
 
 @pytest.fixture
@@ -31,12 +31,12 @@ def make_segment(
     raw_html: str = "",
     classifier_confidence: float = 0.0,
     distinct_metric_count: int = 0,
-    candidate_metric_ids: Optional[list[str]] = None,
+    candidate_metric_ids: list[str] | None = None,
     contains_temporal_trend: bool = False,
     contains_cohort_breakdown: bool = False,
     contains_definition_flag: bool = False,
     image_count: int = 0,
-    extra_metadata: Optional[dict[str, bool]] = None,
+    extra_metadata: dict[str, bool] | None = None,
 ) -> SourceSegment:
     """Factory for creating test segments with specified attributes."""
     segment = SourceSegment(

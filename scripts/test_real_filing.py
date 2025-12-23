@@ -9,19 +9,21 @@ This script:
 4. Shows extraction results and cost summary
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.llm.openai_client import OpenAIClient
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.infra.db import DatabaseAdapter
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports available."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 
 def test_real_filing(filing_id: int, use_llm: bool = True):
@@ -32,6 +34,12 @@ def test_real_filing(filing_id: int, use_llm: bool = True):
         filing_id: Database filing ID to process
         use_llm: Whether to use LLM-enhanced extraction
     """
+    prepare_environment()
+
+    from src.extraction.extraction_pipeline import ExtractionPipeline
+    from src.infra.db import DatabaseAdapter
+    from src.llm.openai_client import OpenAIClient
+
     print("=" * 80)
     print(f"Testing Real Filing Extraction - Filing ID {filing_id}")
     print(f"Mode: {'LLM-Enhanced' if use_llm else 'Rule-Based Only'}")
@@ -120,7 +128,7 @@ def test_real_filing(filing_id: int, use_llm: bool = True):
     print("-" * 80)
 
     if result.success:
-        print(f"   ✓ Extraction succeeded")
+        print("   ✓ Extraction succeeded")
         print(f"   Source Segments: {result.num_segments}")
         print(f"   Metric Values: {result.num_values}")
         print(f"   Definitions: {result.num_definitions}")

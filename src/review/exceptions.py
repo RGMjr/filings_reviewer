@@ -11,7 +11,6 @@ Exception Hierarchy:
     └── NumberProcessingError (number-level errors)
 """
 
-from typing import Optional
 
 
 class CandidateGenerationError(Exception):
@@ -26,8 +25,8 @@ class SegmentProcessingError(CandidateGenerationError):
     def __init__(
         self,
         message: str,
-        segment_id: Optional[int] = None,
-        original_error: Optional[Exception] = None,
+        segment_id: int | None = None,
+        original_error: Exception | None = None,
     ):
         super().__init__(message)
         self.segment_id = segment_id
@@ -40,9 +39,9 @@ class NumberProcessingError(CandidateGenerationError):
     def __init__(
         self,
         message: str,
-        number_text: Optional[str] = None,
-        position: Optional[int] = None,
-        original_error: Optional[Exception] = None,
+        number_text: str | None = None,
+        position: int | None = None,
+        original_error: Exception | None = None,
     ):
         super().__init__(message)
         self.number_text = number_text

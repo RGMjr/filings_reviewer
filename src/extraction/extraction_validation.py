@@ -11,10 +11,8 @@ This module is designed to filter out false positives before storing extractions
 """
 
 import logging
-import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +33,13 @@ class ValidationIssue:
     result: ValidationResult
     metric_id: str
     value: float
-    unit: Optional[str]
+    unit: str | None
     message: str
-    source_preview: Optional[str] = None
+    source_preview: str | None = None
 
 
 # Metric unit rules: metric_id -> (allowed_units, expected_unit_category)
-METRIC_UNIT_RULES: Dict[str, Tuple[List[str], str]] = {
+METRIC_UNIT_RULES: dict[str, tuple[list[str], str]] = {
     # Revenue/Money metrics - should be currency
     "cm_customer_acquisition_cost": (
         ["dollars", "usd", "$", "millions", "thousands", "billions", None],
@@ -114,7 +112,7 @@ METRIC_UNIT_RULES: Dict[str, Tuple[List[str], str]] = {
 }
 
 # Metric range rules: metric_id -> (min_value, max_value, typical_min, typical_max)
-METRIC_RANGE_RULES: Dict[str, Tuple[Optional[float], Optional[float], float, float]] = {
+METRIC_RANGE_RULES: dict[str, tuple[float | None, float | None, float, float]] = {
     # Retention/NRR typically 50-200%
     "cm_customer_retention_rate": (0, 100, 50, 99),
     "cm_net_revenue_retention": (0, 300, 80, 180),
@@ -141,7 +139,7 @@ METRIC_RANGE_RULES: Dict[str, Tuple[Optional[float], Optional[float], float, flo
 }
 
 # Keywords that should appear in source for each metric
-METRIC_KEYWORDS: Dict[str, List[str]] = {
+METRIC_KEYWORDS: dict[str, list[str]] = {
     "cm_customer_acquisition_cost": [
         "acquisition cost", "cac", "cost to acquire", "customer acquisition",
         "cost per customer", "cost per acquisition"
@@ -185,7 +183,7 @@ METRIC_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def normalize_unit(unit: Optional[str]) -> Optional[str]:
+def normalize_unit(unit: str | None) -> str | None:
     """Normalize unit string for comparison."""
     if not unit:
         return None
@@ -209,7 +207,7 @@ def normalize_unit(unit: Optional[str]) -> Optional[str]:
 
 def validate_unit(
     metric_id: str,
-    unit: Optional[str],
+    unit: str | None,
     value: float
 ) -> ValidationResult:
     """
@@ -254,7 +252,7 @@ def validate_unit(
 def validate_range(
     metric_id: str,
     value: float,
-    unit: Optional[str]
+    unit: str | None
 ) -> ValidationResult:
     """
     Validate that value is within expected range for metric type.
@@ -329,7 +327,7 @@ def validate_keyword_in_source(
 
 
 def validate_quote(
-    quote: Optional[str],
+    quote: str | None,
     value: float,
     source_text: str
 ) -> ValidationResult:
@@ -356,7 +354,6 @@ def validate_quote(
         f"{value:,.2f}",
     ]
 
-    quote_lower = quote.lower()
     found_value = any(v in quote for v in value_variations)
 
     if not found_value:
@@ -370,9 +367,9 @@ def validate_quote(
 
 def validate_quote_contains_metric_keyword(
     metric_id: str,
-    quote: Optional[str],
+    quote: str | None,
     value: float,
-) -> Tuple[ValidationResult, str]:
+) -> tuple[ValidationResult, str]:
     """
     Validate that quote contains BOTH metric keyword AND the extracted value.
 
@@ -437,10 +434,10 @@ def validate_quote_contains_metric_keyword(
 def validate_extraction(
     metric_id: str,
     value: float,
-    unit: Optional[str],
-    quote: Optional[str],
+    unit: str | None,
+    quote: str | None,
     source_text: str
-) -> List[ValidationIssue]:
+) -> list[ValidationIssue]:
     """
     Run all validation checks on an extraction.
 
@@ -508,7 +505,7 @@ def validate_extraction(
     return issues
 
 
-def should_reject_extraction(issues: List[ValidationIssue]) -> bool:
+def should_reject_extraction(issues: list[ValidationIssue]) -> bool:
     """
     Determine if extraction should be rejected based on issues.
 
@@ -536,7 +533,7 @@ def should_reject_extraction(issues: List[ValidationIssue]) -> bool:
     return False
 
 
-def get_rejection_reason(issues: List[ValidationIssue]) -> str:
+def get_rejection_reason(issues: list[ValidationIssue]) -> str:
     """
     Get human-readable rejection reason.
 

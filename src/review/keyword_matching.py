@@ -81,7 +81,7 @@ See Also:
 import logging
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from src.extraction.metric_classifier import MetricClassifier
 from src.review.number_parsing import NumberMatch
@@ -99,7 +99,7 @@ logger = logging.getLogger(__name__)
 
 # Import keywords from the authoritative source to ensure consistency
 # between candidate generation and metric classification
-METRIC_KEYWORDS: Dict[str, List[str]] = MetricClassifier.METRIC_KEYWORDS
+METRIC_KEYWORDS: dict[str, list[str]] = MetricClassifier.METRIC_KEYWORDS
 
 
 # =============================================================================
@@ -145,7 +145,7 @@ SPECIFIC_KEYWORD_PATTERNS = [
 # 2. "margin" keywords incorrectly matching CAC
 # 3. "gross profit" / "gross margin" matching cohort metrics
 # 4. "acquisition cost" substring matching new customers metric
-METRIC_EXCLUSION_PATTERNS: Dict[str, List[str]] = {
+METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = {
     # cm_new_customers_acquired should NOT match when "acquisition cost" is present
     # (indicates CAC metric, not new customers acquired)
     "cm_new_customers_acquired": [
@@ -204,7 +204,7 @@ class KeywordMatch:
     keyword: str  # The matched text
     metric_id: str  # Associated metric ID
     pattern: str  # The regex pattern that matched
-    direction: Optional[str] = None  # 'before' | 'after' | 'at' (relative to number, L3 enhancement)
+    direction: str | None = None  # 'before' | 'after' | 'at' (relative to number, L3 enhancement)
 
 
 # =============================================================================
@@ -287,16 +287,16 @@ class KeywordMatcher:
         self.multiplier_default = multiplier_default
 
         # Pre-compile all keyword patterns for reuse
-        self._compiled_patterns: Dict[str, List[Tuple[re.Pattern[str], str]]] = {}
+        self._compiled_patterns: dict[str, list[tuple[re.Pattern[str], str]]] = {}
         for metric_id, patterns in METRIC_KEYWORDS.items():
             self._compiled_patterns[metric_id] = [
                 (re.compile(pattern, re.IGNORECASE), pattern) for pattern in patterns
             ]
 
         # HRI-3: Pre-compile exclusion patterns for reuse
-        self._compiled_exclusions: Dict[str, List[re.Pattern[str]]] = {}
+        self._compiled_exclusions: dict[str, list[re.Pattern[str]]] = {}
         for metric_id, exclusion_patterns in METRIC_EXCLUSION_PATTERNS.items():
-            compiled_list: List[re.Pattern[str]] = []
+            compiled_list: list[re.Pattern[str]] = []
             for pattern in exclusion_patterns:
                 try:
                     compiled_list.append(re.compile(pattern, re.IGNORECASE))
@@ -330,7 +330,7 @@ class KeywordMatcher:
                 return True
         return False
 
-    def find_all_keywords(self, text: str) -> List[KeywordMatch]:
+    def find_all_keywords(self, text: str) -> list[KeywordMatch]:
         """
         Find all metric keywords in text.
 
@@ -387,13 +387,13 @@ class KeywordMatcher:
     def find_keywords_near_number(
         self,
         number: NumberMatch,
-        all_keywords: List[KeywordMatch],
-        boundaries: Optional[List["TextBoundary"]] = None,
-        sentence_boundaries: Optional[List["TextBoundary"]] = None,
+        all_keywords: list[KeywordMatch],
+        boundaries: list["TextBoundary"] | None = None,
+        sentence_boundaries: list["TextBoundary"] | None = None,
         text: str = "",
-        segment_type: Optional[str] = None,
+        segment_type: str | None = None,
         table_row_parser: Optional["TableRowParser"] = None,
-    ) -> List[KeywordMatch]:
+    ) -> list[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
 
@@ -434,7 +434,7 @@ class KeywordMatcher:
         """
         # Phase 1: Collect all keywords within distance with their distances and directions
         # Store as (keyword, raw_distance, direction) for L4 multiplier application
-        candidates_with_distance: List[Tuple[KeywordMatch, int]] = []
+        candidates_with_distance: list[tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
             dist = self.calculate_distance_from_positions(
                 number.start, number.end, kw.start, kw.end
@@ -527,7 +527,7 @@ class KeywordMatcher:
         # Phase 3: Sort by distance first, then length (P1 enhancement + L4 multiplier + L4 Option C)
         if self.prefer_closest_keyword:
             # L4 Option C: Compute effective distance using context-dependent multipliers
-            candidates_with_effective_distance: List[Tuple[KeywordMatch, int, float]] = []
+            candidates_with_effective_distance: list[tuple[KeywordMatch, int, float]] = []
 
             for kw, raw_distance in candidates_with_distance:
                 # Compute direction to determine if multiplier applies
@@ -599,9 +599,9 @@ class KeywordMatcher:
 
         # Phase 5: Filter substring duplicates, deduplicate by metric, and add direction (L3)
         matches: list[KeywordMatch] = []
-        seen_metrics: Set[str] = set()
+        seen_metrics: set[str] = set()
 
-        for kw, raw_dist, eff_dist in candidates_with_effective_distance:
+        for kw, _raw_dist, _eff_dist in candidates_with_effective_distance:
             # Skip if we already have a match for this metric
             if kw.metric_id in seen_metrics:
                 continue
@@ -740,8 +740,8 @@ class KeywordMatcher:
         number_position: int,
         keyword_position: int,
         keyword_direction: str,
-        boundaries: Optional[List["TextBoundary"]] = None,
-        segment_type: Optional[str] = None,
+        boundaries: list["TextBoundary"] | None = None,
+        segment_type: str | None = None,
     ) -> str:
         """
         Determine which context type applies to this keyword-number pair.
@@ -794,8 +794,8 @@ class KeywordMatcher:
         number_position: int,
         keyword_position: int,
         keyword_direction: str,
-        boundaries: Optional[List["TextBoundary"]] = None,
-        segment_type: Optional[str] = None,
+        boundaries: list["TextBoundary"] | None = None,
+        segment_type: str | None = None,
     ) -> float:
         """
         Determine the appropriate multiplier based on textual context.
@@ -861,7 +861,7 @@ class KeywordMatcher:
         return open_count > 0
 
     def _is_in_table(
-        self, position: int, boundaries: Optional[List["TextBoundary"]]
+        self, position: int, boundaries: list["TextBoundary"] | None
     ) -> bool:
         """
         Check if a position is in a table boundary.
@@ -885,7 +885,7 @@ class KeywordMatcher:
         return getattr(boundary, "boundary_type", None) == "table"
 
     def _is_in_bullet_point(
-        self, position: int, boundaries: Optional[List["TextBoundary"]]
+        self, position: int, boundaries: list["TextBoundary"] | None
     ) -> bool:
         """
         Check if a position is in a bullet point boundary.
@@ -956,7 +956,7 @@ class KeywordMatcher:
         return bool(re.search(preposition_pattern, snippet))
 
     def _get_boundary_at_position(
-        self, pos: int, boundaries: List["TextBoundary"]
+        self, pos: int, boundaries: list["TextBoundary"]
     ) -> Optional["TextBoundary"]:
         """
         Find the boundary containing a position.
@@ -974,7 +974,7 @@ class KeywordMatcher:
         return None
 
     def _is_in_same_boundary(
-        self, pos: int, target_boundary: "TextBoundary", boundaries: List["TextBoundary"]
+        self, pos: int, target_boundary: "TextBoundary", boundaries: list["TextBoundary"]
     ) -> bool:
         """
         Check if a position is in the same boundary as a target boundary.

@@ -28,7 +28,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -169,7 +169,7 @@ def fetch_clean_text_from_file(html_path: str) -> str:
     Returns:
         Cleaned text content (first 100K chars)
     """
-    with open(html_path, "r", encoding="utf-8") as f:
+    with open(html_path, encoding="utf-8") as f:
         html_content = f.read()
 
     soup = BeautifulSoup(html_content, "html.parser")
@@ -185,14 +185,14 @@ def fetch_clean_text_from_file(html_path: str) -> str:
     return text[:MAX_TEXT_LENGTH]
 
 
-def chunk_text(text: str, size: int = CHUNK_SIZE) -> List[str]:
+def chunk_text(text: str, size: int = CHUNK_SIZE) -> list[str]:
     """Split text into chunks of specified size."""
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
 def extract_metrics_from_chunk(
     client: OpenAI, text: str, company_name: str, filing_id: int
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Send a chunk of filing text to LLM and extract customer metrics.
 
@@ -302,7 +302,7 @@ def process_filing(
     html_path: str,
     cik: str,
     accession_number: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Process a single filing and extract metrics.
 
@@ -349,7 +349,7 @@ def process_filing(
 # =================== DATABASE FUNCTIONS ===================
 
 
-def get_fetched_filings(db: DatabaseAdapter, limit: int = 10) -> List[Dict]:
+def get_fetched_filings(db: DatabaseAdapter, limit: int = 10) -> list[dict]:
     """
     Get list of fetched filings ready for extraction.
 
@@ -381,7 +381,7 @@ def get_fetched_filings(db: DatabaseAdapter, limit: int = 10) -> List[Dict]:
     return db.query(query, {"limit": limit})
 
 
-def save_metrics_to_csv(metrics: List[Dict], output_path: str):
+def save_metrics_to_csv(metrics: list[dict], output_path: str):
     """Save extracted metrics to CSV file."""
     import pandas as pd
 

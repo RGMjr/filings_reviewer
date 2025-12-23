@@ -4,7 +4,6 @@ Unit tests for extraction data models.
 Tests focus on SourceSegment richness metadata fields (Task G1).
 """
 
-import pytest
 from src.extraction.models import SourceSegment
 
 

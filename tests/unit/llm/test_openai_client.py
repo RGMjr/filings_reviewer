@@ -1,10 +1,11 @@
 """Tests for OpenAI client module."""
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-from src.llm.openai_client import OpenAIClient, LLMResponse, CostTracker
+import pytest
+
+from src.llm.openai_client import CostTracker, LLMResponse, OpenAIClient
 
 
 class TestLLMResponse:
@@ -71,7 +72,7 @@ class TestCostTracker:
         """Test adding multiple requests to cost tracker."""
         tracker = CostTracker()
 
-        for i in range(3):
+        for _ in range(3):
             response = LLMResponse(
                 content="Test",
                 model="gpt-4o-mini",
@@ -145,7 +146,7 @@ class TestOpenAIClientInitialization:
 
     def test_client_initializes_with_env_var(self, mock_tiktoken):
         """Test client initializes with environment variable."""
-        with patch("src.llm.openai_client.OpenAI") as mock_openai:
+        with patch("src.llm.openai_client.OpenAI") as _mock_openai:
             with patch.dict("os.environ", {"OPENAI_API_KEY": "env-test-key"}):
                 client = OpenAIClient()
 
@@ -201,7 +202,7 @@ class TestOpenAIClientInitialization:
                 mock_tik.encoding_for_model.side_effect = KeyError("Unknown model")
                 mock_tik.get_encoding.return_value = MagicMock()
 
-                client = OpenAIClient(api_key="test-key", model="unknown-model")
+                OpenAIClient(api_key="test-key", model="unknown-model")
 
                 mock_tik.get_encoding.assert_called_once_with("cl100k_base")
 

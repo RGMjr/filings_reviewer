@@ -11,24 +11,31 @@ It verifies:
 5. Cost tracking
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.llm.openai_client import OpenAIClient
-from src.extraction.value_extractor import ValueExtractor
-from src.extraction.definition_extractor import DefinitionExtractor
-from src.extraction.models import SourceSegment
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports available."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 
 def test_value_extraction_from_text():
     """Test LLM value extraction from text segments."""
+    prepare_environment()
+
+    from src.extraction.models import SourceSegment
+    from src.extraction.value_extractor import ValueExtractor
+    from src.llm.openai_client import OpenAIClient
+
     print("\n" + "=" * 80)
     print("Test 1: Value Extraction from Text (LLM)")
     print("=" * 80)
@@ -72,6 +79,12 @@ def test_value_extraction_from_text():
 
 def test_value_extraction_from_table():
     """Test LLM value extraction from table segments."""
+    prepare_environment()
+
+    from src.extraction.models import SourceSegment
+    from src.extraction.value_extractor import ValueExtractor
+    from src.llm.openai_client import OpenAIClient
+
     print("\n" + "=" * 80)
     print("Test 2: Value Extraction from Table (LLM)")
     print("=" * 80)
@@ -140,6 +153,12 @@ def test_value_extraction_from_table():
 
 def test_definition_extraction():
     """Test LLM definition extraction."""
+    prepare_environment()
+
+    from src.extraction.definition_extractor import DefinitionExtractor
+    from src.extraction.models import SourceSegment
+    from src.llm.openai_client import OpenAIClient
+
     print("\n" + "=" * 80)
     print("Test 3: Definition Extraction (LLM)")
     print("=" * 80)
@@ -187,6 +206,11 @@ def test_definition_extraction():
 
 def test_fallback_extraction():
     """Test fallback to rule-based extraction when LLM is not available."""
+    prepare_environment()
+
+    from src.extraction.models import SourceSegment
+    from src.extraction.value_extractor import ValueExtractor
+
     print("\n" + "=" * 80)
     print("Test 4: Fallback to Rule-Based Extraction")
     print("=" * 80)
@@ -222,6 +246,13 @@ def test_fallback_extraction():
 
 def test_cost_tracking():
     """Test cost tracking across multiple extractions."""
+    prepare_environment()
+
+    from src.extraction.definition_extractor import DefinitionExtractor
+    from src.extraction.models import SourceSegment
+    from src.extraction.value_extractor import ValueExtractor
+    from src.llm.openai_client import OpenAIClient
+
     print("\n" + "=" * 80)
     print("Test 5: Cost Tracking")
     print("=" * 80)
@@ -286,6 +317,8 @@ def test_cost_tracking():
 
 def main():
     """Run all tests."""
+    prepare_environment()
+
     print("=" * 80)
     print("Testing LLM-Enhanced Extraction Pipeline")
     print("=" * 80)

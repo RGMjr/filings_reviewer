@@ -11,12 +11,8 @@ Tests verify that all 5 Phase 1 bugs are eliminated when fixes work together:
 This is validation only - no production code should be modified.
 """
 
-import pytest
-from decimal import Decimal
 
 from src.review.candidate_generator import CandidateGenerator
-from src.extraction.value_extractor import ValueExtractor
-from src.extraction.html_segmenter import HTMLSegmenter
 
 
 class TestDefinitionFiltering:
@@ -781,7 +777,7 @@ class TestRowBoundaryValidation:
             cik="0004444443",
             company_name="Test Row Markers",
         )
-        filing_id = clean_db.upsert_filing(
+        clean_db.upsert_filing(
             company_id=company_id,
             cik="0004444443",
             accession_number="0004444443-23-000001",
@@ -794,27 +790,7 @@ class TestRowBoundaryValidation:
         )
 
         # Multi-row table
-        table_html = """
-        <table>
-          <tr><td>Row 1</td><td>Data 1</td></tr>
-          <tr><td>Row 2</td><td>Data 2</td></tr>
-          <tr><td>Row 3</td><td>Data 3</td></tr>
-        </table>
-        """
         table_text = "Row 1 [CELL] Data 1 [ROW] Row 2 [CELL] Data 2 [ROW] Row 3 [CELL] Data 3"
-
-        segments = [
-            {
-                "source_segment_id": 1,
-                "filing_id": filing_id,
-                "segment_type": "table",
-                "raw_text": table_text,
-                "raw_html": table_html,
-                "section_heading": "Data",
-                "section_path": "/Data",
-                "contains_definition_flag": False,
-            }
-        ]
 
         # Verify [ROW] markers present
         assert "[ROW]" in table_text, "Table text should contain [ROW] markers"
@@ -877,88 +853,14 @@ class TestCellMarkers:
 
     def test_cell_markers_in_table_text(self, clean_db):
         """Verify [CELL] markers are present in table segment text."""
-        company_id = clean_db.upsert_company(
-            cik="0005555551",
-            company_name="Test Cell Markers",
-        )
-        filing_id = clean_db.upsert_filing(
-            company_id=company_id,
-            cik="0005555551",
-            accession_number="0005555551-23-000001",
-            filing_date="2023-06-15",
-            form_type="S-1",
-            sec_html_url="https://test.example.com",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-
-        # Table text with [CELL] markers
         table_text = "Metric [CELL] Value [CELL] Percent"
-        table_html = """
-        <table>
-          <tr><td>Metric</td><td>Value</td><td>Percent</td></tr>
-        </table>
-        """
-
-        segments = [
-            {
-                "source_segment_id": 1,
-                "filing_id": filing_id,
-                "segment_type": "table",
-                "raw_text": table_text,
-                "raw_html": table_html,
-                "section_heading": "Data",
-                "section_path": "/Data",
-                "contains_definition_flag": False,
-            }
-        ]
-
-        # Verify [CELL] markers present
         assert "[CELL]" in table_text, "Table text should have [CELL] markers"
 
     def test_row_markers_in_table_text(self, clean_db):
         """Verify [ROW] markers are present in multi-row table text."""
-        company_id = clean_db.upsert_company(
-            cik="0005555552",
-            company_name="Test Row Markers",
-        )
-        filing_id = clean_db.upsert_filing(
-            company_id=company_id,
-            cik="0005555552",
-            accession_number="0005555552-23-000001",
-            filing_date="2023-06-15",
-            form_type="S-1",
-            sec_html_url="https://test.example.com",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-
-        # Multi-row table with [ROW] markers
         table_text = "Row 1 [CELL] Data 1 [ROW] Row 2 [CELL] Data 2"
-        table_html = """
-        <table>
-          <tr><td>Row 1</td><td>Data 1</td></tr>
-          <tr><td>Row 2</td><td>Data 2</td></tr>
-        </table>
-        """
-
-        segments = [
-            {
-                "source_segment_id": 1,
-                "filing_id": filing_id,
-                "segment_type": "table",
-                "raw_text": table_text,
-                "raw_html": table_html,
-                "section_heading": "Data",
-                "section_path": "/Data",
-                "contains_definition_flag": False,
-            }
-        ]
-
-        # Verify [ROW] markers present
         assert "[ROW]" in table_text, "Table text should have [ROW] markers"
+        assert "[CELL]" in table_text, "Table text should have [CELL] markers"
 
     def test_numbers_findable_despite_markers(self, clean_db):
         """Number parsing should work even with [CELL] markers in text."""

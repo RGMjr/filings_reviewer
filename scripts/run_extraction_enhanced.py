@@ -22,9 +22,8 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -151,14 +150,14 @@ def fetch_clean_text_from_file(html_path: str) -> str:
     return text[:MAX_TEXT_LENGTH]
 
 
-def chunk_text(text: str, size: int = CHUNK_SIZE) -> List[str]:
+def chunk_text(text: str, size: int = CHUNK_SIZE) -> list[str]:
     """Split text into chunks of specified size."""
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
 def extract_metrics_from_chunk(
     client: OpenAI, text: str, company_name: str, filing_id: int
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Send a chunk of filing text to LLM and extract customer metrics."""
     prompt = f"""
 You are a precise SEC S-1 parser that extracts *customer-related metrics* from the text below.
@@ -243,7 +242,7 @@ def extract_metrics_from_filing(
     filing_id: int,
     company_name: str,
     html_path: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Extract metrics from a single filing."""
     logger.info(f"Processing filing {filing_id}: {company_name}")
     logger.info(f"  Reading HTML from: {html_path}")
@@ -279,10 +278,10 @@ def extract_metrics_from_filing(
 
 def get_filings_to_process(
     db: DatabaseAdapter,
-    limit: Optional[int] = None,
-    company_name: Optional[str] = None,
+    limit: int | None = None,
+    company_name: str | None = None,
     high_yield_only: bool = False,
-) -> List[Dict]:
+) -> list[dict]:
     """Query database for filings to process."""
     query = """
         SELECT

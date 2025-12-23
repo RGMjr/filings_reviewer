@@ -4,6 +4,8 @@ Unit tests for DefinitionExtractor.
 Tests the extraction of metric definitions and methodologies from segments.
 """
 
+from unittest.mock import Mock
+
 import pytest
 
 from src.extraction.definition_extractor import DefinitionExtractor, extract_definitions
@@ -440,14 +442,6 @@ def test_uses_first_definition_segment(extractor):
     # Should use first segment
     assert definition.definition_segment_id == 0
     assert "First definition" in definition.definition_raw_text
-
-
-# =============================================================================
-# Quote Verification Tests for LLM Extraction
-# =============================================================================
-
-
-from unittest.mock import Mock
 
 
 def build_segment(**overrides) -> SourceSegment:

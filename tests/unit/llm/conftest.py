@@ -1,8 +1,8 @@
 """Shared fixtures for LLM module tests."""
 
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
+
+import pytest
 
 
 @pytest.fixture

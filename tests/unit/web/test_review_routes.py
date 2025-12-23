@@ -5,7 +5,6 @@ Tests all routes in src/web/routes/review.py using mocked database.
 """
 
 from datetime import datetime
-from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest

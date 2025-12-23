@@ -112,10 +112,10 @@ def main():
         total_generated += num_generated
 
     print(f"\n{'='*70}")
-    print(f"GENERATION COMPLETE")
+    print("GENERATION COMPLETE")
     print(f"{'='*70}")
     print(f"Total candidates generated: {total_generated}")
-    print(f"\nView in review UI: http://127.0.0.1:5002/review/filings")
+    print("\nView in review UI: http://127.0.0.1:5002/review/filings")
 
     return 0
 

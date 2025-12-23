@@ -5,19 +5,19 @@ Tests the end-to-end orchestration of the extraction pipeline.
 """
 
 import tempfile
+from decimal import Decimal
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from src.extraction.extraction_pipeline import ExtractionPipeline, ExtractionResult
 from src.extraction.models import (
-    SourceSegment,
-    MetricValue,
-    MetricDefinition,
     FilingMetricIncidence,
+    MetricDefinition,
+    MetricValue,
+    SourceSegment,
 )
-from decimal import Decimal
 
 
 @pytest.fixture
@@ -410,12 +410,12 @@ def test_write_results_transaction(pipeline, mock_db):
 def test_pipeline_components_integration(pipeline):
     """Test that all pipeline components are properly initialized."""
     # Components should be actual instances, not mocks (in real usage)
+    from src.extraction.definition_extractor import DefinitionExtractor
     from src.extraction.html_segmenter import HTMLSegmenter
     from src.extraction.metric_classifier import MetricClassifier
-    from src.extraction.value_extractor import ValueExtractor
-    from src.extraction.definition_extractor import DefinitionExtractor
     from src.extraction.quality_scorer import QualityScorer
     from src.extraction.segment_enricher import SegmentEnricher
+    from src.extraction.value_extractor import ValueExtractor
 
     assert isinstance(pipeline.segmenter, HTMLSegmenter)
     assert isinstance(pipeline.classifier, MetricClassifier)

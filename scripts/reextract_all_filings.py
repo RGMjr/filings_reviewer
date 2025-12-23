@@ -31,6 +31,8 @@ Usage:
     python scripts/reextract_all_filings.py --resume-from 456
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -38,26 +40,28 @@ import os
 import signal
 import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.infra.db import DatabaseAdapter
-from src.infra.logging_config import configure_logging, get_timestamped_log_path
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.llm.openai_client import OpenAIClient
+PROJECT_ROOT = Path(__file__).parent.parent
 
-# Configure logging with file output for long-running extractions
-configure_logging(
-    level="INFO",
-    log_file=get_timestamped_log_path("reextract"),
-)
+
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports accessible."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+if TYPE_CHECKING:
+    from src.infra.db import DatabaseAdapter
+    from src.llm.openai_client import OpenAIClient
+
 logger = logging.getLogger(__name__)
 
 # Progress file for resume capability
@@ -74,7 +78,7 @@ class ReextractionStats:
     values_before: int = 0
     values_after: int = 0
     start_time: float = 0.0
-    last_filing_id: Optional[int] = None
+    last_filing_id: int | None = None
 
     def elapsed_minutes(self) -> float:
         """Return elapsed time in minutes."""
@@ -104,7 +108,7 @@ class ReextractionRunner:
     def __init__(
         self,
         db: DatabaseAdapter,
-        llm_client: Optional[OpenAIClient] = None,
+        llm_client: OpenAIClient | None = None,
         dry_run: bool = False,
         batch_size: int = 10,
     ):
@@ -126,10 +130,10 @@ class ReextractionRunner:
 
     def get_filings_to_process(
         self,
-        limit: Optional[int] = None,
-        resume_from: Optional[int] = None,
-        filing_id: Optional[int] = None,
-    ) -> List[Dict]:
+        limit: int | None = None,
+        resume_from: int | None = None,
+        filing_id: int | None = None,
+    ) -> list[dict]:
         """
         Get list of filings to re-extract.
 
@@ -172,7 +176,7 @@ class ReextractionRunner:
                 SELECT 1 FROM source_segments ss WHERE ss.filing_id = f.filing_id
             )
         """
-        params: Dict = {}
+        params: dict = {}
 
         if resume_from:
             query += " AND f.filing_id >= %(resume_from)s"
@@ -186,7 +190,7 @@ class ReextractionRunner:
 
         return self.db.query(query, params)
 
-    def get_total_values_count(self, filing_ids: List[int]) -> int:
+    def get_total_values_count(self, filing_ids: list[int]) -> int:
         """Count total metric_values across filings."""
         if not filing_ids:
             return 0
@@ -230,7 +234,7 @@ class ReextractionRunner:
 
         return count
 
-    def reextract_filing(self, filing: Dict) -> Optional[int]:
+    def reextract_filing(self, filing: dict) -> int | None:
         """
         Re-extract a single filing.
 
@@ -263,6 +267,8 @@ class ReextractionRunner:
         )
 
         # Run extraction pipeline
+        from src.extraction.extraction_pipeline import ExtractionPipeline
+
         pipeline = ExtractionPipeline(db=self.db, llm_client=self.llm_client)
 
         try:
@@ -303,7 +309,7 @@ class ReextractionRunner:
 
         logger.info(f"Progress saved to {PROGRESS_FILE}")
 
-    def load_progress(self) -> Optional[Dict]:
+    def load_progress(self) -> dict | None:
         """Load progress from checkpoint file."""
         if not PROGRESS_FILE.exists():
             return None
@@ -313,9 +319,9 @@ class ReextractionRunner:
 
     def run(
         self,
-        limit: Optional[int] = None,
-        resume_from: Optional[int] = None,
-        filing_id: Optional[int] = None,
+        limit: int | None = None,
+        resume_from: int | None = None,
+        filing_id: int | None = None,
     ):
         """
         Run re-extraction on all filings.
@@ -428,6 +434,17 @@ class ReextractionRunner:
 
 
 def main():
+    prepare_environment()
+
+    from src.infra.db import DatabaseAdapter
+    from src.infra.logging_config import configure_logging, get_timestamped_log_path
+    from src.llm.openai_client import OpenAIClient
+
+    configure_logging(
+        level="INFO",
+        log_file=get_timestamped_log_path("reextract"),
+    )
+
     parser = argparse.ArgumentParser(
         description="Re-extract all filings with Phase 1 quality fixes (EI-7)",
         formatter_class=argparse.RawDescriptionHelpFormatter,

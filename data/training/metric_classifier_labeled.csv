@@ -1,0 +1,9 @@
+text,labels
+"We define annual recurring revenue (\"ARR\") as the annualized value of subscription contracts for active customers.","definition|metric:cm_arr"
+"Gross margin was 62% in 2024 compared to 59% in 2023, reflecting improved unit economics.","numeric|metric:cm_gross_margin_overall"
+"CAC payback period is calculated by dividing customer acquisition cost by gross profit per customer.","methodology|metric:cm_cac_payback_period"
+"We acquired 3,200 new customers during the quarter, up from 2,400 last year.","numeric|metric:cm_new_customers_acquired"
+"Our methodology for retention rate includes only paid users who remained active for 12 months.","methodology|metric:cm_customer_retention_rate"
+"Net revenue retention (NRR) reached 118% driven by expansion revenue across the base.","numeric|metric:cm_net_revenue_retention"
+"Average order value (AOV) increased to $72 from $65 as customers purchased higher priced items.","numeric|metric:cm_average_order_value"
+"Bookings grew, with total contract value rising to $5 million across new enterprise wins.","numeric|metric:cm_tcv|metric:cm_bookings"

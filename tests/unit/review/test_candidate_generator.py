@@ -3,34 +3,24 @@ Unit tests for candidate_generator module.
 """
 
 from decimal import Decimal
+
 import pytest
 
-from unittest.mock import MagicMock
-
 from src.review.candidate_generator import CandidateGenerator
+from src.review.confidence_scoring import METRIC_EXPECTED_FORMATS, ConfidenceScorer
 from src.review.config import CandidateGenerationConfig
-from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,
     SegmentProcessingError,
-)
-from src.review.models import ProcessingStats
-from src.review.false_positive_filter import (
-    DATE_CONTEXT_PATTERNS,
-    FALSE_POSITIVE_CONTEXT_PATTERNS,
-    MIN_METRIC_VALUE,
-    YEAR_MIN,
-    YEAR_MAX,
 )
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
     SPECIFIC_KEYWORD_PATTERNS,
     KeywordMatch,
 )
-from src.review.models import CandidateFeatures
-from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
-
+from src.review.models import CandidateFeatures, ProcessingStats, ReviewCandidate
+from src.review.number_parsing import NUMBER_REGEX, NumberMatch
 
 # =============================================================================
 # NUMBER_REGEX Tests
@@ -2160,9 +2150,8 @@ class TestDeduplicateCandidates:
         parsed_value: Decimal,
         metric_id: str,
         confidence: float = None,
-    ) -> "ReviewCandidate":
+    ) -> ReviewCandidate:
         """Helper to create test candidates."""
-        from src.review.models import ReviewCandidate
 
         return ReviewCandidate(
             filing_id=1,
@@ -2254,8 +2243,6 @@ class TestDeduplicateCandidates:
 
     def test_handles_none_parsed_value(self, generator):
         """Should handle candidates with None parsed_value."""
-        from src.review.models import ReviewCandidate
-
         candidates = [
             ReviewCandidate(
                 filing_id=1,
@@ -2409,7 +2396,7 @@ class TestKeywordMatchingPerformance:
         Our annual recurring revenue (ARR) reached $493 million, representing
         year-over-year growth of 45%. We define active customers as those who
         have generated revenue in the trailing 12 months.
-        
+
         Customer metrics for the year ended December 31, 2023:
         - Active customers: 125,000 (up from 86,000)
         - Enterprise customers: 5,500 (up from 3,800)
@@ -2418,7 +2405,7 @@ class TestKeywordMatchingPerformance:
         - Customer acquisition cost: $7,500
         - Lifetime value: $125,000
         - Average revenue per customer: $3,944
-        
+
         Our total addressable market represents approximately 2.5 million
         potential customers across North America and Europe. We added
         39,000 new customers during the year, representing growth of 45%.
@@ -2432,10 +2419,10 @@ class TestKeywordMatchingPerformance:
 
         # This should complete in reasonable time
         keywords = generator._find_all_keywords(large_text)
-        
+
         # Verify we found keyword matches
         assert len(keywords) > 0
-        
+
         # Verify keyword matches have expected structure
         for kw in keywords:
             assert isinstance(kw, KeywordMatch)
@@ -2458,7 +2445,7 @@ class TestKeywordMatchingPerformance:
         Run with: pytest tests/unit/review/test_candidate_generator.py::TestKeywordMatchingPerformance::test_benchmark_keyword_matching -v
         """
         generator = CandidateGenerator()
-        
+
         # If pytest-benchmark is available, use it
         if benchmark is not None:
             result = benchmark(generator._find_all_keywords, large_text)
@@ -2469,7 +2456,7 @@ class TestKeywordMatchingPerformance:
             start = time.perf_counter()
             result = generator._find_all_keywords(large_text)
             elapsed = time.perf_counter() - start
-            
+
             # Should complete in reasonable time for 10KB text
             # Current implementation: ~10-20ms typical
             assert elapsed < 0.1, f"Keyword matching took {elapsed:.3f}s, expected < 0.1s"
@@ -2520,21 +2507,21 @@ class TestKeywordMatchingPerformance:
         with text size for typical text (most patterns don't match most text).
         """
         import time
-        
+
         base_text = "We have 10,000 active customers. " * 100  # ~3KB
-        
+
         generator = CandidateGenerator()
-        
+
         # Test 1x size
         start = time.perf_counter()
-        keywords_1x = generator._find_all_keywords(base_text)
+        generator._find_all_keywords(base_text)
         time_1x = time.perf_counter() - start
-        
+
         # Test 2x size
         start = time.perf_counter()
-        keywords_2x = generator._find_all_keywords(base_text * 2)
+        generator._find_all_keywords(base_text * 2)
         time_2x = time.perf_counter() - start
-        
+
         # Time should scale roughly linearly with text size
         # Ratio should be close to 2.0 for doubling text size
         ratio = time_2x / time_1x if time_1x > 0 else 1.0
@@ -2681,7 +2668,7 @@ class TestContextExtractionPerformance:
         # With cache should be significantly faster
         speedup = time_without_cache / time_with_cache if time_with_cache > 0 else 1.0
 
-        print(f"\nContext extraction performance:")
+        print("\nContext extraction performance:")
         print(f"  Numbers processed: {len(numbers)}")
         print(f"  With cache (P1.2): {time_with_cache*1000:.2f}ms")
         print(f"  Without cache (old): {time_without_cache*1000:.2f}ms")
@@ -3098,24 +3085,7 @@ class TestL3KeywordDirectionIntegration:
 
     def test_direction_at_mapped_to_before(self):
         """L3: Edge case - keyword at same position as number → maps to 'before'."""
-        from src.review.keyword_matching import KeywordMatcher, KeywordMatch
-        from src.review.number_parsing import NumberMatch
-
-        matcher = KeywordMatcher()
-
-        # Create a mock scenario where keyword and number overlap (direction="at")
-        # This tests the edge case handling in candidate_generator.py
         text = "gross margin30%"  # Pathological case: no space
-
-        # Mock KeywordMatch with direction="at"
-        kw_at = KeywordMatch(
-            start=0,
-            end=12,
-            keyword="gross margin",
-            metric_id="cm_gross_margin_overall",
-            pattern=r"\bgross\s+margin\b",
-            direction="at",  # Edge case
-        )
 
         # Generate candidate - should map "at" → "after"
         generator = CandidateGenerator()
@@ -3308,8 +3278,6 @@ class TestL1RespectivelyPatternIntegration:
         generator = CandidateGenerator(config=config)
 
         # Create a mock candidate
-        from src.review.models import ReviewCandidate, CandidateFeatures
-
         candidate = ReviewCandidate(
             filing_id=1,
             company_id=1,
@@ -3347,8 +3315,6 @@ class TestL1RespectivelyPatternIntegration:
         """Returns candidates unchanged when no respectively pattern found."""
         config = CandidateGenerationConfig(detect_respectively_patterns=True)
         generator = CandidateGenerator(config=config)
-
-        from src.review.models import ReviewCandidate, CandidateFeatures
 
         candidate = ReviewCandidate(
             filing_id=1,
@@ -3389,8 +3355,6 @@ class TestL1RespectivelyPatternIntegration:
             respectively_min_confidence=0.9,  # Very high threshold
         )
         generator = CandidateGenerator(config=config)
-
-        from src.review.models import ReviewCandidate, CandidateFeatures
 
         candidate = ReviewCandidate(
             filing_id=1,
@@ -3531,7 +3495,6 @@ class TestNumberProcessingExceptionHandling:
 
     def test_type_error_during_number_processing(self, generator, monkeypatch):
         """TypeError during number processing should be caught and logged."""
-        import logging
 
         def mock_keywords(*args, **kwargs):
             raise TypeError("Simulated TypeError")
@@ -3835,7 +3798,7 @@ class TestContextPrefixMatching:
 
         if cac_candidates:
             # Context prefix matches are never same sentence
-            for c in cac_candidates:
+            for _candidate in cac_candidates:
                 # The is_same_sentence is stored in features (not directly on candidate)
                 # But we can verify through the confidence score behavior
                 pass  # is_same_sentence affects features, not directly testable here
@@ -3961,7 +3924,7 @@ class TestContextPrefixMatching:
 
 class TestDefinitionFiltering:
     """EI-1: Definition segment filtering tests.
-    
+
     Tests that segments with contains_definition_flag=True are filtered out
     and do not generate candidates, while segments with False/None/missing
     flags continue to generate candidates normally.

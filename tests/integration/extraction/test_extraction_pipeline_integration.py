@@ -7,9 +7,8 @@ including segmentation, classification, value extraction, and quality scoring.
 Requires: PostgreSQL database (TEST_DATABASE_URL environment variable)
 """
 
-import pytest
 
-from src.extraction.extraction_pipeline import ExtractionPipeline, ExtractionResult
+from src.extraction.extraction_pipeline import ExtractionPipeline
 from src.extraction.html_segmenter import HTMLSegmenter
 from src.extraction.metric_classifier import MetricClassifier
 from src.extraction.value_extractor import ValueExtractor
