@@ -6,11 +6,7 @@ Tests the classification of segments for metric content.
 
 import pytest
 
-from src.extraction.metric_classifier import (
-    LearnedPrediction,
-    MetricClassifier,
-    MetricClassifierConfig,
-)
+from src.extraction.metric_classifier import MetricClassifier
 from src.extraction.models import SourceSegment
 
 
@@ -29,55 +25,6 @@ def sample_segment():
         sequence_index=0,
         raw_text="Sample text for testing",
     )
-
-
-class StubLearnedBackend:
-    """Simple stub to emulate learned classifier output."""
-
-    def __init__(self):
-        self.called = False
-
-    def predict(self, text: str) -> LearnedPrediction:  # pragma: no cover - trivial
-        self.called = True
-        return LearnedPrediction(
-            contains_definition=False,
-            contains_methodology=False,
-            contains_numeric=True,
-            candidate_metric_ids=["cm_arr"],
-            raw_scores={"numeric": 0.82, "metric:cm_arr": 0.77},
-            average_score=0.8,
-        )
-
-
-def test_learned_backend_merges_predictions(sample_segment):
-    config = MetricClassifierConfig(use_learned_classifier=True)
-    backend = StubLearnedBackend()
-    classifier = MetricClassifier(config=config, learned_backend=backend)
-
-    sample_segment.raw_text = "Gross margin was 45% and ARR kept climbing."
-
-    result = classifier.classify_segment(sample_segment, validate=False)
-
-    assert backend.called is True
-    # Regex still fires for gross margin; learned backend adds ARR
-    assert "cm_gross_margin_overall" in result.candidate_metric_ids
-    assert "cm_arr" in result.candidate_metric_ids
-    assert result.contains_numeric_disclosure_flag is True
-    assert result.extra_metadata["learned_classifier_scores"]["metric:cm_arr"] == pytest.approx(
-        0.77
-    )
-
-
-def test_learned_backend_fallback_counts(sample_segment):
-    config = MetricClassifierConfig(
-        use_learned_classifier=True, learned_model_path="/tmp/missing_model.joblib"
-    )
-    classifier = MetricClassifier(config=config)
-
-    classifier.classify_batch([sample_segment], validate=False)
-    metrics = classifier.get_metrics()
-
-    assert metrics.regex_fallback_segments == 1
 
 
 def test_classifier_initialization(classifier):

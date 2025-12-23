@@ -141,7 +141,13 @@ def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = 
 
     query += """
         GROUP BY c.company_name, f.filing_id, f.company_id, f.accession_number
-        HAVING COUNT(DISTINCT rc.candidate_id) > 0
+    """
+
+    # Only filter by existing candidates if no specific IDs requested
+    if not filing_ids:
+        query += " HAVING COUNT(DISTINCT rc.candidate_id) > 0"
+
+    query += """
         ORDER BY COUNT(DISTINCT rd.decision_id) DESC, COUNT(DISTINCT rc.candidate_id) DESC
     """
 
@@ -228,7 +234,13 @@ def regenerate_candidates_for_filing(
     logger.info(f"  Found {len(segments)} segments")
 
     # Generate candidates with high recall config
-    generator = CandidateGenerator(config=get_high_recall_config())
+    # Use High Recall but with strict filtering enabled
+    config = get_high_recall_config()
+    config.filter_false_positives = True
+    config.filter_years = True  # Filter 1990-2030 unless currency
+    config.min_metric_value = 10 # Baseline
+    
+    generator = CandidateGenerator(config=config)
     candidates = generator.generate_for_filing(
         filing_id=filing_id,
         company_id=company_id,
@@ -452,6 +464,8 @@ def main():
     print(f"✓ Generated {total_generated} new candidates")
 
     # Step 4: Attempt decision recovery
+    recovered = 0
+    lost = 0
     if not args.skip_recovery and num_exported > 0:
         print("\n" + "-" * 70)
         print("Step 4: Attempting to recover review decisions...")

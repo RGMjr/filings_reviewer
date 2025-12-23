@@ -24,9 +24,6 @@ env/
 *.json
 *.xlsx
 
-# Allow checked-in training assets for the learned metric classifier prototype
-!data/training/metric_classifier_labeled.csv
-
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/
 
