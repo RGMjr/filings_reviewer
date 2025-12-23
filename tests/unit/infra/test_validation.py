@@ -1,16 +1,17 @@
 """Tests for centralized input validation utilities."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from src.infra.validation import (
     ValidationError,
-    validate_cik,
     validate_accession_number,
-    validate_sic_code,
+    validate_cik,
     validate_date,
     validate_date_range,
     validate_form_type,
+    validate_sic_code,
 )
 
 

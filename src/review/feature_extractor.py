@@ -116,7 +116,8 @@ import logging
 import math
 import re
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Pattern
+from typing import Any
+from re import Pattern
 
 from src.review.models import CandidateFeatures
 
@@ -128,7 +129,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Patterns for definition language (suggests metric is being defined)
-DEFINITION_PATTERNS: List[Pattern[str]] = [
+DEFINITION_PATTERNS: list[Pattern[str]] = [
     re.compile(r"\bwe\s+define\b", re.IGNORECASE),
     re.compile(r"\bdefined\s+as\b", re.IGNORECASE),
     re.compile(r"\bwe\s+calculate\b", re.IGNORECASE),
@@ -141,7 +142,7 @@ DEFINITION_PATTERNS: List[Pattern[str]] = [
 ]
 
 # Patterns for period/date mentions (suggests time-specific metric)
-PERIOD_PATTERNS: List[Pattern[str]] = [
+PERIOD_PATTERNS: list[Pattern[str]] = [
     re.compile(r"\b(?:Q[1-4]|first|second|third|fourth)\s+quarter\b", re.IGNORECASE),
     re.compile(r"\b(?:fiscal|calendar)\s+year\b", re.IGNORECASE),
     re.compile(r"\byear(?:s)?\s+ended\b", re.IGNORECASE),
@@ -154,7 +155,7 @@ PERIOD_PATTERNS: List[Pattern[str]] = [
 ]
 
 # Risk factors section indicators (high false positive rate)
-RISK_FACTORS_PATTERNS: List[Pattern[str]] = [
+RISK_FACTORS_PATTERNS: list[Pattern[str]] = [
     re.compile(r"\brisk\s+factors?\b", re.IGNORECASE),
     re.compile(r"\brisks?\s+related\b", re.IGNORECASE),
     re.compile(r"\bmay\s+(?:not|never|fail)\b", re.IGNORECASE),
@@ -186,15 +187,15 @@ class FeatureExtractor:
 
     def compute_features(
         self,
-        number_value: Optional[Decimal],
-        number_unit: Optional[str],
+        number_value: Decimal | None,
+        number_unit: str | None,
         number_raw_text: str,
         keyword_distance: int,
         keyword_position: str,
-        context_text: Optional[str],
-        segment_type: Optional[str] = None,
-        section_heading: Optional[str] = None,
-        section_path: Optional[str] = None,
+        context_text: str | None,
+        segment_type: str | None = None,
+        section_heading: str | None = None,
+        section_path: str | None = None,
         surrounding_numbers_count: int = 0,
     ) -> CandidateFeatures:
         """
@@ -273,7 +274,7 @@ class FeatureExtractor:
             context_word_count=context_word_count,
         )
 
-    def _normalize_unit(self, number_unit: Optional[str]) -> Optional[str]:
+    def _normalize_unit(self, number_unit: str | None) -> str | None:
         """
         Normalize unit variations to canonical format.
 
@@ -310,7 +311,7 @@ class FeatureExtractor:
 
     def determine_number_format(
         self,
-        number_unit: Optional[str],
+        number_unit: str | None,
         number_raw_text: str,
     ) -> str:
         """
@@ -340,8 +341,8 @@ class FeatureExtractor:
         return "integer"
 
     def _compute_value_magnitude(
-        self, number_value: Optional[Decimal]
-    ) -> Optional[float]:
+        self, number_value: Decimal | None
+    ) -> float | None:
         """
         Compute log10 of absolute value.
 
@@ -389,8 +390,8 @@ class FeatureExtractor:
     def _check_risk_factors(
         self,
         context_text: str,
-        section_heading: Optional[str],
-        section_path: Optional[str],
+        section_heading: str | None,
+        section_path: str | None,
     ) -> bool:
         """
         Check if candidate is in risk factors section.
@@ -433,15 +434,15 @@ _feature_extractor = FeatureExtractor()
 
 
 def compute_features(
-    number_value: Optional[Decimal],
-    number_unit: Optional[str],
+    number_value: Decimal | None,
+    number_unit: str | None,
     number_raw_text: str,
     keyword_distance: int,
     keyword_position: str,
     context_text: str,
-    segment_type: Optional[str] = None,
-    section_heading: Optional[str] = None,
-    section_path: Optional[str] = None,
+    segment_type: str | None = None,
+    section_heading: str | None = None,
+    section_path: str | None = None,
     surrounding_numbers_count: int = 0,
 ) -> CandidateFeatures:
     """
@@ -464,7 +465,7 @@ def compute_features(
 
 
 def determine_number_format(
-    number_unit: Optional[str],
+    number_unit: str | None,
     number_raw_text: str,
 ) -> str:
     """
@@ -506,7 +507,7 @@ def bin_keyword_distance(keyword_distance: int) -> str:
         return "very_far"
 
 
-def bin_value_magnitude(value_magnitude: Optional[float]) -> str:
+def bin_value_magnitude(value_magnitude: float | None) -> str:
     """
     Bin value magnitude (log10) into interpretable size categories (P2.4).
 
@@ -547,8 +548,8 @@ def bin_value_magnitude(value_magnitude: Optional[float]) -> str:
 
 def compute_distance_magnitude_interaction(
     keyword_distance: int,
-    value_magnitude: Optional[float],
-) -> Optional[float]:
+    value_magnitude: float | None,
+) -> float | None:
     """
     Compute interaction feature between distance and magnitude (P2.4).
 
@@ -683,7 +684,7 @@ def compute_very_weak_signal(features: CandidateFeatures) -> bool:
     )
 
 
-def compute_all_derived_features(features: CandidateFeatures) -> Dict[str, Any]:
+def compute_all_derived_features(features: CandidateFeatures) -> dict[str, Any]:
     """
     Compute all derived features from base features (P2.4).
 

@@ -8,25 +8,33 @@ Usage:
     python3 scripts/reextract_to_csv.py --companies "Farfetch" "Samsara"
 """
 
+from __future__ import annotations
+
 import argparse
 import csv
 import json
 import logging
-import os
 import sys
-from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.metric_classifier import MetricClassifier
-from src.extraction.value_extractor import ValueExtractor
-from src.llm.openai_client import OpenAIClient
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load .env configuration and ensure src imports work."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+if TYPE_CHECKING:
+    from src.llm.openai_client import OpenAIClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,6 +83,10 @@ def extract_from_filing(html_path: Path, llm_client: OpenAIClient) -> list:
     if not html_path.exists():
         logger.warning(f"HTML file not found: {html_path}")
         return []
+
+    from src.extraction.html_segmenter import HTMLSegmenter
+    from src.extraction.metric_classifier import MetricClassifier
+    from src.extraction.value_extractor import ValueExtractor
 
     # Segment HTML
     segmenter = HTMLSegmenter()
@@ -178,7 +190,7 @@ def print_comparison(company_name: str, comparison: dict):
     new = comparison["new_count"]
     change = new - orig
 
-    print(f"\n  Total Extractions:")
+    print("\n  Total Extractions:")
     print(f"    Original (gold standard): {orig}")
     print(f"    New (with validation):    {new}")
     print(f"    Change:                   {change:+d} ({change/orig*100 if orig else 0:+.1f}%)")
@@ -186,7 +198,7 @@ def print_comparison(company_name: str, comparison: dict):
     # Combine all metrics
     all_metrics = set(comparison["by_metric_original"].keys()) | set(comparison["by_metric_new"].keys())
 
-    print(f"\n  By Metric:")
+    print("\n  By Metric:")
     print(f"    {'Metric ID':<40} {'Original':>10} {'New':>10} {'Change':>10}")
     print(f"    {'-'*40} {'-'*10} {'-'*10} {'-'*10}")
 
@@ -199,13 +211,17 @@ def print_comparison(company_name: str, comparison: dict):
 
 
 def main():
+    prepare_environment()
+
+    from src.llm.openai_client import OpenAIClient
+
     parser = argparse.ArgumentParser(description="Re-extract companies and save to CSV")
     parser.add_argument("--companies", nargs="+", required=True,
                         help="Company names to process (partial match)")
     args = parser.parse_args()
 
     # Paths
-    base_dir = Path(__file__).parent.parent
+    base_dir = PROJECT_ROOT
     gold_dir = base_dir / "data" / "gold_standard"
     output_dir = base_dir / "data" / "reextraction_results"
     output_dir.mkdir(exist_ok=True)

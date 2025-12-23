@@ -12,17 +12,18 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
-from typing import Dict, List
-import re
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.infra.db import DatabaseAdapter
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+
+from src.infra.db import DatabaseAdapter
 
 load_dotenv()
 
@@ -115,7 +116,7 @@ def classify_document(title: str, file_size: int) -> tuple[str, str]:
     return "UNKNOWN", "LOW"
 
 
-def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> Dict:
+def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> dict:
     """Analyze a random sample of fetched filings."""
 
     # Get random sample
@@ -203,7 +204,7 @@ def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> Dict:
     total = len(results)
 
     print(f"\n{'='*100}")
-    print(f"ANALYSIS RESULTS")
+    print("ANALYSIS RESULTS")
     print(f"{'='*100}\n")
 
     print("Document Type Distribution:")
@@ -337,7 +338,7 @@ def main():
     db = DatabaseAdapter(db_url)
 
     # Run analysis
-    results = analyze_filings(db, args.sample_size)
+    analyze_filings(db, args.sample_size)
 
 
 if __name__ == "__main__":

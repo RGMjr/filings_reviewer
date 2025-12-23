@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
 """Evaluate learned metric classifier against rule-based baseline."""
 
+from __future__ import annotations
+
 import argparse
 import csv
 import json
 import sys
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, List, Optional, Set
-
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 from joblib import load
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.preprocessing import MultiLabelBinarizer
 
-from src.extraction.metric_classifier import MetricClassifier
-from src.extraction.models import SourceSegment
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
-LabelSet = Set[str]
+def prepare_environment() -> None:
+    """Ensure the repository root is on sys.path for src imports."""
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+LabelSet = set[str]
 
 
 class LearnedMetricClassifier:
@@ -29,7 +33,7 @@ class LearnedMetricClassifier:
     def __init__(
         self,
         model_path: Path,
-        fallback_predictor: Optional[Callable[[str], LabelSet]] = None,
+        fallback_predictor: Callable[[str], LabelSet] | None = None,
     ) -> None:
         bundle = load(model_path)
         self.vectorizer = bundle["vectorizer"]
@@ -50,7 +54,7 @@ class LearnedMetricClassifier:
         return learned_labels
 
 
-def load_dataset(csv_path: Path) -> List[tuple[str, LabelSet]]:
+def load_dataset(csv_path: Path) -> list[tuple[str, LabelSet]]:
     dataset = []
     with csv_path.open() as f:
         reader = csv.DictReader(f)
@@ -60,33 +64,12 @@ def load_dataset(csv_path: Path) -> List[tuple[str, LabelSet]]:
     return dataset
 
 
-def segment_from_text(text: str) -> SourceSegment:
-    return SourceSegment(
-        filing_id=0,
-        segment_type="paragraph",
-        raw_text=text,
-    )
-
-
-def labels_from_segment(segment: SourceSegment) -> LabelSet:
-    labels: LabelSet = set()
-    if segment.contains_definition_flag:
-        labels.add("definition")
-    if segment.contains_methodology_flag:
-        labels.add("methodology")
-    if segment.contains_numeric_disclosure_flag:
-        labels.add("numeric")
-    for metric_id in segment.candidate_metric_ids:
-        labels.add(f"metric:{metric_id}")
-    return labels
-
-
 def evaluate(
-    dataset: List[tuple[str, LabelSet]],
+    dataset: list[tuple[str, LabelSet]],
     predict_fn: Callable[[str], LabelSet],
 ) -> tuple[float, float, float]:
-    predictions: List[LabelSet] = []
-    truths: List[LabelSet] = []
+    predictions: list[LabelSet] = []
+    truths: list[LabelSet] = []
 
     for text, labels in dataset:
         predictions.append(predict_fn(text))
@@ -109,6 +92,11 @@ def write_metrics_log(output_path: Path, payload: dict) -> None:
 
 
 def main() -> None:
+    prepare_environment()
+
+    from src.extraction.metric_classifier import MetricClassifier
+    from src.extraction.models import SourceSegment
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--data",
@@ -131,6 +119,25 @@ def main() -> None:
     args = parser.parse_args()
 
     dataset = load_dataset(args.data)
+
+    def segment_from_text(text: str) -> SourceSegment:
+        return SourceSegment(
+            filing_id=0,
+            segment_type="paragraph",
+            raw_text=text,
+        )
+
+    def labels_from_segment(segment: SourceSegment) -> LabelSet:
+        labels: LabelSet = set()
+        if segment.contains_definition_flag:
+            labels.add("definition")
+        if segment.contains_methodology_flag:
+            labels.add("methodology")
+        if segment.contains_numeric_disclosure_flag:
+            labels.add("numeric")
+        for metric_id in segment.candidate_metric_ids:
+            labels.add(f"metric:{metric_id}")
+        return labels
 
     baseline_classifier = MetricClassifier()
 
@@ -157,7 +164,7 @@ def main() -> None:
     )
 
     payload = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "dataset": str(args.data),
         "model": str(args.model),
         "baseline": {

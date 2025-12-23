@@ -4,12 +4,13 @@ Integration tests for end-to-end filing fetcher pipeline.
 These tests simulate real-world scenarios including edge cases and error handling.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 from src.filing_fetcher.filing_fetcher import FilingFetcher
-from src.infra.sec_client import SECClient, FilingMetadata
+from src.infra.sec_client import FilingMetadata, SECClient
 
 
 class TestRealWorldEdgeCases:

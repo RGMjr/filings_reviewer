@@ -19,6 +19,8 @@ Usage:
     python scripts/rerun_goldmine_validation.py --dry-run  # Don't save to database
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
@@ -26,15 +28,17 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.infra.db import DatabaseAdapter
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.extraction.segment_enricher import cluster_goldmine_segments
-from src.llm.openai_client import OpenAIClient
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load .env configuration and ensure src imports work."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,7 +78,7 @@ def clear_existing_data(db, filing_id, dry_run=False):
     db.execute("DELETE FROM metric_values WHERE filing_id = %(id)s", {'id': filing_id})
     db.execute("DELETE FROM metric_definitions WHERE filing_id = %(id)s", {'id': filing_id})
     db.execute("DELETE FROM source_segments WHERE filing_id = %(id)s", {'id': filing_id})
-    logger.info(f"  Cleared existing extraction data")
+    logger.info("  Cleared existing extraction data")
 
 
 def analyze_goldmine_results(db, filing_id, company_name):
@@ -146,14 +150,18 @@ def analyze_goldmine_results(db, filing_id, company_name):
 
     # Show top 5 goldmine segments
     if goldmines:
-        logger.info(f"\n  Top 5 Goldmine Segments:")
+        logger.info("\n  Top 5 Goldmine Segments:")
         for i, seg in enumerate(segments[:5], 1):
             if seg['richness_score'] and seg['richness_score'] >= 6.0:
                 flags = []
-                if seg['contains_temporal_trend']: flags.append('T')
-                if seg['contains_cohort_breakdown']: flags.append('C')
-                if seg['contains_definition_flag']: flags.append('D')
-                if seg['image_count']: flags.append(f'I:{seg["image_count"]}')
+                if seg["contains_temporal_trend"]:
+                    flags.append("T")
+                if seg["contains_cohort_breakdown"]:
+                    flags.append("C")
+                if seg["contains_definition_flag"]:
+                    flags.append("D")
+                if seg["image_count"]:
+                    flags.append(f'I:{seg["image_count"]}')
                 flag_str = ' [' + ','.join(flags) + ']' if flags else ''
 
                 logger.info(f"  {i}. Seq {seg['sequence_index']:3} | Score {seg['richness_score']:.1f}{flag_str}")
@@ -165,6 +173,12 @@ def analyze_goldmine_results(db, filing_id, company_name):
 
 
 def main():
+    prepare_environment()
+
+    from src.extraction.extraction_pipeline import ExtractionPipeline
+    from src.infra.db import DatabaseAdapter
+    from src.llm.openai_client import OpenAIClient
+
     parser = argparse.ArgumentParser(
         description="Re-run extraction pipeline on validation filings"
     )

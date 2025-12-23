@@ -9,13 +9,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
 
 import requests
 
 from src.infra.exceptions import SECDataError, SECRateLimitError
 from src.infra.http_client import HTTPClient, RequestsHTTPClient
-from src.infra.validation import validate_date_range, validate_sic_code, ValidationError
+from src.infra.validation import ValidationError, validate_date_range, validate_sic_code
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +131,8 @@ class FilingMetadata:
     filing_date: str
     accession_number: str
     primary_doc_url: str
-    txt_url: Optional[str] = None
-    ticker: Optional[str] = None
+    txt_url: str | None = None
+    ticker: str | None = None
 
 
 class SECClient:
@@ -153,8 +152,8 @@ class SECClient:
     def __init__(
         self,
         user_agent: str = "filings-reviewer info@example.com",
-        http_client: Optional[HTTPClient] = None,
-        metrics: Optional[SECClientMetrics] = None,
+        http_client: HTTPClient | None = None,
+        metrics: SECClientMetrics | None = None,
     ):
         """
         Initialize SEC client.
@@ -193,7 +192,7 @@ class SECClient:
             time.sleep(self.MIN_REQUEST_INTERVAL - elapsed)
         self._last_request_time = time.time()
 
-    def _make_request(self, url: str, params: Optional[dict] = None, max_retries: int = 3) -> dict:
+    def _make_request(self, url: str, params: dict | None = None, max_retries: int = 3) -> dict:
         """
         Make a rate-limited request to SEC with retry logic.
 
@@ -320,8 +319,8 @@ class SECClient:
         self,
         start_date: str,
         end_date: str,
-        form_types: Optional[List[str]] = None,
-    ) -> List[FilingMetadata]:
+        form_types: list[str] | None = None,
+    ) -> list[FilingMetadata]:
         """
         Search for filings in a date range using SEC daily index files.
 
@@ -382,8 +381,8 @@ class SECClient:
         return filings
 
     def _get_daily_filings(
-        self, date: datetime, form_types: List[str]
-    ) -> List[FilingMetadata]:
+        self, date: datetime, form_types: list[str]
+    ) -> list[FilingMetadata]:
         """
         Get filings from a single day's master index file.
 
@@ -415,8 +414,8 @@ class SECClient:
         return self._parse_master_index(response_text, form_types)
 
     def _parse_master_index(
-        self, index_text: str, form_types: List[str]
-    ) -> List[FilingMetadata]:
+        self, index_text: str, form_types: list[str]
+    ) -> list[FilingMetadata]:
         """
         Parse SEC master index file format.
 
@@ -508,7 +507,7 @@ class SECClient:
 
     def resolve_primary_document_url(
         self, cik: str, accession_number: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Resolve the primary HTML document URL for a filing by fetching its index.
 
@@ -607,7 +606,7 @@ class SECClient:
             )
             return None
 
-    def get_company_info(self, cik: str) -> Optional[dict]:
+    def get_company_info(self, cik: str) -> dict | None:
         """
         Get company information including SIC code from SEC submissions API.
 
@@ -669,7 +668,7 @@ class SECClient:
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
-    ) -> Optional[FilingMetadata]:
+    ) -> FilingMetadata | None:
         """
         Get filing metadata by CIK and accession number.
 
@@ -742,7 +741,7 @@ class MockSECClient(SECClient):
     Returns predefined filing data instead of making real API calls.
     """
 
-    def __init__(self, mock_filings: Optional[List[FilingMetadata]] = None):
+    def __init__(self, mock_filings: list[FilingMetadata] | None = None):
         """
         Initialize mock client.
 
@@ -756,8 +755,8 @@ class MockSECClient(SECClient):
         self,
         start_date: str,
         end_date: str,
-        form_types: Optional[List[str]] = None,
-    ) -> List[FilingMetadata]:
+        form_types: list[str] | None = None,
+    ) -> list[FilingMetadata]:
         """Return mock filings filtered by date and form type."""
         if form_types is None:
             form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
@@ -777,7 +776,7 @@ class MockSECClient(SECClient):
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
-    ) -> Optional[FilingMetadata]:
+    ) -> FilingMetadata | None:
         """Return mock filing by accession number."""
         for filing in self.mock_filings:
             if filing.cik == cik and filing.accession_number == accession_number:

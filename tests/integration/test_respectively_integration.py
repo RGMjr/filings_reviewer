@@ -8,8 +8,9 @@ Tests the end-to-end workflow of respectively pattern enrichment:
 - Interaction with E2 learned rules filtering
 """
 
-import pytest
 from decimal import Decimal
+
+import pytest
 
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig

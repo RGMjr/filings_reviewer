@@ -100,8 +100,6 @@ def validate_url_format(url: str, cik: str, accession_number: str) -> dict:
 
         url_cik = match.group(1)
         url_accession = match.group(2)
-        filename = match.group(3)
-
         # Validate CIK matches
         if url_cik != cik:
             result['valid'] = False

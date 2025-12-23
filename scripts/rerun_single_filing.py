@@ -6,23 +6,33 @@ Usage:
     python scripts/rerun_single_filing.py --filing-id 12087
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# Load .env file
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.infra.db import DatabaseAdapter
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.llm.openai_client import OpenAIClient
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports available."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 
 def main():
+    prepare_environment()
+
+    from src.extraction.extraction_pipeline import ExtractionPipeline
+    from src.infra.db import DatabaseAdapter
+    from src.llm.openai_client import OpenAIClient
+
     parser = argparse.ArgumentParser(
         description="Re-run extraction on a single filing"
     )
@@ -189,7 +199,7 @@ def main():
 
     # Query database for metric breakdown
     if result.num_values > 0:
-        print(f"\nMetric breakdown (from database):")
+        print("\nMetric breakdown (from database):")
         breakdown = db.query("""
             SELECT metric_id, COUNT(*) as count
             FROM metric_values
@@ -203,7 +213,7 @@ def main():
     if args.dry_run:
         print("\n[DRY RUN - results not saved to database]")
     else:
-        print(f"\nResults saved to database.")
+        print("\nResults saved to database.")
 
 
 if __name__ == "__main__":

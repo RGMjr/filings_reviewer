@@ -93,9 +93,9 @@ See Also:
 
 import logging
 import re
-from typing import List, Optional, Pattern, Tuple
+from re import Pattern
 
-from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MIN, YEAR_MAX
+from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MAX, YEAR_MIN
 from src.review.number_parsing import NumberMatch
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Date patterns - to detect if a number is part of a date
-DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
+DATE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     # MM/DD/YYYY or DD/MM/YYYY
     re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}"),
     # Month DD, YYYY
@@ -154,7 +154,7 @@ DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)
-FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
+FALSE_POSITIVE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     # Page references: "page 123", "pages 10-20"
     re.compile(r"\bpages?\s+\d+", re.IGNORECASE),
     # Note references: "Note 5", "Notes 1-3"
@@ -385,7 +385,7 @@ class FalsePositiveFilter:
 
     def is_false_positive(
         self, text: str, number: NumberMatch
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Check if a number match is likely a false positive.
 
@@ -433,7 +433,7 @@ class FalsePositiveFilter:
         is_plain_count = number.unit == "count"
         is_integer_format = "." not in number.raw_text
         is_small_value = value is not None and abs(float(value)) < 1000
-        
+
         if is_plain_count and is_integer_format and is_small_value:
             if is_near_table_of_contents(text, start, self.toc_proximity_chars):
                 logger.debug(

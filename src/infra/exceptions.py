@@ -5,9 +5,8 @@ Custom exception hierarchy for infrastructure layer modules (pool, sec_client, e
 Provides specific exception types for better error handling and debugging.
 """
 
-import traceback
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 
 class InfrastructureError(Exception):
@@ -22,7 +21,7 @@ class HTTPError(InfrastructureError):
     Raised when HTTP requests fail for network or protocol reasons.
     """
 
-    def __init__(self, message: str, status_code: Optional[int] = None, url: Optional[str] = None):
+    def __init__(self, message: str, status_code: int | None = None, url: str | None = None):
         """Initialize HTTP error.
 
         Args:
@@ -107,10 +106,10 @@ class PoolExecutionError(InfrastructureError):
 
     def __init__(
         self,
-        failures: List[TaskFailure],
+        failures: list[TaskFailure],
         completed_count: int,
         total_count: int,
-        partial_results: Optional[List[Any]] = None,
+        partial_results: list[Any] | None = None,
     ):
         """Initialize pool execution error.
 

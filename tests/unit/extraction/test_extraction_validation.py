@@ -9,19 +9,18 @@ Tests the validation rules that catch common extraction errors:
 - Quote-keyword validation (new: validates quote contains metric keyword)
 """
 
-import pytest
 from src.extraction.extraction_validation import (
-    ValidationResult,
     ValidationIssue,
-    validate_unit,
-    validate_range,
+    ValidationResult,
+    get_rejection_reason,
+    normalize_unit,
+    should_reject_extraction,
+    validate_extraction,
     validate_keyword_in_source,
     validate_quote,
     validate_quote_contains_metric_keyword,
-    validate_extraction,
-    should_reject_extraction,
-    get_rejection_reason,
-    normalize_unit,
+    validate_range,
+    validate_unit,
 )
 
 

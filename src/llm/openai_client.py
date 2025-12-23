@@ -9,11 +9,11 @@ This module provides a robust wrapper around the OpenAI API with:
 """
 
 import logging
-import time
 import os
-from typing import Optional, Dict, Any, List
+import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 try:
     import tiktoken
@@ -21,7 +21,7 @@ except ImportError:
     tiktoken = None
 
 try:
-    from openai import OpenAI, APIError, RateLimitError, APIConnectionError
+    from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 except ImportError:
     raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken")
 
@@ -63,7 +63,7 @@ class CostTracker:
         """Record a failed request."""
         self.failed_requests += 1
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Get summary statistics."""
         return {
             "total_requests": self.total_requests,
@@ -103,7 +103,7 @@ class OpenAIClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "gpt-4o-mini",
         temperature: float = 0.1,
         max_tokens: int = 4096,
@@ -190,7 +190,7 @@ class OpenAIClient:
     def complete(
         self,
         prompt: str,
-        system_message: Optional[str] = None,
+        system_message: str | None = None,
         **kwargs,
     ) -> LLMResponse:
         """
@@ -300,10 +300,10 @@ class OpenAIClient:
 
     def complete_batch(
         self,
-        prompts: List[str],
-        system_message: Optional[str] = None,
+        prompts: list[str],
+        system_message: str | None = None,
         delay_between_requests: float = 0.1,
-    ) -> List[LLMResponse]:
+    ) -> list[LLMResponse]:
         """
         Send multiple completion requests with rate limiting.
 
@@ -334,7 +334,7 @@ class OpenAIClient:
 
         return responses
 
-    def get_cost_summary(self) -> Dict[str, Any]:
+    def get_cost_summary(self) -> dict[str, Any]:
         """Get cumulative cost tracking summary."""
         return self.cost_tracker.summary()
 

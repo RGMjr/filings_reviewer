@@ -13,12 +13,11 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.infra.db import DatabaseAdapter
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
 
 configure_logging(level="INFO")

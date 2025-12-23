@@ -69,7 +69,6 @@ import logging
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +110,8 @@ class NumberMatch:
     start: int  # Character position in text
     end: int  # End position
     raw_text: str  # Original text (e.g., "$1,234.56 million")
-    value: Optional[Decimal]  # Parsed numeric value
-    unit: Optional[str]  # Detected unit ('count', '%', 'usd', etc.)
+    value: Decimal | None  # Parsed numeric value
+    unit: str | None  # Detected unit ('count', '%', 'usd', etc.)
 
 
 # =============================================================================
@@ -135,7 +134,7 @@ class NumberParser:
         """Initialize the number parser."""
         self._regex = NUMBER_REGEX
 
-    def find_numbers(self, text: str) -> List[NumberMatch]:
+    def find_numbers(self, text: str) -> list[NumberMatch]:
         """
         Find all numbers in text.
 
@@ -187,9 +186,9 @@ class NumberParser:
     def parse_number(
         self,
         number_str: str,
-        suffix: Optional[str] = None,
-        currency: Optional[str] = None,
-    ) -> Tuple[Decimal, str]:
+        suffix: str | None = None,
+        currency: str | None = None,
+    ) -> tuple[Decimal, str]:
         """
         Parse a number string into a Decimal value and unit.
 

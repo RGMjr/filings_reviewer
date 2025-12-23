@@ -5,7 +5,6 @@ Tests pure Python implementations of chi-squared, t-test, and performance metric
 Target coverage: 90-95%
 """
 
-import math
 
 import pytest
 
@@ -18,7 +17,6 @@ from src.review.statistical_tests import (
     interpret_significance,
     t_test_independent,
 )
-
 
 # =============================================================================
 # TestChiSquaredTest

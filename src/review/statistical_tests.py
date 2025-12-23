@@ -12,7 +12,7 @@ Functions:
 
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _normal_cdf(z: float) -> float:
     return 0.5 * (1 + erf_x)
 
 
-def _approximate_chi_squared_p_value(chi_squared: float, df: int) -> Optional[float]:
+def _approximate_chi_squared_p_value(chi_squared: float, df: int) -> float | None:
     """
     Approximate p-value for chi-squared test using Wilson-Hilferty transformation.
 
@@ -97,7 +97,7 @@ def _approximate_chi_squared_p_value(chi_squared: float, df: int) -> Optional[fl
     return p_value
 
 
-def _approximate_t_test_p_value(t_statistic: float, df: float) -> Optional[float]:
+def _approximate_t_test_p_value(t_statistic: float, df: float) -> float | None:
     """
     Approximate p-value for t-test using normal approximation.
 
@@ -126,9 +126,9 @@ def _approximate_t_test_p_value(t_statistic: float, df: float) -> Optional[float
 
 
 def interpret_significance(
-    p_value: Optional[float],
-    alpha_levels: List[float] = [0.001, 0.01, 0.05],
-) -> Dict[str, Any]:
+    p_value: float | None,
+    alpha_levels: list[float] = [0.001, 0.01, 0.05],
+) -> dict[str, Any]:
     """
     Interpret statistical significance at common alpha levels.
 
@@ -192,10 +192,10 @@ def interpret_significance(
 
 
 def chi_squared_test(
-    feature_values: List[Any],
-    decision_values: List[str],
+    feature_values: list[Any],
+    decision_values: list[str],
     min_expected_frequency: float = 5.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compute chi-squared test for categorical feature vs decision.
 
@@ -237,15 +237,15 @@ def chi_squared_test(
         )
 
     # Build contingency table: feature_value × decision
-    contingency: Dict[Any, Dict[str, int]] = {}
+    contingency: dict[Any, dict[str, int]] = {}
     for fval, dval in zip(feature_values, decision_values):
         if fval not in contingency:
             contingency[fval] = {}
         contingency[fval][dval] = contingency[fval].get(dval, 0) + 1
 
     # Compute row and column totals
-    row_totals: Dict[Any, int] = {}
-    col_totals: Dict[str, int] = {}
+    row_totals: dict[Any, int] = {}
+    col_totals: dict[str, int] = {}
 
     for fval, decisions_dict in contingency.items():
         row_totals[fval] = sum(decisions_dict.values())
@@ -299,10 +299,10 @@ def chi_squared_test(
 
 
 def t_test_independent(
-    group1_values: List[float],
-    group2_values: List[float],
+    group1_values: list[float],
+    group2_values: list[float],
     equal_variance: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compute independent samples t-test (Student's or Welch's).
 
@@ -451,10 +451,10 @@ def t_test_independent(
 
 
 def compute_performance_metrics(
-    true_labels: List[str],
-    predicted_labels: List[str],
+    true_labels: list[str],
+    predicted_labels: list[str],
     positive_label: str = "accept",
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Compute precision, recall, F1 for binary classification.
 

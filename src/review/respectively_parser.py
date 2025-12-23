@@ -84,7 +84,6 @@ Limitations:
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 from src.review.boundary_detection import BoundaryDetector
 
@@ -147,11 +146,11 @@ class RespectivelyMatch:
         confidence: Confidence score 0.0-1.0 based on pattern clarity
         span: Tuple of (start, end) positions in original text
     """
-    values: List[str]
-    periods: List[str]
-    associations: List[Tuple[str, str]]
+    values: list[str]
+    periods: list[str]
+    associations: list[tuple[str, str]]
     confidence: float
-    span: Tuple[int, int]
+    span: tuple[int, int]
 
     def __post_init__(self) -> None:
         """Validate the match data."""
@@ -179,7 +178,7 @@ class RespectivelyMatch:
 def detect_respectively_pattern(
     text: str,
     min_confidence: float = 0.6
-) -> Optional[RespectivelyMatch]:
+) -> RespectivelyMatch | None:
     """
     Detect a "respectively" pattern in text and return associations.
 
@@ -301,7 +300,7 @@ def detect_respectively_pattern(
 def detect_all_respectively_patterns(
     text: str,
     min_confidence: float = 0.6
-) -> List[RespectivelyMatch]:
+) -> list[RespectivelyMatch]:
     """
     Detect ALL "respectively" patterns in text.
 
@@ -337,7 +336,7 @@ def detect_all_respectively_patterns(
     if "respectively" not in text.lower():
         return []
 
-    patterns: List[RespectivelyMatch] = []
+    patterns: list[RespectivelyMatch] = []
 
     # Detect sentence boundaries
     detector = BoundaryDetector()
@@ -373,7 +372,7 @@ def _detect_in_sentence(
     sentence_text: str,
     sentence_offset: int,
     min_confidence: float
-) -> Optional[RespectivelyMatch]:
+) -> RespectivelyMatch | None:
     """
     Detect a respectively pattern within a single sentence.
 
@@ -457,7 +456,7 @@ def _detect_in_sentence(
 # =============================================================================
 
 
-def _extract_value_list(text: str) -> List[str]:
+def _extract_value_list(text: str) -> list[str]:
     """
     Extract a list of values from text.
 
@@ -513,7 +512,7 @@ def _extract_value_list(text: str) -> List[str]:
     return []
 
 
-def _extract_period_list(text: str) -> List[str]:
+def _extract_period_list(text: str) -> list[str]:
     """
     Extract a list of time periods (years, quarters) from text.
 
@@ -590,8 +589,8 @@ def _extract_period_list(text: str) -> List[str]:
 
 
 def _calculate_confidence(
-    values: List[str],
-    periods: List[str],
+    values: list[str],
+    periods: list[str],
     context: str
 ) -> float:
     """

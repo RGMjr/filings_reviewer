@@ -65,7 +65,6 @@ See Also:
 
 import logging
 import re
-from typing import List, Optional, Tuple
 
 from src.review.config import DEFAULT_CONFIG, DEFAULT_CONTEXT_WORDS
 
@@ -104,7 +103,7 @@ class ContextExtractor:
         """
         self.context_words = context_words
 
-    def parse_text_into_words(self, text: str) -> List[Tuple[int, int, str]]:
+    def parse_text_into_words(self, text: str) -> list[tuple[int, int, str]]:
         """
         Parse text into words with their character positions.
 
@@ -126,7 +125,7 @@ class ContextExtractor:
         self,
         text: str,
         position: int,
-        cached_words: Optional[List[Tuple[int, int, str]]] = None,
+        cached_words: list[tuple[int, int, str]] | None = None,
     ) -> str:
         """
         Extract context words around a position.

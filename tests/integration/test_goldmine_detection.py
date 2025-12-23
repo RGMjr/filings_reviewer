@@ -14,22 +14,20 @@ Test Categories:
 
 import json
 import logging
-import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
 from src.extraction.html_segmenter import HTMLSegmenter
 from src.extraction.metric_classifier import MetricClassifier
+from src.extraction.models import SourceSegment
 from src.extraction.segment_enricher import (
     SegmentEnricher,
     cluster_goldmine_segments,
     summarize_cluster,
 )
-from src.extraction.models import SourceSegment
-
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +44,7 @@ def data_dir() -> Path:
 
 
 @pytest.fixture
-def sample_filing_path(data_dir: Path) -> Optional[str]:
+def sample_filing_path(data_dir: Path) -> str | None:
     """Find a sample filing HTML for testing (returns string path)."""
     if not data_dir.exists():
         return None
@@ -62,7 +60,7 @@ def sample_filing_path(data_dir: Path) -> Optional[str]:
 
 
 @pytest.fixture
-def metric_rich_filing_path(data_dir: Path) -> Optional[str]:
+def metric_rich_filing_path(data_dir: Path) -> str | None:
     """
     Return path to a metric-rich filing for testing.
 
@@ -89,7 +87,7 @@ def metric_rich_filing_path(data_dir: Path) -> Optional[str]:
 
 
 @pytest.fixture
-def farfetch_filing_path(data_dir: Path) -> Optional[str]:
+def farfetch_filing_path(data_dir: Path) -> str | None:
     """Return path to Farfetch filing (gold standard) as string."""
     path = data_dir / "0001740915" / "000119312518252315" / "primary.htm"
     if not path.exists():
@@ -98,7 +96,7 @@ def farfetch_filing_path(data_dir: Path) -> Optional[str]:
 
 
 @pytest.fixture
-def gold_labels() -> Dict[str, Any]:
+def gold_labels() -> dict[str, Any]:
     """Load gold standard labels for validation."""
     labels_path = Path("tests/fixtures/goldmine_labels.json")
     if not labels_path.exists():
@@ -135,7 +133,7 @@ class TestPipelineIntegration:
 
     def test_pipeline_produces_enriched_segments(
         self,
-        sample_filing_path: Optional[str],
+        sample_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -170,7 +168,7 @@ class TestPipelineIntegration:
 
     def test_elevated_richness_segments_identified(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -205,7 +203,7 @@ class TestPipelineIntegration:
 
     def test_tiered_selection_produces_expected_counts(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -250,7 +248,7 @@ class TestPipelineIntegration:
 
     def test_enrichment_stats_logged(
         self,
-        sample_filing_path: Optional[str],
+        sample_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -280,7 +278,7 @@ class TestGoldmineQuality:
 
     def test_elevated_segments_contain_metrics(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -322,7 +320,7 @@ class TestGoldmineQuality:
 
     def test_elevated_segments_have_enrichment_flags(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -364,7 +362,7 @@ class TestGoldmineQuality:
 
     def test_low_richness_excluded_from_tier1(
         self,
-        sample_filing_path: Optional[str],
+        sample_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -388,7 +386,7 @@ class TestGoldmineQuality:
 
     def test_definition_segments_included_in_selection(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -443,7 +441,7 @@ class TestPerformance:
     @pytest.mark.slow
     def test_enrichment_performance_overhead(
         self,
-        sample_filing_path: Optional[str],
+        sample_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -487,7 +485,7 @@ class TestPerformance:
     @pytest.mark.slow
     def test_large_filing_completes_in_time(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -515,7 +513,7 @@ class TestPerformance:
 
     def test_clustering_performance(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
@@ -557,7 +555,7 @@ class TestValidation:
     """Validation tests against gold standard labels."""
 
     def _get_threshold_for_filing(
-        self, expected_sections: List[Dict[str, Any]]
+        self, expected_sections: list[dict[str, Any]]
     ) -> float:
         """Get minimum richness threshold from gold labels."""
         if not expected_sections:
@@ -570,11 +568,11 @@ class TestValidation:
 
     def test_expected_sections_have_elevated_richness(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
-        gold_labels: Dict[str, Any],
+        gold_labels: dict[str, Any],
     ) -> None:
         """Expected goldmine sections have elevated richness scores."""
         if metric_rich_filing_path is None:
@@ -639,11 +637,11 @@ class TestValidation:
 
     def test_recall_on_gold_labels(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,
-        gold_labels: Dict[str, Any],
+        gold_labels: dict[str, Any],
     ) -> None:
         """Recall on gold label sections meets threshold."""
         if metric_rich_filing_path is None:
@@ -696,7 +694,7 @@ class TestValidation:
 
     def test_specific_section_identified(
         self,
-        metric_rich_filing_path: Optional[str],
+        metric_rich_filing_path: str | None,
         segmenter: HTMLSegmenter,
         classifier: MetricClassifier,
         enricher: SegmentEnricher,

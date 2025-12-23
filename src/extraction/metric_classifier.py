@@ -12,11 +12,9 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from .models import SourceSegment
 from .validators import ClassificationValidator
-from .exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +31,7 @@ class ClassificationMetrics:
     methodologies: int = 0
     numeric_disclosures: int = 0
     total_confidence: float = 0.0
-    metric_id_counts: Dict[str, int] = field(default_factory=dict)
+    metric_id_counts: dict[str, int] = field(default_factory=dict)
     classification_time_seconds: float = 0.0
 
     def avg_confidence(self) -> float:
@@ -42,7 +40,7 @@ class ClassificationMetrics:
             return 0.0
         return self.total_confidence / self.total_segments
 
-    def top_metrics(self, n: int = 5) -> List[tuple]:
+    def top_metrics(self, n: int = 5) -> list[tuple]:
         """Get top N most common metric IDs.
 
         Returns:
@@ -419,7 +417,7 @@ class MetricClassifier:
             ]
 
         # Metrics tracking
-        self._metrics: Optional[ClassificationMetrics] = None
+        self._metrics: ClassificationMetrics | None = None
 
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
@@ -460,7 +458,7 @@ class MetricClassifier:
 
         return segment
 
-    def classify_batch(self, segments: List[SourceSegment], validate: bool = True) -> List[SourceSegment]:
+    def classify_batch(self, segments: list[SourceSegment], validate: bool = True) -> list[SourceSegment]:
         """
         Classify multiple segments efficiently with metrics collection.
 
@@ -511,7 +509,7 @@ class MetricClassifier:
 
         return classified
 
-    def get_metrics(self) -> Optional[ClassificationMetrics]:
+    def get_metrics(self) -> ClassificationMetrics | None:
         """Get metrics from most recent classification batch.
 
         Returns:
@@ -558,7 +556,7 @@ class MetricClassifier:
 
         return False
 
-    def _identify_candidate_metrics(self, text: str) -> List[str]:
+    def _identify_candidate_metrics(self, text: str) -> list[str]:
         """
         Identify which specific metrics might be present in the text.
 
@@ -726,7 +724,7 @@ class MetricClassifier:
 
 
 # Convenience function
-def classify_segments(segments: List[SourceSegment]) -> List[SourceSegment]:
+def classify_segments(segments: list[SourceSegment]) -> list[SourceSegment]:
     """
     Convenience function to classify a list of segments.
 

@@ -307,7 +307,7 @@ def main():
     print(f"Total filings: {len(filings)}")
     print(f"Total values: {sum(s['values'] for s in summary)}")
     print(f"Total definitions: {sum(s['definitions'] for s in summary)}")
-    print(f"\nReview instructions:")
+    print("\nReview instructions:")
     print("1. Open each company's extracted_values.csv")
     print("2. Fill 'review_status' column: correct, incorrect, partial")
     print("3. Add notes for any issues found")

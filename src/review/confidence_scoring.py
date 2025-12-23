@@ -113,7 +113,6 @@ See Also:
 
 import logging
 import re
-from typing import Dict, List, Optional
 
 from src.review.config import DEFAULT_CONFIG, CandidateGenerationConfig
 from src.review.keyword_matching import SPECIFIC_KEYWORD_PATTERNS
@@ -127,7 +126,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Expected number formats for each metric type
-METRIC_EXPECTED_FORMATS: Dict[str, List[str]] = {
+METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     # Customer counts - expect integers
     "cm_active_customers_total": ["integer", "currency"],  # "$X customers" appears
     "cm_active_customers_enterprise": ["integer"],
@@ -223,7 +222,7 @@ class ConfidenceScorer:
     def __init__(
         self,
         max_keyword_distance: int = DEFAULT_CONFIG.max_keyword_distance,
-        config: Optional[CandidateGenerationConfig] = None,
+        config: CandidateGenerationConfig | None = None,
     ):
         """
         Initialize the confidence scorer.

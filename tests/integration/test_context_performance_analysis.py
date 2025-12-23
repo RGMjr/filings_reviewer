@@ -6,11 +6,12 @@ by context type and keyword direction to inform multiplier optimization.
 """
 
 import pytest
-from src.review.pattern_analyzer import PatternAnalyzer
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import SegmentDict
-from src.infra.db import DatabaseAdapter
+from src.review.pattern_analyzer import PatternAnalyzer
 
 
 @pytest.fixture

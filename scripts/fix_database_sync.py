@@ -24,19 +24,20 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Dict
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.infra.db import DatabaseAdapter
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+
+from src.infra.db import DatabaseAdapter
 
 load_dotenv()
 
 
-def get_all_fetched_filings(db: DatabaseAdapter, cik: str = None) -> List[Dict]:
+def get_all_fetched_filings(db: DatabaseAdapter, cik: str = None) -> list[dict]:
     """Get all filings marked as fetched in database."""
     query = """
         SELECT
@@ -139,7 +140,7 @@ def main():
     print(f"Connected to database: {db_url}")
 
     # Get all fetched filings
-    print(f"\nQuerying database for fetched filings...")
+    print("\nQuerying database for fetched filings...")
     if args.cik:
         print(f"  Filtering by CIK: {args.cik}")
 
@@ -242,13 +243,13 @@ def main():
     print(f"  ⚠️  Missing TXT only:            {len(missing_txt)}")
 
     if not args.dry_run and missing_html:
-        print(f"\n✅ Database updated successfully")
+        print("\n✅ Database updated successfully")
         print(f"   {len(missing_html)} filings marked for re-download")
-        print(f"   Run batch_download_filings.py to fetch missing files")
+        print("   Run batch_download_filings.py to fetch missing files")
 
     if args.dry_run and missing_html:
-        print(f"\n💡 To fix these issues, run:")
-        print(f"   python scripts/fix_database_sync.py")
+        print("\n💡 To fix these issues, run:")
+        print("   python scripts/fix_database_sync.py")
 
     print("\n" + "="*100)
 

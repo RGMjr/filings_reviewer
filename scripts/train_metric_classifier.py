@@ -4,20 +4,19 @@
 import argparse
 import csv
 from pathlib import Path
-from typing import List, Tuple
 
 from joblib import dump
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
-from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import MultiLabelBinarizer
 
 
-def load_dataset(csv_path: Path) -> Tuple[List[str], List[List[str]]]:
-    texts: List[str] = []
-    labels: List[List[str]] = []
+def load_dataset(csv_path: Path) -> tuple[list[str], list[list[str]]]:
+    texts: list[str] = []
+    labels: list[list[str]] = []
 
     with csv_path.open() as f:
         reader = csv.DictReader(f)

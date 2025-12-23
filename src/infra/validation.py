@@ -7,7 +7,8 @@ CIKs, accession numbers, SIC codes, dates, and form types.
 
 import re
 from datetime import datetime
-from typing import Sequence, Tuple, TypeVar
+from typing import TypeVar
+from collections.abc import Sequence
 
 T = TypeVar("T")
 
@@ -163,7 +164,7 @@ def validate_date(date_str: str, field_name: str = "date") -> datetime:
 
 def validate_date_range(
     start_date: str, end_date: str
-) -> Tuple[datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """
     Validate a date range ensuring start <= end.
 

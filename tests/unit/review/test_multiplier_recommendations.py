@@ -5,8 +5,10 @@ Tests verify that the PatternAnalyzer can generate data-driven multiplier
 recommendations based on context performance analysis.
 """
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
+
 from src.review.pattern_analyzer import PatternAnalyzer
 
 
