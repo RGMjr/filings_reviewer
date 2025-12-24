@@ -146,16 +146,20 @@ class MetricClassifier:
             r"\bcohort\s+transactions?\b",
             r"\bpurchase\s+transactions?\b",
             r"\btransactions?[^.;]{0,100}\bcohort\b",  # Fixed: limit to same sentence
+            r"\bnumber\s+of\s+orders?\b",  # Farfetch terminology
         ],
         # Extended Metrics
         "cm_active_customers_total": [
             r"\bactive\s+customers?\b",
+            r"\bactive\s+consumers?\b",  # Farfetch terminology
             r"\btotal\s+customers?\b",
+            r"\btotal\s+consumers?\b",  # Farfetch terminology
             r"\bcustomer\s+base\b",
-            r"\bactive\s+accounts?\b", # Added synonym
-            r"\btotal\s+accounts?\b", # Added synonym
-            r"\bactive\s+clients?\b", # Added synonym
-            r"\btotal\s+clients?\b", # Added synonym
+            r"\bconsumer\s+base\b",  # Farfetch terminology
+            r"\bactive\s+accounts?\b",  # Added synonym
+            r"\btotal\s+accounts?\b",  # Added synonym
+            r"\bactive\s+clients?\b",  # Added synonym
+            r"\btotal\s+clients?\b",  # Added synonym
         ],
         "cm_revenue_per_customer": [
             r"\barpu\b",
@@ -250,6 +254,7 @@ class MetricClassifier:
             r"\bconcentration\s+risk\b",
             r"\bconcentration\s+of\s+revenue\b",
             r"\bmajor\s+customers?\b",
+            r"\bcustomer\s+[A-D]\b",  # "Customer A", "Customer B", etc. (anonymized names)
         ],
         # -----------------------------------------------------------------
         # Revenue Predictability Metrics (T5: cm_bookings group)
