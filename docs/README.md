@@ -81,6 +81,7 @@ Current improvement work in progress.
 | **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | Goldmine improvement plan (18 tasks, 4 phases) | Developers |
 | **[IMPROVE_SEGMENTATION_PLAN_A.md](IMPROVE_SEGMENTATION_PLAN_A.md)** | Segmentation improvements for Farfetch/Samsara | Developers |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
+| **[MERGE_FIX_PLAN_2025-12-24.md](MERGE_FIX_PLAN_2025-12-24.md)** | Merge remediation plan (tests, schema, seeds, CI gates) | Developers |
 
 ### Archive (Historical Reference)
 
