@@ -110,9 +110,12 @@ METRIC_KEYWORDS: dict[str, list[str]] = MetricClassifier.METRIC_KEYWORDS
 # Single-word keywords like "customers" are ambiguous
 SPECIFIC_KEYWORD_PATTERNS = [
     r"active\s+customers?",
+    r"active\s+consumers?",  # Farfetch terminology
     r"enterprise\s+customers?",
     r"paying\s+customers?",
     r"total\s+customers?",
+    r"total\s+consumers?",  # Farfetch terminology
+    r"number\s+of\s+orders?",  # Farfetch terminology
     r"net\s+revenue\s+retention",
     r"gross\s+revenue\s+retention",
     r"net\s+dollar\s+retention",
