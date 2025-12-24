@@ -383,9 +383,9 @@ After: 52.3% matches ONLY "gross margin" ✓
 **Full Results:** See `docs/CMASB_PHASE1B_RESULTS.md`
 
 ### 🎯 **CURRENT: Active Improvement Workstreams**
-**Master Plan:** `docs/MASTER_IMPROVEMENT_PLAN.md` (created 2025-12-16)
+**Task List:** `MASTER_TASK_LIST.md`
 
-Pending improvements are now coordinated via 5 parallel workstreams:
+Pending improvements are coordinated via parallel workstreams:
 
 | Stream | Focus | Status | Est. Hours |
 |--------|-------|--------|------------|
@@ -400,7 +400,7 @@ Pending improvements are now coordinated via 5 parallel workstreams:
 2. **T-P1.3/T-P1.4** - Complete ACV/TCV taxonomy tests and docs
 3. **Q7** - Improve candidate_generator.py coverage to ≥90%
 
-See `docs/MASTER_IMPROVEMENT_PLAN.md` for detailed task breakdown and dependencies.
+See `MASTER_TASK_LIST.md` for detailed task breakdown.
 
 ### 📊 **Future: Phase 2 Planning**
 Based on Phase 1B success, Phase 2 should focus on:
@@ -614,17 +614,18 @@ tests/
   - Web routes: 94-97% ✅ (D1/D2 complete)
 - **Areas for Improvement:**
   - LLM modules (src/llm/): 0% ⚠️ Manual testing only
-  - Pattern degradation with 1000 patterns: 33.4% (see Stream C in MASTER_IMPROVEMENT_PLAN.md)
+  - Pattern degradation with 1000 patterns: 33.4% (see P4 in MASTER_TASK_LIST.md)
 
 ---
 
 ## Resources & References
 
 ### Documentation
-- [01_ANALYTIC_REQUIREMENTS.md](docs/01_ANALYTIC_REQUIREMENTS.md) - Business requirements
-- [04_EXTRACTION_ARCHITECTURE.md](docs/04_EXTRACTION_ARCHITECTURE.md) - Extraction pipeline design
-- [06_QA_AND_QUALITY_MODEL.md](docs/06_QA_AND_QUALITY_MODEL.md) - Quality scoring framework
-- [07_TEST_STRATEGY_AND_FIX_PROCESS.md](docs/07_TEST_STRATEGY_AND_FIX_PROCESS.md) - Testing approach
+- [docs/requirements/analytic-requirements.md](docs/requirements/analytic-requirements.md) - Business requirements
+- [docs/architecture/extraction-pipeline.md](docs/architecture/extraction-pipeline.md) - Extraction pipeline design
+- [docs/development/quality-model.md](docs/development/quality-model.md) - Quality scoring framework
+- [docs/development/testing.md](docs/development/testing.md) - Testing approach
+- [docs/HUMAN_REVIEW_SYSTEM.md](docs/HUMAN_REVIEW_SYSTEM.md) - Human review system
 
 ### Code Locations
 - Extraction modules: `src/extraction/`
@@ -655,7 +656,7 @@ open htmlcov/index.html
 ## Recent Major Milestones (December 2025)
 
 ### 2025-12-16: Master Improvement Plan Created
-- Consolidated all pending improvements into `docs/MASTER_IMPROVEMENT_PLAN.md`
+- Consolidated all pending improvements into `MASTER_TASK_LIST.md`
 - Organized into 5 parallel workstreams (A-E)
 - Stream A (Git Stabilization) completed with 3 commits
 - Stream B (Taxonomy) in progress: cm_acv/cm_tcv patterns added
