@@ -1,8 +1,8 @@
 # Goldmine Detection Remediation Plan
 
-**Plan Status**: 🟡 Ready for Execution (1 task complete, 1 partial)
+**Plan Status**: 🟡 Ready for Execution (2 tasks complete, 1 partial, 15 pending)
 **Created**: 2025-12-17
-**Last Updated**: 2025-12-24 (Status verification - GR-5 confirmed complete, GR-4 partial)
+**Last Updated**: 2025-12-24 (Deep verification - GR-3, GR-5 confirmed complete; GR-4 partial)
 **Owner**: Analytics Team
 **Priority**: HIGH (Production accuracy improvement)
 
@@ -142,7 +142,7 @@ Phase 3:
 **ID**: GR-3
 **Name**: Add +0.5 bonus for usage metric definitions
 **Workstream**: Formula Calibration
-**Status**: 🟡 PENDING
+**Status**: ✅ COMPLETE (implemented as tiered bonus)
 **Time Estimate**: 2 hours (implementation 60 min, testing 60 min)
 **Risk Level**: LOW (additive bonus, no breaking changes)
 **Parallel With**: GR-1, GR-2 (independent formula adjustment)
@@ -157,6 +157,14 @@ Phase 3:
 - `tests/unit/extraction/test_segment_enricher_definition_bonus.py` (add usage metric tests)
 
 **Logic**: If segment has definition flag AND contains DAU/MAU/WAU/subscriber metric, add +0.5
+
+**2025-12-24 Verification**:
+Already implemented at lines 1010-1017 via tiered usage bonus:
+- +1.0 for usage metric with count (e.g., "10 million DAU")
+- +0.75 for usage keyword + definition flag or metric context ← **Satisfies GR-3**
+- +0.5 for basic usage keyword only
+
+The implementation exceeds the original +0.5 requirement by giving +0.75 for usage+definition.
 
 ---
 

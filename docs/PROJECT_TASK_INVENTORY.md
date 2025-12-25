@@ -10,7 +10,7 @@
 
 | Plan | Total Tasks | Complete | Partial | Pending | Blocked |
 |------|-------------|----------|---------|---------|---------|
-| GOLDMINE_REMEDIATION (GR) | 18 | 1 | 1 | 16 | 0 |
+| GOLDMINE_REMEDIATION (GR) | 18 | 2 | 1 | 15 | 0 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 7 | 0 | 3 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
 | **TOTAL** | **40** | **19** | **1** | **19** | **1** |
