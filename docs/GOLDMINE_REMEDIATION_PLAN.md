@@ -1,7 +1,8 @@
 # Goldmine Detection Remediation Plan
 
-**Plan Status**: 🟡 Ready for Execution
+**Plan Status**: 🟡 Ready for Execution (1 task complete, 1 partial)
 **Created**: 2025-12-17
+**Last Updated**: 2025-12-24 (Status verification - GR-5 confirmed complete, GR-4 partial)
 **Owner**: Analytics Team
 **Priority**: HIGH (Production accuracy improvement)
 
@@ -60,7 +61,7 @@ Phase 0 (Parallel):
   GR-3 (Boost usage definitions) ──┘
 
 Phase 1:
-  GR-4 (Tiered thresholds) ──→ GR-5 (Update pipeline integration) ──┐
+  GR-4 (Tiered thresholds) [PARTIAL] ──→ GR-5 (Pipeline integration) [✅ DONE] ──┐
                                                                       ├──→ GR-10
   GR-6 (Platform patterns) ──┐                                      │
   GR-7 (Engagement patterns) ├──→ (can run in parallel) ────────────┘
@@ -166,7 +167,7 @@ Phase 3:
 **ID**: GR-4
 **Name**: Add 3-tier goldmine classification (6.0 / 4.0 / 3.0)
 **Workstream**: Architecture
-**Status**: 🟡 PENDING
+**Status**: 🟡 PARTIALLY COMPLETE (see notes)
 **Time Estimate**: 4 hours (design 60 min, implementation 120 min, testing 60 min)
 **Risk Level**: MEDIUM (changes pipeline selection logic)
 **Parallel With**: None (must complete before GR-5)
@@ -188,6 +189,18 @@ Phase 3:
 3. Create helper method to classify tier based on richness_score
 4. DO NOT integrate with pipeline yet (that's GR-5)
 
+**2025-12-24 Status Notes**:
+The tiered threshold *values* already exist in `extraction_pipeline.py` (lines 317-320):
+- `RICHNESS_THRESHOLD = 6.0` (Tier 1)
+- `MEDIUM_THRESHOLD = 4.0` (Tier 2)
+- `DIRECT_HIT_THRESHOLD = 3.0` (Tier 3)
+
+**Remaining work for full completion:**
+- [ ] Move constants to `segment_enricher.py` as TIER1/TIER2/TIER3
+- [ ] Add `goldmine_tier` field to SourceSegment model (optional)
+- [ ] Create helper method `classify_tier(richness_score) -> int | None`
+- [ ] Add unit tests for tier classification
+
 ---
 
 #### GR-5: Integrate Tiered Selection in Pipeline
@@ -195,7 +208,7 @@ Phase 3:
 **ID**: GR-5
 **Name**: Update extraction pipeline to use tiered thresholds
 **Workstream**: Integration
-**Status**: 🟡 PENDING
+**Status**: ✅ COMPLETE (implemented 2025-12-17)
 **Time Estimate**: 3 hours (implementation 90 min, testing 60 min, integration 30 min)
 **Risk Level**: MEDIUM (changes segment selection strategy)
 **Parallel With**: None (depends on GR-4)
@@ -215,6 +228,16 @@ Phase 3:
 1. Modify tiered selection to use TIER1/TIER2/TIER3 thresholds
 2. Maintain backward compatibility (if tier field doesn't exist, use richness_score directly)
 3. Add logging for tier breakdown
+
+**2025-12-24 Verification**:
+The `_select_segments_tiered()` method in `extraction_pipeline.py` (lines 300-394) is fully implemented:
+- ✅ Tier 1: High richness (≥6.0) - up to 30 segments
+- ✅ Tier 2: Medium richness (4.0-6.0) - up to 40 segments
+- ✅ Tier 3: Direct hits (3.0-4.0) with specific criteria (single metric, has numeric value)
+- ✅ Tier 4: Critical flags (definitions/methodologies) - remainder up to 80 total
+- ✅ Deduplication by segment ID
+- ✅ Logging for tier breakdown included
+- ✅ Called from `process_filing()` at line 145
 
 ---
 
@@ -683,7 +706,8 @@ if segment.segment_type == 'paragraph':
 - [ ] All tests pass
 
 ### Phase 1 Success
-- [ ] Tiered thresholds implemented (GR-4, GR-5)
+- [x] Tiered pipeline selection implemented (GR-5) ✅
+- [ ] Tiered thresholds formalized in enricher (GR-4 remaining work)
 - [ ] Platform & engagement patterns added (GR-6, GR-7)
 - [ ] Instrumentation deployed (GR-9)
 - [ ] Validation shows recall 70-75% (GR-10)
@@ -712,13 +736,14 @@ if segment.segment_type == 'paragraph':
 ## Risk Mitigation
 
 ### High-Risk Tasks
-None. GR-4 and GR-5 are marked MEDIUM risk but have mitigation:
+None. GR-4 is marked MEDIUM risk but has mitigation:
 - **GR-4 Mitigation**: Tiered thresholds are backward compatible (can use richness_score directly if tier field doesn't exist)
-- **GR-5 Mitigation**: Feature flag to enable/disable tiered selection, rollback to single threshold
+- **GR-5**: ✅ Already complete - tiered selection is live in production pipeline
 
 ### Dependencies
 Most tasks are independent. Critical path:
-- GR-4 → GR-5 (7 hours sequential)
+- GR-4 remaining work only (~2 hours for formalization)
+- GR-5 ✅ COMPLETE - no longer blocking
 - GR-13, GR-14 → GR-15 (2 hours sequential)
 - GR-16, GR-17 → GR-18 (2 hours sequential)
 
