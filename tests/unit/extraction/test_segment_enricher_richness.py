@@ -739,6 +739,6 @@ class TestThresholdConstants:
         """HIGH_VALUE_THRESHOLD is 8.0."""
         assert SegmentEnricher.HIGH_VALUE_THRESHOLD == 8.0
 
-    def test_goldmine_threshold_unchanged(self) -> None:
-        """GOLDMINE_THRESHOLD is still 6.0."""
-        assert SegmentEnricher.GOLDMINE_THRESHOLD == 6.0
+    def test_goldmine_threshold_lowered(self) -> None:
+        """GOLDMINE_THRESHOLD is 5.5 (GR-1: lowered from 6.0)."""
+        assert SegmentEnricher.GOLDMINE_THRESHOLD == 5.5
