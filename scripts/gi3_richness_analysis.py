@@ -36,16 +36,18 @@ if TYPE_CHECKING:
     from src.infra.db import DatabaseAdapter
 
 # Filing ID to Company Name mapping
+# Note: IDs 31/33 were incorrect (RLX Technology/Vodka Brands due to CIK mismatch)
+# IDs 39/40 are the real Snowflake/DocuSign filings downloaded via SEC API (2024-12)
 FILING_MAP = {
     29: "Farfetch Ltd",
-    31: "Snowflake",
     32: "Snap",
-    33: "DocuSign",
     34: "SUSHI GINZA ONODERA",
     35: "Slack Technologies",
+    39: "Snowflake Inc",      # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)
+    40: "DocuSign Inc",       # Real DocuSign S-1 (CIK 0001261333, 2018-09-11)
 }
 
-VALIDATION_FILING_IDS = (29, 31, 32, 33, 34, 35)
+VALIDATION_FILING_IDS = (29, 32, 34, 35, 39, 40)
 
 
 @dataclass

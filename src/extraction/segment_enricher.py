@@ -26,6 +26,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
+from .enricher_config import FormulaWeights
 from .models import SourceSegment
 
 logger = logging.getLogger(__name__)
@@ -526,9 +527,15 @@ class SegmentEnricher:
         ),
     ]
 
-    def __init__(self) -> None:
-        """Initialize enricher (stateless, patterns compiled at class level)."""
-        pass
+    def __init__(self, weights: FormulaWeights | None = None) -> None:
+        """
+        Initialize enricher with optional custom formula weights.
+
+        Args:
+            weights: Optional FormulaWeights configuration. If None, uses
+                     FormulaWeights.default() which matches production behavior.
+        """
+        self.weights = weights if weights is not None else FormulaWeights.default()
 
     @staticmethod
     def classify_tier(richness_score: float) -> int | None:
@@ -713,51 +720,62 @@ class SegmentEnricher:
         segment.metric_density = self._compute_metric_density(segment)
         segment.distinct_metric_count = self._compute_distinct_metric_count(segment)
 
+        # Cache text and case-converted version once (GR-13)
+        # This avoids repeated .upper() calls across detection methods.
+        # All patterns use re.IGNORECASE, but caching text_upper saves the .upper()
+        # call in _detect_temporal_trends for FISCAL_PERIOD_PATTERN.
+        text = segment.raw_text or ""
+        text_upper = text.upper()
+
         # Detect temporal trends (G5)
-        segment.contains_temporal_trend = self._detect_temporal_trends(segment)
+        segment.contains_temporal_trend = self._detect_temporal_trends(
+            text, text_upper, segment.sequence_index
+        )
 
         # Detect cohort breakdowns (G6)
-        segment.contains_cohort_breakdown = self._detect_cohort_breakdowns(segment)
+        segment.contains_cohort_breakdown = self._detect_cohort_breakdowns(
+            text, segment.candidate_metric_ids, segment.sequence_index
+        )
 
         # Detect SaaS-specific indicators (GI-5) - store in extra_metadata
         segment.extra_metadata = segment.extra_metadata or {}
         segment.extra_metadata["contains_saas_indicator"] = self._detect_saas_indicators(
-            segment
+            text
         )
 
         # Detect retention keywords (GI-6) - store in extra_metadata
         segment.extra_metadata["contains_retention_keywords"] = (
-            self._detect_retention_keywords(segment)
+            self._detect_retention_keywords(text)
         )
 
         # Detect usage keywords (GI-6) - store in extra_metadata
         segment.extra_metadata["contains_usage_keywords"] = self._detect_usage_keywords(
-            segment
+            text
         )
 
         # Detect usage metrics with count (GI-10) - store in extra_metadata
         segment.extra_metadata["contains_usage_with_count"] = (
-            self._detect_usage_with_count(segment)
+            self._detect_usage_with_count(text)
         )
 
         # Detect platform/marketplace keywords (GR-6) - store in extra_metadata
         segment.extra_metadata["contains_platform_keywords"] = (
-            self._detect_platform_keywords(segment)
+            self._detect_platform_keywords(text)
         )
 
         # Detect platform metrics with count (GR-6) - store in extra_metadata
         segment.extra_metadata["contains_platform_with_count"] = (
-            self._detect_platform_with_count(segment)
+            self._detect_platform_with_count(text)
         )
 
         # Detect engagement keywords (GR-7) - store in extra_metadata
         segment.extra_metadata["contains_engagement_keywords"] = (
-            self._detect_engagement_keywords(segment)
+            self._detect_engagement_keywords(text)
         )
 
         # Detect conversion keywords (GR-7) - store in extra_metadata
         segment.extra_metadata["contains_conversion_keywords"] = (
-            self._detect_conversion_keywords(segment)
+            self._detect_conversion_keywords(text)
         )
 
         # Detect images/charts (G7)
@@ -816,7 +834,9 @@ class SegmentEnricher:
 
         return len(set(candidate_metric_ids))
 
-    def _detect_temporal_trends(self, segment: SourceSegment) -> bool:
+    def _detect_temporal_trends(
+        self, text: str, text_upper: str, sequence_index: int | None
+    ) -> bool:
         """
         Detect if segment discusses multiple time periods.
 
@@ -826,22 +846,20 @@ class SegmentEnricher:
         - Year-over-year comparison language is present
 
         Args:
-            segment: Segment to analyze for temporal trends
+            text: Raw text to analyze (already extracted from segment, GR-13)
+            text_upper: Uppercase version of text (cached for performance, GR-13)
+            sequence_index: Segment sequence index for logging
 
         Returns:
             True if temporal trend detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
+        # Handle edge cases: empty or non-string
+        if not text:
             return False
         if not isinstance(text, str):
             logger.warning(
-                f"Non-string raw_text in segment {segment.sequence_index}: {type(text)}"
+                f"Non-string raw_text in segment {sequence_index}: {type(text)}"
             )
-            return False
-        if not text:
             return False
 
         # Check for multiple distinct years (primary signal)
@@ -850,7 +868,8 @@ class SegmentEnricher:
             return True
 
         # Check for multiple distinct fiscal periods (secondary signal)
-        fiscal_periods = set(self.FISCAL_PERIOD_PATTERN.findall(text.upper()))
+        # Uses cached text_upper to avoid repeated .upper() calls (GR-13)
+        fiscal_periods = set(self.FISCAL_PERIOD_PATTERN.findall(text_upper))
         if len(fiscal_periods) >= 2:
             return True
 
@@ -861,7 +880,12 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_cohort_breakdowns(self, segment: SourceSegment) -> bool:
+    def _detect_cohort_breakdowns(
+        self,
+        text: str,
+        candidate_metric_ids: list[str] | None,
+        sequence_index: int | None,
+    ) -> bool:
         """
         Detect if segment contains cohort analysis patterns.
 
@@ -872,22 +896,20 @@ class SegmentEnricher:
         - 2+ metric IDs containing 'cohort' or 'tenure'
 
         Args:
-            segment: Segment to analyze for cohort patterns
+            text: Raw text to analyze (already extracted from segment, GR-13)
+            candidate_metric_ids: List of metric IDs to check for cohort patterns
+            sequence_index: Segment sequence index for logging
 
         Returns:
             True if cohort breakdown detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
+        # Handle edge cases: empty or non-string
+        if not text:
             return False
         if not isinstance(text, str):
             logger.warning(
-                f"Non-string raw_text in segment {segment.sequence_index}: {type(text)}"
+                f"Non-string raw_text in segment {sequence_index}: {type(text)}"
             )
-            return False
-        if not text:
             return False
 
         # Check regex patterns for cohort language
@@ -896,7 +918,6 @@ class SegmentEnricher:
                 return True
 
         # Check for multiple cohort-related metric IDs (quaternary signal)
-        candidate_metric_ids = segment.candidate_metric_ids
         if candidate_metric_ids:
             cohort_metrics = [
                 m
@@ -908,7 +929,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_saas_indicators(self, segment: SourceSegment) -> bool:
+    def _detect_saas_indicators(self, text: str) -> bool:
         """
         Detect SaaS-specific indicator patterns in segment.
 
@@ -924,22 +945,13 @@ class SegmentEnricher:
         from S-1 filings like Slack, Snowflake, and DocuSign.
 
         Args:
-            segment: Segment to analyze for SaaS indicators
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if SaaS indicator detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            logger.warning(
-                f"Non-string raw_text in segment {segment.sequence_index}: {type(text)}"
-            )
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for SaaS indicators
@@ -949,7 +961,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_retention_keywords(self, segment: SourceSegment) -> bool:
+    def _detect_retention_keywords(self, text: str) -> bool:
         """
         Detect retention metric keywords in segment.
 
@@ -963,19 +975,13 @@ class SegmentEnricher:
         Based on GI-3 recommendation #1 identifying 87 retention-related snippets.
 
         Args:
-            segment: Segment to analyze for retention keywords
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if retention keyword detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for retention keywords
@@ -985,7 +991,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_usage_keywords(self, segment: SourceSegment) -> bool:
+    def _detect_usage_keywords(self, text: str) -> bool:
         """
         Detect usage metric keywords (DAU/MAU/WAU) in segment.
 
@@ -998,19 +1004,13 @@ class SegmentEnricher:
         This triggers +0.5 bonus. Based on GI-3 recommendation #4.
 
         Args:
-            segment: Segment to analyze for usage keywords
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if usage keyword detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for usage keywords
@@ -1020,7 +1020,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_usage_with_count(self, segment: SourceSegment) -> bool:
+    def _detect_usage_with_count(self, text: str) -> bool:
         """
         Detect usage metrics with numeric values (DAU/MAU/WAU + count).
 
@@ -1034,19 +1034,13 @@ class SegmentEnricher:
         a higher bonus (+1.0 vs +0.5). Based on GI-10 tiered bonus enhancement.
 
         Args:
-            segment: Segment to analyze for usage metrics with counts
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if usage metric with count detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for usage metrics with numeric values
@@ -1056,7 +1050,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_platform_keywords(self, segment: SourceSegment) -> bool:
+    def _detect_platform_keywords(self, text: str) -> bool:
         """
         Detect platform/marketplace metric keywords in segment.
 
@@ -1071,19 +1065,13 @@ class SegmentEnricher:
         This triggers +0.5 bonus. Based on GR-6 pattern coverage task.
 
         Args:
-            segment: Segment to analyze for platform keywords
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if platform keyword detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for platform keywords
@@ -1093,7 +1081,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_platform_with_count(self, segment: SourceSegment) -> bool:
+    def _detect_platform_with_count(self, text: str) -> bool:
         """
         Detect platform metrics with numeric values.
 
@@ -1107,19 +1095,13 @@ class SegmentEnricher:
         a higher bonus (+1.0 vs +0.5). Based on GR-6 platform metric patterns.
 
         Args:
-            segment: Segment to analyze for platform metrics with counts
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if platform metric with count detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for platform metrics with numeric values
@@ -1129,7 +1111,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_engagement_keywords(self, segment: SourceSegment) -> bool:
+    def _detect_engagement_keywords(self, text: str) -> bool:
         """
         Detect engagement metric keywords in segment.
 
@@ -1143,19 +1125,13 @@ class SegmentEnricher:
         consumer social, media, and freemium businesses.
 
         Args:
-            segment: Segment to analyze for engagement keywords
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if engagement keyword detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for engagement keywords
@@ -1165,7 +1141,7 @@ class SegmentEnricher:
 
         return False
 
-    def _detect_conversion_keywords(self, segment: SourceSegment) -> bool:
+    def _detect_conversion_keywords(self, text: str) -> bool:
         """
         Detect conversion metric keywords in segment.
 
@@ -1179,19 +1155,13 @@ class SegmentEnricher:
         freemium and subscription businesses.
 
         Args:
-            segment: Segment to analyze for conversion keywords
+            text: Raw text to analyze (already extracted from segment, GR-13)
 
         Returns:
             True if conversion keyword detected, False otherwise
         """
-        text = segment.raw_text
-
-        # Handle edge cases: None, empty, or non-string
-        if text is None:
-            return False
-        if not isinstance(text, str):
-            return False
-        if not text:
+        # Handle edge cases: empty or non-string
+        if not text or not isinstance(text, str):
             return False
 
         # Check regex patterns for conversion keywords
@@ -1423,20 +1393,21 @@ class SegmentEnricher:
             Richness score (0.0-10.0), rounded to 2 decimal places
         """
         score = 0.0
+        w = self.weights  # Local alias for readability
 
-        # Base confidence (max 3.0)
+        # Base confidence (max 3.0 with default weights)
         confidence = segment.classifier_confidence or 0.0
-        score += confidence * 3.0
+        score += confidence * w.confidence_multiplier
 
         # Metric density bonus (max 2.0)
         metric_count = segment.distinct_metric_count or 0
-        score += min(metric_count * 0.5, 2.0)
+        score += min(metric_count * w.metric_count_multiplier, w.metric_count_cap)
 
         # Boolean flag bonuses
         if segment.contains_temporal_trend:
-            score += 1.0
+            score += w.temporal_trend_bonus
         if segment.contains_cohort_breakdown:
-            score += 1.5
+            score += w.cohort_breakdown_bonus
 
         # Enhanced definition bonus with high-value metric tier (GI-9):
         # +2.0 if definition of high-value metric (NRR, LTV, CAC, etc.)
@@ -1447,23 +1418,23 @@ class SegmentEnricher:
         # critical disclosures above the 6.0 goldmine threshold.
         if segment.contains_definition_flag:
             if self._has_high_value_metric(segment):
-                score += 2.0  # High-value metric definition (GI-9)
+                score += w.definition_high_value_bonus  # High-value metric definition
             elif metric_count >= 2:
-                score += 1.5  # Enhanced bonus for definition with metric context (GI-6)
+                score += w.definition_with_context_bonus  # Definition with context
             else:
-                score += 1.0  # Standard definition bonus
+                score += w.definition_basic_bonus  # Standard definition bonus
 
         # Combination bonus (GI-6): +0.5 if BOTH temporal AND cohort
         # Rewards segments with both time series and cohort analysis
         if segment.contains_temporal_trend and segment.contains_cohort_breakdown:
-            score += 0.5
+            score += w.temporal_cohort_combo_bonus
 
         # Get extra_metadata for keyword bonuses
         extra_metadata = segment.extra_metadata or {}
 
         # Retention keyword bonus (GI-6 recommendation #1): +1.0 for NRR/NDRR/retention
         if extra_metadata.get("contains_retention_keywords"):
-            score += 1.0
+            score += w.retention_keyword_bonus
 
         # Usage keyword bonus with tiering (GI-6, GI-10):
         # Tiered bonus rewards rich usage metric disclosures:
@@ -1471,23 +1442,23 @@ class SegmentEnricher:
         # +0.75 for usage keyword + definition or metric context
         # +0.5 for basic usage keyword (backward compatible)
         if extra_metadata.get("contains_usage_with_count"):
-            score += 1.0  # Highest tier: usage metric with count (GI-10)
+            score += w.usage_with_count_bonus  # Highest tier: with count
         elif extra_metadata.get("contains_usage_keywords"):
             # Mid or base tier based on context
             if segment.contains_definition_flag or metric_count >= 1:
-                score += 0.75  # Mid tier: usage keyword with metric context
+                score += w.usage_with_context_bonus  # Mid tier: with context
             else:
-                score += 0.5  # Base tier: basic usage keyword (GI-6)
+                score += w.usage_basic_bonus  # Base tier: basic usage keyword
 
         # High-value metric bonus (GI-7): +0.5 per high-value metric, capped at +1.5
         # Rewards segments where MetricClassifier identified NRR, LTV/CAC, retention,
         # or cohort metrics. Complements (does not duplicate) GI-6 keyword bonuses.
         high_value_count = self._count_high_value_metrics(segment)
-        score += min(high_value_count * 0.5, 1.5)
+        score += min(high_value_count * w.high_value_per_metric, w.high_value_cap)
 
         # SaaS indicator bonus (GI-5): +0.5 for SaaS-specific terminology
         if extra_metadata.get("contains_saas_indicator"):
-            score += 0.5
+            score += w.saas_indicator_bonus
 
         # Platform/marketplace keyword bonus with tiering (GR-6):
         # Tiered bonus rewards rich platform metric disclosures:
@@ -1495,32 +1466,32 @@ class SegmentEnricher:
         # +0.75 for platform keyword + definition or metric context
         # +0.5 for basic platform keyword
         if extra_metadata.get("contains_platform_with_count"):
-            score += 1.0  # Highest tier: platform metric with count (GR-6)
+            score += w.platform_with_count_bonus  # Highest tier: with count
         elif extra_metadata.get("contains_platform_keywords"):
             # Mid or base tier based on context
             if segment.contains_definition_flag or metric_count >= 1:
-                score += 0.75  # Mid tier: platform keyword with metric context
+                score += w.platform_with_context_bonus  # Mid tier: with context
             else:
-                score += 0.5  # Base tier: basic platform keyword (GR-6)
+                score += w.platform_basic_bonus  # Base tier: basic platform keyword
 
         # Engagement keyword bonus (GR-7): +0.5 for session/time/engagement metrics
         # Rewards segments discussing engagement metrics common in consumer social,
         # media, and app businesses (session duration, time spent, engagement rate).
         if extra_metadata.get("contains_engagement_keywords"):
-            score += 0.5
+            score += w.engagement_keyword_bonus
 
         # Conversion keyword bonus (GR-7): +0.5 for conversion rate metrics
         # Rewards segments discussing conversion metrics common in freemium and
         # subscription businesses (conversion rate, free-to-paid, trial conversion).
         if extra_metadata.get("contains_conversion_keywords"):
-            score += 0.5
+            score += w.conversion_keyword_bonus
 
         # Image bonus (max 1.5)
         image_count = segment.image_count or 0
-        score += min(image_count * 0.5, 1.5)
+        score += min(image_count * w.image_multiplier, w.image_cap)
 
         # Cap at 10.0 and round to 2 decimal places
-        final_score = round(min(score, 10.0), 2)
+        final_score = round(min(score, w.score_cap), 2)
 
         # Validate for NaN/Inf before returning (GR-8)
         if math.isnan(final_score) or math.isinf(final_score):

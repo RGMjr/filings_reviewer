@@ -1,7 +1,7 @@
 # Metric Extraction Pipeline
 
-**Version:** 2.1
-**Last Updated:** 2025-12-17
+**Version:** 2.2
+**Last Updated:** 2025-12-26
 **Status:** Production Ready
 
 ---
@@ -255,8 +255,20 @@ class MetricClassifier:
 **Interface:**
 
 ```python
+from src.extraction.enricher_config import FormulaWeights
+
 class SegmentEnricher:
-    GOLDMINE_THRESHOLD: float = 6.0  # Score threshold for goldmine identification
+    GOLDMINE_THRESHOLD: float = 5.5  # Score threshold for goldmine identification
+
+    def __init__(self, weights: FormulaWeights | None = None) -> None:
+        """
+        Initialize enricher with optional custom formula weights.
+        
+        Args:
+            weights: Optional FormulaWeights configuration. If None, uses
+                     FormulaWeights.default() which matches production behavior.
+        """
+        self.weights = weights if weights is not None else FormulaWeights.default()
 
     def enrich_batch(self, segments: List[SourceSegment]) -> List[SourceSegment]:
         """
@@ -273,6 +285,26 @@ class SegmentEnricher:
         Returns:
             Same segments list with enrichment fields populated
         """
+```
+
+**Configuration (GR-11):**
+
+The `FormulaWeights` dataclass in `src/extraction/enricher_config.py` allows configuring
+all richness score formula weights. This enables A/B testing different weight combinations
+without code changes.
+
+```python
+# Use default production weights
+enricher = SegmentEnricher()
+
+# Use custom weights for higher precision
+enricher = SegmentEnricher(weights=FormulaWeights.high_precision())
+
+# Or customize individual weights
+enricher = SegmentEnricher(weights=FormulaWeights(
+    confidence_multiplier=4.0,
+    goldmine_threshold=6.0,
+))
 ```
 
 **Richness Score Formula (0-10 points):**
@@ -734,6 +766,231 @@ quality:
 
 ---
 
+## Supporting Modules (EA-1, EA-3)
+
+### Structure Parser (EA-1)
+
+**Module:** `src/extraction/structure_parser.py`
+**Status:** Complete (98% test coverage)
+
+**Responsibilities:**
+- Parse HTML while preserving DOM structure for position mapping
+- Track table row and cell boundaries during HTML-to-text conversion
+- Map text positions back to source DOM elements
+- Support table-aware candidate detection and context extraction
+
+**Interface:**
+
+```python
+class StructureParser:
+    CELL_MARKER = " [CELL] "
+    ROW_MARKER = " [ROW] "
+
+    def __init__(self, html: str):
+        """Parse HTML and build position mappings."""
+
+    def get_text(self) -> str:
+        """Return normalized text with [CELL] and [ROW] markers."""
+
+    def are_in_same_row(self, pos1: int, pos2: int) -> bool:
+        """Check if two text positions are in the same table row."""
+
+    def are_in_same_cell(self, pos1: int, pos2: int) -> bool:
+        """Check if two text positions are in the same table cell."""
+
+    def get_row_at_position(self, position: int) -> Optional[RowSpan]:
+        """Get the table row containing a given position."""
+
+    def get_element_at_position(self, text_pos: int) -> Optional[Tag]:
+        """Get DOM element containing a given text position."""
+```
+
+**Design Notes:**
+- Preserves structural information during HTML-to-text conversion
+- Enables accurate position mapping between text and DOM
+- Foundation for table-aware extraction (EA-2) and context extraction (EA-3)
+- Does NOT modify existing extraction pipelines (integration in future tasks)
+
+---
+
+### Candidate Detector (EA-2)
+
+**Module:** `src/extraction/candidate_detector.py`
+**Status:** Complete (97% test coverage, 47 tests)
+
+**Responsibilities:**
+- Unified metric candidate detection for extraction and review
+- Consolidates detection logic from CandidateGenerator and ValueExtractor
+- Integrates FalsePositiveFilter for filtering years, dates, page numbers
+- Uses StructureParser (EA-1) for table-aware row validation
+- Provides configurable keyword lists and distance thresholds
+- Calculates confidence scores based on proximity and structure
+
+**Interface:**
+
+```python
+from src.extraction.candidate_detector import CandidateDetector, DetectedCandidate
+
+class CandidateDetector:
+    MAX_KEYWORD_DISTANCE: int = 100  # Max chars between keyword and value
+
+    def __init__(
+        self,
+        use_false_positive_filter: bool = True,
+        use_row_validation: bool = True,
+        keywords: Optional[List[str]] = None,
+        max_keyword_distance: int = 100,
+    ):
+        """
+        Initialize the candidate detector.
+
+        Args:
+            use_false_positive_filter: Filter years, dates, page numbers
+            use_row_validation: Require same table row for matches
+            keywords: Custom keywords (default: DEFAULT_KEYWORDS)
+            max_keyword_distance: Max distance for keyword-value match
+        """
+
+    def detect(
+        self,
+        text: str,
+        html: Optional[str] = None,
+        segment_type: str = "paragraph",
+    ) -> List[DetectedCandidate]:
+        """
+        Detect metric candidates in text.
+
+        Args:
+            text: The text content to analyze
+            html: Optional HTML for structure-aware detection in tables
+            segment_type: Type of segment ("paragraph", "table", etc.)
+
+        Returns:
+            List of detected candidates with positions and confidence
+        """
+
+    def detect_in_segment(self, segment: Dict[str, Any]) -> List[DetectedCandidate]:
+        """Convenience method to detect from segment dict."""
+```
+
+**DetectedCandidate Dataclass:**
+
+```python
+@dataclass
+class DetectedCandidate:
+    keyword: str              # Matched keyword text
+    keyword_position: int     # Character position of keyword
+    value: Decimal           # Parsed numeric value
+    value_position: int       # Character position of value
+    unit: Optional[str]       # Detected unit (count, currency, %)
+    confidence: float         # Score 0.0-1.0
+    same_row: bool           # True if in same table row
+    same_cell: bool          # True if in same table cell
+    raw_text: str            # Surrounding context
+```
+
+**Confidence Scoring:**
+
+| Factor | Points |
+|--------|--------|
+| Base score | 0.5 |
+| Distance < 20 chars | +0.3 |
+| Distance < 50 chars | +0.15 |
+| Same cell (tables) | +0.15 |
+| Same row (tables) | +0.05 |
+
+**Design Notes:**
+- Integrates with StructureParser for table-aware detection
+- Only applies row validation when table structure is detected
+- Falls back gracefully on invalid/missing HTML
+- Does NOT modify existing CandidateGenerator or ValueExtractor (integration in future tasks)
+- mypy --strict compliant
+
+---
+
+### Context Extractor (EA-3)
+
+**Module:** `src/extraction/context_extractor.py`
+**Status:** Complete (97% test coverage)
+
+**Responsibilities:**
+- Extract clean context around metric values with table awareness
+- Use StructureParser to respect row boundaries in table segments
+- Remove [CELL] and [ROW] markers from output
+- Extract column and row headers for table values
+- Provide character-based context windows for paragraphs
+
+**Interface:**
+
+```python
+from src.extraction.context_extractor import ContextExtractor, ExtractedContext
+
+class ContextExtractor:
+    def __init__(
+        self,
+        context_chars: int = 100,
+        include_headers: bool = True,
+    ):
+        """Initialize context extractor with configuration."""
+
+    def extract(
+        self,
+        text: str,
+        position: int,
+        html: Optional[str] = None,
+        segment_type: str = "paragraph",
+    ) -> ExtractedContext:
+        """
+        Extract context around a position in text.
+
+        For table segments with HTML, uses row-based extraction.
+        For paragraphs, uses character-based windows.
+        """
+
+    def extract_row_context(
+        self,
+        text: str,
+        position: int,
+        parser: StructureParser,
+    ) -> ExtractedContext:
+        """Extract full row as context for table values."""
+
+    def format_table_context(
+        self,
+        row_text: str,
+        column_header: Optional[str] = None,
+        row_header: Optional[str] = None,
+    ) -> str:
+        """Format table context for display with headers."""
+```
+
+**ExtractedContext Dataclass:**
+
+```python
+@dataclass
+class ExtractedContext:
+    text: str                       # Clean text without markers
+    row_text: Optional[str]         # Full row text (with markers)
+    column_header: Optional[str]    # Column header from first row
+    row_header: Optional[str]       # Row header from first cell
+    position_start: int             # Start position in original text
+    position_end: int               # End position in original text
+```
+
+**Performance:**
+- Average extraction time: 0.32ms (31x faster than 10ms requirement)
+- Minimal memory allocation
+- Efficient with cached StructureParser instances
+
+**Design Notes:**
+- Replaces [CELL] markers with ` | ` separators
+- Removes [ROW] markers completely
+- Normalizes whitespace in output
+- Graceful fallback to character-based extraction on errors
+- Does NOT integrate with ValueExtractor yet (Phase 2 integration task)
+
+---
+
 ## Related Documentation
 
 - **System Architecture:** `docs/architecture/system-overview.md` - High-level design
@@ -744,9 +1001,12 @@ quality:
 
 ---
 
-**Last Updated:** 2025-12-16
-**Version:** 2.1
+**Last Updated:** 2025-12-26
+**Version:** 2.4
 **Status:** Production Ready
 
 **Changelog:**
+- v2.4 (2025-12-26): Added CandidateDetector (EA-2) - unified candidate detection module
+- v2.3 (2025-12-26): Added StructureParser (EA-1) and ContextExtractor (EA-3) documentation
+- v2.2 (2025-12-17): Added SegmentEnricher configuration system (GR-11)
 - v2.1 (2025-12-16): Enhanced HTML segmentation with sentence detection, definition merging, 25K table limit, context enrichment, and list handling
