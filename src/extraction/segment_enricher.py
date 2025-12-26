@@ -17,7 +17,10 @@ The enricher operates on in-memory objects without database dependencies.
 """
 
 import logging
+import math
 import re
+import time
+from collections import Counter
 from re import Pattern
 from typing import Any
 
@@ -36,7 +39,7 @@ class SegmentEnricher:
     already been classified by MetricClassifier. It operates on in-memory
     objects and does not require database access.
 
-    Current capabilities (G4-G8, GI-5 through GI-10):
+    Current capabilities (G4-G8, GI-5 through GI-10, GR-6):
     - metric_density: metrics per 100 characters
     - distinct_metric_count: count of unique metric IDs
     - contains_temporal_trend: segment discusses multiple time periods (G5)
@@ -46,12 +49,24 @@ class SegmentEnricher:
     - contains_retention_keywords: NRR/NDRR/retention keyword detection (GI-6)
     - contains_usage_keywords: DAU/MAU/WAU usage metric detection (GI-6)
     - contains_usage_with_count: usage metrics with numeric values (GI-10)
+    - contains_platform_keywords: platform/marketplace metric detection (GR-6)
+    - contains_platform_with_count: platform metrics with numeric values (GR-6)
     - high_value_metrics: count of classified high-value metrics (NRR, LTV/CAC) (GI-7)
     - richness_score: composite score 0-10 identifying "goldmine" segments (G8)
     """
 
-    # Threshold score for identifying "goldmine" segments (G8)
-    GOLDMINE_THRESHOLD: float = 6.0
+    # Threshold score for identifying "goldmine" segments (G8, lowered in GR-1)
+    GOLDMINE_THRESHOLD: float = 5.5
+
+    # =========================================================================
+    # Tiered Threshold Constants (GR-4)
+    # Formalizes the tier boundaries used in extraction_pipeline.py for segment
+    # selection. Moving them here creates better separation of concerns: the
+    # enricher owns scoring/classification logic, the pipeline owns selection.
+    # =========================================================================
+    TIER1_THRESHOLD: float = 6.0   # High-value goldmines → LLM extraction
+    TIER2_THRESHOLD: float = 4.0   # Medium-value → rule-based extraction
+    TIER3_THRESHOLD: float = 3.0   # Low-value → manual review flagging
 
     # Keywords that indicate a decorative (non-meaningful) image (G7)
     DECORATIVE_KEYWORDS: list[str] = ["icon", "logo", "bullet", "arrow", "spacer"]
@@ -206,10 +221,11 @@ class SegmentEnricher:
     ]
 
     # =========================================================================
-    # Usage Metric Keyword Patterns (GI-6)
-    # Patterns that indicate DAU/MAU/WAU and engagement metrics.
-    # Triggers +0.5 richness bonus. Based on GI-2 showing Slack's
+    # Usage Metric Keyword Patterns (GI-6, GR-2)
+    # Patterns that indicate DAU/MAU/WAU, engagement metrics, and subscriber
+    # metrics. Triggers +0.5 richness bonus. Based on GI-2 showing Slack's
     # "10 million daily active users" segment scores only 3.90.
+    # GR-2 adds subscriber patterns for solar, telecom, and SaaS businesses.
     # =========================================================================
     USAGE_KEYWORDS: list[Pattern[str]] = [
         # Daily active users (spelled out or DAU)
@@ -226,13 +242,28 @@ class SegmentEnricher:
             r"\b\d+(?:\.\d+)?\s*(?:million|billion|M|B)?\s+active\s+users?\b",
             re.IGNORECASE,
         ),
+        # =====================================================================
+        # Subscriber Patterns (GR-2) - Solar, telecom, and subscription businesses
+        # NOTE: Use negative lookahead to avoid matching "subscriber to" (verb phrase)
+        # which is different from "subscriber" as a noun referring to a customer.
+        # =====================================================================
+        # "subscribers" or "subscriber" as standalone noun
+        # Negative lookahead prevents matching "subscriber to our newsletter" (verb use)
+        re.compile(r"\bsubscribers?\b(?!\s+to\b)", re.IGNORECASE),
+        # "subscriber base" - common in telecom/solar filings
+        re.compile(r"\bsubscriber\s+base\b", re.IGNORECASE),
+        # "subscriber count" - explicit count reference
+        re.compile(r"\bsubscriber\s+count\b", re.IGNORECASE),
+        # "total subscribers" - aggregated subscriber metric
+        re.compile(r"\btotal\s+subscribers?\b", re.IGNORECASE),
     ]
 
     # =========================================================================
-    # Usage Metric with Count Patterns (GI-10)
+    # Usage Metric with Count Patterns (GI-10, GR-2)
     # More specific patterns for usage metrics with numeric values.
     # Triggers tiered bonus: +1.0 (vs +0.5 for basic usage keyword).
     # Identifies high-value disclosures like "10 million daily active users".
+    # GR-2 adds subscriber count patterns for subscription businesses.
     # =========================================================================
     USAGE_WITH_COUNT_PATTERNS: list[Pattern[str]] = [
         # DAU/MAU/WAU with numeric prefix: "10 million daily active users"
@@ -270,6 +301,137 @@ class SegmentEnricher:
         re.compile(
             r"\b\d+%\s+(?:growth|increase|decrease|decline)\s+in\s+"
             r"(?:daily|monthly|weekly)\s+active\s+users?\b",
+            re.IGNORECASE,
+        ),
+        # =====================================================================
+        # Subscriber Count Patterns (GR-2)
+        # Numeric subscribers: "10 million subscribers", "1.5M subscribers"
+        # =====================================================================
+        # Numeric with optional scale + subscribers: "10 million subscribers", "1.5M subscribers"
+        # Also handles qualifiers like "paid" or "active": "1.5 million paid subscribers"
+        re.compile(
+            r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
+            r"\d+(?:[,\.]\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"(?:paid\s+|active\s+|new\s+)?subscribers?\b",
+            re.IGNORECASE,
+        ),
+        # Comma-formatted number + subscribers: "500,000 subscribers", "1,500,000 subscribers"
+        re.compile(
+            r"\b\d{1,3}(?:,\d{3})+\s+(?:paid\s+|active\s+)?subscribers?\b",
+            re.IGNORECASE,
+        ),
+        # "total of X subscribers" pattern
+        re.compile(
+            r"\btotal\s+of\s+\d+(?:[,\.]\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+subscribers?\b",
+            re.IGNORECASE,
+        ),
+        # Subscriber with percentage growth: "subscribers grew 50%", "subscriber base increased 30%"
+        re.compile(
+            r"\bsubscribers?\s*(?:base)?\s+(?:grew|increased|decreased|declined)\s+(?:by\s+)?\d+%",
+            re.IGNORECASE,
+        ),
+    ]
+
+    # =========================================================================
+    # Engagement Metric Keyword Patterns (GR-7)
+    # Patterns for consumer social, media, and app engagement metrics like
+    # session duration, time spent, engagement rate. Triggers +0.5 richness bonus.
+    # =========================================================================
+    ENGAGEMENT_PATTERNS: list[Pattern[str]] = [
+        # Session duration/length: "average session duration was 25 minutes"
+        re.compile(r"\b(?:average\s+)?session\s+(?:duration|length)\b", re.IGNORECASE),
+        # Sessions per user: "sessions per user increased 15%"
+        re.compile(r"\bsessions?\s+per\s+(?:user|customer|member)\b", re.IGNORECASE),
+        # Time spent: "time spent on platform", "time in app"
+        re.compile(r"\btime\s+(?:spent|on\s+platform|in\s+app)\b", re.IGNORECASE),
+        # Engagement rate/score/metric: "engagement rate improved to 45%"
+        re.compile(r"\bengagement\s+(?:rate|score|metric)\b", re.IGNORECASE),
+    ]
+
+    # =========================================================================
+    # Conversion Metric Keyword Patterns (GR-7)
+    # Patterns for freemium and subscription conversion metrics like
+    # free-to-paid conversion, trial conversion. Triggers +0.5 richness bonus.
+    # =========================================================================
+    CONVERSION_PATTERNS: list[Pattern[str]] = [
+        # Conversion rate: "conversion rate of 3.5%"
+        re.compile(r"\bconversion\s+rate\b", re.IGNORECASE),
+        # Free-to-paid conversion: "free-to-paid conversion reached 12%"
+        # Handles both hyphenated and space-separated variants
+        re.compile(r"\bfree[- ]to[- ]paid\s+conversion\b", re.IGNORECASE),
+        # Trial conversion: "trial conversion rate"
+        re.compile(r"\btrial\s+conversion(?:\s+rate)?\b", re.IGNORECASE),
+        # Subscriber conversion: "paid subscriber conversion"
+        re.compile(r"\b(?:paid\s+)?subscriber\s+conversion\b", re.IGNORECASE),
+    ]
+
+    # =========================================================================
+    # Platform/Marketplace Keyword Patterns (GR-6)
+    # Patterns for e-commerce, marketplace, and platform businesses like
+    # Etsy, Shopify, Uber, Airbnb, PropertyGuru. Triggers +0.5 richness bonus.
+    # =========================================================================
+    PLATFORM_PATTERNS: list[Pattern[str]] = [
+        # Active listings: "50 million active listings", "active listing"
+        re.compile(r"\bactive\s+listings?\b", re.IGNORECASE),
+        # Platform/marketplace transactions: "platform transactions", "marketplace transactions"
+        re.compile(r"\b(?:marketplace|platform)\s+transactions?\b", re.IGNORECASE),
+        # Total merchants/sellers/vendors: "total merchants exceeded 2 million"
+        re.compile(r"\btotal\s+(?:merchants?|sellers?|vendors?)\b", re.IGNORECASE),
+        # Active merchants/sellers: "active sellers grew 40%"
+        re.compile(r"\bactive\s+(?:merchants?|sellers?)\b", re.IGNORECASE),
+        # GMV per merchant/seller: "GMV per merchant increased"
+        re.compile(r"\bGMV\s+per\s+(?:merchant|seller)\b", re.IGNORECASE),
+        # Platform engagement: "platform engagement metrics"
+        re.compile(r"\bplatform\s+engagement\b", re.IGNORECASE),
+    ]
+
+    # =========================================================================
+    # Platform Metrics with Count Patterns (GR-6)
+    # More specific patterns for platform metrics with numeric values.
+    # Triggers higher bonus (+1.0) similar to usage_with_count patterns.
+    # =========================================================================
+    PLATFORM_WITH_COUNT_PATTERNS: list[Pattern[str]] = [
+        # Active listings with numeric prefix: "50 million active listings"
+        re.compile(
+            r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
+            r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"active\s+listings?\b",
+            re.IGNORECASE,
+        ),
+        # Comma-formatted active listings: "5,000,000 active listings"
+        re.compile(
+            r"\b\d{1,3}(?:,\d{3})+\s+active\s+listings?\b",
+            re.IGNORECASE,
+        ),
+        # Total merchants/sellers with count: "2 million total merchants"
+        re.compile(
+            r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
+            r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"(?:total\s+)?(?:merchants?|sellers?|vendors?)\b",
+            re.IGNORECASE,
+        ),
+        # Active merchants/sellers with count: "500K active sellers"
+        re.compile(
+            r"\b(?:more\s+than\s+|over\s+|approximately\s+|about\s+)?"
+            r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|M|B|K)?\s+"
+            r"active\s+(?:merchants?|sellers?)\b",
+            re.IGNORECASE,
+        ),
+        # Platform/marketplace transactions with amount: "$10B platform transactions"
+        re.compile(
+            r"\b\$?\d+(?:\.\d+)?\s*(?:million|billion|M|B)?\s+"
+            r"(?:in\s+)?(?:marketplace|platform)\s+transactions?\b",
+            re.IGNORECASE,
+        ),
+        # GMV with merchant context: "GMV of $X per merchant"
+        re.compile(
+            r"\bGMV\s+(?:of\s+|per\s+)?\$?\d+(?:\.\d+)?\s*(?:million|billion|M|B|K)?\b",
+            re.IGNORECASE,
+        ),
+        # Percentage growth for platform metrics: "active sellers grew 40%"
+        re.compile(
+            r"\b(?:active\s+)?(?:listings?|merchants?|sellers?)\s+"
+            r"(?:grew|increased|decreased|declined)\s+(?:by\s+)?\d+%",
             re.IGNORECASE,
         ),
     ]
@@ -368,9 +530,57 @@ class SegmentEnricher:
         """Initialize enricher (stateless, patterns compiled at class level)."""
         pass
 
+    @staticmethod
+    def classify_tier(richness_score: float) -> int | None:
+        """
+        Classify a richness score into a tier.
+
+        Tier boundaries match the thresholds used in extraction_pipeline.py
+        for segment selection. This provides a single source of truth for
+        tier classification logic.
+
+        Args:
+            richness_score: The segment's richness score (0.0-10.0)
+
+        Returns:
+            1 for high-value (≥6.0), 2 for medium (≥4.0),
+            3 for low (≥3.0), None for below threshold
+
+        Examples:
+            >>> SegmentEnricher.classify_tier(7.5)
+            1
+            >>> SegmentEnricher.classify_tier(5.0)
+            2
+            >>> SegmentEnricher.classify_tier(3.5)
+            3
+            >>> SegmentEnricher.classify_tier(2.0)
+            None
+        """
+        # Handle invalid inputs: NaN, Inf, or negative scores
+        if math.isnan(richness_score) or math.isinf(richness_score):
+            return None
+        if richness_score < 0:
+            return None
+
+        # Classify into tiers based on threshold constants
+        if richness_score >= SegmentEnricher.TIER1_THRESHOLD:
+            return 1
+        elif richness_score >= SegmentEnricher.TIER2_THRESHOLD:
+            return 2
+        elif richness_score >= SegmentEnricher.TIER3_THRESHOLD:
+            return 3
+        else:
+            return None
+
     def enrich_batch(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Enrich all segments with richness metadata.
+
+        Emits structured performance log at INFO level with:
+        - Segment count, processing time, throughput
+        - Goldmine tier counts (≥6.0, ≥4.0, ≥3.0)
+        - Average richness score
+        - Pattern hit rates for each enrichment flag
 
         Args:
             segments: Classified segments to enrich (mutated in place)
@@ -379,9 +589,12 @@ class SegmentEnricher:
             Same segments list with enrichment fields populated
         """
         if not segments:
-            logger.info("No segments to enrich")
+            logger.info(
+                "Enrichment complete: segments=0 time=0.00s throughput=0/s (empty batch)"
+            )
             return segments
 
+        start_time = time.perf_counter()
         enriched_count = 0
         warning_count = 0
 
@@ -395,22 +608,99 @@ class SegmentEnricher:
                 )
                 warning_count += 1
 
-        logger.info(
-            f"Enriched {enriched_count} segments"
-            + (f" ({warning_count} warnings)" if warning_count else "")
-        )
+        elapsed = time.perf_counter() - start_time
 
-        # Log goldmine statistics (G8)
-        goldmines = [
-            s for s in segments if (s.richness_score or 0) >= self.GOLDMINE_THRESHOLD
-        ]
-        if goldmines:
-            avg_richness = sum(s.richness_score or 0 for s in goldmines) / len(goldmines)
-            logger.info(
-                f"Found {len(goldmines)} goldmine segments (avg richness: {avg_richness:.1f})"
-            )
+        # Collect performance metrics for structured logging (GR-9)
+        try:
+            self._log_performance_metrics(segments, elapsed, warning_count)
+        except Exception as e:
+            # Don't let logging failure break enrichment
+            logger.debug(f"Error logging performance metrics: {e}")
 
         return segments
+
+    def _log_performance_metrics(
+        self, segments: list[SourceSegment], elapsed: float, warning_count: int
+    ) -> None:
+        """
+        Log structured performance metrics after enrichment.
+
+        Collects and logs:
+        - Segment count, processing time, throughput
+        - Goldmine tier counts
+        - Average richness score
+        - Pattern hit rates for each enrichment flag
+
+        Args:
+            segments: Enriched segments to analyze
+            elapsed: Time taken to enrich (seconds)
+            warning_count: Number of segments that failed enrichment
+        """
+        count = len(segments)
+        throughput = count / elapsed if elapsed > 0 else 0
+
+        # Count goldmine tiers
+        tier_counts: Counter[int] = Counter()
+        total_score = 0.0
+        flag_counts: Counter[str] = Counter()
+
+        for segment in segments:
+            score = segment.richness_score or 0.0
+            total_score += score
+
+            # Classify into tiers
+            tier = self.classify_tier(score)
+            if tier is not None:
+                tier_counts[tier] += 1
+
+            # Count flag hits - some flags are on segment, some in extra_metadata
+            if segment.contains_temporal_trend:
+                flag_counts["contains_temporal_trend"] += 1
+            if segment.contains_cohort_breakdown:
+                flag_counts["contains_cohort_breakdown"] += 1
+            if segment.contains_definition_flag:
+                flag_counts["contains_definition_flag"] += 1
+
+            # Check extra_metadata for other flags
+            meta = segment.extra_metadata or {}
+            if meta.get("contains_saas_indicator"):
+                flag_counts["contains_saas_indicator"] += 1
+            if meta.get("contains_retention_keywords"):
+                flag_counts["contains_retention_keywords"] += 1
+            if meta.get("contains_usage_keywords"):
+                flag_counts["contains_usage_keywords"] += 1
+
+        avg_score = total_score / count if count > 0 else 0.0
+
+        # Calculate hit rates as percentages
+        temporal_rate = 100.0 * flag_counts["contains_temporal_trend"] / count
+        cohort_rate = 100.0 * flag_counts["contains_cohort_breakdown"] / count
+        saas_rate = 100.0 * flag_counts["contains_saas_indicator"] / count
+        retention_rate = 100.0 * flag_counts["contains_retention_keywords"] / count
+        usage_rate = 100.0 * flag_counts["contains_usage_keywords"] / count
+        definition_rate = 100.0 * flag_counts["contains_definition_flag"] / count
+
+        # Emit single structured log at INFO level
+        logger.info(
+            "Enrichment complete: segments=%d time=%.2fs throughput=%.0f/s "
+            "goldmines_t1=%d goldmines_t2=%d goldmines_t3=%d avg_score=%.2f "
+            "temporal_rate=%.1f%% cohort_rate=%.1f%% saas_rate=%.1f%% "
+            "retention_rate=%.1f%% usage_rate=%.1f%% definition_rate=%.1f%%%s",
+            count,
+            elapsed,
+            throughput,
+            tier_counts[1],
+            tier_counts[2],
+            tier_counts[3],
+            avg_score,
+            temporal_rate,
+            cohort_rate,
+            saas_rate,
+            retention_rate,
+            usage_rate,
+            definition_rate,
+            f" ({warning_count} warnings)" if warning_count > 0 else "",
+        )
 
     def _enrich_segment(self, segment: SourceSegment) -> None:
         """
@@ -448,6 +738,26 @@ class SegmentEnricher:
         # Detect usage metrics with count (GI-10) - store in extra_metadata
         segment.extra_metadata["contains_usage_with_count"] = (
             self._detect_usage_with_count(segment)
+        )
+
+        # Detect platform/marketplace keywords (GR-6) - store in extra_metadata
+        segment.extra_metadata["contains_platform_keywords"] = (
+            self._detect_platform_keywords(segment)
+        )
+
+        # Detect platform metrics with count (GR-6) - store in extra_metadata
+        segment.extra_metadata["contains_platform_with_count"] = (
+            self._detect_platform_with_count(segment)
+        )
+
+        # Detect engagement keywords (GR-7) - store in extra_metadata
+        segment.extra_metadata["contains_engagement_keywords"] = (
+            self._detect_engagement_keywords(segment)
+        )
+
+        # Detect conversion keywords (GR-7) - store in extra_metadata
+        segment.extra_metadata["contains_conversion_keywords"] = (
+            self._detect_conversion_keywords(segment)
         )
 
         # Detect images/charts (G7)
@@ -746,6 +1056,151 @@ class SegmentEnricher:
 
         return False
 
+    def _detect_platform_keywords(self, segment: SourceSegment) -> bool:
+        """
+        Detect platform/marketplace metric keywords in segment.
+
+        Returns True if any platform keyword pattern matches:
+        - "active listings" / "active listing"
+        - "marketplace transactions" / "platform transactions"
+        - "total merchants" / "total sellers" / "total vendors"
+        - "active merchants" / "active sellers"
+        - "GMV per merchant" / "GMV per seller"
+        - "platform engagement"
+
+        This triggers +0.5 bonus. Based on GR-6 pattern coverage task.
+
+        Args:
+            segment: Segment to analyze for platform keywords
+
+        Returns:
+            True if platform keyword detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for platform keywords
+        for pattern in self.PLATFORM_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
+    def _detect_platform_with_count(self, segment: SourceSegment) -> bool:
+        """
+        Detect platform metrics with numeric values.
+
+        Returns True if segment contains platform metrics with numeric disclosures:
+        - "50 million active listings"
+        - "2 million merchants"
+        - "$10B marketplace transactions"
+        - "active sellers grew 40%"
+
+        This is more specific than basic platform keyword detection and triggers
+        a higher bonus (+1.0 vs +0.5). Based on GR-6 platform metric patterns.
+
+        Args:
+            segment: Segment to analyze for platform metrics with counts
+
+        Returns:
+            True if platform metric with count detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for platform metrics with numeric values
+        for pattern in self.PLATFORM_WITH_COUNT_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
+    def _detect_engagement_keywords(self, segment: SourceSegment) -> bool:
+        """
+        Detect engagement metric keywords in segment.
+
+        Returns True if any engagement keyword pattern matches:
+        - "session duration" / "session length"
+        - "sessions per user" / "sessions per customer"
+        - "time spent" / "time on platform" / "time in app"
+        - "engagement rate" / "engagement score" / "engagement metric"
+
+        This triggers +0.5 bonus. Based on GR-7 pattern coverage task for
+        consumer social, media, and freemium businesses.
+
+        Args:
+            segment: Segment to analyze for engagement keywords
+
+        Returns:
+            True if engagement keyword detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for engagement keywords
+        for pattern in self.ENGAGEMENT_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
+    def _detect_conversion_keywords(self, segment: SourceSegment) -> bool:
+        """
+        Detect conversion metric keywords in segment.
+
+        Returns True if any conversion keyword pattern matches:
+        - "conversion rate"
+        - "free-to-paid conversion" (with hyphenation variants)
+        - "trial conversion" / "trial conversion rate"
+        - "subscriber conversion" / "paid subscriber conversion"
+
+        This triggers +0.5 bonus. Based on GR-7 pattern coverage task for
+        freemium and subscription businesses.
+
+        Args:
+            segment: Segment to analyze for conversion keywords
+
+        Returns:
+            True if conversion keyword detected, False otherwise
+        """
+        text = segment.raw_text
+
+        # Handle edge cases: None, empty, or non-string
+        if text is None:
+            return False
+        if not isinstance(text, str):
+            return False
+        if not text:
+            return False
+
+        # Check regex patterns for conversion keywords
+        for pattern in self.CONVERSION_PATTERNS:
+            if pattern.search(text):
+                return True
+
+        return False
+
     def _count_high_value_metrics(self, segment: SourceSegment) -> int:
         """
         Count unique high-value metrics in segment's candidate_metric_ids.
@@ -927,7 +1382,7 @@ class SegmentEnricher:
         """
         Compute composite richness score (0-10).
 
-        Formula components (theoretical max 15.0, capped at 10.0):
+        Formula components (theoretical max 17.0, capped at 10.0):
         - Base confidence: 0-3 points (classifier_confidence * 3.0)
         - Metric density: 0-2 points (min(distinct_metric_count * 0.5, 2.0))
         - Temporal trends: 1 point if contains_temporal_trend
@@ -944,12 +1399,20 @@ class SegmentEnricher:
         - Combination bonus: 0.5 points if BOTH temporal AND cohort (GI-6)
         - High-value metric bonus: 0-1.5 points (+0.5 per high-value metric, capped) (GI-7)
         - SaaS indicators: 0.5 points if contains_saas_indicator (GI-5)
+        - Platform/marketplace keyword bonus (tiered, GR-6):
+          * 1.0 point if platform metric with numeric value (e.g., "50M listings")
+          * 0.75 points if platform keyword with definition or metric context
+          * 0.5 points if basic platform keyword only
+        - Engagement keyword bonus: 0.5 points if contains_engagement_keywords (GR-7)
+        - Conversion keyword bonus: 0.5 points if contains_conversion_keywords (GR-7)
         - Images: 0-1.5 points (min(image_count * 0.5, 1.5))
 
-        Segments scoring >= 6.0 are considered "goldmines" - high-value
+        Segments scoring >= 5.5 are considered "goldmines" - high-value
         sections with dense metrics, temporal trends, cohort analysis,
         retention metrics (NRR/NDRR), usage metrics (DAU/MAU/WAU),
-        SaaS-specific terminology, definitions, and/or visual content.
+        SaaS-specific terminology, platform metrics, engagement metrics,
+        conversion metrics, definitions, and/or
+        visual content.
 
         Segments scoring >= 8.0 are considered "high-value" goldmines.
 
@@ -1026,12 +1489,49 @@ class SegmentEnricher:
         if extra_metadata.get("contains_saas_indicator"):
             score += 0.5
 
+        # Platform/marketplace keyword bonus with tiering (GR-6):
+        # Tiered bonus rewards rich platform metric disclosures:
+        # +1.0 for platform metric with numeric value (e.g., "50 million active listings")
+        # +0.75 for platform keyword + definition or metric context
+        # +0.5 for basic platform keyword
+        if extra_metadata.get("contains_platform_with_count"):
+            score += 1.0  # Highest tier: platform metric with count (GR-6)
+        elif extra_metadata.get("contains_platform_keywords"):
+            # Mid or base tier based on context
+            if segment.contains_definition_flag or metric_count >= 1:
+                score += 0.75  # Mid tier: platform keyword with metric context
+            else:
+                score += 0.5  # Base tier: basic platform keyword (GR-6)
+
+        # Engagement keyword bonus (GR-7): +0.5 for session/time/engagement metrics
+        # Rewards segments discussing engagement metrics common in consumer social,
+        # media, and app businesses (session duration, time spent, engagement rate).
+        if extra_metadata.get("contains_engagement_keywords"):
+            score += 0.5
+
+        # Conversion keyword bonus (GR-7): +0.5 for conversion rate metrics
+        # Rewards segments discussing conversion metrics common in freemium and
+        # subscription businesses (conversion rate, free-to-paid, trial conversion).
+        if extra_metadata.get("contains_conversion_keywords"):
+            score += 0.5
+
         # Image bonus (max 1.5)
         image_count = segment.image_count or 0
         score += min(image_count * 0.5, 1.5)
 
         # Cap at 10.0 and round to 2 decimal places
-        return round(min(score, 10.0), 2)
+        final_score = round(min(score, 10.0), 2)
+
+        # Validate for NaN/Inf before returning (GR-8)
+        if math.isnan(final_score) or math.isinf(final_score):
+            logger.error(
+                "Invalid richness score detected: %s for segment_id=%s. Returning 0.0",
+                final_score,
+                getattr(segment, "source_segment_id", "unknown"),
+            )
+            return 0.0
+
+        return final_score
 
 
 # =============================================================================
@@ -1041,7 +1541,7 @@ class SegmentEnricher:
 
 def cluster_goldmine_segments(
     segments: list[SourceSegment],
-    richness_threshold: float = 6.0,
+    richness_threshold: float = 5.5,
     max_gap: int = 3,
 ) -> list[list[SourceSegment]]:
     """
@@ -1053,7 +1553,7 @@ def cluster_goldmine_segments(
 
     Args:
         segments: List of enriched segments with richness_score populated
-        richness_threshold: Minimum richness_score to include (default 6.0)
+        richness_threshold: Minimum richness_score to include (default 5.5)
         max_gap: Maximum gap in sequence_index between adjacent segments
                  in same cluster (default 3)
 
