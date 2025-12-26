@@ -327,7 +327,7 @@ Targeted use of vision models for graphical content only:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 2: table_header_context | ⏸️ Not needed | Current keywords sufficient for Samsara Vision |
-| Phase 4: Integration tests | 📋 Pending | Create gold standard validation tests |
+| Phase 4: Integration tests | 📋 Pending | Consolidated with GOLDMINE_REMEDIATION_PLAN GR-10. Create `tests/integration/test_gold_standard_extraction.py` covering Farfetch (316 candidates), Samsara Vision (10 candidates), Slack (17+ candidates). Uses `tests/fixtures/goldmine_labels.json`. |
 | Track 2: Multi-Agent | 📋 Future | After full gold standard validation |
 
 ### Validation Results

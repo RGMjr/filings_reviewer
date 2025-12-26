@@ -32,8 +32,8 @@ Acceptance:
 
 Files:
 - `sql/03_create_analysis_schema.sql` (updated)
-- New: `sql/04_seed_metrics.sql`
-- New: `sql/05_create_review_audit_log.sql`
+- `sql/04_seed_metrics_taxonomy.sql` (already exists with full metric seeding)
+- `sql/07_create_review_schema.sql` (already contains `review_audit_log` table)
 
 Runbook:
 - Apply ALTERs/CREATEs to test DB and dev DB; wire into CI setup.
@@ -49,14 +49,14 @@ Files:
 - `data/fixtures/filings/*` (new or expanded)
 
 ### Phase 3 — API Alignment
-- Return dict from pool health API to match tests.
+- Update tests to use `PoolHealthReport` dataclass (better type safety than converting to dict).
 
 Acceptance:
-- `tests/integration/test_pool.py` passes; no `TypeError: dataclass not subscriptable`.
+- `tests/integration/test_pool.py` passes using dataclass field access (e.g., `report.is_healthy`).
 
 Files:
-- `src/infra/pool.py`
-- `src/infra/__init__.py` (if necessary)
+- `tests/integration/test_pool.py` (update to use dataclass)
+- No changes to `src/infra/pool.py` (dataclass return is correct)
 
 ### Phase 4 — Type Safety
 - Fix `mypy --strict` errors; add missing annotations and narrow types in `candidate_generator.py` and callers.
@@ -94,11 +94,11 @@ Files:
 - Skip or gate perf tests in CI via env (e.g., `CI_SKIP_PERF=1`).
 
 ## Checklist
-- [ ] Save this plan and link it from docs index (optional).
-- [ ] Add `sql/04_seed_metrics.sql` to seed required metrics.
-- [ ] Add `sql/05_create_review_audit_log.sql` and wire into setup.
+- [x] Save this plan and link it from docs index.
+- [x] Metric seed data exists in `sql/04_seed_metrics_taxonomy.sql`.
+- [x] `review_audit_log` table exists in `sql/07_create_review_schema.sql`.
 - [ ] Refactor filing fetch tests to fixtures/mocks.
-- [ ] Update pool health API to return dict.
+- [ ] Update tests to use `PoolHealthReport` dataclass (instead of expecting dict).
 - [ ] Resolve `mypy --strict` failures in review modules.
 - [ ] Align richness semantics and tests.
 - [ ] Gate performance tests in CI and log baselines.
