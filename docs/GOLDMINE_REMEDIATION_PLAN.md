@@ -1,8 +1,8 @@
 # Goldmine Detection Remediation Plan
 
-**Plan Status**: 🟢 PRODUCTION READY (16 of 18 tasks complete, 1 pending, 1 blocked)
+**Plan Status**: 🟢 PRODUCTION READY (16 of 18 tasks complete, 2 pending)
 **Created**: 2025-12-17
-**Last Updated**: 2025-12-26 (documentation cleanup)
+**Last Updated**: 2025-12-26 (GR-16 unblocked - Snowflake/DocuSign filings loaded)
 **Owner**: Analytics Team
 **Priority**: LOW (validation complete, targets exceeded)
 
@@ -19,7 +19,7 @@ This plan addressed critical accuracy issues in the goldmine detection system. T
 
 **Remaining Work** (2 tasks):
 - GR-10: Re-run validation after loading all labeled filings (pending)
-- GR-16: Load correct Snowflake/DocuSign filings (blocked - data integrity issue)
+- GR-16: Label Snowflake/DocuSign gold standard entries (pending - data now available, filing IDs 39/40)
 
 **Original Target State** (achieved):
 - Recall: 70-75% (+18-23pp improvement)
@@ -55,6 +55,12 @@ Expand test coverage and validate improvements.
 
 **Impact**: Higher confidence in production deployment
 
+### Phase 4: Human Review Validation (12 hours, 6 tasks)
+Build confidence in segmentation and metric identification before scaling.
+
+**Details**: See `docs/HUMAN_REVIEW_VALIDATION_PLAN.md` (HRV-Series tasks)
+**Impact**: Validate system against all database filings, expand gold standard coverage
+
 ---
 
 ## Dependency Graph
@@ -84,6 +90,12 @@ Phase 3:
   GR-16 (Label Snowflake/DocuSign) ──┐
   GR-17 (Add new industry filings) ──┼──→ GR-18 (Final validation)
   GR-10 (Re-run validation) ─────────┘
+                                      │
+                                      ▼
+Phase 4 (Human Review Validation - see HUMAN_REVIEW_VALIDATION_PLAN.md):
+  HRV-1 (CSV Schema) ────────────────────────────────────────────┐
+  HRV-2 (Validation Scripts) ──┬──→ HRV-3 (Review Slack) ────────┼──→ HRV-5 (Review New) ──→ HRV-6 (Analysis)
+                               └──→ HRV-4 (Review Farfetch) ─────┘
 ```
 
 ---
@@ -602,11 +614,11 @@ All 13 tests pass. All 233 existing segment enricher tests continue to pass.
 **ID**: GR-16
 **Name**: Add gold standard labels for existing test filings
 **Workstream**: Validation
-**Status**: 🔴 BLOCKED (data integrity issue - 2025-12-26)
+**Status**: 🟡 PENDING (data integrity issue RESOLVED - 2025-12-26)
 **Time Estimate**: 2 hours (manual review 90 min, labeling 30 min)
 **Risk Level**: NONE (labeling only)
 **Parallel With**: GR-17 (independent labeling tasks)
-**Prerequisites**: Database must contain actual Snowflake/DocuSign filing data
+**Prerequisites**: Database must contain actual Snowflake/DocuSign filing data ✅ RESOLVED
 
 **Impact**:
 - Better validation coverage (4 → 6 filings)
@@ -616,19 +628,29 @@ All 13 tests pass. All 233 existing segment enricher tests continue to pass.
 - `tests/fixtures/goldmine_labels.json` (add Snowflake and DocuSign entries)
 
 **Tasks**:
-1. Manually review Snowflake S-1 (filing ID 32)
-2. Manually review DocuSign S-1 (filing ID 34)
+1. Manually review Snowflake S-1/A (filing ID 39) ← NEW FILING ID
+2. Manually review DocuSign S-1 (filing ID 40) ← NEW FILING ID
 3. Identify expected goldmine sections
 4. Document expected richness ranges
 5. Add to goldmine_labels.json
 
-**2025-12-26 BLOCKER - Data Integrity Issue**:
-Database contains incorrect data for both filings:
-- **Filing ID 32** (labeled "Snowflake", CIK 0001828365): Actually contains segments from a Chinese e-vapor company (mentions PRC, SAFE Circulars, RMB, tobacco products, Cayman Islands)
-- **Filing ID 34** (labeled "DocuSign", CIK 0001620053): Actually contains segments from Vodka Brands Corp (Pennsylvania vodka company, only 3 segments)
-- Real Snowflake CIK: `0001640147` | Real DocuSign CIK: `0001261333`
+**2025-12-26 RESOLVED - Data Integrity Issue Fixed**:
 
-**Resolution Required**: Fetch and process correct Snowflake/DocuSign S-1 filings from SEC EDGAR before this task can proceed. See `docs/worker-prompts/archive/WORKER_PROMPT_TASK_GR-16.md` for full investigation details.
+**Previous Issue** (now fixed):
+- Old filing IDs 32/34 (labeled "Snowflake"/"DocuSign") contained wrong company data
+- Root cause: `scripts/setup_manual_test.py` had incorrect CIK-to-company-name mappings
+
+**Resolution Applied** (2025-12-26):
+1. Added `get_latest_registration_filing()` to `sec_client.py` (searches both recent and archived filings)
+2. Created `scripts/download_target_filings.py` to download correct filings from SEC EDGAR
+3. Downloaded and processed correct filings:
+   - **Filing ID 39**: Snowflake Inc S-1/A (CIK 0001640147, filed 2020-09-14, 1856 total segments, 80 selected, 27 values, 6 definitions)
+   - **Filing ID 40**: DocuSign Inc S-1 (CIK 0001261333, filed 2018-09-11, 108831 total segments, 80 selected, 89 values, 6 definitions)
+4. Fixed `scripts/setup_manual_test.py` to use SEC API lookup instead of hardcoded names
+5. Corrected company names for old filing IDs 32/34 (now correctly labeled RLX Technology and Vodka Brands)
+6. Updated analysis scripts (`gi3_richness_analysis.py`, `rerun_goldmine_validation.py`) with new filing IDs
+
+**Next Step**: Proceed with manual labeling of filing IDs 39 and 40.
 
 ---
 
@@ -714,7 +736,7 @@ Database contains incorrect data for both filings:
   - Slack F1 Score: **87%** (target: ≥77%)
   - Slack Goldmines: **20** (up from 13 at GI-8 baseline)
 - ✅ Production recommendation: **APPROVED**
-- ✅ Known limitations documented (GR-16 blocked, GR-17 filings not loaded)
+- ✅ Known limitations documented (GR-16 unblocked 2025-12-26, GR-17 complete)
 
 ---
 
@@ -902,4 +924,4 @@ Each phase is independently deployable:
 
 **Last Updated**: 2025-12-26
 **Plan Owner**: Analytics Team
-**Status**: Phase 0-2 Complete (GR-1 through GR-15). Phase 3 partial (GR-17, GR-18 complete; GR-10 pending, GR-16 blocked).
+**Status**: Phase 0-2 Complete (GR-1 through GR-15). Phase 3 partial (GR-17, GR-18 complete; GR-10, GR-16 pending - data issue resolved 2025-12-26).

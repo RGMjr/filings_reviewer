@@ -928,16 +928,13 @@ class TestTemporalTrendDetection:
         self, enricher: SegmentEnricher
     ) -> None:
         """Non-string raw_text -> False with warning (direct method test)."""
-        segment = SourceSegment(
-            filing_id=1,
-            segment_type="paragraph",
-            sequence_index=42,
-        )
-        # Set raw_text to a non-string type to test type checking
-        segment.raw_text = 12345  # type: ignore[assignment]
+        # Pass a non-string value directly to test the isinstance check (GR-13)
+        # The method now accepts text directly instead of segment
+        text = 12345  # type: ignore[assignment]
+        text_upper = ""  # Not used when text is non-string
 
         # Call _detect_temporal_trends directly to test the isinstance check
-        result = enricher._detect_temporal_trends(segment)
+        result = enricher._detect_temporal_trends(text, text_upper, 42)
 
         assert result is False
 
@@ -1272,16 +1269,12 @@ class TestCohortBreakdownDetection:
         self, enricher: SegmentEnricher
     ) -> None:
         """Non-string raw_text -> False with warning (direct method test)."""
-        segment = SourceSegment(
-            filing_id=1,
-            segment_type="paragraph",
-            sequence_index=42,
-        )
-        # Set raw_text to a non-string type to test type checking
-        segment.raw_text = 12345  # type: ignore[assignment]
+        # Pass a non-string value directly to test the isinstance check (GR-13)
+        # The method now accepts text directly instead of segment
+        text = 12345  # type: ignore[assignment]
 
         # Call _detect_cohort_breakdowns directly to test the isinstance check
-        result = enricher._detect_cohort_breakdowns(segment)
+        result = enricher._detect_cohort_breakdowns(text, None, 42)
 
         assert result is False
 
@@ -4403,3 +4396,127 @@ class TestEngagementConversionRichnessScore:
         assert segment.extra_metadata is not None
         assert "contains_conversion_keywords" in segment.extra_metadata
         assert segment.extra_metadata["contains_conversion_keywords"] is True
+
+
+# =============================================================================
+# Performance Benchmark Tests (GR-13)
+# =============================================================================
+
+
+class TestTextCachingPerformance:
+    """Tests for GR-13 text caching optimization.
+
+    These tests verify that the text caching optimization in _enrich_segment
+    does not negatively impact performance and the behavior is unchanged.
+    """
+
+    # -------------------------------------------------------------------------
+    # Large Batch Performance Tests (2 tests)
+    # -------------------------------------------------------------------------
+
+    def test_large_batch_enrichment_performance(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Enriching 1000+ segments completes within acceptable time.
+
+        GR-13 optimization: text and text_upper are cached once per segment
+        instead of being recomputed in each detection method.
+        """
+        import time
+
+        # Create 1000 segments with realistic content that triggers multiple detections
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text=(
+                    f"In FY2023 and FY2024, we had {i * 1000} daily active users "
+                    f"representing {15 + i % 20}% growth year-over-year. "
+                    f"Net Dollar Retention was 130% with ARR of ${i}M."
+                ),
+                candidate_metric_ids=[
+                    "cm_active_users_daily",
+                    "cm_user_growth_rate",
+                    "cm_net_revenue_retention",
+                    "cm_arr",
+                ],
+                classifier_confidence=0.85,
+                sequence_index=i,
+            )
+            for i in range(1000)
+        ]
+
+        start_time = time.perf_counter()
+        enricher.enrich_batch(segments)
+        elapsed_time = time.perf_counter() - start_time
+
+        # Should complete in under 2 seconds (generous limit for CI)
+        assert elapsed_time < 2.0, f"Enrichment took {elapsed_time:.2f}s (limit: 2s)"
+
+        # Verify all segments were enriched
+        for segment in segments:
+            assert segment.richness_score is not None
+            assert segment.richness_score >= 0
+
+    def test_text_caching_produces_consistent_results(
+        self, enricher: SegmentEnricher
+    ) -> None:
+        """Text caching optimization produces same results as multiple runs.
+
+        GR-13 verification: Running enrichment multiple times on the same
+        segments produces identical richness scores.
+        """
+        # Create segments that trigger various detection patterns
+        segment_data = [
+            (
+                "Revenue grew 25% in 2022 compared to 2021 with 1.5M MAU.",
+                ["cm_revenue_growth", "cm_mau"],
+            ),
+            (
+                "Net Dollar Retention was 143% for enterprise customers.",
+                ["cm_net_revenue_retention"],
+            ),
+            (
+                "Our ARR reached $500M with gross retention of 95%.",
+                ["cm_arr", "cm_gross_retention"],
+            ),
+            (
+                "Daily active users increased to 10 million, up 40% YoY.",
+                ["cm_active_users_daily", "cm_user_growth_rate"],
+            ),
+        ]
+
+        # First run
+        segments_run1 = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text=text,
+                candidate_metric_ids=metrics,
+                classifier_confidence=0.9,
+            )
+            for text, metrics in segment_data
+        ]
+        enricher.enrich_batch(segments_run1)
+
+        # Second run with fresh segments
+        segments_run2 = [
+            SourceSegment(
+                filing_id=1,
+                segment_type="paragraph",
+                raw_text=text,
+                candidate_metric_ids=metrics,
+                classifier_confidence=0.9,
+            )
+            for text, metrics in segment_data
+        ]
+        enricher.enrich_batch(segments_run2)
+
+        # Verify identical results
+        for i, (seg1, seg2) in enumerate(zip(segments_run1, segments_run2)):
+            assert seg1.richness_score == seg2.richness_score, (
+                f"Segment {i}: scores differ ({seg1.richness_score} vs {seg2.richness_score})"
+            )
+            assert seg1.contains_temporal_trend == seg2.contains_temporal_trend
+            assert seg1.contains_cohort_breakdown == seg2.contains_cohort_breakdown
+            assert seg1.extra_metadata == seg2.extra_metadata

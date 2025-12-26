@@ -742,3 +742,233 @@ class TestThresholdConstants:
     def test_goldmine_threshold_lowered(self) -> None:
         """GOLDMINE_THRESHOLD is 5.5 (GR-1: lowered from 6.0)."""
         assert SegmentEnricher.GOLDMINE_THRESHOLD == 5.5
+
+
+# =============================================================================
+# Configurable Formula Weights Tests (GR-11)
+# =============================================================================
+
+
+class TestFormulaWeightsDefaults:
+    """Test FormulaWeights dataclass defaults and factory methods."""
+
+    def test_default_weights_match_production_values(self) -> None:
+        """FormulaWeights.default() returns expected production values."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        weights = FormulaWeights.default()
+
+        # Base multipliers
+        assert weights.confidence_multiplier == 3.0
+        assert weights.metric_count_multiplier == 0.5
+        assert weights.metric_count_cap == 2.0
+        assert weights.image_multiplier == 0.5
+        assert weights.image_cap == 1.5
+
+        # Boolean flag bonuses
+        assert weights.temporal_trend_bonus == 1.0
+        assert weights.cohort_breakdown_bonus == 1.5
+        assert weights.temporal_cohort_combo_bonus == 0.5
+        assert weights.retention_keyword_bonus == 1.0
+        assert weights.saas_indicator_bonus == 0.5
+        assert weights.engagement_keyword_bonus == 0.5
+        assert weights.conversion_keyword_bonus == 0.5
+
+        # Definition tiers
+        assert weights.definition_high_value_bonus == 2.0
+        assert weights.definition_with_context_bonus == 1.5
+        assert weights.definition_basic_bonus == 1.0
+
+        # Usage tiers
+        assert weights.usage_with_count_bonus == 1.0
+        assert weights.usage_with_context_bonus == 0.75
+        assert weights.usage_basic_bonus == 0.5
+
+        # Platform tiers
+        assert weights.platform_with_count_bonus == 1.0
+        assert weights.platform_with_context_bonus == 0.75
+        assert weights.platform_basic_bonus == 0.5
+
+        # High-value metrics
+        assert weights.high_value_per_metric == 0.5
+        assert weights.high_value_cap == 1.5
+
+        # Score boundaries
+        assert weights.score_cap == 10.0
+        assert weights.goldmine_threshold == 5.5
+
+    def test_enricher_uses_defaults_when_no_weights_passed(self) -> None:
+        """SegmentEnricher() with no args uses FormulaWeights.default()."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        enricher = SegmentEnricher()
+        default_weights = FormulaWeights.default()
+
+        assert enricher.weights.confidence_multiplier == default_weights.confidence_multiplier
+        assert enricher.weights.usage_with_count_bonus == default_weights.usage_with_count_bonus
+
+    def test_enricher_accepts_custom_weights(self) -> None:
+        """SegmentEnricher accepts custom FormulaWeights."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        custom_weights = FormulaWeights(usage_with_count_bonus=2.0)
+        enricher = SegmentEnricher(weights=custom_weights)
+
+        assert enricher.weights.usage_with_count_bonus == 2.0
+        # Other weights should still be defaults
+        assert enricher.weights.confidence_multiplier == 3.0
+
+
+class TestCustomWeightsModifyScores:
+    """Test that custom weights produce different scores."""
+
+    def test_higher_confidence_multiplier_increases_score(self) -> None:
+        """Higher confidence_multiplier produces higher scores."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        default_enricher = SegmentEnricher()
+        custom_enricher = SegmentEnricher(
+            weights=FormulaWeights(confidence_multiplier=5.0)
+        )
+
+        segment = make_segment(classifier_confidence=0.5)
+
+        default_score = default_enricher._compute_richness_score(segment)
+        custom_score = custom_enricher._compute_richness_score(segment)
+
+        # Default: 0.5 * 3.0 = 1.5
+        assert default_score == pytest.approx(1.5, abs=0.01)
+        # Custom: 0.5 * 5.0 = 2.5
+        assert custom_score == pytest.approx(2.5, abs=0.01)
+
+    def test_zero_bonus_disables_component(self) -> None:
+        """Setting a bonus to 0.0 disables that component."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        # Enricher with temporal bonus disabled
+        custom_enricher = SegmentEnricher(
+            weights=FormulaWeights(temporal_trend_bonus=0.0)
+        )
+
+        segment = make_segment(
+            classifier_confidence=0,
+            contains_temporal_trend=True,
+        )
+
+        score = custom_enricher._compute_richness_score(segment)
+        assert score == 0.0  # No temporal bonus applied
+
+    def test_custom_usage_bonus_affects_score(self) -> None:
+        """Custom usage bonus values affect final score."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        custom_enricher = SegmentEnricher(
+            weights=FormulaWeights(usage_with_count_bonus=3.0)
+        )
+
+        segment = make_segment(
+            classifier_confidence=0,
+            extra_metadata={"contains_usage_with_count": True},
+        )
+
+        score = custom_enricher._compute_richness_score(segment)
+        assert score == pytest.approx(3.0, abs=0.01)
+
+    def test_custom_score_cap_limits_maximum(self) -> None:
+        """Custom score_cap limits the maximum score."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        # Lower the cap to 5.0
+        custom_enricher = SegmentEnricher(
+            weights=FormulaWeights(score_cap=5.0)
+        )
+
+        # Segment that would normally score > 5
+        segment = make_segment(
+            classifier_confidence=1.0,  # +3.0
+            contains_temporal_trend=True,  # +1.0
+            contains_cohort_breakdown=True,  # +1.5
+        )
+
+        score = custom_enricher._compute_richness_score(segment)
+        # Would be 5.5 but capped at 5.0
+        assert score == 5.0
+
+
+class TestBackwardCompatibility:
+    """Test that default weights produce identical scores to original implementation."""
+
+    def test_basic_segment_score_unchanged(self) -> None:
+        """Basic segment produces same score as before GR-11."""
+        enricher = SegmentEnricher()
+
+        segment = make_segment(
+            classifier_confidence=0.5,
+            distinct_metric_count=2,
+        )
+
+        score = enricher._compute_richness_score(segment)
+        # 0.5 * 3.0 + min(2 * 0.5, 2.0) = 1.5 + 1.0 = 2.5
+        assert score == pytest.approx(2.5, abs=0.01)
+
+    def test_goldmine_segment_score_unchanged(self) -> None:
+        """Goldmine segment produces same score as before GR-11."""
+        enricher = SegmentEnricher()
+
+        segment = make_segment(
+            classifier_confidence=0.8,
+            distinct_metric_count=3,
+            contains_temporal_trend=True,
+            contains_cohort_breakdown=True,
+            contains_definition_flag=True,
+        )
+
+        score = enricher._compute_richness_score(segment)
+        # 0.8 * 3.0 = 2.4 (confidence)
+        # min(3 * 0.5, 2.0) = 1.5 (metrics)
+        # +1.0 (temporal)
+        # +1.5 (cohort)
+        # +0.5 (temporal+cohort combo)
+        # +1.5 (definition with 3 metrics)
+        # = 2.4 + 1.5 + 1.0 + 1.5 + 0.5 + 1.5 = 8.4
+        assert score == pytest.approx(8.4, abs=0.01)
+
+
+class TestFormulaWeightsValidation:
+    """Test FormulaWeights validation and immutability."""
+
+    def test_dataclass_is_frozen(self) -> None:
+        """FormulaWeights is immutable (frozen dataclass)."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        weights = FormulaWeights.default()
+
+        with pytest.raises(Exception):  # FrozenInstanceError
+            weights.confidence_multiplier = 5.0  # type: ignore
+
+    def test_negative_values_raise_error(self) -> None:
+        """Negative weight values raise ValueError."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        with pytest.raises(ValueError):
+            FormulaWeights(confidence_multiplier=-1.0)
+
+    def test_high_precision_preset(self) -> None:
+        """FormulaWeights.high_precision() returns precision-tuned weights."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        weights = FormulaWeights.high_precision()
+
+        # Precision preset reduces basic keyword bonuses
+        assert weights.usage_basic_bonus == 0.25
+        assert weights.platform_basic_bonus == 0.25
+
+    def test_high_recall_preset(self) -> None:
+        """FormulaWeights.high_recall() returns recall-tuned weights."""
+        from src.extraction.enricher_config import FormulaWeights
+
+        weights = FormulaWeights.high_recall()
+
+        # Recall preset increases keyword bonuses
+        assert weights.usage_basic_bonus == 0.75
+        assert weights.goldmine_threshold == 5.0

@@ -6,16 +6,18 @@ This script re-processes a curated set of filings to validate the goldmine
 identification system (G1-G12 implementation).
 
 Target filings:
-- Farfetch Ltd (ID 31) - Gold standard for customer metrics
-- Snowflake (ID 32) - SaaS cohort metrics
-- Snap (ID 33) - Consumer tech metrics
-- DocuSign (ID 34) - Enterprise SaaS
+- Farfetch Ltd (ID 29) - Gold standard for customer metrics
+- Snap (ID 32) - Consumer tech metrics
+- SUSHI GINZA ONODERA (ID 34) - Edge case / international
 - Slack Technologies (ID 35) - Excellent cohort disclosure
-- SUSHI GINZA ONODERA (ID 29) - Edge case / international
+- Snowflake Inc (ID 39) - Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)
+- DocuSign Inc (ID 40) - Real DocuSign S-1 (CIK 0001261333, 2018-09-11)
+
+Note: IDs 31/33 were removed (RLX Technology/Vodka Brands - CIK mismatch error).
 
 Usage:
     python scripts/rerun_goldmine_validation.py
-    python scripts/rerun_goldmine_validation.py --filing-ids 31 32  # Specific filings only
+    python scripts/rerun_goldmine_validation.py --filing-ids 39 40  # Specific filings only
     python scripts/rerun_goldmine_validation.py --dry-run  # Don't save to database
 """
 
@@ -47,7 +49,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Default validation filings
-DEFAULT_FILING_IDS = [31, 32, 33, 34, 35, 29]
+# Note: IDs 31/33 removed (CIK mismatch), replaced with 39/40 (real Snowflake/DocuSign)
+DEFAULT_FILING_IDS = [29, 32, 34, 35, 39, 40]
 
 
 def get_filing_info(db, filing_id):

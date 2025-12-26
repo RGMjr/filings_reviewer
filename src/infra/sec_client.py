@@ -733,6 +733,137 @@ class SECClient:
             logger.error(f"Error parsing filing data: {e}")
             return None
 
+    def get_latest_registration_filing(
+        self,
+        cik: str,
+        form_types: list[str] | None = None,
+    ) -> FilingMetadata | None:
+        """
+        Get the most recent S-1/S-1/A or F-1/F-1/A filing for a company.
+
+        This is useful for finding the "final" registration statement,
+        which is typically the last S-1/A filed before IPO.
+
+        Note: For older IPOs (>2 years), the S-1 may be in archived filing
+        files rather than the "recent" filings array. This method searches
+        both recent and archived filings.
+
+        Args:
+            cik: SEC Central Index Key
+            form_types: Optional list of form types to search for.
+                        Defaults to ["S-1", "S-1/A", "F-1", "F-1/A"]
+
+        Returns:
+            FilingMetadata for the most recent matching filing, or None
+        """
+        if form_types is None:
+            form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
+
+        # Normalize CIK to 10 digits with leading zeros
+        cik_padded = cik.zfill(10)
+
+        try:
+            # Get company submissions data
+            url = self.SUBMISSIONS_URL.format(cik=cik_padded)
+            data = self._make_request(url)
+
+            company_name = data.get("name", "")
+            ticker = data.get("tickers", [None])[0] if data.get("tickers") else None
+
+            # First, search recent filings
+            recent = data.get("filings", {}).get("recent", {})
+            result = self._search_filings_array(
+                recent, form_types, cik_padded, company_name, ticker
+            )
+            if result:
+                return result
+
+            # If not found in recent, search archived filing files
+            # These contain older filings (typically >2 years old)
+            archived_files = data.get("filings", {}).get("files", [])
+            for file_info in archived_files:
+                file_name = file_info.get("name", "")
+                if not file_name:
+                    continue
+
+                # Fetch the archived filing file
+                archive_url = f"https://data.sec.gov/submissions/{file_name}"
+                logger.debug(f"Searching archived filings: {file_name}")
+
+                try:
+                    archived_data = self._make_request(archive_url)
+                    result = self._search_filings_array(
+                        archived_data, form_types, cik_padded, company_name, ticker
+                    )
+                    if result:
+                        return result
+                except Exception as e:
+                    logger.warning(f"Error fetching archived file {file_name}: {e}")
+                    continue
+
+            logger.warning(
+                f"No {form_types} filings found for CIK {cik}"
+            )
+            return None
+
+        except requests.HTTPError as e:
+            logger.error(f"HTTP error fetching filings for CIK {cik}: {e}")
+            return None
+        except (KeyError, IndexError) as e:
+            logger.error(f"Error parsing filing data for CIK {cik}: {e}")
+            return None
+
+    def _search_filings_array(
+        self,
+        filings_data: dict,
+        form_types: list[str],
+        cik_padded: str,
+        company_name: str,
+        ticker: str | None,
+    ) -> FilingMetadata | None:
+        """Search a filings array for matching form types.
+
+        Helper method for get_latest_registration_filing.
+        """
+        forms = filings_data.get("form", [])
+        accession_numbers = filings_data.get("accessionNumber", [])
+        filing_dates = filings_data.get("filingDate", [])
+        primary_docs = filings_data.get("primaryDocument", [])
+
+        # Find the first (most recent) matching filing
+        for i, form in enumerate(forms):
+            if form in form_types:
+                accession_number = accession_numbers[i]
+                accession_no_dashes = accession_number.replace("-", "")
+                primary_doc = primary_docs[i] if i < len(primary_docs) else ""
+
+                primary_doc_url = (
+                    f"{self.BASE_URL}/Archives/edgar/data/"
+                    f"{cik_padded}/{accession_no_dashes}/{primary_doc}"
+                )
+                txt_url = (
+                    f"{self.BASE_URL}/cgi-bin/viewer?action=view&cik={cik_padded}"
+                    f"&accession_number={accession_number}&xbrl_type=v"
+                )
+
+                logger.info(
+                    f"Found latest {form} for {company_name}: "
+                    f"{accession_number} ({filing_dates[i]})"
+                )
+
+                return FilingMetadata(
+                    cik=cik_padded,
+                    company_name=company_name,
+                    form_type=form,
+                    filing_date=filing_dates[i],
+                    accession_number=accession_number,
+                    primary_doc_url=primary_doc_url,
+                    txt_url=txt_url,
+                    ticker=ticker,
+                )
+
+        return None
+
 
 class MockSECClient(SECClient):
     """

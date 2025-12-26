@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.extraction.html_segmenter import HTMLSegmenter
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
+from src.infra.sec_client import SECClient
 from src.review.helpers import generate_candidates_for_filing
 
 # Configure logging
@@ -117,21 +118,25 @@ class ManualTestSetup:
         """Find and process real filing files from data/filings directory."""
         logger.info("\n--- Finding real filing files ---")
 
-        # Priority companies to test with (well-known IPOs)
-        PRIORITY_CIKS = {
-            "0001740915": "Farfetch",
-            "0001764925": "Slack",
-            "0001828365": "Snowflake",
-            "0001644378": "Snap",
-            "0001620053": "DocuSign",
-        }
+        # Priority CIKs to look for (no hardcoded names - will fetch from SEC)
+        # Note: Company names are fetched from SEC EDGAR to ensure accuracy
+        PRIORITY_CIKS = [
+            "0001740915",  # Farfetch
+            "0001764925",  # Slack
+            "0001644378",  # Snap
+            "0001640147",  # Snowflake (correct CIK)
+            "0001261333",  # DocuSign (correct CIK)
+        ]
+
+        # Initialize SEC client for company name lookups
+        sec_client = SECClient()
 
         # Look for priority company filings first
         filing_files = []
-        for cik, name in PRIORITY_CIKS.items():
+        for cik in PRIORITY_CIKS:
             cik_files = list(self.data_dir.glob(f"{cik}/*/primary.htm"))
             if cik_files:
-                logger.info(f"✓ Found {len(cik_files)} filing(s) for {name} (CIK: {cik})")
+                logger.info(f"✓ Found {len(cik_files)} filing(s) for CIK: {cik}")
                 filing_files.extend(cik_files[:1])  # Take first filing per company
 
         # If we don't have enough priority filings, find any primary.htm files
@@ -154,8 +159,8 @@ class ManualTestSetup:
             # Path format: data/filings/0001234567/000123456789012345/primary.htm
             cik = filing_path.parent.parent.name
 
-            # Get company name if it's a priority company
-            company_name = PRIORITY_CIKS.get(cik, f"Company {cik}")
+            # Get company name from SEC EDGAR API (not hardcoded)
+            company_name = self._get_company_name_from_sec(sec_client, cik)
 
             logger.info(f"\nProcessing: {company_name} (CIK: {cik})")
 
@@ -167,6 +172,22 @@ class ManualTestSetup:
 
             # Process the filing
             self._process_filing(company_id, filing_path)
+
+    def _get_company_name_from_sec(self, sec_client: SECClient, cik: str) -> str:
+        """Fetch company name from SEC EDGAR API.
+
+        This ensures we always use the official company name from SEC,
+        preventing mismatches between CIK and company name.
+        """
+        try:
+            company_info = sec_client.get_company_info(cik)
+            if company_info and company_info.get("name"):
+                return company_info["name"]
+        except Exception as e:
+            logger.warning(f"Could not fetch company name from SEC for CIK {cik}: {e}")
+
+        # Fallback to generic name if SEC lookup fails
+        return f"Company {cik}"
 
     def _ensure_company_from_cik(self, cik: str, company_name: str | None = None) -> int | None:
         """Ensure company exists, creating minimal record if needed."""
