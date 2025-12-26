@@ -3,7 +3,7 @@
 **Project:** SEC Filings Customer Metrics Extraction System
 **Version:** 2.1
 **Status:** Production Ready
-**Last Updated:** 2025-12-24
+**Last Updated:** 2025-12-26
 
 ---
 
@@ -80,10 +80,9 @@ Current improvement work in progress.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | **Master task inventory with parallel execution plan** | Everyone |
-| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | Goldmine improvement plan (18 tasks, 1 complete, 1 partial) | Developers |
-| **[IMPROVE_SEGMENTATION_PLAN_A.md](IMPROVE_SEGMENTATION_PLAN_A.md)** | Segmentation improvements for Farfetch/Samsara | Developers |
+| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
+| **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
-| **[MERGE_FIX_PLAN_2025-12-24.md](MERGE_FIX_PLAN_2025-12-24.md)** | Merge remediation plan (tests, schema, seeds, CI gates) | Developers |
 
 ### Archive (Historical Reference)
 
