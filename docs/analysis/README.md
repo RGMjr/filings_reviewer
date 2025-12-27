@@ -52,21 +52,6 @@ This directory contains validation reports, evaluation results, and analysis doc
 
 ---
 
-### 📊 GR-10_VALIDATION_RESULTS.md
-
-**Status**: Partial - Superseded by GR-FINAL_VALIDATION.md
-
-**Scope**: Baseline validation and initial recall improvement measurement
-
-**Contents**:
-- Baseline metrics (52% recall, ~100% precision)
-- Database validation (13 goldmines for Slack)
-- Initial improvement measurement
-
-**Note**: This report provides historical baseline data. For current validation results, see GR-FINAL_VALIDATION.md.
-
----
-
 ### 🏭 GR-17_INDUSTRY_LABELING.md
 
 **Status**: In Progress - Labels created, filings not yet loaded
@@ -87,13 +72,16 @@ This directory contains validation reports, evaluation results, and analysis doc
 
 ## Archive
 
-**Location**: `docs/analysis/archive/`
+**Location**: `docs/archive/analysis/evaluation-reports/`
 
 Contains historical evaluation reports that have been superseded:
 - `WAVE_1_2_EVALUATION_REPORT_2025-12-26.md` - Waves 1 & 2 evaluation (103 test failures identified)
 - `WAVE_3_EVALUATION_REPORT_2025-12-26.md` - Wave 3 evaluation (targets exceeded)
+- `GR-10_VALIDATION_RESULTS.md` - Initial baseline validation
+- `CORRECTED_ASSESSMENT.md` - Evaluation process artifact
+- `EVALUATION_RECONCILIATION.md` - Reconciliation of findings
 
-See `archive/README.md` for details on why these were archived and how to use them.
+See `docs/archive/analysis/evaluation-reports/README.md` for details.
 
 ---
 
@@ -131,14 +119,15 @@ See `archive/README.md` for details on why these were archived and how to use th
 
 | Date | Document | Event |
 |------|----------|-------|
-| 2025-12-26 | GR-10_VALIDATION_RESULTS.md | Initial validation (partial) |
+| 2025-12-26 | GR-10_VALIDATION_RESULTS.md | Initial validation (archived) |
 | 2025-12-26 | GR-17_INDUSTRY_LABELING.md | Industry-specific labeling |
 | 2025-12-26 | WAVE_1_2_EVALUATION_REPORT.md | Waves 1 & 2 evaluation (archived) |
 | 2025-12-26 | GR-FINAL_VALIDATION.md | Final comprehensive validation |
 | 2025-12-26 | WAVE_3_EVALUATION_REPORT.md | Wave 3 evaluation (archived) |
 | 2025-12-26 | COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md | **Current primary report** |
+| 2025-12-27 | HRV-3 through HRV-5 | Validation documentation added |
 
 ---
 
 **Maintained By**: Claude Code
-**Last Updated**: 2025-12-26
+**Last Updated**: 2025-12-27

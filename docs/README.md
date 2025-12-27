@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.1
+**Version:** 2.2
 **Status:** Production Ready
-**Last Updated:** 2025-12-26
+**Last Updated:** 2025-12-27
 
 ---
 
@@ -81,6 +81,7 @@ Current improvement work in progress.
 |----------|-------------|----------|
 | **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | **Master task inventory with parallel execution plan** | Everyone |
 | **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
+| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 
@@ -113,7 +114,7 @@ Historical documents for reference only. Not part of current operations.
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (82% overall coverage, 1,627 tests)
+- **Testing:** pytest (75%+ coverage, 3,129 tests)
 
 ### Cost Profile
 
@@ -145,7 +146,7 @@ Historical documents for reference only. Not part of current operations.
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 
-**Overall Status:** ✅ **Production Ready** (82% test coverage, 1,627 tests)
+**Overall Status:** ✅ **Production Ready** (75%+ test coverage, 3,129 tests)
 
 ---
 
@@ -320,7 +321,13 @@ When updating documentation:
 
 ## Version History
 
-### Version 2.1 (Current - 2025-12-14)
+### Version 2.2 (Current - 2025-12-27)
+- ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
+- ✅ HRV-1 through HRV-5 validation complete
+- ✅ Performance optimizations (+33% throughput)
+- ✅ Documentation reorganized and archive consolidated
+
+### Version 2.1 (2025-12-14)
 - ✅ Human review system (COMPLETE - Production Ready)
 - ✅ Review models: ReviewCandidate, ReviewDecision, LearnedPattern, CandidateFeatures
 - ✅ Candidate generation with modular architecture (B1: 98% coverage)
