@@ -11,10 +11,12 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, value_extractor, segment_enricher
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
 └── llm/            # OpenAI integration: openai_client.py, prompts.py
+config/
+└── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
 ```
 
 **Pipeline:** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
@@ -132,6 +134,12 @@ docker compose down
    - Date pattern matching ("January 31, 2019")
    - Temporal phrase recognition ("as of", "ended", "for the period", etc.)
    - Result: 100% elimination of date false positives in candidate generation
+8. **Externalized keyword configuration** (2025-12-27): Metric keywords moved to `config/metric_keywords.yaml`:
+   - Add/modify keyword patterns without code changes
+   - YAML structure: patterns, exclusions, specific_patterns per metric
+   - Feature flag: `USE_YAML_KEYWORDS=false` to revert to hardcoded patterns
+   - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
+   - Graceful fallback to hardcoded patterns if YAML fails to load
 
 ## Documentation
 

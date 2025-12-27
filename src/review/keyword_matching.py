@@ -83,7 +83,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from src.extraction.metric_classifier import MetricClassifier
+from src.extraction.metric_classifier import MetricClassifier, USE_YAML_KEYWORDS
 from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
@@ -94,28 +94,57 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Metric Keywords
+# Keyword Loading Functions
 # =============================================================================
 
-# Import keywords from the authoritative source to ensure consistency
-# between candidate generation and metric classification
-METRIC_KEYWORDS: dict[str, list[str]] = MetricClassifier.METRIC_KEYWORDS
+def _load_metric_keywords() -> dict[str, list[str]]:
+    """Load metric keywords from YAML config or use hardcoded fallback."""
+    if USE_YAML_KEYWORDS:
+        try:
+            from src.extraction.keyword_config import get_metric_keywords
+            return get_metric_keywords()
+        except Exception as e:
+            logger.warning(f"Failed to load YAML keywords, using hardcoded: {e}")
+            return MetricClassifier.METRIC_KEYWORDS
+    return MetricClassifier.METRIC_KEYWORDS
+
+
+def _load_exclusion_patterns() -> dict[str, list[str]]:
+    """Load exclusion patterns from YAML config or use hardcoded fallback."""
+    if USE_YAML_KEYWORDS:
+        try:
+            from src.extraction.keyword_config import get_exclusion_patterns
+            return get_exclusion_patterns()
+        except Exception as e:
+            logger.warning(f"Failed to load YAML exclusions, using hardcoded: {e}")
+            return _HARDCODED_EXCLUSION_PATTERNS
+    return _HARDCODED_EXCLUSION_PATTERNS
+
+
+def _load_specific_patterns() -> list[str]:
+    """Load specific (multi-word) patterns from YAML config or use hardcoded fallback."""
+    if USE_YAML_KEYWORDS:
+        try:
+            from src.extraction.keyword_config import get_specific_patterns
+            return get_specific_patterns()
+        except Exception as e:
+            logger.warning(f"Failed to load YAML specific patterns, using hardcoded: {e}")
+            return _HARDCODED_SPECIFIC_PATTERNS
+    return _HARDCODED_SPECIFIC_PATTERNS
 
 
 # =============================================================================
-# Specific Keyword Patterns
+# Hardcoded Fallbacks (used when YAML loading fails or is disabled)
 # =============================================================================
 
-# Keywords that are more specific (multi-word) get a bonus
-# Single-word keywords like "customers" are ambiguous
-SPECIFIC_KEYWORD_PATTERNS = [
+_HARDCODED_SPECIFIC_PATTERNS = [
     r"active\s+customers?",
-    r"active\s+consumers?",  # Farfetch terminology
+    r"active\s+consumers?",
     r"enterprise\s+customers?",
     r"paying\s+customers?",
     r"total\s+customers?",
-    r"total\s+consumers?",  # Farfetch terminology
-    r"number\s+of\s+orders?",  # Farfetch terminology
+    r"total\s+consumers?",
+    r"number\s+of\s+orders?",
     r"net\s+revenue\s+retention",
     r"gross\s+revenue\s+retention",
     r"net\s+dollar\s+retention",
@@ -128,69 +157,64 @@ SPECIFIC_KEYWORD_PATTERNS = [
     r"monthly\s+active\s+users?",
 ]
 
-
-# =============================================================================
-# Metric Exclusion Patterns (HRI-3)
-# =============================================================================
-
-# Patterns that should NOT match a metric even if the keyword pattern matches.
-# These prevent misclassifications when ambiguous keywords appear in contexts
-# that clearly indicate a different metric.
-#
-# Format: {metric_id: [list of context patterns that should exclude this metric]}
-#
-# When a keyword matches, we check if any exclusion pattern matches in the
-# surrounding context (±50 chars). If an exclusion pattern matches, we skip
-# that keyword match.
-#
-# Top misclassification patterns addressed:
-# 1. "customer acquisition" (part of "customer acquisition cost") -> cm_new_customers_acquired
-# 2. "margin" keywords incorrectly matching CAC
-# 3. "gross profit" / "gross margin" matching cohort metrics
-# 4. "acquisition cost" substring matching new customers metric
-METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = {
-    # cm_new_customers_acquired should NOT match when "acquisition cost" is present
-    # (indicates CAC metric, not new customers acquired)
+_HARDCODED_EXCLUSION_PATTERNS: dict[str, list[str]] = {
     "cm_new_customers_acquired": [
-        r"\bacquisition\s+cost\b",  # Full phrase "acquisition cost" = CAC, not new customers
-        r"\bcac\b",  # CAC acronym nearby = CAC metric context
-        r"\bcost\s+to\s+acquire\b",  # Another CAC phrasing
+        r"\bacquisition\s+cost\b",
+        r"\bcac\b",
+        r"\bcost\s+to\s+acquire\b",
     ],
-    # cm_customer_acquisition_cost should NOT match contribution/gross/profit margin
-    # (these are margin metrics, not CAC)
     "cm_customer_acquisition_cost": [
-        r"\bcontribution\s+margin\b",  # Contribution margin = margin metric
-        r"\bgross\s+margin\b",  # Gross margin = margin metric
-        r"\bprofit\s+margin\b",  # Profit margin = margin metric
-        r"\boperating\s+margin\b",  # Operating margin = margin metric
-        r"\bplatform\s+order\s+contribution\b",  # Farfetch specific pattern
+        r"\bcontribution\s+margin\b",
+        r"\bgross\s+margin\b",
+        r"\bprofit\s+margin\b",
+        r"\boperating\s+margin\b",
+        r"\bplatform\s+order\s+contribution\b",
     ],
-    # cm_lifetime_value_per_customer should NOT match when it's part of LTV/CAC ratio
-    # (the ratio metric should take precedence)
     "cm_lifetime_value_per_customer": [
-        r"\bltv\s*/\s*cac\b",  # LTV/CAC ratio
-        r"\bltv\s+to\s+cac\b",  # LTV to CAC ratio
+        r"\bltv\s*/\s*cac\b",
+        r"\bltv\s+to\s+cac\b",
         r"\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b",
     ],
-    # cm_revenue_per_customer (ARPU) should NOT match cost-per-customer
     "cm_revenue_per_customer": [
-        r"\bcost\s+per\s+customer\b",  # Cost per customer = CAC, not ARPU
-        r"\bcost\s+per\s+user\b",  # Cost per user = CAC, not ARPU
+        r"\bcost\s+per\s+customer\b",
+        r"\bcost\s+per\s+user\b",
     ],
-    # cm_gross_margin_overall should NOT match cohort context
     "cm_gross_margin_overall": [
-        r"\bby\s+cohort\b",  # Cohort context = cm_gross_margin_by_cohort
-        r"\bcohort\s+margin\b",  # Cohort margin = cm_gross_margin_by_cohort
+        r"\bby\s+cohort\b",
+        r"\bcohort\s+margin\b",
         r"\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b",
     ],
-    # cm_customer_retention_rate should NOT match revenue retention context
     "cm_customer_retention_rate": [
-        r"\brevenue\s+retention\b",  # Revenue retention = NRR/GRR
-        r"\bdollar\s+retention\b",  # Dollar retention = NRR
-        r"\bnrr\b",  # NRR acronym
-        r"\bgrr\b",  # GRR acronym
+        r"\brevenue\s+retention\b",
+        r"\bdollar\s+retention\b",
+        r"\bnrr\b",
+        r"\bgrr\b",
+    ],
+    "cm_customers_period_end": [
+        r"\bretention\s+rate\b",
+        r"\bnet\s+dollar\s+retention\b",
+        r"\bndr\b",
+        r"\bnrr\b",
+        r"\b\d+%\s*(?:as\s+of|for|during)\b",
+    ],
+    "cm_large_customers_period_end": [
+        r"\bretention\s+rate\b",
+        r"\bnet\s+dollar\s+retention\b",
+        r"\bndr\b",
+        r"\bnrr\b",
+        r"\b\d+%\s*(?:as\s+of|for|during)\b",
     ],
 }
+
+
+# =============================================================================
+# Module-Level Keyword Data (loaded at import time)
+# =============================================================================
+
+# These are loaded once at module import and used throughout
+METRIC_KEYWORDS: dict[str, list[str]] = _load_metric_keywords()
+METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = _load_exclusion_patterns()
+SPECIFIC_KEYWORD_PATTERNS: list[str] = _load_specific_patterns()
 
 
 # =============================================================================

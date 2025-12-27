@@ -6,9 +6,13 @@ This module scans source segments to identify:
 - Metric definitions
 - Calculation methodologies
 - Which specific metrics are present
+
+Keywords are loaded from config/metric_keywords.yaml by default.
+Set USE_YAML_KEYWORDS=false to use hardcoded patterns (legacy).
 """
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -17,6 +21,9 @@ from .models import SourceSegment
 from .validators import ClassificationValidator
 
 logger = logging.getLogger(__name__)
+
+# Feature flag for YAML-based keywords (default: True)
+USE_YAML_KEYWORDS = os.environ.get("USE_YAML_KEYWORDS", "true").lower() != "false"
 
 
 @dataclass
@@ -40,7 +47,7 @@ class ClassificationMetrics:
             return 0.0
         return self.total_confidence / self.total_segments
 
-    def top_metrics(self, n: int = 5) -> list[tuple]:
+    def top_metrics(self, n: int = 5) -> list[tuple[str, int]]:
         """Get top N most common metric IDs.
 
         Returns:
@@ -127,6 +134,24 @@ class MetricClassifier:
             r"\bnew\s+accounts?\s+acquired\b", # Added synonym
             r"\bnew\s+clients?\s+acquired\b", # Added synonym
             r"\bnew\s+logos?\b", # Added synonym
+        ],
+        "cm_customers_period_end": [
+            r"\bpaid\s+customers?\b",
+            r"\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b",
+            r"\borganizations?\s+on\s+(?:our\s+)?free\s+(?:subscription\s+)?plan\b",
+            r"\borganizations?\s+(?:with\s+)?(?:three|\d+)\s+(?:or\s+more\s+)?users?\b",
+            r"\bcustomers?\s+\(?period\s*end\)?\b",
+            r"\bend[- ]of[- ]period\s+customers?\b",
+            r"\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b",
+        ],
+        "cm_large_customers_period_end": [
+            # Matches "Paid Customers > $100,000 ARR" and similar patterns
+            r"\bpaid\s+customers?\s*>\s*\$?\d",
+            r"\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b",
+            r"\blarge\s+(?:enterprise\s+)?customers?\b",
+            r"\benterprise\s+customers?\b",
+            r"\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b",
+            r"\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$\d+",
         ],
         "cm_customers_period_end_by_tenure": [
             r"\bcustomers?\s+by\s+tenure\b",
@@ -377,6 +402,8 @@ class MetricClassifier:
     CMASB_EXTENDED_METRICS = {
         'cm_customer_acquisition_cost',
         'cm_active_customers_total',
+        'cm_customers_period_end',
+        'cm_large_customers_period_end',
         'cm_revenue_per_customer',
         'cm_gross_margin_overall',
         'cm_gross_margin_by_cohort',
@@ -416,7 +443,7 @@ class MetricClassifier:
     # Number patterns
     NUMBER_PATTERN = r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the metric classifier."""
         # Compile all patterns for performance
         self._definition_regex = [
@@ -430,15 +457,38 @@ class MetricClassifier:
         ]
         self._number_regex = re.compile(self.NUMBER_PATTERN, re.IGNORECASE)
 
+        # Load keyword patterns (YAML or hardcoded)
+        keyword_source = self._load_keywords()
+
         # Compile metric-specific patterns
         self._metric_patterns = {}
-        for metric_id, patterns in self.METRIC_KEYWORDS.items():
+        for metric_id, patterns in keyword_source.items():
             self._metric_patterns[metric_id] = [
                 re.compile(p, re.IGNORECASE) for p in patterns
             ]
 
         # Metrics tracking
         self._metrics: ClassificationMetrics | None = None
+
+    def _load_keywords(self) -> dict[str, list[str]]:
+        """
+        Load keyword patterns from YAML config or use hardcoded fallback.
+
+        Returns:
+            Dictionary mapping metric_id to list of regex patterns.
+        """
+        if USE_YAML_KEYWORDS:
+            try:
+                from .keyword_config import get_metric_keywords
+                keywords = get_metric_keywords()
+                logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
+                return keywords
+            except Exception as e:
+                logger.warning(f"Failed to load YAML keywords, using hardcoded: {e}")
+                return self.METRIC_KEYWORDS
+        else:
+            logger.debug("Using hardcoded METRIC_KEYWORDS (USE_YAML_KEYWORDS=false)")
+            return self.METRIC_KEYWORDS
 
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
