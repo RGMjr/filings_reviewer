@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
 from src.review.candidate_generator import CandidateGenerator
-from src.review.config import get_high_recall_config
+from src.review.config import get_high_precision_config
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def generate_candidates_for_filing(db: DatabaseAdapter, filing_id: int, company_
     logger.info(f"  Found {len(segments)} segments")
 
     # Generate candidates
-    generator = CandidateGenerator(config=get_high_recall_config())
+    generator = CandidateGenerator(config=get_high_precision_config())
     candidates = generator.generate_for_filing(
         filing_id=filing_id,
         company_id=company_id,
