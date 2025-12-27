@@ -1,0 +1,394 @@
+# Metric Keywords Configuration
+# ==============================
+# This file defines the keyword patterns used to identify customer metrics in SEC filings.
+#
+# Structure:
+#   metric_id:
+#     patterns: List of regex patterns (case-insensitive, use \b for word boundaries)
+#     exclusions: Optional list of patterns that should NOT match this metric
+#     specific_patterns: Optional list of multi-word patterns that get confidence bonus
+#
+# Notes:
+# - All patterns are case-insensitive
+# - Use \b for word boundaries to prevent partial matches
+# - Use \s+ for flexible whitespace between words
+# - Patterns are compiled with re.IGNORECASE
+#
+# To add a new metric:
+# 1. Add a new metric_id key (use cm_ prefix for customer metrics)
+# 2. Add patterns list with at least one regex pattern
+# 3. Optionally add exclusions to prevent false positives
+# 4. Optionally add specific_patterns for multi-word phrases that get bonus confidence
+
+---
+# =============================================================================
+# Core Metrics
+# =============================================================================
+
+cm_new_customers_acquired:
+  patterns:
+    - '\bnew\s+customers?\b'
+    - '\bcustomers?\s+acquired\b'
+    - '\bcustomer\s+acquisition[s]?\b'
+    - '\bacquired\s+customers?\b'
+    - '\bnewly\s+acquired\b'
+    - '\bnew\s+customer\s+additions?\b'
+    - '\bnet\s+new\s+customers?\b'
+    - '\bcustomers?\s+added\b'
+    - '\bcustomer\s+growth\b'
+    - '\bacquisition\s+of\s+customers?\b'
+    - '\bnew\s+users?\s+acquired\b'
+    - '\bacquired\s+users?\b'
+    - '\bnew\s+accounts?\s+acquired\b'
+    - '\bnew\s+clients?\s+acquired\b'
+    - '\bnew\s+logos?\b'
+  exclusions:
+    - '\bacquisition\s+cost\b'
+    - '\bcac\b'
+    - '\bcost\s+to\s+acquire\b'
+
+cm_customers_period_end:
+  patterns:
+    - '\bpaid\s+customers?\b'
+    - '\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b'
+    - '\borganizations?\s+on\s+(?:our\s+)?free\s+(?:subscription\s+)?plan\b'
+    - '\borganizations?\s+(?:with\s+)?(?:three|\d+)\s+(?:or\s+more\s+)?users?\b'
+    - '\bcustomers?\s+\(?period\s*end\)?\b'
+    - '\bend[- ]of[- ]period\s+customers?\b'
+    - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
+  exclusions:
+    - '\bretention\s+rate\b'
+    - '\bnet\s+dollar\s+retention\b'
+    - '\bndr\b'
+    - '\bnrr\b'
+    - '\b\d+%\s*(?:as\s+of|for|during)\b'
+  specific_patterns:
+    - 'paid\s+customers?'
+    - 'paying\s+customers?'
+
+cm_large_customers_period_end:
+  patterns:
+    - '\bpaid\s+customers?\s*>\s*\$?\d'
+    - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
+    - '\blarge\s+(?:enterprise\s+)?customers?\b'
+    - '\benterprise\s+customers?\b'
+    - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
+    - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$\d+'
+  exclusions:
+    - '\bretention\s+rate\b'
+    - '\bnet\s+dollar\s+retention\b'
+    - '\bndr\b'
+    - '\bnrr\b'
+    - '\b\d+%\s*(?:as\s+of|for|during)\b'
+  specific_patterns:
+    - 'enterprise\s+customers?'
+    - 'large\s+customers?'
+
+cm_customers_period_end_by_tenure:
+  patterns:
+    - '\bcustomers?\s+by\s+tenure\b'
+    - '\btenure\s+cohort\b'
+    - '\bcustomers?\s+at\s+period\s+end\b'
+    - '\bby\s+age\b'
+    - '\btime\s+since\b'
+
+cm_revenue_by_cohort:
+  patterns:
+    - '\brevenue\s+by\s+cohort\b'
+    - '\bcohort\s+revenue\b'
+    - '\brevenue[^.;]{0,100}\bcohort\b'
+    - '\bcohort[^.;]{0,100}\brevenue\b'
+
+cm_transactions_by_cohort:
+  patterns:
+    - '\btransactions?\s+by\s+cohort\b'
+    - '\bcohort\s+transactions?\b'
+    - '\bpurchase\s+transactions?\b'
+    - '\btransactions?[^.;]{0,100}\bcohort\b'
+    - '\bnumber\s+of\s+orders?\b'
+  specific_patterns:
+    - 'number\s+of\s+orders?'
+
+# =============================================================================
+# Extended Metrics
+# =============================================================================
+
+cm_active_customers_total:
+  patterns:
+    - '\bactive\s+customers?\b'
+    - '\bactive\s+consumers?\b'
+    - '\btotal\s+customers?\b'
+    - '\btotal\s+consumers?\b'
+    - '\bcustomer\s+base\b'
+    - '\bconsumer\s+base\b'
+    - '\bactive\s+accounts?\b'
+    - '\btotal\s+accounts?\b'
+    - '\bactive\s+clients?\b'
+    - '\btotal\s+clients?\b'
+  specific_patterns:
+    - 'active\s+customers?'
+    - 'active\s+consumers?'
+    - 'total\s+customers?'
+    - 'total\s+consumers?'
+
+cm_revenue_per_customer:
+  patterns:
+    - '\barpu\b'
+    - '\baverage\s+revenue\s+per\s+user\b'
+    - '\brevenue\s+per\s+customer\b'
+    - '\brevenue\s+per\s+user\b'
+    - '\bper\s+customer\s+revenue\b'
+  exclusions:
+    - '\bcost\s+per\s+customer\b'
+    - '\bcost\s+per\s+user\b'
+  specific_patterns:
+    - 'average\s+revenue\s+per'
+
+cm_customer_acquisition_cost:
+  patterns:
+    - '\bcac\b'
+    - '\bcustomer\s+acquisition\s+cost\b'
+    - '\bacquisition\s+cost\b'
+    - '\bcost\s+to\s+acquire\b'
+  exclusions:
+    - '\bcontribution\s+margin\b'
+    - '\bgross\s+margin\b'
+    - '\bprofit\s+margin\b'
+    - '\boperating\s+margin\b'
+    - '\bplatform\s+order\s+contribution\b'
+  specific_patterns:
+    - 'customer\s+acquisition\s+cost'
+
+cm_cac_payback_period:
+  patterns:
+    - '\bcac\s+payback\b'
+    - '\bpayback\s+period\b'
+    - '\btime\s+to\s+recover\b'
+
+cm_customer_retention_rate:
+  patterns:
+    - '\bretention\s+rate\b'
+    - '\bcustomer\s+retention\b'
+    - '\bretained\s+customers?\b'
+  exclusions:
+    - '\brevenue\s+retention\b'
+    - '\bdollar\s+retention\b'
+    - '\bnrr\b'
+    - '\bgrr\b'
+
+cm_customer_churn_rate:
+  patterns:
+    - '\bchurn\s+rate\b'
+    - '\bcustomer\s+churn\b'
+    - '\battrition\s+rate\b'
+
+cm_net_revenue_retention:
+  patterns:
+    - '\bnrr\b'
+    - '\bnet\s+revenue\s+retention\b'
+    - '\bnet\s+retention\b'
+    - '\bnet\s+dollar\s+retention\b'
+    - '\bndr\b'
+    - '\bretention\s+rate[^.;]{0,50}\d+%'
+    - '\bnet\s+retention\s+rate\b'
+  specific_patterns:
+    - 'net\s+revenue\s+retention'
+    - 'net\s+dollar\s+retention'
+
+cm_gross_revenue_retention:
+  patterns:
+    - '\bgrr\b'
+    - '\bgross\s+revenue\s+retention\b'
+    - '\bgross\s+retention\b'
+  specific_patterns:
+    - 'gross\s+revenue\s+retention'
+
+cm_monthly_active_users:
+  patterns:
+    - '\bmau\b'
+    - '\bmonthly\s+active\s+users?\b'
+  specific_patterns:
+    - 'monthly\s+active\s+users?'
+
+cm_daily_active_users:
+  patterns:
+    - '\bdau\b'
+    - '\bdaily\s+active\s+users?\b'
+  specific_patterns:
+    - 'daily\s+active\s+users?'
+
+cm_gross_margin_overall:
+  patterns:
+    - '\bgross\s+margin(?:\s+(?:was|of|is|at))?\s+\d'
+    - '\boverall\s+gross\s+margin\b'
+    - '\btotal\s+gross\s+margin\b'
+    - '\bgross\s+profit\s+margin\b'
+    - '\bgross\s+margin\s+(?:percentage|rate)\b'
+    - '\b(?<!cohort\s)(?<!by\s)gross\s+margin\b'
+    - '\bgross\s+profit\b'
+  exclusions:
+    - '\bby\s+cohort\b'
+    - '\bcohort\s+margin\b'
+    - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+
+cm_gross_margin_by_cohort:
+  patterns:
+    - '\bgross\s+margin\s+by\s+cohort\b'
+    - '\bcohort\s+(?:gross\s+)?margin\b'
+    - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+
+cm_arr:
+  patterns:
+    - '\barr\b'
+    - '\bannual\s+recurring\s+revenue\b'
+    - '\bannualized\s+recurring\s+revenue\b'
+    - '\bannual\s+run[- ]?rate\b'
+  specific_patterns:
+    - 'annual\s+recurring\s+revenue'
+
+cm_mrr:
+  patterns:
+    - '\bmrr\b'
+    - '\bmonthly\s+recurring\s+revenue\b'
+  specific_patterns:
+    - 'monthly\s+recurring\s+revenue'
+
+cm_expansion_revenue:
+  patterns:
+    - '\bexpansion\s+revenue\b'
+    - '\bcross[- ]sell\b'
+    - '\bupsell\b'
+    - '\bproducts?\s+per\s+customer\b'
+    - '\baverage\s+products?\s+owned\b'
+    - '\bexpand\b[^.;]{0,100}\brevenue\b'
+    - '\badditional\s+products?\b'
+    - '\bmulti[- ]product\b'
+
+cm_revenue_concentration:
+  patterns:
+    - '\brevenue\s+concentration\b'
+    - '\bcustomer\s+concentration\b'
+    - '\btop\s+\d+\s+customers?\b'
+    - '\blargest\s+customers?\b'
+    - '\b\d+%\s+of\s+revenue\b'
+    - '\bconcentration\s+risk\b'
+    - '\bconcentration\s+of\s+revenue\b'
+    - '\bmajor\s+customers?\b'
+    - '\bcustomer\s+[A-D]\b'
+
+# =============================================================================
+# Revenue Predictability Metrics
+# =============================================================================
+
+cm_bookings:
+  patterns:
+    - '\bbookings\b'
+    - '\btotal\s+bookings\b'
+    - '\bnew\s+bookings\b'
+    - '\bcontract\s+bookings\b'
+    - '\bnet\s+new\s+bookings\b'
+    - '\bquarterly\s+bookings\b'
+    - '\bannual\s+bookings\b'
+
+cm_billings:
+  patterns:
+    - '\bbillings\b'
+    - '\btotal\s+billings\b'
+    - '\bcalculated\s+billings\b'
+    - '\badjusted\s+billings\b'
+
+# =============================================================================
+# E-Commerce / Consumer Metrics
+# =============================================================================
+
+cm_average_order_value:
+  patterns:
+    - '\baov\b'
+    - '\baverage\s+order\s+value\b'
+    - '\baverage\s+order\s+size\b'
+    - '\baverage\s+ticket\s+(?:size|value)?\b'
+    - '\baverage\s+basket\s+(?:size|value)?\b'
+    - '\border\s+value\s+per\s+(?:customer|user|transaction)\b'
+    - '\baverage\s+transaction\s+value\b'
+
+cm_repeat_purchase_rate:
+  patterns:
+    - '\brepeat\s+purchase\s+rate\b'
+    - '\brepeat\s+purchase(?:s)?\b'
+    - '\bpurchase\s+frequency\b'
+    - '\brepeat\s+customers?\b'
+    - '\brepeat\s+buyers?\b'
+    - '\brepeat\s+order\s+rate\b'
+    - '\breorder\s+rate\b'
+    - '\brepurchase\s+rate\b'
+
+# =============================================================================
+# Marketplace / Platform Metrics
+# =============================================================================
+
+cm_gmv:
+  patterns:
+    - '\bgmv\b'
+    - '\bgross\s+merchandise\s+value\b'
+    - '\bgross\s+merchandise\s+volume\b'
+    - '\bgross\s+booking\s+value\b'
+    - '\bgross\s+bookings\s+value\b'
+    - '\bgross\s+transaction\s+value\b'
+    - '\btotal\s+transaction\s+value\b'
+    - '\bgross\s+order\s+value\b'
+    - '\bplatform\s+(?:transaction\s+)?volume\b'
+
+cm_take_rate:
+  patterns:
+    - '\btake\s+rate\b'
+    - '\bplatform\s+take\s+rate\b'
+    - '\bcommission\s+rate\b'
+    - '\bnet\s+take\s+rate\b'
+    - '\bmonetization\s+rate\b'
+    - '\bservice\s+fee\s+rate\b'
+    - '\bplatform\s+fee\s+rate\b'
+    - '\brevenue\s+as\s+a\s+percentage\s+of\s+gmv\b'
+
+# =============================================================================
+# SaaS Contract Metrics
+# =============================================================================
+
+cm_acv:
+  patterns:
+    - '\bacv\b'
+    - '\bannual\s+contract\s+value\b'
+    - '\baverage\s+contract\s+value\b'
+    - '\bannualized\s+contract\s+value\b'
+    - '\baverage\s+annual\s+contract\b'
+    - '\bcontract\s+value\s+per\s+customer\b'
+
+cm_tcv:
+  patterns:
+    - '\btcv\b'
+    - '\btotal\s+contract\s+value\b'
+    - '\blifetime\s+contract\s+value\b'
+    - '\bcontract\s+lifetime\s+value\b'
+
+# =============================================================================
+# Customer Value Metrics
+# =============================================================================
+
+cm_lifetime_value_per_customer:
+  patterns:
+    - '\bltv\b'
+    - '\blifetime\s+value\b'
+    - '\bcustomer\s+lifetime\s+value\b'
+    - '\bclv\b'
+  exclusions:
+    - '\bltv\s*/\s*cac\b'
+    - '\bltv\s+to\s+cac\b'
+    - '\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b'
+  specific_patterns:
+    - 'lifetime\s+value'
+    - 'customer\s+lifetime\s+value'
+
+cm_ltv_to_cac_ratio:
+  patterns:
+    - '\bltv\s*[:/]\s*cac\b'
+    - '\bltv\s+to\s+cac\b'
+    - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'

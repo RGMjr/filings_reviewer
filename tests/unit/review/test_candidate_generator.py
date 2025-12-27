@@ -398,12 +398,21 @@ class TestMetricKeywords:
                 except re.error as e:
                     pytest.fail(f"Invalid regex in {metric_id}: {pattern} - {e}")
 
-    def test_keywords_imported_from_metric_classifier(self):
-        """METRIC_KEYWORDS should be imported from MetricClassifier."""
+    def test_keywords_match_metric_classifier(self):
+        """METRIC_KEYWORDS should match MetricClassifier patterns.
+
+        Keywords may be loaded from YAML config or hardcoded source,
+        but should contain equivalent patterns for all metrics.
+        """
         from src.extraction.metric_classifier import MetricClassifier
 
-        # Should be the exact same object (not a copy)
-        assert METRIC_KEYWORDS is MetricClassifier.METRIC_KEYWORDS
+        # Verify we have the same metrics defined
+        assert set(METRIC_KEYWORDS.keys()) == set(MetricClassifier.METRIC_KEYWORDS.keys())
+
+        # Verify patterns match for each metric
+        for metric_id, patterns in METRIC_KEYWORDS.items():
+            classifier_patterns = MetricClassifier.METRIC_KEYWORDS[metric_id]
+            assert patterns == classifier_patterns, f"Patterns mismatch for {metric_id}"
 
 
 # =============================================================================
