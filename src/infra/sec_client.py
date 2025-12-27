@@ -542,10 +542,23 @@ class SECClient:
                 logger.warning(f"No HTML files found for {cik}/{accession_number}")
                 return None
 
+            # IMPORTANT: Filter out exhibit files FIRST before pattern matching
+            # Exhibit files often contain form patterns (e.g., "exhibit103s-1.htm")
+            # which would incorrectly match before the actual S-1 document
+            non_exhibit_files = [
+                item
+                for item in htm_files
+                if "exhibit" not in item["name"].lower()
+                and not item["name"].lower().startswith("ex")
+            ]
+
+            # Use non-exhibit files for pattern matching if available
+            files_for_pattern_match = non_exhibit_files if non_exhibit_files else htm_files
+
             # Find primary doc (matches form type pattern)
             # Try multiple pattern matching strategies in order of preference
 
-            # Strategy 1: Look for explicit form type patterns
+            # Strategy 1: Look for explicit form type patterns in non-exhibit files
             form_patterns = [
                 "s-1",
                 "f-1",  # Standard patterns with dashes
@@ -565,7 +578,7 @@ class SECClient:
                 "registration",  # Registration statements
             ]
 
-            for item in htm_files:
+            for item in files_for_pattern_match:
                 name = item["name"].lower()
                 if any(pattern in name for pattern in form_patterns):
                     primary_doc = item["name"]
@@ -575,19 +588,11 @@ class SECClient:
                         f"{accession_no_dashes}/{primary_doc}"
                     )
 
-            # Strategy 2: Use largest HTML file (likely the main document)
-            # Exclude exhibit files (typically have 'exhibit' or 'ex' in name)
-            non_exhibit_files = [
-                item
-                for item in htm_files
-                if "exhibit" not in item["name"].lower()
-                and not item["name"].lower().startswith("ex")
-            ]
-
+            # Strategy 2: Use largest non-exhibit HTML file (likely the main document)
             files_to_consider = non_exhibit_files if non_exhibit_files else htm_files
 
             # Get file with largest size
-            largest_file = max(files_to_consider, key=lambda x: x.get("size", 0))
+            largest_file = max(files_to_consider, key=lambda x: int(x.get("size", 0) or 0))
             primary_doc = largest_file["name"]
 
             logger.debug(

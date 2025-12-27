@@ -55,10 +55,49 @@ class TestResolvePrimaryDocumentUrl:
         assert "d123456ds1.htm" in url
         assert "0001234567" in url
 
-    def test_pattern_matching_form_prefix(self, sec_client):
+    def test_exhibit_files_excluded_from_pattern_matching(self):
+        """Test that exhibit files with form patterns are excluded (bug fix).
+
+        This tests the fix for exhibit files like 'exhibit103s-1.htm' incorrectly
+        matching before the actual S-1 document 'slacks-1.htm' when both contain 's-1'.
+        """
+        response_data = {
+            "directory": {
+                "item": [
+                    # These are alphabetically first and contain 's-1' pattern
+                    {"name": "exhibit101-sx1.htm", "size": 82122},
+                    {"name": "exhibit103s-1.htm", "size": 80810},  # Contains 's-1'!
+                    {"name": "exhibit107s-1.htm", "size": 63800},  # Contains 's-1'!
+                    # The actual main document, alphabetically last
+                    {"name": "slacks-1.htm", "size": 3782931},
+                ]
+            }
+        }
+
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/1764925/000162828019004786/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1764925/000162828019004786/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "1764925", "0001628280-19-004786"
+        )
+
+        assert url is not None
+        # Should return the actual S-1 document, not the exhibit
+        assert "slacks-1.htm" in url
+        assert "exhibit" not in url.lower()
+
+    def test_pattern_matching_form_prefix(self):
         """Test that form prefix patterns (forms1, formf1) are recognized."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "forms1_company.htm", "size": 500000},
@@ -67,18 +106,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "forms1_company.htm" in url
 
-    def test_pattern_matching_mainbody(self, sec_client):
+    def test_pattern_matching_mainbody(self):
         """Test that mainbody pattern is recognized."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "mainbody.htm", "size": 500000},
@@ -87,18 +136,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "mainbody.htm" in url
 
-    def test_pattern_matching_prospectus(self, sec_client):
+    def test_pattern_matching_prospectus(self):
         """Test that prospectus pattern is recognized."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "prospectus.htm", "size": 500000},
@@ -107,18 +166,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "prospectus.htm" in url
 
-    def test_pattern_matching_registration(self, sec_client):
+    def test_pattern_matching_registration(self):
         """Test that registration pattern is recognized."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "registration_statement.htm", "size": 500000},
@@ -127,18 +196,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "registration_statement.htm" in url
 
-    def test_fallback_to_largest_file(self, sec_client):
+    def test_fallback_to_largest_file(self):
         """Test fallback to largest file when no pattern matches."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "cover.htm", "size": 10000},
@@ -148,18 +227,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "document.htm" in url  # Should select largest file
 
-    def test_exclude_exhibit_files_in_fallback(self, sec_client):
+    def test_exclude_exhibit_files_in_fallback(self):
         """Test that exhibit files are excluded from fallback selection."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "document.htm", "size": 300000},
@@ -175,20 +264,30 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert (
             "document.htm" in url
         )  # Should exclude exhibits and select largest non-exhibit
 
-    def test_exclude_xbrl_files(self, sec_client):
+    def test_exclude_xbrl_files(self):
         """Test that XBRL files (starting with R) are excluded."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "document.htm", "size": 300000},
@@ -198,18 +297,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "document.htm" in url  # Should exclude R*.htm files
 
-    def test_no_html_files_returns_none(self, sec_client):
+    def test_no_html_files_returns_none(self):
         """Test that None is returned when no HTML files are found."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "filing.txt", "size": 500000},
@@ -218,29 +327,40 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is None
 
-    def test_http_error_returns_none(self, sec_client):
+    def test_http_error_returns_none(self):
         """Test that None is returned on HTTP errors."""
-        mock_response = Mock()
-        mock_response.raise_for_status.side_effect = Exception("404 Not Found")
+        mock_client = MockHTTPClient()
+        # Configure mock to raise an exception
+        mock_client.failures["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = Exception("404 Not Found")
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is None
 
-    def test_url_format_correctness(self, sec_client):
+    def test_url_format_correctness(self):
         """Test that returned URL has correct format."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "d123456ds1.htm", "size": 500000},
@@ -248,10 +368,21 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         # URL should have format: https://www.sec.gov/Archives/edgar/data/{cik}/{accession_no_dashes}/{filename}
         assert url.startswith("https://www.sec.gov/Archives/edgar/data/")
@@ -259,10 +390,9 @@ class TestResolvePrimaryDocumentUrl:
         assert "000123456712123456" in url  # Accession without dashes
         assert "d123456ds1.htm" in url
 
-    def test_compact_patterns_ss1_ff1(self, sec_client):
+    def test_compact_patterns_ss1_ff1(self):
         """Test compact patterns without separators (ss1, ff1)."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "ff12014a1_biondvax.htm", "size": 500000},
@@ -271,18 +401,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "ff12014a1_biondvax.htm" in url
 
-    def test_amendment_patterns_s1a_f1a(self, sec_client):
+    def test_amendment_patterns_s1a_f1a(self):
         """Test amendment patterns (s1a, f1a)."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "d123456ds1a.htm", "size": 500000},
@@ -291,18 +431,28 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "d123456ds1a.htm" in url
 
-    def test_case_insensitive_matching(self, sec_client):
+    def test_case_insensitive_matching(self):
         """Test that pattern matching is case-insensitive."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        response_data = {
             "directory": {
                 "item": [
                     {"name": "FORM_S-1.htm", "size": 500000},
@@ -311,10 +461,21 @@ class TestResolvePrimaryDocumentUrl:
             }
         }
 
-        with patch.object(sec_client.session, "get", return_value=mock_response):
-            url = sec_client.resolve_primary_document_url(
-                "0001234567", "0001234567-12-123456"
-            )
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode('utf-8'),
+            headers={},
+            url="https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/0001234567/000123456712123456/index.json"] = mock_response
+
+        sec_client = SECClient(http_client=mock_client)
+        url = sec_client.resolve_primary_document_url(
+            "0001234567", "0001234567-12-123456"
+        )
 
         assert url is not None
         assert "FORM_S-1.htm" in url
