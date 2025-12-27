@@ -283,3 +283,24 @@ GROUP BY f.filing_id, c.company_name;
 - After ANY segmenter changes, re-segment affected filings
 - After keyword changes, regenerate candidates
 - Use `debug_segmentation.py` to diagnose before assuming code bugs
+
+---
+
+## Lesson Learned (2025-12-27)
+
+**Issue:** "View SEC Filing" button in human review interface linked to wrong document (exhibit file instead of main S-1).
+
+**Root Cause:**
+1. `resolve_primary_document_url()` matched exhibit files containing form patterns (e.g., `exhibit103s-1.htm`) before the actual document (`slacks-1.htm`)
+2. Slack's database record pointed to original S-1 instead of final S-1/A amendment
+3. `fetch_curated_sample.py` only queried for `S-1`/`F-1`, ignoring amendments
+
+**Resolution:**
+1. Fixed `sec_client.py` to filter exhibit files BEFORE pattern matching
+2. Updated Slack's database record to point to final S-1/A (accession `0001628280-19-007428`)
+3. Modified `fetch_curated_sample.py` to prefer final amendments (S-1/A, F-1/A) over originals
+
+**Prevention:**
+- When loading filings, prefer the final S-1/A or F-1/A amendment (most complete disclosure)
+- The `resolve_primary_document_url()` now correctly excludes exhibit files from pattern matching
+- Verify SEC filing URLs resolve correctly before committing filing data
