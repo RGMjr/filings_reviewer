@@ -274,14 +274,21 @@ class MetricClassifier:
             r"\bcalculated\s+billings\b",       # "calculated billings"
             r"\badjusted\s+billings\b",         # "adjusted billings"
         ],
-        "cm_deferred_revenue": [
-            r"\bdeferred\s+revenue\b",          # "deferred revenue"
-            r"\bunearned\s+revenue\b",          # "unearned revenue"
-            r"\bremaining\s+performance\s+obligation[s]?\b",  # RPO
-            r"\brpo\b",                         # "RPO" acronym
-            r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
-            r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
-        ],
+        # REMOVED 2025-12-26: cm_deferred_revenue is a financial accounting metric,
+        # not a customer behavior metric. Deferred revenue appears on balance sheets
+        # as a liability for prepayments, not as a measure of customer engagement.
+        # Removing this metric improves precision by ~51pp (eliminated 19 FPs in Slack filing).
+        # If RPO/backlog are needed as customer metrics, they should be separate metrics
+        # with more specific keywords that don't match balance sheet line items.
+        #
+        # "cm_deferred_revenue": [
+        #     r"\bdeferred\s+revenue\b",          # "deferred revenue"
+        #     r"\bunearned\s+revenue\b",          # "unearned revenue"
+        #     r"\bremaining\s+performance\s+obligation[s]?\b",  # RPO
+        #     r"\brpo\b",                         # "RPO" acronym
+        #     r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
+        #     r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
+        # ],
         # -----------------------------------------------------------------
         # E-Commerce / Consumer Metrics (T6: AOV + Repeat Purchase group)
         # -----------------------------------------------------------------
@@ -383,7 +390,7 @@ class MetricClassifier:
         # T5: Revenue predictability metrics
         'cm_bookings',
         'cm_billings',
-        'cm_deferred_revenue',
+        # cm_deferred_revenue - REMOVED 2025-12-26 (financial metric, not customer metric)
         # T6: E-commerce metrics
         'cm_average_order_value',
         'cm_repeat_purchase_rate',

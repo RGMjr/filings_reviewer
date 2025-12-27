@@ -333,6 +333,10 @@ class CandidateGenerator:
             filter_enabled=self.config.filter_false_positives,
             min_value=self.config.min_metric_value,
             filter_years=self.config.filter_years,
+            toc_proximity_chars=self.config.toc_proximity_chars,
+            toc_dot_leader_window=self.config.toc_dot_leader_window,
+            filter_financial_statements=self.config.filter_financial_statements,  # HRV-10/11
+            financial_statement_proximity_chars=self.config.financial_statement_proximity_chars,
         )
 
         # Initialize context extractor (P1.3 - extracted to separate module)
@@ -762,6 +766,53 @@ class CandidateGenerator:
                     else:
                         filtered_candidates.append(candidate)
                 candidates = filtered_candidates
+
+        # HRV Type Validation: Filter candidates with wrong format for metric type
+        if self.config.filter_false_positives:  # Reuse FP filter flag
+            from src.review.false_positive_filter import (
+                PERCENTAGE_ONLY_METRICS,
+                DOLLAR_ONLY_METRICS,
+                COUNT_ONLY_METRICS,
+                is_percentage_format,
+                is_dollar_format,
+                is_count_format,
+            )
+
+            filtered_candidates = []
+            for candidate in candidates:
+                metric_id = candidate.suggested_metric_id
+                raw_text = candidate.raw_number_text
+                unit = candidate.parsed_unit or "count"
+
+                # Check if metric has type constraints
+                type_mismatch = False
+                mismatch_reason = None
+
+                if metric_id in PERCENTAGE_ONLY_METRICS:
+                    if not is_percentage_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects percentage, got {unit}"
+
+                elif metric_id in DOLLAR_ONLY_METRICS:
+                    if not is_dollar_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects dollar amount, got {unit}"
+
+                elif metric_id in COUNT_ONLY_METRICS:
+                    if not is_count_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects count, got {unit}"
+
+                if type_mismatch:
+                    segment_stats["filtered_by_type_validation"] = segment_stats.get("filtered_by_type_validation", 0) + 1
+                    logger.debug(
+                        f"Filtered by type validation: {mismatch_reason} "
+                        f"(value={candidate.parsed_value}, raw={raw_text})"
+                    )
+                else:
+                    filtered_candidates.append(candidate)
+
+            candidates = filtered_candidates
 
         return candidates, segment_stats
 

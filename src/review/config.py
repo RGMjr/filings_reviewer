@@ -187,6 +187,20 @@ class CandidateGenerationConfig:
     """Character distance to search backwards for dot leader patterns. L2 enhancement."""
 
     # =========================================================================
+    # HRV-10/HRV-11: Financial Statement Filtering Settings (2025-12-26)
+    # =========================================================================
+
+    filter_financial_statements: bool = True
+    """Whether to filter financial statement line items (income statement, balance sheet, cash flow).
+
+    HRV-10/HRV-11 enhancement: Detects financial statement contexts and filters out
+    accounting line items (Revenue, Cost of Revenue, Total Assets, etc.) that are
+    not customer metrics. Eliminates ~60% of false positives in typical S-1 filings."""
+
+    financial_statement_proximity_chars: int = 500
+    """Character distance to search backwards for financial statement headers. HRV-10 enhancement."""
+
+    # =========================================================================
     # Confidence Scoring Weights
     # =========================================================================
 

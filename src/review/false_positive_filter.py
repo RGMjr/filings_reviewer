@@ -220,6 +220,229 @@ TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
 
 
 # =============================================================================
+# HRV-10: Financial Statement Context Detection (2025-12-26)
+# =============================================================================
+
+# Financial statement header patterns
+FINANCIAL_STATEMENT_HEADERS: list[Pattern[str]] = [
+    # Income statement / P&L variations
+    re.compile(r'\bconsolidated\s+statements?\s+of\s+(?:operations|income)', re.IGNORECASE),
+    re.compile(r'\bincome\s+statements?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+(?:operations|earnings|income)', re.IGNORECASE),
+    re.compile(r'\bconsolidated\s+results?\s+of\s+operations', re.IGNORECASE),
+
+    # Balance sheet variations
+    re.compile(r'\bconsolidated\s+balance\s+sheets?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+financial\s+position', re.IGNORECASE),
+    re.compile(r'\bbalance\s+sheet\s+data', re.IGNORECASE),
+
+    # Cash flow statement variations
+    re.compile(r'\bconsolidated\s+statements?\s+of\s+cash\s+flows?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+cash\s+flows?', re.IGNORECASE),
+
+    # Summary financial data tables
+    re.compile(r'\bsummary\s+(?:consolidated\s+)?(?:financial|operating)\s+data', re.IGNORECASE),
+    re.compile(r'\bselected\s+financial\s+data', re.IGNORECASE),
+]
+
+# Financial statement line item keywords that should NOT be treated as customer metrics
+FINANCIAL_LINE_ITEM_KEYWORDS: list[str] = [
+    # Income statement line items
+    'revenue', 'total revenue', 'net revenue', 'revenues',
+    'cost of revenue', 'cost of sales', 'cost of goods sold', 'cogs',
+    'gross profit', 'gross income',
+    'operating expenses', 'operating income', 'operating loss',
+    'research and development', 'r&d expenses',
+    'sales and marketing', 'general and administrative',
+    'net income', 'net loss', 'net earnings',
+    'income from operations', 'loss from operations',
+    'earnings per share', 'eps', 'diluted eps', 'basic eps',
+
+    # Balance sheet line items
+    'total assets', 'current assets', 'non-current assets',
+    'cash and cash equivalents', 'cash equivalents', 'marketable securities',
+    'accounts receivable', 'inventory', 'prepaid expenses',
+    'property and equipment', 'intangible assets', 'goodwill',
+    'total liabilities', 'current liabilities', 'long-term liabilities',
+    'accounts payable', 'accrued expenses', 'accrued liabilities',
+    'deferred revenue', 'unearned revenue',
+    'working capital',
+    'stockholders equity', 'shareholders equity', 'total equity',
+
+    # Cash flow line items
+    'cash flows from operating activities',
+    'cash flows from investing activities',
+    'cash flows from financing activities',
+    'free cash flow', 'operating cash flow',
+
+    # Common financial ratios and changes
+    '$ change', '% change', 'percent change',
+    'increase', 'decrease',
+]
+
+# Proximity threshold for financial statement context (characters)
+FINANCIAL_STATEMENT_PROXIMITY_CHARS = 500
+
+
+# =============================================================================
+# Metric Type Validation (HRV Type Validation Enhancement - 2025-12-26)
+# =============================================================================
+
+# Metrics that should ONLY be percentages (not raw counts or dollar amounts)
+PERCENTAGE_ONLY_METRICS: set[str] = {
+    'cm_net_revenue_retention',  # NDR should be 143%, not 143 or $143
+    'cm_gross_retention_rate',
+    'cm_customer_retention_rate',
+    'cm_customer_churn_rate',
+    'cm_gross_margin_overall',  # Gross margin should be %, not $ gross profit
+    'cm_ltv_cac_ratio',  # Ratio, expect decimal or %
+}
+
+# Metrics that should ONLY be dollar amounts (not percentages or plain counts)
+DOLLAR_ONLY_METRICS: set[str] = {
+    'cm_arr',  # ARR should be $X million, not 40% or 100
+    'cm_tcv',  # Total contract value
+    'cm_acv',  # Annual contract value
+    'cm_ltv',  # Lifetime value
+    'cm_cac',  # Customer acquisition cost
+    'cm_arpu',  # Average revenue per user
+}
+
+# Metrics that should ONLY be counts (not percentages or dollars)
+COUNT_ONLY_METRICS: set[str] = {
+    'cm_customer',  # Customer count
+    'cm_daily_active_users',  # DAU count
+    'cm_weekly_active_users',  # WAU count
+    'cm_monthly_active_users',  # MAU count
+    'cm_paid_users',
+    'cm_subscribers',
+}
+
+
+def is_percentage_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is in percentage format.
+
+    Also accepts decimal ratios (0.5 to 2.5 range) as valid percentage representations,
+    since metrics like NRR are often expressed as decimals (e.g., 1.25 = 125%).
+    """
+    # Explicit percentage format
+    if '%' in raw_text or unit == 'percentage':
+        return True
+
+    # Decimal ratio format (common for retention rates like 1.25 = 125%)
+    # Accept values in 0.5 to 2.5 range with decimal point
+    if '.' in raw_text and unit == 'count':
+        try:
+            # Remove any non-numeric chars except decimal point
+            cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
+            val = float(cleaned)
+            # Retention rates typically 0.5 (50%) to 2.0 (200%)
+            if 0.5 <= val <= 2.5:
+                return True
+        except (ValueError, TypeError):
+            pass
+
+    return False
+
+
+def is_dollar_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is in dollar format."""
+    return '$' in raw_text or unit in ('currency', 'usd')
+
+
+def is_count_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is a plain count (not percentage or dollar)."""
+    return unit == 'count' and '%' not in raw_text and '$' not in raw_text
+
+
+# =============================================================================
+# Helper Functions for Financial Statement Detection (HRV-10)
+# =============================================================================
+
+
+def is_in_financial_statement_context(
+    text: str,
+    number_position: int,
+    proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS
+) -> bool:
+    """
+    Check if a number appears within a financial statement context.
+
+    Financial statements (income statement, balance sheet, cash flow statement)
+    contain many numbers that are financial accounting line items, not customer
+    metrics. This function detects financial statement headers to identify
+    such contexts.
+
+    Recognizes multiple financial statement variations:
+    - "Consolidated Statements of Operations"
+    - "Income Statement"
+    - "Consolidated Balance Sheets"
+    - "Statements of Cash Flows"
+    - "Summary Financial Data"
+
+    Args:
+        text: The full text containing the number
+        number_position: Starting position of the number in the text
+        proximity_chars: Character distance to search backwards (default: 500)
+
+    Returns:
+        True if any financial statement header found within proximity_chars before number
+
+    Examples:
+        >>> text = "CONSOLIDATED STATEMENTS OF OPERATIONS\\nRevenue $400,552"
+        >>> is_in_financial_statement_context(text, text.find("400,552"))
+        True
+
+        >>> text = "We had 400,552 daily active users"
+        >>> is_in_financial_statement_context(text, text.find("400,552"))
+        False
+    """
+    # Look backwards from number position
+    search_start = max(0, number_position - proximity_chars)
+    search_text = text[search_start:number_position]
+
+    # Check for any financial statement header pattern
+    return any(pattern.search(search_text) for pattern in FINANCIAL_STATEMENT_HEADERS)
+
+
+def contains_financial_line_item_keyword(text: str) -> str | None:
+    """
+    Check if text contains financial statement line item keywords.
+
+    These keywords indicate financial accounting line items (Revenue, Cost of
+    Revenue, Total Assets, etc.) which should not be treated as customer metrics,
+    even though terms like "revenue" might appear in customer metric keyword lists.
+
+    Args:
+        text: Text to search (typically context text around a number)
+
+    Returns:
+        The matching keyword if found (lowercase), None otherwise
+
+    Examples:
+        >>> contains_financial_line_item_keyword("Revenue [CELL] $400,552")
+        'revenue'
+
+        >>> contains_financial_line_item_keyword("Total assets $1,198,956")
+        'total assets'
+
+        >>> contains_financial_line_item_keyword("Daily active users: 10 million")
+        None
+    """
+    text_lower = text.lower()
+
+    # Check for line item keywords (longest first to match "total revenue" before "revenue")
+    # Sort by length descending
+    sorted_keywords = sorted(FINANCIAL_LINE_ITEM_KEYWORDS, key=len, reverse=True)
+
+    for keyword in sorted_keywords:
+        if keyword in text_lower:
+            return keyword
+
+    return None
+
+
+# =============================================================================
 # Helper Functions for Table of Contents Detection
 # =============================================================================
 
@@ -366,6 +589,8 @@ class FalsePositiveFilter:
         filter_years: bool = DEFAULT_CONFIG.filter_years,
         toc_proximity_chars: int = DEFAULT_CONFIG.toc_proximity_chars,
         toc_dot_leader_window: int = DEFAULT_CONFIG.toc_dot_leader_window,
+        filter_financial_statements: bool = True,  # HRV-10/HRV-11
+        financial_statement_proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS,
     ):
         """
         Initialize the false positive filter.
@@ -376,12 +601,16 @@ class FalsePositiveFilter:
             filter_years: Whether to filter year-like values (default from config)
             toc_proximity_chars: TOC header proximity threshold (default from config, L2)
             toc_dot_leader_window: Dot leader search window (default from config, L2)
+            filter_financial_statements: Whether to filter financial statement line items (HRV-10/11)
+            financial_statement_proximity_chars: Financial statement header proximity threshold (HRV-10)
         """
         self.filter_enabled = filter_enabled
         self.min_value = min_value
         self.filter_years = filter_years
         self.toc_proximity_chars = toc_proximity_chars
         self.toc_dot_leader_window = toc_dot_leader_window
+        self.filter_financial_statements = filter_financial_statements
+        self.financial_statement_proximity_chars = financial_statement_proximity_chars
 
     def is_false_positive(
         self, text: str, number: NumberMatch
@@ -474,5 +703,24 @@ class FalsePositiveFilter:
                 # Check if our number overlaps with the reference pattern
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "reference_number"
+
+        # HRV-11: Check if number appears in financial statement context
+        if self.filter_financial_statements:
+            # First check: Is this within a financial statement section?
+            in_fin_statement = is_in_financial_statement_context(
+                text, start, self.financial_statement_proximity_chars
+            )
+
+            if in_fin_statement:
+                # Second check: Does the local context contain financial line item keywords?
+                financial_keyword = contains_financial_line_item_keyword(local_context)
+
+                if financial_keyword:
+                    logger.debug(
+                        f"Financial statement filter: number={number.raw_text} "
+                        f"keyword={financial_keyword!r} "
+                        f"context={text[max(0, start-50):min(len(text), end+50)]!r}"
+                    )
+                    return True, f"financial_line_item:{financial_keyword}"
 
         return False, None
