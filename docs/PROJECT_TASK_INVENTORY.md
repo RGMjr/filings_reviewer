@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2025-12-26 (GR-18 complete - Final validation report)
+**Last Verified**: 2025-12-26 (Wave 4 added - Human Review Validation)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,10 +13,12 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| **TOTAL** | **40** | **37** | **0** | **1** | **2** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 14 | 4 | 1 | 9 | 0 |
+| **TOTAL** | **54** | **41** | **1** | **10** | **2** |
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Remaining Work**: GR-10 (validation re-run pending), GR-16 (blocked on data integrity)
+**Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
+**Remaining Work**: GR-10, GR-16 blocked, HRV-3 in progress, HRV-5/6 pending, HRV-7 through HRV-14 (system improvements) pending
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -37,6 +39,11 @@
 **Location**: `docs/archive/improvement-plans-completed/HUMAN_REVIEW_INTERFACE_IMPROVEMENTS.md`
 **Status**: Complete (11/12) - 1 task blocked on multi-user infrastructure
 **Goal**: Improve reviewer productivity and UX
+
+### HUMAN_REVIEW_VALIDATION_PLAN.md
+**Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
+**Status**: 🟡 IN PROGRESS - 14 tasks (Phases 1-4), Wave 4
+**Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
 ---
 
@@ -150,6 +157,60 @@
 
 ---
 
+### HUMAN_REVIEW_VALIDATION Tasks (HRV-Series)
+
+**Goal**: Build confidence in segmentation and metric identification before scaling
+**Plan Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
+
+| ID | Name | Size | Time | Risk | Status | Dependencies |
+|----|------|------|------|------|--------|--------------|
+| **HRV-1** | Improve gold standard CSV schema | S | 1-2h | LOW | ✅ COMPLETE | None |
+| **HRV-2** | Create validation scripts | M | 2-3h | NONE | ✅ COMPLETE | None |
+| **HRV-3** | Review Slack filing (validation) | M | 2-3h | NONE | 🟡 IN PROGRESS | HRV-2 |
+| **HRV-4** | Review Farfetch filing (validation) | L | 3-4h | NONE | ✅ COMPLETE | HRV-2 |
+| **HRV-5** | Review new filings (expansion) | XL | 6-8h | NONE | 🟡 PENDING | HRV-3, HRV-4 |
+| **HRV-6** | Analysis and pattern documentation | M | 2-3h | NONE | 🟡 PENDING | HRV-5 |
+
+**Phases 1-3 Total**: 🟡 IN PROGRESS (4/6 tasks complete, HRV-3 in progress)
+
+---
+
+#### Phase 4: System Improvements (from HRV-4 Analysis)
+
+Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), implement system improvements to reduce FPs and increase recall.
+
+| ID | Name | Size | Time | Risk | Status | Dependencies |
+|----|------|------|------|------|--------|--------------|
+| **HRV-7** | Metric ID normalization mapping | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-8** | Percentage filter for count metrics | S | 1-2h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-9** | Growth rate detection patterns | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-10** | Financial statement line item patterns | M | 3-4h | MEDIUM | 🟡 PENDING | HRV-4 |
+| **HRV-11** | Financial statement context filter | M | 2-3h | MEDIUM | 🟡 PENDING | HRV-10 |
+| **HRV-12** | Industry-specific keyword weighting | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-13** | Definition-only mode | S | 1-2h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-14** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | 🟡 PENDING | HRV-7 through HRV-13 |
+
+**Phase 4 Total**: 0/8 tasks complete, ~19h sequential, ~12h with parallelization
+
+**Phase 4 Files to Modify**:
+- `scripts/validate_against_gold_standard.py` (HRV-7)
+- `src/review/config.py` (HRV-7, HRV-8, HRV-11, HRV-13)
+- `src/review/false_positive_filter.py` (HRV-8, HRV-10, HRV-11)
+- `src/extraction/metric_classifier.py` (HRV-9, HRV-12)
+- `src/review/keyword_matching.py` (HRV-9, HRV-12)
+- `src/review/table_structure.py` (HRV-10)
+- `src/review/candidate_generator.py` (HRV-11, HRV-13)
+- `src/review/models.py` (HRV-13)
+
+**Phase 4 Success Metrics** (Target after HRV-14):
+| Metric | Before (HRV-4) | Target |
+|--------|----------------|--------|
+| Precision | 10.4% | ≥25% |
+| Recall | 49.3% | ≥60% |
+| F1 Score | 17.2% | ≥35% |
+
+---
+
 ## Parallel Execution Plan
 
 ### Wave 1: Quick Wins ✅ COMPLETE
@@ -209,6 +270,70 @@
 
 ---
 
+### Wave 4: Human Review Validation (14 tasks in 4 phases)
+**Elapsed Time**: ~24 hours (with parallelization)
+**Prerequisites**: Wave 3 ✅ Complete
+**Goal**: Build confidence in segmentation and metric identification, then implement system improvements
+
+#### Wave 4 Phases 1-3: Validation (6 tasks)
+
+| Worker | Task | Plan | Time | Dependencies | Status |
+|--------|------|------|------|--------------|--------|
+| 1 | HRV-1 | HRV Phase 1 | 1-2h | None | ✅ COMPLETE |
+| 2 | HRV-2 | HRV Phase 1 | 2-3h | None | ✅ COMPLETE |
+| 3 | HRV-3 | HRV Phase 2 | 2-3h | HRV-2 | 🟡 IN PROGRESS |
+| 4 | HRV-4 | HRV Phase 2 | 3-4h | HRV-2 | ✅ COMPLETE |
+| 5 | HRV-5 | HRV Phase 3 | 6-8h | HRV-3, HRV-4 | 🟡 PENDING |
+| 6 | HRV-6 | HRV Phase 3 | 2-3h | HRV-5 | 🟡 PENDING |
+
+#### Wave 4 Phase 4: System Improvements (8 tasks)
+
+| Worker | Task | Plan | Time | Dependencies | Status |
+|--------|------|------|------|--------------|--------|
+| 7 | HRV-7 | HRV Phase 4a | 2-3h | HRV-4 | 🟡 PENDING |
+| 8 | HRV-8 | HRV Phase 4a | 1-2h | HRV-4 | 🟡 PENDING |
+| 9 | HRV-9 | HRV Phase 4a | 2-3h | HRV-4 | 🟡 PENDING |
+| 10 | HRV-10 | HRV Phase 4b | 3-4h | HRV-4 | 🟡 PENDING |
+| 11 | HRV-11 | HRV Phase 4b | 2-3h | HRV-10 | 🟡 PENDING |
+| 12 | HRV-12 | HRV Phase 4c | 2-3h | HRV-4 | 🟡 PENDING |
+| 13 | HRV-13 | HRV Phase 4c | 1-2h | HRV-4 | 🟡 PENDING |
+| 14 | HRV-14 | HRV Phase 4d | 1h | HRV-7 through HRV-13 | 🟡 PENDING |
+
+**Wave 4 Deliverables**:
+- ✅ Improved gold standard CSV schema (HRV-1)
+- ✅ Validation scripts for precision/recall measurement (HRV-2)
+- 🟡 Slack and Farfetch filings validated against gold standard (HRV-3, HRV-4)
+- 🟡 4+ new filings reviewed, 50+ metrics added to gold standard (HRV-5)
+- 🟡 FP/FN pattern documentation (HRV-6)
+- 🟡 System improvements: Metric ID normalization, FP filters, growth detection (HRV-7 through HRV-13)
+- 🟡 Post-improvement validation with target: 25%+ precision, 60%+ recall (HRV-14)
+
+**Wave 4 Dependency Graph**:
+```
+HRV-1 (CSV Schema) ─────────────────────────────────────────────────────────────────────────────┐
+                                                                                                 │
+HRV-2 (Scripts) ──┬──> HRV-3 (Slack) ──────────────────────┬──> HRV-5 (New) ──> HRV-6 (Analysis)│
+                  │                                         │                                    │
+                  └──> HRV-4 (Farfetch) ───────────────────┴───────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┬───────────────┐
+              ▼               ▼               ▼               ▼
+        HRV-7 (Metric ID) HRV-8 (% Filter) HRV-9 (Growth) HRV-12 (Industry)
+              │               │               │               │
+              │               │               │           HRV-13 (Def-Only)
+              │               │               │               │
+        HRV-10 (FinStmt Patterns)            │               │
+              │                               │               │
+        HRV-11 (FinStmt Filter)              │               │
+              │                               │               │
+              └───────────────┴───────────────┴───────────────┘
+                              │
+                              ▼
+                    HRV-14 (Validation Re-run)
+```
+
+---
+
 ## Critical Path Analysis
 
 ```
@@ -219,19 +344,26 @@
                     └─────────────────────────┬───────────────────────────┘
                                               │
                     ┌─────────────────────────▼───────────────────────────┐
-                    │                    WAVE 2 (5h)                      │
+                    │              WAVE 2 ✅ COMPLETE (5h)                │
                     │  GR-10, GR-11, GR-12, GR-13, GR-14, GR-16, GR-17   │
-                    │  EA-1 (optional track)                              │
+                    │  EA-1 (Implemented 2025-12-25/26)                   │
                     └─────────────────────────┬───────────────────────────┘
                                               │
                     ┌─────────────────────────▼───────────────────────────┐
-                    │                    WAVE 3 (4h)                      │
-                    │  GR-15, GR-18, EA-2, EA-3 (optional)               │
+                    │              WAVE 3 ✅ COMPLETE (4h)                │
+                    │  GR-15, GR-18, EA-2, EA-3                          │
+                    │  (Implemented 2025-12-26)                           │
+                    └─────────────────────────┬───────────────────────────┘
+                                              │
+                    ┌─────────────────────────▼───────────────────────────┐
+                    │                WAVE 4 🟡 IN PROGRESS (~24h)         │
+                    │  HRV-1 through HRV-14 (Validation + System Improve) │
+                    │  Phases 1-3: Validation | Phase 4: Improvements     │
                     └─────────────────────────────────────────────────────┘
 
-Remaining Elapsed Time: ~9 hours (with 8 parallel workers)
-Remaining Work Hours: ~25 hours
-Parallelization Factor: 3x
+Waves 1-3 Complete: 37/40 tasks (93%)
+Wave 4 In Progress: 14 tasks (4 complete, 1 in progress, 9 pending)
+Total Remaining Work: ~24h with parallelization
 ```
 
 ---
@@ -246,6 +378,12 @@ GR-15 ← GR-13,14     # Performance tests need optimizations
 GR-18 ← GR-10,16,17  # Final report needs all validation data
 EA-2 ← EA-1          # CandidateDetector needs StructureParser
 EA-3 ← EA-1          # Table-aware context needs StructureParser
+HRV-3 ← HRV-2        # Slack review needs validation scripts
+HRV-4 ← HRV-2        # Farfetch review needs validation scripts
+HRV-5 ← HRV-3,4      # New filings need validation patterns from known filings
+HRV-6 ← HRV-5        # Analysis needs all review data
+HRV-11 ← HRV-10      # Financial context filter needs line item patterns
+HRV-14 ← HRV-7,8,9,10,11,12,13  # Final validation needs all improvements
 ```
 
 ### Soft Dependencies (Can Start Early)
@@ -254,6 +392,9 @@ GR-11,12,13,14 ← (none)  # Code quality tasks are independent
 GR-16 ← Data fix needed  # BLOCKED on data integrity issue
 GR-17 ← (none)           # Labeling tasks are independent
 EA-1 ← EI-7              # Already satisfied (EI-7 complete)
+HRV-1 ← (none)           # CSV schema can start immediately
+HRV-2 ← (none)           # Validation scripts can start immediately
+HRV-7,8,9,10,12,13 ← HRV-4  # Phase 4 improvements depend on HRV-4 analysis (can run parallel)
 ```
 
 ---
@@ -354,11 +495,29 @@ Reference the specific task section in the corresponding plan document:
 - [x] GR-17: New industry filings added ✅ 2025-12-26 (Coinbase, Shopify, Teladoc)
 - [x] EA-1: StructureParser created (completed 2025-12-25)
 
-### Wave 3 Checklist
+### Wave 3 Checklist ✅ COMPLETE
 - [x] GR-15: Performance tests added ✅ 2025-12-26 (13 tests in tests/performance/)
 - [x] GR-18: Final validation report ✅ 2025-12-26 (80% recall, 95% precision achieved)
 - [x] EA-2: Unified CandidateDetector ✅ 2025-12-26
 - [x] EA-3: Table-aware context ✅ 2025-12-26
+
+### Wave 4 Checklist (Human Review Validation - Phases 1-3)
+- [x] HRV-1: Improve gold standard CSV schema ✅ 2025-12-26 (6 new columns added)
+- [x] HRV-2: Create validation scripts ✅ 2025-12-26 (28 tests, precision/recall metrics)
+- [ ] HRV-3: Review Slack filing (validation) 🟡 IN PROGRESS (111 candidates generated, awaiting manual review)
+- [x] HRV-4: Review Farfetch filing (validation) ✅ 2025-12-26 (316 candidates, 10.4% precision, 49.3% recall; see docs/analysis/HRV-4_FARFETCH_VALIDATION.md)
+- [ ] HRV-5: Review new filings (expansion)
+- [ ] HRV-6: Analysis and pattern documentation
+
+### Wave 4 Checklist (System Improvements - Phase 4)
+- [ ] HRV-7: Metric ID normalization mapping 🟡 PENDING (map system IDs to gold standard taxonomy)
+- [ ] HRV-8: Percentage filter for count metrics 🟡 PENDING (filter % values for customer count metrics)
+- [ ] HRV-9: Growth rate detection patterns 🟡 PENDING (add "X growth" patterns)
+- [ ] HRV-10: Financial statement line item patterns 🟡 PENDING (detect income/balance/cash flow line items)
+- [ ] HRV-11: Financial statement context filter 🟡 PENDING (depends on HRV-10)
+- [ ] HRV-12: Industry-specific keyword weighting 🟡 PENDING (GMV, take rate context restrictions)
+- [ ] HRV-13: Definition-only mode 🟡 PENDING (detect metric definitions without values)
+- [ ] HRV-14: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 25%+ precision, 60%+ recall)
 
 ---
 
@@ -392,6 +551,25 @@ Reference the specific task section in the corresponding plan document:
 
 **Production Recommendation**: APPROVED
 
+### After Wave 4 Phases 1-3 (Validation) - IN PROGRESS
+| Metric | Target | Current |
+|--------|--------|---------|
+| Filings reviewed | All 11 in database | 2/11 (Slack in progress, Farfetch complete) |
+| Precision on high-confidence candidates | ≥90% | 10.4% (Farfetch) |
+| Recall vs gold standard | ≥80% | 49.3% (Farfetch) |
+| New metrics labeled | 50+ | TBD |
+| FP patterns documented | 5+ | ✅ 5+ (see HRV-4_FARFETCH_VALIDATION.md) |
+| FN patterns documented | 5+ | ✅ 5+ (see HRV-4_FARFETCH_VALIDATION.md) |
+
+### After Wave 4 Phase 4 (System Improvements) - PENDING
+| Metric | Before (HRV-4) | Target |
+|--------|----------------|--------|
+| Precision | 10.4% | ≥25% |
+| Recall | 49.3% | ≥60% |
+| F1 Score | 17.2% | ≥35% |
+| False Positives | 283 | ≤150 |
+| False Negatives | 34 | ≤25 |
+
 ---
 
-*Last verified: 2025-12-26 (GR-18 complete - Final validation report)*
+*Last verified: 2025-12-26 (HRV-7 through HRV-14 system improvement tasks added)*
