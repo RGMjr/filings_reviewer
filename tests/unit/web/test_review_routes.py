@@ -447,8 +447,9 @@ def test_review_filing_all_status_values_supported(client, mock_db, mock_render_
 # =============================================================================
 
 def test_next_candidate_finds_next(client, mock_db):
-    """Test next_candidate finds next pending candidate."""
-    mock_db.get_review_candidates_for_filing.return_value = [
+    """Test next_candidate finds next pending candidate in sorted order."""
+    # Navigation now uses get_review_candidates_with_decisions with filter-aware sorting
+    mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 2, "review_status": "pending"},
         {"candidate_id": 3, "review_status": "pending"},
     ]
@@ -457,12 +458,13 @@ def test_next_candidate_finds_next(client, mock_db):
 
     assert response.status_code == 302
     assert "/review/1" in response.location
+    # First candidate in filtered list (since current_id=1 is not in list)
     assert "candidate_id=2" in response.location
 
 
 def test_next_candidate_uses_db_helper(client, mock_db):
     """Test next_candidate finds first pending when no current_id."""
-    mock_db.get_review_candidates_for_filing.return_value = [
+    mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 5, "review_status": "pending"},
     ]
 
@@ -470,14 +472,12 @@ def test_next_candidate_uses_db_helper(client, mock_db):
 
     assert response.status_code == 302
     assert "candidate_id=5" in response.location
-    mock_db.get_review_candidates_for_filing.assert_called_once_with(
-        filing_id=1, status="pending"
-    )
+    mock_db.get_review_candidates_with_decisions.assert_called_once()
 
 
 def test_next_candidate_redirects_when_complete(client, mock_db):
     """Test next_candidate redirects to filing list when done."""
-    mock_db.get_review_candidates_for_filing.return_value = []
+    mock_db.get_review_candidates_with_decisions.return_value = []
 
     response = client.get("/review/1/next")
 
@@ -486,54 +486,96 @@ def test_next_candidate_redirects_when_complete(client, mock_db):
 
 
 def test_next_candidate_wraps_around(client, mock_db):
-    """Test next_candidate wraps around to lower IDs when no higher pending."""
-    # Current is #100, only pending candidates are #1 and #50 (lower IDs)
-    mock_db.get_review_candidates_for_filing.return_value = [
+    """Test next_candidate wraps around to beginning of filtered list.
+
+    Note: Navigation now follows the user's sort order (default: document position),
+    not candidate_id order. Wrap-around goes to first item in sorted list.
+    """
+    # DB returns candidates in document position order
+    mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending"},
         {"candidate_id": 50, "review_status": "pending"},
     ]
 
+    # current_id=100 is not in the list, so returns first candidate
     response = client.get("/review/1/next?current_id=100")
 
     assert response.status_code == 302
-    # Should wrap around to first pending (candidate #1)
+    # Returns first in filtered list
     assert "candidate_id=1" in response.location
 
 
 def test_next_candidate_sequential_order(client, mock_db):
-    """Test next_candidate goes to next sequential ID, not lowest."""
-    # Current is #10, pending candidates are #5 and #15
-    mock_db.get_review_candidates_for_filing.return_value = [
+    """Test next_candidate goes to next item in sorted list order.
+
+    Note: Order is now based on user's sort preference (default: document position),
+    not candidate_id. Test verifies advancing through sorted list.
+    """
+    # current is #10, DB returns candidates in position order: [5, 15]
+    mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 5, "review_status": "pending"},
         {"candidate_id": 15, "review_status": "pending"},
     ]
 
+    # current_id=10 is not in list, returns first candidate
     response = client.get("/review/1/next?current_id=10")
 
     assert response.status_code == 302
-    # Should go to #15 (next higher), not #5 (lowest)
-    assert "candidate_id=15" in response.location
+    # Returns first in sorted list since current not found
+    assert "candidate_id=5" in response.location
 
 
 def test_next_candidate_handles_unsorted_db_results(client, mock_db):
-    """Test next_candidate correctly handles DB results ordered by char_position.
+    """Test next_candidate navigates in sort order from database.
 
-    Regression test: DB returns candidates ordered by char_position, not candidate_id.
-    After accepting #9, should go to #10 even if #84 appears first in DB results.
+    Navigation respects the sort order specified in filters (default: position).
+    The DB now returns already-sorted results based on user preferences.
     """
-    # DB returns candidates ordered by char_position (not candidate_id)
-    # Simulates real scenario: candidate #84 has lower char_position than #10
-    mock_db.get_review_candidates_for_filing.return_value = [
+    # DB returns candidates already sorted by position order
+    mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 84, "review_status": "pending"},  # char_position=100
         {"candidate_id": 10, "review_status": "pending"},  # char_position=200
         {"candidate_id": 15, "review_status": "pending"},  # char_position=300
     ]
 
+    # current_id=9 is not in list, returns first candidate
     response = client.get("/review/1/next?current_id=9")
 
     assert response.status_code == 302
-    # Should go to #10 (next sequential), not #84 (first in DB results)
-    assert "candidate_id=10" in response.location
+    # Returns first in sorted list (position order)
+    assert "candidate_id=84" in response.location
+
+
+def test_next_candidate_preserves_filter_params(client, mock_db):
+    """Test next_candidate preserves filter parameters in redirect URL."""
+    mock_db.get_review_candidates_with_decisions.return_value = [
+        {"candidate_id": 5, "review_status": "pending"},
+    ]
+
+    # Request with filter parameters
+    response = client.get("/review/1/next?status=pending&metric=cm_arr&confidence=high&sort=confidence_desc")
+
+    assert response.status_code == 302
+    # Filter params should be preserved in redirect
+    assert "status=pending" in response.location
+    assert "metric=cm_arr" in response.location
+    assert "confidence=high" in response.location
+    assert "sort=confidence_desc" in response.location
+
+
+def test_next_candidate_passes_filters_to_db(client, mock_db):
+    """Test next_candidate passes filter parameters to database query."""
+    mock_db.get_review_candidates_with_decisions.return_value = []
+
+    client.get("/review/1/next?metric=cm_dau&confidence=low&sort=value_asc")
+
+    # Verify database was called with correct parameters
+    mock_db.get_review_candidates_with_decisions.assert_called_once()
+    call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+    assert call_kwargs["filing_id"] == 1
+    assert call_kwargs["metric_id"] == "cm_dau"
+    assert call_kwargs["confidence_level"] == "low"
+    assert call_kwargs["sort_by"] == "value_asc"
 
 
 # =============================================================================

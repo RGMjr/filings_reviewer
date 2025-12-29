@@ -49,4 +49,4 @@ htmlcov/
 !docs/archive/
 
 # Claude setup
-.claude.json
+.claude.json*.egg-info/

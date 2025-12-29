@@ -131,6 +131,8 @@ METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     "cm_active_customers_total": ["integer", "currency"],  # "$X customers" appears
     "cm_active_customers_enterprise": ["integer"],
     "cm_active_customers_smb": ["integer"],
+    "cm_customers_period_end": ["integer"],  # Paid customers, free orgs, etc.
+    "cm_large_customers_period_end": ["integer"],  # Enterprise customers >$100k ARR
     "cm_total_users": ["integer"],
     "cm_dau": ["integer"],
     "cm_mau": ["integer"],

@@ -1290,3 +1290,318 @@ class TestMeasurementUnitPatterns:
         is_fp2, reason2 = filter.is_false_positive(text2, number2)
         assert is_fp2 is True
         assert reason2 == "reference_number"
+
+
+# =============================================================================
+# HRV-10: Financial Statement Context Detection Tests
+# =============================================================================
+
+
+class TestFinancialStatementDetection:
+    """Tests for HRV-10 financial statement context detection."""
+
+    def test_is_in_financial_statement_context_income_statement(self):
+        """Should detect Consolidated Statements of Operations header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+(In thousands, except per share data)
+
+Revenue $400,552 $318,519 $255,843"""
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_balance_sheet(self):
+        """Should detect Consolidated Balance Sheets header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED BALANCE SHEETS
+(In thousands)
+
+Total assets $1,198,956"""
+        position = text.find("1,198,956")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_cash_flow(self):
+        """Should detect Statements of Cash Flows header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED STATEMENTS OF CASH FLOWS
+(In thousands)
+
+Net cash from operating activities $125,000"""
+        position = text.find("125,000")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_summary_data(self):
+        """Should detect Summary Financial Data header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """SUMMARY CONSOLIDATED FINANCIAL DATA
+(In thousands)
+
+Revenue $400,552"""
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_negative(self):
+        """Should NOT detect financial statement context for regular text."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = "We had 10 million daily active users in Q4 2023."
+        position = text.find("10")
+        assert is_in_financial_statement_context(text, position) is False
+
+    def test_is_in_financial_statement_context_respects_proximity(self):
+        """Should NOT detect if header is too far away."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        header = "CONSOLIDATED STATEMENTS OF OPERATIONS\n"
+        filler = "x" * 600  # Exceeds default 500 char proximity
+        text = header + filler + "Revenue $400,552"
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is False
+
+    def test_contains_financial_line_item_keyword_revenue(self):
+        """Should detect 'revenue' keyword."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Revenue [CELL] $400,552")
+        assert result == "revenue"
+
+    def test_contains_financial_line_item_keyword_total_assets(self):
+        """Should detect 'total assets' keyword (multi-word)."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Total assets $1,198,956")
+        assert result == "total assets"
+
+    def test_contains_financial_line_item_keyword_cost_of_revenue(self):
+        """Should detect 'cost of revenue' keyword (multi-word)."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Cost of revenue $200,000")
+        assert result == "cost of revenue"
+
+    def test_contains_financial_line_item_keyword_negative(self):
+        """Should NOT detect customer metric text."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Daily active users: 10 million")
+        assert result is None
+
+    def test_contains_financial_line_item_case_insensitive(self):
+        """Should match regardless of case."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("GROSS PROFIT $150,000")
+        assert result == "gross profit"
+
+    def test_financial_statement_filter_integration(self):
+        """Integration test: filter should flag financial statement line items."""
+        fp_filter = FalsePositiveFilter(filter_financial_statements=True)
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+(In thousands)
+
+Revenue $400,552 $318,519"""
+
+        number = NumberMatch(
+            start=text.find("400,552"),
+            end=text.find("400,552") + 7,
+            raw_text="$400,552",
+            value=Decimal("400552"),
+            unit="currency",
+        )
+
+        is_fp, reason = fp_filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason is not None
+        assert reason.startswith("financial_line_item:")
+
+    def test_financial_statement_filter_disabled(self):
+        """Should NOT filter when filter_financial_statements=False."""
+        fp_filter = FalsePositiveFilter(filter_financial_statements=False)
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+Revenue $400,552"""
+
+        number = NumberMatch(
+            start=text.find("400,552"),
+            end=text.find("400,552") + 7,
+            raw_text="$400,552",
+            value=Decimal("400552"),
+            unit="currency",
+        )
+
+        is_fp, reason = fp_filter.is_false_positive(text, number)
+        # Should not be flagged as financial_line_item when disabled
+        if reason is not None:
+            assert not reason.startswith("financial_line_item:")
+
+
+# =============================================================================
+# HRV-11: Metric Type Validation Tests
+# =============================================================================
+
+
+class TestMetricTypeValidation:
+    """Tests for HRV-11 type validation helper functions."""
+
+    def test_is_percentage_format_with_percent_sign(self):
+        """Should detect explicit percentage format."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("143%", "percentage") is True
+        assert is_percentage_format("85.5%", "percentage") is True
+
+    def test_is_percentage_format_with_unit(self):
+        """Should detect percentage from unit even without % sign."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("143", "percentage") is True
+
+    def test_is_percentage_format_decimal_ratio(self):
+        """Should detect decimal ratios as valid percentages (e.g., 1.25 = 125%)."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        # Retention rates often expressed as decimals
+        assert is_percentage_format("1.25", "count") is True  # 125%
+        assert is_percentage_format("0.85", "count") is True  # 85%
+        assert is_percentage_format("1.43", "count") is True  # 143%
+
+    def test_is_percentage_format_negative(self):
+        """Should NOT detect non-percentage formats."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("$143", "currency") is False
+        assert is_percentage_format("10000", "count") is False
+        assert is_percentage_format("5.5", "count") is False  # Outside 0.5-2.5 range
+
+    def test_is_dollar_format_with_dollar_sign(self):
+        """Should detect dollar format from $ sign."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("$100", "currency") is True
+        assert is_dollar_format("$1.5 million", "currency") is True
+
+    def test_is_dollar_format_with_unit(self):
+        """Should detect dollar format from unit."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("100", "currency") is True
+        assert is_dollar_format("100", "usd") is True
+
+    def test_is_dollar_format_negative(self):
+        """Should NOT detect non-dollar formats."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("100", "count") is False
+        assert is_dollar_format("85%", "percentage") is False
+
+    def test_is_count_format_plain_number(self):
+        """Should detect plain count format."""
+        from src.review.false_positive_filter import is_count_format
+
+        assert is_count_format("10000", "count") is True
+        assert is_count_format("1.5 million", "count") is True
+
+    def test_is_count_format_negative(self):
+        """Should NOT detect currency or percentage as count."""
+        from src.review.false_positive_filter import is_count_format
+
+        assert is_count_format("$100", "count") is False  # Has $ sign
+        assert is_count_format("85%", "count") is False   # Has % sign
+        assert is_count_format("100", "currency") is False  # Wrong unit
+
+    def test_percentage_only_metrics_set(self):
+        """PERCENTAGE_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import PERCENTAGE_ONLY_METRICS
+
+        assert "cm_net_revenue_retention" in PERCENTAGE_ONLY_METRICS
+        assert "cm_gross_margin_overall" in PERCENTAGE_ONLY_METRICS
+        assert "cm_customer_churn_rate" in PERCENTAGE_ONLY_METRICS
+
+    def test_dollar_only_metrics_set(self):
+        """DOLLAR_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import DOLLAR_ONLY_METRICS
+
+        assert "cm_arr" in DOLLAR_ONLY_METRICS
+        assert "cm_ltv" in DOLLAR_ONLY_METRICS
+        assert "cm_cac" in DOLLAR_ONLY_METRICS
+
+    def test_count_only_metrics_set(self):
+        """COUNT_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import COUNT_ONLY_METRICS
+
+        assert "cm_customer" in COUNT_ONLY_METRICS
+        assert "cm_daily_active_users" in COUNT_ONLY_METRICS
+        assert "cm_monthly_active_users" in COUNT_ONLY_METRICS
+
+
+# =============================================================================
+# HRV-10/11: Financial Statement Header Patterns Tests
+# =============================================================================
+
+
+class TestFinancialStatementHeaderPatterns:
+    """Tests for financial statement header pattern matching."""
+
+    def test_income_statement_variations(self):
+        """Should match various income statement header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED STATEMENTS OF OPERATIONS",
+            "Consolidated Statements of Income",
+            "STATEMENTS OF OPERATIONS",
+            "Income Statement",
+            "CONSOLIDATED RESULTS OF OPERATIONS",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_balance_sheet_variations(self):
+        """Should match various balance sheet header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED BALANCE SHEETS",
+            "Consolidated Balance Sheet",
+            "STATEMENTS OF FINANCIAL POSITION",
+            "Balance Sheet Data",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_cash_flow_variations(self):
+        """Should match various cash flow statement header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED STATEMENTS OF CASH FLOWS",
+            "Statements of Cash Flow",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_summary_data_variations(self):
+        """Should match summary financial data header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "SUMMARY CONSOLIDATED FINANCIAL DATA",
+            "Summary Financial Data",
+            "SELECTED FINANCIAL DATA",
+            "Summary Operating Data",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"

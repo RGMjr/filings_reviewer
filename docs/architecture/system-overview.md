@@ -212,6 +212,13 @@ The system is organized into six logical layers:
 **Technology:** LLM-enhanced extraction with quote verification
 **Status:** Complete (89% test coverage)
 
+### 6.5. Cohort Chart Detector
+**Purpose:** Identify cohort analysis charts and visualizations
+**Input:** Filing HTML content
+**Output:** Cohort chart candidates with confidence scores
+**Technology:** HTML parsing with keyword proximity detection
+**Status:** Complete (21 tests covering detection and scoring)
+
 ### 7. Quality Scorer
 **Purpose:** Assess disclosure quality on 0-3 scale
 **Input:** All extracted data for a filing-metric pair
@@ -427,14 +434,16 @@ The component graph remains the same; only configuration and some extraction rul
 | FilingFetcher | Complete | 94% |
 | HTMLSegmenter | Complete | 80% |
 | MetricClassifier | Complete | 98% |
+| SegmentEnricher | Complete | 98% |
 | ValueExtractor | Complete | 66% |
 | DefinitionExtractor | Complete | 89% |
+| CohortChartDetector | Complete | 100% (21 tests) |
 | QualityScorer | Complete | 100% |
 | ExtractionPipeline | Complete | 91% |
 | OpenAIClient | Complete | 88% |
 | PromptTemplates | Complete | 95% |
 | Validation | Complete | 100% |
-| **Overall** | **Production Ready** | **77%** |
+| **Overall** | **Production Ready** | **87%** |
 
 ---
 

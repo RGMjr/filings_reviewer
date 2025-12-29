@@ -21,6 +21,9 @@ from src.review.models import (
 )
 from src.web.app import get_db
 
+# Import needed for type annotations
+from typing import Any
+
 review_bp = Blueprint("review", __name__)
 logger = logging.getLogger(__name__)
 
@@ -524,7 +527,7 @@ def stats():
 
 @review_bp.route("/review/<int:filing_id>/next")
 def next_candidate(filing_id: int):
-    """Navigate to next pending candidate."""
+    """Navigate to next pending candidate, respecting active filters."""
     db = get_db()
     current_id_raw = request.args.get("current_id", type=int)
 
@@ -533,20 +536,38 @@ def next_candidate(filing_id: int):
         "current_id", current_id_raw, default=None, min_value=1, flash_errors=False
     )
 
+    # Extract filter parameters to maintain navigation consistency
+    filter_status = request.args.get("status", "all")
+    filter_metric = request.args.get("metric", "all")
+    filter_confidence = request.args.get("confidence", "all")
+    sort_by = request.args.get("sort", "position")
+
+    filters = {
+        "status": filter_status,
+        "metric": filter_metric,
+        "confidence": filter_confidence,
+        "sort": sort_by,
+    }
+
     try:
-        # Find next candidate using extracted helper
-        next_cand = _find_next_candidate(db, filing_id, current_id)
+        # Find next candidate using filter-aware helper
+        next_cand = _find_next_candidate(db, filing_id, current_id, filters)
 
         if next_cand:
-            return redirect(
-                url_for(
-                    "review.review_filing",
-                    filing_id=filing_id,
-                    candidate_id=next_cand["candidate_id"],
-                )
-            )
+            # Build redirect URL with filter parameters preserved
+            redirect_params = {"filing_id": filing_id, "candidate_id": next_cand["candidate_id"]}
+            if filter_status != "all":
+                redirect_params["status"] = filter_status
+            if filter_metric != "all":
+                redirect_params["metric"] = filter_metric
+            if filter_confidence != "all":
+                redirect_params["confidence"] = filter_confidence
+            if sort_by != "position":
+                redirect_params["sort"] = sort_by
+
+            return redirect(url_for("review.review_filing", **redirect_params))
         else:
-            flash("All candidates reviewed for this filing!", "success")
+            flash("All candidates matching your filters have been reviewed!", "success")
             return redirect(url_for("review.filing_list"))
 
     except Exception as e:
@@ -756,6 +777,10 @@ def _extract_decision_from_candidate(
     Candidates from get_review_candidates_with_decisions() include decision fields
     from a LEFT JOIN. This function extracts those fields into a separate dict.
 
+    **IMPORTANT**: Automated decisions (reviewer_id='hrv5_script') are treated as
+    suggestions that can be overridden by humans. They are returned so the UI can
+    display them, but the template should allow human reviewers to override them.
+
     Args:
         candidate: Candidate record with optional decision fields
 
@@ -775,51 +800,94 @@ def _extract_decision_from_candidate(
         "reviewer_id": candidate.get("reviewer_id"),
         "review_time_seconds": candidate.get("review_time_seconds"),
         "created_at": candidate.get("decision_created_at"),
+        "is_automated": candidate.get("reviewer_id") == "hrv5_script",  # Flag automated decisions
     }
 
 
 def _find_next_candidate(
     db,
     filing_id: int,
-    current_id: int | None
+    current_id: int | None,
+    filters: dict[str, str] | None = None,
 ) -> dict | None:
     """
-    Find the next pending candidate for a filing.
+    Find the next pending candidate for a filing, respecting active filters.
 
-    Navigation order: First try to find the next sequential candidate
-    (candidate_id > current), then wrap around to lower IDs if none found.
+    Navigation advances through the filtered, sorted candidate list.
+    When reaching the end, wraps around to the beginning of the filtered list.
 
     Args:
         db: Database adapter instance
         filing_id: Filing ID to search within
         current_id: Current candidate ID to search after (or None)
+        filters: Optional dict with filter/sort settings:
+            - status: 'pending', 'reviewed', 'all' (default: navigates to pending only)
+            - metric: metric_id or 'all'
+            - confidence: 'high', 'medium', 'low', 'all'
+            - sort: 'position', 'confidence_asc', 'confidence_desc', 'value_asc', 'value_desc'
 
     Returns:
-        Next candidate dict, or None if no more pending candidates
+        Next candidate dict, or None if no more candidates matching filters
     """
-    # Get all pending candidates for this filing
-    candidates = db.get_review_candidates_for_filing(
-        filing_id=filing_id, status="pending"
+    filters = filters or {}
+
+    # Extract filter parameters
+    filter_status = filters.get("status", "all")
+    filter_metric = filters.get("metric", "all")
+    filter_confidence = filters.get("confidence", "all")
+    sort_by = filters.get("sort", "position")
+
+    # Convert to database query parameters
+    db_status = filter_status if filter_status in ("pending", "reviewed", "skipped", "in_progress") else None
+    db_metric_id = filter_metric if filter_metric != "all" else None
+    db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
+    db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
+
+    # When navigating "next", we always look for pending candidates (unless status filter is set)
+    # This ensures we skip reviewed candidates during normal review flow
+    if db_status is None:
+        db_status = "pending"
+
+    # Get filtered, sorted candidates
+    candidates = db.get_review_candidates_with_decisions(
+        filing_id=filing_id,
+        status=db_status,
+        metric_id=db_metric_id,
+        confidence_level=db_confidence,
+        sort_by=db_sort_by,
+        limit=None,
     )
 
     if not candidates:
         return None
 
-    # Sort by candidate_id for sequential navigation
-    # (DB returns ordered by char_position, not candidate_id)
-    sorted_candidates = sorted(candidates, key=lambda c: c["candidate_id"])
-
+    # Find current candidate index in the sorted list
+    current_index = None
     if current_id:
-        # First: try to find next pending candidate with higher ID (sequential)
-        higher_candidates = [c for c in sorted_candidates if c["candidate_id"] > current_id]
-        if higher_candidates:
-            return higher_candidates[0]  # First one after sorting = lowest ID > current
+        for i, c in enumerate(candidates):
+            if c["candidate_id"] == current_id:
+                current_index = i
+                break
 
-        # Wrap around: return first pending candidate (lowest ID)
-        return sorted_candidates[0]
+    # If current candidate is in the list, get the next one
+    if current_index is not None:
+        # Next candidate is the one after current in sorted order
+        next_index = current_index + 1
+        if next_index < len(candidates):
+            next_candidate = candidates[next_index]
+        else:
+            # Wrap around to beginning
+            next_candidate = candidates[0]
+
+        # Don't return the same candidate we're on
+        if next_candidate["candidate_id"] == current_id:
+            return None
+
+        return next_candidate
     else:
-        # No current_id: return first pending candidate (lowest ID)
-        return sorted_candidates[0]
+        # Current candidate not in filtered list (e.g., just reviewed it, or no current_id)
+        # Return the first candidate in the filtered list
+        return candidates[0]
 
 
 def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | None = None) -> str:

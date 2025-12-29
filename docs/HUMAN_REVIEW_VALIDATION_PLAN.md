@@ -532,6 +532,11 @@ Known filings (as of 2025-12-26):
 
 ---
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2025-12-29
 **Plan Owner**: Analytics Team
 **Status**: 🟡 IN PROGRESS - HRV-1 to HRV-5 complete, HRV-6 and Phase 4 (HRV-7 to HRV-16) pending
+
+**Recent Enhancements** (2025-12-29):
+- Cohort chart image detection implemented (segment-level + filing-level)
+- Enables identification of high-value cohort visualizations (ARR by cohort, LTV/CAC charts)
+- Complements text-based metric detection with visual analysis

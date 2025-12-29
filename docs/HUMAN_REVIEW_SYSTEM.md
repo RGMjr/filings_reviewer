@@ -190,6 +190,13 @@ config = get_high_recall_config()
 - Example: "contribution margin" excluded from CAC
 - 34 tests covering exclusion patterns
 
+### Cohort Chart Image Detection (2025-12-29)
+- Automated detection of cohort analysis charts in filings
+- Segment-level detection via `segment_enricher._detect_cohort_chart_images()`
+- Filing-level detection via `cohort_chart_detector.py`
+- Results stored in `extra_metadata["cohort_chart_candidates"]`
+- Enables human review of high-value visualizations (ARR by cohort, LTV/CAC, retention curves)
+
 ---
 
 ## Remaining Work

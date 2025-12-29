@@ -140,7 +140,13 @@ from src.review.exceptions import (
     SegmentProcessingError,
 )
 from src.review.false_positive_filter import (
+    COUNT_ONLY_METRICS,
+    DOLLAR_ONLY_METRICS,
+    PERCENTAGE_ONLY_METRICS,
     FalsePositiveFilter,
+    is_count_format,
+    is_dollar_format,
+    is_percentage_format,
 )
 from src.review.feature_extractor import (
     FeatureExtractor,
@@ -600,7 +606,8 @@ class CandidateGenerator:
                 # Phase 7: If no nearby keywords found, check context_prefix
                 # Context prefix contains the last sentence from the previous segment,
                 # which may provide relevant keyword context for list items, etc.
-                context_prefix = segment.get("context_prefix", "")
+                context_prefix_raw = segment.get("context_prefix", "")
+                context_prefix = str(context_prefix_raw) if context_prefix_raw else ""
                 from_context_prefix = False
                 if not keyword_matches and context_prefix:
                     # Search context_prefix for keywords
@@ -769,15 +776,6 @@ class CandidateGenerator:
 
         # HRV Type Validation: Filter candidates with wrong format for metric type
         if self.config.filter_false_positives:  # Reuse FP filter flag
-            from src.review.false_positive_filter import (
-                PERCENTAGE_ONLY_METRICS,
-                DOLLAR_ONLY_METRICS,
-                COUNT_ONLY_METRICS,
-                is_percentage_format,
-                is_dollar_format,
-                is_count_format,
-            )
-
             filtered_candidates = []
             for candidate in candidates:
                 metric_id = candidate.suggested_metric_id
@@ -870,7 +868,7 @@ class CandidateGenerator:
         all_keywords: list[KeywordMatch],
         boundaries: list[Any] | None = None,
         sentence_boundaries: list[Any] | None = None,
-        segment: dict[str, Any] | None = None,
+        segment: SegmentDict | None = None,
         table_row_parser: Any | None = None,
     ) -> list[KeywordMatch]:
         """

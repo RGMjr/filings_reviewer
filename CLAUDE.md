@@ -11,7 +11,7 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
 └── llm/            # OpenAI integration: openai_client.py, prompts.py
@@ -140,6 +140,13 @@ docker compose down
    - Feature flag: `USE_YAML_KEYWORDS=false` to revert to hardcoded patterns
    - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
    - Graceful fallback to hardcoded patterns if YAML fails to load
+9. **Cohort chart image detection** (2025-12-29): Automated detection of cohort analysis charts in filings:
+   - Segment-level detection via `segment_enricher._detect_cohort_chart_images()` (stores candidates in `extra_metadata`)
+   - Filing-level detection via `cohort_chart_detector.py` (reads source HTML directly for standalone images)
+   - Heuristic: "cohort" keyword within 1500 chars of `<img>` tags
+   - Confidence scoring: base 0.6 + bonuses for chart keywords (0.15), retention context (0.10), multiple keywords (0.10)
+   - Filters decorative images by size and naming patterns (icons, logos, bullets)
+   - Use case: Identify high-value cohort analysis visualizations (ARR by cohort, LTV/CAC, retention curves)
 
 ## Documentation
 
