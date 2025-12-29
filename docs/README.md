@@ -3,7 +3,7 @@
 **Project:** SEC Filings Customer Metrics Extraction System
 **Version:** 2.2
 **Status:** Production Ready
-**Last Updated:** 2025-12-27
+**Last Updated:** 2025-12-29
 
 ---
 
@@ -133,6 +133,7 @@ Historical documents for reference only. Not part of current operations.
 | HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Segment Enricher | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Cohort Chart Detector | ✅ Complete | 100% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
@@ -146,7 +147,7 @@ Historical documents for reference only. Not part of current operations.
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 
-**Overall Status:** ✅ **Production Ready** (75%+ test coverage, 3,129 tests)
+**Overall Status:** ✅ **Production Ready** (87% test coverage, 3,150+ tests)
 
 ---
 
@@ -321,11 +322,12 @@ When updating documentation:
 
 ## Version History
 
-### Version 2.2 (Current - 2025-12-27)
+### Version 2.2 (Current - 2025-12-29)
 - ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
 - ✅ HRV-1 through HRV-5 validation complete
 - ✅ Performance optimizations (+33% throughput)
 - ✅ Documentation reorganized and archive consolidated
+- ✅ Cohort chart image detection (segment-level + filing-level)
 
 ### Version 2.1 (2025-12-14)
 - ✅ Human review system (COMPLETE - Production Ready)

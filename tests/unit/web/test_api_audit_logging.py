@@ -117,6 +117,7 @@ class TestAuditLogContent:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -146,6 +147,7 @@ class TestAuditLogContent:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -176,6 +178,7 @@ class TestAuditLogContent:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -206,6 +209,7 @@ class TestAuditLogContent:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -295,6 +299,7 @@ class TestAuditLogContent:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -376,6 +381,7 @@ class TestAuditEdgeCases:
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
         mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []  # For next candidate navigation
         # Audit log fails
         mock_db.insert_audit_log.side_effect = Exception("Database connection lost")
 

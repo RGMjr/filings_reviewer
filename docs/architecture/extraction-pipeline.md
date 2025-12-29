@@ -317,6 +317,7 @@ enricher = SegmentEnricher(weights=FormulaWeights(
 | Cohort breakdowns | 1.5 | `1.5 if contains_cohort_breakdown else 0` |
 | Definitions | 1.0 | `1.0 if contains_definition_flag else 0` |
 | Images | 0-1.5 | `min(image_count * 0.5, 1.5)` |
+| Cohort charts | 0-1.0 | `0.5 per cohort chart candidate (max 1.0)` |
 
 **Goldmine Identification:**
 - Segments with `richness_score >= 6.0` are "goldmines"
@@ -330,6 +331,7 @@ enricher = SegmentEnricher(weights=FormulaWeights(
 - `_detect_temporal_trends()`: G5 - multi-year/period detection
 - `_detect_cohort_breakdowns()`: G6 - cohort analysis patterns
 - `_detect_images()`: G7 - meaningful image/chart count
+- `_detect_cohort_chart_images()`: Cohort chart candidate detection with confidence scoring
 - `_compute_richness_score()`: G8 - composite scoring
 
 **Design Notes:**
@@ -338,6 +340,106 @@ enricher = SegmentEnricher(weights=FormulaWeights(
 - Richness score computed LAST (depends on other enrichments)
 - Logs goldmine statistics after batch processing
 - All methods are stateless (patterns compiled at class level)
+
+---
+
+### 2.6. Cohort Chart Detector
+
+**Module:** `src/extraction/cohort_chart_detector.py`
+**Class:** `CohortChartDetector`
+**Status:** Complete (21 tests covering detection and confidence scoring)
+
+**Responsibilities:**
+- Detect cohort analysis charts and visualizations in filing HTML
+- Find images with "cohort" keywords in surrounding text (within 1500 chars)
+- Calculate confidence scores based on context quality
+- Filter decorative images (icons, logos, bullets)
+- Complement segment-level detection by analyzing standalone images
+
+**Interface:**
+
+```python
+@dataclass
+class CohortChartCandidate:
+    image_src: str           # Image source URL or filename
+    image_alt: str          # Alt text if available
+    keyword_matches: List[str]  # Matched cohort keywords
+    context_text: str       # Surrounding text (max 1500 chars)
+    confidence: float       # Score 0.0-1.0
+    position_in_doc: int    # Approximate character position
+
+class CohortChartDetector:
+    COHORT_CHART_KEYWORDS = ["cohort"]
+    CHART_INDICATOR_KEYWORDS = ["chart", "graph", "figure", "visualization"]
+    COHORT_IMAGE_PROXIMITY_CHARS = 1500  # Context window size
+
+    def detect_from_html(self, html_content: str) -> List[CohortChartCandidate]:
+        """
+        Detect cohort charts from HTML content.
+
+        Process:
+        1. Find all <img> tags in HTML
+        2. Filter decorative images (icons, logos, bullets)
+        3. Extract context window (1500 chars before/after)
+        4. Search for cohort keywords in context
+        5. Calculate confidence scores
+        6. Return candidates sorted by confidence
+
+        Args:
+            html_content: Raw HTML from SEC filing
+
+        Returns:
+            List of CohortChartCandidate objects
+        """
+
+    def detect_from_file(self, html_path: str) -> List[CohortChartCandidate]:
+        """Convenience method to detect from HTML file path."""
+```
+
+**Confidence Scoring:**
+
+| Component | Points | Condition |
+|-----------|--------|-----------|
+| Base score | 0.6 | Cohort keyword found near image |
+| Chart keywords | +0.15 | Context contains "chart", "graph", "figure" |
+| Retention context | +0.10 | Context mentions "retention" or "revenue" |
+| Multiple keywords | +0.10 | 2+ cohort keyword matches |
+| **Maximum** | **0.95** | All bonuses applied |
+
+**Decorative Image Filtering:**
+
+Images are excluded if they match any pattern:
+- Size: `width < 50px` or `height < 50px`
+- Filename: Contains "icon", "logo", "bullet", "arrow", "spacer"
+- Alt text: Generic terms like "bullet point", "decorative"
+
+**Use Cases:**
+
+1. **ARR by Cohort Charts**: Revenue retention visualizations (e.g., Slack S-1)
+2. **LTV/CAC by Cohort**: Customer economics charts (e.g., Farfetch F-1)
+3. **Retention Curves**: Cohort retention over time
+4. **Net Revenue Retention**: NRR breakdowns by customer cohort
+
+**Design Notes:**
+- Complements segment-level detection (which misses standalone images)
+- HTMLSegmenter captures images within segments, but not all images are segmented
+- Stores results in `extra_metadata["cohort_chart_candidates"]` at segment level
+- Filing-level detector provides comprehensive image analysis
+- No database access - operates on HTML strings
+
+**Example Output:**
+
+```python
+# Slack S-1: ARR by Cohort chart
+CohortChartCandidate(
+    image_src="mdaa2.jpg",
+    image_alt="ARR by Cohort",
+    keyword_matches=["cohort"],
+    context_text="The following chart shows our annual recurring revenue by customer cohort...",
+    confidence=0.85,
+    position_in_doc=125000
+)
+```
 
 ---
 

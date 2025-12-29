@@ -1424,3 +1424,154 @@ class TestGoldmineBonuses:
         # Multiple metrics + cohort pattern + temporal pattern + numeric
         assert result.classifier_confidence >= 0.6
         assert len(result.candidate_metric_ids) >= 1
+
+
+# ===== Customer Period End Metrics Tests =====
+
+
+class TestCustomerPeriodEndMetricPatterns:
+    """Test identification of customer period end metrics (cm_customers_period_end, cm_large_customers_period_end)."""
+
+    @pytest.fixture
+    def classifier(self):
+        return MetricClassifier()
+
+    @pytest.fixture
+    def sample_segment(self):
+        return SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            sequence_index=0,
+            raw_text="Sample text for testing",
+        )
+
+    # --- cm_customers_period_end Tests ---
+
+    def test_paid_customers(self, classifier, sample_segment):
+        """Test identification via 'paid customers' phrase."""
+        sample_segment.raw_text = "As of January 31, 2019, we had 88,000 Paid Customers."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    def test_paid_customer_singular(self, classifier, sample_segment):
+        """Test identification via singular 'paid customer'."""
+        sample_segment.raw_text = "Each Paid Customer contributes significantly to revenue."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    def test_organizations_free_subscription_plan(self, classifier, sample_segment):
+        """Test identification via 'organizations on free subscription plan'."""
+        sample_segment.raw_text = "More than 500,000 organizations on our Free subscription plan."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    def test_organizations_with_users(self, classifier, sample_segment):
+        """Test identification via 'organizations with X users'."""
+        sample_segment.raw_text = "Slack had more than 600,000 organizations with three or more users."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    def test_customers_period_end_parenthetical(self, classifier, sample_segment):
+        """Test identification via 'Customers (period end)' table header pattern."""
+        sample_segment.raw_text = "Paid Customers (period end) 42,000 47,000 52,000"
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    def test_paying_organizations(self, classifier, sample_segment):
+        """Test identification via 'paying organizations'."""
+        sample_segment.raw_text = "We have 50,000 paying organizations using our platform."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+
+    # --- cm_large_customers_period_end Tests ---
+
+    def test_paid_customers_greater_than_threshold(self, classifier, sample_segment):
+        """Test identification via 'Paid Customers >$100,000'."""
+        sample_segment.raw_text = "Paid Customers >$100,000 increased to 575 in 2019."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+
+    def test_enterprise_customers(self, classifier, sample_segment):
+        """Test identification via 'enterprise customers'."""
+        sample_segment.raw_text = "We had 1,200 enterprise customers at year end."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+
+    def test_large_enterprise_customers(self, classifier, sample_segment):
+        """Test identification via 'large enterprise customers'."""
+        sample_segment.raw_text = "Our large enterprise customers grew by 45% year-over-year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+
+    def test_customers_over_arr_threshold(self, classifier, sample_segment):
+        """Test identification via 'customers with over $X ARR'."""
+        sample_segment.raw_text = "Customers with over $100,000 in ARR totaled 800."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+
+    # --- Real-World Slack Example ---
+
+    def test_slack_paid_customers_real_example(self, classifier, sample_segment):
+        """Test realistic Slack S-1 disclosure language for paid customers."""
+        sample_segment.raw_text = (
+            "As of January 31, 2019, Slack had more than 600,000 organizations with "
+            "three or more users, comprised of more than 88,000 Paid Customers and "
+            "more than 500,000 organizations on our Free subscription plan."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+        assert result.contains_numeric_disclosure_flag is True
+
+    def test_slack_large_customers_real_example(self, classifier, sample_segment):
+        """Test realistic Slack S-1 disclosure for large customers (>$100k ARR)."""
+        sample_segment.raw_text = (
+            "We define Paid Customers >$100,000 as those organizations on a paid "
+            "subscription plan that had more than $100,000 in ARR as of a period end. "
+            "As of January 31, 2019, we had 575 Paid Customers >$100,000."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+        assert result.contains_numeric_disclosure_flag is True
+
+    # --- Negative Tests (should NOT match) ---
+
+    def test_not_generic_customer_keyword(self, classifier, sample_segment):
+        """Test that generic 'customer' alone doesn't match cm_customers_period_end."""
+        sample_segment.raw_text = "Our customer support team provides 24/7 assistance."
+        result = classifier.classify_segment(sample_segment)
+        # "customer" alone should NOT match cm_customers_period_end
+        # (it may match cm_active_customers_total via "customer base" patterns)
+        assert "cm_customers_period_end" not in result.candidate_metric_ids
+
+    def test_not_customer_satisfaction(self, classifier, sample_segment):
+        """Test that 'customer satisfaction' doesn't match customer count metrics."""
+        sample_segment.raw_text = "Customer satisfaction improved by 15% this year."
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" not in result.candidate_metric_ids
+        assert "cm_large_customers_period_end" not in result.candidate_metric_ids
+
+    # --- CMASB Extended Boost Tests ---
+
+    def test_customers_period_end_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that cm_customers_period_end receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Our Paid Customers grew from 37,000 to 88,000 during fiscal 2019, "
+            "representing growth of 138% year-over-year. We define Paid Customers "
+            "as organizations with three or more users on a paid subscription plan."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_customers_period_end" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        assert result.classifier_confidence >= 0.5
+
+    def test_large_customers_period_end_cmasb_extended_boost(self, classifier, sample_segment):
+        """Test that cm_large_customers_period_end receives CMASB extended boost."""
+        sample_segment.raw_text = (
+            "Paid Customers >$100,000 of annual recurring revenue increased from "
+            "135 to 575 during fiscal 2019. These large enterprise customers "
+            "represent our most strategic accounts and drive significant expansion."
+        )
+        result = classifier.classify_segment(sample_segment)
+        assert "cm_large_customers_period_end" in result.candidate_metric_ids
+        # Should have extended boost (0.1) applied
+        assert result.classifier_confidence >= 0.5
