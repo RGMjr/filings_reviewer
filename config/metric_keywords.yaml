@@ -217,20 +217,6 @@ cm_daily_active_users:
   specific_patterns:
     - 'daily\s+active\s+users?'
 
-cm_gross_margin_overall:
-  patterns:
-    - '\bgross\s+margin(?:\s+(?:was|of|is|at))?\s+\d'
-    - '\boverall\s+gross\s+margin\b'
-    - '\btotal\s+gross\s+margin\b'
-    - '\bgross\s+profit\s+margin\b'
-    - '\bgross\s+margin\s+(?:percentage|rate)\b'
-    - '\b(?<!cohort\s)(?<!by\s)gross\s+margin\b'
-    - '\bgross\s+profit\b'
-  exclusions:
-    - '\bby\s+cohort\b'
-    - '\bcohort\s+margin\b'
-    - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
-
 cm_gross_margin_by_cohort:
   patterns:
     - '\bgross\s+margin\s+by\s+cohort\b'

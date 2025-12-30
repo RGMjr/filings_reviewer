@@ -34,9 +34,9 @@ class TestSentenceFilteringIntegration:
     def test_cross_sentence_filtering_basic(self) -> None:
         """Test that numbers are matched to keywords in same sentence only."""
         # Problem example: two sentences, two different metrics
-        # Using actual keywords: "gross margin" and "active customers"
+        # Using actual keywords: "net revenue retention" and "active customers"
         text = (
-            "Gross margin increased from 52.3% to 54.1% in the period. "
+            "Net revenue retention increased from 110% to 115% in the period. "
             "We have 50,000 active customers worldwide."
         )
         segment = self._make_segment(text)
@@ -49,38 +49,38 @@ class TestSentenceFilteringIntegration:
             segments=[segment],
         )
 
-        # Should have candidates for gross margin and active customers
-        # But gross margin keywords should NOT match customer numbers and vice versa
-        gross_margin_candidates = [
-            c for c in candidates if c.suggested_metric_id == "cm_gross_margin_overall"
+        # Should have candidates for net revenue retention and active customers
+        # But NRR keywords should NOT match customer numbers and vice versa
+        nrr_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_net_revenue_retention"
         ]
         customer_candidates = [
             c for c in candidates if c.suggested_metric_id == "cm_active_customers_total"
         ]
 
-        # 52.3% and 54.1% should match gross margin (same sentence)
-        # Note: Percentages are parsed as decimal values (52.3% → 0.523)
+        # 110% and 115% should match net revenue retention (same sentence)
+        # Note: Percentages are parsed as decimal values (110% → 1.1)
         assert any(
-            c.parsed_value == Decimal("0.523") for c in gross_margin_candidates
-        ), f"Expected 52.3% (0.523) to match gross margin. Candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
+            c.parsed_value == Decimal("1.1") for c in nrr_candidates
+        ), f"Expected 110% (1.1) to match NRR. Candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
         assert any(
-            c.parsed_value == Decimal("0.541") for c in gross_margin_candidates
-        ), f"Expected 54.1% (0.541) to match gross margin. Candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
+            c.parsed_value == Decimal("1.15") for c in nrr_candidates
+        ), f"Expected 115% (1.15) to match NRR. Candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
 
         # 50,000 should match active customers (same sentence)
         assert any(
             c.parsed_value == Decimal("50000") for c in customer_candidates
         ), f"Expected 50,000 to match active customers. Candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
 
-        # 50,000 should NOT match gross margin (different sentence)
+        # 50,000 should NOT match net revenue retention (different sentence)
         assert not any(
-            c.parsed_value == Decimal("50000") for c in gross_margin_candidates
-        ), "50,000 should not match gross margin (different sentence)"
+            c.parsed_value == Decimal("50000") for c in nrr_candidates
+        ), "50,000 should not match net revenue retention (different sentence)"
 
     def test_sentence_filtering_disabled_high_recall(self) -> None:
         """Test that high recall config allows cross-sentence matches."""
         text = (
-            "Gross margin increased to 54.1% in the quarter. "
+            "Net revenue retention increased to 115% in the quarter. "
             "We have 50,000 active customers."
         )
         segment = self._make_segment(text)
@@ -100,7 +100,7 @@ class TestSentenceFilteringIntegration:
     def test_sentence_filtering_enabled_high_precision(self) -> None:
         """Test that high precision config enables sentence filtering."""
         text = (
-            "Gross margin was 54.1% for the quarter. "
+            "Net revenue retention was 115% for the quarter. "
             "Our active customers reached 50,000."
         )
         segment = self._make_segment(text)
@@ -114,19 +114,19 @@ class TestSentenceFilteringIntegration:
         )
 
         # Verify sentence filtering is working
-        gross_margin_candidates = [
-            c for c in candidates if c.suggested_metric_id == "cm_gross_margin_overall"
+        nrr_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_net_revenue_retention"
         ]
 
-        # 50,000 should NOT match gross margin (different sentence)
+        # 50,000 should NOT match net revenue retention (different sentence)
         assert not any(
-            c.parsed_value == Decimal("50000") for c in gross_margin_candidates
+            c.parsed_value == Decimal("50000") for c in nrr_candidates
         ), "High precision should filter cross-sentence matches"
 
     def test_table_segment_no_sentence_filtering(self) -> None:
         """Test that table segments skip sentence filtering by default."""
-        # Table text with actual keywords - "active customers" and "gross margin"
-        text = "Active customers: 50,000. Gross margin 45%."
+        # Table text with actual keywords - "active customers" and "net revenue retention"
+        text = "Active customers: 50,000. Net revenue retention 115%."
         segment = self._make_segment(text, segment_type="table")
 
         generator = CandidateGenerator()
@@ -143,7 +143,7 @@ class TestSentenceFilteringIntegration:
         """Test that multiple metrics in same sentence are preserved."""
         text = (
             "We grew our active customers to 100,000 while maintaining "
-            "a gross margin of 55% and net revenue retention of 110%."
+            "a churn rate of 5% and net revenue retention of 110%."
         )
         segment = self._make_segment(text)
 
@@ -157,7 +157,7 @@ class TestSentenceFilteringIntegration:
         # Should find candidates for all three metrics in the same sentence
         metric_ids = {c.suggested_metric_id for c in candidates}
         assert "cm_active_customers_total" in metric_ids, f"Expected cm_active_customers_total in {metric_ids}"
-        assert "cm_gross_margin_overall" in metric_ids, f"Expected cm_gross_margin_overall in {metric_ids}"
+        assert "cm_customer_churn_rate" in metric_ids, f"Expected cm_customer_churn_rate in {metric_ids}"
         assert "cm_net_revenue_retention" in metric_ids, f"Expected cm_net_revenue_retention in {metric_ids}"
 
     def test_abbreviations_not_sentence_breaks(self) -> None:

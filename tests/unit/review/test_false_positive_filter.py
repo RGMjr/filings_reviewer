@@ -1519,7 +1519,6 @@ class TestMetricTypeValidation:
         from src.review.false_positive_filter import PERCENTAGE_ONLY_METRICS
 
         assert "cm_net_revenue_retention" in PERCENTAGE_ONLY_METRICS
-        assert "cm_gross_margin_overall" in PERCENTAGE_ONLY_METRICS
         assert "cm_customer_churn_rate" in PERCENTAGE_ONLY_METRICS
 
     def test_dollar_only_metrics_set(self):

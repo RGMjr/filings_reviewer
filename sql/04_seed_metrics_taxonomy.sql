@@ -184,7 +184,7 @@ VALUES (
     1
 );
 
--- Gross Margin (Overall)
+-- Gross Margin (Overall) - DEPRECATED: Not a customer-specific metric
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_gross_margin_overall',
@@ -192,7 +192,7 @@ VALUES (
     'extended',
     'Overall gross profit margin percentage across all customers and products.',
     'financial_performance',
-    'active',
+    'deprecated',
     1
 );
 

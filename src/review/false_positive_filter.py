@@ -294,7 +294,6 @@ PERCENTAGE_ONLY_METRICS: set[str] = {
     'cm_gross_retention_rate',
     'cm_customer_retention_rate',
     'cm_customer_churn_rate',
-    'cm_gross_margin_overall',  # Gross margin should be %, not $ gross profit
     'cm_ltv_cac_ratio',  # Ratio, expect decimal or %
 }
 

@@ -69,24 +69,8 @@ def is_false_positive(candidate: dict) -> tuple[bool, str]:
     raw_value = candidate['raw_number_text']
     parsed_value = candidate.get('parsed_value')
 
-    # Pattern 1: Financial statement line items (cm_gross_margin_overall)
-    if metric_id == 'cm_gross_margin_overall':
-        # Check if context contains income statement structure
-        if any(pattern in context for pattern in [
-            'Consolidated Statements of Operations',
-            'Cost of revenue',
-            '[ROW] Revenue',
-            'Operating expenses',
-            '[ROW] Gross profit',
-            'Gross profit (loss):',
-            'Total cost of revenue',
-            'Professional services',
-            'Gross margin:',  # Table header for margin percentages
-            'Research and development',
-            'Sales and market',
-            'General and administrative',
-        ]):
-            return True, 'Financial statement line item, not disclosed customer metric'
+    # Pattern 1 (REMOVED): cm_gross_margin_overall is no longer tracked (deprecated 2025-12-29)
+    # It is not a customer-specific metric. See cm_gross_margin_by_cohort for cohort-level tracking.
 
     # Pattern 2: Deferred revenue - almost always FP as it's a financial line item
     if metric_id == 'cm_deferred_revenue':
