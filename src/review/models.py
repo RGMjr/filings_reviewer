@@ -118,13 +118,14 @@ REVIEW_STATUSES = ("pending", "in_progress", "reviewed", "skipped")
 DECISION_TYPES = ("accept", "reject", "reclassify")
 
 # ReviewDecision.rejection_category
+# Note: Display text may differ from enum value (see review.html template)
 REJECTION_CATEGORIES = (
-    "wrong_metric",  # Number is a metric, but wrong type
-    "not_a_metric",  # Number is not a customer metric at all
-    "wrong_value",  # Right metric type but wrong value extracted
-    "wrong_period",  # Right metric but wrong time period
-    "duplicate",  # Already captured elsewhere
-    "other",  # Other reason (see rejection_reason)
+    "wrong_metric",  # Display: "Wrong Metric Type" - number is a metric, but wrong type
+    "not_a_metric",  # Display: "Not a Customer Metric" - value is outside CMASB scope
+    "wrong_value",  # Display: "Wrong Value Extracted" - right metric but wrong value
+    "wrong_period",  # Display: "Wrong Time Period" - right metric but wrong period
+    "duplicate",  # Display: "Duplicate" - already captured elsewhere
+    "other",  # Display: "Other" - see rejection_reason for details
 )
 
 # LearnedPattern.pattern_type
