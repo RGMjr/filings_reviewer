@@ -474,12 +474,21 @@
                                 </div>
 
                                 {# Show rejection details if rejected #}
+                                {# Display mapping for rejection categories (internal key -> user-friendly label) #}
+                                {% set rejection_category_display = {
+                                    'wrong_metric': 'Wrong Metric Type',
+                                    'not_a_metric': 'Not a Customer Metric',
+                                    'wrong_value': 'Wrong Value Extracted',
+                                    'wrong_period': 'Wrong Time Period',
+                                    'duplicate': 'Duplicate',
+                                    'other': 'Other'
+                                } %}
                                 {% if existing_decision.decision == 'reject' %}
                                     <div class="rejection-panel bg-light p-3 rounded mb-3">
                                         <h6 class="text-danger">Rejection Details</h6>
                                         <p class="mb-1">
                                             <strong>Category:</strong>
-                                            {{ existing_decision.rejection_category|replace('_', ' ')|title if existing_decision.rejection_category else 'Not specified' }}
+                                            {{ rejection_category_display.get(existing_decision.rejection_category, existing_decision.rejection_category|replace('_', ' ')|title) if existing_decision.rejection_category else 'Not specified' }}
                                         </p>
                                         {% if existing_decision.rejection_reason %}
                                             <p class="mb-0">
@@ -574,7 +583,7 @@
                                                         <a class="dropdown-item rejection-category-option"
                                                            href="#"
                                                            data-category="{{ category }}">
-                                                            {{ category|replace('_', ' ')|title }}
+                                                            {{ rejection_category_display.get(category, category|replace('_', ' ')|title) }}
                                                         </a>
                                                     </li>
                                                 {% endfor %}
