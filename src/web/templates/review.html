@@ -458,6 +458,16 @@
                     {# =============================================================
                        Section 4: Decision Form
                        ============================================================= #}
+                    {# Display mapping for rejection categories (internal key -> user-friendly label) #}
+                    {# NOTE: This must be defined before the conditional blocks as it's used in both branches #}
+                    {% set rejection_category_display = {
+                        'wrong_metric': 'Wrong Metric Type',
+                        'not_a_metric': 'Not a Customer Metric',
+                        'wrong_value': 'Wrong Value Extracted',
+                        'wrong_period': 'Wrong Time Period',
+                        'duplicate': 'Duplicate',
+                        'other': 'Other'
+                    } %}
                     {% if existing_decision and not existing_decision.is_automated %}
                         {# 4a. Read-Only Mode: Already Reviewed by Human #}
                         <div class="card">
@@ -474,15 +484,6 @@
                                 </div>
 
                                 {# Show rejection details if rejected #}
-                                {# Display mapping for rejection categories (internal key -> user-friendly label) #}
-                                {% set rejection_category_display = {
-                                    'wrong_metric': 'Wrong Metric Type',
-                                    'not_a_metric': 'Not a Customer Metric',
-                                    'wrong_value': 'Wrong Value Extracted',
-                                    'wrong_period': 'Wrong Time Period',
-                                    'duplicate': 'Duplicate',
-                                    'other': 'Other'
-                                } %}
                                 {% if existing_decision.decision == 'reject' %}
                                     <div class="rejection-panel bg-light p-3 rounded mb-3">
                                         <h6 class="text-danger">Rejection Details</h6>
