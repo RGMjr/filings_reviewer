@@ -22,6 +22,37 @@
 
 ---
 # =============================================================================
+# Shared Context Requirements (YAML Anchors)
+# =============================================================================
+# Revenue synonym metrics require cohort or per-customer context to generate
+# review candidates. Without this context, they are just revenue measures,
+# not customer metrics. This anchor defines the shared context patterns.
+
+_revenue_synonym_context: &revenue_synonym_context
+  required_context:
+    patterns:
+      # Cohort keywords (from cohort_chart_detector.py)
+      - '\bcohort\b'
+      - '\bby\s+vintage\b'
+      - '\bacquisition\s+year\b'
+      - '\brevenue\s+(?:by|per)\s+cohort\b'
+      - '\bretention\s+(?:by|per)\s+cohort\b'
+      - '\bARR\s+(?:by|of\s+each)\s+cohort\b'
+      - '\bLTV[/ ]CAC\b'
+      # Per-customer keywords
+      - '\bper\s+customer\b'
+      - '\bper\s+user\b'
+      - '\bper\s+account\b'
+      - '\bper\s+subscriber\b'
+      - '\bper\s+client\b'
+      - '\baverage\s+per\b'
+      - '\bby\s+customer\b'
+      - '\bby\s+account\b'
+      - '\bcustomer[- ]level\b'
+      - '\baccount[- ]level\b'
+    proximity_chars: 1500
+
+# =============================================================================
 # Core Metrics
 # =============================================================================
 
@@ -267,6 +298,7 @@ cm_revenue_concentration:
 # =============================================================================
 
 cm_bookings:
+  <<: *revenue_synonym_context
   patterns:
     - '\bbookings\b'
     - '\btotal\s+bookings\b'
@@ -277,6 +309,7 @@ cm_bookings:
     - '\bannual\s+bookings\b'
 
 cm_billings:
+  <<: *revenue_synonym_context
   patterns:
     - '\bbillings\b'
     - '\btotal\s+billings\b'
@@ -313,6 +346,7 @@ cm_repeat_purchase_rate:
 # =============================================================================
 
 cm_gmv:
+  <<: *revenue_synonym_context
   patterns:
     - '\bgmv\b'
     - '\bgross\s+merchandise\s+value\b'
@@ -340,6 +374,7 @@ cm_take_rate:
 # =============================================================================
 
 cm_acv:
+  <<: *revenue_synonym_context
   patterns:
     - '\bacv\b'
     - '\bannual\s+contract\s+value\b'
@@ -349,6 +384,7 @@ cm_acv:
     - '\bcontract\s+value\s+per\s+customer\b'
 
 cm_tcv:
+  <<: *revenue_synonym_context
   patterns:
     - '\btcv\b'
     - '\btotal\s+contract\s+value\b'

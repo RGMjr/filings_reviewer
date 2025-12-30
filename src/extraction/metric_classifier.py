@@ -419,6 +419,38 @@ class MetricClassifier:
         'cm_tcv',
     }
 
+    # Revenue synonym metrics that require cohort or per-customer context
+    # to generate review candidates. Without context, they are just revenue
+    # measures, not customer metrics. Used as hardcoded fallback if YAML fails.
+    # Note: cm_arr and cm_mrr are NOT included - they're inherently customer-related.
+    METRIC_REQUIRED_CONTEXT = {
+        metric_id: {
+            "patterns": [
+                # Cohort keywords (from cohort_chart_detector.py)
+                r"\bcohort\b",
+                r"\bby\s+vintage\b",
+                r"\bacquisition\s+year\b",
+                r"\brevenue\s+(?:by|per)\s+cohort\b",
+                r"\bretention\s+(?:by|per)\s+cohort\b",
+                r"\bARR\s+(?:by|of\s+each)\s+cohort\b",
+                r"\bLTV[/ ]CAC\b",
+                # Per-customer keywords
+                r"\bper\s+customer\b",
+                r"\bper\s+user\b",
+                r"\bper\s+account\b",
+                r"\bper\s+subscriber\b",
+                r"\bper\s+client\b",
+                r"\baverage\s+per\b",
+                r"\bby\s+customer\b",
+                r"\bby\s+account\b",
+                r"\bcustomer[- ]level\b",
+                r"\baccount[- ]level\b",
+            ],
+            "proximity_chars": 1500,
+        }
+        for metric_id in ["cm_gmv", "cm_tcv", "cm_acv", "cm_bookings", "cm_billings"]
+    }
+
     # General customer/metric keywords (for numeric disclosure detection)
     GENERAL_METRIC_KEYWORDS = [
         r"\bcustomers?\b",

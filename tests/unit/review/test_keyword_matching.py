@@ -10,6 +10,7 @@ import pytest
 
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
+    METRIC_REQUIRED_CONTEXT,
     SPECIFIC_KEYWORD_PATTERNS,
     KeywordMatch,
     KeywordMatcher,
@@ -1536,3 +1537,333 @@ class TestL4MultipleKeywords:
         # Churn rate is much closer, should be found
         churn_kws = [kw for kw in keywords if "churn" in kw.keyword.lower()]
         assert len(churn_kws) > 0
+
+
+# =============================================================================
+# Required Context Tests (Revenue Synonym Filtering)
+# =============================================================================
+
+
+class TestRequiredContext:
+    """Tests for required context filtering on revenue synonym metrics.
+
+    Revenue synonyms (GMV, TCV, ACV, Bookings, Billings) are not inherently
+    customer metrics - they're revenue/value measures. They only become
+    customer metrics when associated with cohort analysis or per-customer context.
+
+    ARR and MRR are NOT context-gated because "recurring revenue" inherently
+    implies ongoing customer relationships.
+    """
+
+    REVENUE_SYNONYM_METRICS = [
+        "cm_gmv",
+        "cm_tcv",
+        "cm_acv",
+        "cm_bookings",
+        "cm_billings",
+    ]
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher(max_keyword_distance=200)
+
+    def test_required_context_constant_exists(self):
+        """METRIC_REQUIRED_CONTEXT constant should be loaded."""
+        assert METRIC_REQUIRED_CONTEXT is not None
+        assert isinstance(METRIC_REQUIRED_CONTEXT, dict)
+
+    def test_revenue_synonyms_have_required_context(self):
+        """All 5 revenue synonym metrics should have required context."""
+        for metric_id in self.REVENUE_SYNONYM_METRICS:
+            assert metric_id in METRIC_REQUIRED_CONTEXT, \
+                f"{metric_id} should have required_context defined"
+            assert "patterns" in METRIC_REQUIRED_CONTEXT[metric_id]
+            assert "proximity_chars" in METRIC_REQUIRED_CONTEXT[metric_id]
+
+    def test_arr_mrr_not_context_gated(self):
+        """ARR and MRR should NOT have required context (inherently customer-related)."""
+        assert "cm_arr" not in METRIC_REQUIRED_CONTEXT
+        assert "cm_mrr" not in METRIC_REQUIRED_CONTEXT
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_without_context_no_match(self, matcher, metric_id):
+        """Revenue synonyms without cohort/per-customer context should not generate matches."""
+        # Build text with the metric keyword but NO cohort/per-customer context
+        metric_texts = {
+            "cm_gmv": "Our GMV reached $1 billion in the quarter",
+            "cm_tcv": "Total contract value was $500 million this year",
+            "cm_acv": "Average contract value increased to $50,000",
+            "cm_bookings": "We achieved $200 million in bookings",
+            "cm_billings": "Calculated billings were $300 million",
+        }
+        text = metric_texts[metric_id]
+
+        # Find all keywords (this should find the metric)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match for the dollar value
+        # Find the first number-like pattern
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # With required context check enabled (default), should NOT find matches
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should NOT find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) == 0, \
+            f"{metric_id} should not match without cohort/per-customer context"
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_with_cohort_context_generates_match(self, matcher, metric_id):
+        """Revenue synonyms with cohort context should generate matches."""
+        # Build text with the metric keyword AND cohort context
+        metric_texts = {
+            "cm_gmv": "Our cohort analysis shows GMV of $1 billion by acquisition year",
+            "cm_tcv": "TCV by cohort reached $500 million for the 2020 vintage",
+            "cm_acv": "ACV per cohort increased to $50,000 on average",
+            "cm_bookings": "Cohort bookings were $200 million in 2020",
+            "cm_billings": "Billings by vintage show $300 million for cohort 2019",
+        }
+        text = metric_texts[metric_id]
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # With required context check enabled, should find matches (cohort context present)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) >= 1, \
+            f"{metric_id} should match when cohort context is present"
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_with_per_customer_context_generates_match(self, matcher, metric_id):
+        """Revenue synonyms with per-customer context should generate matches."""
+        # Build text with the metric keyword AND per-customer context
+        metric_texts = {
+            "cm_gmv": "GMV per customer averaged $1 billion across our user base",
+            "cm_tcv": "Average TCV per account was $500,000 this year",
+            "cm_acv": "ACV by customer segment reached $50,000 average",
+            "cm_bookings": "Bookings per user increased to $200 million",
+            "cm_billings": "Customer-level billings averaged $300,000",
+        }
+        text = metric_texts[metric_id]
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # Should find matches with per-customer context
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) >= 1, \
+            f"{metric_id} should match when per-customer context is present"
+
+    def test_context_check_disabled_always_matches(self, matcher):
+        """When check_required_context=False, revenue synonyms should always match."""
+        # GMV without cohort/per-customer context
+        text = "Our GMV reached $1 billion in the quarter"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # With required context check DISABLED
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=False, text=text
+        )
+
+        # Should find GMV even without context
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "GMV should match when check_required_context=False"
+
+    def test_context_too_far_no_match(self, matcher):
+        """Context beyond proximity_chars should not satisfy requirement."""
+        # GMV with cohort context, but very far apart (more than 1500 chars)
+        padding = "x" * 2000  # 2000 chars of padding
+        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # Context is too far away
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should NOT find GMV because cohort context is too far
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) == 0, \
+            "GMV should not match when context is beyond proximity_chars"
+
+    def test_arr_matches_without_context(self, matcher):
+        """ARR should match even without cohort/per-customer context."""
+        # ARR without any cohort/per-customer context
+        text = "Our ARR grew to $100 million this year"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("100000000"),
+            unit="currency",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find ARR (not context-gated)
+        arr_matches = [kw for kw in keywords if kw.metric_id == "cm_arr"]
+        assert len(arr_matches) >= 1, \
+            "ARR should match without cohort context (inherently customer-related)"
+
+    def test_mrr_matches_without_context(self, matcher):
+        """MRR should match even without cohort/per-customer context."""
+        # MRR without any cohort/per-customer context
+        text = "Our MRR reached $8 million last month"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("8000000"),
+            unit="currency",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find MRR (not context-gated)
+        mrr_matches = [kw for kw in keywords if kw.metric_id == "cm_mrr"]
+        assert len(mrr_matches) >= 1, \
+            "MRR should match without cohort context (inherently customer-related)"
+
+    def test_non_revenue_metrics_unaffected(self, matcher):
+        """Non-revenue synonym metrics should not be affected by context check."""
+        # Active customers - not a revenue synonym, should always match
+        text = "We have 50000 active customers globally"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        number = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find active customers
+        customer_matches = [kw for kw in keywords if kw.metric_id == "cm_active_customers_total"]
+        assert len(customer_matches) >= 1, \
+            "Non-revenue metrics should match without context requirement"
+
+    def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
+        """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
+        # GMV without cohort context
+        text = "Our GMV reached $1 billion in the quarter"
+
+        # find_all_keywords should still find GMV
+        all_keywords = matcher.find_all_keywords(text)
+
+        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "find_all_keywords should find GMV (for classification/enrichment purposes)"
+
+    def test_has_required_context_method_exists(self, matcher):
+        """KeywordMatcher should have _has_required_context method."""
+        assert hasattr(matcher, "_has_required_context")
+
+    def test_has_required_context_true_for_non_gated_metrics(self, matcher):
+        """_has_required_context returns True for metrics without required_context."""
+        text = "We have 50000 active customers"
+        # Non-revenue metric should always return True
+        result = matcher._has_required_context("cm_active_customers_total", 10, text)
+        assert result is True
+
+    def test_has_required_context_false_without_context(self, matcher):
+        """_has_required_context returns False for GMV without context."""
+        text = "Our GMV reached $1 billion"
+        result = matcher._has_required_context("cm_gmv", 4, text)
+        assert result is False
+
+    def test_has_required_context_true_with_cohort(self, matcher):
+        """_has_required_context returns True for GMV with cohort context."""
+        text = "Our cohort GMV reached $1 billion"
+        result = matcher._has_required_context("cm_gmv", 11, text)
+        assert result is True
