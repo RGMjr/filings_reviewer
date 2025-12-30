@@ -46,7 +46,6 @@ class TestMetricExclusionPatternsStructure:
             "cm_customer_acquisition_cost",
             "cm_lifetime_value_per_customer",
             "cm_revenue_per_customer",
-            "cm_gross_margin_overall",
             "cm_customer_retention_rate",
         ]
         for metric in expected_metrics:
@@ -175,37 +174,26 @@ class TestExclusionPatternLTV:
 
 
 class TestExclusionPatternGrossMargin:
-    """Tests for gross margin exclusion patterns."""
+    """Tests for gross margin by cohort matching."""
 
-    def test_by_cohort_excludes_overall_margin(self) -> None:
-        """'By cohort' context should exclude overall gross margin."""
+    def test_by_cohort_matches_cohort_margin(self) -> None:
+        """'By cohort' context should match gross margin by cohort."""
         text = "Gross profit margin by cohort was 35%"
         matcher = KeywordMatcher()
         matches = matcher.find_all_keywords(text)
         matched_metrics = {m.metric_id for m in matches}
 
-        # Overall margin should be excluded
-        assert "cm_gross_margin_overall" not in matched_metrics
         # By cohort metric should be present
         assert "cm_gross_margin_by_cohort" in matched_metrics
 
-    def test_cohort_margin_excludes_overall(self) -> None:
-        """'Cohort margin' phrasing should exclude overall margin."""
+    def test_cohort_margin_matches_by_cohort(self) -> None:
+        """'Cohort margin' phrasing should match gross margin by cohort."""
         text = "Our cohort margin for gross profit was 40%"
         matcher = KeywordMatcher()
         matches = matcher.find_all_keywords(text)
         matched_metrics = {m.metric_id for m in matches}
 
-        assert "cm_gross_margin_overall" not in matched_metrics
-
-    def test_gross_profit_without_cohort_matches_overall(self) -> None:
-        """Gross profit without cohort context should match overall."""
-        text = "Gross profit was $1.5 million"
-        matcher = KeywordMatcher()
-        matches = matcher.find_all_keywords(text)
-        matched_metrics = {m.metric_id for m in matches}
-
-        assert "cm_gross_margin_overall" in matched_metrics
+        assert "cm_gross_margin_by_cohort" in matched_metrics
 
 
 class TestExclusionPatternRetention:

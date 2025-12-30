@@ -179,11 +179,6 @@ _HARDCODED_EXCLUSION_PATTERNS: dict[str, list[str]] = {
         r"\bcost\s+per\s+customer\b",
         r"\bcost\s+per\s+user\b",
     ],
-    "cm_gross_margin_overall": [
-        r"\bby\s+cohort\b",
-        r"\bcohort\s+margin\b",
-        r"\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b",
-    ],
     "cm_customer_retention_rate": [
         r"\brevenue\s+retention\b",
         r"\bdollar\s+retention\b",

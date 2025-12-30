@@ -589,17 +589,17 @@ class TestP15SentenceAwareMatching:
         """Keywords in different sentences should be filtered out."""
         from src.review.boundary_detection import BoundaryDetector
 
-        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        text = "We had 50000 active customers. Net revenue retention was 120% in Q4."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
-        # Number in second sentence (52%)
-        num_pos = text.index("52%")
+        # Number in second sentence (120%)
+        num_pos = text.index("120%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -617,13 +617,13 @@ class TestP15SentenceAwareMatching:
             number, all_keywords, sentence_boundaries=sentences
         )
 
-        # With filtering: should only find "gross margin" (in sentence 2)
+        # With filtering: should only find "net revenue retention" (in sentence 2)
         # Without filtering: might also find "active customers" (in sentence 1)
         keywords_with_ids = {kw.metric_id for kw in keywords_with_filter}
         keywords_without_ids = {kw.metric_id for kw in keywords_no_filter}
 
-        # Gross margin should be in both
-        assert "cm_gross_margin_overall" in keywords_with_ids
+        # Net revenue retention should be in both
+        assert "cm_net_revenue_retention" in keywords_with_ids
 
         # Active customers should be filtered WITH sentence boundaries
         # but present WITHOUT sentence boundaries (if within distance)
@@ -636,7 +636,7 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         # Use metrics that exist in the taxonomy for both sentences
-        text = "We had 50000 active customers in 2023. Gross margin was 52% in Q1."
+        text = "We had 50000 active customers in 2023. Net revenue retention was 120% in Q1."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
@@ -651,13 +651,13 @@ class TestP15SentenceAwareMatching:
             unit="count",
         )
 
-        # Number in second sentence (52%) - should match "gross margin"
-        num2_pos = text.index("52%")
+        # Number in second sentence (120%) - should match "net revenue retention"
+        num2_pos = text.index("120%")
         num2 = NumberMatch(
             start=num2_pos,
-            end=num2_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num2_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -667,15 +667,15 @@ class TestP15SentenceAwareMatching:
         # Verify we found keywords in both sentences
         assert any("customer" in kw.keyword.lower() for kw in all_keywords), \
             "Should find 'active customers' keyword"
-        assert any("gross margin" in kw.keyword.lower() for kw in all_keywords), \
-            "Should find 'gross margin' keyword"
+        assert any("retention" in kw.keyword.lower() for kw in all_keywords), \
+            "Should find 'net revenue retention' keyword"
 
         # 50000 should only match keywords in sentence 1
         keywords1 = matcher.find_keywords_near_number(
             num1, all_keywords, sentence_boundaries=sentences
         )
 
-        # 52% should only match keywords in sentence 2
+        # 120% should only match keywords in sentence 2
         keywords2 = matcher.find_keywords_near_number(
             num2, all_keywords, sentence_boundaries=sentences
         )
@@ -685,20 +685,20 @@ class TestP15SentenceAwareMatching:
             assert sentences[0].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 1 ({sentences[0].start}-{sentences[0].end})"
 
-        # Keywords for 52% should be "gross margin" (sentence 2)
+        # Keywords for 120% should be "net revenue retention" (sentence 2)
         for kw in keywords2:
             assert sentences[1].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 2 ({sentences[1].start}-{sentences[1].end})"
 
-        # Verify the key behavior: 50000 should NOT match "gross margin"
+        # Verify the key behavior: 50000 should NOT match "net revenue retention"
         keywords1_ids = {kw.metric_id for kw in keywords1}
-        assert "cm_gross_margin_overall" not in keywords1_ids, \
-            "50000 should not match gross margin (different sentence)"
+        assert "cm_net_revenue_retention" not in keywords1_ids, \
+            "50000 should not match net revenue retention (different sentence)"
 
-        # Verify the key behavior: 52% should NOT match "active customers"
+        # Verify the key behavior: 120% should NOT match "active customers"
         keywords2_ids = {kw.metric_id for kw in keywords2}
         assert "cm_active_customers_total" not in keywords2_ids, \
-            "52% should not match active customers (different sentence)"
+            "120% should not match active customers (different sentence)"
 
     def test_fallback_when_no_same_sentence_keywords(self):
         """If no keywords in same sentence, should keep all candidates."""
@@ -731,17 +731,17 @@ class TestP15SentenceAwareMatching:
         """When respect_sentence_boundaries=False, sentence filtering should be skipped."""
         from src.review.boundary_detection import BoundaryDetector
 
-        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        text = "We had 50000 active customers. Revenue retention was 120% in Q4."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
         # Number in second sentence
-        num_pos = text.index("52%")
+        num_pos = text.index("120%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -759,19 +759,19 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         text = """• First bullet: active customers reached 50000. Revenue grew.
-• Second bullet: gross margin was 52%. Costs increased."""
+• Second bullet: churn rate was 5%. Costs increased."""
 
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
         sentences = detector.find_sentence_boundaries(text)
 
-        # Number "52%" is in second bullet, first sentence within that bullet
-        num_pos = text.index("52%")
+        # Number "5%" is in second bullet, first sentence within that bullet
+        num_pos = text.index("5%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
@@ -786,7 +786,7 @@ class TestP15SentenceAwareMatching:
         )
 
         # Should filter by BOTH bullet boundary AND sentence boundary
-        # "gross margin" is in same bullet AND same sentence
+        # "churn rate" is in same bullet AND same sentence
         # "active customers" is in different bullet
         if len(keywords) > 0:
             # Verify keywords are from correct boundary
@@ -848,7 +848,7 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         # One long sentence with multiple metrics
-        text = "Our active customers reached 50000 while gross margin improved to 52% in Q1."
+        text = "Our active customers reached 50000 while churn rate improved to 5% in Q1."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
@@ -871,7 +871,7 @@ class TestP15SentenceAwareMatching:
             num1, all_keywords, sentence_boundaries=sentences
         )
 
-        # May find both "active customers" and "gross margin" since they're in same sentence
+        # May find both "active customers" and "churn rate" since they're in same sentence
         # At minimum, should find the closest keyword
         assert len(keywords) >= 1
 
@@ -935,7 +935,7 @@ class TestKeywordDirection:
 
     def test_direction_with_multiple_keywords(self, matcher):
         """Direction is correct for closest keyword match."""
-        text = "gross margin was 30% gross margin again"
+        text = "churn rate was 30% churn rate again"
         #       ^before          ^num ^after
 
         number = NumberMatch(
@@ -949,7 +949,7 @@ class TestKeywordDirection:
         all_keywords = matcher.find_all_keywords(text)
         result = matcher.find_keywords_near_number(number, all_keywords)
 
-        # Should match one of the gross margin keywords
+        # Should match one of the churn rate keywords
         assert len(result) >= 1
         # The matched keyword should have a direction
         assert result[0].direction in ("before", "after")
@@ -957,7 +957,7 @@ class TestKeywordDirection:
 
     def test_keyword_immediately_after(self, matcher):
         """Keyword immediately following number is 'after'."""
-        text = "30% gross margin"
+        text = "30% churn rate"
 
         number = NumberMatch(
             start=0,
@@ -975,7 +975,7 @@ class TestKeywordDirection:
 
     def test_keyword_immediately_before(self, matcher):
         """Keyword immediately preceding number is 'before'."""
-        text = "gross margin 30%"
+        text = "churn rate 30%"
 
         number = NumberMatch(
             start=text.index("30"),
@@ -1013,7 +1013,7 @@ class TestKeywordDirection:
 
     def test_multiple_numbers_different_directions(self, matcher):
         """Each number gets correct direction for its nearest keywords."""
-        text = "We had 50000 active customers and gross margin of 52%"
+        text = "We had 50000 active customers and churn rate of 5%"
         #              ^num1  ^kw1                            ^kw2 ^num2
 
         # First number (50000) - "active customers" is after it
@@ -1025,10 +1025,10 @@ class TestKeywordDirection:
             unit="count",
         )
 
-        # Second number (52%) - "gross margin" is before it
+        # Second number (5%) - "churn rate" is before it
         num2 = NumberMatch(
-            start=text.index("52"),
-            end=text.index("52") + 3,
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
             raw_text="52%",
             value=Decimal("52"),
             unit="percent",
@@ -1249,21 +1249,21 @@ class TestL4ContextDependentMultipliers:
             multiplier_parenthetical=1.15,  # Prefer post-value
         )
 
-        # "33% (gross margin)" - metric in parentheses after value
-        text = "We achieved 33% (gross margin) improvement"
+        # "5% (churn rate)" - metric in parentheses after value
+        text = "We achieved 5% (churn rate) improvement"
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=12, end=15, raw_text="33%", value=Decimal("33"), unit="percent"
+            start=12, end=14, raw_text="5%", value=Decimal("5"), unit="percent"
         )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords, text=text)
 
-        # Should find "gross margin" (in parentheses after number)
+        # Should find "churn rate" (in parentheses after number)
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
-        assert margin_kw[0].direction == "after"
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
+        assert churn_kw[0].direction == "after"
 
     def test_bullet_point_prefers_pre_value(self):
         """Bullet points should prefer pre-value keywords."""
@@ -1276,17 +1276,17 @@ class TestL4ContextDependentMultipliers:
             multiplier_bullet_points=0.9,  # Prefer pre-value
         )
 
-        text = "• Gross margin was 33% improvement"
+        text = "• Churn rate was 5% improvement"
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
 
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=text.index("33%"),
-            end=text.index("33%") + 3,
-            raw_text="33%",
-            value=Decimal("33"),
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
@@ -1294,10 +1294,10 @@ class TestL4ContextDependentMultipliers:
             number, all_keywords, boundaries=boundaries, text=text
         )
 
-        # Should find "gross margin" (before number in bullet)
+        # Should find "churn rate" (before number in bullet)
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
 
     def test_copula_verb_prefers_pre_value(self):
         """Sentences with copula verbs (is/was/were) should prefer pre-value keywords."""
@@ -1308,25 +1308,25 @@ class TestL4ContextDependentMultipliers:
             multiplier_copula_verb=0.9,  # Prefer pre-value
         )
 
-        # "Gross margin was 33%" - copula verb between metric and value
-        text = "Gross margin was 33% in the quarter"
+        # "Churn rate was 5%" - copula verb between metric and value
+        text = "Churn rate was 5% in the quarter"
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=text.index("33%"),
-            end=text.index("33%") + 3,
-            raw_text="33%",
-            value=Decimal("33"),
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords, text=text)
 
-        # Should find "gross margin" (before "was")
+        # Should find "churn rate" (before "was")
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
-        assert margin_kw[0].direction == "before"
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
+        assert churn_kw[0].direction == "before"
 
     def test_preposition_prefers_post_value(self):
         """Prepositional phrases (of/for/in) should prefer post-value keywords."""
@@ -1367,9 +1367,9 @@ class TestL4ContextDependentMultipliers:
 
         # Should use 0.8 for all contexts
         multiplier = matcher.get_context_multiplier(
-            text="We achieved 33% (gross margin)",
+            text="We achieved 5% (churn rate)",
             number_position=12,
-            keyword_position=17,
+            keyword_position=16,
             keyword_direction="after",
             boundaries=None,
             segment_type=None,
@@ -1387,8 +1387,8 @@ class TestL4ContextDependentMultipliers:
 
         # Pre-value keyword should get 1.0 multiplier
         multiplier = matcher.get_context_multiplier(
-            text="Gross margin was 33%",
-            number_position=17,
+            text="Churn rate was 5%",
+            number_position=15,
             keyword_position=0,
             keyword_direction="before",
             boundaries=None,
@@ -1415,9 +1415,9 @@ class TestL4ThresholdMath:
             post_value_distance_multiplier=0.9,
         )
 
-        # Use actual metric keywords: "active customers" and "gross margin"
+        # Use actual metric keywords: "active customers" and "churn rate"
         # Pre-value keyword far away, post-value keyword closer
-        text = "active customers increased significantly here and 100 gross margin"
+        text = "active customers increased significantly here and 100 churn rate"
         all_keywords = matcher.find_all_keywords(text)
 
         number_pos = text.index("100")
@@ -1434,11 +1434,11 @@ class TestL4ThresholdMath:
         # Should have at least one match
         assert len(keywords) >= 1
 
-        # Gross margin is much closer than active customers, should win
-        margin_kws = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        if len(margin_kws) > 0:
-            # Margin should be present and be after the number
-            assert margin_kws[0].direction == "after"
+        # Churn rate is much closer than active customers, should win
+        churn_kws = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        if len(churn_kws) > 0:
+            # Churn rate should be present and be after the number
+            assert churn_kws[0].direction == "after"
 
 
 # =============================================================================
@@ -1461,8 +1461,8 @@ class TestL4BoundaryInteraction:
             multiplier_bullet_points=0.9,
         )
 
-        # Two bullets: first has "active customers", second has "100 gross margin"
-        text = "• Active customers increased significantly\n• Performance was 100 with gross margin improvement"
+        # Two bullets: first has "active customers", second has "100 churn rate"
+        text = "• Active customers increased significantly\n• Performance was 100 with churn rate improvement"
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
 
@@ -1482,13 +1482,13 @@ class TestL4BoundaryInteraction:
             number, all_keywords, boundaries=boundaries, text=text
         )
 
-        # Should find "gross margin" (same bullet, post-value)
+        # Should find "churn rate" (same bullet, post-value)
         # Should NOT find "active customers" (different bullet, filtered by boundary)
         assert len(keywords) >= 1
         keyword_texts = [kw.keyword.lower() for kw in keywords]
 
-        # Gross margin should be present (same boundary)
-        assert any("margin" in kw for kw in keyword_texts)
+        # Churn rate should be present (same boundary)
+        assert any("churn" in kw for kw in keyword_texts)
 
         # Active customers should NOT be present (different boundary)
         assert not any("customers" in kw for kw in keyword_texts)
@@ -1513,8 +1513,8 @@ class TestL4MultipleKeywords:
 
         # Setup with actual metric keywords:
         # Pre-value: "active customers" (far before)
-        # Post-value: "gross margin" (close after)
-        text = "active customers and other metrics here for 100 gross margin today"
+        # Post-value: "churn rate" (close after)
+        text = "active customers and other metrics here for 100 churn rate today"
         all_keywords = matcher.find_all_keywords(text)
 
         number_pos = text.index("100")
@@ -1533,6 +1533,6 @@ class TestL4MultipleKeywords:
 
         # The closest keyword (after multiplier) should be first
         # This test verifies sorting works with multiple candidates
-        # Gross margin is much closer, should be found
-        margin_kws = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kws) > 0
+        # Churn rate is much closer, should be found
+        churn_kws = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kws) > 0

@@ -986,8 +986,7 @@ def _get_active_metrics() -> list[MetricData]:
                     -- 5. Revenue Concentration
                     WHEN 'cm_revenue_concentration' THEN 40
 
-                    -- 6. Gross Margin
-                    WHEN 'cm_gross_margin_overall' THEN 50
+                    -- 6. Gross Margin (by cohort only - overall margin is not a customer metric)
                     WHEN 'cm_gross_margin_by_cohort' THEN 51
 
                     -- 7. Retention, Churn & Attrition

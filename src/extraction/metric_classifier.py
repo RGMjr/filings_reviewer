@@ -236,15 +236,6 @@ class MetricClassifier:
             r"\bdau\b",
             r"\bdaily\s+active\s+users?\b",
         ],
-        "cm_gross_margin_overall": [
-            r"\bgross\s+margin(?:\s+(?:was|of|is|at))?\s+\d",
-            r"\boverall\s+gross\s+margin\b",
-            r"\btotal\s+gross\s+margin\b",
-            r"\bgross\s+profit\s+margin\b",
-            r"\bgross\s+margin\s+(?:percentage|rate)\b",
-            r"\b(?<!cohort\s)(?<!by\s)gross\s+margin\b",
-            r"\bgross\s+profit\b",  # Added for row headings in financial tables
-        ],
         "cm_gross_margin_by_cohort": [
             r"\bgross\s+margin\s+by\s+cohort\b",
             r"\bcohort\s+(?:gross\s+)?margin\b",
@@ -405,7 +396,6 @@ class MetricClassifier:
         'cm_customers_period_end',
         'cm_large_customers_period_end',
         'cm_revenue_per_customer',
-        'cm_gross_margin_overall',
         'cm_gross_margin_by_cohort',
         'cm_arr',
         'cm_mrr',

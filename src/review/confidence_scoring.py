@@ -155,7 +155,6 @@ METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     "cm_bookings": ["currency"],
     "cm_deferred_revenue": ["currency"],
     # Margin/rate metrics - expect percentages (NOT currency)
-    "cm_gross_margin_overall": ["percentage", "decimal"],
     "cm_gross_margin_by_cohort": ["percentage", "decimal"],
     "cm_take_rate": ["percentage", "decimal"],
     # Retention metrics - expect percentages or decimals
