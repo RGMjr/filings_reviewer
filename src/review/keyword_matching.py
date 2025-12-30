@@ -133,6 +133,23 @@ def _load_specific_patterns() -> list[str]:
     return _HARDCODED_SPECIFIC_PATTERNS
 
 
+def _load_required_context() -> dict[str, dict]:
+    """Load required context patterns from YAML config or use hardcoded fallback.
+
+    Required context patterns gate which metrics generate review candidates.
+    Metrics with required_context only generate candidates when at least one
+    of the context patterns appears within proximity of the keyword match.
+    """
+    if USE_YAML_KEYWORDS:
+        try:
+            from src.extraction.keyword_config import get_required_context
+            return get_required_context()
+        except Exception as e:
+            logger.warning(f"Failed to load YAML required_context, using hardcoded: {e}")
+            return _HARDCODED_REQUIRED_CONTEXT
+    return _HARDCODED_REQUIRED_CONTEXT
+
+
 # =============================================================================
 # Hardcoded Fallbacks (used when YAML loading fails or is disabled)
 # =============================================================================
@@ -201,6 +218,38 @@ _HARDCODED_EXCLUSION_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
+# Required context patterns for revenue synonym metrics (hardcoded fallback)
+# These metrics only generate review candidates when cohort or per-customer
+# context is present. Without context, they're just revenue measures.
+# Note: cm_arr and cm_mrr are NOT included - they're inherently customer-related.
+_HARDCODED_REQUIRED_CONTEXT: dict[str, dict] = {
+    metric_id: {
+        "patterns": [
+            # Cohort keywords (from cohort_chart_detector.py)
+            r"\bcohort\b",
+            r"\bby\s+vintage\b",
+            r"\bacquisition\s+year\b",
+            r"\brevenue\s+(?:by|per)\s+cohort\b",
+            r"\bretention\s+(?:by|per)\s+cohort\b",
+            r"\bARR\s+(?:by|of\s+each)\s+cohort\b",
+            r"\bLTV[/ ]CAC\b",
+            # Per-customer keywords
+            r"\bper\s+customer\b",
+            r"\bper\s+user\b",
+            r"\bper\s+account\b",
+            r"\bper\s+subscriber\b",
+            r"\bper\s+client\b",
+            r"\baverage\s+per\b",
+            r"\bby\s+customer\b",
+            r"\bby\s+account\b",
+            r"\bcustomer[- ]level\b",
+            r"\baccount[- ]level\b",
+        ],
+        "proximity_chars": 1500,
+    }
+    for metric_id in ["cm_gmv", "cm_tcv", "cm_acv", "cm_bookings", "cm_billings"]
+}
+
 
 # =============================================================================
 # Module-Level Keyword Data (loaded at import time)
@@ -210,6 +259,7 @@ _HARDCODED_EXCLUSION_PATTERNS: dict[str, list[str]] = {
 METRIC_KEYWORDS: dict[str, list[str]] = _load_metric_keywords()
 METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = _load_exclusion_patterns()
 SPECIFIC_KEYWORD_PATTERNS: list[str] = _load_specific_patterns()
+METRIC_REQUIRED_CONTEXT: dict[str, dict] = _load_required_context()
 
 
 # =============================================================================
@@ -330,6 +380,25 @@ class KeywordMatcher:
             if compiled_list:
                 self._compiled_exclusions[metric_id] = compiled_list
 
+        # Pre-compile required context patterns for revenue synonym filtering
+        # tuple of (compiled_patterns, proximity_chars)
+        self._compiled_required_context: dict[str, tuple[list[re.Pattern[str]], int]] = {}
+        for metric_id, ctx_config in METRIC_REQUIRED_CONTEXT.items():
+            compiled_ctx_patterns: list[re.Pattern[str]] = []
+            for pattern in ctx_config.get("patterns", []):
+                try:
+                    compiled_ctx_patterns.append(re.compile(pattern, re.IGNORECASE))
+                except re.error as e:
+                    logger.warning(
+                        f"Invalid required_context pattern for {metric_id}: {pattern!r} - {e}"
+                    )
+            if compiled_ctx_patterns:
+                proximity = ctx_config.get("proximity_chars", 1500)
+                self._compiled_required_context[metric_id] = (
+                    compiled_ctx_patterns,
+                    proximity,
+                )
+
     def _is_excluded(self, metric_id: str, context: str) -> bool:
         """
         Check if context contains an exclusion pattern for this metric.
@@ -350,6 +419,56 @@ class KeywordMatcher:
         for pattern in self._compiled_exclusions[metric_id]:
             if pattern.search(context):
                 return True
+        return False
+
+    def _has_required_context(
+        self, metric_id: str, match_position: int, full_text: str
+    ) -> bool:
+        """
+        Check if required context is present for a context-gated metric.
+
+        For metrics with required_context configuration (e.g., cm_gmv, cm_tcv),
+        this checks if at least one of the required context patterns (cohort,
+        per customer, etc.) appears within the specified proximity of the
+        keyword match.
+
+        Revenue synonym metrics (GMV, TCV, ACV, Bookings, Billings) require
+        cohort or per-customer context to be meaningful as customer metrics.
+        Without this context, they are just aggregate revenue measures.
+
+        Args:
+            metric_id: The metric ID to check required context for
+            match_position: The character position of the keyword match
+            full_text: The full text to search for context
+
+        Returns:
+            True if no required context is configured for this metric, OR
+            True if required context IS configured AND at least one pattern is found.
+            False if required context IS configured but NO patterns are found.
+        """
+        if metric_id not in self._compiled_required_context:
+            return True  # No required context for this metric - always matches
+
+        patterns, proximity_chars = self._compiled_required_context[metric_id]
+
+        # Define the search window around the match position
+        context_start = max(0, match_position - proximity_chars)
+        context_end = min(len(full_text), match_position + proximity_chars)
+        context = full_text[context_start:context_end]
+
+        # Check if ANY required context pattern matches
+        for pattern in patterns:
+            if pattern.search(context):
+                logger.debug(
+                    f"Required context found for {metric_id} at position {match_position}: "
+                    f"pattern '{pattern.pattern}' matched within {proximity_chars} chars"
+                )
+                return True
+
+        logger.debug(
+            f"Required context NOT found for {metric_id} at position {match_position}: "
+            f"no cohort/per-customer patterns within {proximity_chars} chars"
+        )
         return False
 
     def find_all_keywords(self, text: str) -> list[KeywordMatch]:
@@ -415,6 +534,7 @@ class KeywordMatcher:
         text: str = "",
         segment_type: str | None = None,
         table_row_parser: Optional["TableRowParser"] = None,
+        check_required_context: bool = True,
     ) -> list[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -449,6 +569,9 @@ class KeywordMatcher:
             text: Optional full text for context detection (L4 Option C)
             segment_type: Optional segment type for context detection (L4 Option C)
             table_row_parser: Optional TableRowParser for table row filtering
+            check_required_context: If True (default), filter out revenue synonym
+                metrics (GMV, TCV, etc.) that lack cohort or per-customer context.
+                Set to False to include all matches regardless of context.
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
@@ -456,12 +579,22 @@ class KeywordMatcher:
         """
         # Phase 1: Collect all keywords within distance with their distances and directions
         # Store as (keyword, raw_distance, direction) for L4 multiplier application
+        # Also filter by required context for revenue synonym metrics
         candidates_with_distance: list[tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
             dist = self.calculate_distance_from_positions(
                 number.start, number.end, kw.start, kw.end
             )
             if dist <= self.max_keyword_distance:
+                # Check required context for context-gated metrics (GMV, TCV, etc.)
+                if check_required_context and not self._has_required_context(
+                    kw.metric_id, kw.start, text
+                ):
+                    logger.debug(
+                        f"Filtered keyword '{kw.keyword}' ({kw.metric_id}): "
+                        f"required cohort/per-customer context not present"
+                    )
+                    continue
                 candidates_with_distance.append((kw, dist))
 
         if not candidates_with_distance:

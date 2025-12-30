@@ -147,6 +147,14 @@ docker compose down
    - Confidence scoring: base 0.6 + bonuses for chart keywords (0.15), retention context (0.10), multiple keywords (0.10)
    - Filters decorative images by size and naming patterns (icons, logos, bullets)
    - Use case: Identify high-value cohort analysis visualizations (ARR by cohort, LTV/CAC, retention curves)
+10. **Context-gated revenue synonym metrics** (2025-12-30): Revenue synonyms require cohort/per-customer context:
+    - GMV, TCV, ACV, Bookings, Billings only generate review candidates when context is present
+    - Context keywords: cohort, vintage, per customer, per user, by account, customer-level, etc.
+    - Proximity: context must appear within 1500 chars of keyword match
+    - ARR/MRR NOT context-gated (inherently customer-related: "recurring" implies subscriptions)
+    - Classification preserved: revenue synonyms still contribute to segment enrichment/richness scoring
+    - Configuration: `required_context` in `config/metric_keywords.yaml` with YAML anchor sharing
+    - Graceful fallback: hardcoded patterns in `metric_classifier.py` if YAML fails
 
 ## Documentation
 

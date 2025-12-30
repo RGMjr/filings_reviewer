@@ -90,6 +90,10 @@ def _validate_config(config: dict[str, Any]) -> None:
         KeywordConfigError: If configuration is invalid.
     """
     for metric_id, metric_config in config.items():
+        # Skip YAML anchor keys (starting with underscore)
+        if metric_id.startswith("_"):
+            continue
+
         if not isinstance(metric_config, dict):
             raise KeywordConfigError(
                 f"Invalid config for {metric_id}: expected dict, got {type(metric_config)}"
@@ -132,6 +136,43 @@ def _validate_config(config: dict[str, Any]) -> None:
                     f"Invalid 'specific_patterns' for {metric_id}: expected list"
                 )
 
+        # Validate required_context if present
+        if "required_context" in metric_config:
+            req_ctx = metric_config["required_context"]
+            if not isinstance(req_ctx, dict):
+                raise KeywordConfigError(
+                    f"Invalid 'required_context' for {metric_id}: expected dict"
+                )
+            if "patterns" not in req_ctx:
+                raise KeywordConfigError(
+                    f"Missing 'patterns' in required_context for {metric_id}"
+                )
+            ctx_patterns = req_ctx["patterns"]
+            if not isinstance(ctx_patterns, list) or not ctx_patterns:
+                raise KeywordConfigError(
+                    f"Invalid 'patterns' in required_context for {metric_id}: "
+                    "expected non-empty list"
+                )
+            for j, ctx_pattern in enumerate(ctx_patterns):
+                if not isinstance(ctx_pattern, str):
+                    raise KeywordConfigError(
+                        f"Invalid required_context pattern {j} for {metric_id}: "
+                        "expected string"
+                    )
+            # Validate proximity_chars if present
+            if "proximity_chars" in req_ctx:
+                prox = req_ctx["proximity_chars"]
+                if not isinstance(prox, int) or prox <= 0:
+                    raise KeywordConfigError(
+                        f"Invalid 'proximity_chars' in required_context for {metric_id}: "
+                        "expected positive int"
+                    )
+
+
+def _is_metric_key(key: str) -> bool:
+    """Check if a key is a metric (not a YAML anchor starting with underscore)."""
+    return not key.startswith("_")
+
 
 def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     """
@@ -142,11 +183,13 @@ def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
 
     Returns:
         Dictionary mapping metric_id to list of regex patterns.
+        Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
     return {
         metric_id: metric_config["patterns"]
         for metric_id, metric_config in config.items()
+        if _is_metric_key(metric_id)
     }
 
 
@@ -160,12 +203,13 @@ def get_exclusion_patterns(config_path: str | None = None) -> dict[str, list[str
     Returns:
         Dictionary mapping metric_id to list of exclusion regex patterns.
         Only includes metrics that have exclusions defined.
+        Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
     return {
         metric_id: metric_config["exclusions"]
         for metric_id, metric_config in config.items()
-        if "exclusions" in metric_config
+        if _is_metric_key(metric_id) and "exclusions" in metric_config
     }
 
 
@@ -178,13 +222,42 @@ def get_specific_patterns(config_path: str | None = None) -> list[str]:
 
     Returns:
         List of specific pattern strings (not compiled regex).
+        Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
     patterns: list[str] = []
-    for metric_config in config.values():
-        if "specific_patterns" in metric_config:
+    for metric_id, metric_config in config.items():
+        if _is_metric_key(metric_id) and "specific_patterns" in metric_config:
             patterns.extend(metric_config["specific_patterns"])
     return patterns
+
+
+def get_required_context(config_path: str | None = None) -> dict[str, dict[str, Any]]:
+    """
+    Get required context patterns for metrics.
+
+    Metrics with required_context only generate review candidates when
+    at least one of the context patterns appears within proximity of the
+    keyword match. This filters out revenue synonyms (GMV, TCV, etc.)
+    that appear without cohort or per-customer context.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Dictionary mapping metric_id to required context configuration.
+        Only includes metrics that have required_context defined.
+        Each config contains:
+        - 'patterns': list of regex patterns (at least one must match)
+        - 'proximity_chars': max distance for context check (default: 1500)
+        Excludes YAML anchor keys (starting with underscore).
+    """
+    config = _load_config(config_path)
+    return {
+        metric_id: metric_config["required_context"]
+        for metric_id, metric_config in config.items()
+        if _is_metric_key(metric_id) and "required_context" in metric_config
+    }
 
 
 def reload_config() -> None:
@@ -222,6 +295,7 @@ def list_metrics(config_path: str | None = None) -> list[str]:
 
     Returns:
         List of metric IDs.
+        Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
-    return list(config.keys())
+    return [k for k in config.keys() if _is_metric_key(k)]
