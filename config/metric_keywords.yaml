@@ -94,6 +94,7 @@ cm_customers_period_end:
     - '\bcustomers?\s+\(?period\s*end\)?\b'
     - '\bend[- ]of[- ]period\s+customers?\b'
     - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
+    - '\bactive\s+consumers?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -283,6 +284,8 @@ cm_gross_margin_by_cohort:
     - '\bgross\s+margin\s+by\s+cohort\b'
     - '\bcohort\s+(?:gross\s+)?margin\b'
     - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+    - '\border\s+contribution\s+margin\b'
+    - '\bplatform\s+order\s+contribution(?:\s+margin)?\b'
 
 cm_arr:
   patterns:
@@ -454,8 +457,8 @@ cm_lifetime_value_per_customer:
 
 cm_ltv_to_cac_ratio:
   patterns:
-    - '\bltv\s*[:/]\s*cac\b'
-    - '\bltv\s+to\s+cac\b'
+    - '\bltv\s*[:/]\s*cac(?:\s+ratio)?\b'
+    - '\bltv\s+to\s+cac(?:\s+ratio)?\b'
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
 
 # =============================================================================
