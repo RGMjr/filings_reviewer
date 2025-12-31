@@ -380,6 +380,30 @@ class MetricClassifier:
             r"\bltv\s+to\s+cac\b",
             r"\blifetime\s+value\s+to\s+acquisition\s+cost\b",
         ],
+        # -----------------------------------------------------------------
+        # HRV-6 Taxonomy Fix Metrics
+        # -----------------------------------------------------------------
+        "cm_purchase_transactions_overall": [
+            r"\bnumber\s+of\s+orders?\b",           # Farfetch terminology
+            r"\btotal\s+orders?\b",                 # "total orders"
+            r"\bpurchase\s+transactions?\b",        # "purchase transactions" (without cohort context)
+            r"\border\s+count\b",                   # "order count"
+            r"\border\s+volume\b",                  # "order volume"
+        ],
+        # -----------------------------------------------------------------
+        # HRV-6 Growth Metrics
+        # -----------------------------------------------------------------
+        "cm_active_customers_growth": [
+            r"\bactive\s+(?:customers?|consumers?)\s+growth\b",
+            r"\b(?:customers?|consumers?)\s+growth\b",
+            r"\bgrowth\s+(?:in\s+)?active\s+(?:customers?|consumers?)\b",
+        ],
+        "cm_purchase_transactions_overall_growth": [
+            r"\b(?:number\s+of\s+)?orders?\s+growth\b",
+            r"\btransactions?\s+growth\b",
+            r"\bgrowth\s+(?:in\s+)?(?:number\s+of\s+)?orders?\b",
+            r"\border\s+(?:volume\s+)?growth\b",
+        ],
     }
 
     # CMASB Priority Metrics (for confidence boosting)
