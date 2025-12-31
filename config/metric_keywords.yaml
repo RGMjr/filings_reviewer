@@ -142,7 +142,11 @@ cm_transactions_by_cohort:
     - '\btransactions?\s+by\s+cohort\b'
     - '\bcohort\s+transactions?\b'
     - '\btransactions?[^.;]{0,100}\bcohort\b'
-  # NOTE: 'number of orders' moved to cm_purchase_transactions_overall
+    # Orders variants for Farfetch terminology (orders = transactions)
+    - '\borders?\s+by\s+cohort\b'
+    - '\bcohort\s+orders?\b'
+    - '\bnumber\s+of\s+orders?[^.;]{0,50}\bcohort\b'
+  # NOTE: Plain 'number of orders' (without cohort) in cm_purchase_transactions_overall
 
 cm_purchase_transactions_overall:
   patterns:

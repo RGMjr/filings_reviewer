@@ -136,10 +136,10 @@ docker compose down
    - Result: 100% elimination of date false positives in candidate generation
 8. **Externalized keyword configuration** (2025-12-27): Metric keywords moved to `config/metric_keywords.yaml`:
    - Add/modify keyword patterns without code changes
-   - YAML structure: patterns, exclusions, specific_patterns per metric
-   - Feature flag: `USE_YAML_KEYWORDS=false` to revert to hardcoded patterns
+   - YAML structure: patterns, exclusions, specific_patterns, required_context per metric
+   - YAML is the authoritative source of truth (no hardcoded fallback)
    - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
-   - Graceful fallback to hardcoded patterns if YAML fails to load
+   - Fails fast with clear error if YAML cannot be loaded
 9. **Cohort chart image detection** (2025-12-29): Automated detection of cohort analysis charts in filings:
    - Segment-level detection via `segment_enricher._detect_cohort_chart_images()` (stores candidates in `extra_metadata`)
    - Filing-level detection via `cohort_chart_detector.py` (reads source HTML directly for standalone images)
@@ -154,7 +154,6 @@ docker compose down
     - ARR/MRR NOT context-gated (inherently customer-related: "recurring" implies subscriptions)
     - Classification preserved: revenue synonyms still contribute to segment enrichment/richness scoring
     - Configuration: `required_context` in `config/metric_keywords.yaml` with YAML anchor sharing
-    - Graceful fallback: hardcoded patterns in `metric_classifier.py` if YAML fails
 
 ## Documentation
 

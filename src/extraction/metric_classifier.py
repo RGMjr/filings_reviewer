@@ -7,12 +7,11 @@ This module scans source segments to identify:
 - Calculation methodologies
 - Which specific metrics are present
 
-Keywords are loaded from config/metric_keywords.yaml by default.
-Set USE_YAML_KEYWORDS=false to use hardcoded patterns (legacy).
+Keywords are loaded from config/metric_keywords.yaml.
+The YAML file is the authoritative source of truth for keyword patterns.
 """
 
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -21,9 +20,6 @@ from .models import SourceSegment
 from .validators import ClassificationValidator
 
 logger = logging.getLogger(__name__)
-
-# Feature flag for YAML-based keywords (default: True)
-USE_YAML_KEYWORDS = os.environ.get("USE_YAML_KEYWORDS", "true").lower() != "false"
 
 
 @dataclass
@@ -115,6 +111,9 @@ class MetricClassifier:
     ]
 
     # Metric-specific keyword patterns
+    # DEPRECATED: This is kept for reference only. The authoritative source
+    # of keyword patterns is config/metric_keywords.yaml.
+    # DO NOT modify this dictionary - edit the YAML file instead.
     # Format: metric_id -> list of keyword patterns
     METRIC_KEYWORDS = {
         # Core Metrics
@@ -169,9 +168,11 @@ class MetricClassifier:
         "cm_transactions_by_cohort": [
             r"\btransactions?\s+by\s+cohort\b",
             r"\bcohort\s+transactions?\b",
-            r"\bpurchase\s+transactions?\b",
             r"\btransactions?[^.;]{0,100}\bcohort\b",  # Fixed: limit to same sentence
-            r"\bnumber\s+of\s+orders?\b",  # Farfetch terminology
+            # Orders variants for Farfetch terminology (orders = transactions with cohort)
+            r"\borders?\s+by\s+cohort\b",
+            r"\bcohort\s+orders?\b",
+            r"\bnumber\s+of\s+orders?[^.;]{0,50}\bcohort\b",
         ],
         # Extended Metrics
         "cm_active_customers_total": [
@@ -445,7 +446,9 @@ class MetricClassifier:
 
     # Revenue synonym metrics that require cohort or per-customer context
     # to generate review candidates. Without context, they are just revenue
-    # measures, not customer metrics. Used as hardcoded fallback if YAML fails.
+    # measures, not customer metrics.
+    # DEPRECATED: This is kept for reference only. The authoritative source
+    # is config/metric_keywords.yaml (required_context field).
     # Note: cm_arr and cm_mrr are NOT included - they're inherently customer-related.
     METRIC_REQUIRED_CONTEXT = {
         metric_id: {
@@ -518,23 +521,18 @@ class MetricClassifier:
 
     def _load_keywords(self) -> dict[str, list[str]]:
         """
-        Load keyword patterns from YAML config or use hardcoded fallback.
+        Load keyword patterns from YAML config.
 
         Returns:
             Dictionary mapping metric_id to list of regex patterns.
+
+        Raises:
+            KeywordConfigError: If YAML config cannot be loaded.
         """
-        if USE_YAML_KEYWORDS:
-            try:
-                from .keyword_config import get_metric_keywords
-                keywords = get_metric_keywords()
-                logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
-                return keywords
-            except Exception as e:
-                logger.warning(f"Failed to load YAML keywords, using hardcoded: {e}")
-                return self.METRIC_KEYWORDS
-        else:
-            logger.debug("Using hardcoded METRIC_KEYWORDS (USE_YAML_KEYWORDS=false)")
-            return self.METRIC_KEYWORDS
+        from .keyword_config import get_metric_keywords
+        keywords = get_metric_keywords()
+        logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
+        return keywords
 
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
