@@ -374,31 +374,31 @@ class TestRetentionKeywordDetection:
         segment = make_segment(
             raw_text="Net Dollar Retention Rate was 143% for the year."
         )
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_ndrr_acronym_detected(self, enricher: SegmentEnricher) -> None:
         """'Our NDRR exceeded 130%' triggers retention."""
         segment = make_segment(raw_text="Our NDRR exceeded 130% last quarter.")
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_nrr_acronym_detected(self, enricher: SegmentEnricher) -> None:
         """'NRR of 143%' triggers retention."""
         segment = make_segment(raw_text="We achieved NRR of 143%.")
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_gross_retention_rate_detected(self, enricher: SegmentEnricher) -> None:
         """'gross retention rate' triggers retention."""
         segment = make_segment(
             raw_text="Our gross retention rate remains strong at 95%."
         )
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_dollar_based_retention_detected(self, enricher: SegmentEnricher) -> None:
         """'dollar-based retention' triggers retention."""
         segment = make_segment(
             raw_text="Dollar-based retention exceeded expectations."
         )
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_customer_retention_not_detected(self, enricher: SegmentEnricher) -> None:
         """'customer retention' is too generic - not detected."""
@@ -406,19 +406,19 @@ class TestRetentionKeywordDetection:
             raw_text="We focus on customer retention initiatives."
         )
         # "customer retention" doesn't match NRR/NDRR/gross retention rate patterns
-        assert enricher._detect_retention_keywords(segment) is False
+        assert enricher._detect_retention_keywords(segment.raw_text) is False
 
     def test_empty_text_returns_false(self, enricher: SegmentEnricher) -> None:
         """Empty text returns False."""
         segment = make_segment(raw_text="")
-        assert enricher._detect_retention_keywords(segment) is False
+        assert enricher._detect_retention_keywords(segment.raw_text) is False
 
     def test_none_text_returns_false(self, enricher: SegmentEnricher) -> None:
         """None text returns False."""
         segment = SourceSegment(
             filing_id=1, segment_type="paragraph", raw_text=None
         )
-        assert enricher._detect_retention_keywords(segment) is False
+        assert enricher._detect_retention_keywords(segment.raw_text) is False
 
 
 class TestUsageKeywordDetection:
@@ -427,47 +427,47 @@ class TestUsageKeywordDetection:
     def test_daily_active_users_detected(self, enricher: SegmentEnricher) -> None:
         """'10 million daily active users' triggers usage."""
         segment = make_segment(raw_text="We reached 10 million daily active users.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_dau_acronym_detected(self, enricher: SegmentEnricher) -> None:
         """'DAU increased 50%' triggers usage."""
         segment = make_segment(raw_text="DAU increased 50% year over year.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_monthly_active_users_detected(self, enricher: SegmentEnricher) -> None:
         """'monthly active users grew' triggers usage."""
         segment = make_segment(raw_text="Monthly active users grew to 50 million.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_mau_acronym_detected(self, enricher: SegmentEnricher) -> None:
         """'MAU' triggers usage."""
         segment = make_segment(raw_text="Our MAU reached 100 million users.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_weekly_active_users_detected(self, enricher: SegmentEnricher) -> None:
         """'weekly active users' triggers usage."""
         segment = make_segment(raw_text="We track weekly active users carefully.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_wau_acronym_detected(self, enricher: SegmentEnricher) -> None:
         """'WAU' triggers usage."""
         segment = make_segment(raw_text="WAU grew by 25% this quarter.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_active_customers_not_detected(self, enricher: SegmentEnricher) -> None:
         """'active customers' is not 'active users' - not detected."""
         segment = make_segment(raw_text="We have 1000 active customers.")
-        assert enricher._detect_usage_keywords(segment) is False
+        assert enricher._detect_usage_keywords(segment.raw_text) is False
 
     def test_numeric_active_users_detected(self, enricher: SegmentEnricher) -> None:
         """'5 million active users' triggers usage."""
         segment = make_segment(raw_text="We have 5 million active users worldwide.")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_empty_text_returns_false(self, enricher: SegmentEnricher) -> None:
         """Empty text returns False."""
         segment = make_segment(raw_text="")
-        assert enricher._detect_usage_keywords(segment) is False
+        assert enricher._detect_usage_keywords(segment.raw_text) is False
 
 
 # =============================================================================
@@ -596,8 +596,8 @@ class TestEdgeCases:
     def test_empty_segment_text(self, enricher: SegmentEnricher) -> None:
         """Empty text segments don't trigger keyword bonuses."""
         segment = make_segment(raw_text="")
-        assert enricher._detect_retention_keywords(segment) is False
-        assert enricher._detect_usage_keywords(segment) is False
+        assert enricher._detect_retention_keywords(segment.raw_text) is False
+        assert enricher._detect_usage_keywords(segment.raw_text) is False
 
     def test_multiple_retention_keywords_not_stacked(
         self, enricher: SegmentEnricher
@@ -618,7 +618,7 @@ class TestEdgeCases:
             raw_text="net dollar retention rate of 143%"
         )
         # Should match, but only count once
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_high_confidence_all_bonuses_caps_at_10(
         self, enricher: SegmentEnricher

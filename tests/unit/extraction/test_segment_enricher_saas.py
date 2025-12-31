@@ -44,13 +44,13 @@ class TestArrMrrPatterns:
     def test_arr_grew_percentage(self, enricher: SegmentEnricher) -> None:
         """Matches 'Our ARR grew 50% year over year'."""
         segment = _make_segment("Our ARR grew 50% year over year.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_arr_of_dollar_amount(self, enricher: SegmentEnricher) -> None:
         """Matches 'ARR of $100 million'."""
         segment = _make_segment("ARR of $100 million as of January 31, 2019.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_annual_recurring_revenue_spelled_out(
@@ -58,13 +58,13 @@ class TestArrMrrPatterns:
     ) -> None:
         """Matches 'annual recurring revenue increased'."""
         segment = _make_segment("Our annual recurring revenue increased by 40%.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_mrr_growth(self, enricher: SegmentEnricher) -> None:
         """Matches 'MRR of $8 million'."""
         segment = _make_segment("MRR of $8 million was achieved in Q4.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_monthly_recurring_revenue_spelled_out(
@@ -72,19 +72,19 @@ class TestArrMrrPatterns:
     ) -> None:
         """Matches 'monthly recurring revenue'."""
         segment = _make_segment("Monthly recurring revenue accelerated in Q2.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_generic_revenue_no_match(self, enricher: SegmentEnricher) -> None:
         """'Total revenue was $500 million' (no ARR/MRR) should NOT match."""
         segment = _make_segment("Total revenue was $500 million in fiscal 2019.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_arr_with_decimal_percentage(self, enricher: SegmentEnricher) -> None:
         """Matches 'ARR increased by 42.5%'."""
         segment = _make_segment("ARR increased by 42.5% compared to last year.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
 
@@ -99,25 +99,25 @@ class TestBillingsPatterns:
     def test_calculated_billings(self, enricher: SegmentEnricher) -> None:
         """Matches 'Calculated billings were $200 million'."""
         segment = _make_segment("Calculated billings were $200 million in Q4.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_billings_grew(self, enricher: SegmentEnricher) -> None:
         """Matches 'billings grew 40%'."""
         segment = _make_segment("Our billings grew 40% year-over-year.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_deferred_revenue_grew(self, enricher: SegmentEnricher) -> None:
         """Matches 'deferred revenue grew by 25%'."""
         segment = _make_segment("Deferred revenue grew by 25% during the period.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_bill_customers_no_match(self, enricher: SegmentEnricher) -> None:
         """'We bill customers monthly' (verb form) should NOT match."""
         segment = _make_segment("We bill customers on a monthly basis.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
 
@@ -132,25 +132,25 @@ class TestNetExpansionPatterns:
     def test_net_expansion_rate(self, enricher: SegmentEnricher) -> None:
         """Matches 'net expansion rate of 130%'."""
         segment = _make_segment("Our net expansion rate of 130% reflects strong growth.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_net_revenue_expansion_rate(self, enricher: SegmentEnricher) -> None:
         """Matches 'net revenue expansion rate'."""
         segment = _make_segment("Net revenue expansion rate exceeded expectations.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_international_expansion_no_match(self, enricher: SegmentEnricher) -> None:
         """'international expansion' (geographic) should NOT match."""
         segment = _make_segment("We plan to invest in international expansion.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_expansion_without_net_no_match(self, enricher: SegmentEnricher) -> None:
         """'expansion' alone should NOT match (too generic)."""
         segment = _make_segment("Expansion of our team continued in Q3.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
 
@@ -169,31 +169,31 @@ class TestEnterpriseCustomerPatterns:
         segment = _make_segment(
             "We had 575 Paid Customers > $100,000 of ARR as of January."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_customers_arr_over_100k(self, enricher: SegmentEnricher) -> None:
         """Matches 'customers with ARR over $100K'."""
         segment = _make_segment("The number of customers with ARR over $100K doubled.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_enterprise_customers_count(self, enricher: SegmentEnricher) -> None:
         """Matches '575 enterprise customers'."""
         segment = _make_segment("We serve 575 enterprise customers worldwide.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_exceeding_threshold(self, enricher: SegmentEnricher) -> None:
         """Matches 'exceeding $50,000 of ARR'."""
         segment = _make_segment("Customers exceeding $50,000 of ARR grew 60%.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_generic_paid_customers_no_match(self, enricher: SegmentEnricher) -> None:
         """'We had 88,000 paid customers' (lowercase, no threshold) should NOT match."""
         segment = _make_segment("We had 88,000 paid customers in 2019.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
 
@@ -208,25 +208,25 @@ class TestLtvCacPatterns:
     def test_customer_acquisition_cost(self, enricher: SegmentEnricher) -> None:
         """Matches 'customer acquisition cost decreased'."""
         segment = _make_segment("Customer acquisition cost decreased by 15%.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_cac_standalone_metric(self, enricher: SegmentEnricher) -> None:
         """Matches 'CAC of $X'."""
         segment = _make_segment("CAC of $50 per customer was achieved.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_payback_period(self, enricher: SegmentEnricher) -> None:
         """Matches 'payback period of 12 months'."""
         segment = _make_segment("Our payback period is approximately 12 months.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_high_lifetime_value(self, enricher: SegmentEnricher) -> None:
         """Matches 'high lifetime value'."""
         segment = _make_segment("We believe customers have a high lifetime value.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
 
@@ -243,25 +243,25 @@ class TestNegativeCases:
         segment = _make_segment(
             "Our customers are satisfied with our products and services."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_revenue_grew_no_match(self, enricher: SegmentEnricher) -> None:
         """'Revenue grew 50%' (no ARR/MRR) should NOT match."""
         segment = _make_segment("Revenue grew 50% in the fourth quarter.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_subscription_revenue_no_match(self, enricher: SegmentEnricher) -> None:
         """'subscription revenue' without ARR/MRR should NOT match."""
         segment = _make_segment("Subscription revenue increased this year.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_arr_as_word_part_no_match(self, enricher: SegmentEnricher) -> None:
         """'ARRANGE' should NOT match (ARR as part of larger word)."""
         segment = _make_segment("We will arrange for delivery next week.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
 
@@ -282,7 +282,7 @@ class TestRealS1Snippets:
             "revenue, or ARR, as a gauge of adoption within and expansion into "
             "large enterprises."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_slack_575_paid_customers_arr(self, enricher: SegmentEnricher) -> None:
@@ -291,7 +291,7 @@ class TestRealS1Snippets:
             "We had 575 Paid Customers >$100,000 of ARR as of January 31, 2019, "
             "which accounted for approximately 40% of our revenue in fiscal year 2019."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_slack_high_lifetime_value(self, enricher: SegmentEnricher) -> None:
@@ -300,7 +300,7 @@ class TestRealS1Snippets:
             "We believe that all of these factors will contribute to a high lifetime "
             "value of an organization on Slack."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_farfetch_ltv_cac_monitoring(self, enricher: SegmentEnricher) -> None:
@@ -310,7 +310,7 @@ class TestRealS1Snippets:
             "strategy is, we closely monitor the initial Customer Acquisition Cost, "
             "the Lifetime Value of a Consumer, and payback period metrics."
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
 
@@ -325,19 +325,19 @@ class TestEdgeCasesAndVariations:
     def test_lowercase_arr_with_dollar(self, enricher: SegmentEnricher) -> None:
         """Mixed case: 'arr of $100 million' (lowercase arr)."""
         segment = _make_segment("Our arr of $100 million exceeded targets.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_pattern_at_start_of_string(self, enricher: SegmentEnricher) -> None:
         """Pattern at start of string."""
         segment = _make_segment("ARR of $50M demonstrates strong growth.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_pattern_at_end_of_string(self, enricher: SegmentEnricher) -> None:
         """Pattern at end of string."""
         segment = _make_segment("Our key metric is calculated billings.")
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_very_long_text_with_pattern(self, enricher: SegmentEnricher) -> None:
@@ -347,7 +347,7 @@ class TestEdgeCasesAndVariations:
         segment = _make_segment(
             f"{prefix}Our ARR of $100 million grew 50%.{suffix}"
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
     def test_none_raw_text(self, enricher: SegmentEnricher) -> None:
@@ -358,7 +358,7 @@ class TestEdgeCasesAndVariations:
             raw_text=None,
             candidate_metric_ids=[],
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_empty_raw_text(self, enricher: SegmentEnricher) -> None:
@@ -369,7 +369,7 @@ class TestEdgeCasesAndVariations:
             raw_text="",
             candidate_metric_ids=[],
         )
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
     def test_non_string_raw_text(self, enricher: SegmentEnricher) -> None:
@@ -382,7 +382,7 @@ class TestEdgeCasesAndVariations:
         )
         # Set raw_text to non-string after construction
         segment.raw_text = 12345  # type: ignore[assignment]
-        result = enricher._detect_saas_indicators(segment)
+        result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
 

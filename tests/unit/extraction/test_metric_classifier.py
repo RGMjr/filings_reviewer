@@ -262,7 +262,7 @@ def test_definition_patterns(classifier, sample_segment):
         "MAU is defined as monthly active users.",
         "The definition of churn rate is...",
         "Retention refers to the percentage of...",
-        "ARPU means average revenue per user.",
+        '"ARPU" means average revenue per user.',  # Quoted term required for "means" pattern
     ]
 
     for text in test_cases:
@@ -625,35 +625,9 @@ class TestBookingsMetricPatterns:
         result = classifier.classify_segment(sample_segment)
         assert "cm_billings" in result.candidate_metric_ids
 
-    def test_deferred_revenue_basic(self, classifier, sample_segment):
-        """Test identification of deferred revenue."""
-        sample_segment.raw_text = "Deferred revenue increased to $200 million at year end."
-        result = classifier.classify_segment(sample_segment)
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
-
-    def test_deferred_revenue_unearned(self, classifier, sample_segment):
-        """Test identification via 'unearned revenue' variant."""
-        sample_segment.raw_text = "Unearned revenue was $150 million."
-        result = classifier.classify_segment(sample_segment)
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
-
-    def test_deferred_revenue_rpo(self, classifier, sample_segment):
-        """Test identification via RPO acronym."""
-        sample_segment.raw_text = "Our remaining performance obligations (RPO) were $300 million."
-        result = classifier.classify_segment(sample_segment)
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
-
-    def test_deferred_revenue_backlog(self, classifier, sample_segment):
-        """Test identification via backlog variant."""
-        sample_segment.raw_text = "Revenue backlog totaled $250 million."
-        result = classifier.classify_segment(sample_segment)
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
-
-    def test_deferred_revenue_contract_liabilities(self, classifier, sample_segment):
-        """Test identification via contract liabilities variant."""
-        sample_segment.raw_text = "Contract liabilities were $180 million at December 31."
-        result = classifier.classify_segment(sample_segment)
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
+    # NOTE: cm_deferred_revenue was removed from taxonomy - deferred revenue,
+    # unearned revenue, RPO, backlog, and contract liabilities are GAAP items,
+    # not customer metrics
 
     def test_bookings_not_booking_singular(self, classifier, sample_segment):
         """Test that singular 'booking' (reservations) doesn't match."""
@@ -672,13 +646,11 @@ class TestBookingsMetricPatterns:
     def test_multiple_revenue_predictability_metrics(self, classifier, sample_segment):
         """Test segment with multiple revenue predictability metrics."""
         sample_segment.raw_text = (
-            "Bookings were $100 million, billings were $90 million, "
-            "and deferred revenue increased to $50 million."
+            "Bookings were $100 million, billings were $90 million."
         )
         result = classifier.classify_segment(sample_segment)
         assert "cm_bookings" in result.candidate_metric_ids
         assert "cm_billings" in result.candidate_metric_ids
-        assert "cm_deferred_revenue" in result.candidate_metric_ids
 
 
 # ===== T6: E-Commerce Metrics Tests =====
