@@ -124,7 +124,11 @@ See Also:
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.review.marker_row_parser import MarkerRowParser
+    from src.review.table_structure import TableRowParser
 
 from src.review.confidence_scoring import ConfidenceScorer
 from src.review.config import (
@@ -574,7 +578,7 @@ class CandidateGenerator:
 
         # Pre-compute table row structure for table row filtering
         # This prevents keywords in one row from matching with numbers in another row
-        table_row_parser = None
+        table_row_parser: MarkerRowParser | TableRowParser | None = None
         raw_html = segment.get("raw_html", "")
 
         # Check for markers first (more reliable when present)

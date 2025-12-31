@@ -81,7 +81,7 @@ See Also:
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from src.review.number_parsing import NumberMatch
 
@@ -103,7 +103,7 @@ def _load_metric_keywords() -> dict[str, list[str]]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.extraction.keyword_config import get_metric_keywords
-    return get_metric_keywords()
+    return cast(dict[str, list[str]], get_metric_keywords())
 
 
 def _load_exclusion_patterns() -> dict[str, list[str]]:
@@ -113,7 +113,7 @@ def _load_exclusion_patterns() -> dict[str, list[str]]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.extraction.keyword_config import get_exclusion_patterns
-    return get_exclusion_patterns()
+    return cast(dict[str, list[str]], get_exclusion_patterns())
 
 
 def _load_specific_patterns() -> list[str]:
@@ -123,10 +123,10 @@ def _load_specific_patterns() -> list[str]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.extraction.keyword_config import get_specific_patterns
-    return get_specific_patterns()
+    return cast(list[str], get_specific_patterns())
 
 
-def _load_required_context() -> dict[str, dict]:
+def _load_required_context() -> dict[str, dict[str, Any]]:
     """Load required context patterns from YAML config.
 
     Required context patterns gate which metrics generate review candidates.
@@ -137,7 +137,7 @@ def _load_required_context() -> dict[str, dict]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.extraction.keyword_config import get_required_context
-    return get_required_context()
+    return cast(dict[str, dict[str, Any]], get_required_context())
 
 
 # =============================================================================
@@ -148,7 +148,7 @@ def _load_required_context() -> dict[str, dict]:
 METRIC_KEYWORDS: dict[str, list[str]] = _load_metric_keywords()
 METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = _load_exclusion_patterns()
 SPECIFIC_KEYWORD_PATTERNS: list[str] = _load_specific_patterns()
-METRIC_REQUIRED_CONTEXT: dict[str, dict] = _load_required_context()
+METRIC_REQUIRED_CONTEXT: dict[str, dict[str, Any]] = _load_required_context()
 
 
 # =============================================================================
