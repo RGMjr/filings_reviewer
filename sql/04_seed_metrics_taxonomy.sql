@@ -60,6 +60,18 @@ VALUES (
     1
 );
 
+-- CM4b: Purchase Transactions Overall (added for HRV-6 taxonomy fix)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_purchase_transactions_overall',
+    'Purchase Transactions Overall',
+    'core',
+    'Total number of purchase transactions or orders completed in the reporting period.',
+    'transactions',
+    'active',
+    1
+) ON CONFLICT (metric_id) DO NOTHING;
+
 -- ============================================================================
 -- EXTENDED METRICS (Phase 1)
 -- ============================================================================
@@ -391,6 +403,34 @@ VALUES (
     'experimental',
     1
 );
+
+-- ============================================================================
+-- GROWTH METRICS (HRV-6 Improvements)
+-- ============================================================================
+
+-- Active Customers Growth
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_active_customers_growth',
+    'Active Customers Growth',
+    'extended',
+    'Growth rate or change in total active customers over a period.',
+    'growth',
+    'active',
+    1
+) ON CONFLICT (metric_id) DO NOTHING;
+
+-- Purchase Transactions Overall Growth
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_purchase_transactions_overall_growth',
+    'Purchase Transactions Growth',
+    'extended',
+    'Growth rate or change in total purchase transactions/orders over a period.',
+    'growth',
+    'active',
+    1
+) ON CONFLICT (metric_id) DO NOTHING;
 
 -- ============================================================================
 -- Verification
