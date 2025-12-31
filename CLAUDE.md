@@ -158,3 +158,40 @@ docker compose down
 ## Documentation
 
 See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM_PLAN.md`
+
+## Task Execution Workflow
+
+**IMPORTANT**: This project uses a structured worker prompt workflow for task execution.
+
+### When to Use (Size-Based)
+
+| Task Size | Time Estimate | Workflow Required? |
+|-----------|---------------|-------------------|
+| XS | <30 min | Optional (can code directly) |
+| S | 30 min - 2 hr | Optional (recommended for multi-file changes) |
+| M | 2-4 hr | **Required** |
+| L | 4-8 hr | **Required** |
+| XL | >8 hr | **Required** (consider decomposition) |
+
+### Workflow Steps
+
+1. **Generate Worker Prompt** - Use `docs/WORKER_PROMPT_GENERATOR.md` to create task packet
+2. **Execute Task** - Follow the worker prompt requirements
+3. **Run Verification** - Execute verification commands from prompt
+4. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
+5. **User Approval** - STOP and ask user before implementing improvements
+6. **Generate Follow-Ups** - Create task suggestions for deferred improvements
+7. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
+8. **Commit & Push** - With task ID reference
+
+### Key Files
+
+- `docs/WORKER_PROMPT_TEMPLATE.md` (v2.5) - Task prompt format
+- `docs/WORKER_PROMPT_GENERATOR.md` (v1.1) - Meta-prompt for generating prompts
+- `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.1) - Completion documentation format
+
+### Quick Start
+
+Use `/task` command to invoke the workflow, or for M/L/XL tasks, automatically follow this structure.
+
+**Do NOT** jump directly to coding for M/L/XL tasks without creating a worker prompt first.
