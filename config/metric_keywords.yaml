@@ -73,6 +73,13 @@ cm_new_customers_acquired:
     - '\bnew\s+accounts?\s+acquired\b'
     - '\bnew\s+clients?\s+acquired\b'
     - '\bnew\s+logos?\b'
+    # Consumer synonyms (e-commerce terminology)
+    - '\bnew\s+consumers?\b'
+    - '\bconsumers?\s+acquired\b'
+    - '\bconsumer\s+acquisition[s]?\b'
+    - '\bacquired\s+consumers?\b'
+    - '\bconsumer\s+growth\b'
+    - '\bconsumers?\s+added\b'
   exclusions:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
@@ -191,6 +198,8 @@ cm_customer_acquisition_cost:
     - '\bcustomer\s+acquisition\s+cost\b'
     - '\bacquisition\s+cost\b'
     - '\bcost\s+to\s+acquire\b'
+    # Consumer synonyms (e-commerce terminology)
+    - '\bconsumer\s+acquisition\s+cost\b'
   exclusions:
     - '\bcontribution\s+margin\b'
     - '\bgross\s+margin\b'
@@ -199,6 +208,7 @@ cm_customer_acquisition_cost:
     - '\bplatform\s+order\s+contribution\b'
   specific_patterns:
     - 'customer\s+acquisition\s+cost'
+    - 'consumer\s+acquisition\s+cost'
 
 cm_cac_payback_period:
   patterns:
@@ -211,6 +221,9 @@ cm_customer_retention_rate:
     - '\bretention\s+rate\b'
     - '\bcustomer\s+retention\b'
     - '\bretained\s+customers?\b'
+    # Consumer synonyms (e-commerce terminology)
+    - '\bconsumer\s+retention\b'
+    - '\bretained\s+consumers?\b'
   exclusions:
     - '\brevenue\s+retention\b'
     - '\bdollar\s+retention\b'
@@ -222,6 +235,9 @@ cm_customer_churn_rate:
     - '\bchurn\s+rate\b'
     - '\bcustomer\s+churn\b'
     - '\battrition\s+rate\b'
+    # Consumer synonyms (e-commerce terminology)
+    - '\bconsumer\s+churn\b'
+    - '\bconsumer\s+attrition\b'
 
 cm_net_revenue_retention:
   patterns:
@@ -411,6 +427,9 @@ cm_lifetime_value_per_customer:
     - '\blifetime\s+value\b'
     - '\bcustomer\s+lifetime\s+value\b'
     - '\bclv\b'
+    # Consumer synonyms and alternate phrasings
+    - '\bconsumer\s+lifetime\s+value\b'
+    - '\blifetime\s+value\s+of\s+a\s+(?:customer|consumer)\b'
   exclusions:
     - '\bltv\s*/\s*cac\b'
     - '\bltv\s+to\s+cac\b'
@@ -418,6 +437,8 @@ cm_lifetime_value_per_customer:
   specific_patterns:
     - 'lifetime\s+value'
     - 'customer\s+lifetime\s+value'
+    - 'consumer\s+lifetime\s+value'
+    - 'lifetime\s+value\s+of\s+a'
 
 cm_ltv_to_cac_ratio:
   patterns:
