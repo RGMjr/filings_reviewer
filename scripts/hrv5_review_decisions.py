@@ -2,13 +2,23 @@
 """
 HRV-5: Automated Review Decision Creation
 
-Applies learned patterns from HRV-3/HRV-4 to create review decisions for
-Snowflake (39), DocuSign (40), and Samsara Vision (38) filings.
+Applies learned patterns and confidence-based rules to create review decisions.
 
 Usage:
+    # Run on specific filings
+    DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+      python3 scripts/hrv5_review_decisions.py --filing-ids 31,35
+
+    # Dry run mode (preview without changes)
+    DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+      python3 scripts/hrv5_review_decisions.py --filing-ids 31 --dry-run
+
+    # Run on legacy filings (original behavior)
     DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
       python3 scripts/hrv5_review_decisions.py
 """
+
+import argparse
 
 import os
 import sys
@@ -57,9 +67,13 @@ TP_PATTERNS = {
 }
 
 
-def is_false_positive(candidate: dict) -> tuple[bool, str]:
+def is_false_positive(candidate: dict, low_confidence_threshold: float = 0.10) -> tuple[bool, str]:
     """
     Check if a candidate is a false positive based on learned patterns.
+
+    Args:
+        candidate: Candidate dict with context_text, suggested_metric_id, raw_number_text, etc.
+        low_confidence_threshold: Candidates with confidence <= this value are auto-rejected
 
     Returns:
         Tuple of (is_fp, rejection_reason)
@@ -68,6 +82,11 @@ def is_false_positive(candidate: dict) -> tuple[bool, str]:
     metric_id = candidate['suggested_metric_id']
     raw_value = candidate['raw_number_text']
     parsed_value = candidate.get('parsed_value')
+    confidence = candidate.get('suggestion_confidence')
+
+    # Pattern 0: Very low confidence score - auto reject
+    if confidence is not None and confidence <= low_confidence_threshold:
+        return True, f'Very low confidence ({confidence:.0%})'
 
     # Pattern 1 (REMOVED): cm_gross_margin_overall is no longer tracked (deprecated 2025-12-29)
     # It is not a customer-specific metric. See cm_gross_margin_by_cohort for cohort-level tracking.
@@ -198,7 +217,7 @@ def analyze_filing(db, filing_id: int, dry_run: bool = False) -> dict:
     Returns:
         Stats dict with accept/reject counts
     """
-    # Get all pending candidates
+    # Get all pending candidates (no existing decision)
     candidates = db.query("""
         SELECT
             candidate_id,
@@ -206,7 +225,8 @@ def analyze_filing(db, filing_id: int, dry_run: bool = False) -> dict:
             raw_number_text,
             parsed_value,
             triggering_keyword,
-            context_text
+            context_text,
+            suggestion_confidence
         FROM review_candidates rc
         WHERE rc.filing_id = %(filing_id)s
         AND NOT EXISTS (
@@ -264,6 +284,11 @@ def analyze_filing(db, filing_id: int, dry_run: bool = False) -> dict:
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Create automated review decisions')
+    parser.add_argument('--filing-ids', type=str, help='Comma-separated filing IDs (e.g., 31,35)')
+    parser.add_argument('--dry-run', action='store_true', help='Preview without making changes')
+    args = parser.parse_args()
+
     load_dotenv()
     db_url = os.getenv('DATABASE_URL')
 
@@ -274,26 +299,41 @@ def main():
     from src.infra.db import DatabaseAdapter
     db = DatabaseAdapter(db_url)
 
-    # Target filings
-    filings = [
-        (39, 'Snowflake'),
-        (40, 'DocuSign'),
-        (38, 'Samsara Vision'),
-    ]
+    # Determine target filings
+    if args.filing_ids:
+        # Parse provided filing IDs and look up company names
+        filing_ids = [int(fid.strip()) for fid in args.filing_ids.split(',')]
+        filings_query = """
+            SELECT f.filing_id, c.company_name
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.filing_id = ANY(%(filing_ids)s)
+        """
+        results = db.query(filings_query, {'filing_ids': filing_ids})
+        filings = [(r['filing_id'], r['company_name']) for r in results]
+        if not filings:
+            print(f"Error: No filings found for IDs: {filing_ids}")
+            sys.exit(1)
+    else:
+        # Default legacy filings
+        filings = [
+            (39, 'Snowflake'),
+            (40, 'DocuSign'),
+            (38, 'Samsara Vision'),
+        ]
 
     print("=" * 70)
     print("HRV-5: Automated Review Decision Creation")
     print("=" * 70)
 
-    dry_run = '--dry-run' in sys.argv
-    if dry_run:
+    if args.dry_run:
         print("DRY RUN MODE - No changes will be made")
 
     total_stats = {'accepted': 0, 'rejected': 0, 'skipped': 0}
 
     for filing_id, company in filings:
         print(f"\nProcessing {company} (filing_id={filing_id})...")
-        stats = analyze_filing(db, filing_id, dry_run=dry_run)
+        stats = analyze_filing(db, filing_id, dry_run=args.dry_run)
 
         print(f"  Total candidates: {stats['total']}")
         print(f"  Accepted: {stats['accepted']}")
@@ -316,7 +356,7 @@ def main():
     print(f"Total rejected: {total_stats['rejected']}")
     print(f"Needs manual review: {total_stats['skipped']}")
 
-    if not dry_run:
+    if not args.dry_run:
         print("\nDecisions saved to database")
     else:
         print("\nRun without --dry-run to save decisions")
