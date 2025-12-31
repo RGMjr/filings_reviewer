@@ -594,21 +594,15 @@ class KeywordMatcher:
                 if table_row_parser.are_in_same_row(kw.start, number.start)
             ]
 
-            # Only filter if we have same-row candidates
-            # (fallback: if no same-row keywords, keep all)
-            if same_row:
-                if len(same_row) < len(candidates_with_distance):
-                    logger.debug(
-                        f"Table row filtering: {len(same_row)}/{len(candidates_with_distance)} "
-                        f"keywords in same table row as number '{number.raw_text}'"
-                    )
-                candidates_with_distance = same_row
-            else:
-                # No same-row keywords found - keep all candidates (fallback)
+            # Strict row filtering: only keep same-row keywords
+            # Numbers without same-row keywords are not valid metric candidates
+            if len(same_row) < len(candidates_with_distance):
+                filtered_count = len(candidates_with_distance) - len(same_row)
                 logger.debug(
-                    f"Table row filtering fallback: no keywords in same row "
-                    f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
+                    f"Table row filtering: kept {len(same_row)}/{len(candidates_with_distance)} "
+                    f"keywords in same row as '{number.raw_text}' (filtered {filtered_count} cross-row)"
                 )
+            candidates_with_distance = same_row
 
         # Phase 3: Sort by distance first, then length (P1 enhancement + L4 multiplier + L4 Option C)
         if self.prefer_closest_keyword:
@@ -684,6 +678,8 @@ class KeywordMatcher:
                 )
 
         # Phase 5: Filter substring duplicates, deduplicate by metric, and add direction (L3)
+        # Cross-metric substring suppression: when keywords from different metrics
+        # overlap positionally AND one is a substring of the other, keep the longer match.
         matches: list[KeywordMatch] = []
         seen_metrics: set[str] = set()
 
@@ -692,20 +688,34 @@ class KeywordMatcher:
             if kw.metric_id in seen_metrics:
                 continue
 
-            # Check if this keyword is a substring of any already-accepted keyword
-            # at an overlapping position (only within the same metric)
+            # Check if this keyword overlaps with any already-accepted keyword
+            # and one is a substring of the other (cross-metric deduplication)
             is_substring_duplicate = False
-            for accepted in matches:
-                if (
-                    kw.metric_id == accepted.metric_id
-                    and self._keywords_overlap(kw, accepted)
-                    and self._is_substring_match(kw, accepted)
+            replace_index: int | None = None
+
+            for i, accepted in enumerate(matches):
+                if self._keywords_overlap(kw, accepted) and self._is_substring_match(
+                    kw, accepted
                 ):
-                    logger.debug(
-                        f"Filtered substring duplicate: '{kw.keyword}' "
-                        f"(substring of '{accepted.keyword}')"
-                    )
-                    is_substring_duplicate = True
+                    # Overlapping substring match found - compare lengths
+                    if len(kw.keyword) > len(accepted.keyword):
+                        # New keyword is longer (more specific) - replace accepted
+                        logger.debug(
+                            f"Cross-metric replacement: '{accepted.keyword}' "
+                            f"({accepted.metric_id}) replaced by longer "
+                            f"'{kw.keyword}' ({kw.metric_id})"
+                        )
+                        replace_index = i
+                        # Remove old metric from seen so we can add new one
+                        seen_metrics.discard(accepted.metric_id)
+                    else:
+                        # Accepted keyword is longer or equal - skip new one
+                        logger.debug(
+                            f"Filtered substring duplicate: '{kw.keyword}' "
+                            f"({kw.metric_id}) is substring of '{accepted.keyword}' "
+                            f"({accepted.metric_id})"
+                        )
+                        is_substring_duplicate = True
                     break
 
             if not is_substring_duplicate:
@@ -722,7 +732,11 @@ class KeywordMatcher:
                     direction=direction,
                 )
 
-                matches.append(match_with_direction)
+                if replace_index is not None:
+                    # Replace shorter keyword with longer one (cross-metric)
+                    matches[replace_index] = match_with_direction
+                else:
+                    matches.append(match_with_direction)
                 seen_metrics.add(kw.metric_id)
 
         return matches

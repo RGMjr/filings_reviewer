@@ -229,10 +229,10 @@ class TableRowParser:
         row2 = self.get_row_at_position(pos2)
 
         if row1 is None or row2 is None:
-            # If we can't determine row, err on the side of allowing the match
-            # This handles edge cases in text position mapping
+            # Strict: if we can't determine row, don't allow cross-row match
+            # This prevents false positives from position mapping failures
             logger.debug(f"Could not determine row for positions {pos1} and/or {pos2}")
-            return True
+            return False
 
         return row1.row_index == row2.row_index
 
