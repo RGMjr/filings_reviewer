@@ -83,7 +83,6 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from src.extraction.metric_classifier import MetricClassifier, USE_YAML_KEYWORDS
 from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
@@ -98,157 +97,47 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 def _load_metric_keywords() -> dict[str, list[str]]:
-    """Load metric keywords from YAML config or use hardcoded fallback."""
-    if USE_YAML_KEYWORDS:
-        try:
-            from src.extraction.keyword_config import get_metric_keywords
-            return get_metric_keywords()
-        except Exception as e:
-            logger.warning(f"Failed to load YAML keywords, using hardcoded: {e}")
-            return MetricClassifier.METRIC_KEYWORDS
-    return MetricClassifier.METRIC_KEYWORDS
+    """Load metric keywords from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_metric_keywords
+    return get_metric_keywords()
 
 
 def _load_exclusion_patterns() -> dict[str, list[str]]:
-    """Load exclusion patterns from YAML config or use hardcoded fallback."""
-    if USE_YAML_KEYWORDS:
-        try:
-            from src.extraction.keyword_config import get_exclusion_patterns
-            return get_exclusion_patterns()
-        except Exception as e:
-            logger.warning(f"Failed to load YAML exclusions, using hardcoded: {e}")
-            return _HARDCODED_EXCLUSION_PATTERNS
-    return _HARDCODED_EXCLUSION_PATTERNS
+    """Load exclusion patterns from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_exclusion_patterns
+    return get_exclusion_patterns()
 
 
 def _load_specific_patterns() -> list[str]:
-    """Load specific (multi-word) patterns from YAML config or use hardcoded fallback."""
-    if USE_YAML_KEYWORDS:
-        try:
-            from src.extraction.keyword_config import get_specific_patterns
-            return get_specific_patterns()
-        except Exception as e:
-            logger.warning(f"Failed to load YAML specific patterns, using hardcoded: {e}")
-            return _HARDCODED_SPECIFIC_PATTERNS
-    return _HARDCODED_SPECIFIC_PATTERNS
+    """Load specific (multi-word) patterns from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_specific_patterns
+    return get_specific_patterns()
 
 
 def _load_required_context() -> dict[str, dict]:
-    """Load required context patterns from YAML config or use hardcoded fallback.
+    """Load required context patterns from YAML config.
 
     Required context patterns gate which metrics generate review candidates.
     Metrics with required_context only generate candidates when at least one
     of the context patterns appears within proximity of the keyword match.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
     """
-    if USE_YAML_KEYWORDS:
-        try:
-            from src.extraction.keyword_config import get_required_context
-            return get_required_context()
-        except Exception as e:
-            logger.warning(f"Failed to load YAML required_context, using hardcoded: {e}")
-            return _HARDCODED_REQUIRED_CONTEXT
-    return _HARDCODED_REQUIRED_CONTEXT
-
-
-# =============================================================================
-# Hardcoded Fallbacks (used when YAML loading fails or is disabled)
-# =============================================================================
-
-_HARDCODED_SPECIFIC_PATTERNS = [
-    r"active\s+customers?",
-    r"active\s+consumers?",
-    r"enterprise\s+customers?",
-    r"paying\s+customers?",
-    r"total\s+customers?",
-    r"total\s+consumers?",
-    r"number\s+of\s+orders?",
-    r"net\s+revenue\s+retention",
-    r"gross\s+revenue\s+retention",
-    r"net\s+dollar\s+retention",
-    r"customer\s+acquisition\s+cost",
-    r"lifetime\s+value",
-    r"average\s+revenue\s+per",
-    r"annual\s+recurring\s+revenue",
-    r"monthly\s+recurring\s+revenue",
-    r"daily\s+active\s+users?",
-    r"monthly\s+active\s+users?",
-]
-
-_HARDCODED_EXCLUSION_PATTERNS: dict[str, list[str]] = {
-    "cm_new_customers_acquired": [
-        r"\bacquisition\s+cost\b",
-        r"\bcac\b",
-        r"\bcost\s+to\s+acquire\b",
-    ],
-    "cm_customer_acquisition_cost": [
-        r"\bcontribution\s+margin\b",
-        r"\bgross\s+margin\b",
-        r"\bprofit\s+margin\b",
-        r"\boperating\s+margin\b",
-        r"\bplatform\s+order\s+contribution\b",
-    ],
-    "cm_lifetime_value_per_customer": [
-        r"\bltv\s*/\s*cac\b",
-        r"\bltv\s+to\s+cac\b",
-        r"\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b",
-    ],
-    "cm_revenue_per_customer": [
-        r"\bcost\s+per\s+customer\b",
-        r"\bcost\s+per\s+user\b",
-    ],
-    "cm_customer_retention_rate": [
-        r"\brevenue\s+retention\b",
-        r"\bdollar\s+retention\b",
-        r"\bnrr\b",
-        r"\bgrr\b",
-    ],
-    "cm_customers_period_end": [
-        r"\bretention\s+rate\b",
-        r"\bnet\s+dollar\s+retention\b",
-        r"\bndr\b",
-        r"\bnrr\b",
-        r"\b\d+%\s*(?:as\s+of|for|during)\b",
-    ],
-    "cm_large_customers_period_end": [
-        r"\bretention\s+rate\b",
-        r"\bnet\s+dollar\s+retention\b",
-        r"\bndr\b",
-        r"\bnrr\b",
-        r"\b\d+%\s*(?:as\s+of|for|during)\b",
-    ],
-}
-
-# Required context patterns for revenue synonym metrics (hardcoded fallback)
-# These metrics only generate review candidates when cohort or per-customer
-# context is present. Without context, they're just revenue measures.
-# Note: cm_arr and cm_mrr are NOT included - they're inherently customer-related.
-_HARDCODED_REQUIRED_CONTEXT: dict[str, dict] = {
-    metric_id: {
-        "patterns": [
-            # Cohort keywords (from cohort_chart_detector.py)
-            r"\bcohort\b",
-            r"\bby\s+vintage\b",
-            r"\bacquisition\s+year\b",
-            r"\brevenue\s+(?:by|per)\s+cohort\b",
-            r"\bretention\s+(?:by|per)\s+cohort\b",
-            r"\bARR\s+(?:by|of\s+each)\s+cohort\b",
-            r"\bLTV[/ ]CAC\b",
-            # Per-customer keywords
-            r"\bper\s+customer\b",
-            r"\bper\s+user\b",
-            r"\bper\s+account\b",
-            r"\bper\s+subscriber\b",
-            r"\bper\s+client\b",
-            r"\baverage\s+per\b",
-            r"\bby\s+customer\b",
-            r"\bby\s+account\b",
-            r"\bcustomer[- ]level\b",
-            r"\baccount[- ]level\b",
-        ],
-        "proximity_chars": 1500,
-    }
-    for metric_id in ["cm_gmv", "cm_tcv", "cm_acv", "cm_bookings", "cm_billings"]
-}
+    from src.extraction.keyword_config import get_required_context
+    return get_required_context()
 
 
 # =============================================================================
@@ -420,6 +309,48 @@ class KeywordMatcher:
             if pattern.search(context):
                 return True
         return False
+
+    def should_exclude_for_number_context(
+        self,
+        metric_id: str,
+        text: str,
+        number_position: int,
+        window_chars: int = 100,
+    ) -> tuple[bool, str | None]:
+        """
+        Check if a candidate should be excluded based on NUMBER context.
+
+        Called by CandidateGenerator before feature extraction.
+        Uses the same compiled exclusion patterns as keyword-context exclusions.
+
+        This addresses the architecture issue where keyword-context exclusions
+        (checked during find_all_keywords) use ±50 chars around the KEYWORD,
+        but some false positives occur when numbers are far from keywords
+        but near exclusion-worthy context.
+
+        Args:
+            metric_id: The metric ID to check exclusions for
+            text: The full text containing the number
+            number_position: Character position of the number in text
+            window_chars: Characters around number position to check (default: 100)
+
+        Returns:
+            Tuple of (should_exclude, reason)
+            reason is a string like "exclusion:number_context:<pattern>" if excluded,
+            None if not excluded
+        """
+        if metric_id not in self._compiled_exclusions:
+            return False, None
+
+        start = max(0, number_position - window_chars)
+        end = min(len(text), number_position + window_chars)
+        context = text[start:end]
+
+        for pattern in self._compiled_exclusions[metric_id]:
+            if pattern.search(context):
+                return True, f"exclusion:number_context:{pattern.pattern}"
+
+        return False, None
 
     def _has_required_context(
         self, metric_id: str, match_position: int, full_text: str

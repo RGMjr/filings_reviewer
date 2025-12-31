@@ -124,7 +124,6 @@ See Also:
 """
 
 import logging
-import re
 from typing import Any
 
 from src.review.confidence_scoring import ConfidenceScorer
@@ -155,7 +154,6 @@ from src.review.feature_extractor import (
 from src.review.keyword_matching import (
     KeywordMatch,
     KeywordMatcher,
-    METRIC_EXCLUSION_PATTERNS,
 )
 from src.review.models import (
     CandidateFeatures,
@@ -578,13 +576,19 @@ class CandidateGenerator:
         # This prevents keywords in one row from matching with numbers in another row
         table_row_parser = None
         raw_html = segment.get("raw_html", "")
-        if raw_html and ('<table' in raw_html.lower()):
+
+        # Check for markers first (more reliable when present)
+        if " [ROW] " in text or " [CELL] " in text:
+            from src.review.marker_row_parser import MarkerRowParser
+            table_row_parser = MarkerRowParser(text)
+        elif raw_html and ('<table' in raw_html.lower()):
             from src.review.table_structure import TableRowParser
             table_row_parser = TableRowParser(raw_html, text)
-            if table_row_parser.is_table():
-                logger.debug(
-                    f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
-                )
+
+        if table_row_parser is not None and table_row_parser.is_table():
+            logger.debug(
+                f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
+            )
 
         # Track (number_position, metric_id) pairs to avoid duplicates
         seen: set[tuple[int, str]] = set()
@@ -634,6 +638,21 @@ class CandidateGenerator:
                     if key in seen:
                         continue
                     seen.add(key)
+
+                    # Early exclusion check around NUMBER position
+                    # This catches FPs where number is near exclusion context
+                    # (e.g., contribution margin values matched to take rate)
+                    should_exclude, reason = self._keyword_matcher.should_exclude_for_number_context(
+                        metric_id=kw.metric_id,
+                        text=text,
+                        number_position=num.start,
+                    )
+                    if should_exclude:
+                        segment_stats["excluded_by_number_context"] = (
+                            segment_stats.get("excluded_by_number_context", 0) + 1
+                        )
+                        logger.debug(f"Excluded candidate: {reason}")
+                        continue
 
                     # Calculate distance and position
                     # For context_prefix matches, use a special "large" distance
@@ -810,41 +829,6 @@ class CandidateGenerator:
                         f"(value={candidate.parsed_value}, raw={raw_text})"
                     )
                 else:
-                    filtered_candidates.append(candidate)
-
-            candidates = filtered_candidates
-
-        # HRV Number-Context Exclusion: Filter candidates where the NUMBER's context
-        # contains exclusion patterns for that metric. This catches cases like:
-        # "Platform Order Contribution Margin 46.7% ... Take Rate 33.7%"
-        # where contribution margin percentages are incorrectly matched to "take rate"
-        # because exclusions were only checked around keyword position, not number position.
-        if self.config.filter_false_positives:
-            filtered_candidates = []
-            for candidate in candidates:
-                metric_id = candidate.suggested_metric_id
-                context_text = candidate.context_text.lower() if candidate.context_text else ""
-
-                # Check if any exclusion pattern matches in the number's context
-                is_excluded = False
-                exclusion_patterns = METRIC_EXCLUSION_PATTERNS.get(metric_id, [])
-                for pattern_str in exclusion_patterns:
-                    try:
-                        pattern = re.compile(pattern_str, re.IGNORECASE)
-                        if pattern.search(context_text):
-                            is_excluded = True
-                            segment_stats["filtered_by_number_context_exclusion"] = (
-                                segment_stats.get("filtered_by_number_context_exclusion", 0) + 1
-                            )
-                            logger.debug(
-                                f"Filtered by number-context exclusion: metric={metric_id}, "
-                                f"pattern={pattern_str!r}, value={candidate.parsed_value}"
-                            )
-                            break
-                    except re.error as e:
-                        logger.warning(f"Invalid exclusion pattern {pattern_str!r}: {e}")
-
-                if not is_excluded:
                     filtered_candidates.append(candidate)
 
             candidates = filtered_candidates
