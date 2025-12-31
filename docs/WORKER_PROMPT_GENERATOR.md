@@ -55,6 +55,7 @@ You are generating a worker prompt for Task [TASK_ID] following the project's st
    - [ ] Verification commands are copy-pasteable
    - [ ] Backward compatibility section included if data format changes
    - [ ] Risk mitigation strategy if Medium/High risk
+   - [ ] Critical Evaluation Phase section included (required for all tasks)
 
 5. **Write Output**
    - Write to: `docs/WORKER_PROMPT_TASK_[TASK_ID].md`
@@ -176,6 +177,21 @@ mypy [module path] --strict
 ## Auto-Generated Verification Script
 
 [Include for M/L/XL tasks - provides complete verification in single command]
+
+## Critical Evaluation Phase
+
+**Required for all tasks. Depth scales with task size (XS=quick scan, XL=full audit).**
+
+After verification passes but BEFORE committing:
+1. Code Quality Review (linting, DRY, naming, error handling)
+2. Test Coverage Assessment (edge cases, negative tests)
+3. Architecture Alignment (CLAUDE.md patterns, minimal changes)
+4. Identify Improvements (optimizations, edge cases, simplifications)
+5. **User Approval (REQUIRED)** - STOP and ask user before proceeding
+6. Implement Approved Changes
+7. Generate Follow-Up Tasks for deferred improvements
+8. Update Documentation
+9. Commit and Push
 
 ## Reference
 
@@ -309,6 +325,11 @@ wait
 ---
 
 ## Version History
+
+- **v1.1** (2025-12-31): Added Critical Evaluation Phase support
+  - Added Critical Evaluation Phase to template structure
+  - Added validation checklist item for Critical Evaluation Phase
+  - Updated to align with WORKER_PROMPT_TEMPLATE.md v2.5
 
 - **v1.0** (2025-12-18): Initial meta-prompt for automated worker prompt generation
   - Based on WORKER_PROMPT_TEMPLATE.md v2.4

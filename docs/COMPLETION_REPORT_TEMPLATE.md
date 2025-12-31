@@ -82,6 +82,39 @@ TESTS ADDED:    [Count]
 - [x] mypy --strict passes
 - [x] No regressions
 
+## Evaluation Findings
+
+### Code Quality
+- [x] No linting/type issues
+- [x] DRY followed
+- [Notes if any]
+
+### Test Assessment
+- [x] Edge cases covered
+- [x] Negative tests exist
+- [Notes if any]
+
+### Architecture Alignment
+- [x] Follows CLAUDE.md patterns
+- [Notes if any]
+
+### Improvements Identified
+1. **[Improvement 1]**: [Description] → [Implemented/Deferred/Rejected]
+2. **[Improvement 2]**: [Description] → [Implemented/Deferred/Rejected]
+
+### User Decisions
+- Approved: [List of approved improvements]
+- Deferred: [List of deferred items with reason]
+- Rejected: [List of rejected items with reason]
+
+### Suggested Follow-Up Tasks (from deferred items)
+| Task ID | Description | Priority | Rationale |
+|---------|-------------|----------|-----------|
+| [PARENT-ID]-F1 | [From deferred improvement 1] | [Low/Medium/High] | [Why this should be done] |
+| [PARENT-ID]-F2 | [From deferred improvement 2] | [Low/Medium/High] | [Why this should be done] |
+
+*Note: Add these to plan document backlog or create worker prompts as appropriate.*
+
 ## Impact
 
 ### Before Task
@@ -151,6 +184,7 @@ Always include:
 - Test Coverage
 - Verification Results
 - Acceptance Criteria Checklist
+- Evaluation Findings (code quality, tests, architecture, improvements, user decisions)
 
 ### Optional Sections
 
@@ -179,13 +213,21 @@ Examples:
 
 ### When to Skip Sections
 
-- **XS tasks**: Header + Summary + Verification sufficient
-- **S tasks**: Can skip Lessons Learned if straightforward
-- **M/L/XL tasks**: Include all relevant sections
+- **XS tasks**: Header + Summary + Verification + abbreviated Evaluation Findings (quick scan only, skip detailed checklists, just note "No improvements identified" or list 1-2 items)
+- **S tasks**: Can skip Lessons Learned if straightforward; standard Evaluation Findings (checklists + 1-2 improvements max)
+- **M/L/XL tasks**: Include all relevant sections with full Evaluation Findings
 
 ---
 
 ## Version History
+
+- **v1.1** (2025-12-31): Added Evaluation Findings section
+  - New section after Acceptance Criteria Checklist
+  - Code quality, test assessment, and architecture alignment checklists
+  - Improvements tracking with disposition (Implemented/Deferred/Rejected)
+  - User decisions log (Approved/Deferred/Rejected items)
+  - Suggested Follow-Up Tasks table for deferred improvements
+  - Complements WORKER_PROMPT_TEMPLATE.md v2.5 Critical Evaluation Phase
 
 - **v1.0** (2025-12-18): Initial template
   - Standard format for completion reports
