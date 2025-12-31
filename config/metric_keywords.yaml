@@ -394,6 +394,14 @@ cm_take_rate:
     - '\bservice\s+fee\s+rate\b'
     - '\bplatform\s+fee\s+rate\b'
     - '\brevenue\s+as\s+a\s+percentage\s+of\s+gmv\b'
+  exclusions:
+    # Prevent cross-metric matching with margin percentages
+    - '\bcontribution\s+margin\b'
+    - '\border\s+contribution\b'
+    - '\bplatform\s+order\s+contribution\b'
+    - '\bgross\s+margin\b'
+    - '\bprofit\s+margin\b'
+    - '\boperating\s+margin\b'
 
 # =============================================================================
 # SaaS Contract Metrics
