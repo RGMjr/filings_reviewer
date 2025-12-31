@@ -243,6 +243,80 @@ echo "✅ All acceptance criteria verified for Task [ID]!"
 echo "═══════════════════════════════════════════════════════════════"
 ```
 
+## Critical Evaluation Phase
+
+**Required for all tasks. Depth scales with task size.**
+
+| Task Size | Evaluation Depth |
+|-----------|------------------|
+| XS | Quick scan: obvious issues only, skip detailed checklist |
+| S | Standard: review checklist, identify 1-2 improvements max |
+| M/L | Thorough: full checklist, comprehensive improvement search |
+| XL | Full audit: all above + architectural review |
+
+After verification passes but BEFORE committing, perform this evaluation:
+
+### 1. Code Quality Review
+- [ ] No linting issues or type errors beyond what was verified
+- [ ] DRY principle followed (no unnecessary duplication)
+- [ ] Naming conventions match project standards
+- [ ] Error handling is appropriate (not over/under-engineered)
+
+### 2. Test Coverage Assessment
+- [ ] Edge cases from requirements are covered
+- [ ] Negative test cases exist (what should fail)
+- [ ] No obvious untested scenarios
+- [ ] Integration with existing code is tested (if applicable)
+
+### 3. Architecture Alignment
+- [ ] Solution follows patterns documented in CLAUDE.md
+- [ ] No violations of design decisions (conservative classification, rule-based first, etc.)
+- [ ] Changes are minimal and focused (no over-engineering)
+
+### 4. Identify Improvements
+Document any potential improvements discovered during evaluation:
+- Performance optimizations
+- Additional edge cases to handle
+- Code simplifications
+- Documentation updates needed
+
+### 5. User Approval (REQUIRED)
+**STOP and ask the user:**
+> "I've completed the task and identified [N] potential improvements:
+> 1. [Improvement 1]
+> 2. [Improvement 2]
+> ...
+>
+> Would you like me to implement any of these before committing? (They would be included in the same commit)"
+
+**Wait for user response before proceeding.**
+
+### 6. Implement Approved Changes
+If user approves improvements:
+- Implement the approved changes
+- Re-run verification commands
+- Update completion report with changes made
+
+### 7. Generate Follow-Up Tasks (for deferred improvements)
+For each deferred improvement:
+- Create task suggestion with ID format: `[TASK-ID]-F[N]` (e.g., CRM-1-F1)
+- Assign priority based on impact (Low/Medium/High)
+- Document rationale in completion report
+- Add to plan document backlog or flag for worker prompt generation
+
+### 8. Update Documentation
+Before committing, ensure:
+- [ ] CLAUDE.md updated if new design decisions were made
+- [ ] Plan document progress tracker updated
+- [ ] Completion report includes evaluation findings
+- [ ] Follow-up tasks documented in completion report
+
+### 9. Commit and Push
+Only after evaluation complete and user approval obtained:
+- Stage all changes (implementation + approved improvements)
+- Create commit with task ID reference
+- Push to remote
+
 ## Integration Plan (Post-[Task ID])
 
 **[Optional section - only if integration is separate from implementation]**
@@ -493,10 +567,20 @@ Before finalizing a worker prompt, verify:
 - [ ] If task modifies public APIs, deprecation strategy specified
 - [ ] If task is high-risk (Medium/High), feature flag strategy considered
 - [ ] If task depends on other in-progress work, conflicts identified in "Do NOT" section
+- [ ] Critical Evaluation Phase section present (required for all tasks)
+- [ ] Task size specified for evaluation depth guidance (XS/S/M/L/XL)
 
 ---
 
 ## Version History
+
+- **v2.5** (2025-12-31): Added Critical Evaluation Phase
+  - New mandatory section after verification, before commit
+  - 9-step evaluation process: code quality, tests, architecture, improvements
+  - Required user approval step before committing
+  - Follow-up task generation for deferred improvements
+  - Task-size adaptive depth (XS quick scan → XL full audit)
+  - Complements COMPLETION_REPORT_TEMPLATE.md v1.1 Evaluation Findings section
 
 - **v2.4** (2025-12-18): Added Phase 3 improvements
   - Added Risk Level Guidelines section with MEDIUM/HIGH risk checklists
