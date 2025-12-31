@@ -223,19 +223,31 @@ def create_decision():
         # Check for existing decision
         existing = db.get_decision_for_candidate(candidate_id)
         if existing:
-            logger.warning(
-                f"Candidate {candidate_id} already has decision {existing['decision_id']}"
-            )
-            return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Candidate already has a decision",
-                        "existing_decision_id": existing["decision_id"],
-                    }
-                ),
-                409,
-            )
+            # Allow overriding automated decisions (reviewer_id = 'hrv5_script')
+            if existing.get("reviewer_id") == "hrv5_script":
+                logger.info(
+                    f"Overriding automated decision {existing['decision_id']} for candidate {candidate_id}"
+                )
+                # Delete the automated decision so we can create a new human decision
+                db.execute(
+                    "DELETE FROM review_decisions WHERE decision_id = %(decision_id)s",
+                    {"decision_id": existing["decision_id"]},
+                )
+            else:
+                # Human decision already exists - don't allow override
+                logger.warning(
+                    f"Candidate {candidate_id} already has human decision {existing['decision_id']}"
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Candidate already has a decision",
+                            "existing_decision_id": existing["decision_id"],
+                        }
+                    ),
+                    409,
+                )
 
         # Begin transaction (implicit - will commit on success, rollback on exception)
         # Note: Metric ID validity will be checked by foreign key constraint
