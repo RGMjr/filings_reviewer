@@ -134,9 +134,19 @@ cm_transactions_by_cohort:
   patterns:
     - '\btransactions?\s+by\s+cohort\b'
     - '\bcohort\s+transactions?\b'
-    - '\bpurchase\s+transactions?\b'
     - '\btransactions?[^.;]{0,100}\bcohort\b'
+  # NOTE: 'number of orders' moved to cm_purchase_transactions_overall
+
+cm_purchase_transactions_overall:
+  patterns:
     - '\bnumber\s+of\s+orders?\b'
+    - '\btotal\s+orders?\b'
+    - '\bpurchase\s+transactions?\b(?!\s+by\s+cohort)'
+    - '\border\s+count\b'
+    - '\border\s+volume\b'
+  exclusions:
+    - '\bby\s+cohort\b'
+    - '\bby\s+vintage\b'
   specific_patterns:
     - 'number\s+of\s+orders?'
 
@@ -414,3 +424,30 @@ cm_ltv_to_cac_ratio:
     - '\bltv\s*[:/]\s*cac\b'
     - '\bltv\s+to\s+cac\b'
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
+
+# =============================================================================
+# Growth Metrics (added for HRV-6 improvements)
+# =============================================================================
+
+cm_active_customers_growth:
+  patterns:
+    - '\bactive\s+(?:customers?|consumers?)\s+growth\b'
+    - '\b(?:customers?|consumers?)\s+growth\b'
+    - '\bgrowth\s+(?:in\s+)?active\s+(?:customers?|consumers?)\b'
+    - '\bactive\s+(?:customers?|consumers?)[^.;]{0,30}(?:up|increased?|grew)\b'
+  exclusions:
+    - '\bacquisition\s+cost\b'
+    - '\bcac\b'
+  specific_patterns:
+    - 'active\s+consumers?\s+growth'
+    - 'active\s+customers?\s+growth'
+
+cm_purchase_transactions_overall_growth:
+  patterns:
+    - '\b(?:number\s+of\s+)?orders?\s+growth\b'
+    - '\btransactions?\s+growth\b'
+    - '\bgrowth\s+(?:in\s+)?(?:number\s+of\s+)?orders?\b'
+    - '\border\s+(?:volume\s+)?growth\b'
+  specific_patterns:
+    - 'number\s+of\s+orders?\s+growth'
+    - 'order\s+growth'
