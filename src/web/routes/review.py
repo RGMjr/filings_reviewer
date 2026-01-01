@@ -9,9 +9,9 @@ import logging
 import time
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Dict, Optional, Tuple, TypedDict
+from typing import TypedDict
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for, session
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
 from markupsafe import Markup, escape
 
 from src.review.models import (
@@ -20,6 +20,9 @@ from src.review.models import (
     REVIEW_STATUSES,
 )
 from src.web.app import get_db
+
+# Import needed for type annotations
+from typing import Any
 
 review_bp = Blueprint("review", __name__)
 logger = logging.getLogger(__name__)
@@ -181,9 +184,9 @@ class FilingData(TypedDict):
     filing_date: datetime
     file_path: str
     status: str
-    total_pages: Optional[int]
+    total_pages: int | None
     html_fetched: bool
-    sec_html_url: Optional[str]  # Direct URL to primary HTML document on SEC EDGAR
+    sec_html_url: str | None  # Direct URL to primary HTML document on SEC EDGAR
     created_at: datetime
     updated_at: datetime
 
@@ -208,28 +211,28 @@ class CandidateData(TypedDict, total=False):
     keyword_distance: int
     keyword_position: str
     parsed_value: Decimal
-    parsed_unit: Optional[str]
+    parsed_unit: str | None
     suggested_metric_id: str
     suggestion_confidence: float
     review_status: str  # 'pending', 'reviewed', 'skipped'
     created_at: datetime
 
     # Segment fields (from LEFT JOIN to source_segments)
-    segment_type: Optional[str]  # 'table', 'paragraph', etc. - NULL if no source_segment_id
-    segment_html: Optional[str]  # Raw HTML of segment - NULL if no source_segment_id
-    segment_html_table_only: Optional[str]  # Table HTML preserved for dual display when value is truncated
-    features: Optional[Dict]  # JSONB features for ML pattern analysis
+    segment_type: str | None  # 'table', 'paragraph', etc. - NULL if no source_segment_id
+    segment_html: str | None  # Raw HTML of segment - NULL if no source_segment_id
+    segment_html_table_only: str | None  # Table HTML preserved for dual display when value is truncated
+    features: dict | None  # JSONB features for ML pattern analysis
 
     # Decision fields (present only if reviewed - from LEFT JOIN)
-    decision_id: Optional[int]
-    decision: Optional[str]  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: Optional[str]
-    rejection_category: Optional[str]
-    rejection_reason: Optional[str]
-    reviewer_notes: Optional[str]
-    reviewer_id: Optional[str]
-    review_time_seconds: Optional[int]
-    decision_created_at: Optional[datetime]
+    decision_id: int | None
+    decision: str | None  # 'accept', 'reject', 'reclassify'
+    assigned_metric_id: str | None
+    rejection_category: str | None
+    rejection_reason: str | None
+    reviewer_notes: str | None
+    reviewer_id: str | None
+    review_time_seconds: int | None
+    decision_created_at: datetime | None
 
 
 class DecisionData(TypedDict):
@@ -239,13 +242,13 @@ class DecisionData(TypedDict):
     """
     decision_id: int
     decision: str  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: Optional[str]
-    rejection_category: Optional[str]
-    rejection_reason: Optional[str]
-    reviewer_notes: Optional[str]
-    reviewer_id: Optional[str]
-    review_time_seconds: Optional[int]
-    created_at: Optional[datetime]
+    assigned_metric_id: str | None
+    rejection_category: str | None
+    rejection_reason: str | None
+    reviewer_notes: str | None
+    reviewer_id: str | None
+    review_time_seconds: int | None
+    created_at: datetime | None
 
 
 class MetricData(TypedDict):
@@ -524,7 +527,7 @@ def stats():
 
 @review_bp.route("/review/<int:filing_id>/next")
 def next_candidate(filing_id: int):
-    """Navigate to next pending candidate."""
+    """Navigate to next pending candidate, respecting active filters."""
     db = get_db()
     current_id_raw = request.args.get("current_id", type=int)
 
@@ -533,20 +536,38 @@ def next_candidate(filing_id: int):
         "current_id", current_id_raw, default=None, min_value=1, flash_errors=False
     )
 
+    # Extract filter parameters to maintain navigation consistency
+    filter_status = request.args.get("status", "all")
+    filter_metric = request.args.get("metric", "all")
+    filter_confidence = request.args.get("confidence", "all")
+    sort_by = request.args.get("sort", "position")
+
+    filters = {
+        "status": filter_status,
+        "metric": filter_metric,
+        "confidence": filter_confidence,
+        "sort": sort_by,
+    }
+
     try:
-        # Find next candidate using extracted helper
-        next_cand = _find_next_candidate(db, filing_id, current_id)
+        # Find next candidate using filter-aware helper
+        next_cand = _find_next_candidate(db, filing_id, current_id, filters)
 
         if next_cand:
-            return redirect(
-                url_for(
-                    "review.review_filing",
-                    filing_id=filing_id,
-                    candidate_id=next_cand["candidate_id"],
-                )
-            )
+            # Build redirect URL with filter parameters preserved
+            redirect_params = {"filing_id": filing_id, "candidate_id": next_cand["candidate_id"]}
+            if filter_status != "all":
+                redirect_params["status"] = filter_status
+            if filter_metric != "all":
+                redirect_params["metric"] = filter_metric
+            if filter_confidence != "all":
+                redirect_params["confidence"] = filter_confidence
+            if sort_by != "position":
+                redirect_params["sort"] = sort_by
+
+            return redirect(url_for("review.review_filing", **redirect_params))
         else:
-            flash("All candidates reviewed for this filing!", "success")
+            flash("All candidates matching your filters have been reviewed!", "success")
             return redirect(url_for("review.filing_list"))
 
     except Exception as e:
@@ -592,12 +613,12 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 
 def _validate_positive_int(
     param_name: str,
-    value: Optional[int],
-    default: Optional[int],
+    value: int | None,
+    default: int | None,
     min_value: int = 1,
-    max_value: Optional[int] = None,
+    max_value: int | None = None,
     flash_errors: bool = True,
-) -> Optional[int]:
+) -> int | None:
     """
     Validate and sanitize a positive integer query parameter.
 
@@ -648,7 +669,7 @@ def _validate_positive_int(
 
 
 def _paginate(
-    page: int = 1, per_page: int = 50, total_count: Optional[int] = None
+    page: int = 1, per_page: int = 50, total_count: int | None = None
 ) -> PaginationData:
     """
     Calculate pagination metadata.
@@ -683,9 +704,9 @@ def _paginate(
 
 
 def _select_current_candidate(
-    candidates: List[CandidateData],
-    requested_id: Optional[int]
-) -> Optional[CandidateData]:
+    candidates: list[CandidateData],
+    requested_id: int | None
+) -> CandidateData | None:
     """
     Select the current candidate to display from a list of candidates.
 
@@ -725,8 +746,8 @@ def _select_current_candidate(
 
 
 def _calculate_review_progress(
-    candidates: List[CandidateData]
-) -> Tuple[int, int, int]:
+    candidates: list[CandidateData]
+) -> tuple[int, int, int]:
     """
     Calculate review progress from a list of candidates.
 
@@ -748,13 +769,17 @@ def _calculate_review_progress(
 
 
 def _extract_decision_from_candidate(
-    candidate: Optional[CandidateData]
-) -> Optional[DecisionData]:
+    candidate: CandidateData | None
+) -> DecisionData | None:
     """
     Extract decision data from a candidate record.
 
     Candidates from get_review_candidates_with_decisions() include decision fields
     from a LEFT JOIN. This function extracts those fields into a separate dict.
+
+    **IMPORTANT**: Automated decisions (reviewer_id='hrv5_script') are treated as
+    suggestions that can be overridden by humans. They are returned so the UI can
+    display them, but the template should allow human reviewers to override them.
 
     Args:
         candidate: Candidate record with optional decision fields
@@ -775,54 +800,97 @@ def _extract_decision_from_candidate(
         "reviewer_id": candidate.get("reviewer_id"),
         "review_time_seconds": candidate.get("review_time_seconds"),
         "created_at": candidate.get("decision_created_at"),
+        "is_automated": candidate.get("reviewer_id") == "hrv5_script",  # Flag automated decisions
     }
 
 
 def _find_next_candidate(
     db,
     filing_id: int,
-    current_id: Optional[int]
-) -> Optional[Dict]:
+    current_id: int | None,
+    filters: dict[str, str] | None = None,
+) -> dict | None:
     """
-    Find the next pending candidate for a filing.
+    Find the next pending candidate for a filing, respecting active filters.
 
-    Navigation order: First try to find the next sequential candidate
-    (candidate_id > current), then wrap around to lower IDs if none found.
+    Navigation advances through the filtered, sorted candidate list.
+    When reaching the end, wraps around to the beginning of the filtered list.
 
     Args:
         db: Database adapter instance
         filing_id: Filing ID to search within
         current_id: Current candidate ID to search after (or None)
+        filters: Optional dict with filter/sort settings:
+            - status: 'pending', 'reviewed', 'all' (default: navigates to pending only)
+            - metric: metric_id or 'all'
+            - confidence: 'high', 'medium', 'low', 'all'
+            - sort: 'position', 'confidence_asc', 'confidence_desc', 'value_asc', 'value_desc'
 
     Returns:
-        Next candidate dict, or None if no more pending candidates
+        Next candidate dict, or None if no more candidates matching filters
     """
-    # Get all pending candidates for this filing
-    candidates = db.get_review_candidates_for_filing(
-        filing_id=filing_id, status="pending"
+    filters = filters or {}
+
+    # Extract filter parameters
+    filter_status = filters.get("status", "all")
+    filter_metric = filters.get("metric", "all")
+    filter_confidence = filters.get("confidence", "all")
+    sort_by = filters.get("sort", "position")
+
+    # Convert to database query parameters
+    db_status = filter_status if filter_status in ("pending", "reviewed", "skipped", "in_progress") else None
+    db_metric_id = filter_metric if filter_metric != "all" else None
+    db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
+    db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
+
+    # When navigating "next", we always look for pending candidates (unless status filter is set)
+    # This ensures we skip reviewed candidates during normal review flow
+    if db_status is None:
+        db_status = "pending"
+
+    # Get filtered, sorted candidates
+    candidates = db.get_review_candidates_with_decisions(
+        filing_id=filing_id,
+        status=db_status,
+        metric_id=db_metric_id,
+        confidence_level=db_confidence,
+        sort_by=db_sort_by,
+        limit=None,
     )
 
     if not candidates:
         return None
 
-    # Sort by candidate_id for sequential navigation
-    # (DB returns ordered by char_position, not candidate_id)
-    sorted_candidates = sorted(candidates, key=lambda c: c["candidate_id"])
-
+    # Find current candidate index in the sorted list
+    current_index = None
     if current_id:
-        # First: try to find next pending candidate with higher ID (sequential)
-        higher_candidates = [c for c in sorted_candidates if c["candidate_id"] > current_id]
-        if higher_candidates:
-            return higher_candidates[0]  # First one after sorting = lowest ID > current
+        for i, c in enumerate(candidates):
+            if c["candidate_id"] == current_id:
+                current_index = i
+                break
 
-        # Wrap around: return first pending candidate (lowest ID)
-        return sorted_candidates[0]
+    # If current candidate is in the list, get the next one
+    if current_index is not None:
+        # Next candidate is the one after current in sorted order
+        next_index = current_index + 1
+        if next_index < len(candidates):
+            next_candidate = candidates[next_index]
+        else:
+            # Wrap around to beginning
+            next_candidate = candidates[0]
+
+        # Don't return the same candidate we're on
+        if next_candidate["candidate_id"] == current_id:
+            return None
+
+        return next_candidate
     else:
-        # No current_id: return first pending candidate (lowest ID)
-        return sorted_candidates[0]
+        # Current candidate not in filtered list (e.g., just reviewed it, or no current_id)
+        # Return the first candidate in the filtered list
+        return candidates[0]
 
 
-def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optional[str] = None) -> str:
+def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | None = None) -> str:
     """
     Resolve the correct SEC filing URL for the primary document.
 
@@ -839,6 +907,7 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optiona
         URL to the primary HTML document, or fallback to directory URL
     """
     import os
+
     from src.infra.sec_client import SECClient
 
     try:
@@ -868,7 +937,7 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: Optiona
     return f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_dashes}/"
 
 
-def _get_active_metrics() -> List[MetricData]:
+def _get_active_metrics() -> list[MetricData]:
     """
     Get list of active metrics for dropdown.
 
@@ -917,8 +986,7 @@ def _get_active_metrics() -> List[MetricData]:
                     -- 5. Revenue Concentration
                     WHEN 'cm_revenue_concentration' THEN 40
 
-                    -- 6. Gross Margin
-                    WHEN 'cm_gross_margin_overall' THEN 50
+                    -- 6. Gross Margin (by cohort only - overall margin is not a customer metric)
                     WHEN 'cm_gross_margin_by_cohort' THEN 51
 
                     -- 7. Retention, Churn & Attrition
@@ -940,7 +1008,7 @@ def _get_active_metrics() -> List[MetricData]:
     return g.metrics
 
 
-def _get_unique_metrics_for_filing(candidates: List[Dict]) -> List[str]:
+def _get_unique_metrics_for_filing(candidates: list[dict]) -> list[str]:
     """
     Extract unique metric IDs from candidates for filter dropdown.
 
@@ -1061,6 +1129,7 @@ def _highlight_html(
         Markup: HTML string with highlighting added and broken tags fixed
     """
     import re
+
     from bs4 import BeautifulSoup
 
     # Parse HTML with BeautifulSoup to fix any truncated/unclosed tags

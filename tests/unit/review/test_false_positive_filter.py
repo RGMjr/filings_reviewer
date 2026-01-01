@@ -5,23 +5,24 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
 from src.review.false_positive_filter import (
     DATE_CONTEXT_PATTERNS,
     FALSE_POSITIVE_CONTEXT_PATTERNS,
-    FalsePositiveFilter,
     MIN_METRIC_VALUE,
-    TOC_PROXIMITY_CHARS,
     TOC_DOT_LEADER_WINDOW,
     TOC_HEADERS,
-    YEAR_MIN,
+    TOC_PROXIMITY_CHARS,
     YEAR_MAX,
+    YEAR_MIN,
+    FalsePositiveFilter,
     is_near_table_of_contents,
+    is_spelled_out_number,
     is_toc_page_reference,
 )
 from src.review.number_parsing import NumberMatch
-
 
 # =============================================================================
 # FalsePositiveFilter.is_false_positive Tests
@@ -175,6 +176,135 @@ class TestIsFalsePositive:
         is_fp, reason = filter.is_false_positive(
             "Average AOV was $5 per transaction", number
         )
+        assert is_fp is False
+        assert reason is None
+
+
+# =============================================================================
+# Label-Embedded Value Filtering Tests (CMS-2)
+# =============================================================================
+
+
+class TestLabelEmbeddedValueFiltering:
+    """Tests for filtering numbers that are part of metric label thresholds.
+
+    Example: "Paid Customers > $100,000" - the $100,000 is part of the label,
+    not an actual metric value to extract.
+    """
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_filters_threshold_with_greater_than(self, filter):
+        """Should filter numbers following > operator."""
+        text = "Paid Customers > $100,000 grew to 500"
+        number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_threshold_with_greater_equal(self, filter):
+        """Should filter numbers following >= operator."""
+        text = "ARR >= $50M is our target"
+        number = NumberMatch(
+            start=text.find("50"),
+            end=text.find("50") + 2,
+            raw_text="50",
+            value=Decimal("50"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_threshold_with_less_than(self, filter):
+        """Should filter numbers following < operator."""
+        text = "Customers < $1000 are considered small"
+        number = NumberMatch(
+            start=text.find("1000"),
+            end=text.find("1000") + 4,
+            raw_text="1000",
+            value=Decimal("1000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_unicode_comparison_operators(self, filter):
+        """Should filter numbers following unicode operators (≥, ≤)."""
+        text = "Enterprise customers ≥ $100K annually"
+        number = NumberMatch(
+            start=text.find("100"),
+            end=text.find("100") + 3,
+            raw_text="100",
+            value=Decimal("100"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_does_not_filter_standalone_currency(self, filter):
+        """Should NOT filter currency without comparison operator."""
+        text = "We earned $100,000 in revenue"
+        number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+        assert reason is None
+
+    def test_does_not_filter_plain_number(self, filter):
+        """Should NOT filter plain numbers without comparison operator."""
+        text = "We had 100000 customers"
+        number = NumberMatch(
+            start=text.find("100000"),
+            end=text.find("100000") + 6,
+            raw_text="100000",
+            value=Decimal("100000"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+        assert reason is None
+
+    def test_real_world_slack_example(self, filter):
+        """Real-world example from Slack S-1: Paid Customers > $100,000."""
+        text = "We have 500 Paid Customers > $100,000 in annual contract value"
+        # The $100,000 should be filtered
+        threshold_number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, threshold_number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+        # The 500 should NOT be filtered
+        count_number = NumberMatch(
+            start=text.find("500"),
+            end=text.find("500") + 3,
+            raw_text="500",
+            value=Decimal("500"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, count_number)
         assert is_fp is False
         assert reason is None
 
@@ -1290,3 +1420,387 @@ class TestMeasurementUnitPatterns:
         is_fp2, reason2 = filter.is_false_positive(text2, number2)
         assert is_fp2 is True
         assert reason2 == "reference_number"
+
+
+# =============================================================================
+# HRV-10: Financial Statement Context Detection Tests
+# =============================================================================
+
+
+class TestFinancialStatementDetection:
+    """Tests for HRV-10 financial statement context detection."""
+
+    def test_is_in_financial_statement_context_income_statement(self):
+        """Should detect Consolidated Statements of Operations header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+(In thousands, except per share data)
+
+Revenue $400,552 $318,519 $255,843"""
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_balance_sheet(self):
+        """Should detect Consolidated Balance Sheets header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED BALANCE SHEETS
+(In thousands)
+
+Total assets $1,198,956"""
+        position = text.find("1,198,956")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_cash_flow(self):
+        """Should detect Statements of Cash Flows header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """CONSOLIDATED STATEMENTS OF CASH FLOWS
+(In thousands)
+
+Net cash from operating activities $125,000"""
+        position = text.find("125,000")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_summary_data(self):
+        """Should detect Summary Financial Data header."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = """SUMMARY CONSOLIDATED FINANCIAL DATA
+(In thousands)
+
+Revenue $400,552"""
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is True
+
+    def test_is_in_financial_statement_context_negative(self):
+        """Should NOT detect financial statement context for regular text."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        text = "We had 10 million daily active users in Q4 2023."
+        position = text.find("10")
+        assert is_in_financial_statement_context(text, position) is False
+
+    def test_is_in_financial_statement_context_respects_proximity(self):
+        """Should NOT detect if header is too far away."""
+        from src.review.false_positive_filter import is_in_financial_statement_context
+
+        header = "CONSOLIDATED STATEMENTS OF OPERATIONS\n"
+        filler = "x" * 600  # Exceeds default 500 char proximity
+        text = header + filler + "Revenue $400,552"
+        position = text.find("400,552")
+        assert is_in_financial_statement_context(text, position) is False
+
+    def test_contains_financial_line_item_keyword_revenue(self):
+        """Should detect 'revenue' keyword."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Revenue [CELL] $400,552")
+        assert result == "revenue"
+
+    def test_contains_financial_line_item_keyword_total_assets(self):
+        """Should detect 'total assets' keyword (multi-word)."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Total assets $1,198,956")
+        assert result == "total assets"
+
+    def test_contains_financial_line_item_keyword_cost_of_revenue(self):
+        """Should detect 'cost of revenue' keyword (multi-word)."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Cost of revenue $200,000")
+        assert result == "cost of revenue"
+
+    def test_contains_financial_line_item_keyword_negative(self):
+        """Should NOT detect customer metric text."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("Daily active users: 10 million")
+        assert result is None
+
+    def test_contains_financial_line_item_case_insensitive(self):
+        """Should match regardless of case."""
+        from src.review.false_positive_filter import contains_financial_line_item_keyword
+
+        result = contains_financial_line_item_keyword("GROSS PROFIT $150,000")
+        assert result == "gross profit"
+
+    def test_financial_statement_filter_integration(self):
+        """Integration test: filter should flag financial statement line items."""
+        fp_filter = FalsePositiveFilter(filter_financial_statements=True)
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+(In thousands)
+
+Revenue $400,552 $318,519"""
+
+        number = NumberMatch(
+            start=text.find("400,552"),
+            end=text.find("400,552") + 7,
+            raw_text="$400,552",
+            value=Decimal("400552"),
+            unit="currency",
+        )
+
+        is_fp, reason = fp_filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason is not None
+        assert reason.startswith("financial_line_item:")
+
+    def test_financial_statement_filter_disabled(self):
+        """Should NOT filter when filter_financial_statements=False."""
+        fp_filter = FalsePositiveFilter(filter_financial_statements=False)
+
+        text = """CONSOLIDATED STATEMENTS OF OPERATIONS
+Revenue $400,552"""
+
+        number = NumberMatch(
+            start=text.find("400,552"),
+            end=text.find("400,552") + 7,
+            raw_text="$400,552",
+            value=Decimal("400552"),
+            unit="currency",
+        )
+
+        is_fp, reason = fp_filter.is_false_positive(text, number)
+        # Should not be flagged as financial_line_item when disabled
+        if reason is not None:
+            assert not reason.startswith("financial_line_item:")
+
+
+# =============================================================================
+# HRV-11: Metric Type Validation Tests
+# =============================================================================
+
+
+class TestMetricTypeValidation:
+    """Tests for HRV-11 type validation helper functions."""
+
+    def test_is_percentage_format_with_percent_sign(self):
+        """Should detect explicit percentage format."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("143%", "percentage") is True
+        assert is_percentage_format("85.5%", "percentage") is True
+
+    def test_is_percentage_format_with_unit(self):
+        """Should detect percentage from unit even without % sign."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("143", "percentage") is True
+
+    def test_is_percentage_format_decimal_ratio(self):
+        """Should detect decimal ratios as valid percentages (e.g., 1.25 = 125%)."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        # Retention rates often expressed as decimals
+        assert is_percentage_format("1.25", "count") is True  # 125%
+        assert is_percentage_format("0.85", "count") is True  # 85%
+        assert is_percentage_format("1.43", "count") is True  # 143%
+
+    def test_is_percentage_format_negative(self):
+        """Should NOT detect non-percentage formats."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        assert is_percentage_format("$143", "currency") is False
+        assert is_percentage_format("10000", "count") is False
+        assert is_percentage_format("5.5", "count") is False  # Outside 0.5-2.5 range
+
+    def test_is_dollar_format_with_dollar_sign(self):
+        """Should detect dollar format from $ sign."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("$100", "currency") is True
+        assert is_dollar_format("$1.5 million", "currency") is True
+
+    def test_is_dollar_format_with_unit(self):
+        """Should detect dollar format from unit."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("100", "currency") is True
+        assert is_dollar_format("100", "usd") is True
+
+    def test_is_dollar_format_negative(self):
+        """Should NOT detect non-dollar formats."""
+        from src.review.false_positive_filter import is_dollar_format
+
+        assert is_dollar_format("100", "count") is False
+        assert is_dollar_format("85%", "percentage") is False
+
+    def test_is_count_format_plain_number(self):
+        """Should detect plain count format."""
+        from src.review.false_positive_filter import is_count_format
+
+        assert is_count_format("10000", "count") is True
+        assert is_count_format("1.5 million", "count") is True
+
+    def test_is_count_format_negative(self):
+        """Should NOT detect currency or percentage as count."""
+        from src.review.false_positive_filter import is_count_format
+
+        assert is_count_format("$100", "count") is False  # Has $ sign
+        assert is_count_format("85%", "count") is False   # Has % sign
+        assert is_count_format("100", "currency") is False  # Wrong unit
+
+    def test_percentage_only_metrics_set(self):
+        """PERCENTAGE_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import PERCENTAGE_ONLY_METRICS
+
+        assert "cm_net_revenue_retention" in PERCENTAGE_ONLY_METRICS
+        assert "cm_customer_churn_rate" in PERCENTAGE_ONLY_METRICS
+
+    def test_dollar_only_metrics_set(self):
+        """DOLLAR_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import DOLLAR_ONLY_METRICS
+
+        assert "cm_arr" in DOLLAR_ONLY_METRICS
+        assert "cm_ltv" in DOLLAR_ONLY_METRICS
+        assert "cm_cac" in DOLLAR_ONLY_METRICS
+
+    def test_count_only_metrics_set(self):
+        """COUNT_ONLY_METRICS should contain expected metrics."""
+        from src.review.false_positive_filter import COUNT_ONLY_METRICS
+
+        assert "cm_customer" in COUNT_ONLY_METRICS
+        assert "cm_daily_active_users" in COUNT_ONLY_METRICS
+        assert "cm_monthly_active_users" in COUNT_ONLY_METRICS
+
+
+# =============================================================================
+# HRV-10/11: Financial Statement Header Patterns Tests
+# =============================================================================
+
+
+class TestFinancialStatementHeaderPatterns:
+    """Tests for financial statement header pattern matching."""
+
+    def test_income_statement_variations(self):
+        """Should match various income statement header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED STATEMENTS OF OPERATIONS",
+            "Consolidated Statements of Income",
+            "STATEMENTS OF OPERATIONS",
+            "Income Statement",
+            "CONSOLIDATED RESULTS OF OPERATIONS",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_balance_sheet_variations(self):
+        """Should match various balance sheet header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED BALANCE SHEETS",
+            "Consolidated Balance Sheet",
+            "STATEMENTS OF FINANCIAL POSITION",
+            "Balance Sheet Data",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_cash_flow_variations(self):
+        """Should match various cash flow statement header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "CONSOLIDATED STATEMENTS OF CASH FLOWS",
+            "Statements of Cash Flow",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+    def test_summary_data_variations(self):
+        """Should match summary financial data header formats."""
+        from src.review.false_positive_filter import FINANCIAL_STATEMENT_HEADERS
+
+        test_headers = [
+            "SUMMARY CONSOLIDATED FINANCIAL DATA",
+            "Summary Financial Data",
+            "SELECTED FINANCIAL DATA",
+            "Summary Operating Data",
+        ]
+
+        for header in test_headers:
+            matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
+            assert matched, f"Failed to match: {header}"
+
+
+# =============================================================================
+# Spelled-Out Number Detection Tests
+# =============================================================================
+
+
+class TestIsSpelledOutNumber:
+    """Tests for the is_spelled_out_number helper function."""
+
+    def test_spelled_out_returns_true(self):
+        """Spelled-out numbers should return True."""
+        assert is_spelled_out_number("six") is True
+        assert is_spelled_out_number("twenty-one") is True
+        assert is_spelled_out_number("five million") is True
+        assert is_spelled_out_number("SIX") is True
+
+    def test_numeric_returns_false(self):
+        """Numeric strings should return False."""
+        assert is_spelled_out_number("123") is False
+        assert is_spelled_out_number("50,000") is False
+        assert is_spelled_out_number("$1,234.56") is False
+        assert is_spelled_out_number("100M") is False
+
+    def test_mixed_returns_false(self):
+        """Mixed alphanumeric should return False (contains digits)."""
+        assert is_spelled_out_number("10 million") is False
+        assert is_spelled_out_number("$5.2 million") is False
+
+
+class TestSpelledOutNumberFilterExemption:
+    """Tests that spelled-out numbers are exempt from certain filters."""
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_spelled_out_exempt_from_min_value(self, filter):
+        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
+        # "six" has value 6, which is below default min_value (10)
+        # But spelled-out numbers should be exempt
+        number = NumberMatch(
+            start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("six months payback", number)
+        # Should NOT be filtered - spelled-out numbers are intentionally written
+        assert is_fp is False
+        assert reason is None
+
+    def test_spelled_out_exempt_from_toc_proximity(self, filter):
+        """Spelled-out numbers near TOC should NOT be filtered."""
+        text = "Table of Contents ... payback is six months"
+        number = NumberMatch(
+            start=text.find("six"), end=text.find("six") + 3,
+            raw_text="six", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered - spelled numbers are not page numbers
+        assert is_fp is False
+
+    def test_numeric_small_value_still_filtered(self, filter):
+        """Numeric small values should still be filtered (not exempt)."""
+        number = NumberMatch(
+            start=0, end=1, raw_text="6", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("6 months payback", number)
+        # Should be filtered - numeric small value
+        assert is_fp is True
+        assert reason == "below_min_value"

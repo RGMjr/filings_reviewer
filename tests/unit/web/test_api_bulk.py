@@ -5,10 +5,11 @@ Tests validation, safety limits, and error handling for the
 POST /api/bulk-decisions endpoint.
 """
 
-import pytest
-from unittest.mock import Mock, patch
-from flask import Flask
 import json
+from unittest.mock import Mock, patch
+
+import pytest
+from flask import Flask
 
 from src.web.routes.api import api_bp
 

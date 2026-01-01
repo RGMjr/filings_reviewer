@@ -124,40 +124,38 @@ See Also:
 """
 
 import logging
-import re
-from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any
 
-from src.extraction.metric_classifier import MetricClassifier
+if TYPE_CHECKING:
+    from src.review.marker_row_parser import MarkerRowParser
+    from src.review.table_structure import TableRowParser
+
+from src.review.confidence_scoring import ConfidenceScorer
 from src.review.config import (
-    CandidateGenerationConfig,
     DEFAULT_CONFIG,
     DEFAULT_CONTEXT_WORDS,
     MAX_KEYWORD_DISTANCE,
-    MIN_METRIC_VALUE,
+    CandidateGenerationConfig,
 )
-from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.context_extraction import ContextExtractor
 from src.review.deduplicator import deduplicate_candidates
 from src.review.exceptions import (
-    CandidateGenerationError,
     NumberProcessingError,
     SegmentProcessingError,
 )
 from src.review.false_positive_filter import (
-    DATE_CONTEXT_PATTERNS,
-    FALSE_POSITIVE_CONTEXT_PATTERNS,
+    COUNT_ONLY_METRICS,
+    DOLLAR_ONLY_METRICS,
+    PERCENTAGE_ONLY_METRICS,
     FalsePositiveFilter,
+    is_count_format,
+    is_dollar_format,
+    is_percentage_format,
 )
 from src.review.feature_extractor import (
-    DEFINITION_PATTERNS,
-    PERIOD_PATTERNS,
-    RISK_FACTORS_PATTERNS,
     FeatureExtractor,
 )
 from src.review.keyword_matching import (
-    METRIC_KEYWORDS,
-    SPECIFIC_KEYWORD_PATTERNS,
     KeywordMatch,
     KeywordMatcher,
 )
@@ -167,7 +165,7 @@ from src.review.models import (
     ReviewCandidate,
     SegmentDict,
 )
-from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
+from src.review.number_parsing import NumberMatch, NumberParser
 
 logger = logging.getLogger(__name__)
 
@@ -239,15 +237,15 @@ class CandidateGenerator:
 
     def __init__(
         self,
-        config: Optional[CandidateGenerationConfig] = None,
+        config: CandidateGenerationConfig | None = None,
         # Deprecated parameters (for backward compatibility)
-        max_keyword_distance: Optional[int] = None,
-        context_words: Optional[int] = None,
-        filter_false_positives: Optional[bool] = None,
-        min_value: Optional[int] = None,
-        filter_years: Optional[bool] = None,
-        compute_confidence: Optional[bool] = None,
-        apply_learned_rules: Optional[bool] = None,
+        max_keyword_distance: int | None = None,
+        context_words: int | None = None,
+        filter_false_positives: bool | None = None,
+        min_value: int | None = None,
+        filter_years: bool | None = None,
+        compute_confidence: bool | None = None,
+        apply_learned_rules: bool | None = None,
     ):
         """
         Initialize the candidate generator.
@@ -345,6 +343,10 @@ class CandidateGenerator:
             filter_enabled=self.config.filter_false_positives,
             min_value=self.config.min_metric_value,
             filter_years=self.config.filter_years,
+            toc_proximity_chars=self.config.toc_proximity_chars,
+            toc_dot_leader_window=self.config.toc_dot_leader_window,
+            filter_financial_statements=self.config.filter_financial_statements,  # HRV-10/11
+            financial_statement_proximity_chars=self.config.financial_statement_proximity_chars,
         )
 
         # Initialize context extractor (P1.3 - extracted to separate module)
@@ -352,12 +354,12 @@ class CandidateGenerator:
 
         # Cache for word positions during segment processing (optimization for P1.2)
         # This avoids re-parsing text into words for every number in a segment
-        self._current_segment_words: Optional[List[Tuple[int, int, str]]] = None
+        self._current_segment_words: list[tuple[int, int, str]] | None = None
 
         # Lazy-loaded RuleApplicator (E2 integration)
-        self._rule_applicator: Optional[Any] = None
+        self._rule_applicator: Any | None = None
 
-    def _get_rule_applicator(self, db: Any) -> Optional[Any]:
+    def _get_rule_applicator(self, db: Any) -> Any | None:
         """
         Lazy-load RuleApplicator for E2 learned pattern filtering.
 
@@ -381,10 +383,10 @@ class CandidateGenerator:
         self,
         filing_id: int,
         company_id: int,
-        segments: List[SegmentDict],
+        segments: list[SegmentDict],
         return_stats: bool = False,
-        db: Optional[Any] = None,
-    ) -> List[ReviewCandidate] | Tuple[List[ReviewCandidate], ProcessingStats]:
+        db: Any | None = None,
+    ) -> list[ReviewCandidate] | tuple[list[ReviewCandidate], ProcessingStats]:
         """
         Generate candidates from all segments of a filing.
 
@@ -454,8 +456,8 @@ class CandidateGenerator:
         return candidates
 
     def _deduplicate_candidates(
-        self, candidates: List[ReviewCandidate]
-    ) -> Tuple[List[ReviewCandidate], int]:
+        self, candidates: list[ReviewCandidate]
+    ) -> tuple[list[ReviewCandidate], int]:
         """
         Remove duplicate candidates based on (parsed_value, suggested_metric_id, detected_period).
 
@@ -478,8 +480,8 @@ class CandidateGenerator:
         filing_id: int,
         company_id: int,
         segment: SegmentDict,
-        db: Optional[Any] = None,
-    ) -> Tuple[List[ReviewCandidate], Dict[str, int]]:
+        db: Any | None = None,
+    ) -> tuple[list[ReviewCandidate], dict[str, int]]:
         """
         Process a single segment to find candidates.
 
@@ -550,7 +552,7 @@ class CandidateGenerator:
         from src.review.boundary_detection import BoundaryDetector
 
         boundaries = None
-        detector: Optional[BoundaryDetector] = None
+        detector: BoundaryDetector | None = None
         if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
             boundaries = detector.find_boundaries(text)
@@ -576,18 +578,24 @@ class CandidateGenerator:
 
         # Pre-compute table row structure for table row filtering
         # This prevents keywords in one row from matching with numbers in another row
-        table_row_parser = None
+        table_row_parser: MarkerRowParser | TableRowParser | None = None
         raw_html = segment.get("raw_html", "")
-        if raw_html and ('<table' in raw_html.lower()):
+
+        # Check for markers first (more reliable when present)
+        if " [ROW] " in text or " [CELL] " in text:
+            from src.review.marker_row_parser import MarkerRowParser
+            table_row_parser = MarkerRowParser(text)
+        elif raw_html and ('<table' in raw_html.lower()):
             from src.review.table_structure import TableRowParser
             table_row_parser = TableRowParser(raw_html, text)
-            if table_row_parser.is_table():
-                logger.debug(
-                    f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
-                )
+
+        if table_row_parser is not None and table_row_parser.is_table():
+            logger.debug(
+                f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
+            )
 
         # Track (number_position, metric_id) pairs to avoid duplicates
-        seen: Set[Tuple[int, str]] = set()
+        seen: set[tuple[int, str]] = set()
 
         # For each number, find nearby keywords
         for num in numbers:
@@ -608,7 +616,8 @@ class CandidateGenerator:
                 # Phase 7: If no nearby keywords found, check context_prefix
                 # Context prefix contains the last sentence from the previous segment,
                 # which may provide relevant keyword context for list items, etc.
-                context_prefix = segment.get("context_prefix", "")
+                context_prefix_raw = segment.get("context_prefix", "")
+                context_prefix = str(context_prefix_raw) if context_prefix_raw else ""
                 from_context_prefix = False
                 if not keyword_matches and context_prefix:
                     # Search context_prefix for keywords
@@ -616,7 +625,7 @@ class CandidateGenerator:
                     if context_keywords:
                         # Use context keywords (they won't have "nearby" relationship to number)
                         # Take first keyword per metric for simplicity
-                        seen_metrics: Set[str] = set()
+                        seen_metrics: set[str] = set()
                         for ck in context_keywords:
                             if ck.metric_id not in seen_metrics:
                                 keyword_matches.append(ck)
@@ -633,6 +642,21 @@ class CandidateGenerator:
                     if key in seen:
                         continue
                     seen.add(key)
+
+                    # Early exclusion check around NUMBER position
+                    # This catches FPs where number is near exclusion context
+                    # (e.g., contribution margin values matched to take rate)
+                    should_exclude, reason = self._keyword_matcher.should_exclude_for_number_context(
+                        metric_id=kw.metric_id,
+                        text=text,
+                        number_position=num.start,
+                    )
+                    if should_exclude:
+                        segment_stats["excluded_by_number_context"] = (
+                            segment_stats.get("excluded_by_number_context", 0) + 1
+                        )
+                        logger.debug(f"Excluded candidate: {reason}")
+                        continue
 
                     # Calculate distance and position
                     # For context_prefix matches, use a special "large" distance
@@ -775,9 +799,47 @@ class CandidateGenerator:
                         filtered_candidates.append(candidate)
                 candidates = filtered_candidates
 
+        # HRV Type Validation: Filter candidates with wrong format for metric type
+        if self.config.filter_false_positives:  # Reuse FP filter flag
+            filtered_candidates = []
+            for candidate in candidates:
+                metric_id = candidate.suggested_metric_id
+                raw_text = candidate.raw_number_text
+                unit = candidate.parsed_unit or "count"
+
+                # Check if metric has type constraints
+                type_mismatch = False
+                mismatch_reason = None
+
+                if metric_id in PERCENTAGE_ONLY_METRICS:
+                    if not is_percentage_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects percentage, got {unit}"
+
+                elif metric_id in DOLLAR_ONLY_METRICS:
+                    if not is_dollar_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects dollar amount, got {unit}"
+
+                elif metric_id in COUNT_ONLY_METRICS:
+                    if not is_count_format(raw_text, unit):
+                        type_mismatch = True
+                        mismatch_reason = f"{metric_id} expects count, got {unit}"
+
+                if type_mismatch:
+                    segment_stats["filtered_by_type_validation"] = segment_stats.get("filtered_by_type_validation", 0) + 1
+                    logger.debug(
+                        f"Filtered by type validation: {mismatch_reason} "
+                        f"(value={candidate.parsed_value}, raw={raw_text})"
+                    )
+                else:
+                    filtered_candidates.append(candidate)
+
+            candidates = filtered_candidates
+
         return candidates, segment_stats
 
-    def _find_numbers(self, text: str) -> List[NumberMatch]:
+    def _find_numbers(self, text: str) -> list[NumberMatch]:
         """
         Find all numbers in text.
 
@@ -795,7 +857,7 @@ class CandidateGenerator:
 
     def _is_likely_false_positive(
         self, text: str, number: NumberMatch
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Check if a number match is likely a false positive.
 
@@ -811,7 +873,7 @@ class CandidateGenerator:
         """
         return self._false_positive_filter.is_false_positive(text, number)
 
-    def _find_all_keywords(self, text: str) -> List[KeywordMatch]:
+    def _find_all_keywords(self, text: str) -> list[KeywordMatch]:
         """
         Find all metric keywords in text.
 
@@ -828,12 +890,12 @@ class CandidateGenerator:
     def _find_keywords_near_number(
         self,
         number: NumberMatch,
-        all_keywords: List[KeywordMatch],
-        boundaries: Optional[List[Any]] = None,
-        sentence_boundaries: Optional[List[Any]] = None,
-        segment: Optional[Dict[str, Any]] = None,
-        table_row_parser: Optional[Any] = None,
-    ) -> List[KeywordMatch]:
+        all_keywords: list[KeywordMatch],
+        boundaries: list[Any] | None = None,
+        sentence_boundaries: list[Any] | None = None,
+        segment: SegmentDict | None = None,
+        table_row_parser: Any | None = None,
+    ) -> list[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
 
@@ -904,7 +966,7 @@ class CandidateGenerator:
         keyword_position: str,
         context_text: str,
         segment: SegmentDict,
-        all_numbers: List[NumberMatch],
+        all_numbers: list[NumberMatch],
     ) -> CandidateFeatures:
         """
         Compute ML features for a candidate.
@@ -946,9 +1008,9 @@ class CandidateGenerator:
 
     def _enrich_with_respectively_patterns(
         self,
-        candidates: List[ReviewCandidate],
+        candidates: list[ReviewCandidate],
         segment_text: str,
-    ) -> List[ReviewCandidate]:
+    ) -> list[ReviewCandidate]:
         """
         Enrich candidates with period associations from respectively patterns (L1).
 
@@ -970,8 +1032,8 @@ class CandidateGenerator:
 
         # L1-P1.2: Detect patterns (single or multiple depending on config)
         from src.review.respectively_parser import (
+            detect_all_respectively_patterns,
             detect_respectively_pattern,
-            detect_all_respectively_patterns
         )
 
         if self.config.detect_all_respectively_patterns:

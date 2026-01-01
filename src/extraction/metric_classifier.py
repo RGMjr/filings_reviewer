@@ -6,17 +6,18 @@ This module scans source segments to identify:
 - Metric definitions
 - Calculation methodologies
 - Which specific metrics are present
+
+Keywords are loaded from config/metric_keywords.yaml.
+The YAML file is the authoritative source of truth for keyword patterns.
 """
 
 import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 from .models import SourceSegment
 from .validators import ClassificationValidator
-from .exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class ClassificationMetrics:
     methodologies: int = 0
     numeric_disclosures: int = 0
     total_confidence: float = 0.0
-    metric_id_counts: Dict[str, int] = field(default_factory=dict)
+    metric_id_counts: dict[str, int] = field(default_factory=dict)
     classification_time_seconds: float = 0.0
 
     def avg_confidence(self) -> float:
@@ -42,7 +43,7 @@ class ClassificationMetrics:
             return 0.0
         return self.total_confidence / self.total_segments
 
-    def top_metrics(self, n: int = 5) -> List[tuple]:
+    def top_metrics(self, n: int = 5) -> list[tuple[str, int]]:
         """Get top N most common metric IDs.
 
         Returns:
@@ -77,15 +78,24 @@ class MetricClassifier:
     """
 
     # Definition indicators
+    # Note: Patterns must be specific enough to avoid false positives.
+    # For example, "\bmeans\b" alone matches "this means that" (implication),
+    # not just "X means Y" (definition). Use patterns that require definition context.
     DEFINITION_PATTERNS = [
         r"\bwe\s+define\b",
         r"\bdefined\s+as\b",
         r"\bdefinition\s+of\b",
         r"\brefers\s+to\b",
-        r"\bmeans\b",
-        r"\bmeaning\b",
+        # "means" only when in clear definition context:
+        # 1. Quoted term followed by "means" (handles straight ", curly "", and « quotes)
+        r'[\u0022\u201c\u201d\u00ab\u00bb]\w[^\u0022\u201c\u201d\u00ab\u00bb]*[\u0022\u201c\u201d\u00ab\u00bb]\s*means\b',
+        # 2. Bullet point definition at start: • "Term" means (limited to 50 chars for term)
+        r'(?:^|[\n\u2022])\s*[\u0022\u201c\u201d][^\u0022\u201c\u201d]{1,50}[\u0022\u201c\u201d]\s*means\b',
+        r"\bmeaning\s+of\b",  # More specific than just "meaning"
         r"\bmetric\s+definitions?\b",
         r"\bis\s+defined\b",
+        # 3. Explicit "the term" definition pattern
+        r'\bthe\s+term\s+[\u0022\u201c\u201d][^\u0022\u201c\u201d]+[\u0022\u201c\u201d]\s*means\b',
     ]
 
     # Methodology/calculation indicators
@@ -101,6 +111,9 @@ class MetricClassifier:
     ]
 
     # Metric-specific keyword patterns
+    # DEPRECATED: This is kept for reference only. The authoritative source
+    # of keyword patterns is config/metric_keywords.yaml.
+    # DO NOT modify this dictionary - edit the YAML file instead.
     # Format: metric_id -> list of keyword patterns
     METRIC_KEYWORDS = {
         # Core Metrics
@@ -117,6 +130,27 @@ class MetricClassifier:
             r"\bacquisition\s+of\s+customers?\b",
             r"\bnew\s+users?\s+acquired\b",
             r"\bacquired\s+users?\b",
+            r"\bnew\s+accounts?\s+acquired\b", # Added synonym
+            r"\bnew\s+clients?\s+acquired\b", # Added synonym
+            r"\bnew\s+logos?\b", # Added synonym
+        ],
+        "cm_customers_period_end": [
+            r"\bpaid\s+customers?\b",
+            r"\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b",
+            r"\borganizations?\s+on\s+(?:our\s+)?free\s+(?:subscription\s+)?plan\b",
+            r"\borganizations?\s+(?:with\s+)?(?:three|\d+)\s+(?:or\s+more\s+)?users?\b",
+            r"\bcustomers?\s+\(?period\s*end\)?\b",
+            r"\bend[- ]of[- ]period\s+customers?\b",
+            r"\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b",
+        ],
+        "cm_large_customers_period_end": [
+            # Matches "Paid Customers > $100,000 ARR" and similar patterns
+            r"\bpaid\s+customers?\s*>\s*\$?\d",
+            r"\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b",
+            r"\blarge\s+(?:enterprise\s+)?customers?\b",
+            r"\benterprise\s+customers?\b",
+            r"\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b",
+            r"\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$\d+",
         ],
         "cm_customers_period_end_by_tenure": [
             r"\bcustomers?\s+by\s+tenure\b",
@@ -134,14 +168,24 @@ class MetricClassifier:
         "cm_transactions_by_cohort": [
             r"\btransactions?\s+by\s+cohort\b",
             r"\bcohort\s+transactions?\b",
-            r"\bpurchase\s+transactions?\b",
             r"\btransactions?[^.;]{0,100}\bcohort\b",  # Fixed: limit to same sentence
+            # Orders variants for Farfetch terminology (orders = transactions with cohort)
+            r"\borders?\s+by\s+cohort\b",
+            r"\bcohort\s+orders?\b",
+            r"\bnumber\s+of\s+orders?[^.;]{0,50}\bcohort\b",
         ],
         # Extended Metrics
         "cm_active_customers_total": [
             r"\bactive\s+customers?\b",
+            r"\bactive\s+consumers?\b",  # Farfetch terminology
             r"\btotal\s+customers?\b",
+            r"\btotal\s+consumers?\b",  # Farfetch terminology
             r"\bcustomer\s+base\b",
+            r"\bconsumer\s+base\b",  # Farfetch terminology
+            r"\bactive\s+accounts?\b",  # Added synonym
+            r"\btotal\s+accounts?\b",  # Added synonym
+            r"\bactive\s+clients?\b",  # Added synonym
+            r"\btotal\s+clients?\b",  # Added synonym
         ],
         "cm_revenue_per_customer": [
             r"\barpu\b",
@@ -193,14 +237,6 @@ class MetricClassifier:
             r"\bdau\b",
             r"\bdaily\s+active\s+users?\b",
         ],
-        "cm_gross_margin_overall": [
-            r"\bgross\s+margin(?:\s+(?:was|of|is|at))?\s+\d",
-            r"\boverall\s+gross\s+margin\b",
-            r"\btotal\s+gross\s+margin\b",
-            r"\bgross\s+profit\s+margin\b",
-            r"\bgross\s+margin\s+(?:percentage|rate)\b",
-            r"\b(?<!cohort\s)(?<!by\s)gross\s+margin\b",
-        ],
         "cm_gross_margin_by_cohort": [
             r"\bgross\s+margin\s+by\s+cohort\b",
             r"\bcohort\s+(?:gross\s+)?margin\b",
@@ -235,6 +271,7 @@ class MetricClassifier:
             r"\bconcentration\s+risk\b",
             r"\bconcentration\s+of\s+revenue\b",
             r"\bmajor\s+customers?\b",
+            r"\bcustomer\s+[A-D]\b",  # "Customer A", "Customer B", etc. (anonymized names)
         ],
         # -----------------------------------------------------------------
         # Revenue Predictability Metrics (T5: cm_bookings group)
@@ -254,14 +291,21 @@ class MetricClassifier:
             r"\bcalculated\s+billings\b",       # "calculated billings"
             r"\badjusted\s+billings\b",         # "adjusted billings"
         ],
-        "cm_deferred_revenue": [
-            r"\bdeferred\s+revenue\b",          # "deferred revenue"
-            r"\bunearned\s+revenue\b",          # "unearned revenue"
-            r"\bremaining\s+performance\s+obligation[s]?\b",  # RPO
-            r"\brpo\b",                         # "RPO" acronym
-            r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
-            r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
-        ],
+        # REMOVED 2025-12-26: cm_deferred_revenue is a financial accounting metric,
+        # not a customer behavior metric. Deferred revenue appears on balance sheets
+        # as a liability for prepayments, not as a measure of customer engagement.
+        # Removing this metric improves precision by ~51pp (eliminated 19 FPs in Slack filing).
+        # If RPO/backlog are needed as customer metrics, they should be separate metrics
+        # with more specific keywords that don't match balance sheet line items.
+        #
+        # "cm_deferred_revenue": [
+        #     r"\bdeferred\s+revenue\b",          # "deferred revenue"
+        #     r"\bunearned\s+revenue\b",          # "unearned revenue"
+        #     r"\bremaining\s+performance\s+obligation[s]?\b",  # RPO
+        #     r"\brpo\b",                         # "RPO" acronym
+        #     r"\bcontract\s+liabilit(?:y|ies)\b",  # "contract liability/liabilities"
+        #     r"\bbacklog\b",                     # "backlog" (sometimes used synonymously)
+        # ],
         # -----------------------------------------------------------------
         # E-Commerce / Consumer Metrics (T6: AOV + Repeat Purchase group)
         # -----------------------------------------------------------------
@@ -337,6 +381,26 @@ class MetricClassifier:
             r"\bltv\s+to\s+cac\b",
             r"\blifetime\s+value\s+to\s+acquisition\s+cost\b",
         ],
+        # -----------------------------------------------------------------
+        # HRV-6 Taxonomy Fix Metrics
+        # -----------------------------------------------------------------
+        "cm_purchase_transactions_overall": [
+            r"\bnumber\s+of\s+orders?\b",           # Farfetch terminology
+            r"\btotal\s+orders?\b",                 # "total orders"
+            r"\bpurchase\s+transactions?\b",        # "purchase transactions" (without cohort context)
+            r"\border\s+count\b",                   # "order count"
+            r"\border\s+volume\b",                  # "order volume"
+        ],
+        # -----------------------------------------------------------------
+        # HRV-6 Growth Metrics
+        # -----------------------------------------------------------------
+        # NOTE: cm_active_customers_growth REMOVED - metric doesn't work as intended
+        "cm_purchase_transactions_overall_growth": [
+            r"\b(?:number\s+of\s+)?orders?\s+growth\b",
+            r"\btransactions?\s+growth\b",
+            r"\bgrowth\s+(?:in\s+)?(?:number\s+of\s+)?orders?\b",
+            r"\border\s+(?:volume\s+)?growth\b",
+        ],
     }
 
     # CMASB Priority Metrics (for confidence boosting)
@@ -350,8 +414,9 @@ class MetricClassifier:
     CMASB_EXTENDED_METRICS = {
         'cm_customer_acquisition_cost',
         'cm_active_customers_total',
+        'cm_customers_period_end',
+        'cm_large_customers_period_end',
         'cm_revenue_per_customer',
-        'cm_gross_margin_overall',
         'cm_gross_margin_by_cohort',
         'cm_arr',
         'cm_mrr',
@@ -363,7 +428,7 @@ class MetricClassifier:
         # T5: Revenue predictability metrics
         'cm_bookings',
         'cm_billings',
-        'cm_deferred_revenue',
+        # cm_deferred_revenue - REMOVED 2025-12-26 (financial metric, not customer metric)
         # T6: E-commerce metrics
         'cm_average_order_value',
         'cm_repeat_purchase_rate',
@@ -373,6 +438,40 @@ class MetricClassifier:
         # T8: SaaS contract metrics
         'cm_acv',
         'cm_tcv',
+    }
+
+    # Revenue synonym metrics that require cohort or per-customer context
+    # to generate review candidates. Without context, they are just revenue
+    # measures, not customer metrics.
+    # DEPRECATED: This is kept for reference only. The authoritative source
+    # is config/metric_keywords.yaml (required_context field).
+    # Note: cm_arr and cm_mrr are NOT included - they're inherently customer-related.
+    METRIC_REQUIRED_CONTEXT = {
+        metric_id: {
+            "patterns": [
+                # Cohort keywords (from cohort_chart_detector.py)
+                r"\bcohort\b",
+                r"\bby\s+vintage\b",
+                r"\bacquisition\s+year\b",
+                r"\brevenue\s+(?:by|per)\s+cohort\b",
+                r"\bretention\s+(?:by|per)\s+cohort\b",
+                r"\bARR\s+(?:by|of\s+each)\s+cohort\b",
+                r"\bLTV[/ ]CAC\b",
+                # Per-customer keywords
+                r"\bper\s+customer\b",
+                r"\bper\s+user\b",
+                r"\bper\s+account\b",
+                r"\bper\s+subscriber\b",
+                r"\bper\s+client\b",
+                r"\baverage\s+per\b",
+                r"\bby\s+customer\b",
+                r"\bby\s+account\b",
+                r"\bcustomer[- ]level\b",
+                r"\baccount[- ]level\b",
+            ],
+            "proximity_chars": 1500,
+        }
+        for metric_id in ["cm_gmv", "cm_tcv", "cm_acv", "cm_bookings", "cm_billings"]
     }
 
     # General customer/metric keywords (for numeric disclosure detection)
@@ -389,7 +488,7 @@ class MetricClassifier:
     # Number patterns
     NUMBER_PATTERN = r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the metric classifier."""
         # Compile all patterns for performance
         self._definition_regex = [
@@ -403,15 +502,33 @@ class MetricClassifier:
         ]
         self._number_regex = re.compile(self.NUMBER_PATTERN, re.IGNORECASE)
 
+        # Load keyword patterns (YAML or hardcoded)
+        keyword_source = self._load_keywords()
+
         # Compile metric-specific patterns
         self._metric_patterns = {}
-        for metric_id, patterns in self.METRIC_KEYWORDS.items():
+        for metric_id, patterns in keyword_source.items():
             self._metric_patterns[metric_id] = [
                 re.compile(p, re.IGNORECASE) for p in patterns
             ]
 
         # Metrics tracking
-        self._metrics: Optional[ClassificationMetrics] = None
+        self._metrics: ClassificationMetrics | None = None
+
+    def _load_keywords(self) -> dict[str, list[str]]:
+        """
+        Load keyword patterns from YAML config.
+
+        Returns:
+            Dictionary mapping metric_id to list of regex patterns.
+
+        Raises:
+            KeywordConfigError: If YAML config cannot be loaded.
+        """
+        from .keyword_config import get_metric_keywords
+        keywords = get_metric_keywords()
+        logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
+        return keywords
 
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
@@ -452,7 +569,7 @@ class MetricClassifier:
 
         return segment
 
-    def classify_batch(self, segments: List[SourceSegment], validate: bool = True) -> List[SourceSegment]:
+    def classify_batch(self, segments: list[SourceSegment], validate: bool = True) -> list[SourceSegment]:
         """
         Classify multiple segments efficiently with metrics collection.
 
@@ -503,7 +620,7 @@ class MetricClassifier:
 
         return classified
 
-    def get_metrics(self) -> Optional[ClassificationMetrics]:
+    def get_metrics(self) -> ClassificationMetrics | None:
         """Get metrics from most recent classification batch.
 
         Returns:
@@ -550,7 +667,7 @@ class MetricClassifier:
 
         return False
 
-    def _identify_candidate_metrics(self, text: str) -> List[str]:
+    def _identify_candidate_metrics(self, text: str) -> list[str]:
         """
         Identify which specific metrics might be present in the text.
 
@@ -718,7 +835,7 @@ class MetricClassifier:
 
 
 # Convenience function
-def classify_segments(segments: List[SourceSegment]) -> List[SourceSegment]:
+def classify_segments(segments: list[SourceSegment]) -> list[SourceSegment]:
     """
     Convenience function to classify a list of segments.
 

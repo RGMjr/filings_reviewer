@@ -9,17 +9,17 @@ This module provides tools for:
 """
 
 from src.review.candidate_generator import CandidateGenerator
+from src.review.confidence_scoring import METRIC_EXPECTED_FORMATS, ConfidenceScorer
 from src.review.config import (
-    CandidateGenerationConfig,
     DEFAULT_CONFIG,
     DEFAULT_CONTEXT_WORDS,
     MAX_KEYWORD_DISTANCE,
     MIN_METRIC_VALUE,
-    YEAR_MIN,
     YEAR_MAX,
+    YEAR_MIN,
+    CandidateGenerationConfig,
 )
 from src.review.deduplicator import deduplicate_candidates
-from src.review.confidence_scoring import ConfidenceScorer, METRIC_EXPECTED_FORMATS
 from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,

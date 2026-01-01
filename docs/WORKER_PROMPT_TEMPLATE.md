@@ -1,4 +1,4 @@
-# WORKER PROMPT TEMPLATE (v2.3)
+# WORKER PROMPT TEMPLATE (v2.4)
 
 **Purpose**: This template provides a consistent, concise format for worker prompts. It emphasizes requirements over implementation details, allowing developers autonomy while ensuring clear acceptance criteria.
 
@@ -199,6 +199,124 @@ TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
   python3 -m pytest tests/unit/[module]/ --no-cov -q
 ```
 
+## Auto-Generated Verification Script
+
+**[Optional section - include for M/L/XL tasks or when many acceptance criteria]**
+
+Copy this entire block to verify all acceptance criteria in one command:
+
+```bash
+#!/bin/bash
+# Auto-generated verification for Task [ID]: [Name]
+# Run: bash verify_[id].sh
+
+set -e  # Exit on any error
+echo "═══════════════════════════════════════════════════════════════"
+echo "Verifying Task [ID]: [Name]"
+echo "═══════════════════════════════════════════════════════════════"
+
+# Criterion 1: [Description]
+echo "✓ Checking: [criterion 1]..."
+[command to verify criterion 1]
+
+# Criterion 2: [Description]
+echo "✓ Checking: [criterion 2]..."
+[command to verify criterion 2]
+
+# Test coverage (must be ≥ [X]%)
+echo "✓ Checking: Test coverage ≥ [X]%..."
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+  python3 -m pytest [test path] \
+  --cov=[module] --cov-report=term --cov-fail-under=[X] -q
+
+# Type safety
+echo "✓ Checking: mypy passes..."
+mypy [module path] --strict
+
+# Full test suite
+echo "✓ Running full test suite..."
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+  python3 -m pytest tests/unit/[module]/ --no-cov -q
+
+echo "═══════════════════════════════════════════════════════════════"
+echo "✅ All acceptance criteria verified for Task [ID]!"
+echo "═══════════════════════════════════════════════════════════════"
+```
+
+## Critical Evaluation Phase
+
+**Required for all tasks. Depth scales with task size.**
+
+| Task Size | Evaluation Depth |
+|-----------|------------------|
+| XS | Quick scan: obvious issues only, skip detailed checklist |
+| S | Standard: review checklist, identify 1-2 improvements max |
+| M/L | Thorough: full checklist, comprehensive improvement search |
+| XL | Full audit: all above + architectural review |
+
+After verification passes but BEFORE committing, perform this evaluation:
+
+### 1. Code Quality Review
+- [ ] No linting issues or type errors beyond what was verified
+- [ ] DRY principle followed (no unnecessary duplication)
+- [ ] Naming conventions match project standards
+- [ ] Error handling is appropriate (not over/under-engineered)
+
+### 2. Test Coverage Assessment
+- [ ] Edge cases from requirements are covered
+- [ ] Negative test cases exist (what should fail)
+- [ ] No obvious untested scenarios
+- [ ] Integration with existing code is tested (if applicable)
+
+### 3. Architecture Alignment
+- [ ] Solution follows patterns documented in CLAUDE.md
+- [ ] No violations of design decisions (conservative classification, rule-based first, etc.)
+- [ ] Changes are minimal and focused (no over-engineering)
+
+### 4. Identify Improvements
+Document any potential improvements discovered during evaluation:
+- Performance optimizations
+- Additional edge cases to handle
+- Code simplifications
+- Documentation updates needed
+
+### 5. User Approval (REQUIRED)
+**STOP and ask the user:**
+> "I've completed the task and identified [N] potential improvements:
+> 1. [Improvement 1]
+> 2. [Improvement 2]
+> ...
+>
+> Would you like me to implement any of these before committing? (They would be included in the same commit)"
+
+**Wait for user response before proceeding.**
+
+### 6. Implement Approved Changes
+If user approves improvements:
+- Implement the approved changes
+- Re-run verification commands
+- Update completion report with changes made
+
+### 7. Generate Follow-Up Tasks (for deferred improvements)
+For each deferred improvement:
+- Create task suggestion with ID format: `[TASK-ID]-F[N]` (e.g., CRM-1-F1)
+- Assign priority based on impact (Low/Medium/High)
+- Document rationale in completion report
+- Add to plan document backlog or flag for worker prompt generation
+
+### 8. Update Documentation
+Before committing, ensure:
+- [ ] CLAUDE.md updated if new design decisions were made
+- [ ] Plan document progress tracker updated
+- [ ] Completion report includes evaluation findings
+- [ ] Follow-up tasks documented in completion report
+
+### 9. Commit and Push
+Only after evaluation complete and user approval obtained:
+- Stage all changes (implementation + approved improvements)
+- Create commit with task ID reference
+- Push to remote
+
 ## Integration Plan (Post-[Task ID])
 
 **[Optional section - only if integration is separate from implementation]**
@@ -247,6 +365,97 @@ def example_function(input: Type) -> ReturnType:
 
 **Last Updated**: [YYYY-MM-DD]
 **Format Version**: 2.0 (concise requirements-focused format)
+```
+
+---
+
+## Risk Level Guidelines
+
+### NONE / LOW Risk Tasks
+
+Standard workflow applies:
+- Single reviewer sufficient
+- No special precautions needed
+- Can proceed directly to implementation
+
+### MEDIUM Risk Tasks
+
+**Additional Requirements** (include in worker prompt):
+
+```markdown
+## Medium Risk Precautions
+
+- [ ] Create feature flag for rollback: `config.[feature_name]_enabled = True`
+- [ ] Add integration test covering rollback scenario
+- [ ] Test on staging environment before production
+- [ ] Document rollback procedure below
+- [ ] Two reviewers required before merge
+
+### Rollback Procedure
+1. Set `config.[feature_name]_enabled = False`
+2. Restart service
+3. Verify rollback with: `[verification command]`
+```
+
+**Example Feature Flag**:
+```python
+# For EI-5 (pipeline integration - MEDIUM risk)
+class ExtractionConfig:
+    enable_tiered_selection: bool = True  # Set False to rollback
+
+if config.enable_tiered_selection:
+    # New tiered logic
+else:
+    # Old single-threshold logic (fallback)
+```
+
+### HIGH Risk Tasks
+
+**Flag for Decomposition First**:
+- HIGH risk usually means task is too large or too impactful
+- Suggest: "This task is HIGH risk. Should we break it into smaller tasks?"
+
+**If keeping HIGH risk**, add these requirements to worker prompt:
+
+```markdown
+## High Risk Precautions
+
+- [ ] Create detailed rollback plan (see below)
+- [ ] Feature flag required and tested
+- [ ] Staging deployment mandatory before production
+- [ ] A/B test if user-facing (or canary deployment)
+- [ ] Three reviewers required
+- [ ] Document all risks in completion report
+- [ ] Backup affected data before deployment
+
+### Rollback Plan
+**Trigger conditions** (when to rollback):
+- [Condition 1, e.g., "Error rate > 1%"]
+- [Condition 2, e.g., "Latency > 500ms"]
+
+**Rollback steps**:
+1. [Step 1]
+2. [Step 2]
+3. [Verification command]
+
+**Data recovery** (if applicable):
+- [How to restore data if corrupted]
+```
+
+### Risk Level Decision Tree
+
+```
+Is this a read-only analysis? ──────────────────────> NONE
+                │
+Does it modify existing behavior? ──────────────────> LOW (if additive only)
+                │
+Does it change data formats or APIs? ───────────────> MEDIUM
+                │
+Does it require database migration? ────────────────> MEDIUM-HIGH
+                │
+Could it cause data loss or corruption? ────────────> HIGH
+                │
+Is rollback complex or impossible? ─────────────────> HIGH (consider splitting)
 ```
 
 ---
@@ -358,10 +567,26 @@ Before finalizing a worker prompt, verify:
 - [ ] If task modifies public APIs, deprecation strategy specified
 - [ ] If task is high-risk (Medium/High), feature flag strategy considered
 - [ ] If task depends on other in-progress work, conflicts identified in "Do NOT" section
+- [ ] Critical Evaluation Phase section present (required for all tasks)
+- [ ] Task size specified for evaluation depth guidance (XS/S/M/L/XL)
 
 ---
 
 ## Version History
+
+- **v2.5** (2025-12-31): Added Critical Evaluation Phase
+  - New mandatory section after verification, before commit
+  - 9-step evaluation process: code quality, tests, architecture, improvements
+  - Required user approval step before committing
+  - Follow-up task generation for deferred improvements
+  - Task-size adaptive depth (XS quick scan → XL full audit)
+  - Complements COMPLETION_REPORT_TEMPLATE.md v1.1 Evaluation Findings section
+
+- **v2.4** (2025-12-18): Added Phase 3 improvements
+  - Added Risk Level Guidelines section with MEDIUM/HIGH risk checklists
+  - Added Risk Level Decision Tree for risk assessment
+  - Added Auto-Generated Verification Script section to template
+  - Based on ORCHESTRATOR_IMPROVEMENTS.md Phase 3 recommendations
 
 - **v2.3** (2025-12-18): Added dependency visualization and task size categories
   - Added TASK SIZE field (XS/S/M/L/XL) with time ranges

@@ -13,7 +13,6 @@ import pytest
 
 from src.universe.universe_builder import UniverseBuilder
 
-
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 

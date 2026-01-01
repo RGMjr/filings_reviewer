@@ -34,7 +34,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,7 +48,7 @@ from src.review.helpers import generate_candidates_for_filing
 logger = logging.getLogger(__name__)
 
 
-def parse_filing_ids(filing_ids_str: str) -> List[int]:
+def parse_filing_ids(filing_ids_str: str) -> list[int]:
     """
     Parse comma-separated filing IDs into list of integers.
 
@@ -74,7 +73,7 @@ def parse_filing_ids(filing_ids_str: str) -> List[int]:
         ) from e
 
 
-def get_filings_by_ids(db: DatabaseAdapter, filing_ids: List[int]) -> List[Dict]:
+def get_filings_by_ids(db: DatabaseAdapter, filing_ids: list[int]) -> list[dict]:
     """
     Query filings by specific IDs.
 
@@ -106,7 +105,7 @@ def get_filings_by_ids(db: DatabaseAdapter, filing_ids: List[int]) -> List[Dict]
 
 def get_filings_needing_candidates(
     db: DatabaseAdapter, limit: int
-) -> List[Dict]:
+) -> list[dict]:
     """
     Query filings that have segments but no review candidates.
 
@@ -144,11 +143,11 @@ def get_filings_needing_candidates(
 
 def process_filings(
     db: DatabaseAdapter,
-    filings: List[Dict],
+    filings: list[dict],
     dry_run: bool = False,
-    batch_id: Optional[int] = None,
+    batch_id: int | None = None,
     show_progress: bool = True,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Process filings to generate review candidates.
 
@@ -220,7 +219,7 @@ def process_filings(
 
 
 def report_summary(
-    stats: Dict[str, int], total_filings: int, dry_run: bool
+    stats: dict[str, int], total_filings: int, dry_run: bool
 ) -> None:
     """
     Report processing summary statistics.

@@ -216,17 +216,17 @@ class TestRetentionKeywordDetection:
     def test_net_dollar_retention_phrase(self, enricher: SegmentEnricher) -> None:
         """Text with 'Net Dollar Retention Rate' should return True."""
         segment = make_segment(raw_text="Our Net Dollar Retention Rate was 143%")
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_ndrr_acronym(self, enricher: SegmentEnricher) -> None:
         """Text with 'NDRR' acronym should return True."""
         segment = make_segment(raw_text="Our NDRR was 143% for the period")
-        assert enricher._detect_retention_keywords(segment) is True
+        assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_no_retention_keywords(self, enricher: SegmentEnricher) -> None:
         """Text without retention keywords should return False."""
         segment = make_segment(raw_text="Customer growth increased 20%")
-        assert enricher._detect_retention_keywords(segment) is False
+        assert enricher._detect_retention_keywords(segment.raw_text) is False
 
 
 class TestUsageKeywordDetection:
@@ -235,17 +235,17 @@ class TestUsageKeywordDetection:
     def test_daily_active_users_phrase(self, enricher: SegmentEnricher) -> None:
         """Text with 'daily active users' should return True."""
         segment = make_segment(raw_text="We have 10 million daily active users")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_mau_acronym(self, enricher: SegmentEnricher) -> None:
         """Text with 'MAU' acronym should return True."""
         segment = make_segment(raw_text="MAU increased 20% year-over-year")
-        assert enricher._detect_usage_keywords(segment) is True
+        assert enricher._detect_usage_keywords(segment.raw_text) is True
 
     def test_no_usage_keywords(self, enricher: SegmentEnricher) -> None:
         """Text without usage keywords should return False."""
         segment = make_segment(raw_text="Total users reached 5 million")
-        assert enricher._detect_usage_keywords(segment) is False
+        assert enricher._detect_usage_keywords(segment.raw_text) is False
 
 
 class TestFormulaIntegration:

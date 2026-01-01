@@ -32,7 +32,14 @@
         selectedCandidates: new Set(), // HRI-8: Track selected candidates for bulk actions
         bulkDecision: null, // HRI-8: 'accept' or 'reject' for pending bulk operation
         currentCandidateIndex: null, // HRI-10: Track current candidate index for persistence
-        totalCandidates: 0 // HRI-10: Total number of candidates
+        totalCandidates: 0, // HRI-10: Total number of candidates
+        // Active filters for consistent navigation
+        filters: {
+            status: 'all',
+            metric: 'all',
+            confidence: 'all',
+            sort: 'position'
+        }
     };
 
     // =========================================================================
@@ -53,6 +60,15 @@
             if (filingIdStr) {
                 state.filingId = parseInt(filingIdStr, 10);
             }
+
+            // Initialize filter state from data attributes
+            state.filters = {
+                status: container.dataset.filterStatus || 'all',
+                metric: container.dataset.filterMetric || 'all',
+                confidence: container.dataset.filterConfidence || 'all',
+                sort: container.dataset.filterSort || 'position'
+            };
+            console.log('Initialized filters:', state.filters);
         }
 
         // Extract current candidate index from URL or DOM
@@ -164,6 +180,12 @@
         // Accept button
         if (elements.acceptButton) {
             elements.acceptButton.addEventListener('click', handleAccept);
+        }
+
+        // Confirm automated suggestion button
+        const confirmAutomatedBtn = document.getElementById('confirm-automated-btn');
+        if (confirmAutomatedBtn) {
+            confirmAutomatedBtn.addEventListener('click', handleConfirmAutomated);
         }
 
         // Rejection dropdown items
@@ -470,6 +492,46 @@
         });
     }
 
+    function handleConfirmAutomated(event) {
+        if (event) event.preventDefault();
+
+        // Find the automated decision info element
+        const automatedInfo = document.getElementById('automated-decision-info');
+        if (!automatedInfo) {
+            console.log('No automated decision to confirm');
+            return;
+        }
+
+        const decision = automatedInfo.dataset.decision;
+        const metricId = automatedInfo.dataset.metricId;
+        const rejectionCategory = automatedInfo.dataset.rejectionCategory;
+        const rejectionReason = automatedInfo.dataset.rejectionReason;
+
+        if (!decision) {
+            showError('No automated decision found to confirm');
+            return;
+        }
+
+        // Build the decision payload based on the type
+        const decisionData = { decision: decision };
+
+        if (decision === 'accept' || decision === 'reclassify') {
+            if (metricId) {
+                decisionData.assigned_metric_id = metricId;
+            }
+        } else if (decision === 'reject') {
+            if (rejectionCategory) {
+                decisionData.rejection_category = rejectionCategory;
+            }
+            if (rejectionReason) {
+                decisionData.rejection_reason = rejectionReason;
+            }
+        }
+
+        console.log('Confirming automated decision:', decisionData);
+        submitDecision(decisionData);
+    }
+
     function handleRejectionCategorySelect(event) {
         event.preventDefault();
 
@@ -553,7 +615,12 @@
             const payload = {
                 candidate_id: state.candidateId,
                 decision: decisionData.decision,
-                review_time_seconds: calculateReviewTime()
+                review_time_seconds: calculateReviewTime(),
+                // Include filter state for consistent next candidate navigation
+                filter_status: state.filters.status,
+                filter_metric: state.filters.metric,
+                filter_confidence: state.filters.confidence,
+                filter_sort: state.filters.sort
             };
 
             // Add decision-specific fields
@@ -817,6 +884,12 @@
                 handleAccept();
                 break;
 
+            case 'f':
+                event.preventDefault();
+                console.log('Confirm automated suggestion shortcut');
+                handleConfirmAutomated();
+                break;
+
             case 'r':
                 event.preventDefault();
                 console.log('Reject shortcut triggered');
@@ -904,9 +977,16 @@
 
     function navigateToNext() {
         // Find all candidate items in the sidebar list
-        const allCandidates = document.querySelectorAll('.list-group-item.list-group-item-action');
-        if (allCandidates.length === 0) {
+        // Note: Items are divs with .list-group-item, containing an <a> tag with the href
+        const candidateList = document.querySelector('.list-group.list-group-flush');
+        if (!candidateList) {
             console.log('No candidate list found');
+            return;
+        }
+
+        const allCandidates = candidateList.querySelectorAll('.list-group-item[data-candidate-id]');
+        if (allCandidates.length === 0) {
+            console.log('No candidates in list');
             return;
         }
 
@@ -919,14 +999,23 @@
             }
         }
 
+        // Helper to get href from candidate item (finds nested <a> tag)
+        function getCandidateHref(candidateDiv) {
+            const link = candidateDiv.querySelector('a[href]');
+            return link ? link.href : null;
+        }
+
         // Find next pending (not reviewed) candidate after current
         for (let i = currentIndex + 1; i < allCandidates.length; i++) {
             const candidate = allCandidates[i];
             // Skip reviewed candidates (they have opacity-75 class)
             if (!candidate.classList.contains('opacity-75')) {
-                console.log('Navigating to next pending candidate:', candidate.href);
-                window.location.href = candidate.href;
-                return;
+                const href = getCandidateHref(candidate);
+                if (href) {
+                    console.log('Navigating to next pending candidate:', href);
+                    window.location.href = href;
+                    return;
+                }
             }
         }
 
@@ -934,9 +1023,12 @@
         for (let i = 0; i < currentIndex; i++) {
             const candidate = allCandidates[i];
             if (!candidate.classList.contains('opacity-75')) {
-                console.log('Wrapping to pending candidate:', candidate.href);
-                window.location.href = candidate.href;
-                return;
+                const href = getCandidateHref(candidate);
+                if (href) {
+                    console.log('Wrapping to pending candidate:', href);
+                    window.location.href = href;
+                    return;
+                }
             }
         }
 
@@ -945,9 +1037,16 @@
 
     function navigateToPrevious() {
         // Find all candidate items in the sidebar list
-        const allCandidates = document.querySelectorAll('.list-group-item.list-group-item-action');
-        if (allCandidates.length === 0) {
+        // Note: Items are divs with .list-group-item, containing an <a> tag with the href
+        const candidateList = document.querySelector('.list-group.list-group-flush');
+        if (!candidateList) {
             console.log('No candidate list found');
+            return;
+        }
+
+        const allCandidates = candidateList.querySelectorAll('.list-group-item[data-candidate-id]');
+        if (allCandidates.length === 0) {
+            console.log('No candidates in list');
             return;
         }
 
@@ -960,14 +1059,23 @@
             }
         }
 
+        // Helper to get href from candidate item (finds nested <a> tag)
+        function getCandidateHref(candidateDiv) {
+            const link = candidateDiv.querySelector('a[href]');
+            return link ? link.href : null;
+        }
+
         // Find previous pending (not reviewed) candidate before current
         for (let i = currentIndex - 1; i >= 0; i--) {
             const candidate = allCandidates[i];
             // Skip reviewed candidates (they have opacity-75 class)
             if (!candidate.classList.contains('opacity-75')) {
-                console.log('Navigating to previous pending candidate:', candidate.href);
-                window.location.href = candidate.href;
-                return;
+                const href = getCandidateHref(candidate);
+                if (href) {
+                    console.log('Navigating to previous pending candidate:', href);
+                    window.location.href = href;
+                    return;
+                }
             }
         }
 
@@ -975,9 +1083,12 @@
         for (let i = allCandidates.length - 1; i > currentIndex; i--) {
             const candidate = allCandidates[i];
             if (!candidate.classList.contains('opacity-75')) {
-                console.log('Wrapping to previous pending candidate:', candidate.href);
-                window.location.href = candidate.href;
-                return;
+                const href = getCandidateHref(candidate);
+                if (href) {
+                    console.log('Wrapping to previous pending candidate:', href);
+                    window.location.href = href;
+                    return;
+                }
             }
         }
 

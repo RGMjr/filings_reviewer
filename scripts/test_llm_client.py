@@ -10,20 +10,28 @@ This script tests the LLM client with a simple prompt to verify:
 """
 
 import sys
-import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.llm.openai_client import OpenAIClient
-from src.llm.prompts import PromptTemplates
+def prepare_environment() -> None:
+    """Load .env settings and make src imports work."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
 
 def test_basic_completion():
     """Test basic LLM completion."""
+    prepare_environment()
+
+    from src.llm.openai_client import OpenAIClient
+    from src.llm.prompts import PromptTemplates
+
     print("=" * 80)
     print("Testing OpenAI Client with GPT-4o-mini")
     print("=" * 80)

@@ -9,11 +9,11 @@ Tests the tiered usage bonus enhancement that differentiates between:
 Test coverage target: >= 95% for _detect_usage_with_count() and tiered bonus logic.
 """
 
-import pytest
-from typing import Optional
 
-from src.extraction.segment_enricher import SegmentEnricher
+import pytest
+
 from src.extraction.models import SourceSegment
+from src.extraction.segment_enricher import SegmentEnricher
 
 
 @pytest.fixture
@@ -27,12 +27,12 @@ def make_segment(
     raw_html: str = "",
     classifier_confidence: float = 0.5,
     distinct_metric_count: int = 0,
-    candidate_metric_ids: Optional[list[str]] = None,
+    candidate_metric_ids: list[str] | None = None,
     contains_temporal_trend: bool = False,
     contains_cohort_breakdown: bool = False,
     contains_definition_flag: bool = False,
     image_count: int = 0,
-    extra_metadata: Optional[dict[str, bool]] = None,
+    extra_metadata: dict[str, bool] | None = None,
 ) -> SourceSegment:
     """Factory for creating test segments with specified attributes."""
     segment = SourceSegment(
@@ -65,80 +65,80 @@ class TestUsageWithCountDetection:
         segment = make_segment(
             raw_text="As of January 31, 2019, Slack had more than 10 million daily active users."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_mau_with_count_abbreviation(self, enricher: SegmentEnricher) -> None:
         """Detect '5M MAU'."""
         segment = make_segment(raw_text="We reached 5M MAU in Q4 2018.")
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_dau_with_percentage_growth(self, enricher: SegmentEnricher) -> None:
         """Detect 'daily active users grew 50%'."""
         segment = make_segment(
             raw_text="Our daily active users grew 50% year-over-year."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_organizations_with_dau_count(self, enricher: SegmentEnricher) -> None:
         """Detect '600,000 organizations with daily active users'."""
         segment = make_segment(
             raw_text="We serve 600,000 organizations with daily active users."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_dau_of_millions(self, enricher: SegmentEnricher) -> None:
         """Detect 'DAU of 8.5 million'."""
         segment = make_segment(raw_text="Our platform achieved DAU of 8.5 million.")
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_reverse_pattern_million_mau(self, enricher: SegmentEnricher) -> None:
         """Detect '12.3 million MAU'."""
         segment = make_segment(raw_text="The service has 12.3 million MAU.")
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_percentage_growth_in_wau(self, enricher: SegmentEnricher) -> None:
         """Detect '35% growth in weekly active users'."""
         segment = make_segment(
             raw_text="We saw 35% growth in weekly active users this quarter."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_basic_dau_keyword_no_count(self, enricher: SegmentEnricher) -> None:
         """Basic 'daily active users' without count should return False."""
         segment = make_segment(
             raw_text="We measure daily active users as a key metric."
         )
-        assert enricher._detect_usage_with_count(segment) is False
+        assert enricher._detect_usage_with_count(segment.raw_text) is False
 
     def test_dau_acronym_alone(self, enricher: SegmentEnricher) -> None:
         """DAU acronym alone without count should return False."""
         segment = make_segment(raw_text="DAU is an important engagement metric.")
-        assert enricher._detect_usage_with_count(segment) is False
+        assert enricher._detect_usage_with_count(segment.raw_text) is False
 
     def test_empty_text(self, enricher: SegmentEnricher) -> None:
         """Empty text should return False."""
         segment = make_segment(raw_text="")
-        assert enricher._detect_usage_with_count(segment) is False
+        assert enricher._detect_usage_with_count(segment.raw_text) is False
 
     def test_none_text(self, enricher: SegmentEnricher) -> None:
         """None text should return False."""
         segment = make_segment(raw_text="")
         segment.raw_text = None  # type: ignore
-        assert enricher._detect_usage_with_count(segment) is False
+        assert enricher._detect_usage_with_count(segment.raw_text) is False
 
     def test_over_prefix(self, enricher: SegmentEnricher) -> None:
         """Detect 'over 20 million monthly active users'."""
         segment = make_segment(
             raw_text="Our platform has over 20 million monthly active users."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_approximately_prefix(self, enricher: SegmentEnricher) -> None:
         """Detect 'approximately 15M daily active users'."""
         segment = make_segment(
             raw_text="The network has approximately 15M daily active users."
         )
-        assert enricher._detect_usage_with_count(segment) is True
+        assert enricher._detect_usage_with_count(segment.raw_text) is True
 
 
 # =============================================================================

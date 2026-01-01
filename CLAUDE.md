@@ -11,10 +11,12 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, value_extractor, segment_enricher
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
 └── llm/            # OpenAI integration: openai_client.py, prompts.py
+config/
+└── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
 ```
 
 **Pipeline:** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
@@ -132,7 +134,70 @@ docker compose down
    - Date pattern matching ("January 31, 2019")
    - Temporal phrase recognition ("as of", "ended", "for the period", etc.)
    - Result: 100% elimination of date false positives in candidate generation
+8. **Externalized keyword configuration** (2025-12-27): Metric keywords moved to `config/metric_keywords.yaml`:
+   - Add/modify keyword patterns without code changes
+   - YAML structure: patterns, exclusions, specific_patterns, required_context per metric
+   - YAML is the authoritative source of truth (no hardcoded fallback)
+   - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
+   - Fails fast with clear error if YAML cannot be loaded
+9. **Cohort chart image detection** (2025-12-29): Automated detection of cohort analysis charts in filings:
+   - Segment-level detection via `segment_enricher._detect_cohort_chart_images()` (stores candidates in `extra_metadata`)
+   - Filing-level detection via `cohort_chart_detector.py` (reads source HTML directly for standalone images)
+   - Heuristic: "cohort" keyword within 1500 chars of `<img>` tags
+   - Confidence scoring: base 0.6 + bonuses for chart keywords (0.15), retention context (0.10), multiple keywords (0.10)
+   - Filters decorative images by size and naming patterns (icons, logos, bullets)
+   - Use case: Identify high-value cohort analysis visualizations (ARR by cohort, LTV/CAC, retention curves)
+10. **Context-gated revenue synonym metrics** (2025-12-30): Revenue synonyms require cohort/per-customer context:
+    - GMV, TCV, ACV, Bookings, Billings only generate review candidates when context is present
+    - Context keywords: cohort, vintage, per customer, per user, by account, customer-level, etc.
+    - Proximity: context must appear within 1500 chars of keyword match
+    - ARR/MRR NOT context-gated (inherently customer-related: "recurring" implies subscriptions)
+    - Classification preserved: revenue synonyms still contribute to segment enrichment/richness scoring
+    - Configuration: `required_context` in `config/metric_keywords.yaml` with YAML anchor sharing
+11. **Cross-metric substring suppression** (2025-12-31): When keywords from different metrics overlap:
+    - If one keyword text is a substring of another at overlapping positions, keep only the longer match
+    - Example: "Paid Customers" suppressed by "Paid Customers > $100,000" when they overlap
+    - Label-embedded values filtered: numbers following comparison operators (e.g., "> $100,000") are not extracted
+    - Logs at INFO level with "CMS-1" prefix for production monitoring
+    - **FOLLOW-UP NEEDED**: Greedy patterns in `metric_keywords.yaml` (line 254: `\bretention\s+rate[^.;]{0,50}\d+%`) can cause unexpected suppression. Consider constraining these patterns to reduce false matches.
 
 ## Documentation
 
 See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM_PLAN.md`
+
+## Task Execution Workflow
+
+**IMPORTANT**: This project uses a structured worker prompt workflow for task execution.
+
+### When to Use (Size-Based)
+
+| Task Size | Time Estimate | Workflow Required? |
+|-----------|---------------|-------------------|
+| XS | <30 min | Optional (can code directly) |
+| S | 30 min - 2 hr | Optional (recommended for multi-file changes) |
+| M | 2-4 hr | **Required** |
+| L | 4-8 hr | **Required** |
+| XL | >8 hr | **Required** (consider decomposition) |
+
+### Workflow Steps
+
+1. **Generate Worker Prompt** - Use `docs/WORKER_PROMPT_GENERATOR.md` to create task packet
+2. **Execute Task** - Follow the worker prompt requirements
+3. **Run Verification** - Execute verification commands from prompt
+4. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
+5. **User Approval** - STOP and ask user before implementing improvements
+6. **Generate Follow-Ups** - Create task suggestions for deferred improvements
+7. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
+8. **Commit & Push** - With task ID reference
+
+### Key Files
+
+- `docs/WORKER_PROMPT_TEMPLATE.md` (v2.5) - Task prompt format
+- `docs/WORKER_PROMPT_GENERATOR.md` (v1.1) - Meta-prompt for generating prompts
+- `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.1) - Completion documentation format
+
+### Quick Start
+
+Use `/task` command to invoke the workflow, or for M/L/XL tasks, automatically follow this structure.
+
+**Do NOT** jump directly to coding for M/L/XL tasks without creating a worker prompt first.

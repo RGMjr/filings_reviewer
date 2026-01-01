@@ -3,7 +3,13 @@
 {% block title %}Review - {{ filing.company_name if filing else 'Filing' }}{% endblock %}
 
 {% block content %}
-<div class="container review-container mt-4" data-filing-id="{{ filing.filing_id if filing else '' }}">
+<div class="container review-container mt-4"
+     data-filing-id="{{ filing.filing_id if filing else '' }}"
+     data-filter-status="{{ current_filters.status }}"
+     data-filter-metric="{{ current_filters.metric }}"
+     data-filter-confidence="{{ current_filters.confidence }}"
+     data-filter-sort="{{ current_filters.sort }}"
+>
     {% if not candidates or candidates|length == 0 %}
         {# Empty state: No candidates for this filing #}
         <div class="alert alert-info">
@@ -452,8 +458,18 @@
                     {# =============================================================
                        Section 4: Decision Form
                        ============================================================= #}
-                    {% if existing_decision %}
-                        {# 4a. Read-Only Mode: Already Reviewed #}
+                    {# Display mapping for rejection categories (internal key -> user-friendly label) #}
+                    {# NOTE: This must be defined before the conditional blocks as it's used in both branches #}
+                    {% set rejection_category_display = {
+                        'wrong_metric': 'Wrong Metric Type',
+                        'not_a_metric': 'Not a Customer Metric',
+                        'wrong_value': 'Wrong Value Extracted',
+                        'wrong_period': 'Wrong Time Period',
+                        'duplicate': 'Duplicate',
+                        'other': 'Other'
+                    } %}
+                    {% if existing_decision and not existing_decision.is_automated %}
+                        {# 4a. Read-Only Mode: Already Reviewed by Human #}
                         <div class="card">
                             <div class="card-body">
                                 <div class="alert alert-info mb-3">
@@ -473,7 +489,7 @@
                                         <h6 class="text-danger">Rejection Details</h6>
                                         <p class="mb-1">
                                             <strong>Category:</strong>
-                                            {{ existing_decision.rejection_category|replace('_', ' ')|title if existing_decision.rejection_category else 'Not specified' }}
+                                            {{ rejection_category_display.get(existing_decision.rejection_category, existing_decision.rejection_category|replace('_', ' ')|title) if existing_decision.rejection_category else 'Not specified' }}
                                         </p>
                                         {% if existing_decision.rejection_reason %}
                                             <p class="mb-0">
@@ -490,9 +506,9 @@
                                     </div>
                                 {% endif %}
 
-                                {# Next button #}
+                                {# Next button - includes filter params for consistent navigation #}
                                 <div class="d-flex justify-content-end mt-3">
-                                    <a href="{{ url_for('review.next_candidate', filing_id=filing.filing_id, current_id=current_candidate.candidate_id) }}"
+                                    <a href="{{ url_for('review.next_candidate', filing_id=filing.filing_id, current_id=current_candidate.candidate_id, status=current_filters.status, metric=current_filters.metric, confidence=current_filters.confidence, sort=current_filters.sort) }}"
                                        class="btn btn-primary">
                                         Next Candidate <span class="ms-2">→</span>
                                     </a>
@@ -501,10 +517,46 @@
                         </div>
 
                     {% else %}
-                        {# 4b. Edit Mode: Pending Review #}
+                        {# 4b. Edit Mode: Pending Review or Automated Decision Override #}
                         <div class="card">
                             <div class="card-body">
-                                <h6 class="mb-3">Make Decision</h6>
+                                {# Show automated decision info if present #}
+                                {% if existing_decision and existing_decision.is_automated %}
+                                    <div class="alert alert-warning mb-3"
+                                         id="automated-decision-info"
+                                         data-decision="{{ existing_decision.decision }}"
+                                         data-metric-id="{{ existing_decision.assigned_metric_id or '' }}"
+                                         data-rejection-category="{{ existing_decision.rejection_category or '' }}"
+                                         data-rejection-reason="{{ existing_decision.rejection_reason or '' }}">
+                                        <div class="d-flex align-items-start">
+                                            <i class="bi bi-robot me-2 fs-5"></i>
+                                            <div class="flex-grow-1">
+                                                <strong>Automated Suggestion:</strong>
+                                                {{ existing_decision.decision|title }}
+                                                {% if existing_decision.assigned_metric_id %}
+                                                    as <strong>{{ existing_decision.assigned_metric_id|replace('_', ' ')|title }}</strong>
+                                                {% endif %}
+                                                {% if existing_decision.rejection_reason %}
+                                                    <br><small class="text-muted">Reason: {{ existing_decision.rejection_reason }}</small>
+                                                {% endif %}
+                                            </div>
+                                            <button type="button"
+                                                    class="btn btn-success btn-sm ms-2"
+                                                    id="confirm-automated-btn"
+                                                    title="Confirm this automated suggestion (keyboard: F)">
+                                                ✓ Confirm <span class="badge bg-light text-dark ms-1">F</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                {% endif %}
+
+                                <h6 class="mb-3">
+                                    {% if existing_decision and existing_decision.is_automated %}
+                                        Override Automated Decision
+                                    {% else %}
+                                        Make Decision
+                                    {% endif %}
+                                </h6>
 
                                 <form id="decision-form" data-candidate-id="{{ current_candidate.candidate_id }}">
                                     {# Hidden fields for JavaScript (D5) #}
@@ -542,7 +594,7 @@
                                                         <a class="dropdown-item rejection-category-option"
                                                            href="#"
                                                            data-category="{{ category }}">
-                                                            {{ category|replace('_', ' ')|title }}
+                                                            {{ rejection_category_display.get(category, category|replace('_', ' ')|title) }}
                                                         </a>
                                                     </li>
                                                 {% endfor %}
@@ -675,8 +727,8 @@
                                             <div class="me-2" style="width: 16px;"></div>
                                         {% endif %}
 
-                                        {# Candidate link and info #}
-                                        <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id, candidate_id=candidate.candidate_id) }}"
+                                        {# Candidate link and info - preserves filter params #}
+                                        <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id, candidate_id=candidate.candidate_id, status=current_filters.status, metric=current_filters.metric, confidence=current_filters.confidence, sort=current_filters.sort) }}"
                                            class="text-decoration-none text-dark flex-grow-1"
                                            onclick="event.stopPropagation()">
                                             <div class="d-flex justify-content-between align-items-center">
@@ -710,12 +762,25 @@
 
                                         {# Status badge #}
                                         {% if candidate.review_status == 'reviewed' %}
-                                            {% if candidate.decision == 'accept' %}
-                                                <span class="badge bg-success">✓</span>
-                                            {% elif candidate.decision == 'reject' %}
-                                                <span class="badge bg-danger">✗</span>
-                                            {% elif candidate.decision == 'reclassify' %}
-                                                <span class="badge bg-warning">⟲</span>
+                                            {# Check if this is an automated decision #}
+                                            {% if candidate.reviewer_id == 'hrv5_script' %}
+                                                {# Automated decision - show with robot icon #}
+                                                {% if candidate.decision == 'accept' %}
+                                                    <span class="badge bg-success" title="Automated acceptance">🤖✓</span>
+                                                {% elif candidate.decision == 'reject' %}
+                                                    <span class="badge bg-danger" title="Automated rejection">🤖✗</span>
+                                                {% elif candidate.decision == 'reclassify' %}
+                                                    <span class="badge bg-warning" title="Automated reclassification">🤖⟲</span>
+                                                {% endif %}
+                                            {% else %}
+                                                {# Human decision - show normally #}
+                                                {% if candidate.decision == 'accept' %}
+                                                    <span class="badge bg-success">✓</span>
+                                                {% elif candidate.decision == 'reject' %}
+                                                    <span class="badge bg-danger">✗</span>
+                                                {% elif candidate.decision == 'reclassify' %}
+                                                    <span class="badge bg-warning">⟲</span>
+                                                {% endif %}
                                             {% endif %}
                                         {% else %}
                                             <span class="badge bg-secondary">Pending</span>
@@ -867,6 +932,11 @@
                         </div>
 
                         <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">F</span>
+                            <span class="small">Confirm automated suggestion</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
                             <span class="badge bg-secondary me-2">R</span>
                             <span class="small">Reject candidate</span>
                         </div>
@@ -919,6 +989,8 @@
                 </div>
                 <div class="col">
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">A</kbd> Accept
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">F</kbd> Confirm
                     <span class="mx-1 text-muted">|</span>
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">R</kbd> Reject
                     <span class="mx-1 text-muted">|</span>

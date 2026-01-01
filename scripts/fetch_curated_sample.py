@@ -23,17 +23,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import FilingMetadata
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
+from src.infra.sec_client import FilingMetadata
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 
 def fetch_curated_companies(db, fetcher):
-    """Fetch filings from curated companies list (Slack, Shopify, etc.)."""
+    """Fetch filings from curated companies list (Slack, Shopify, etc.).
+
+    Prefers the final S-1/A or F-1/A amendment over the original S-1/F-1,
+    as amendments contain the most complete and accurate disclosure.
+    """
     curated_file = Path("data/curated_companies.json")
 
     if not curated_file.exists():
@@ -54,6 +58,8 @@ def fetch_curated_companies(db, fetcher):
         name = company["company_name"]
 
         # Query for S-1/F-1 filings for this company
+        # Prefer the final amendment (S-1/A, F-1/A) over original (S-1, F-1)
+        # by ordering amendments first, then by filing_date DESC to get the latest
         query = """
             SELECT
                 c.company_name,
@@ -66,9 +72,13 @@ def fetch_curated_companies(db, fetcher):
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.cik = %(cik)s
-              AND f.form_type IN ('S-1', 'F-1')
+              AND f.form_type IN ('S-1', 'S-1/A', 'F-1', 'F-1/A')
               AND f.html_fetched_at IS NULL
-            ORDER BY f.filing_date
+            ORDER BY
+                -- Prefer amendments over originals
+                CASE WHEN f.form_type LIKE '%%/A' THEN 0 ELSE 1 END,
+                -- Get the latest filing date (final amendment)
+                f.filing_date DESC
             LIMIT 1
         """
 
@@ -76,7 +86,8 @@ def fetch_curated_companies(db, fetcher):
 
         if results:
             found_count += 1
-            logger.info(f"  ✓ Found {name} (CIK {cik})")
+            form = results[0]["form_type"]
+            logger.info(f"  ✓ Found {name} (CIK {cik}) - {form}")
             filings.extend(results)
         else:
             logger.debug(f"  ✗ Not found yet: {name} (CIK {cik})")

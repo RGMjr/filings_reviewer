@@ -5,11 +5,10 @@ Tests the standalone deduplicate_candidates() function directly,
 independent of CandidateGenerator.
 """
 
-import pytest
 from decimal import Decimal
 
 from src.review.deduplicator import deduplicate_candidates
-from src.review.models import ReviewCandidate, CandidateFeatures
+from src.review.models import CandidateFeatures, ReviewCandidate
 
 
 class TestDeduplicateCandidatesImport:
@@ -303,9 +302,9 @@ class TestDeduplicateCandidatesL1Enhancement:
     def test_different_periods_kept_separate(self):
         """Same value/metric with different periods should be kept separate."""
         candidates = [
-            self._make_candidate_with_period(Decimal("33"), "cm_gross_margin", 0.8, "2015"),
-            self._make_candidate_with_period(Decimal("33"), "cm_gross_margin", 0.8, "2016"),
-            self._make_candidate_with_period(Decimal("33"), "cm_gross_margin", 0.8, "2017"),
+            self._make_candidate_with_period(Decimal("33"), "cm_customer_churn_rate", 0.8, "2015"),
+            self._make_candidate_with_period(Decimal("33"), "cm_customer_churn_rate", 0.8, "2016"),
+            self._make_candidate_with_period(Decimal("33"), "cm_customer_churn_rate", 0.8, "2017"),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -316,8 +315,8 @@ class TestDeduplicateCandidatesL1Enhancement:
     def test_same_period_deduplicated(self):
         """Same value/metric/period should be deduplicated."""
         candidates = [
-            self._make_candidate_with_period(Decimal("33"), "cm_gross_margin", 0.9, "2015"),
-            self._make_candidate_with_period(Decimal("33"), "cm_gross_margin", 0.7, "2015"),
+            self._make_candidate_with_period(Decimal("33"), "cm_customer_churn_rate", 0.9, "2015"),
+            self._make_candidate_with_period(Decimal("33"), "cm_customer_churn_rate", 0.7, "2015"),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -354,10 +353,10 @@ class TestDeduplicateCandidatesL1Enhancement:
         """When suggestion_confidence is equal, respectively_confidence should break tie."""
         candidates = [
             self._make_candidate_with_period(
-                Decimal("33"), "cm_gross_margin", 0.8, "2015", respectively_confidence=0.7
+                Decimal("33"), "cm_customer_churn_rate", 0.8, "2015", respectively_confidence=0.7
             ),
             self._make_candidate_with_period(
-                Decimal("33"), "cm_gross_margin", 0.8, "2015", respectively_confidence=0.95
+                Decimal("33"), "cm_customer_churn_rate", 0.8, "2015", respectively_confidence=0.95
             ),
         ]
 

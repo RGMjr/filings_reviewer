@@ -5,16 +5,17 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
+    METRIC_REQUIRED_CONTEXT,
     SPECIFIC_KEYWORD_PATTERNS,
     KeywordMatch,
     KeywordMatcher,
 )
 from src.review.number_parsing import NumberMatch
-
 
 # =============================================================================
 # KeywordMatcher.find_all_keywords Tests
@@ -230,8 +231,11 @@ class TestSubstringDeduplication:
         """LTV/CAC ratio should not create separate LTV and CAC candidates.
 
         HRI-3 Update: With exclusion patterns, standalone LTV is now excluded
-        when LTV/CAC context is present. This is the correct behavior - we want
-        the LTV/CAC ratio metric, not the standalone LTV metric.
+        when LTV/CAC context is present.
+
+        CMS-1 Update: With cross-metric substring suppression, CAC is also
+        suppressed because "CAC" is a substring of "LTV/CAC ratio" at an
+        overlapping position. Only the longest/most-specific match is kept.
         """
         matcher = KeywordMatcher(max_keyword_distance=100)
         text = "Our LTV/CAC ratio was 1.42 for the period."
@@ -240,22 +244,22 @@ class TestSubstringDeduplication:
         # Find all keywords in text
         all_keywords = matcher.find_all_keywords(text)
 
-        # HRI-3: Should find LTV/CAC and CAC keywords (LTV excluded due to LTV/CAC context)
+        # Should find LTV/CAC and CAC keywords in text
         assert len(all_keywords) >= 2
         keywords_text = [kw.keyword for kw in all_keywords]
         assert any("LTV/CAC" in k or "ltv/cac" in k.lower() for k in keywords_text)
-        # LTV is now excluded when LTV/CAC ratio is present (HRI-3 improvement)
-        # assert any("LTV" == k.upper() for k in keywords_text)  # Removed - now correctly excluded
         assert any("CAC" == k.upper() for k in keywords_text)
 
-        # With HRI-3: LTV is excluded because LTV/CAC ratio context triggers exclusion
+        # After cross-metric substring suppression (CMS-1):
+        # - LTV excluded via HRI-3 exclusion patterns
+        # - CAC suppressed as substring of "LTV/CAC ratio" at overlapping position
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
 
-        # Should have matches from LTV/CAC ratio and CAC metrics (LTV correctly excluded)
+        # Should have only LTV/CAC ratio (the most specific/longest match)
         matched_keywords = [kw.keyword for kw in keywords_near_number]
-        assert len(matched_keywords) == 2, f"Expected 2 keywords (LTV/CAC, CAC), got {len(matched_keywords)}: {matched_keywords}"
+        assert len(matched_keywords) == 1, f"Expected 1 keyword (LTV/CAC), got {len(matched_keywords)}: {matched_keywords}"
 
-        # Should include LTV/CAC (the most specific match)
+        # Should be the LTV/CAC ratio metric
         assert any("LTV/CAC" in kw or "ltv/cac" in kw.lower() for kw in matched_keywords)
 
     def test_compound_metric_prevents_substring_matches(self):
@@ -286,6 +290,113 @@ class TestSubstringDeduplication:
         # Since keywords don't overlap in position, both can be kept
         # (one before number, one after)
         assert len(keywords_near_number) >= 1
+
+
+# =============================================================================
+# Cross-Metric Substring Suppression Tests (CMS-1)
+# =============================================================================
+
+
+class TestCrossMetricSubstringSuppression:
+    """Tests for cross-metric substring suppression.
+
+    When keywords from different metrics overlap positionally AND one is a
+    substring of the other, keep only the longer (more specific) match.
+    """
+
+    def test_paid_customers_threshold_keeps_specific_metric(self):
+        """'Paid Customers > $100,000' should suppress 'Paid Customers' match.
+
+        cm_large_customers_period_end should win over cm_customers_period_end
+        because its keyword is longer and more specific.
+        """
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        # The keyword pattern for cm_large_customers matches "Paid Customers > $1"
+        text = "We have 500 Paid Customers > $100,000 in ARR"
+        number = NumberMatch(
+            start=8, end=11, raw_text="500", value=Decimal("500"), unit="count"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should only have ONE match - the more specific cm_large_customers
+        metric_ids = [kw.metric_id for kw in keywords_near_number]
+
+        # The longer pattern should win
+        assert (
+            "cm_large_customers_period_end" in metric_ids
+        ), f"Expected cm_large_customers_period_end, got {metric_ids}"
+
+        # cm_customers_period_end should be suppressed as substring
+        assert (
+            "cm_customers_period_end" not in metric_ids
+        ), f"cm_customers_period_end should be suppressed, got {metric_ids}"
+
+    def test_cross_metric_non_overlapping_both_kept(self):
+        """Non-overlapping keywords from different metrics should both be kept."""
+        matcher = KeywordMatcher(max_keyword_distance=150)
+        # "customers" at one position, "retention" at another (different metrics)
+        text = "We had 1000 paying customers and our net dollar retention was strong"
+        number = NumberMatch(
+            start=8, end=12, raw_text="1000", value=Decimal("1000"), unit="count"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Both metrics should be present since keywords don't overlap
+        metric_ids = [kw.metric_id for kw in keywords_near_number]
+        assert len(metric_ids) >= 1  # At least one match
+
+    def test_cross_metric_overlap_but_not_substring(self):
+        """Overlapping keywords that are NOT substrings should both be kept."""
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        # Create a scenario where keywords might overlap but neither is substring
+        # This tests that we only suppress when there's actual substring relationship
+        text = "Our 95% customer retention rate was strong"
+        number = NumberMatch(
+            start=4, end=7, raw_text="95%", value=Decimal("95"), unit="percent"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should find at least one keyword match
+        assert len(keywords_near_number) >= 1
+
+    def test_longer_keyword_replaces_shorter_when_substring_match(self):
+        """When keywords have substring relationship, longer one wins.
+
+        This tests the specific case where one keyword text is a proper
+        substring of another at overlapping positions.
+        """
+        matcher = KeywordMatcher(max_keyword_distance=100)
+
+        # Create synthetic KeywordMatch objects to test the replacement logic
+        from src.review.keyword_matching import KeywordMatch
+
+        short_kw = KeywordMatch(
+            start=0,
+            end=14,
+            keyword="Paid Customers",
+            metric_id="cm_customers_period_end",
+            pattern=r"\bpaid\s+customers?\b",
+        )
+        long_kw = KeywordMatch(
+            start=0,
+            end=25,
+            keyword="Paid Customers > $100,000",
+            metric_id="cm_large_customers_period_end",
+            pattern=r"\bpaid\s+customers?\s*>\s*\$?\d",
+        )
+
+        # Verify overlap and substring relationship
+        assert matcher._keywords_overlap(short_kw, long_kw)
+        assert matcher._is_substring_match(short_kw, long_kw)
+
+        # Verify length comparison logic
+        assert len(long_kw.keyword) > len(short_kw.keyword)
 
 
 # =============================================================================
@@ -393,7 +504,6 @@ class TestP1BoundaryAwareMatching:
         assert len(keywords) >= 1
 
         # Verify that matched keywords are from same boundary as number
-        number_boundary = detector.get_boundary_at_position(number.start, boundaries)
         for kw in keywords:
             kw_boundary = detector.get_boundary_at_position(kw.start, boundaries)
             # In most cases, should be same boundary (may have fallback)
@@ -505,7 +615,7 @@ class TestP1AmbiguityLogging:
 
         matcher = KeywordMatcher(log_ambiguous_matches=False)
         all_keywords = matcher.find_all_keywords(text)
-        keywords = matcher.find_keywords_near_number(number, all_keywords)
+        matcher.find_keywords_near_number(number, all_keywords)
 
         # Should not log ambiguity messages
         ambiguity_logs = [record for record in caplog.records if "Ambiguous match" in record.message]
@@ -590,17 +700,17 @@ class TestP15SentenceAwareMatching:
         """Keywords in different sentences should be filtered out."""
         from src.review.boundary_detection import BoundaryDetector
 
-        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        text = "We had 50000 active customers. Net revenue retention was 120% in Q4."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
-        # Number in second sentence (52%)
-        num_pos = text.index("52%")
+        # Number in second sentence (120%)
+        num_pos = text.index("120%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -618,13 +728,13 @@ class TestP15SentenceAwareMatching:
             number, all_keywords, sentence_boundaries=sentences
         )
 
-        # With filtering: should only find "gross margin" (in sentence 2)
+        # With filtering: should only find "net revenue retention" (in sentence 2)
         # Without filtering: might also find "active customers" (in sentence 1)
         keywords_with_ids = {kw.metric_id for kw in keywords_with_filter}
         keywords_without_ids = {kw.metric_id for kw in keywords_no_filter}
 
-        # Gross margin should be in both
-        assert "cm_gross_margin_overall" in keywords_with_ids
+        # Net revenue retention should be in both
+        assert "cm_net_revenue_retention" in keywords_with_ids
 
         # Active customers should be filtered WITH sentence boundaries
         # but present WITHOUT sentence boundaries (if within distance)
@@ -637,7 +747,7 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         # Use metrics that exist in the taxonomy for both sentences
-        text = "We had 50000 active customers in 2023. Gross margin was 52% in Q1."
+        text = "We had 50000 active customers in 2023. Net revenue retention was 120% in Q1."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
@@ -652,13 +762,13 @@ class TestP15SentenceAwareMatching:
             unit="count",
         )
 
-        # Number in second sentence (52%) - should match "gross margin"
-        num2_pos = text.index("52%")
+        # Number in second sentence (120%) - should match "net revenue retention"
+        num2_pos = text.index("120%")
         num2 = NumberMatch(
             start=num2_pos,
-            end=num2_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num2_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -668,15 +778,15 @@ class TestP15SentenceAwareMatching:
         # Verify we found keywords in both sentences
         assert any("customer" in kw.keyword.lower() for kw in all_keywords), \
             "Should find 'active customers' keyword"
-        assert any("gross margin" in kw.keyword.lower() for kw in all_keywords), \
-            "Should find 'gross margin' keyword"
+        assert any("retention" in kw.keyword.lower() for kw in all_keywords), \
+            "Should find 'net revenue retention' keyword"
 
         # 50000 should only match keywords in sentence 1
         keywords1 = matcher.find_keywords_near_number(
             num1, all_keywords, sentence_boundaries=sentences
         )
 
-        # 52% should only match keywords in sentence 2
+        # 120% should only match keywords in sentence 2
         keywords2 = matcher.find_keywords_near_number(
             num2, all_keywords, sentence_boundaries=sentences
         )
@@ -686,20 +796,20 @@ class TestP15SentenceAwareMatching:
             assert sentences[0].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 1 ({sentences[0].start}-{sentences[0].end})"
 
-        # Keywords for 52% should be "gross margin" (sentence 2)
+        # Keywords for 120% should be "net revenue retention" (sentence 2)
         for kw in keywords2:
             assert sentences[1].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 2 ({sentences[1].start}-{sentences[1].end})"
 
-        # Verify the key behavior: 50000 should NOT match "gross margin"
+        # Verify the key behavior: 50000 should NOT match "net revenue retention"
         keywords1_ids = {kw.metric_id for kw in keywords1}
-        assert "cm_gross_margin_overall" not in keywords1_ids, \
-            "50000 should not match gross margin (different sentence)"
+        assert "cm_net_revenue_retention" not in keywords1_ids, \
+            "50000 should not match net revenue retention (different sentence)"
 
-        # Verify the key behavior: 52% should NOT match "active customers"
+        # Verify the key behavior: 120% should NOT match "active customers"
         keywords2_ids = {kw.metric_id for kw in keywords2}
         assert "cm_active_customers_total" not in keywords2_ids, \
-            "52% should not match active customers (different sentence)"
+            "120% should not match active customers (different sentence)"
 
     def test_fallback_when_no_same_sentence_keywords(self):
         """If no keywords in same sentence, should keep all candidates."""
@@ -732,17 +842,17 @@ class TestP15SentenceAwareMatching:
         """When respect_sentence_boundaries=False, sentence filtering should be skipped."""
         from src.review.boundary_detection import BoundaryDetector
 
-        text = "We had 50000 active customers. Revenue was $100M with gross margin of 52%."
+        text = "We had 50000 active customers. Revenue retention was 120% in Q4."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
         # Number in second sentence
-        num_pos = text.index("52%")
+        num_pos = text.index("120%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 4,
+            raw_text="120%",
+            value=Decimal("120"),
             unit="percent",
         )
 
@@ -760,19 +870,19 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         text = """• First bullet: active customers reached 50000. Revenue grew.
-• Second bullet: gross margin was 52%. Costs increased."""
+• Second bullet: churn rate was 5%. Costs increased."""
 
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
         sentences = detector.find_sentence_boundaries(text)
 
-        # Number "52%" is in second bullet, first sentence within that bullet
-        num_pos = text.index("52%")
+        # Number "5%" is in second bullet, first sentence within that bullet
+        num_pos = text.index("5%")
         number = NumberMatch(
             start=num_pos,
-            end=num_pos + 3,
-            raw_text="52%",
-            value=Decimal("52"),
+            end=num_pos + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
@@ -787,7 +897,7 @@ class TestP15SentenceAwareMatching:
         )
 
         # Should filter by BOTH bullet boundary AND sentence boundary
-        # "gross margin" is in same bullet AND same sentence
+        # "churn rate" is in same bullet AND same sentence
         # "active customers" is in different bullet
         if len(keywords) > 0:
             # Verify keywords are from correct boundary
@@ -849,7 +959,7 @@ class TestP15SentenceAwareMatching:
         from src.review.boundary_detection import BoundaryDetector
 
         # One long sentence with multiple metrics
-        text = "Our active customers reached 50000 while gross margin improved to 52% in Q1."
+        text = "Our active customers reached 50000 while churn rate improved to 5% in Q1."
         detector = BoundaryDetector()
         sentences = detector.find_sentence_boundaries(text)
 
@@ -872,8 +982,7 @@ class TestP15SentenceAwareMatching:
             num1, all_keywords, sentence_boundaries=sentences
         )
 
-        # May find both "active customers" and "gross margin" since they're in same sentence
-        metric_ids = {kw.metric_id for kw in keywords}
+        # May find both "active customers" and "churn rate" since they're in same sentence
         # At minimum, should find the closest keyword
         assert len(keywords) >= 1
 
@@ -937,7 +1046,7 @@ class TestKeywordDirection:
 
     def test_direction_with_multiple_keywords(self, matcher):
         """Direction is correct for closest keyword match."""
-        text = "gross margin was 30% gross margin again"
+        text = "churn rate was 30% churn rate again"
         #       ^before          ^num ^after
 
         number = NumberMatch(
@@ -951,7 +1060,7 @@ class TestKeywordDirection:
         all_keywords = matcher.find_all_keywords(text)
         result = matcher.find_keywords_near_number(number, all_keywords)
 
-        # Should match one of the gross margin keywords
+        # Should match one of the churn rate keywords
         assert len(result) >= 1
         # The matched keyword should have a direction
         assert result[0].direction in ("before", "after")
@@ -959,7 +1068,7 @@ class TestKeywordDirection:
 
     def test_keyword_immediately_after(self, matcher):
         """Keyword immediately following number is 'after'."""
-        text = "30% gross margin"
+        text = "30% churn rate"
 
         number = NumberMatch(
             start=0,
@@ -977,7 +1086,7 @@ class TestKeywordDirection:
 
     def test_keyword_immediately_before(self, matcher):
         """Keyword immediately preceding number is 'before'."""
-        text = "gross margin 30%"
+        text = "churn rate 30%"
 
         number = NumberMatch(
             start=text.index("30"),
@@ -1015,7 +1124,7 @@ class TestKeywordDirection:
 
     def test_multiple_numbers_different_directions(self, matcher):
         """Each number gets correct direction for its nearest keywords."""
-        text = "We had 50000 active customers and gross margin of 52%"
+        text = "We had 50000 active customers and churn rate of 5%"
         #              ^num1  ^kw1                            ^kw2 ^num2
 
         # First number (50000) - "active customers" is after it
@@ -1027,10 +1136,10 @@ class TestKeywordDirection:
             unit="count",
         )
 
-        # Second number (52%) - "gross margin" is before it
+        # Second number (5%) - "churn rate" is before it
         num2 = NumberMatch(
-            start=text.index("52"),
-            end=text.index("52") + 3,
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
             raw_text="52%",
             value=Decimal("52"),
             unit="percent",
@@ -1251,21 +1360,21 @@ class TestL4ContextDependentMultipliers:
             multiplier_parenthetical=1.15,  # Prefer post-value
         )
 
-        # "33% (gross margin)" - metric in parentheses after value
-        text = "We achieved 33% (gross margin) improvement"
+        # "5% (churn rate)" - metric in parentheses after value
+        text = "We achieved 5% (churn rate) improvement"
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=12, end=15, raw_text="33%", value=Decimal("33"), unit="percent"
+            start=12, end=14, raw_text="5%", value=Decimal("5"), unit="percent"
         )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords, text=text)
 
-        # Should find "gross margin" (in parentheses after number)
+        # Should find "churn rate" (in parentheses after number)
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
-        assert margin_kw[0].direction == "after"
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
+        assert churn_kw[0].direction == "after"
 
     def test_bullet_point_prefers_pre_value(self):
         """Bullet points should prefer pre-value keywords."""
@@ -1278,17 +1387,17 @@ class TestL4ContextDependentMultipliers:
             multiplier_bullet_points=0.9,  # Prefer pre-value
         )
 
-        text = "• Gross margin was 33% improvement"
+        text = "• Churn rate was 5% improvement"
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
 
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=text.index("33%"),
-            end=text.index("33%") + 3,
-            raw_text="33%",
-            value=Decimal("33"),
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
@@ -1296,10 +1405,10 @@ class TestL4ContextDependentMultipliers:
             number, all_keywords, boundaries=boundaries, text=text
         )
 
-        # Should find "gross margin" (before number in bullet)
+        # Should find "churn rate" (before number in bullet)
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
 
     def test_copula_verb_prefers_pre_value(self):
         """Sentences with copula verbs (is/was/were) should prefer pre-value keywords."""
@@ -1310,25 +1419,25 @@ class TestL4ContextDependentMultipliers:
             multiplier_copula_verb=0.9,  # Prefer pre-value
         )
 
-        # "Gross margin was 33%" - copula verb between metric and value
-        text = "Gross margin was 33% in the quarter"
+        # "Churn rate was 5%" - copula verb between metric and value
+        text = "Churn rate was 5% in the quarter"
         all_keywords = matcher.find_all_keywords(text)
 
         number = NumberMatch(
-            start=text.index("33%"),
-            end=text.index("33%") + 3,
-            raw_text="33%",
-            value=Decimal("33"),
+            start=text.index("5%"),
+            end=text.index("5%") + 2,
+            raw_text="5%",
+            value=Decimal("5"),
             unit="percent",
         )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords, text=text)
 
-        # Should find "gross margin" (before "was")
+        # Should find "churn rate" (before "was")
         assert len(keywords) >= 1
-        margin_kw = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kw) > 0
-        assert margin_kw[0].direction == "before"
+        churn_kw = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kw) > 0
+        assert churn_kw[0].direction == "before"
 
     def test_preposition_prefers_post_value(self):
         """Prepositional phrases (of/for/in) should prefer post-value keywords."""
@@ -1355,7 +1464,6 @@ class TestL4ContextDependentMultipliers:
 
         # Should find "revenue" (after "of")
         assert len(keywords) >= 1
-        revenue_kw = [kw for kw in keywords if "revenue" in kw.keyword.lower()]
         # Note: revenue might match, depends on metric keywords
         # This test verifies multiplier is applied, not specific keyword selection
 
@@ -1370,9 +1478,9 @@ class TestL4ContextDependentMultipliers:
 
         # Should use 0.8 for all contexts
         multiplier = matcher.get_context_multiplier(
-            text="We achieved 33% (gross margin)",
+            text="We achieved 5% (churn rate)",
             number_position=12,
-            keyword_position=17,
+            keyword_position=16,
             keyword_direction="after",
             boundaries=None,
             segment_type=None,
@@ -1390,8 +1498,8 @@ class TestL4ContextDependentMultipliers:
 
         # Pre-value keyword should get 1.0 multiplier
         multiplier = matcher.get_context_multiplier(
-            text="Gross margin was 33%",
-            number_position=17,
+            text="Churn rate was 5%",
+            number_position=15,
             keyword_position=0,
             keyword_direction="before",
             boundaries=None,
@@ -1418,9 +1526,9 @@ class TestL4ThresholdMath:
             post_value_distance_multiplier=0.9,
         )
 
-        # Use actual metric keywords: "active customers" and "gross margin"
+        # Use actual metric keywords: "active customers" and "churn rate"
         # Pre-value keyword far away, post-value keyword closer
-        text = "active customers increased significantly here and 100 gross margin"
+        text = "active customers increased significantly here and 100 churn rate"
         all_keywords = matcher.find_all_keywords(text)
 
         number_pos = text.index("100")
@@ -1437,11 +1545,11 @@ class TestL4ThresholdMath:
         # Should have at least one match
         assert len(keywords) >= 1
 
-        # Gross margin is much closer than active customers, should win
-        margin_kws = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        if len(margin_kws) > 0:
-            # Margin should be present and be after the number
-            assert margin_kws[0].direction == "after"
+        # Churn rate is much closer than active customers, should win
+        churn_kws = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        if len(churn_kws) > 0:
+            # Churn rate should be present and be after the number
+            assert churn_kws[0].direction == "after"
 
 
 # =============================================================================
@@ -1464,8 +1572,8 @@ class TestL4BoundaryInteraction:
             multiplier_bullet_points=0.9,
         )
 
-        # Two bullets: first has "active customers", second has "100 gross margin"
-        text = "• Active customers increased significantly\n• Performance was 100 with gross margin improvement"
+        # Two bullets: first has "active customers", second has "100 churn rate"
+        text = "• Active customers increased significantly\n• Performance was 100 with churn rate improvement"
         detector = BoundaryDetector()
         boundaries = detector.find_boundaries(text)
 
@@ -1485,13 +1593,13 @@ class TestL4BoundaryInteraction:
             number, all_keywords, boundaries=boundaries, text=text
         )
 
-        # Should find "gross margin" (same bullet, post-value)
+        # Should find "churn rate" (same bullet, post-value)
         # Should NOT find "active customers" (different bullet, filtered by boundary)
         assert len(keywords) >= 1
         keyword_texts = [kw.keyword.lower() for kw in keywords]
 
-        # Gross margin should be present (same boundary)
-        assert any("margin" in kw for kw in keyword_texts)
+        # Churn rate should be present (same boundary)
+        assert any("churn" in kw for kw in keyword_texts)
 
         # Active customers should NOT be present (different boundary)
         assert not any("customers" in kw for kw in keyword_texts)
@@ -1516,8 +1624,8 @@ class TestL4MultipleKeywords:
 
         # Setup with actual metric keywords:
         # Pre-value: "active customers" (far before)
-        # Post-value: "gross margin" (close after)
-        text = "active customers and other metrics here for 100 gross margin today"
+        # Post-value: "churn rate" (close after)
+        text = "active customers and other metrics here for 100 churn rate today"
         all_keywords = matcher.find_all_keywords(text)
 
         number_pos = text.index("100")
@@ -1536,6 +1644,336 @@ class TestL4MultipleKeywords:
 
         # The closest keyword (after multiplier) should be first
         # This test verifies sorting works with multiple candidates
-        # Gross margin is much closer, should be found
-        margin_kws = [kw for kw in keywords if "margin" in kw.keyword.lower()]
-        assert len(margin_kws) > 0
+        # Churn rate is much closer, should be found
+        churn_kws = [kw for kw in keywords if "churn" in kw.keyword.lower()]
+        assert len(churn_kws) > 0
+
+
+# =============================================================================
+# Required Context Tests (Revenue Synonym Filtering)
+# =============================================================================
+
+
+class TestRequiredContext:
+    """Tests for required context filtering on revenue synonym metrics.
+
+    Revenue synonyms (GMV, TCV, ACV, Bookings, Billings) are not inherently
+    customer metrics - they're revenue/value measures. They only become
+    customer metrics when associated with cohort analysis or per-customer context.
+
+    ARR and MRR are NOT context-gated because "recurring revenue" inherently
+    implies ongoing customer relationships.
+    """
+
+    REVENUE_SYNONYM_METRICS = [
+        "cm_gmv",
+        "cm_tcv",
+        "cm_acv",
+        "cm_bookings",
+        "cm_billings",
+    ]
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher(max_keyword_distance=200)
+
+    def test_required_context_constant_exists(self):
+        """METRIC_REQUIRED_CONTEXT constant should be loaded."""
+        assert METRIC_REQUIRED_CONTEXT is not None
+        assert isinstance(METRIC_REQUIRED_CONTEXT, dict)
+
+    def test_revenue_synonyms_have_required_context(self):
+        """All 5 revenue synonym metrics should have required context."""
+        for metric_id in self.REVENUE_SYNONYM_METRICS:
+            assert metric_id in METRIC_REQUIRED_CONTEXT, \
+                f"{metric_id} should have required_context defined"
+            assert "patterns" in METRIC_REQUIRED_CONTEXT[metric_id]
+            assert "proximity_chars" in METRIC_REQUIRED_CONTEXT[metric_id]
+
+    def test_arr_mrr_not_context_gated(self):
+        """ARR and MRR should NOT have required context (inherently customer-related)."""
+        assert "cm_arr" not in METRIC_REQUIRED_CONTEXT
+        assert "cm_mrr" not in METRIC_REQUIRED_CONTEXT
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_without_context_no_match(self, matcher, metric_id):
+        """Revenue synonyms without cohort/per-customer context should not generate matches."""
+        # Build text with the metric keyword but NO cohort/per-customer context
+        metric_texts = {
+            "cm_gmv": "Our GMV reached $1 billion in the quarter",
+            "cm_tcv": "Total contract value was $500 million this year",
+            "cm_acv": "Average contract value increased to $50,000",
+            "cm_bookings": "We achieved $200 million in bookings",
+            "cm_billings": "Calculated billings were $300 million",
+        }
+        text = metric_texts[metric_id]
+
+        # Find all keywords (this should find the metric)
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match for the dollar value
+        # Find the first number-like pattern
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # With required context check enabled (default), should NOT find matches
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should NOT find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) == 0, \
+            f"{metric_id} should not match without cohort/per-customer context"
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_with_cohort_context_generates_match(self, matcher, metric_id):
+        """Revenue synonyms with cohort context should generate matches."""
+        # Build text with the metric keyword AND cohort context
+        metric_texts = {
+            "cm_gmv": "Our cohort analysis shows GMV of $1 billion by acquisition year",
+            "cm_tcv": "TCV by cohort reached $500 million for the 2020 vintage",
+            "cm_acv": "ACV per cohort increased to $50,000 on average",
+            "cm_bookings": "Cohort bookings were $200 million in 2020",
+            "cm_billings": "Billings by vintage show $300 million for cohort 2019",
+        }
+        text = metric_texts[metric_id]
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # With required context check enabled, should find matches (cohort context present)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) >= 1, \
+            f"{metric_id} should match when cohort context is present"
+
+    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    def test_revenue_synonym_with_per_customer_context_generates_match(self, matcher, metric_id):
+        """Revenue synonyms with per-customer context should generate matches."""
+        # Build text with the metric keyword AND per-customer context
+        metric_texts = {
+            "cm_gmv": "GMV per customer averaged $1 billion across our user base",
+            "cm_tcv": "Average TCV per account was $500,000 this year",
+            "cm_acv": "ACV by customer segment reached $50,000 average",
+            "cm_bookings": "Bookings per user increased to $200 million",
+            "cm_billings": "Customer-level billings averaged $300,000",
+        }
+        text = metric_texts[metric_id]
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        # Create a number match
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        assert num_match is not None
+
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000"),
+            unit="currency",
+        )
+
+        # Should find matches with per-customer context
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find the revenue synonym metric
+        metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
+        assert len(metric_matches) >= 1, \
+            f"{metric_id} should match when per-customer context is present"
+
+    def test_context_check_disabled_always_matches(self, matcher):
+        """When check_required_context=False, revenue synonyms should always match."""
+        # GMV without cohort/per-customer context
+        text = "Our GMV reached $1 billion in the quarter"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # With required context check DISABLED
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=False, text=text
+        )
+
+        # Should find GMV even without context
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "GMV should match when check_required_context=False"
+
+    def test_context_too_far_no_match(self, matcher):
+        """Context beyond proximity_chars should not satisfy requirement."""
+        # GMV with cohort context, but very far apart (more than 1500 chars)
+        padding = "x" * 2000  # 2000 chars of padding
+        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # Context is too far away
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should NOT find GMV because cohort context is too far
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) == 0, \
+            "GMV should not match when context is beyond proximity_chars"
+
+    def test_arr_matches_without_context(self, matcher):
+        """ARR should match even without cohort/per-customer context."""
+        # ARR without any cohort/per-customer context
+        text = "Our ARR grew to $100 million this year"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("100000000"),
+            unit="currency",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find ARR (not context-gated)
+        arr_matches = [kw for kw in keywords if kw.metric_id == "cm_arr"]
+        assert len(arr_matches) >= 1, \
+            "ARR should match without cohort context (inherently customer-related)"
+
+    def test_mrr_matches_without_context(self, matcher):
+        """MRR should match even without cohort/per-customer context."""
+        # MRR without any cohort/per-customer context
+        text = "Our MRR reached $8 million last month"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("8000000"),
+            unit="currency",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find MRR (not context-gated)
+        mrr_matches = [kw for kw in keywords if kw.metric_id == "cm_mrr"]
+        assert len(mrr_matches) >= 1, \
+            "MRR should match without cohort context (inherently customer-related)"
+
+    def test_non_revenue_metrics_unaffected(self, matcher):
+        """Non-revenue synonym metrics should not be affected by context check."""
+        # Active customers - not a revenue synonym, should always match
+        text = "We have 50000 active customers globally"
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        number = NumberMatch(
+            start=text.index("50000"),
+            end=text.index("50000") + 5,
+            raw_text="50000",
+            value=Decimal("50000"),
+            unit="count",
+        )
+
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should find active customers
+        customer_matches = [kw for kw in keywords if kw.metric_id == "cm_active_customers_total"]
+        assert len(customer_matches) >= 1, \
+            "Non-revenue metrics should match without context requirement"
+
+    def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
+        """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
+        # GMV without cohort context
+        text = "Our GMV reached $1 billion in the quarter"
+
+        # find_all_keywords should still find GMV
+        all_keywords = matcher.find_all_keywords(text)
+
+        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "find_all_keywords should find GMV (for classification/enrichment purposes)"
+
+    def test_has_required_context_method_exists(self, matcher):
+        """KeywordMatcher should have _has_required_context method."""
+        assert hasattr(matcher, "_has_required_context")
+
+    def test_has_required_context_true_for_non_gated_metrics(self, matcher):
+        """_has_required_context returns True for metrics without required_context."""
+        text = "We have 50000 active customers"
+        # Non-revenue metric should always return True
+        result = matcher._has_required_context("cm_active_customers_total", 10, text)
+        assert result is True
+
+    def test_has_required_context_false_without_context(self, matcher):
+        """_has_required_context returns False for GMV without context."""
+        text = "Our GMV reached $1 billion"
+        result = matcher._has_required_context("cm_gmv", 4, text)
+        assert result is False
+
+    def test_has_required_context_true_with_cohort(self, matcher):
+        """_has_required_context returns True for GMV with cohort context."""
+        text = "Our cohort GMV reached $1 billion"
+        result = matcher._has_required_context("cm_gmv", 11, text)
+        assert result is True

@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.1
+**Version:** 2.2
 **Status:** Production Ready
-**Last Updated:** 2025-12-17
+**Last Updated:** 2025-12-29
 
 ---
 
@@ -62,7 +62,8 @@ Instructions for setting up, running, and maintaining the system.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
-| **[08_DEPLOYMENT_GUIDE.md](operations/08_DEPLOYMENT_GUIDE.md)** | Deployment procedures, monitoring | DevOps, PMs |
+| **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
+| **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
@@ -70,20 +71,19 @@ Human-in-the-loop system for validating and improving extraction quality.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[HUMAN_REVIEW_SYSTEM_PLAN.md](HUMAN_REVIEW_SYSTEM_PLAN.md)** | Implementation plan, task checklist, architecture | Developers |
-| **[archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md](archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md)** | E1 pattern analyzer completion (97% coverage) | Developers, QA |
-| **[archive/workstreams/E2-rule-generation/E2_COMPLETION_SUMMARY.md](archive/workstreams/E2-rule-generation/E2_COMPLETION_SUMMARY.md)** | E2 rule applicator completion (100% coverage) | Developers, QA |
+| **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | System design, usage, configuration | Developers |
 
-### Analysis (Research & Validation)
+### Active Improvement Plans
 
-Analysis documents for system validation and improvement.
+Current improvement work in progress.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[analysis/GI-1_cohort_pattern_gaps.md](analysis/GI-1_cohort_pattern_gaps.md)** | Cohort pattern gap analysis - 479 snippets, 15 new patterns | Developers |
-| **[analysis/GI-2_slack_ground_truth.md](analysis/GI-2_slack_ground_truth.md)** | Slack S-1 ground truth - 25 goldmines identified | Developers, QA |
-| **[analysis/GI-3_richness_distribution.md](analysis/GI-3_richness_distribution.md)** | Richness score distribution - 340 segments analyzed | Developers |
-| **[GOLDMINE_1_IMPROVEMENT_PLAN.md](GOLDMINE_1_IMPROVEMENT_PLAN.md)** | Goldmine improvement plan (GI-1 to GI-8) | All |
+| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | **Master task inventory with parallel execution plan** | Everyone |
+| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
+| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
+| **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
+| **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 
 ### Archive (Historical Reference)
 
@@ -91,10 +91,11 @@ Historical documents for reference only. Not part of current operations.
 
 | Category | Contents |
 |----------|----------|
-| **[archive/](archive/)** | Phase summaries (Phase 2-4, Phase 1 deployment) |
-| **[archive/fix-history/](archive/fix-history/)** | Historical bug fixes and optimizations |
+| **[archive/2025-12-extraction/](archive/2025-12-extraction/)** | EI-1 to EI-6 extraction improvement completions |
+| **[archive/2025-12-goldmine-analysis/](archive/2025-12-goldmine-analysis/)** | GI-1 to GI-8 goldmine analysis artifacts |
+| **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
 | **[archive/worker-prompts/](archive/worker-prompts/)** | Completed task worker prompts |
-| **[archive/reports/](archive/reports/)** | Completed task reports |
+| **[archive/workstreams/](archive/workstreams/)** | Historical workstream documentation |
 
 ---
 
@@ -113,7 +114,7 @@ Historical documents for reference only. Not part of current operations.
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (82% overall coverage, 1,627 tests)
+- **Testing:** pytest (75%+ coverage, 3,129 tests)
 
 ### Cost Profile
 
@@ -131,21 +132,22 @@ Historical documents for reference only. Not part of current operations.
 | Filing Fetcher | ✅ Complete | 94% | [System Overview](architecture/system-overview.md) |
 | HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Segment Enricher | ✅ Complete | 98% | [Goldmine Plan](GOLDMINE_IMPROVEMENT_PLAN.md) |
+| Segment Enricher | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Cohort Chart Detector | ✅ Complete | 100% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
 | Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
 | Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
-| Review Candidate Generator | ✅ Complete | 98% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
-| Review Feature Extractor | ✅ Complete | 100% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
-| Review Routes (D1) | ✅ Complete | 94% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
-| API Routes (D2) | ✅ Complete | 97% | [Review Plan](HUMAN_REVIEW_SYSTEM_PLAN.md) |
-| Pattern Analyzer (E1) | ✅ Complete | 97% | [E1 Summary](archive/workstreams/E1-pattern-analyzer/E1_COMPLETION_SUMMARY.md) |
-| Rule Applicator (E2) | ✅ Complete | 100% | [E2 Summary](archive/workstreams/E2-rule-generation/E2_COMPLETION_SUMMARY.md) |
+| Review Candidate Generator | ✅ Complete | 98% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Review Feature Extractor | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Review Routes (D1) | ✅ Complete | 94% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| API Routes (D2) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 
-**Overall Status:** ✅ **Production Ready** (82% test coverage, 1,627 tests)
+**Overall Status:** ✅ **Production Ready** (87% test coverage, 3,150+ tests)
 
 ---
 
@@ -320,7 +322,14 @@ When updating documentation:
 
 ## Version History
 
-### Version 2.1 (Current - 2025-12-14)
+### Version 2.2 (Current - 2025-12-29)
+- ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
+- ✅ HRV-1 through HRV-5 validation complete
+- ✅ Performance optimizations (+33% throughput)
+- ✅ Documentation reorganized and archive consolidated
+- ✅ Cohort chart image detection (segment-level + filing-level)
+
+### Version 2.1 (2025-12-14)
 - ✅ Human review system (COMPLETE - Production Ready)
 - ✅ Review models: ReviewCandidate, ReviewDecision, LearnedPattern, CandidateFeatures
 - ✅ Candidate generation with modular architecture (B1: 98% coverage)

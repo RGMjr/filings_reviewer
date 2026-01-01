@@ -18,14 +18,18 @@ import logging
 import sys
 from pathlib import Path
 
-# Add project root to Python path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 from dotenv import load_dotenv
 
-from src.infra.logging_config import configure_logging
-from src.web.app import run_dev_server
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load environment variables and ensure src imports work."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +54,12 @@ def main():
 
     args = parser.parse_args()
 
-    # Configure logging
-    configure_logging(level="INFO")
+    prepare_environment()
 
-    # Load environment variables
-    load_dotenv()
+    from src.infra.logging_config import configure_logging
+    from src.web.app import run_dev_server
+
+    configure_logging(level="INFO")
 
     logger.info(f"Starting development server on {args.host}:{args.port}")
     logger.info("Press Ctrl+C to stop")

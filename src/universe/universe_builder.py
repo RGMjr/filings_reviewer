@@ -10,13 +10,13 @@ Per 05_COMPONENT_INTERFACE_SPECS.md Section 3.
 import logging
 
 from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import SECClient, FilingMetadata
+from src.infra.sec_client import FilingMetadata, SECClient
 from src.universe.classifiers import (
-    classify_spac,
     classify_first_time_issuer,
-    classify_offering_type,
     classify_investment_vehicle,
+    classify_offering_type,
     classify_resource_extraction,
+    classify_spac,
     detect_post_combination,
     is_in_scope_phase1,
 )

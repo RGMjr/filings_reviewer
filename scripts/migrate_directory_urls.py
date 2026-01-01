@@ -19,15 +19,14 @@ import json
 import logging
 import os
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import SECClient
 from src.infra.logging_config import configure_logging
+from src.infra.sec_client import SECClient
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)

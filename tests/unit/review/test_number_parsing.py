@@ -5,10 +5,15 @@ Tests extracted from test_candidate_generator.py as part of P1.3 module splittin
 """
 
 from decimal import Decimal
+
 import pytest
 
-from src.review.number_parsing import NUMBER_REGEX, NumberMatch, NumberParser
-
+from src.review.number_parsing import (
+    NUMBER_REGEX,
+    NumberParser,
+    parse_spelled_number,
+    SPELLED_NUMBER_REGEX,
+)
 
 # =============================================================================
 # NUMBER_REGEX Tests
@@ -226,3 +231,169 @@ class TestFindNumbers:
         raw_texts = [n.raw_text for n in numbers]
         assert "123" in raw_texts
         assert "50,000" in raw_texts
+
+
+# =============================================================================
+# Spelled-Out Number Tests
+# =============================================================================
+
+
+class TestSpelledNumberRegex:
+    """Tests for SPELLED_NUMBER_REGEX pattern."""
+
+    def test_simple_spelled_numbers(self):
+        """Match simple spelled-out numbers."""
+        test_cases = [
+            ("one", "one"),
+            ("two", "two"),
+            ("six", "six"),
+            ("ten", "ten"),
+            ("twenty", "twenty"),
+        ]
+        for text, expected in test_cases:
+            matches = list(SPELLED_NUMBER_REGEX.finditer(text))
+            assert len(matches) == 1, f"Failed to match: {text}"
+            assert matches[0].group("spelled").lower() == expected
+
+    def test_compound_numbers(self):
+        """Match compound spelled-out numbers like twenty-one."""
+        test_cases = [
+            ("twenty-one", "twenty-one"),
+            ("twenty one", "twenty one"),
+            ("forty-five", "forty-five"),
+            ("ninety-nine", "ninety-nine"),
+        ]
+        for text, expected in test_cases:
+            matches = list(SPELLED_NUMBER_REGEX.finditer(text))
+            assert len(matches) == 1, f"Failed to match: {text}"
+            assert matches[0].group("spelled").lower() == expected.lower()
+
+    def test_magnitude_words(self):
+        """Match spelled numbers with magnitude words."""
+        test_cases = [
+            ("five million", "million"),
+            ("ten billion", "billion"),
+            ("two thousand", "thousand"),
+        ]
+        for text, expected_mag in test_cases:
+            matches = list(SPELLED_NUMBER_REGEX.finditer(text))
+            assert len(matches) == 1, f"Failed to match: {text}"
+            assert matches[0].group("magnitude").lower() == expected_mag
+
+    def test_case_insensitive(self):
+        """Match spelled numbers regardless of case."""
+        # Note: "MILLION" alone isn't a number - it's a magnitude modifier
+        # The regex requires a base number (one, two, etc.) with optional magnitude
+        for text in ["Six", "SIX", "Twenty-One", "FIVE MILLION"]:
+            matches = list(SPELLED_NUMBER_REGEX.finditer(text))
+            assert len(matches) >= 1, f"Failed to match: {text}"
+
+
+class TestParseSpelledNumber:
+    """Tests for parse_spelled_number function."""
+
+    def test_simple_numbers(self):
+        """Parse simple spelled-out numbers."""
+        assert parse_spelled_number("one") == 1
+        assert parse_spelled_number("six") == 6
+        assert parse_spelled_number("ten") == 10
+        assert parse_spelled_number("zero") == 0
+
+    def test_teens(self):
+        """Parse teen numbers."""
+        assert parse_spelled_number("eleven") == 11
+        assert parse_spelled_number("fifteen") == 15
+        assert parse_spelled_number("nineteen") == 19
+
+    def test_compound_numbers(self):
+        """Parse compound numbers like twenty-one."""
+        assert parse_spelled_number("twenty-one") == 21
+        assert parse_spelled_number("twenty one") == 21
+        assert parse_spelled_number("forty-five") == 45
+        assert parse_spelled_number("ninety-nine") == 99
+
+    def test_magnitude_words(self):
+        """Parse numbers with magnitude words."""
+        assert parse_spelled_number("five million") == 5_000_000
+        assert parse_spelled_number("ten billion") == 10_000_000_000
+        assert parse_spelled_number("two thousand") == 2_000
+        assert parse_spelled_number("one trillion") == 1_000_000_000_000
+
+    def test_case_insensitive(self):
+        """Parse spelled numbers regardless of case."""
+        assert parse_spelled_number("SIX") == 6
+        assert parse_spelled_number("Six") == 6
+        assert parse_spelled_number("FIVE MILLION") == 5_000_000
+
+    def test_invalid_input(self):
+        """Return None for invalid input."""
+        assert parse_spelled_number("foobar") is None
+        assert parse_spelled_number("1234") is None
+        assert parse_spelled_number("") is None
+
+    def test_hundred(self):
+        """Parse hundred as multiplier."""
+        assert parse_spelled_number("hundred") == 100
+        assert parse_spelled_number("one hundred") == 100
+        assert parse_spelled_number("two hundred") == 200
+
+
+class TestFindSpelledNumbers:
+    """Tests for NumberParser finding spelled-out numbers."""
+
+    @pytest.fixture
+    def parser(self):
+        """Create a NumberParser instance with spelled number support."""
+        return NumberParser(include_spelled=True)
+
+    @pytest.fixture
+    def parser_no_spelled(self):
+        """Create a NumberParser without spelled number support."""
+        return NumberParser(include_spelled=False)
+
+    def test_find_spelled_number_in_text(self, parser):
+        """Find spelled-out number in text."""
+        text = "The payback period on CAC is six months."
+        numbers = parser.find_numbers(text)
+
+        spelled = [n for n in numbers if n.raw_text.lower() == "six"]
+        assert len(spelled) == 1
+        assert spelled[0].value == Decimal("6")
+        assert spelled[0].unit == "count"
+
+    def test_find_spelled_number_with_magnitude(self, parser):
+        """Find spelled-out number with magnitude word."""
+        text = "We have ten million active users."
+        numbers = parser.find_numbers(text)
+
+        spelled = [n for n in numbers if "million" in n.raw_text.lower()]
+        assert len(spelled) == 1
+        assert spelled[0].value == Decimal("10000000")
+
+    def test_mixed_numeric_and_spelled(self, parser):
+        """Find both numeric and spelled numbers."""
+        text = "We had $50,000 revenue and six new customers."
+        numbers = parser.find_numbers(text)
+
+        # Should find both: $50,000 and "six"
+        raw_texts = [n.raw_text.lower() for n in numbers]
+        assert any("50,000" in t for t in raw_texts)
+        assert "six" in raw_texts
+
+    def test_spelled_numbers_disabled(self, parser_no_spelled):
+        """When disabled, don't find spelled numbers."""
+        text = "The payback period is six months."
+        numbers = parser_no_spelled.find_numbers(text)
+
+        spelled = [n for n in numbers if n.raw_text.lower() == "six"]
+        assert len(spelled) == 0
+
+    def test_no_overlap_with_numeric(self, parser):
+        """Spelled number pattern shouldn't overlap with numeric matches."""
+        # "ten" appears in "10" which shouldn't cause issues
+        text = "We had 10 million customers."
+        numbers = parser.find_numbers(text)
+
+        # Should find "10 million" as a single numeric match
+        assert len(numbers) == 1
+        assert numbers[0].value == Decimal("10000000")

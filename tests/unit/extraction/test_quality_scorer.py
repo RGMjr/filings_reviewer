@@ -7,7 +7,7 @@ Ensures basic scoring works and segments without candidate metrics are ignored.
 from datetime import date
 from decimal import Decimal
 
-from src.extraction.models import MetricValue, MetricDefinition, SourceSegment
+from src.extraction.models import MetricDefinition, MetricValue, SourceSegment
 from src.extraction.quality_scorer import QualityScorer, score_filing
 
 

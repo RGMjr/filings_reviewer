@@ -93,9 +93,9 @@ See Also:
 
 import logging
 import re
-from typing import List, Optional, Pattern, Tuple
+from re import Pattern
 
-from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MIN, YEAR_MAX
+from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MAX, YEAR_MIN
 from src.review.number_parsing import NumberMatch
 
 logger = logging.getLogger(__name__)
@@ -106,55 +106,55 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Date patterns - to detect if a number is part of a date
-DATE_CONTEXT_PATTERNS: List[Pattern[str]] = [
+DATE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     # MM/DD/YYYY or DD/MM/YYYY
     re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}"),
     # Month DD, YYYY
     re.compile(
-        r"(?:January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|"
+        r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # DD Month YYYY
     re.compile(
-        r"\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{4}",
+        r"\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Temporal phrases with dates - "as of January 31, 2019"
     re.compile(
-        r"\bas\s+of\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bas\s+of\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # "ended January 31, 2019"
     re.compile(
-        r"\bended\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # "beginning January 31, 2019" or "beginning of period"
     re.compile(
-        r"\bbeginning\s+(?:of\s+)?(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\bbeginning\s+(?:of\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Fiscal year references - "Year Ended January 31, 2019"
     re.compile(
-        r"\byear\s+ended\s+(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\byear\s+ended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
     # Quarter references - "Three Months Ended April 30, 2018"
     re.compile(
-        r"\b(?:three|six|nine|twelve)\s+months\s+ended\s+(?:January|February|March|"
-        r"April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        r"\b(?:three|six|nine|twelve)\s+months\s+ended\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|"
+        r"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)
-FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
+FALSE_POSITIVE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     # Page references: "page 123", "pages 10-20"
     re.compile(r"\bpages?\s+\d+", re.IGNORECASE),
     # Note references: "Note 5", "Notes 1-3"
@@ -185,6 +185,23 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: List[Pattern[str]] = [
     re.compile(r"\b\d+[-\s]?(?:hour|day|week|month|year|period|quarter)s?\b", re.IGNORECASE),
     re.compile(r"\b\d+[-\s]?(?:minute|second)s?\b", re.IGNORECASE),
 ]
+
+# Label-embedded value pattern (CMS-2)
+# Detects numbers that are part of metric label thresholds, not actual values.
+# Example: "Paid Customers > $100,000" - the $100,000 is part of the label, not a value.
+# Matches patterns like:
+#   - "> $100,000" or ">= $50M" (comparison + currency + number)
+#   - "< 1000" or "<= 500" (comparison + number without currency)
+#   - "≥ $100K" or "≤ $1 million" (unicode operators)
+LABEL_EMBEDDED_VALUE_PATTERN: Pattern[str] = re.compile(
+    r"(?:>=?|<=?|≥|≤)\s*"  # Comparison operator (>, >=, <, <=, ≥, ≤)
+    r"\$?\s*"  # Optional currency symbol
+    r"\d[\d,]*"  # Number (with optional commas)
+    r"(?:\.\d+)?"  # Optional decimal
+    r"(?:\s*(?:thousand|million|billion|mn|bn|[KMB]))?"  # Optional magnitude suffix
+    r"\b",
+    re.IGNORECASE,
+)
 
 # Year range - numbers in this range are likely years, not metrics
 # (imported from config.py for centralized configuration)
@@ -217,6 +234,254 @@ TOC_HEADERS = [
 # Matches patterns like "... 12" or "........ 23" (3+ dots followed by optional whitespace)
 # Updated to handle whitespace before number more flexibly
 TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
+
+
+# =============================================================================
+# HRV-10: Financial Statement Context Detection (2025-12-26)
+# =============================================================================
+
+# Financial statement header patterns
+FINANCIAL_STATEMENT_HEADERS: list[Pattern[str]] = [
+    # Income statement / P&L variations
+    re.compile(r'\bconsolidated\s+statements?\s+of\s+(?:operations|income)', re.IGNORECASE),
+    re.compile(r'\bincome\s+statements?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+(?:operations|earnings|income)', re.IGNORECASE),
+    re.compile(r'\bconsolidated\s+results?\s+of\s+operations', re.IGNORECASE),
+
+    # Balance sheet variations
+    re.compile(r'\bconsolidated\s+balance\s+sheets?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+financial\s+position', re.IGNORECASE),
+    re.compile(r'\bbalance\s+sheet\s+data', re.IGNORECASE),
+
+    # Cash flow statement variations
+    re.compile(r'\bconsolidated\s+statements?\s+of\s+cash\s+flows?', re.IGNORECASE),
+    re.compile(r'\bstatements?\s+of\s+cash\s+flows?', re.IGNORECASE),
+
+    # Summary financial data tables
+    re.compile(r'\bsummary\s+(?:consolidated\s+)?(?:financial|operating)\s+data', re.IGNORECASE),
+    re.compile(r'\bselected\s+financial\s+data', re.IGNORECASE),
+]
+
+# Financial statement line item keywords that should NOT be treated as customer metrics
+FINANCIAL_LINE_ITEM_KEYWORDS: list[str] = [
+    # Income statement line items
+    'revenue', 'total revenue', 'net revenue', 'revenues',
+    'cost of revenue', 'cost of sales', 'cost of goods sold', 'cogs',
+    'gross profit', 'gross income',
+    'operating expenses', 'operating income', 'operating loss',
+    'research and development', 'r&d expenses',
+    'sales and marketing', 'general and administrative',
+    'net income', 'net loss', 'net earnings',
+    'income from operations', 'loss from operations',
+    'earnings per share', 'eps', 'diluted eps', 'basic eps',
+
+    # Balance sheet line items
+    'total assets', 'current assets', 'non-current assets',
+    'cash and cash equivalents', 'cash equivalents', 'marketable securities',
+    'accounts receivable', 'inventory', 'prepaid expenses',
+    'property and equipment', 'intangible assets', 'goodwill',
+    'total liabilities', 'current liabilities', 'long-term liabilities',
+    'accounts payable', 'accrued expenses', 'accrued liabilities',
+    'deferred revenue', 'unearned revenue',
+    'working capital',
+    'stockholders equity', 'shareholders equity', 'total equity',
+
+    # Cash flow line items
+    'cash flows from operating activities',
+    'cash flows from investing activities',
+    'cash flows from financing activities',
+    'free cash flow', 'operating cash flow',
+
+    # Common financial ratios and changes
+    '$ change', '% change', 'percent change',
+    'increase', 'decrease',
+]
+
+# Proximity threshold for financial statement context (characters)
+FINANCIAL_STATEMENT_PROXIMITY_CHARS = 500
+
+
+# =============================================================================
+# Metric Type Validation (HRV Type Validation Enhancement - 2025-12-26)
+# =============================================================================
+
+# Metrics that should ONLY be percentages (not raw counts or dollar amounts)
+PERCENTAGE_ONLY_METRICS: set[str] = {
+    'cm_net_revenue_retention',  # NDR should be 143%, not 143 or $143
+    'cm_gross_retention_rate',
+    'cm_customer_retention_rate',
+    'cm_customer_churn_rate',
+    'cm_ltv_cac_ratio',  # Ratio, expect decimal or %
+}
+
+# Metrics that should ONLY be dollar amounts (not percentages or plain counts)
+DOLLAR_ONLY_METRICS: set[str] = {
+    'cm_arr',  # ARR should be $X million, not 40% or 100
+    'cm_tcv',  # Total contract value
+    'cm_acv',  # Annual contract value
+    'cm_ltv',  # Lifetime value
+    'cm_cac',  # Customer acquisition cost
+    'cm_arpu',  # Average revenue per user
+}
+
+# Metrics that should ONLY be counts (not percentages or dollars)
+COUNT_ONLY_METRICS: set[str] = {
+    'cm_customer',  # Customer count
+    'cm_daily_active_users',  # DAU count
+    'cm_weekly_active_users',  # WAU count
+    'cm_monthly_active_users',  # MAU count
+    'cm_paid_users',
+    'cm_subscribers',
+}
+
+
+def is_spelled_out_number(raw_text: str) -> bool:
+    """
+    Check if a number text is spelled out rather than numeric.
+
+    Spelled-out numbers (e.g., "six", "twenty-one", "five million") are
+    intentionally written and unlikely to be page numbers or false positives.
+
+    Args:
+        raw_text: The raw text of the number match
+
+    Returns:
+        True if the number contains no digits (is spelled out)
+
+    Examples:
+        >>> is_spelled_out_number("six")
+        True
+        >>> is_spelled_out_number("twenty-one")
+        True
+        >>> is_spelled_out_number("123")
+        False
+        >>> is_spelled_out_number("$50,000")
+        False
+    """
+    return not any(c.isdigit() for c in raw_text)
+
+
+def is_percentage_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is in percentage format.
+
+    Also accepts decimal ratios (0.5 to 2.5 range) as valid percentage representations,
+    since metrics like NRR are often expressed as decimals (e.g., 1.25 = 125%).
+    """
+    # Explicit percentage format
+    if '%' in raw_text or unit == 'percentage':
+        return True
+
+    # Decimal ratio format (common for retention rates like 1.25 = 125%)
+    # Accept values in 0.5 to 2.5 range with decimal point
+    if '.' in raw_text and unit == 'count':
+        try:
+            # Remove any non-numeric chars except decimal point
+            cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
+            val = float(cleaned)
+            # Retention rates typically 0.5 (50%) to 2.0 (200%)
+            if 0.5 <= val <= 2.5:
+                return True
+        except (ValueError, TypeError):
+            pass
+
+    return False
+
+
+def is_dollar_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is in dollar format."""
+    return '$' in raw_text or unit in ('currency', 'usd')
+
+
+def is_count_format(raw_text: str, unit: str) -> bool:
+    """Check if a number is a plain count (not percentage or dollar)."""
+    return unit == 'count' and '%' not in raw_text and '$' not in raw_text
+
+
+# =============================================================================
+# Helper Functions for Financial Statement Detection (HRV-10)
+# =============================================================================
+
+
+def is_in_financial_statement_context(
+    text: str,
+    number_position: int,
+    proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS
+) -> bool:
+    """
+    Check if a number appears within a financial statement context.
+
+    Financial statements (income statement, balance sheet, cash flow statement)
+    contain many numbers that are financial accounting line items, not customer
+    metrics. This function detects financial statement headers to identify
+    such contexts.
+
+    Recognizes multiple financial statement variations:
+    - "Consolidated Statements of Operations"
+    - "Income Statement"
+    - "Consolidated Balance Sheets"
+    - "Statements of Cash Flows"
+    - "Summary Financial Data"
+
+    Args:
+        text: The full text containing the number
+        number_position: Starting position of the number in the text
+        proximity_chars: Character distance to search backwards (default: 500)
+
+    Returns:
+        True if any financial statement header found within proximity_chars before number
+
+    Examples:
+        >>> text = "CONSOLIDATED STATEMENTS OF OPERATIONS\\nRevenue $400,552"
+        >>> is_in_financial_statement_context(text, text.find("400,552"))
+        True
+
+        >>> text = "We had 400,552 daily active users"
+        >>> is_in_financial_statement_context(text, text.find("400,552"))
+        False
+    """
+    # Look backwards from number position
+    search_start = max(0, number_position - proximity_chars)
+    search_text = text[search_start:number_position]
+
+    # Check for any financial statement header pattern
+    return any(pattern.search(search_text) for pattern in FINANCIAL_STATEMENT_HEADERS)
+
+
+def contains_financial_line_item_keyword(text: str) -> str | None:
+    """
+    Check if text contains financial statement line item keywords.
+
+    These keywords indicate financial accounting line items (Revenue, Cost of
+    Revenue, Total Assets, etc.) which should not be treated as customer metrics,
+    even though terms like "revenue" might appear in customer metric keyword lists.
+
+    Args:
+        text: Text to search (typically context text around a number)
+
+    Returns:
+        The matching keyword if found (lowercase), None otherwise
+
+    Examples:
+        >>> contains_financial_line_item_keyword("Revenue [CELL] $400,552")
+        'revenue'
+
+        >>> contains_financial_line_item_keyword("Total assets $1,198,956")
+        'total assets'
+
+        >>> contains_financial_line_item_keyword("Daily active users: 10 million")
+        None
+    """
+    text_lower = text.lower()
+
+    # Check for line item keywords (longest first to match "total revenue" before "revenue")
+    # Sort by length descending
+    sorted_keywords = sorted(FINANCIAL_LINE_ITEM_KEYWORDS, key=len, reverse=True)
+
+    for keyword in sorted_keywords:
+        if keyword in text_lower:
+            return keyword
+
+    return None
 
 
 # =============================================================================
@@ -366,6 +631,8 @@ class FalsePositiveFilter:
         filter_years: bool = DEFAULT_CONFIG.filter_years,
         toc_proximity_chars: int = DEFAULT_CONFIG.toc_proximity_chars,
         toc_dot_leader_window: int = DEFAULT_CONFIG.toc_dot_leader_window,
+        filter_financial_statements: bool = True,  # HRV-10/HRV-11
+        financial_statement_proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS,
     ):
         """
         Initialize the false positive filter.
@@ -376,16 +643,20 @@ class FalsePositiveFilter:
             filter_years: Whether to filter year-like values (default from config)
             toc_proximity_chars: TOC header proximity threshold (default from config, L2)
             toc_dot_leader_window: Dot leader search window (default from config, L2)
+            filter_financial_statements: Whether to filter financial statement line items (HRV-10/11)
+            financial_statement_proximity_chars: Financial statement header proximity threshold (HRV-10)
         """
         self.filter_enabled = filter_enabled
         self.min_value = min_value
         self.filter_years = filter_years
         self.toc_proximity_chars = toc_proximity_chars
         self.toc_dot_leader_window = toc_dot_leader_window
+        self.filter_financial_statements = filter_financial_statements
+        self.financial_statement_proximity_chars = financial_statement_proximity_chars
 
     def is_false_positive(
         self, text: str, number: NumberMatch
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Check if a number match is likely a false positive.
 
@@ -413,11 +684,12 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, and decimals)
+        # Check minimum value threshold (skip for percentages, currency, decimals, and spelled-out)
         # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
+        # Spelled-out numbers like "six" are intentionally written - likely meaningful
         if number.unit == "count" and value is not None:
             is_decimal = "." in number.raw_text
-            if not is_decimal and abs(float(value)) < self.min_value:
+            if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
                 return True, "below_min_value"
 
         # Check if number looks like a year (only for plain integers)
@@ -428,12 +700,20 @@ class FalsePositiveFilter:
                     return True, "likely_year"
 
         # Check if number appears near "Table of Contents" header
-        if is_near_table_of_contents(text, start, self.toc_proximity_chars):
-            logger.debug(
-                f"TOC proximity filter: number={number.raw_text} "
-                f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
-            )
-            return True, "toc_proximity"
+        # Only filter if it looks like a page number (small integer, no currency/decimals)
+        # Real metrics (e.g. "31.0 million") often appear on pages with TOC headers
+        # Spelled-out numbers (e.g., "six", "twenty") are unlikely to be page numbers
+        is_plain_count = number.unit == "count"
+        is_integer_format = "." not in number.raw_text
+        is_small_value = value is not None and abs(float(value)) < 1000
+
+        if is_plain_count and is_integer_format and is_small_value and not is_spelled_out_number(number.raw_text):
+            if is_near_table_of_contents(text, start, self.toc_proximity_chars):
+                logger.debug(
+                    f"TOC proximity filter: number={number.raw_text} "
+                    f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+                )
+                return True, "toc_proximity"
 
         # Check if number is part of a TOC page reference with dot leaders
         if is_toc_page_reference(text, start, self.toc_dot_leader_window):
@@ -444,9 +724,9 @@ class FalsePositiveFilter:
             return True, "toc_page_reference"
 
         # Check if number is part of a date pattern
-        # Look at surrounding context (30 chars each side)
-        context_start = max(0, start - 30)
-        context_end = min(len(text), end + 30)
+        # Look at surrounding context (100 chars each side to catch longer phrases)
+        context_start = max(0, start - 100)
+        context_end = min(len(text), end + 100)
         local_context = text[context_start:context_end]
 
         # Calculate the number's position relative to the local context
@@ -454,18 +734,83 @@ class FalsePositiveFilter:
         num_rel_end = end - context_start
 
         for pattern in DATE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
+            # FIX: Use finditer to check ALL matches in the context, not just the first one
+            for match in pattern.finditer(local_context):
                 # Check if our number overlaps with the date match (in local coords)
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "part_of_date"
 
         # Check for false positive context patterns (page refs, notes, etc.)
         for pattern in FALSE_POSITIVE_CONTEXT_PATTERNS:
-            match = pattern.search(local_context)
-            if match:
+            # FIX: Use finditer to check ALL matches inside the context
+            for match in pattern.finditer(local_context):
                 # Check if our number overlaps with the reference pattern
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "reference_number"
 
+        # CMS-2: Check if number is part of a metric label threshold
+        # Example: "Paid Customers > $100,000" - the $100,000 is label-embedded
+        # Look for comparison operator immediately before the number
+        if self._is_label_embedded_value(text, number):
+            logger.debug(
+                f"Label-embedded value filter: number={number.raw_text} "
+                f"context={text[max(0, start-30):min(len(text), end+10)]!r}"
+            )
+            return True, "label_embedded_value"
+
+        # HRV-11: Check if number appears in financial statement context
+        if self.filter_financial_statements:
+            # First check: Is this within a financial statement section?
+            in_fin_statement = is_in_financial_statement_context(
+                text, start, self.financial_statement_proximity_chars
+            )
+
+            if in_fin_statement:
+                # Second check: Does the local context contain financial line item keywords?
+                financial_keyword = contains_financial_line_item_keyword(local_context)
+
+                if financial_keyword:
+                    logger.debug(
+                        f"Financial statement filter: number={number.raw_text} "
+                        f"keyword={financial_keyword!r} "
+                        f"context={text[max(0, start-50):min(len(text), end+50)]!r}"
+                    )
+                    return True, f"financial_line_item:{financial_keyword}"
+
         return False, None
+
+    def _is_label_embedded_value(
+        self, text: str, number: NumberMatch, window_chars: int = 20
+    ) -> bool:
+        """
+        Check if a number is part of a metric label threshold pattern.
+
+        Detects patterns like:
+        - "Customers > $100,000" - the $100,000 is label-embedded
+        - "ARR >= $50M" - the $50M is label-embedded
+        - "Paid Customers > $100K" - part of a threshold label
+
+        Args:
+            text: Full text containing the number
+            number: The NumberMatch to check
+            window_chars: Characters before number to search for operator
+
+        Returns:
+            True if number appears to be part of a comparison pattern
+        """
+        # Look at text before the number (with some buffer)
+        search_start = max(0, number.start - window_chars)
+
+        # Include the number itself since pattern needs to match both operator and number
+        search_text = text[search_start : number.end]
+
+        # Check if pattern matches and includes our number
+        match = LABEL_EMBEDDED_VALUE_PATTERN.search(search_text)
+        if match:
+            # Verify the pattern ends at or after our number position
+            # (relative to search_text)
+            num_rel_end = number.end - search_start
+            if match.end() >= num_rel_end - 2:  # Allow small tolerance
+                return True
+
+        return False

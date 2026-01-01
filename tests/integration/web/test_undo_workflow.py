@@ -7,7 +7,6 @@ Tests the complete undo workflow with a real database:
 3. Verify candidate returns to pending status
 """
 
-from datetime import datetime
 from decimal import Decimal
 
 import pytest

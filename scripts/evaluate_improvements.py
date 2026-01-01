@@ -7,17 +7,18 @@ and comparing results with the gold standard.
 import csv
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.metric_classifier import MetricClassifier
-from src.extraction.value_extractor import ValueExtractor
-from src.llm.openai_client import OpenAIClient
+def prepare_environment() -> None:
+    """Load .env configuration and make the src package importable."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
 
 
 def load_gold_standard(csv_path: Path) -> dict:
@@ -35,9 +36,16 @@ def load_gold_standard(csv_path: Path) -> dict:
 
 
 def main():
+    prepare_environment()
+
+    from src.extraction.html_segmenter import HTMLSegmenter
+    from src.extraction.metric_classifier import MetricClassifier
+    from src.extraction.value_extractor import ValueExtractor
+    from src.llm.openai_client import OpenAIClient
+
     # Load Farfetch filing
-    filing_path = project_root / "data/filings/0001740915/000119312518252315/primary.htm"
-    gold_path = project_root / "data/gold_standard/Farfetch_Ltd/extracted_values.csv"
+    filing_path = PROJECT_ROOT / "data/filings/0001740915/000119312518252315/primary.htm"
+    gold_path = PROJECT_ROOT / "data/gold_standard/Farfetch_Ltd/extracted_values.csv"
 
     print(f"Loading filing: {filing_path}")
     print(f"Gold standard: {gold_path}")
@@ -111,13 +119,13 @@ def main():
     else:
         precision = 0
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Total extracted: {total}")
     print(f"  Correct (per gold standard): {correct}")
     print(f"  Incorrect (per gold standard): {incorrect}")
     print(f"  New extractions (not in gold): {new_extractions}")
     print(f"\n  PRECISION: {precision:.1f}%")
-    print(f"  (Baseline was 10.3%)")
+    print("  (Baseline was 10.3%)")
 
     if precision > 50:
         print(f"\n  SUCCESS: Precision improved from 10.3% to {precision:.1f}%")

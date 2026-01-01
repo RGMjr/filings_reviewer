@@ -36,8 +36,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
-from src.review.pattern_analyzer import PatternAnalyzer
 from src.infra.logging_config import configure_logging
+from src.review.pattern_analyzer import PatternAnalyzer
 
 
 def format_feature_importance(features: list, feature_type: str) -> str:
@@ -178,7 +178,7 @@ def main():
     )
 
     print(f"\nTotal decisions analyzed: {analysis['total_decisions']}")
-    print(f"Decision breakdown:")
+    print("Decision breakdown:")
     for decision, count in analysis["decision_counts"].items():
         print(f"  {decision}: {count}")
 

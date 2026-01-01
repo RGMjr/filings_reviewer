@@ -7,13 +7,14 @@ Tests verify the end-to-end flow:
 3. Multiplier recommendations
 """
 
+
 import pytest
-from decimal import Decimal
-from src.review.pattern_analyzer import PatternAnalyzer
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import SegmentDict
-from src.infra.db import DatabaseAdapter
+from src.review.pattern_analyzer import PatternAnalyzer
 
 
 @pytest.fixture
@@ -309,7 +310,7 @@ class TestE1MultiplierOptimization:
 
                 # Get candidate to check context
                 candidate = db.get_review_candidate(candidate_id)
-                context_type = candidate["features"].get("context_type") if candidate["features"] else None
+                _context_type = candidate["features"].get("context_type") if candidate["features"] else None
 
                 # For simplicity, reject all in this test
                 # (Testing the flow, not precision values)

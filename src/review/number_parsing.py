@@ -69,9 +69,99 @@ import logging
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Spelled-out Number Conversion
+# =============================================================================
+
+# Word to number mappings
+WORD_TO_NUMBER: dict[str, int] = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90, "hundred": 100,
+}
+
+# Magnitude words that multiply the number
+MAGNITUDE_WORDS: dict[str, int] = {
+    "thousand": 1_000,
+    "million": 1_000_000,
+    "billion": 1_000_000_000,
+    "trillion": 1_000_000_000_000,
+}
+
+# Pattern for spelled-out numbers (handles "six", "twenty-one", "six million", etc.)
+SPELLED_NUMBER_PATTERN = r"""
+    \b
+    (?P<spelled>
+        (?:zero|one|two|three|four|five|six|seven|eight|nine|
+           ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|
+           seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|
+           sixty|seventy|eighty|ninety|hundred)
+        (?:[-\s]+(?:one|two|three|four|five|six|seven|eight|nine))?  # compound: twenty-one
+    )
+    (?:\s+(?P<magnitude>thousand|million|billion|trillion))?  # optional magnitude
+    \b
+"""
+
+SPELLED_NUMBER_REGEX = re.compile(SPELLED_NUMBER_PATTERN, re.IGNORECASE | re.VERBOSE)
+
+
+def parse_spelled_number(text: str) -> int | None:
+    """
+    Convert a spelled-out number to an integer.
+
+    Args:
+        text: Spelled-out number like "six", "twenty-one", "five million"
+
+    Returns:
+        Integer value or None if not parseable
+
+    Examples:
+        >>> parse_spelled_number("six")
+        6
+        >>> parse_spelled_number("twenty-one")
+        21
+        >>> parse_spelled_number("five million")
+        5000000
+    """
+    text = text.lower().strip()
+
+    # Check for magnitude suffix
+    magnitude_multiplier = 1
+    for mag_word, mag_value in MAGNITUDE_WORDS.items():
+        if mag_word in text:
+            magnitude_multiplier = mag_value
+            text = text.replace(mag_word, "").strip()
+            break
+
+    # Handle compound numbers like "twenty-one" or "twenty one"
+    parts = re.split(r'[-\s]+', text)
+
+    total = 0
+    for part in parts:
+        if not part:
+            continue
+        if part in WORD_TO_NUMBER:
+            val = WORD_TO_NUMBER[part]
+            if val == 100:
+                # "hundred" multiplies what comes before
+                total = total * 100 if total > 0 else 100
+            else:
+                total += val
+        else:
+            # Unknown word
+            return None
+
+    if total == 0 and "zero" not in text.lower():
+        return None
+
+    return total * magnitude_multiplier
 
 
 # =============================================================================
@@ -111,8 +201,8 @@ class NumberMatch:
     start: int  # Character position in text
     end: int  # End position
     raw_text: str  # Original text (e.g., "$1,234.56 million")
-    value: Optional[Decimal]  # Parsed numeric value
-    unit: Optional[str]  # Detected unit ('count', '%', 'usd', etc.)
+    value: Decimal | None  # Parsed numeric value
+    unit: str | None  # Detected unit ('count', '%', 'usd', etc.)
 
 
 # =============================================================================
@@ -129,15 +219,22 @@ class NumberParser:
     - Percentages: 45%
     - Magnitude suffixes: 123 million, 45 billion
     - Plain numbers: 1234567
+    - Spelled-out numbers: six, twenty-one, five million
     """
 
-    def __init__(self) -> None:
-        """Initialize the number parser."""
-        self._regex = NUMBER_REGEX
-
-    def find_numbers(self, text: str) -> List[NumberMatch]:
+    def __init__(self, include_spelled: bool = True) -> None:
         """
-        Find all numbers in text.
+        Initialize the number parser.
+
+        Args:
+            include_spelled: Whether to include spelled-out numbers (default True)
+        """
+        self._regex = NUMBER_REGEX
+        self._include_spelled = include_spelled
+
+    def find_numbers(self, text: str) -> list[NumberMatch]:
+        """
+        Find all numbers in text, including spelled-out numbers.
 
         Args:
             text: The text to search
@@ -146,7 +243,9 @@ class NumberParser:
             List of NumberMatch objects with positions and parsed values
         """
         matches = []
+        used_positions: set[tuple[int, int]] = set()
 
+        # First find numeric numbers
         for match in self._regex.finditer(text):
             raw_text = match.group().strip()
             number_str = match.group("number")
@@ -175,6 +274,7 @@ class NumberParser:
                         unit=unit,
                     )
                 )
+                used_positions.add((adjusted_start, adjusted_end))
             except (ValueError, InvalidOperation) as e:
                 # Log but don't fail - just skip unparseable numbers
                 logger.debug(
@@ -182,14 +282,46 @@ class NumberParser:
                 )
                 continue
 
+        # Then find spelled-out numbers (if enabled)
+        if self._include_spelled:
+            for match in SPELLED_NUMBER_REGEX.finditer(text):
+                raw_text = match.group().strip()
+                start = match.start()
+                end = match.end()
+
+                # Skip if this position overlaps with an existing numeric match
+                overlaps = any(
+                    not (end <= pos_start or start >= pos_end)
+                    for pos_start, pos_end in used_positions
+                )
+                if overlaps:
+                    continue
+
+                # Parse the spelled-out number
+                value = parse_spelled_number(raw_text)
+                if value is not None:
+                    matches.append(
+                        NumberMatch(
+                            start=start,
+                            end=end,
+                            raw_text=raw_text,
+                            value=Decimal(value),
+                            unit="count",  # spelled-out numbers are counts
+                        )
+                    )
+                    used_positions.add((start, end))
+
+        # Sort by position
+        matches.sort(key=lambda m: m.start)
+
         return matches
 
     def parse_number(
         self,
         number_str: str,
-        suffix: Optional[str] = None,
-        currency: Optional[str] = None,
-    ) -> Tuple[Decimal, str]:
+        suffix: str | None = None,
+        currency: str | None = None,
+    ) -> tuple[Decimal, str]:
         """
         Parse a number string into a Decimal value and unit.
 

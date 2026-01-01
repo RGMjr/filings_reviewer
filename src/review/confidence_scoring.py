@@ -113,7 +113,6 @@ See Also:
 
 import logging
 import re
-from typing import Dict, List, Optional
 
 from src.review.config import DEFAULT_CONFIG, CandidateGenerationConfig
 from src.review.keyword_matching import SPECIFIC_KEYWORD_PATTERNS
@@ -127,31 +126,55 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Expected number formats for each metric type
-METRIC_EXPECTED_FORMATS: Dict[str, List[str]] = {
+METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     # Customer counts - expect integers
     "cm_active_customers_total": ["integer", "currency"],  # "$X customers" appears
     "cm_active_customers_enterprise": ["integer"],
     "cm_active_customers_smb": ["integer"],
+    "cm_customers_period_end": ["integer"],  # Paid customers, free orgs, etc.
+    "cm_large_customers_period_end": ["integer"],  # Enterprise customers >$100k ARR
     "cm_total_users": ["integer"],
     "cm_dau": ["integer"],
     "cm_mau": ["integer"],
-    # Revenue metrics - expect currency or percentages
+    "cm_daily_active_users": ["integer"],
+    "cm_monthly_active_users": ["integer"],
+    "cm_new_customers_acquired": ["integer"],
+    # Revenue metrics - expect currency
     "cm_arr": ["currency"],
     "cm_mrr": ["currency"],
     "cm_revenue_per_customer": ["currency", "decimal"],
+    "cm_average_order_value": ["currency", "decimal"],
     "cm_aov": ["currency", "decimal"],
     "cm_cac": ["currency"],
+    "cm_customer_acquisition_cost": ["currency"],
     "cm_ltv": ["currency"],
+    "cm_lifetime_value_per_customer": ["currency"],
+    "cm_gmv": ["currency"],
+    "cm_expansion_revenue": ["currency"],
+    "cm_billings": ["currency"],
+    "cm_bookings": ["currency"],
+    "cm_deferred_revenue": ["currency"],
+    # Margin/rate metrics - expect percentages (NOT currency)
+    "cm_gross_margin_by_cohort": ["percentage", "decimal"],
+    "cm_take_rate": ["percentage", "decimal"],
     # Retention metrics - expect percentages or decimals
     "cm_nrr": ["percentage", "decimal"],
+    "cm_net_revenue_retention": ["percentage", "decimal"],
     "cm_grr": ["percentage", "decimal"],
+    "cm_gross_revenue_retention": ["percentage", "decimal"],
     "cm_churn_rate": ["percentage", "decimal"],
     "cm_customer_churn_rate": ["percentage", "decimal"],
+    "cm_customer_retention_rate": ["percentage", "decimal"],
     "cm_logo_retention": ["percentage", "decimal"],
+    "cm_repeat_purchase_rate": ["percentage", "decimal"],
     # Growth metrics - expect percentages or integers
     "cm_new_customers": ["integer"],
     "cm_net_customer_additions": ["integer"],
     "cm_customer_growth_rate": ["percentage"],
+    # Ratio metrics - expect decimal or percentage
+    "cm_ltv_to_cac_ratio": ["decimal", "percentage"],
+    "cm_cac_payback_period": ["decimal", "integer"],  # months
+    "cm_revenue_concentration": ["percentage", "decimal"],
 }
 
 
@@ -191,6 +214,7 @@ class ConfidenceScorer:
     DEFINITION_BONUS = DEFAULT_CONFIG.confidence_definition_bonus
     PERIOD_BONUS = DEFAULT_CONFIG.confidence_period_bonus
     FORMAT_MATCH_BONUS = DEFAULT_CONFIG.confidence_format_match_bonus
+    FORMAT_MISMATCH_PENALTY = DEFAULT_CONFIG.confidence_format_mismatch_penalty
     SPECIFIC_KEYWORD_BONUS = DEFAULT_CONFIG.confidence_specific_keyword_bonus
     RISK_FACTORS_PENALTY = DEFAULT_CONFIG.confidence_risk_factors_penalty
     SURROUNDING_NUMBERS_PENALTY_MAX = DEFAULT_CONFIG.confidence_surrounding_numbers_penalty_max
@@ -199,7 +223,7 @@ class ConfidenceScorer:
     def __init__(
         self,
         max_keyword_distance: int = DEFAULT_CONFIG.max_keyword_distance,
-        config: Optional[CandidateGenerationConfig] = None,
+        config: CandidateGenerationConfig | None = None,
     ):
         """
         Initialize the confidence scorer.
@@ -220,6 +244,7 @@ class ConfidenceScorer:
             self.DEFINITION_BONUS = config.confidence_definition_bonus
             self.PERIOD_BONUS = config.confidence_period_bonus
             self.FORMAT_MATCH_BONUS = config.confidence_format_match_bonus
+            self.FORMAT_MISMATCH_PENALTY = config.confidence_format_mismatch_penalty
             self.SPECIFIC_KEYWORD_BONUS = config.confidence_specific_keyword_bonus
             self.RISK_FACTORS_PENALTY = config.confidence_risk_factors_penalty
             self.SURROUNDING_NUMBERS_PENALTY_MAX = config.confidence_surrounding_numbers_penalty_max
@@ -271,10 +296,21 @@ class ConfidenceScorer:
         if features.has_period_mention:
             score += self.PERIOD_BONUS
 
-        # Format match bonus: number format matches expected for metric
+        # Format match bonus/penalty: number format vs expected for metric
         expected_formats = METRIC_EXPECTED_FORMATS.get(metric_id, [])
-        if features.number_format in expected_formats:
-            score += self.FORMAT_MATCH_BONUS
+        if expected_formats:
+            if features.number_format in expected_formats:
+                # Format matches expectation - bonus
+                score += self.FORMAT_MATCH_BONUS
+            else:
+                # Format conflicts with expectation - penalty
+                # This catches cases like currency values ($94,348) matched to
+                # margin metrics (which expect percentages)
+                score -= self.FORMAT_MISMATCH_PENALTY
+                logger.debug(
+                    f"Format mismatch penalty: {features.number_format} not in "
+                    f"{expected_formats} for {metric_id}"
+                )
 
         # Specific keyword bonus: multi-word keywords are more reliable
         if self._is_specific_keyword(keyword):

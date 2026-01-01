@@ -53,7 +53,6 @@ See Also:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict
 
 
 @dataclass
@@ -148,7 +147,7 @@ class CandidateGenerationConfig:
     ambiguity_threshold: int = 10
     """Character distance to consider keywords "equally close" for ambiguity logging."""
 
-    metric_distance_overrides: Dict[str, int] = field(default_factory=dict)
+    metric_distance_overrides: dict[str, int] = field(default_factory=dict)
     """Optional per-metric distance overrides. Format: {metric_id: distance}. For future use."""
 
     # =========================================================================
@@ -188,6 +187,20 @@ class CandidateGenerationConfig:
     """Character distance to search backwards for dot leader patterns. L2 enhancement."""
 
     # =========================================================================
+    # HRV-10/HRV-11: Financial Statement Filtering Settings (2025-12-26)
+    # =========================================================================
+
+    filter_financial_statements: bool = True
+    """Whether to filter financial statement line items (income statement, balance sheet, cash flow).
+
+    HRV-10/HRV-11 enhancement: Detects financial statement contexts and filters out
+    accounting line items (Revenue, Cost of Revenue, Total Assets, etc.) that are
+    not customer metrics. Eliminates ~60% of false positives in typical S-1 filings."""
+
+    financial_statement_proximity_chars: int = 500
+    """Character distance to search backwards for financial statement headers. HRV-10 enhancement."""
+
+    # =========================================================================
     # Confidence Scoring Weights
     # =========================================================================
 
@@ -208,6 +221,16 @@ class CandidateGenerationConfig:
 
     confidence_format_match_bonus: float = 0.10
     """Bonus if number format matches metric type expectation."""
+
+    confidence_format_mismatch_penalty: float = 0.25
+    """Penalty when number format conflicts with metric expectation.
+
+    Applied when a metric has expected formats defined but the number's
+    format doesn't match. For example, currency values ($94,348) matched
+    to margin metrics (which expect percentages) receive this penalty.
+    This helps filter false positives where "gross profit" values are
+    incorrectly matched to "gross profit margin" keywords.
+    """
 
     confidence_specific_keyword_bonus: float = 0.10
     """Bonus for multi-word specific keywords."""
@@ -305,7 +328,7 @@ class CandidateGenerationConfig:
     cache_word_positions: bool = True
     """Whether to cache word positions for context extraction (P1.2 optimization)."""
 
-    def to_confidence_weights(self) -> Dict[str, float]:
+    def to_confidence_weights(self) -> dict[str, float]:
         """
         Export confidence scoring weights as a dictionary.
 
@@ -319,6 +342,7 @@ class CandidateGenerationConfig:
             "definition_bonus": self.confidence_definition_bonus,
             "period_bonus": self.confidence_period_bonus,
             "format_match_bonus": self.confidence_format_match_bonus,
+            "format_mismatch_penalty": self.confidence_format_mismatch_penalty,
             "specific_keyword_bonus": self.confidence_specific_keyword_bonus,
             "risk_factors_penalty": self.confidence_risk_factors_penalty,
             "surrounding_numbers_penalty_max": self.confidence_surrounding_numbers_penalty_max,
