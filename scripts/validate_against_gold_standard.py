@@ -20,6 +20,12 @@ Usage:
 
     # Verbose mode shows per-candidate match details
     python scripts/validate_against_gold_standard.py --filing-id 2 --verbose
+
+    # Fresh extraction mode (re-segment filing HTML and generate candidates)
+    python scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode fresh
+
+    # Database mode (use existing candidates from database, default)
+    python scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode db
 """
 
 import argparse
@@ -341,6 +347,7 @@ def validate_filing(
     company_name: str,
     gold_entries: list[GoldStandardEntry],
     verbose: bool = False,
+    candidates_override: list[dict] | None = None,
 ) -> ValidationResult:
     """
     Validate candidates for a filing against gold standard.
@@ -351,14 +358,18 @@ def validate_filing(
         company_name: Company name for matching
         gold_entries: Gold standard entries for this company
         verbose: Print per-candidate details
+        candidates_override: If provided, use these candidates instead of database
 
     Returns:
         ValidationResult with precision/recall metrics
     """
-    # Get candidates from database
-    candidates = []
-    if filing_id:
+    # Get candidates from database or use override
+    if candidates_override is not None:
+        candidates = candidates_override
+    elif filing_id:
         candidates = db.get_review_candidates_for_filing(filing_id)
+    else:
+        candidates = []
 
     matched_entries: set[int] = set()  # Line numbers matched
     matched_candidates: set[int] = set()  # Candidate IDs matched
@@ -459,6 +470,63 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
     print()
 
 
+def print_baseline_comparison(
+    comparison: Any,  # ComparisonResult from baseline module
+    baseline_date: str,
+    current_precision: float,
+    current_recall: float,
+    current_f1: float,
+) -> None:
+    """
+    Print a formatted baseline comparison table.
+
+    Args:
+        comparison: ComparisonResult from compare_to_baseline
+        baseline_date: Date of the baseline for display
+        current_precision: Current precision score (0-1)
+        current_recall: Current recall score (0-1)
+        current_f1: Current F1 score (0-1)
+    """
+    # Format baseline date for display (extract date portion)
+    date_display = baseline_date[:10] if len(baseline_date) >= 10 else baseline_date
+
+    print(f"\n{'=' * 60}")
+    print(f"Metric Comparison (vs baseline {date_display}):")
+    print('=' * 60)
+    print(f"{'':16} {'Current':>10} {'Baseline':>10} {'Delta':>10}")
+    print('-' * 60)
+
+    # Calculate baseline values from current and delta
+    baseline_precision = current_precision - comparison.precision_delta
+    baseline_recall = current_recall - comparison.recall_delta
+    baseline_f1 = current_f1 - comparison.f1_delta
+
+    # Format each row
+    rows = [
+        ("Precision:", current_precision, baseline_precision, comparison.precision_delta, "precision"),
+        ("Recall:", current_recall, baseline_recall, comparison.recall_delta, "recall"),
+        ("F1 Score:", current_f1, baseline_f1, comparison.f1_delta, "f1"),
+    ]
+
+    for label, current, baseline, delta, metric_name in rows:
+        delta_str = f"{delta:+.1%}"
+        regression_marker = ""
+        if metric_name in comparison.regressed_metrics:
+            regression_marker = " [REGRESSION]"
+        print(f"{label:16} {current * 100:>9.1f}% {baseline * 100:>9.1f}% {delta_str:>10}{regression_marker}")
+
+    print()
+
+    # Show regressed companies if any
+    if comparison.regressed_companies:
+        print(f"Regressed companies ({len(comparison.regressed_companies)}):")
+        for company in comparison.regressed_companies[:10]:
+            print(f"  - {company}")
+        if len(comparison.regressed_companies) > 10:
+            print(f"  ... and {len(comparison.regressed_companies) - 10} more")
+        print()
+
+
 def result_to_dict(result: ValidationResult) -> dict:
     """Convert ValidationResult to JSON-serializable dict."""
     return {
@@ -493,6 +561,64 @@ def result_to_dict(result: ValidationResult) -> dict:
             for fn in result.fn_entries
         ],
     }
+
+
+def get_fresh_candidates(
+    document_url: str,
+    filings_dir: str,
+    allow_sec_fetch: bool,
+    verbose: bool = False,
+) -> list[dict]:
+    """
+    Get candidates using fresh extraction from filing HTML.
+
+    Args:
+        document_url: SEC EDGAR document URL
+        filings_dir: Base directory for cached filings
+        allow_sec_fetch: Whether to fetch from SEC if not cached
+        verbose: Print progress details
+
+    Returns:
+        List of candidate dicts ready for validation matching
+    """
+    from src.gold_standard.fresh_extractor import extract_fresh
+
+    logger.info(f"Fresh extraction for: {document_url}")
+
+    result = extract_fresh(
+        document_url=document_url,
+        filing_id=1,
+        company_id=1,
+        base_dir=filings_dir,
+        allow_sec_fetch=allow_sec_fetch,
+    )
+
+    if not result.success:
+        logger.warning(f"Fresh extraction failed: {result.error_message}")
+        return []
+
+    if verbose:
+        logger.info(
+            f"  Segmented {result.segments_count} segments, "
+            f"generated {len(result.candidates)} candidates "
+            f"in {result.elapsed_seconds:.1f}s"
+        )
+
+    # Convert ReviewCandidate objects to dicts for matching
+    # Assign synthetic IDs for matching purposes
+    candidates = []
+    for i, candidate in enumerate(result.candidates):
+        candidates.append({
+            'candidate_id': i + 1,  # Synthetic ID
+            'suggested_metric_id': candidate.suggested_metric_id,
+            'parsed_value': float(candidate.parsed_value) if candidate.parsed_value else None,
+            'raw_number_text': candidate.raw_number_text,
+            'context_text': candidate.context_text,
+            'triggering_keyword': candidate.triggering_keyword,
+            'source_segment_id': candidate.source_segment_id,
+        })
+
+    return candidates
 
 
 def main():
@@ -552,6 +678,54 @@ Examples:
         type=str,
         help='Database connection string (defaults to DATABASE_URL from .env)',
     )
+    parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['fresh', 'db'],
+        default='db',
+        help='Extraction mode: "fresh" re-segments filing HTML and generates candidates, '
+             '"db" uses existing candidates from database (default: db)',
+    )
+    parser.add_argument(
+        '--filings-dir',
+        type=str,
+        default='data/filings',
+        help='Base directory for cached filings (used with --mode fresh)',
+    )
+    parser.add_argument(
+        '--allow-sec-fetch',
+        action='store_true',
+        help='Allow fetching filings from SEC if not cached locally (used with --mode fresh)',
+    )
+
+    # Baseline comparison arguments
+    parser.add_argument(
+        '--baseline',
+        action='store_true',
+        help='Compare results against stored baseline and show delta',
+    )
+    parser.add_argument(
+        '--update-baseline',
+        action='store_true',
+        help='Save current metrics as new baseline',
+    )
+    parser.add_argument(
+        '--fail-on-regression',
+        action='store_true',
+        help='Exit with code 1 if any metric regressed beyond tolerance',
+    )
+    parser.add_argument(
+        '--tolerance',
+        type=float,
+        default=0.01,
+        help='Allowable regression tolerance (default: 0.01 = 1%%)',
+    )
+    parser.add_argument(
+        '--baseline-path',
+        type=str,
+        default=str(Path(__file__).parent.parent / "data" / "gold_standard" / "baseline_metrics.json"),
+        help='Path to baseline file (default: data/gold_standard/baseline_metrics.json)',
+    )
 
     args = parser.parse_args()
 
@@ -569,10 +743,14 @@ Examples:
     load_dotenv()
     db_url = args.database_url or os.getenv('DATABASE_URL')
 
-    if not db_url:
+    # Database URL only required for db mode
+    if args.mode == 'db' and not db_url:
         print("Error: DATABASE_URL not set. Use --database-url or set DATABASE_URL in .env",
               file=sys.stderr)
         sys.exit(1)
+
+    # Log mode
+    logger.info(f"Mode: {'fresh extraction' if args.mode == 'fresh' else 'database candidates'}")
 
     # Load gold standard
     gold_standard_path = Path(args.gold_standard)
@@ -588,14 +766,26 @@ Examples:
     companies = sorted(set(e.company for e in gold_entries))
     logger.info(f"Companies in gold standard: {', '.join(companies)}")
 
-    # Connect to database
-    from src.infra.db import DatabaseAdapter
-    db = DatabaseAdapter(db_url)
+    # Connect to database (only if needed for db mode)
+    db = None
+    if args.mode == 'db':
+        from src.infra.db import DatabaseAdapter
+        db = DatabaseAdapter(db_url)
 
     results: list[ValidationResult] = []
 
     if args.filing_id:
-        # Validate specific filing
+        # --filing-id only works with db mode
+        if args.mode == 'fresh':
+            print("Error: --filing-id is not compatible with --mode fresh. "
+                  "Use --company instead.", file=sys.stderr)
+            sys.exit(1)
+
+        # Validate specific filing (db mode)
+        from src.infra.db import DatabaseAdapter
+        if db is None:
+            db = DatabaseAdapter(db_url)
+
         filing = db.get_filing_with_company(args.filing_id)
         if not filing:
             print(f"Error: Filing {args.filing_id} not found", file=sys.stderr)
@@ -618,27 +808,31 @@ Examples:
             print(f"Error: No gold standard entries for company '{args.company}'", file=sys.stderr)
             sys.exit(1)
 
-        # Find filing in database
-        query = """
-            SELECT f.filing_id, c.company_name
-            FROM filings f
-            JOIN companies c ON f.company_id = c.company_id
-            WHERE LOWER(c.company_name) = LOWER(%(company)s)
-            LIMIT 1
-        """
-        filing_rows = db.query(query, {'company': args.company})
+        if args.mode == 'fresh':
+            # Fresh extraction mode - get document URL from gold standard
+            document_url = company_entries[0].document_url
+            if not document_url:
+                print(f"Error: No document URL in gold standard for company '{args.company}'",
+                      file=sys.stderr)
+                sys.exit(1)
 
-        filing_id = filing_rows[0]['filing_id'] if filing_rows else None
+            candidates = get_fresh_candidates(
+                document_url=document_url,
+                filings_dir=args.filings_dir,
+                allow_sec_fetch=args.allow_sec_fetch,
+                verbose=args.verbose,
+            )
 
-        result = validate_filing(db, filing_id, args.company, company_entries, args.verbose)
-        results.append(result)
-
-    elif args.all:
-        # Validate all companies in gold standard
-        for company in companies:
-            company_entries = get_entries_for_company(gold_entries, company)
-
-            # Find filing in database
+            result = validate_filing(
+                db=None,
+                filing_id=None,
+                company_name=args.company,
+                gold_entries=company_entries,
+                verbose=args.verbose,
+                candidates_override=candidates,
+            )
+        else:
+            # Database mode - find filing in database
             query = """
                 SELECT f.filing_id, c.company_name
                 FROM filings f
@@ -646,11 +840,56 @@ Examples:
                 WHERE LOWER(c.company_name) = LOWER(%(company)s)
                 LIMIT 1
             """
-            filing_rows = db.query(query, {'company': company})
+            filing_rows = db.query(query, {'company': args.company})
 
             filing_id = filing_rows[0]['filing_id'] if filing_rows else None
 
-            result = validate_filing(db, filing_id, company, company_entries, args.verbose)
+            result = validate_filing(db, filing_id, args.company, company_entries, args.verbose)
+
+        results.append(result)
+
+    elif args.all:
+        # Validate all companies in gold standard
+        for company in companies:
+            company_entries = get_entries_for_company(gold_entries, company)
+
+            if args.mode == 'fresh':
+                # Fresh extraction mode
+                document_url = company_entries[0].document_url if company_entries else None
+                if not document_url:
+                    logger.warning(f"Skipping {company}: no document URL in gold standard")
+                    continue
+
+                candidates = get_fresh_candidates(
+                    document_url=document_url,
+                    filings_dir=args.filings_dir,
+                    allow_sec_fetch=args.allow_sec_fetch,
+                    verbose=args.verbose,
+                )
+
+                result = validate_filing(
+                    db=None,
+                    filing_id=None,
+                    company_name=company,
+                    gold_entries=company_entries,
+                    verbose=args.verbose,
+                    candidates_override=candidates,
+                )
+            else:
+                # Database mode - find filing in database
+                query = """
+                    SELECT f.filing_id, c.company_name
+                    FROM filings f
+                    JOIN companies c ON f.company_id = c.company_id
+                    WHERE LOWER(c.company_name) = LOWER(%(company)s)
+                    LIMIT 1
+                """
+                filing_rows = db.query(query, {'company': company})
+
+                filing_id = filing_rows[0]['filing_id'] if filing_rows else None
+
+                result = validate_filing(db, filing_id, company, company_entries, args.verbose)
+
             results.append(result)
 
     # Print reports
@@ -680,6 +919,101 @@ Examples:
         print(f"  Precision:       {overall_precision * 100:.1f}%")
         print(f"  Recall:          {overall_recall * 100:.1f}%")
         print(f"  F1 Score:        {overall_f1 * 100:.1f}%")
+
+    # Handle baseline comparison and update
+    exit_code = 0  # Will be set to 1 if regression detected with --fail-on-regression
+
+    if results:
+        from src.gold_standard.baseline import (
+            compare_to_baseline,
+            create_baseline_from_results,
+            load_baseline,
+            save_baseline,
+        )
+
+        # Calculate overall metrics for baseline operations
+        total_tp = sum(r.true_positives for r in results)
+        total_fp = sum(r.false_positives for r in results)
+        total_fn = sum(r.false_negatives for r in results)
+
+        overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
+        overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
+        overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+
+        # Convert results to format expected by create_baseline_from_results
+        results_for_baseline = [
+            {
+                'company_name': r.company_name,
+                'true_positives': r.true_positives,
+                'false_positives': r.false_positives,
+                'false_negatives': r.false_negatives,
+                'precision': r.precision,
+                'recall': r.recall,
+                'f1_score': r.f1_score,
+            }
+            for r in results
+        ]
+
+        # Update baseline if requested
+        if args.update_baseline:
+            baseline_path = Path(args.baseline_path)
+            current_baseline = create_baseline_from_results(
+                results_for_baseline,
+                description=f"Validation run with {len(results)} filings",
+            )
+            save_baseline(current_baseline, baseline_path)
+            print(f"\n✓ Baseline saved to {baseline_path}")
+            print(f"  Date: {current_baseline.baseline_date[:10]}")
+            print(f"  Companies: {len(current_baseline.by_company)}")
+            print(f"  Precision: {current_baseline.overall.precision * 100:.1f}%")
+            print(f"  Recall: {current_baseline.overall.recall * 100:.1f}%")
+            print(f"  F1 Score: {current_baseline.overall.f1 * 100:.1f}%")
+
+        # Compare to baseline if requested
+        if args.baseline:
+            baseline_path = Path(args.baseline_path)
+            try:
+                baseline = load_baseline(baseline_path)
+
+                # Create current metrics for comparison
+                current_metrics = create_baseline_from_results(results_for_baseline)
+
+                # Compare
+                comparison = compare_to_baseline(
+                    current=current_metrics,
+                    baseline=baseline,
+                    tolerance=args.tolerance,
+                )
+
+                # Print comparison table
+                print_baseline_comparison(
+                    comparison=comparison,
+                    baseline_date=baseline.baseline_date,
+                    current_precision=overall_precision,
+                    current_recall=overall_recall,
+                    current_f1=overall_f1,
+                )
+
+                # Handle regression
+                if comparison.has_regression:
+                    print("⚠ REGRESSION DETECTED")
+                    if comparison.regressed_metrics:
+                        print(f"  Regressed overall metrics: {', '.join(comparison.regressed_metrics)}")
+                    if comparison.regressed_companies:
+                        print(f"  Regressed companies: {len(comparison.regressed_companies)}")
+
+                    if args.fail_on_regression:
+                        print("\n✗ Failing due to --fail-on-regression flag")
+                        exit_code = 1
+                else:
+                    print("✓ No regression detected")
+
+            except FileNotFoundError as e:
+                print(f"\n⚠ Warning: {e}", file=sys.stderr)
+                print("  Run with --update-baseline to create a baseline first.", file=sys.stderr)
+            except ValueError as e:
+                print(f"\n✗ Error: Invalid baseline file: {e}", file=sys.stderr)
+                sys.exit(2)
 
     # Write output file if specified
     if args.output:
@@ -726,6 +1060,10 @@ Examples:
                 json.dump(output_data, f, indent=2)
 
         logger.info(f"\nReport written to {output_path}")
+
+    # Exit with appropriate code
+    if exit_code != 0:
+        sys.exit(exit_code)
 
 
 if __name__ == '__main__':
