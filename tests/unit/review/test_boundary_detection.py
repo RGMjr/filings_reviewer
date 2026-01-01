@@ -5,7 +5,6 @@ Tests boundary detection for bullets, numbered lists, lettered lists,
 multi-line continuations, and edge cases.
 """
 
-import pytest
 
 from src.review.boundary_detection import (
     BoundaryDetector,

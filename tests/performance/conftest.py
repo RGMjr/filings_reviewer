@@ -6,7 +6,7 @@ Provides benchmark database setup and realistic test data for performance testin
 
 import os
 import random
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 from dotenv import load_dotenv
@@ -108,7 +108,7 @@ def benchmark_db(test_db_adapter):
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
 
-def _generate_realistic_segments(count: int, filing_id: int) -> List[Dict]:
+def _generate_realistic_segments(count: int, filing_id: int) -> list[dict]:
     """
     Generate realistic segment data for performance testing.
 
@@ -254,7 +254,7 @@ def realistic_segments_500(benchmark_db):
     }
 
 
-def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> List[Dict[str, Any]]:
+def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> list[dict[str, Any]]:
     """
     Generate synthetic learned patterns for stress testing.
 
@@ -303,7 +303,6 @@ def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> Lis
     ]
 
     operators_numeric = ["gt", "lt", "gte", "lte", "eq"]
-    operators_boolean = ["eq"]
 
     patterns = []
     for i in range(count):

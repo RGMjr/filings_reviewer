@@ -12,7 +12,6 @@ import pytest
 from src.review.models import LearnedPattern
 from src.review.pattern_analyzer import PatternAnalyzer
 
-
 # =============================================================================
 # Test Fixtures
 # =============================================================================
@@ -1399,7 +1398,6 @@ class TestCrossValidation:
         )
 
         # Should have is_stable flags
-        has_unstable = any(not r["is_stable"] for r in results)
         # Note: Whether we actually get unstable patterns depends on the data
         # but the flag should be present
         assert all("is_stable" in r for r in results)

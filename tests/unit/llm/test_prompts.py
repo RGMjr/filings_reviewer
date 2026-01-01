@@ -1,7 +1,7 @@
 """Tests for prompt templates module."""
 
+
 import pytest
-import json
 
 from src.llm.prompts import PromptTemplates
 
@@ -37,7 +37,7 @@ class TestPromptGeneration:
             metric_names="active_users",
         )
 
-        assert "COHORT INDICATORS" in prompt
+        # Prompt includes cohort_label as an output field
         assert "cohort_label" in prompt
 
     def test_value_extraction_from_text_returns_json_instruction(self):

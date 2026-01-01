@@ -60,7 +60,10 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = [{"candidate_id": 124}]
+        # Mock next candidate navigation (filter-aware)
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 124, "review_status": "pending"}
+        ]
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -81,7 +84,8 @@ class TestCreateDecision:
         assert data["decision_id"] == 456
         assert data["candidate_id"] == 123
         assert data["next_candidate"]["candidate_id"] == 124
-        assert data["next_candidate"]["url"] == "/review/5/candidate/124"
+        # URL now uses query params format with filter preservation
+        assert "/review/5?candidate_id=124" in data["next_candidate"]["url"]
 
         # Verify database calls
         mock_db.get_review_candidate.assert_called_once_with(123)
@@ -108,7 +112,7 @@ class TestCreateDecision:
         }
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = []  # No next candidate
+        mock_db.get_review_candidates_with_decisions.return_value = []  # No next candidate
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -155,7 +159,9 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = [{"candidate_id": 124}]
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 124, "review_status": "pending"}
+        ]
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -600,7 +606,9 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = [{"candidate_id": 999}]
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 999, "review_status": "pending"}
+        ]
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -616,7 +624,8 @@ class TestCreateDecision:
         # Verify next candidate in response
         data = json.loads(response.data)
         assert data["next_candidate"]["candidate_id"] == 999
-        assert "/review/5/candidate/999" in data["next_candidate"]["url"]
+        # URL now uses query params format
+        assert "/review/5?candidate_id=999" in data["next_candidate"]["url"]
 
     def test_last_candidate_no_next(self, client, mock_db):
         """Test that next_candidate is null when no more pending."""
@@ -632,7 +641,7 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = []  # No next candidate
+        mock_db.get_review_candidates_with_decisions.return_value = []  # No next candidate
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -832,7 +841,7 @@ class TestValidationHelpers:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.query.return_value = []
+        mock_db.get_review_candidates_with_decisions.return_value = []
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):

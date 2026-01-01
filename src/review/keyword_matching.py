@@ -81,9 +81,8 @@ See Also:
 import logging
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, cast
 
-from src.extraction.metric_classifier import MetricClassifier
 from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
@@ -94,100 +93,62 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Metric Keywords
+# Keyword Loading Functions
 # =============================================================================
 
-# Import keywords from the authoritative source to ensure consistency
-# between candidate generation and metric classification
-METRIC_KEYWORDS: Dict[str, List[str]] = MetricClassifier.METRIC_KEYWORDS
+def _load_metric_keywords() -> dict[str, list[str]]:
+    """Load metric keywords from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_metric_keywords
+    return cast(dict[str, list[str]], get_metric_keywords())
+
+
+def _load_exclusion_patterns() -> dict[str, list[str]]:
+    """Load exclusion patterns from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_exclusion_patterns
+    return cast(dict[str, list[str]], get_exclusion_patterns())
+
+
+def _load_specific_patterns() -> list[str]:
+    """Load specific (multi-word) patterns from YAML config.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_specific_patterns
+    return cast(list[str], get_specific_patterns())
+
+
+def _load_required_context() -> dict[str, dict[str, Any]]:
+    """Load required context patterns from YAML config.
+
+    Required context patterns gate which metrics generate review candidates.
+    Metrics with required_context only generate candidates when at least one
+    of the context patterns appears within proximity of the keyword match.
+
+    Raises:
+        KeywordConfigError: If YAML config cannot be loaded.
+    """
+    from src.extraction.keyword_config import get_required_context
+    return cast(dict[str, dict[str, Any]], get_required_context())
 
 
 # =============================================================================
-# Specific Keyword Patterns
+# Module-Level Keyword Data (loaded at import time)
 # =============================================================================
 
-# Keywords that are more specific (multi-word) get a bonus
-# Single-word keywords like "customers" are ambiguous
-SPECIFIC_KEYWORD_PATTERNS = [
-    r"active\s+customers?",
-    r"enterprise\s+customers?",
-    r"paying\s+customers?",
-    r"total\s+customers?",
-    r"net\s+revenue\s+retention",
-    r"gross\s+revenue\s+retention",
-    r"net\s+dollar\s+retention",
-    r"customer\s+acquisition\s+cost",
-    r"lifetime\s+value",
-    r"average\s+revenue\s+per",
-    r"annual\s+recurring\s+revenue",
-    r"monthly\s+recurring\s+revenue",
-    r"daily\s+active\s+users?",
-    r"monthly\s+active\s+users?",
-]
-
-
-# =============================================================================
-# Metric Exclusion Patterns (HRI-3)
-# =============================================================================
-
-# Patterns that should NOT match a metric even if the keyword pattern matches.
-# These prevent misclassifications when ambiguous keywords appear in contexts
-# that clearly indicate a different metric.
-#
-# Format: {metric_id: [list of context patterns that should exclude this metric]}
-#
-# When a keyword matches, we check if any exclusion pattern matches in the
-# surrounding context (±50 chars). If an exclusion pattern matches, we skip
-# that keyword match.
-#
-# Top misclassification patterns addressed:
-# 1. "customer acquisition" (part of "customer acquisition cost") -> cm_new_customers_acquired
-# 2. "margin" keywords incorrectly matching CAC
-# 3. "gross profit" / "gross margin" matching cohort metrics
-# 4. "acquisition cost" substring matching new customers metric
-METRIC_EXCLUSION_PATTERNS: Dict[str, List[str]] = {
-    # cm_new_customers_acquired should NOT match when "acquisition cost" is present
-    # (indicates CAC metric, not new customers acquired)
-    "cm_new_customers_acquired": [
-        r"\bacquisition\s+cost\b",  # Full phrase "acquisition cost" = CAC, not new customers
-        r"\bcac\b",  # CAC acronym nearby = CAC metric context
-        r"\bcost\s+to\s+acquire\b",  # Another CAC phrasing
-    ],
-    # cm_customer_acquisition_cost should NOT match contribution/gross/profit margin
-    # (these are margin metrics, not CAC)
-    "cm_customer_acquisition_cost": [
-        r"\bcontribution\s+margin\b",  # Contribution margin = margin metric
-        r"\bgross\s+margin\b",  # Gross margin = margin metric
-        r"\bprofit\s+margin\b",  # Profit margin = margin metric
-        r"\boperating\s+margin\b",  # Operating margin = margin metric
-        r"\bplatform\s+order\s+contribution\b",  # Farfetch specific pattern
-    ],
-    # cm_lifetime_value_per_customer should NOT match when it's part of LTV/CAC ratio
-    # (the ratio metric should take precedence)
-    "cm_lifetime_value_per_customer": [
-        r"\bltv\s*/\s*cac\b",  # LTV/CAC ratio
-        r"\bltv\s+to\s+cac\b",  # LTV to CAC ratio
-        r"\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b",
-    ],
-    # cm_revenue_per_customer (ARPU) should NOT match cost-per-customer
-    "cm_revenue_per_customer": [
-        r"\bcost\s+per\s+customer\b",  # Cost per customer = CAC, not ARPU
-        r"\bcost\s+per\s+user\b",  # Cost per user = CAC, not ARPU
-    ],
-    # cm_gross_margin_overall should NOT match cohort context
-    "cm_gross_margin_overall": [
-        r"\bby\s+cohort\b",  # Cohort context = cm_gross_margin_by_cohort
-        r"\bcohort\s+margin\b",  # Cohort margin = cm_gross_margin_by_cohort
-        r"\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b",
-    ],
-    # cm_customer_retention_rate should NOT match revenue retention context
-    "cm_customer_retention_rate": [
-        r"\brevenue\s+retention\b",  # Revenue retention = NRR/GRR
-        r"\bdollar\s+retention\b",  # Dollar retention = NRR
-        r"\bnrr\b",  # NRR acronym
-        r"\bgrr\b",  # GRR acronym
-    ],
-}
+# These are loaded once at module import and used throughout
+METRIC_KEYWORDS: dict[str, list[str]] = _load_metric_keywords()
+METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = _load_exclusion_patterns()
+SPECIFIC_KEYWORD_PATTERNS: list[str] = _load_specific_patterns()
+METRIC_REQUIRED_CONTEXT: dict[str, dict[str, Any]] = _load_required_context()
 
 
 # =============================================================================
@@ -204,7 +165,7 @@ class KeywordMatch:
     keyword: str  # The matched text
     metric_id: str  # Associated metric ID
     pattern: str  # The regex pattern that matched
-    direction: Optional[str] = None  # 'before' | 'after' | 'at' (relative to number, L3 enhancement)
+    direction: str | None = None  # 'before' | 'after' | 'at' (relative to number, L3 enhancement)
 
 
 # =============================================================================
@@ -287,16 +248,16 @@ class KeywordMatcher:
         self.multiplier_default = multiplier_default
 
         # Pre-compile all keyword patterns for reuse
-        self._compiled_patterns: Dict[str, List[Tuple[re.Pattern[str], str]]] = {}
+        self._compiled_patterns: dict[str, list[tuple[re.Pattern[str], str]]] = {}
         for metric_id, patterns in METRIC_KEYWORDS.items():
             self._compiled_patterns[metric_id] = [
                 (re.compile(pattern, re.IGNORECASE), pattern) for pattern in patterns
             ]
 
         # HRI-3: Pre-compile exclusion patterns for reuse
-        self._compiled_exclusions: Dict[str, List[re.Pattern[str]]] = {}
+        self._compiled_exclusions: dict[str, list[re.Pattern[str]]] = {}
         for metric_id, exclusion_patterns in METRIC_EXCLUSION_PATTERNS.items():
-            compiled_list: List[re.Pattern[str]] = []
+            compiled_list: list[re.Pattern[str]] = []
             for pattern in exclusion_patterns:
                 try:
                     compiled_list.append(re.compile(pattern, re.IGNORECASE))
@@ -307,6 +268,25 @@ class KeywordMatcher:
                     )
             if compiled_list:
                 self._compiled_exclusions[metric_id] = compiled_list
+
+        # Pre-compile required context patterns for revenue synonym filtering
+        # tuple of (compiled_patterns, proximity_chars)
+        self._compiled_required_context: dict[str, tuple[list[re.Pattern[str]], int]] = {}
+        for metric_id, ctx_config in METRIC_REQUIRED_CONTEXT.items():
+            compiled_ctx_patterns: list[re.Pattern[str]] = []
+            for pattern in ctx_config.get("patterns", []):
+                try:
+                    compiled_ctx_patterns.append(re.compile(pattern, re.IGNORECASE))
+                except re.error as e:
+                    logger.warning(
+                        f"Invalid required_context pattern for {metric_id}: {pattern!r} - {e}"
+                    )
+            if compiled_ctx_patterns:
+                proximity = ctx_config.get("proximity_chars", 1500)
+                self._compiled_required_context[metric_id] = (
+                    compiled_ctx_patterns,
+                    proximity,
+                )
 
     def _is_excluded(self, metric_id: str, context: str) -> bool:
         """
@@ -330,7 +310,99 @@ class KeywordMatcher:
                 return True
         return False
 
-    def find_all_keywords(self, text: str) -> List[KeywordMatch]:
+    def should_exclude_for_number_context(
+        self,
+        metric_id: str,
+        text: str,
+        number_position: int,
+        window_chars: int = 100,
+    ) -> tuple[bool, str | None]:
+        """
+        Check if a candidate should be excluded based on NUMBER context.
+
+        Called by CandidateGenerator before feature extraction.
+        Uses the same compiled exclusion patterns as keyword-context exclusions.
+
+        This addresses the architecture issue where keyword-context exclusions
+        (checked during find_all_keywords) use ±50 chars around the KEYWORD,
+        but some false positives occur when numbers are far from keywords
+        but near exclusion-worthy context.
+
+        Args:
+            metric_id: The metric ID to check exclusions for
+            text: The full text containing the number
+            number_position: Character position of the number in text
+            window_chars: Characters around number position to check (default: 100)
+
+        Returns:
+            Tuple of (should_exclude, reason)
+            reason is a string like "exclusion:number_context:<pattern>" if excluded,
+            None if not excluded
+        """
+        if metric_id not in self._compiled_exclusions:
+            return False, None
+
+        start = max(0, number_position - window_chars)
+        end = min(len(text), number_position + window_chars)
+        context = text[start:end]
+
+        for pattern in self._compiled_exclusions[metric_id]:
+            if pattern.search(context):
+                return True, f"exclusion:number_context:{pattern.pattern}"
+
+        return False, None
+
+    def _has_required_context(
+        self, metric_id: str, match_position: int, full_text: str
+    ) -> bool:
+        """
+        Check if required context is present for a context-gated metric.
+
+        For metrics with required_context configuration (e.g., cm_gmv, cm_tcv),
+        this checks if at least one of the required context patterns (cohort,
+        per customer, etc.) appears within the specified proximity of the
+        keyword match.
+
+        Revenue synonym metrics (GMV, TCV, ACV, Bookings, Billings) require
+        cohort or per-customer context to be meaningful as customer metrics.
+        Without this context, they are just aggregate revenue measures.
+
+        Args:
+            metric_id: The metric ID to check required context for
+            match_position: The character position of the keyword match
+            full_text: The full text to search for context
+
+        Returns:
+            True if no required context is configured for this metric, OR
+            True if required context IS configured AND at least one pattern is found.
+            False if required context IS configured but NO patterns are found.
+        """
+        if metric_id not in self._compiled_required_context:
+            return True  # No required context for this metric - always matches
+
+        patterns, proximity_chars = self._compiled_required_context[metric_id]
+
+        # Define the search window around the match position
+        context_start = max(0, match_position - proximity_chars)
+        context_end = min(len(full_text), match_position + proximity_chars)
+        context = full_text[context_start:context_end]
+
+        # Check if ANY required context pattern matches
+        for pattern in patterns:
+            if pattern.search(context):
+                logger.debug(
+                    f"Required context found for {metric_id} at position {match_position}: "
+                    f"pattern '{pattern.pattern}' matched within {proximity_chars} chars"
+                )
+                return True
+
+        logger.debug(
+            f"Required context NOT found for {metric_id} at position {match_position}: "
+            f"no cohort/per-customer patterns within {proximity_chars} chars"
+        )
+        return False
+
+    def find_all_keywords(self, text: str) -> list[KeywordMatch]:
         """
         Find all metric keywords in text.
 
@@ -387,13 +459,14 @@ class KeywordMatcher:
     def find_keywords_near_number(
         self,
         number: NumberMatch,
-        all_keywords: List[KeywordMatch],
-        boundaries: Optional[List["TextBoundary"]] = None,
-        sentence_boundaries: Optional[List["TextBoundary"]] = None,
+        all_keywords: list[KeywordMatch],
+        boundaries: list["TextBoundary"] | None = None,
+        sentence_boundaries: list["TextBoundary"] | None = None,
         text: str = "",
-        segment_type: Optional[str] = None,
+        segment_type: str | None = None,
         table_row_parser: Optional["TableRowParser"] = None,
-    ) -> List[KeywordMatch]:
+        check_required_context: bool = True,
+    ) -> list[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
 
@@ -427,6 +500,9 @@ class KeywordMatcher:
             text: Optional full text for context detection (L4 Option C)
             segment_type: Optional segment type for context detection (L4 Option C)
             table_row_parser: Optional TableRowParser for table row filtering
+            check_required_context: If True (default), filter out revenue synonym
+                metrics (GMV, TCV, etc.) that lack cohort or per-customer context.
+                Set to False to include all matches regardless of context.
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
@@ -434,12 +510,22 @@ class KeywordMatcher:
         """
         # Phase 1: Collect all keywords within distance with their distances and directions
         # Store as (keyword, raw_distance, direction) for L4 multiplier application
-        candidates_with_distance: List[Tuple[KeywordMatch, int]] = []
+        # Also filter by required context for revenue synonym metrics
+        candidates_with_distance: list[tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
             dist = self.calculate_distance_from_positions(
                 number.start, number.end, kw.start, kw.end
             )
             if dist <= self.max_keyword_distance:
+                # Check required context for context-gated metrics (GMV, TCV, etc.)
+                if check_required_context and not self._has_required_context(
+                    kw.metric_id, kw.start, text
+                ):
+                    logger.debug(
+                        f"Filtered keyword '{kw.keyword}' ({kw.metric_id}): "
+                        f"required cohort/per-customer context not present"
+                    )
+                    continue
                 candidates_with_distance.append((kw, dist))
 
         if not candidates_with_distance:
@@ -508,26 +594,20 @@ class KeywordMatcher:
                 if table_row_parser.are_in_same_row(kw.start, number.start)
             ]
 
-            # Only filter if we have same-row candidates
-            # (fallback: if no same-row keywords, keep all)
-            if same_row:
-                if len(same_row) < len(candidates_with_distance):
-                    logger.debug(
-                        f"Table row filtering: {len(same_row)}/{len(candidates_with_distance)} "
-                        f"keywords in same table row as number '{number.raw_text}'"
-                    )
-                candidates_with_distance = same_row
-            else:
-                # No same-row keywords found - keep all candidates (fallback)
+            # Strict row filtering: only keep same-row keywords
+            # Numbers without same-row keywords are not valid metric candidates
+            if len(same_row) < len(candidates_with_distance):
+                filtered_count = len(candidates_with_distance) - len(same_row)
                 logger.debug(
-                    f"Table row filtering fallback: no keywords in same row "
-                    f"as number '{number.raw_text}'; keeping all {len(candidates_with_distance)} candidates"
+                    f"Table row filtering: kept {len(same_row)}/{len(candidates_with_distance)} "
+                    f"keywords in same row as '{number.raw_text}' (filtered {filtered_count} cross-row)"
                 )
+            candidates_with_distance = same_row
 
         # Phase 3: Sort by distance first, then length (P1 enhancement + L4 multiplier + L4 Option C)
         if self.prefer_closest_keyword:
             # L4 Option C: Compute effective distance using context-dependent multipliers
-            candidates_with_effective_distance: List[Tuple[KeywordMatch, int, float]] = []
+            candidates_with_effective_distance: list[tuple[KeywordMatch, int, float]] = []
 
             for kw, raw_distance in candidates_with_distance:
                 # Compute direction to determine if multiplier applies
@@ -598,28 +678,46 @@ class KeywordMatcher:
                 )
 
         # Phase 5: Filter substring duplicates, deduplicate by metric, and add direction (L3)
+        # Cross-metric substring suppression: when keywords from different metrics
+        # overlap positionally AND one is a substring of the other, keep the longer match.
         matches: list[KeywordMatch] = []
-        seen_metrics: Set[str] = set()
+        seen_metrics: set[str] = set()
 
-        for kw, raw_dist, eff_dist in candidates_with_effective_distance:
+        for kw, _raw_dist, _eff_dist in candidates_with_effective_distance:
             # Skip if we already have a match for this metric
             if kw.metric_id in seen_metrics:
                 continue
 
-            # Check if this keyword is a substring of any already-accepted keyword
-            # at an overlapping position (only within the same metric)
+            # Check if this keyword overlaps with any already-accepted keyword
+            # and one is a substring of the other (cross-metric deduplication)
             is_substring_duplicate = False
-            for accepted in matches:
-                if (
-                    kw.metric_id == accepted.metric_id
-                    and self._keywords_overlap(kw, accepted)
-                    and self._is_substring_match(kw, accepted)
+            replace_index: int | None = None
+
+            for i, accepted in enumerate(matches):
+                if self._keywords_overlap(kw, accepted) and self._is_substring_match(
+                    kw, accepted
                 ):
-                    logger.debug(
-                        f"Filtered substring duplicate: '{kw.keyword}' "
-                        f"(substring of '{accepted.keyword}')"
-                    )
-                    is_substring_duplicate = True
+                    # Overlapping substring match found - compare lengths
+                    if len(kw.keyword) > len(accepted.keyword):
+                        # New keyword is longer (more specific) - replace accepted
+                        # Log at INFO for monitoring cross-metric suppression in production
+                        logger.info(
+                            f"CMS-1 cross-metric replacement: '{accepted.keyword}' "
+                            f"({accepted.metric_id}) replaced by longer "
+                            f"'{kw.keyword}' ({kw.metric_id})"
+                        )
+                        replace_index = i
+                        # Remove old metric from seen so we can add new one
+                        seen_metrics.discard(accepted.metric_id)
+                    else:
+                        # Accepted keyword is longer or equal - skip new one
+                        # Log at INFO for monitoring cross-metric suppression in production
+                        logger.info(
+                            f"CMS-1 cross-metric suppression: '{kw.keyword}' "
+                            f"({kw.metric_id}) suppressed by longer '{accepted.keyword}' "
+                            f"({accepted.metric_id})"
+                        )
+                        is_substring_duplicate = True
                     break
 
             if not is_substring_duplicate:
@@ -636,7 +734,11 @@ class KeywordMatcher:
                     direction=direction,
                 )
 
-                matches.append(match_with_direction)
+                if replace_index is not None:
+                    # Replace shorter keyword with longer one (cross-metric)
+                    matches[replace_index] = match_with_direction
+                else:
+                    matches.append(match_with_direction)
                 seen_metrics.add(kw.metric_id)
 
         return matches
@@ -740,8 +842,8 @@ class KeywordMatcher:
         number_position: int,
         keyword_position: int,
         keyword_direction: str,
-        boundaries: Optional[List["TextBoundary"]] = None,
-        segment_type: Optional[str] = None,
+        boundaries: list["TextBoundary"] | None = None,
+        segment_type: str | None = None,
     ) -> str:
         """
         Determine which context type applies to this keyword-number pair.
@@ -794,8 +896,8 @@ class KeywordMatcher:
         number_position: int,
         keyword_position: int,
         keyword_direction: str,
-        boundaries: Optional[List["TextBoundary"]] = None,
-        segment_type: Optional[str] = None,
+        boundaries: list["TextBoundary"] | None = None,
+        segment_type: str | None = None,
     ) -> float:
         """
         Determine the appropriate multiplier based on textual context.
@@ -861,7 +963,7 @@ class KeywordMatcher:
         return open_count > 0
 
     def _is_in_table(
-        self, position: int, boundaries: Optional[List["TextBoundary"]]
+        self, position: int, boundaries: list["TextBoundary"] | None
     ) -> bool:
         """
         Check if a position is in a table boundary.
@@ -885,7 +987,7 @@ class KeywordMatcher:
         return getattr(boundary, "boundary_type", None) == "table"
 
     def _is_in_bullet_point(
-        self, position: int, boundaries: Optional[List["TextBoundary"]]
+        self, position: int, boundaries: list["TextBoundary"] | None
     ) -> bool:
         """
         Check if a position is in a bullet point boundary.
@@ -956,7 +1058,7 @@ class KeywordMatcher:
         return bool(re.search(preposition_pattern, snippet))
 
     def _get_boundary_at_position(
-        self, pos: int, boundaries: List["TextBoundary"]
+        self, pos: int, boundaries: list["TextBoundary"]
     ) -> Optional["TextBoundary"]:
         """
         Find the boundary containing a position.
@@ -974,7 +1076,7 @@ class KeywordMatcher:
         return None
 
     def _is_in_same_boundary(
-        self, pos: int, target_boundary: "TextBoundary", boundaries: List["TextBoundary"]
+        self, pos: int, target_boundary: "TextBoundary", boundaries: list["TextBoundary"]
     ) -> bool:
         """
         Check if a position is in the same boundary as a target boundary.

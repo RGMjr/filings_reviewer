@@ -114,5 +114,115 @@
       "description": "Minimum richness score to be considered a goldmine",
       "value": 6.0
     }
+  },
+  "industry_filings": {
+    "0001679788/000162828021003168": {
+      "company_name": "Coinbase Global, Inc.",
+      "form_type": "S-1",
+      "industry": "fintech",
+      "expected_goldmine_count": 6,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Monthly Transacting Users",
+          "min_richness": 6.5,
+          "rationale": "MTU definition with temporal trends (2.8M MTUs in Q4 2020, representing 2.3% of 120M+ verified users)"
+        },
+        {
+          "text_contains": "Trading Volume",
+          "min_richness": 6.0,
+          "rationale": "Quarterly trading volume metrics with YoY growth ($38B in Q4 2020 vs $17B in Q4 2019)"
+        },
+        {
+          "text_contains": "Assets on Platform",
+          "min_richness": 6.0,
+          "rationale": "Customer assets disclosure ($90B+ in assets on platform as of December 31, 2020)"
+        },
+        {
+          "text_contains": "Verified Users",
+          "min_richness": 5.5,
+          "rationale": "Cumulative verified user count (43M verified users with 2.8M MTUs)"
+        },
+        {
+          "text_contains": "Retail Trading Volume",
+          "min_richness": 5.5,
+          "rationale": "Retail vs institutional breakdown showing customer segmentation"
+        },
+        {
+          "text_contains": "Transaction Revenue per MTU",
+          "min_richness": 5.0,
+          "rationale": "Unit economics metric combining volume and monetization"
+        }
+      ],
+      "precision_threshold": 0.75,
+      "recall_threshold": 0.60,
+      "notes": "Fintech - Payment/crypto platform with trading volume, MTU, and asset metrics. High metric density with clear quantitative disclosure."
+    },
+    "0001594805/000119312515129273": {
+      "company_name": "Shopify Inc.",
+      "form_type": "F-1",
+      "industry": "ecommerce",
+      "expected_goldmine_count": 5,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Gross Merchandise Volume",
+          "min_richness": 6.5,
+          "rationale": "GMV disclosure with multi-year trends ($3.8B in 2014 vs $1.5B in 2013, 153% growth)"
+        },
+        {
+          "text_contains": "merchants using Shopify",
+          "min_richness": 6.0,
+          "rationale": "Merchant count as core customer metric (165,000+ merchants as of Dec 31, 2014)"
+        },
+        {
+          "text_contains": "Merchant Solutions revenue",
+          "min_richness": 5.5,
+          "rationale": "Revenue breakdown showing Subscription vs Merchant Solutions with GMV context"
+        },
+        {
+          "text_contains": "Monthly Recurring Revenue",
+          "min_richness": 5.5,
+          "rationale": "MRR metric showing subscription business health with merchant cohorts"
+        },
+        {
+          "text_contains": "orders processed",
+          "min_richness": 5.0,
+          "rationale": "Order volume metric supporting GMV and platform engagement"
+        }
+      ],
+      "precision_threshold": 0.75,
+      "recall_threshold": 0.60,
+      "notes": "E-commerce platform - GMV, merchant counts, MRR. Strong quantitative disclosure of platform metrics."
+    },
+    "0001477449/000104746915005109": {
+      "company_name": "Teladoc Health, Inc.",
+      "form_type": "S-1",
+      "industry": "healthcare",
+      "expected_goldmine_count": 4,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "patient visits",
+          "min_richness": 6.0,
+          "rationale": "Visit count with strong YoY growth (298,833 visits in 2014 vs 127,107 in 2013, 135% increase)"
+        },
+        {
+          "text_contains": "million Members",
+          "min_richness": 5.5,
+          "rationale": "Member base disclosure (11M members with access to platform)"
+        },
+        {
+          "text_contains": "Subscription fee revenue",
+          "min_richness": 5.5,
+          "rationale": "Revenue with member/visit context ($43.5M in 2014 vs $19.9M in 2013)"
+        },
+        {
+          "text_contains": "per-member-per-month",
+          "min_richness": 5.0,
+          "rationale": "Unit economics showing $21.30 PMPM healthcare cost savings"
+        }
+      ],
+      "precision_threshold": 0.70,
+      "recall_threshold": 0.50,
+      "notes": "Healthcare tech - Telehealth platform with visit counts, member metrics, and healthcare cost savings. Visit growth is key goldmine metric."
+    }
   }
 }

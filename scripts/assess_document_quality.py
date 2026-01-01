@@ -12,17 +12,18 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
-from typing import Dict, List
-import re
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.infra.db import DatabaseAdapter
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+
+from src.infra.db import DatabaseAdapter
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ load_dotenv()
 def extract_title_from_html(html_path: str) -> str:
     """Extract title tag from HTML file."""
     try:
-        with open(html_path, 'r', encoding='utf-8') as f:
+        with open(html_path, "r", encoding="utf-8") as f:
             # Read first 5KB which should contain the title
             content = f.read(5000)
 
@@ -48,7 +49,7 @@ def get_file_size(html_path: str) -> int:
     """Get file size in bytes."""
     try:
         return Path(html_path).stat().st_size
-    except:
+    except OSError:
         return 0
 
 
@@ -115,7 +116,7 @@ def classify_document(title: str, file_size: int) -> tuple[str, str]:
     return "UNKNOWN", "LOW"
 
 
-def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> Dict:
+def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> dict:
     """Analyze a random sample of fetched filings."""
 
     # Get random sample
@@ -203,7 +204,7 @@ def analyze_filings(db: DatabaseAdapter, sample_size: int = 50) -> Dict:
     total = len(results)
 
     print(f"\n{'='*100}")
-    print(f"ANALYSIS RESULTS")
+    print("ANALYSIS RESULTS")
     print(f"{'='*100}\n")
 
     print("Document Type Distribution:")
@@ -337,7 +338,7 @@ def main():
     db = DatabaseAdapter(db_url)
 
     # Run analysis
-    results = analyze_filings(db, args.sample_size)
+    analyze_filings(db, args.sample_size)
 
 
 if __name__ == "__main__":

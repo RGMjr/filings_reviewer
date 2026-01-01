@@ -5,10 +5,11 @@ Uses mocks to test the build_universe logic without requiring a real database or
 """
 
 from unittest.mock import Mock
+
 import pytest
 
-from src.infra.sec_client import FilingMetadata, MockSECClient
 from src.infra.db import DatabaseAdapter
+from src.infra.sec_client import FilingMetadata, MockSECClient
 from src.universe.universe_builder import UniverseBuilder
 
 

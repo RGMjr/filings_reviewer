@@ -6,8 +6,8 @@ These models represent extracted data before it's written to the database.
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
 from decimal import Decimal
+from typing import Any
 
 
 @dataclass
@@ -23,49 +23,49 @@ class SourceSegment:
 
     # Segment metadata
     segment_type: str  # 'paragraph', 'table', 'footnote', 'definition_block', 'methodology_block', 'other'
-    section_path: Optional[str] = None  # e.g., "Item 1. Business > Customers"
-    section_heading: Optional[str] = None
+    section_path: str | None = None  # e.g., "Item 1. Business > Customers"
+    section_heading: str | None = None
     sequence_index: int = 0  # Order within filing (0-based)
 
     # Location / provenance
-    html_selector: Optional[str] = None  # XPath or CSS selector
-    char_start_offset: Optional[int] = None
-    char_end_offset: Optional[int] = None
-    page_number: Optional[int] = None
+    html_selector: str | None = None  # XPath or CSS selector
+    char_start_offset: int | None = None
+    char_end_offset: int | None = None
+    page_number: int | None = None
 
     # Content
     raw_text: str = ""  # Normalized visible text
-    raw_html: Optional[str] = None  # Original HTML snippet
+    raw_html: str | None = None  # Original HTML snippet
 
     # LLM / classification metadata (populated by classifier)
-    candidate_metric_ids: List[str] = field(default_factory=list)
+    candidate_metric_ids: list[str] = field(default_factory=list)
     contains_definition_flag: bool = False
     contains_methodology_flag: bool = False
     contains_numeric_disclosure_flag: bool = False
-    classifier_confidence: Optional[float] = None
+    classifier_confidence: float | None = None
 
     # Context preservation (populated by enhanced segmenter)
-    context_prefix: Optional[str] = None  # Last sentence from previous segment
-    document_position: Optional[float] = None  # 0.0-1.0 position in document
-    sentence_boundaries: Optional[List[Tuple[int, int]]] = None  # (start, end) pairs
+    context_prefix: str | None = None  # Last sentence from previous segment
+    document_position: float | None = None  # 0.0-1.0 position in document
+    sentence_boundaries: list[tuple[int, int]] | None = None  # (start, end) pairs
     table_truncated_flag: bool = False  # True if table was too large and summarized
     definition_merged_count: int = 0  # Number of segments merged for definition
 
     # Richness metadata (computed post-classification by SegmentEnricher)
-    metric_density: Optional[float] = None  # Metrics per 100 characters
+    metric_density: float | None = None  # Metrics per 100 characters
     distinct_metric_count: int = 0  # Count of unique metric IDs in segment
     contains_temporal_trend: bool = False  # True if segment discusses multiple time periods
     contains_cohort_breakdown: bool = False  # True if segment contains cohort analysis patterns
     image_count: int = 0  # Count of meaningful images/charts in segment
-    richness_score: Optional[float] = None  # Composite score 0-10 (computed by enricher)
-    extra_metadata: Optional[Dict[str, Any]] = None  # Additional enrichment metadata (e.g., SaaS indicators)
+    richness_score: float | None = None  # Composite score 0-10 (computed by enricher)
+    extra_metadata: dict[str, Any] | None = None  # Additional enrichment metadata (e.g., SaaS indicators)
 
     # Database fields (populated after insert)
-    source_segment_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    source_segment_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -120,42 +120,42 @@ class MetricValue:
     extraction_method: str  # 'rule_table', 'llm_table', 'llm_text', 'manual_review'
 
     # Value
-    value_numeric: Optional[Decimal] = None
-    value_text: Optional[str] = None
-    unit: Optional[str] = None  # Canonical: '%', 'usd', 'count'; Also: 'basis_points', 'per_customer'
-    currency: Optional[str] = None  # ISO code when monetary
+    value_numeric: Decimal | None = None
+    value_text: str | None = None
+    unit: str | None = None  # Canonical: '%', 'usd', 'count'; Also: 'basis_points', 'per_customer'
+    currency: str | None = None  # ISO code when monetary
 
     # Time dimensions
-    period_start: Optional[date] = None
-    period_end: Optional[date] = None
-    period_type: Optional[str] = (
+    period_start: date | None = None
+    period_end: date | None = None
+    period_type: str | None = (
         None  # 'fy', 'quarter', 'month', 'ttm', 'since_inception'
     )
 
     # Cohort dimensions
-    cohort_type: Optional[str] = None  # 'acquisition', 'tenure', 'other'
-    cohort_bucket_raw: Optional[str] = None  # Issuer's label
-    cohort_bucket_normalized: Optional[str] = None  # Standardized bucket
+    cohort_type: str | None = None  # 'acquisition', 'tenure', 'other'
+    cohort_bucket_raw: str | None = None  # Issuer's label
+    cohort_bucket_normalized: str | None = None  # Standardized bucket
 
     # Customer segmentation dimensions
-    segment_dimension: Optional[str] = (
+    segment_dimension: str | None = (
         None  # e.g., 'customer_type', 'product', 'geography'
     )
-    segment_value: Optional[str] = None  # e.g., 'enterprise', 'SMB', 'US'
+    segment_value: str | None = None  # e.g., 'enterprise', 'SMB', 'US'
 
     # Quality / alignment
     qa_status: str = "unreviewed"  # 'unreviewed', 'pass', 'warning', 'fail'
-    qa_notes: Optional[str] = None
-    alignment_flag: Optional[str] = (
+    qa_notes: str | None = None
+    alignment_flag: str | None = (
         None  # 'aligned', 'partial', 'not_aligned', 'unknown'
     )
 
     # Database fields
-    metric_value_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    metric_value_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -199,27 +199,27 @@ class MetricDefinition:
     definition_version_in_filing: int = 1
 
     # Content
-    definition_text_normalized: Optional[str] = None
-    methodology_text_normalized: Optional[str] = None
-    definition_raw_text: Optional[str] = None
-    methodology_raw_text: Optional[str] = None
+    definition_text_normalized: str | None = None
+    methodology_text_normalized: str | None = None
+    definition_raw_text: str | None = None
+    methodology_raw_text: str | None = None
 
     # Provenance
-    definition_segment_id: Optional[int] = None
-    methodology_segment_id: Optional[int] = None
+    definition_segment_id: int | None = None
+    methodology_segment_id: int | None = None
 
     # Alignment
-    alignment_flag: Optional[str] = (
+    alignment_flag: str | None = (
         None  # 'aligned', 'partial', 'not_aligned', 'unknown'
     )
-    alignment_notes: Optional[str] = None
+    alignment_notes: str | None = None
 
     # Database fields
-    metric_definition_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    metric_definition_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,
@@ -257,29 +257,29 @@ class FilingMetricIncidence:
     num_methodology_segments: int = 0
 
     # Primary segments
-    primary_definition_segment_id: Optional[int] = None
-    primary_methodology_segment_id: Optional[int] = None
+    primary_definition_segment_id: int | None = None
+    primary_methodology_segment_id: int | None = None
 
     # Quality scores (0-3)
-    quality_overall_score: Optional[int] = None
-    quality_definition_score: Optional[int] = None
-    quality_methodology_score: Optional[int] = None
-    quality_completeness_score: Optional[int] = None
-    quality_comparability_score: Optional[int] = None
+    quality_overall_score: int | None = None
+    quality_definition_score: int | None = None
+    quality_methodology_score: int | None = None
+    quality_completeness_score: int | None = None
+    quality_comparability_score: int | None = None
 
     # Notes and flags
-    alignment_flag: Optional[str] = None
-    quality_notes: Optional[str] = None
+    alignment_flag: str | None = None
+    quality_notes: str | None = None
     has_cohort_breakdown_flag: bool = False
     has_tenure_breakdown_flag: bool = False
     has_acquisition_cohort_flag: bool = False
 
     # Database fields
-    filing_metric_incidence_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    filing_metric_incidence_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return {
             "filing_id": self.filing_id,

@@ -13,24 +13,32 @@ Usage:
     python3 scripts/reextract_gold_standard.py --company "Samsara"
 """
 
+from __future__ import annotations
+
 import argparse
 import csv
 import json
 import logging
-import os
 import sys
-from pathlib import Path
 from collections import defaultdict
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.metric_classifier import MetricClassifier
-from src.extraction.value_extractor import ValueExtractor
-from src.llm.openai_client import OpenAIClient
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports available."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+if TYPE_CHECKING:
+    from src.llm.openai_client import OpenAIClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,9 +82,14 @@ def extract_from_filing(html_path: Path, llm_client: OpenAIClient) -> list:
         logger.warning(f"HTML file not found: {html_path}")
         return []
 
+    from src.extraction.html_segmenter import HTMLSegmenter
+    from src.extraction.metric_classifier import MetricClassifier
+    from src.extraction.value_extractor import ValueExtractor
+
     # Segment HTML
     segmenter = HTMLSegmenter()
-    segments = segmenter.segment_filing(filing_id=0, html_path=str(html_path))
+    # Use a positive dummy filing_id to pass validation
+    segments = segmenter.segment_filing(filing_id=1, html_path=str(html_path))
     logger.info(f"  Segmented into {len(segments)} segments")
 
     # Classify segments
@@ -128,13 +141,17 @@ def compare_extractions(original: list, new: list) -> dict:
 
 
 def main():
+    prepare_environment()
+
+    from src.llm.openai_client import OpenAIClient
+
     parser = argparse.ArgumentParser(description="Re-extract gold standard companies")
     parser.add_argument("--company", help="Filter to specific company (partial match)")
     parser.add_argument("--dry-run", action="store_true", help="Don't use LLM, just show what would be extracted")
     args = parser.parse_args()
 
     # Paths
-    base_dir = Path(__file__).parent.parent
+    base_dir = PROJECT_ROOT
     gold_dir = base_dir / "data" / "gold_standard"
 
     if not gold_dir.exists():
@@ -148,6 +165,11 @@ def main():
     if args.company:
         companies = [c for c in companies if args.company.lower() in c["company_name"].lower()]
         logger.info(f"Filtered to {len(companies)} companies matching '{args.company}'")
+    else:
+        # Default to the new companies we care about
+        targets = ["Slack Technologies", "Farfetch Ltd", "Samsara Vision Inc."]
+        companies = [c for c in companies if c["company_name"] in targets]
+        logger.info(f"Filtered to {len(companies)} target companies: {targets}")
 
     if not companies:
         print("No companies to process")
@@ -165,6 +187,10 @@ def main():
         print(f"\n{'='*60}")
         print(f"Processing: {company['company_name']}")
         print(f"{'='*60}")
+
+        if "local_path" not in company:
+            logger.warning(f"  Missing 'local_path' in metadata for {company['company_name']}, skipping.")
+            continue
 
         html_path = base_dir / company["local_path"]
 
@@ -185,13 +211,13 @@ def main():
         results.append(comparison)
 
         # Print summary
-        print(f"\n  Comparison:")
+        print("\n  Comparison:")
         print(f"    Original: {comparison['original_count']} extractions")
         print(f"    New:      {comparison['new_count']} extractions")
         print(f"    Change:   {comparison['new_count'] - comparison['original_count']:+d}")
 
         if comparison["by_metric"]:
-            print(f"\n  By metric:")
+            print("\n  By metric:")
             for metric_id, counts in sorted(comparison["by_metric"].items()):
                 orig = counts["original"]
                 new = counts["new"]

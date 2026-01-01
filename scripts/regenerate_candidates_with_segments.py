@@ -29,7 +29,6 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -106,7 +105,7 @@ def export_review_decisions(db: DatabaseAdapter, output_path: str) -> int:
     return len(decisions)
 
 
-def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = None) -> List[Dict]:
+def get_affected_filings(db: DatabaseAdapter, filing_ids: list[int] | None = None) -> list[dict]:
     """
     Get filings that have review candidates.
 
@@ -134,21 +133,27 @@ def get_affected_filings(db: DatabaseAdapter, filing_ids: Optional[List[int]] = 
         WHERE 1=1
     """
 
-    params: Dict = {}
+    params: dict = {}
     if filing_ids:
         query += " AND f.filing_id = ANY(%(filing_ids)s)"
         params["filing_ids"] = filing_ids
 
     query += """
         GROUP BY c.company_name, f.filing_id, f.company_id, f.accession_number
-        HAVING COUNT(DISTINCT rc.candidate_id) > 0
+    """
+
+    # Only filter by existing candidates if no specific IDs requested
+    if not filing_ids:
+        query += " HAVING COUNT(DISTINCT rc.candidate_id) > 0"
+
+    query += """
         ORDER BY COUNT(DISTINCT rd.decision_id) DESC, COUNT(DISTINCT rc.candidate_id) DESC
     """
 
     return db.query(query, params)
 
 
-def delete_candidates(db: DatabaseAdapter, filing_ids: Optional[List[int]] = None) -> Tuple[int, int]:
+def delete_candidates(db: DatabaseAdapter, filing_ids: list[int] | None = None) -> tuple[int, int]:
     """
     Delete review candidates (cascades to decisions).
 
@@ -228,7 +233,13 @@ def regenerate_candidates_for_filing(
     logger.info(f"  Found {len(segments)} segments")
 
     # Generate candidates with high recall config
-    generator = CandidateGenerator(config=get_high_recall_config())
+    # Use High Recall but with strict filtering enabled
+    config = get_high_recall_config()
+    config.filter_false_positives = True
+    config.filter_years = True  # Filter 1990-2030 unless currency
+    config.min_metric_value = 10 # Baseline
+
+    generator = CandidateGenerator(config=config)
     candidates = generator.generate_for_filing(
         filing_id=filing_id,
         company_id=company_id,
@@ -250,7 +261,7 @@ def regenerate_candidates_for_filing(
 def attempt_decision_recovery(
     db: DatabaseAdapter,
     decisions_export_path: str
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Attempt to restore review decisions by matching to new candidates.
 
@@ -297,28 +308,18 @@ def attempt_decision_recovery(
         })
 
         if matches:
-            # Recreate decision
+            # Recreate decision using insert_review_decision to ensure status update
             new_candidate_id = matches[0]["candidate_id"]
-            db.execute("""
-                INSERT INTO review_decisions (
-                    candidate_id, decision, assigned_metric_id,
-                    rejection_category, rejection_reason, reviewer_notes,
-                    reviewer_id, review_time_seconds
-                ) VALUES (
-                    %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
-                    %(rejection_category)s, %(rejection_reason)s, %(reviewer_notes)s,
-                    %(reviewer_id)s, %(review_time_seconds)s
-                )
-            """, {
-                "candidate_id": new_candidate_id,
-                "decision": decision["decision"],
-                "assigned_metric_id": decision["assigned_metric_id"],
-                "rejection_category": decision["rejection_category"],
-                "rejection_reason": decision["rejection_reason"],
-                "reviewer_notes": decision["reviewer_notes"],
-                "reviewer_id": decision["reviewer_id"],
-                "review_time_seconds": decision["review_time_seconds"],
-            })
+            db.insert_review_decision(
+                candidate_id=new_candidate_id,
+                decision=decision["decision"],
+                assigned_metric_id=decision["assigned_metric_id"],
+                rejection_category=decision["rejection_category"],
+                rejection_reason=decision["rejection_reason"],
+                reviewer_notes=decision["reviewer_notes"],
+                reviewer_id=decision["reviewer_id"],
+                review_time_seconds=decision["review_time_seconds"],
+            )
             recovered += 1
             logger.debug(f"Recovered decision {decision['decision_id']} -> new candidate {new_candidate_id}")
         else:
@@ -462,6 +463,8 @@ def main():
     print(f"✓ Generated {total_generated} new candidates")
 
     # Step 4: Attempt decision recovery
+    recovered = 0
+    lost = 0
     if not args.skip_recovery and num_exported > 0:
         print("\n" + "-" * 70)
         print("Step 4: Attempting to recover review decisions...")

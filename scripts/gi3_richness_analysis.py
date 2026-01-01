@@ -10,33 +10,44 @@ Usage:
       python3 scripts/gi3_richness_analysis.py
 """
 
+from __future__ import annotations
+
 import os
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
-load_dotenv()
 
-from src.infra.db import DatabaseAdapter
+PROJECT_ROOT = Path(__file__).parent.parent
 
+
+def prepare_environment() -> None:
+    """Load .env configuration and ensure src imports work."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+if TYPE_CHECKING:
+    from src.infra.db import DatabaseAdapter
 
 # Filing ID to Company Name mapping
+# Note: IDs 31/33 were incorrect (RLX Technology/Vodka Brands due to CIK mismatch)
+# IDs 39/40 are the real Snowflake/DocuSign filings downloaded via SEC API (2024-12)
 FILING_MAP = {
     29: "Farfetch Ltd",
-    31: "Snowflake",
     32: "Snap",
-    33: "DocuSign",
     34: "SUSHI GINZA ONODERA",
     35: "Slack Technologies",
+    39: "Snowflake Inc",      # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)
+    40: "DocuSign Inc",       # Real DocuSign S-1 (CIK 0001261333, 2018-09-11)
 }
 
-VALIDATION_FILING_IDS = (29, 31, 32, 33, 34, 35)
+VALIDATION_FILING_IDS = (29, 32, 34, 35, 39, 40)
 
 
 @dataclass
@@ -47,12 +58,12 @@ class SegmentData:
     company_name: str
     segment_id: int
     richness_score: float
-    classifier_confidence: Optional[float]
-    distinct_metric_count: Optional[int]
+    classifier_confidence: float | None
+    distinct_metric_count: int | None
     contains_temporal_trend: bool
     contains_cohort_breakdown: bool
     contains_definition_flag: bool
-    image_count: Optional[int]
+    image_count: int | None
 
 
 def fetch_segment_data(db: DatabaseAdapter) -> list[SegmentData]:
@@ -302,8 +313,8 @@ def print_theoretical_vs_observed(segments: list[SegmentData]) -> None:
     print("\n## Theoretical vs Observed Maximum\n")
     print("| Metric | Value |")
     print("|--------|-------|")
-    print(f"| Theoretical max (formula allows) | 10.0 |")
-    print(f"| Achievable max (without cohort) | 8.5 |")
+    print("| Theoretical max (formula allows) | 10.0 |")
+    print("| Achievable max (without cohort) | 8.5 |")
     print(f"| Observed max (in data) | {observed_max:.2f} |")
     print(f"| Gap from theoretical | {10.0 - observed_max:.2f} points |")
     print(f"| Gap from achievable | {achievable_max - observed_max:.2f} points |")
@@ -464,6 +475,10 @@ def main() -> None:
     """Main analysis function."""
     print("# GI-3: Richness Score Distribution Analysis\n")
 
+    prepare_environment()
+
+    from src.infra.db import DatabaseAdapter
+
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         print("ERROR: DATABASE_URL environment variable not set")
@@ -476,8 +491,8 @@ def main() -> None:
         print("ERROR: No segments found for validation filings")
         sys.exit(1)
 
-    print(f"## Executive Summary\n")
-    print(f"- **Analysis date**: 2025-12-17")
+    print("## Executive Summary\n")
+    print("- **Analysis date**: 2025-12-17")
     print(f"- **Total segments analyzed**: {len(segments)}")
     print(f"- **Filings analyzed**: {len(FILING_MAP)} (IDs: {', '.join(map(str, VALIDATION_FILING_IDS))})")
 

@@ -7,7 +7,7 @@ The production implementation uses the requests library.
 
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional, Protocol
+from typing import Protocol
 
 import requests
 
@@ -26,7 +26,7 @@ class HTTPResponse:
 
     status_code: int
     content: bytes
-    headers: Dict[str, str]
+    headers: dict[str, str]
     url: str
     elapsed_seconds: float
 
@@ -41,7 +41,7 @@ class HTTPClient(Protocol):
     automatically satisfies this interface without explicit inheritance.
     """
 
-    def get(self, url: str, *, headers: Optional[Dict[str, str]] = None, timeout: float = 10.0) -> HTTPResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
         """Perform GET request.
 
         Args:
@@ -76,7 +76,7 @@ class RequestsHTTPClient:
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": user_agent})
 
-    def get(self, url: str, *, headers: Optional[Dict[str, str]] = None, timeout: float = 10.0) -> HTTPResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
         """Perform GET request using requests library.
 
         Args:
@@ -117,5 +117,5 @@ class RequestsHTTPClient:
             raise
 
         except requests.RequestException as e:
-            # Convert other requests exceptions to IOError for network issues
-            raise IOError(f"Network error requesting {url}: {e}") from e
+            # Convert other requests exceptions to OSError for network issues
+            raise OSError(f"Network error requesting {url}: {e}") from e

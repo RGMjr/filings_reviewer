@@ -7,7 +7,7 @@ and fetching candidate data. All endpoints return JSON responses.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import psycopg
 from flask import Blueprint, g, jsonify, request, session
@@ -223,19 +223,31 @@ def create_decision():
         # Check for existing decision
         existing = db.get_decision_for_candidate(candidate_id)
         if existing:
-            logger.warning(
-                f"Candidate {candidate_id} already has decision {existing['decision_id']}"
-            )
-            return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Candidate already has a decision",
-                        "existing_decision_id": existing["decision_id"],
-                    }
-                ),
-                409,
-            )
+            # Allow overriding automated decisions (reviewer_id = 'hrv5_script')
+            if existing.get("reviewer_id") == "hrv5_script":
+                logger.info(
+                    f"Overriding automated decision {existing['decision_id']} for candidate {candidate_id}"
+                )
+                # Delete the automated decision so we can create a new human decision
+                db.execute(
+                    "DELETE FROM review_decisions WHERE decision_id = %(decision_id)s",
+                    {"decision_id": existing["decision_id"]},
+                )
+            else:
+                # Human decision already exists - don't allow override
+                logger.warning(
+                    f"Candidate {candidate_id} already has human decision {existing['decision_id']}"
+                )
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "message": "Candidate already has a decision",
+                            "existing_decision_id": existing["decision_id"],
+                        }
+                    ),
+                    409,
+                )
 
         # Begin transaction (implicit - will commit on success, rollback on exception)
         # Note: Metric ID validity will be checked by foreign key constraint
@@ -260,8 +272,15 @@ def create_decision():
         )
 
         # Get next candidate (outside transaction - read-only)
+        # Extract filter parameters from request to maintain navigation consistency
         filing_id = candidate["filing_id"]
-        next_cand = _get_next_candidate_info(db, filing_id, candidate_id)
+        filters = {
+            "status": data.get("filter_status", "all"),
+            "metric": data.get("filter_metric", "all"),
+            "confidence": data.get("filter_confidence", "all"),
+            "sort": data.get("filter_sort", "position"),
+        }
+        next_cand = _get_next_candidate_info(db, filing_id, candidate_id, filters)
 
         return (
             jsonify(
@@ -893,7 +912,7 @@ def get_filing_progress(filing_id: int):
 # =============================================================================
 
 
-def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_decision_request(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate decision request data.
 
@@ -906,7 +925,7 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
         Dict of field_name -> error message
         Empty dict if validation passes
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     # Validate required fields
     if error := _validate_candidate_id(data.get("candidate_id")):
@@ -932,7 +951,7 @@ def _validate_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_bulk_decision_request(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate bulk decision request data.
 
@@ -943,7 +962,7 @@ def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
         Dict of field_name -> error message
         Empty dict if validation passes
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     # Validate candidate_ids
     candidate_ids = data.get("candidate_ids")
@@ -984,7 +1003,7 @@ def _validate_bulk_decision_request(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_candidate_id(value: Any) -> Optional[str]:
+def _validate_candidate_id(value: Any) -> str | None:
     """
     Validate candidate_id field.
 
@@ -1001,7 +1020,7 @@ def _validate_candidate_id(value: Any) -> Optional[str]:
     return None
 
 
-def _validate_decision_type(value: Any) -> Optional[str]:
+def _validate_decision_type(value: Any) -> str | None:
     """
     Validate decision type field.
 
@@ -1019,8 +1038,8 @@ def _validate_decision_type(value: Any) -> Optional[str]:
 
 
 def _validate_decision_specific_fields(
-    decision: str, data: Dict[str, Any]
-) -> Dict[str, str]:
+    decision: str, data: dict[str, Any]
+) -> dict[str, str]:
     """
     Validate fields specific to the decision type.
 
@@ -1039,8 +1058,8 @@ def _validate_decision_specific_fields(
 
 
 def _validate_accept_or_reclassify_decision(
-    decision: str, data: Dict[str, Any]
-) -> Dict[str, str]:
+    decision: str, data: dict[str, Any]
+) -> dict[str, str]:
     """
     Validate fields required for accept or reclassify decisions.
 
@@ -1051,7 +1070,7 @@ def _validate_accept_or_reclassify_decision(
     Returns:
         Dict of field_name -> error message
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     if error := _validate_assigned_metric_id(
         data.get("assigned_metric_id"), decision
@@ -1061,7 +1080,7 @@ def _validate_accept_or_reclassify_decision(
     return errors
 
 
-def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
+def _validate_reject_decision(data: dict[str, Any]) -> dict[str, str]:
     """
     Validate fields required for reject decisions.
 
@@ -1071,7 +1090,7 @@ def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
     Returns:
         Dict of field_name -> error message
     """
-    errors: Dict[str, str] = {}
+    errors: dict[str, str] = {}
 
     if error := _validate_rejection_category(data.get("rejection_category")):
         errors["rejection_category"] = error
@@ -1084,7 +1103,7 @@ def _validate_reject_decision(data: Dict[str, Any]) -> Dict[str, str]:
     return errors
 
 
-def _validate_assigned_metric_id(value: Any, decision: str) -> Optional[str]:
+def _validate_assigned_metric_id(value: Any, decision: str) -> str | None:
     """
     Validate assigned_metric_id field.
 
@@ -1102,7 +1121,7 @@ def _validate_assigned_metric_id(value: Any, decision: str) -> Optional[str]:
     return None
 
 
-def _validate_rejection_category(value: Any) -> Optional[str]:
+def _validate_rejection_category(value: Any) -> str | None:
     """
     Validate rejection_category field.
 
@@ -1123,7 +1142,7 @@ def _validate_rejection_category(value: Any) -> Optional[str]:
 
 def _validate_text_field(
     value: Any, field_name: str, max_length: int
-) -> Optional[str]:
+) -> str | None:
     """
     Validate optional text field with maximum length.
 
@@ -1140,7 +1159,7 @@ def _validate_text_field(
     return None
 
 
-def _validate_review_time(value: Any) -> Optional[str]:
+def _validate_review_time(value: Any) -> str | None:
     """
     Validate review_time_seconds field.
 
@@ -1157,58 +1176,102 @@ def _validate_review_time(value: Any) -> Optional[str]:
 
 
 def _get_next_candidate_info(
-    db, filing_id: int, current_candidate_id: int
-) -> Optional[Dict[str, Any]]:
+    db,
+    filing_id: int,
+    current_candidate_id: int,
+    filters: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
     """
-    Get next pending candidate for the same filing.
+    Get next pending candidate for the same filing, respecting active filters.
 
-    Navigation order: First try to find the next sequential candidate
-    (candidate_id > current), then wrap around to lower IDs if none found.
+    Navigation order: Advances through the filtered, sorted candidate list.
+    When reaching the end, wraps around to the beginning of the filtered list.
 
     Args:
         db: Database adapter
         filing_id: Filing ID
         current_candidate_id: Current candidate ID
+        filters: Optional dict with filter/sort settings:
+            - status: 'pending', 'reviewed', 'all' (default: navigates to pending only)
+            - metric: metric_id or 'all'
+            - confidence: 'high', 'medium', 'low', 'all'
+            - sort: 'position', 'confidence_asc', 'confidence_desc', 'value_asc', 'value_desc'
 
     Returns:
-        Dict with candidate_id and url, or None if no more pending
+        Dict with candidate_id and url (with filter params preserved), or None if no more candidates
     """
-    # First: try to find next pending candidate with higher ID (sequential order)
-    sql_higher = """
-        SELECT candidate_id
-        FROM review_candidates
-        WHERE filing_id = %(filing_id)s
-          AND review_status = 'pending'
-          AND candidate_id > %(current_candidate_id)s
-        ORDER BY candidate_id ASC
-        LIMIT 1
-    """
+    filters = filters or {}
 
-    result = db.query(
-        sql_higher,
-        {
-            "filing_id": filing_id,
-            "current_candidate_id": current_candidate_id,
-        },
+    # Extract filter parameters
+    filter_status = filters.get("status", "all")
+    filter_metric = filters.get("metric", "all")
+    filter_confidence = filters.get("confidence", "all")
+    sort_by = filters.get("sort", "position")
+
+    # Convert to database query parameters
+    db_status = filter_status if filter_status in ("pending", "reviewed", "skipped", "in_progress") else None
+    db_metric_id = filter_metric if filter_metric != "all" else None
+    db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
+    db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
+
+    # When navigating "next", we always look for pending candidates (unless status filter is set)
+    # This ensures we skip reviewed candidates during normal review flow
+    if db_status is None:
+        db_status = "pending"
+
+    # Get filtered, sorted candidates
+    candidates = db.get_review_candidates_with_decisions(
+        filing_id=filing_id,
+        status=db_status,
+        metric_id=db_metric_id,
+        confidence_level=db_confidence,
+        sort_by=db_sort_by,
+        limit=None,
     )
 
-    # If no higher IDs pending, wrap around to find any pending candidate
-    if not result:
-        sql_any = """
-            SELECT candidate_id
-            FROM review_candidates
-            WHERE filing_id = %(filing_id)s
-              AND review_status = 'pending'
-            ORDER BY candidate_id ASC
-            LIMIT 1
-        """
-        result = db.query(sql_any, {"filing_id": filing_id})
-
-    if not result:
+    if not candidates:
         return None
 
-    next_candidate_id = result[0]["candidate_id"]
+    # Find current candidate index in the sorted list
+    current_index = None
+    for i, c in enumerate(candidates):
+        if c["candidate_id"] == current_candidate_id:
+            current_index = i
+            break
+
+    # If current candidate is in the list, get the next one
+    if current_index is not None:
+        # Next candidate is the one after current in sorted order
+        next_index = current_index + 1
+        if next_index < len(candidates):
+            next_candidate = candidates[next_index]
+        else:
+            # Wrap around to beginning
+            next_candidate = candidates[0]
+    else:
+        # Current candidate not in filtered list (e.g., just reviewed it)
+        # Return the first candidate in the filtered list
+        next_candidate = candidates[0]
+
+    # Don't return the same candidate we're on
+    if next_candidate["candidate_id"] == current_candidate_id:
+        # Only one candidate in filtered list, and it's the current one
+        return None
+
+    next_candidate_id = next_candidate["candidate_id"]
+
+    # Build URL with filter parameters preserved
+    url = f"/review/{filing_id}?candidate_id={next_candidate_id}"
+    if filter_status != "all":
+        url += f"&status={filter_status}"
+    if filter_metric != "all":
+        url += f"&metric={filter_metric}"
+    if filter_confidence != "all":
+        url += f"&confidence={filter_confidence}"
+    if sort_by != "position":
+        url += f"&sort={sort_by}"
+
     return {
         "candidate_id": next_candidate_id,
-        "url": f"/review/{filing_id}/candidate/{next_candidate_id}",
+        "url": url,
     }

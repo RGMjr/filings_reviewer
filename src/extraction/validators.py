@@ -7,7 +7,6 @@ Provides validation functions for inputs and outputs of extraction modules
 
 import os
 from pathlib import Path
-from typing import List
 
 from .exceptions import ValidationError
 from .models import SourceSegment
@@ -167,7 +166,7 @@ class ClassificationValidator:
             raise ValidationError(f"{field_name} must be in [0, 1] range, got {score}", field_name=field_name, invalid_value=score)
 
     @staticmethod
-    def validate_metric_ids(metric_ids: List[str]) -> None:
+    def validate_metric_ids(metric_ids: list[str]) -> None:
         """Validate metric ID list.
 
         Args:

@@ -5,9 +5,9 @@ Tests SPAC detection, first-time issuer classification, and offering type classi
 """
 
 from src.universe.classifiers import (
-    classify_spac,
     classify_first_time_issuer,
     classify_offering_type,
+    classify_spac,
     detect_post_combination,
     is_in_scope_phase1,
 )

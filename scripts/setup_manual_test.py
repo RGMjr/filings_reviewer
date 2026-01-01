@@ -12,19 +12,18 @@ Usage:
     python3 scripts/setup_manual_test.py
 """
 
+import logging
 import os
 import sys
-import logging
 from pathlib import Path
-from typing import Optional, Dict, List
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.extraction.html_segmenter import HTMLSegmenter
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.models import SourceSegment
+from src.infra.sec_client import SECClient
 from src.review.helpers import generate_candidates_for_filing
 
 # Configure logging
@@ -119,21 +118,25 @@ class ManualTestSetup:
         """Find and process real filing files from data/filings directory."""
         logger.info("\n--- Finding real filing files ---")
 
-        # Priority companies to test with (well-known IPOs)
-        PRIORITY_CIKS = {
-            "0001740915": "Farfetch",
-            "0001764925": "Slack",
-            "0001828365": "Snowflake",
-            "0001644378": "Snap",
-            "0001620053": "DocuSign",
-        }
+        # Priority CIKs to look for (no hardcoded names - will fetch from SEC)
+        # Note: Company names are fetched from SEC EDGAR to ensure accuracy
+        PRIORITY_CIKS = [
+            "0001740915",  # Farfetch
+            "0001764925",  # Slack
+            "0001644378",  # Snap
+            "0001640147",  # Snowflake (correct CIK)
+            "0001261333",  # DocuSign (correct CIK)
+        ]
+
+        # Initialize SEC client for company name lookups
+        sec_client = SECClient()
 
         # Look for priority company filings first
         filing_files = []
-        for cik, name in PRIORITY_CIKS.items():
+        for cik in PRIORITY_CIKS:
             cik_files = list(self.data_dir.glob(f"{cik}/*/primary.htm"))
             if cik_files:
-                logger.info(f"✓ Found {len(cik_files)} filing(s) for {name} (CIK: {cik})")
+                logger.info(f"✓ Found {len(cik_files)} filing(s) for CIK: {cik}")
                 filing_files.extend(cik_files[:1])  # Take first filing per company
 
         # If we don't have enough priority filings, find any primary.htm files
@@ -155,10 +158,9 @@ class ManualTestSetup:
             # Extract CIK and accession from path
             # Path format: data/filings/0001234567/000123456789012345/primary.htm
             cik = filing_path.parent.parent.name
-            accession = filing_path.parent.name.replace("-", "")
 
-            # Get company name if it's a priority company
-            company_name = PRIORITY_CIKS.get(cik, f"Company {cik}")
+            # Get company name from SEC EDGAR API (not hardcoded)
+            company_name = self._get_company_name_from_sec(sec_client, cik)
 
             logger.info(f"\nProcessing: {company_name} (CIK: {cik})")
 
@@ -171,7 +173,23 @@ class ManualTestSetup:
             # Process the filing
             self._process_filing(company_id, filing_path)
 
-    def _ensure_company_from_cik(self, cik: str, company_name: Optional[str] = None) -> Optional[int]:
+    def _get_company_name_from_sec(self, sec_client: SECClient, cik: str) -> str:
+        """Fetch company name from SEC EDGAR API.
+
+        This ensures we always use the official company name from SEC,
+        preventing mismatches between CIK and company name.
+        """
+        try:
+            company_info = sec_client.get_company_info(cik)
+            if company_info and company_info.get("name"):
+                return company_info["name"]
+        except Exception as e:
+            logger.warning(f"Could not fetch company name from SEC for CIK {cik}: {e}")
+
+        # Fallback to generic name if SEC lookup fails
+        return f"Company {cik}"
+
+    def _ensure_company_from_cik(self, cik: str, company_name: str | None = None) -> int | None:
         """Ensure company exists, creating minimal record if needed."""
         # Check if exists
         result = self.db.query(
@@ -226,13 +244,12 @@ class ManualTestSetup:
 
         for row in result:
             filing_id = row["filing_id"]
-            company_id = row["company_id"]
             company_name = row["company_name"]
 
             logger.info(f"Processing filing {filing_id} ({company_name})...")
             self._generate_candidates(filing_id)
 
-    def _ensure_company(self, config: Dict) -> Optional[int]:
+    def _ensure_company(self, config: dict) -> int | None:
         """Ensure company exists in database."""
         cik = config["cik"]
 
@@ -262,7 +279,7 @@ class ManualTestSetup:
 
         return None
 
-    def _find_filing_files(self, cik: str) -> List[Path]:
+    def _find_filing_files(self, cik: str) -> list[Path]:
         """Find HTML filing files for a CIK."""
         cik_dir = self.data_dir / cik
 
@@ -304,7 +321,7 @@ class ManualTestSetup:
         # Step 4: Generate review candidates
         self._generate_candidates(filing_id)
 
-    def _ensure_filing(self, company_id: int, accession: str, filing_path: Path) -> Optional[int]:
+    def _ensure_filing(self, company_id: int, accession: str, filing_path: Path) -> int | None:
         """Ensure filing exists in database."""
         # Check if exists
         result = self.db.query(
@@ -452,14 +469,14 @@ class ManualTestSetup:
 
         if result:
             row = result[0]
-            logger.info(f"\nDatabase totals:")
+            logger.info("\nDatabase totals:")
             logger.info(f"  Companies:  {row['companies']}")
             logger.info(f"  Filings:    {row['filings']}")
             logger.info(f"  Segments:   {row['segments']}")
             logger.info(f"  Candidates: {row['candidates']}")
             logger.info(f"  Decisions:  {row['decisions']}")
 
-        logger.info(f"\nThis session:")
+        logger.info("\nThis session:")
         logger.info(f"  Companies created:     {self.stats['companies_created']}")
         logger.info(f"  Filings processed:     {self.stats['filings_processed']}")
         logger.info(f"  Segments created:      {self.stats['segments_created']}")
@@ -482,7 +499,7 @@ class ManualTestSetup:
         """)
 
         if result:
-            logger.info(f"\nFilings ready for review:")
+            logger.info("\nFilings ready for review:")
             for row in result:
                 logger.info(f"  Filing {row['filing_id']} ({row['company_name']}): {row['candidate_count']} candidates, {row['decision_count']} decisions")
 

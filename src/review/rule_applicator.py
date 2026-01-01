@@ -27,8 +27,8 @@ Example:
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any
 
 from src.infra.db import DatabaseAdapter
 from src.review.models import CandidateFeatures, LearnedPattern, ReviewCandidate
@@ -71,9 +71,9 @@ class RuleApplicator:
 
         self.db = db_adapter
         self.reload_interval = reload_interval_seconds
-        self._patterns: List[LearnedPattern] = []
-        self._patterns_by_metric: Dict[Optional[str], List[LearnedPattern]] = {}
-        self._last_reload: Optional[datetime] = None
+        self._patterns: list[LearnedPattern] = []
+        self._patterns_by_metric: dict[str | None, list[LearnedPattern]] = {}
+        self._last_reload: datetime | None = None
         self._reload_patterns()
 
     def _reload_patterns(self) -> None:
@@ -119,8 +119,8 @@ class RuleApplicator:
             self._reload_patterns()
 
     def _build_index(
-        self, patterns: List[LearnedPattern]
-    ) -> Dict[Optional[str], List[LearnedPattern]]:
+        self, patterns: list[LearnedPattern]
+    ) -> dict[str | None, list[LearnedPattern]]:
         """
         Build an index of patterns by metric_id for O(1) lookup.
 
@@ -139,7 +139,7 @@ class RuleApplicator:
             >>> arr_patterns = index.get("annual_recurring_revenue", [])
             >>> global_patterns = index.get(None, [])
         """
-        index: Dict[Optional[str], List[LearnedPattern]] = {}
+        index: dict[str | None, list[LearnedPattern]] = {}
         for pattern in patterns:
             # Only index reject_rule patterns (used in should_filter)
             if pattern.pattern_type == "reject_rule":
@@ -151,7 +151,7 @@ class RuleApplicator:
 
     def should_filter(
         self, candidate: ReviewCandidate, features: CandidateFeatures
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Check if candidate should be filtered based on learned reject patterns.
 
@@ -197,7 +197,7 @@ class RuleApplicator:
 
         return False, None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Return statistics about loaded patterns.
 

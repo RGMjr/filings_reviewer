@@ -29,7 +29,6 @@ Total: 86 tests across 10 test classes
 Runtime: ~1.3-2.1 seconds
 """
 
-import math
 import time
 from decimal import Decimal
 
@@ -51,7 +50,6 @@ from src.review.feature_extractor import (
     determine_number_format,
 )
 from src.review.models import CandidateFeatures
-
 
 # =============================================================================
 # TestFeatureExtractor - Basic feature computation
@@ -1507,9 +1505,9 @@ class TestComputeAllDerivedFeatures:
             number_format="integer",
             value_magnitude=4.5,
         )
-        
+
         derived = compute_all_derived_features(features)
-        
+
         # Check all keys present
         assert "keyword_distance_bin" in derived
         assert "value_magnitude_bin" in derived
@@ -1538,9 +1536,9 @@ class TestComputeAllDerivedFeatures:
             number_format="integer",
             value_magnitude=None,
         )
-        
+
         derived = compute_all_derived_features(features)
-        
+
         assert derived["value_magnitude_bin"] == "unknown"
         assert derived["distance_magnitude_interaction"] is None
 
@@ -1556,9 +1554,9 @@ class TestComputeAllDerivedFeatures:
             number_format="integer",
             value_magnitude=3.5,
         )
-        
+
         derived = compute_all_derived_features(features)
-        
+
         assert derived["keyword_distance_bin"] == "far"
         assert derived["weak_signal"] is True
         assert derived["strong_signal"] is False
@@ -1576,9 +1574,9 @@ class TestComputeAllDerivedFeatures:
             number_format="integer",
             value_magnitude=6.0,
         )
-        
+
         derived = compute_all_derived_features(features)
-        
+
         assert derived["keyword_distance_bin"] == "very_far"
         assert derived["value_magnitude_bin"] == "very_large"
         assert derived["distance_magnitude_interaction"] == 900.0

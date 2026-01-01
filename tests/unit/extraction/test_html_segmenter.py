@@ -529,7 +529,6 @@ def test_encoding_both_fail_raises_error():
     """Test that EncodingError is raised when both UTF-8 and latin-1 fail."""
     # This test is difficult to create because latin-1 accepts all byte values (0-255)
     # So we'll test raise_on_error behavior instead with a corrupted file
-    from src.extraction.exceptions import EncodingError
 
     # Create binary file that will fail parsing
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".html", delete=False) as f:
@@ -775,7 +774,7 @@ class TestSEG7GracefulDegradation:
             pytest.skip("Test fixture not found: very_short_sample.html")
 
         segmenter = HTMLSegmenter(min_length=5)  # Lower min_length for short file
-        segments = segmenter.segment_filing(filing_id=1, html_path=str(html_path))
+        segmenter.segment_filing(filing_id=1, html_path=str(html_path))
 
         # May or may not have segments depending on min_length filtering
         # But should not raise any errors
@@ -2916,7 +2915,6 @@ class TestParallelSentenceDetection:
         try:
             # Patch the executor map method
             from concurrent.futures import ThreadPoolExecutor
-            original_map = ThreadPoolExecutor.map
             monkeypatch.setattr(ThreadPoolExecutor, "map", mock_executor_map)
 
             # Should fallback to sequential and complete successfully
@@ -3187,7 +3185,7 @@ class TestCharacterOffsetTracking:
         html_path = temp_html_file(html)
 
         # Read the HTML content
-        with open(html_path, 'r') as f:
+        with open(html_path) as f:
             html_content = f.read()
 
         segmenter = HTMLSegmenter()
@@ -4658,7 +4656,8 @@ class TestSEG9CachedDOMParsing:
 
     def test_split_with_cached_element_same_results(self, temp_html_file):
         """Splitting with cached element produces identical results to parsing raw_html."""
-        from bs4 import BeautifulSoup, Tag
+        from bs4 import BeautifulSoup
+
         from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
@@ -4700,9 +4699,10 @@ class TestSEG9CachedDOMParsing:
 
     def test_cached_element_avoids_parsing(self, temp_html_file, monkeypatch):
         """When cached element provided, BeautifulSoup is not called for main parsing."""
-        from bs4 import BeautifulSoup, Tag
-        from src.extraction.models import SourceSegment
+        from bs4 import BeautifulSoup
+
         import src.extraction.html_segmenter as segmenter_module
+        from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
 
@@ -4966,6 +4966,7 @@ class TestSEG9CachedDOMParsing:
     def test_nested_tables_only_top_level_extracted(self, temp_html_file):
         """Only top-level tables are extracted, nested tables within tables are skipped."""
         from bs4 import BeautifulSoup
+
         from src.extraction.models import SourceSegment
 
         segmenter = HTMLSegmenter()
@@ -5025,3 +5026,535 @@ class TestSEG9CachedDOMParsing:
 
         assert len(result) == 1
         assert result[0] is segment
+
+
+# ============================================================================
+# EI-5: Cell Boundary Markers (Table Structure Preservation)
+# ============================================================================
+
+
+class TestTableCellMarkers:
+    """EI-5: Cell boundary markers to preserve table structure."""
+
+    # ------------------------------------------------------------------------
+    # Cell Marker Insertion Tests
+    # ------------------------------------------------------------------------
+
+    def test_single_row_table_has_cell_markers(self):
+        """Single row table should have [CELL] markers between cells."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>A</td><td>B</td><td>C</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        assert result == "A [CELL] B [CELL] C"
+        assert result.count("[CELL]") == 2
+
+    def test_multi_row_table_has_row_markers(self):
+        """Multi-row table should have [ROW] markers between rows."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>A</td><td>B</td></tr>
+            <tr><td>C</td><td>D</td></tr>
+            <tr><td>E</td><td>F</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Should have [CELL] markers within rows and [ROW] markers between rows
+        assert "[CELL]" in result
+        assert "[ROW]" in result
+        assert result.count("[ROW]") == 2
+        # Each row has 1 [CELL] marker (between 2 cells)
+        assert result.count("[CELL]") == 3
+        assert result == "A [CELL] B [ROW] C [CELL] D [ROW] E [CELL] F"
+
+    def test_mixed_th_td_cells_all_marked(self):
+        """Both <th> and <td> cells should get cell markers."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>DAU</td><td>1500</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        assert result == "Metric [CELL] Value [ROW] DAU [CELL] 1500"
+        assert "Metric" in result and "DAU" in result
+
+    def test_empty_cells_skipped(self):
+        """Empty cells should not create empty markers."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>A</td><td></td><td>B</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Empty cell skipped - only one [CELL] marker between A and B
+        assert result == "A [CELL] B"
+        assert result.count("[CELL]") == 1
+
+    def test_whitespace_only_cells_skipped(self):
+        """Cells with only whitespace should be skipped."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>A</td><td>   </td><td>B</td><td>
+
+            </td><td>C</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Whitespace-only cells skipped - only markers between A, B, C
+        assert result == "A [CELL] B [CELL] C"
+        assert result.count("[CELL]") == 2
+
+    def test_cell_text_normalized_before_marking(self):
+        """Cell text should be normalized (whitespace collapsed) before marking."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>  Multi
+            line
+            text  </td><td>Normal</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Internal whitespace normalized to single spaces
+        assert result == "Multi line text [CELL] Normal"
+
+    def test_numeric_values_separated_by_markers(self):
+        """Adjacent numeric values should be separated by cell markers."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>Retention Rate</td><td>171%</td><td>152%</td><td>143%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        assert result == "Retention Rate [CELL] 171% [CELL] 152% [CELL] 143%"
+        # Verify all numeric values are present and separated
+        assert "171%" in result
+        assert "152%" in result
+        assert "143%" in result
+
+    def test_no_markers_at_string_boundaries(self):
+        """No leading or trailing markers at start/end of text."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>First</td><td>Last</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # No markers at boundaries
+        assert not result.startswith("[CELL]")
+        assert not result.startswith("[ROW]")
+        assert not result.endswith("[CELL]")
+        assert not result.endswith("[ROW]")
+        assert result == "First [CELL] Last"
+
+    def test_nested_table_outer_only(self):
+        """Nested tables should be treated as cell content (markers on outer only)."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr>
+                <td>Outer A</td>
+                <td>
+                    <table>
+                        <tr><td>Inner 1</td><td>Inner 2</td></tr>
+                    </table>
+                </td>
+                <td>Outer B</td>
+            </tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Outer table should have markers for its cells
+        assert "Outer A" in result
+        assert "Outer B" in result
+        # Nested table content appears as part of middle cell
+        assert "Inner 1" in result
+        assert "Inner 2" in result
+
+    # ------------------------------------------------------------------------
+    # Position Mapping Compatibility Tests
+    # ------------------------------------------------------------------------
+
+    def test_table_row_parser_works_with_markers(self):
+        """TableRowParser should correctly parse text with markers."""
+        from bs4 import BeautifulSoup
+
+        from src.review.table_structure import TableRowParser
+
+        html = """
+        <table>
+            <tr><th>Metric</th><th>2023</th><th>2022</th></tr>
+            <tr><td>Retention Rate</td><td>171%</td><td>152%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        text = segmenter._extract_table_text_with_markers(table)
+
+        # TableRowParser works with original HTML and marker text
+        # It should still be able to parse the structure
+        TableRowParser(str(table), text)
+
+        # Verify text has markers
+        assert "[CELL]" in text
+        assert "[ROW]" in text
+        assert "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == text
+
+    def test_number_parsing_finds_values_with_markers(self):
+        """Number parsing regex should find values despite markers."""
+        import re
+
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>171%</td><td>152%</td><td>143%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Standard number pattern should still find all numbers
+        numbers = re.findall(r'\d+', result)
+        assert len(numbers) == 3
+        assert '171' in numbers
+        assert '152' in numbers
+        assert '143' in numbers
+
+    def test_keyword_positions_correct_with_markers(self):
+        """Keyword positions should account for marker characters."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>Revenue</td><td>$10M</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Find position of "Revenue" and "$10M"
+        revenue_pos = result.index("Revenue")
+        value_pos = result.index("$10M")
+
+        # Marker adds 8 characters: " [CELL] "
+        # So $10M should be at Revenue_end + 8
+        assert revenue_pos == 0
+        expected_value_pos = len("Revenue") + len(" [CELL] ")
+        assert value_pos == expected_value_pos
+
+    def test_value_positions_correct_with_markers(self):
+        """Value positions should be calculable with marker offsets."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>First</td><td>Second</td><td>Third</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Result is: "First [CELL] Second [CELL] Third"
+        # " [CELL] " is 8 characters, "First [CELL] " is 13 chars total
+        assert result == "First [CELL] Second [CELL] Third"
+        assert result.index("First") == 0
+        assert result.index("Second") == 13  # After "First [CELL] "
+        assert result.index("Third") == 27  # After "First [CELL] Second [CELL] "
+
+    def test_are_in_same_row_works_with_markers(self):
+        """TableRowParser.are_in_same_row should work with marker text."""
+        from bs4 import BeautifulSoup
+
+        from src.review.table_structure import TableRowParser
+
+        html = """
+        <table>
+            <tr><td>Row1A</td><td>Row1B</td></tr>
+            <tr><td>Row2A</td><td>Row2B</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        text = segmenter._extract_table_text_with_markers(table)
+
+        # Verify text has markers
+        assert text == "Row1A [CELL] Row1B [ROW] Row2A [CELL] Row2B"
+        assert "[CELL]" in text
+        assert "[ROW]" in text
+
+        # TableRowParser uses the HTML structure, so it should still work
+        # The marker text doesn't break parsing - markers are just part of content
+        parser = TableRowParser(str(table), text)
+
+        # Verify parser created rows
+        assert parser.rows is not None
+
+    # ------------------------------------------------------------------------
+    # Edge Cases and Fallbacks
+    # ------------------------------------------------------------------------
+
+    def test_empty_table_returns_empty_string(self):
+        """Table with no rows should return empty string."""
+        from bs4 import BeautifulSoup
+
+        html = "<table></table>"
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        assert result == ""
+
+    def test_table_with_empty_rows_skipped(self):
+        """Rows with no cells should be skipped."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>A</td></tr>
+            <tr></tr>
+            <tr><td>B</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Empty row skipped
+        assert result == "A [ROW] B"
+
+    def test_non_table_element_fallback_to_normalize(self):
+        """Non-table elements should fall back to standard normalization."""
+        from bs4 import BeautifulSoup
+
+        html = "<p>This is a paragraph, not a table.</p>"
+        soup = BeautifulSoup(html, 'html.parser')
+        para = soup.find('p')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(para)
+
+        # Should use standard normalization (no markers)
+        assert result == "This is a paragraph, not a table."
+        assert "[CELL]" not in result
+        assert "[ROW]" not in result
+
+    def test_table_with_only_headers(self):
+        """Table with only header row should work correctly."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><th>Header 1</th><th>Header 2</th><th>Header 3</th></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        assert result == "Header 1 [CELL] Header 2 [CELL] Header 3"
+
+    def test_very_large_table_handles_markers(self):
+        """Large table (100+ cells) should handle markers correctly."""
+        from bs4 import BeautifulSoup
+
+        # Create a 10x10 table
+        rows = []
+        for i in range(10):
+            cells = "".join([f"<td>Cell{i}-{j}</td>" for j in range(10)])
+            rows.append(f"<tr>{cells}</tr>")
+
+        html = f"<table>{''.join(rows)}</table>"
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Should have 9 [CELL] markers per row (10 cells per row)
+        # Should have 9 [ROW] markers (10 rows)
+        assert result.count("[CELL]") == 10 * 9  # 90
+        assert result.count("[ROW]") == 9
+        # Check some sample cells
+        assert "Cell0-0" in result
+        assert "Cell9-9" in result
+
+    # ------------------------------------------------------------------------
+    # Integration with _extract_segment
+    # ------------------------------------------------------------------------
+
+    def test_extract_segment_uses_markers_for_tables(self, temp_html_file):
+        """_extract_segment should use marker extraction for table elements."""
+        # Create a table with enough content to pass min_length filter
+        html = """
+        <table>
+            <tr><th>Metric Name</th><th>Value 2023</th><th>Value 2022</th><th>Value 2021</th></tr>
+            <tr><td>Monthly Recurring Revenue</td><td>$100M</td><td>$85M</td><td>$70M</td></tr>
+            <tr><td>Annual Run Rate</td><td>$1.2B</td><td>$1.0B</td><td>$840M</td></tr>
+        </table>
+        """
+        html_path = temp_html_file(f"<html><body>{html}</body></html>")
+
+        segmenter = HTMLSegmenter()
+        segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+        # Find the table segment
+        table_segments = [s for s in segments if s.segment_type == "table"]
+        assert len(table_segments) > 0, f"Expected table segments, got segment types: {[s.segment_type for s in segments]}"
+
+        table_segment = table_segments[0]
+        # Should have markers in raw_text
+        assert "[CELL]" in table_segment.raw_text, f"Expected markers in: {table_segment.raw_text}"
+        assert "[ROW]" in table_segment.raw_text, f"Expected row markers in: {table_segment.raw_text}"
+
+    def test_extract_segment_no_markers_for_paragraphs(self, temp_html_file):
+        """_extract_segment should not use markers for non-table elements."""
+        # Make paragraph long enough to pass min_length filter (default is often 50 chars)
+        html = """
+        <p>This is a paragraph with some text about our company metrics
+        and business performance. We have many daily active users who engage
+        with our platform regularly, demonstrating strong product-market fit.</p>
+        """
+        html_path = temp_html_file(f"<html><body>{html}</body></html>")
+
+        segmenter = HTMLSegmenter()
+        segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+        # Find paragraph segments
+        para_segments = [s for s in segments if s.segment_type == "paragraph"]
+        assert len(para_segments) > 0, f"Expected paragraph segments, got segment types: {[s.segment_type for s in segments]}"
+
+        para_segment = para_segments[0]
+        # Should NOT have markers
+        assert "[CELL]" not in para_segment.raw_text
+        assert "[ROW]" not in para_segment.raw_text
+
+    # ------------------------------------------------------------------------
+    # Special Characters and Edge Cases
+    # ------------------------------------------------------------------------
+
+    def test_table_with_special_characters_in_cells(self):
+        """Table cells with special characters should be handled correctly."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td>Metric (with parens)</td><td>Value [with brackets]</td><td>100%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Special characters preserved, markers added
+        assert "Metric (with parens)" in result
+        assert "Value [with brackets]" in result
+        assert "[CELL]" in result
+
+    def test_table_with_colspan_rowspan(self):
+        """Tables with colspan/rowspan attributes should still extract text correctly."""
+        from bs4 import BeautifulSoup
+
+        html = """
+        <table>
+            <tr><td colspan="2">Merged Cell</td><td>Normal</td></tr>
+            <tr><td>A</td><td>B</td><td>C</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        table = soup.find('table')
+
+        segmenter = HTMLSegmenter()
+        result = segmenter._extract_table_text_with_markers(table)
+
+        # Text should be extracted (colspan/rowspan are layout attributes)
+        assert "Merged Cell" in result
+        assert "Normal" in result
+        assert "A" in result
+        assert "[CELL]" in result
+        assert "[ROW]" in result

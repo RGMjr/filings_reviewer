@@ -14,15 +14,14 @@ Test Strategy:
 - Verify database schema compliance (direction constraint)
 """
 
-import pytest
 from decimal import Decimal
-from typing import List
 
+import pytest
+
+from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
-from src.review.models import ReviewCandidate, SegmentDict
-from src.infra.db import DatabaseAdapter
-
+from src.review.models import SegmentDict
 
 # =============================================================================
 # Fixtures
@@ -69,7 +68,7 @@ class TestL3DirectionDetection:
     def test_direction_before_persisted_to_database(self, db, generator):
         """Direction 'before' is persisted to database correctly."""
         # Arrange: Text with keyword before number
-        text = "Our gross margin was 52% for the year."
+        text = "Our churn rate was 5% for the year."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -91,23 +90,23 @@ class TestL3DirectionDetection:
         # Assert: Should have at least one candidate
         assert len(candidates) > 0, "Expected at least one candidate"
 
-        # Find the gross margin candidate by metric_id
-        margin_candidates = [
+        # Find the churn rate candidate by metric_id
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.52") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0, \
-            f"Expected gross margin candidate, got: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
+        assert len(churn_candidates) > 0, \
+            f"Expected churn rate candidate, got: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
 
         # Verify direction is 'before'
-        candidate = margin_candidates[0]
+        candidate = churn_candidates[0]
         assert candidate.keyword_position == "before", \
             f"Expected 'before', got '{candidate.keyword_position}'"
 
     def test_direction_after_persisted_to_database(self, db, generator):
         """Direction 'after' is persisted to database correctly."""
         # Arrange: Text with keyword after number
-        text = "We achieved 52% gross margin improvement."
+        text = "We achieved 5% churn rate improvement."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -129,15 +128,15 @@ class TestL3DirectionDetection:
         # Assert: Should have at least one candidate
         assert len(candidates) > 0
 
-        # Find the gross margin candidate
-        margin_candidates = [
+        # Find the churn rate candidate
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.52") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
+        assert len(churn_candidates) > 0
 
         # Verify direction is 'after'
-        candidate = margin_candidates[0]
+        candidate = churn_candidates[0]
         assert candidate.keyword_position == "after", \
             f"Expected 'after', got '{candidate.keyword_position}'"
 
@@ -176,7 +175,7 @@ class TestL3DirectionDetection:
     def test_multiple_numbers_correct_directions(self, db, generator):
         """Each number gets correct direction for its nearest keywords."""
         # Arrange: Text with two numbers and their keywords
-        text = "We had 50000 active customers and gross margin of 52%"
+        text = "We had 50000 active customers and churn rate of 5%"
         #              ^num1  ^kw1 (after)            ^kw2 (before) ^num2
         segment: SegmentDict = {
             "segment_id": 1,
@@ -208,14 +207,14 @@ class TestL3DirectionDetection:
             # "active customers" is AFTER 50000
             assert customer_candidates[0].keyword_position == "after"
 
-        # Find margin candidate (52%)
-        margin_candidates = [
+        # Find churn rate candidate (5%)
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.52") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        if margin_candidates:
-            # "gross margin" is BEFORE 52%
-            assert margin_candidates[0].keyword_position == "before"
+        if churn_candidates:
+            # "churn rate" is BEFORE 5%
+            assert churn_candidates[0].keyword_position == "before"
 
 
 # =============================================================================
@@ -228,8 +227,8 @@ class TestL4ContextDependentMultipliers:
 
     def test_parenthetical_prefers_post_value(self, db, generator):
         """Parenthetical text prefers post-value keywords."""
-        # Arrange: "33% (gross margin)" - metric in parentheses after value
-        text = "We achieved 33% (gross margin) improvement in Q1."
+        # Arrange: "5% (churn rate)" - metric in parentheses after value
+        text = "We achieved 5% (churn rate) improvement in Q1."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -248,18 +247,18 @@ class TestL4ContextDependentMultipliers:
             db=db,
         )
 
-        # Assert: Should find "gross margin" (post-value, in parentheses)
-        margin_candidates = [
+        # Assert: Should find "churn rate" (post-value, in parentheses)
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.33") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
-        assert margin_candidates[0].keyword_position == "after"
+        assert len(churn_candidates) > 0
+        assert churn_candidates[0].keyword_position == "after"
 
     def test_bullet_point_prefers_pre_value(self, db, generator):
         """Bullet points prefer pre-value keywords."""
-        # Arrange: "• Gross margin was 33%" - metric before value in bullet
-        text = "• Gross margin was 33% improvement"
+        # Arrange: "• Churn rate was 5%" - metric before value in bullet
+        text = "• Churn rate was 5% improvement"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -278,19 +277,19 @@ class TestL4ContextDependentMultipliers:
             db=db,
         )
 
-        # Assert: Should find "gross margin" (pre-value, in bullet)
-        margin_candidates = [
+        # Assert: Should find "churn rate" (pre-value, in bullet)
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.33") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
+        assert len(churn_candidates) > 0
         # Should be 'before' due to bullet context (prefers pre-value)
-        assert margin_candidates[0].keyword_position == "before"
+        assert churn_candidates[0].keyword_position == "before"
 
     def test_copula_verb_prefers_pre_value(self, db, generator):
         """Copula verbs (is/was/were) prefer pre-value keywords."""
-        # Arrange: "Gross margin was 33%" - copula verb between metric and value
-        text = "Gross margin was 33% in the quarter."
+        # Arrange: "Churn rate was 5%" - copula verb between metric and value
+        text = "Churn rate was 5% in the quarter."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -309,13 +308,13 @@ class TestL4ContextDependentMultipliers:
             db=db,
         )
 
-        # Assert: Should find "gross margin" (pre-value, with copula verb)
-        margin_candidates = [
+        # Assert: Should find "churn rate" (pre-value, with copula verb)
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.33") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
-        assert margin_candidates[0].keyword_position == "before"
+        assert len(churn_candidates) > 0
+        assert churn_candidates[0].keyword_position == "before"
 
     def test_preposition_prefers_post_value(self, db, generator):
         """Prepositional phrases (of/for/in) prefer post-value keywords."""
@@ -385,7 +384,7 @@ class TestL3L4Combined:
         """Direction is recorded correctly even when multiplier influences selection."""
         # Arrange: Pre-value keyword far away, post-value keyword close
         # Multiplier should make post-value win, and direction should be 'after'
-        text = "active customers increased significantly here and 100 gross margin"
+        text = "active customers increased significantly here and 100 churn rate"
         #       ^pre-value (far)                                   ^num ^post-value (close)
         segment: SegmentDict = {
             "segment_id": 1,
@@ -408,20 +407,20 @@ class TestL3L4Combined:
         # Assert: Should have at least one candidate
         assert len(candidates) > 0
 
-        # Gross margin is much closer than active customers, should win
-        margin_candidates = [
+        # Churn rate is much closer than active customers, should win
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        if len(margin_candidates) > 0:
+        if len(churn_candidates) > 0:
             # Should be 'after' (post-value) and should be the selected keyword
-            assert margin_candidates[0].keyword_position == "after"
+            assert churn_candidates[0].keyword_position == "after"
 
     def test_boundary_and_multiplier_both_applied(self, db, generator):
         """Boundary filtering happens first, then multiplier sorting."""
         # Arrange: Two bullets, each with different keywords
         text = """• Active customers increased significantly
-• Performance was 100 with gross margin improvement"""
+• Performance was 100 with churn rate improvement"""
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -440,14 +439,14 @@ class TestL3L4Combined:
             db=db,
         )
 
-        # Assert: Should find "gross margin" (same bullet, post-value)
+        # Assert: Should find "churn rate" (same bullet, post-value)
         # Should NOT find "active customers" (different bullet, filtered by boundary)
-        margin_candidates = [
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        if len(margin_candidates) > 0:
-            assert margin_candidates[0].keyword_position == "after"
+        if len(churn_candidates) > 0:
+            assert churn_candidates[0].keyword_position == "after"
 
         # Verify no customer candidates for value 100
         customer_candidates = [
@@ -516,8 +515,8 @@ class TestRealWorldPatterns:
         # prevents cross-bullet matching (LTV/CAC values won't match margin keywords)
 
     def test_subject_verb_object_structure(self, db, generator):
-        """Test standard subject-verb-object: 'Gross margin was 33%'."""
-        text = "Gross margin was 33% for the quarter ended March 31, 2017."
+        """Test standard subject-verb-object: 'Churn rate was 5%'."""
+        text = "Churn rate was 5% for the quarter ended March 31, 2017."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -536,18 +535,18 @@ class TestRealWorldPatterns:
             db=db,
         )
 
-        # Assert: Should find gross margin candidate
-        margin_candidates = [
+        # Assert: Should find churn rate candidate
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.33") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
-        # "Gross margin" is before "was 33%"
-        assert margin_candidates[0].keyword_position == "before"
+        assert len(churn_candidates) > 0
+        # "Churn rate" is before "was 5%"
+        assert churn_candidates[0].keyword_position == "before"
 
     def test_metric_clarification_parenthetical(self, db, generator):
-        """Test metric clarification: '33% (gross margin)'."""
-        text = "The company achieved 33% (gross margin) through operational improvements."
+        """Test metric clarification: '5% (churn rate)'."""
+        text = "The company achieved 5% (churn rate) through operational improvements."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -566,11 +565,11 @@ class TestRealWorldPatterns:
             db=db,
         )
 
-        # Assert: Should find gross margin candidate (in parentheses after value)
-        margin_candidates = [
+        # Assert: Should find churn rate candidate (in parentheses after value)
+        churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("0.33") and c.suggested_metric_id == "cm_gross_margin_overall"
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(margin_candidates) > 0
-        # Parenthetical multiplier (1.15) should prefer post-value "gross margin"
-        assert margin_candidates[0].keyword_position == "after"
+        assert len(churn_candidates) > 0
+        # Parenthetical multiplier (1.15) should prefer post-value "churn rate"
+        assert churn_candidates[0].keyword_position == "after"

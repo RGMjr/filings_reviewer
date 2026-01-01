@@ -9,11 +9,9 @@ import pytest
 from src.infra.db import DatabaseAdapter
 from src.infra.validation import ValidationError, validate_enum, validate_score
 from src.review.models import (
-    DECISION_TYPES,
     KEYWORD_POSITIONS,
     PATTERN_STATUSES,
     PATTERN_TYPES,
-    REJECTION_CATEGORIES,
     REVIEW_STATUSES,
 )
 

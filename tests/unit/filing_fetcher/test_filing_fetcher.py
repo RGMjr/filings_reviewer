@@ -2,9 +2,10 @@
 Unit tests for FilingFetcher core functionality.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import pytest
 
 from src.filing_fetcher.filing_fetcher import FilingFetcher
 from src.infra.sec_client import FilingMetadata

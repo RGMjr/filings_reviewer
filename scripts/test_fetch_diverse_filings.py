@@ -16,10 +16,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import FilingMetadata, SECClient
 from src.filing_fetcher.filing_fetcher import FilingFetcher
+from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
+from src.infra.sec_client import FilingMetadata, SECClient
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
@@ -226,17 +226,17 @@ def main():
     if failed == 0 and success_rate >= 95:
         logger.info("✓ TEST PASSED")
         logger.info(f"  Success rate: {success_rate:.1f}%")
-        logger.info(f"  All critical checks passed")
+        logger.info("  All critical checks passed")
         sys.exit(0)
     elif failed > 0 and success_rate >= 80:
         logger.warning("⚠️  TEST PASSED WITH WARNINGS")
         logger.warning(f"  Success rate: {success_rate:.1f}%")
-        logger.warning(f"  Some failures detected - review errors above")
+        logger.warning("  Some failures detected - review errors above")
         sys.exit(0)
     else:
         logger.error("✗ TEST FAILED")
         logger.error(f"  Success rate: {success_rate:.1f}%")
-        logger.error(f"  Too many failures - investigate before scaling")
+        logger.error("  Too many failures - investigate before scaling")
         sys.exit(1)
 
 

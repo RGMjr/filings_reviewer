@@ -4,18 +4,27 @@
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).parent.parent
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
 
-from src.infra.db import DatabaseAdapter
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.llm.openai_client import OpenAIClient
+def prepare_environment() -> None:
+    """Load .env configuration and make src imports available."""
+    load_dotenv()
+    project_root_str = str(PROJECT_ROOT)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
 
 def main():
+    prepare_environment()
+
+    from src.extraction.extraction_pipeline import ExtractionPipeline
+    from src.infra.db import DatabaseAdapter
+    from src.llm.openai_client import OpenAIClient
+
     print("Testing Phase 1 extraction on single company...")
 
     # Setup
@@ -62,7 +71,7 @@ def main():
 
     print(f"\n{'='*60}")
     if result.success:
-        print(f"✓ SUCCESS")
+        print("✓ SUCCESS")
         print(f"  Segments processed: {result.num_segments}")
         print(f"  Values extracted: {result.num_values}")
         print(f"  Definitions extracted: {result.num_definitions}")

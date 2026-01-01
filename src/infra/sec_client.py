@@ -9,13 +9,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
 
 import requests
 
 from src.infra.exceptions import SECDataError, SECRateLimitError
 from src.infra.http_client import HTTPClient, RequestsHTTPClient
-from src.infra.validation import validate_date_range, validate_sic_code, ValidationError
+from src.infra.validation import ValidationError, validate_date_range, validate_sic_code
 
 logger = logging.getLogger(__name__)
 
@@ -132,8 +131,8 @@ class FilingMetadata:
     filing_date: str
     accession_number: str
     primary_doc_url: str
-    txt_url: Optional[str] = None
-    ticker: Optional[str] = None
+    txt_url: str | None = None
+    ticker: str | None = None
 
 
 class SECClient:
@@ -153,8 +152,8 @@ class SECClient:
     def __init__(
         self,
         user_agent: str = "filings-reviewer info@example.com",
-        http_client: Optional[HTTPClient] = None,
-        metrics: Optional[SECClientMetrics] = None,
+        http_client: HTTPClient | None = None,
+        metrics: SECClientMetrics | None = None,
     ):
         """
         Initialize SEC client.
@@ -193,7 +192,7 @@ class SECClient:
             time.sleep(self.MIN_REQUEST_INTERVAL - elapsed)
         self._last_request_time = time.time()
 
-    def _make_request(self, url: str, params: Optional[dict] = None, max_retries: int = 3) -> dict:
+    def _make_request(self, url: str, params: dict | None = None, max_retries: int = 3) -> dict:
         """
         Make a rate-limited request to SEC with retry logic.
 
@@ -257,7 +256,7 @@ class SECClient:
                         f"Invalid JSON response from {url}: {e}",
                         url=url,
                         response_preview=preview
-                    )
+                    ) from e
 
             except requests.HTTPError as e:
                 elapsed = time.time() - request_start_time
@@ -270,7 +269,7 @@ class SECClient:
                 # Handle rate limiting (429)
                 if status_code == 429:
                     logger.warning(f"Rate limit exceeded for {url}")
-                    raise SECRateLimitError(f"Rate limit exceeded: {url}")
+                    raise SECRateLimitError(f"Rate limit exceeded: {url}") from e
 
                 # 4xx errors (client errors) - don't retry
                 if status_code and 400 <= status_code < 500:
@@ -320,8 +319,8 @@ class SECClient:
         self,
         start_date: str,
         end_date: str,
-        form_types: Optional[List[str]] = None,
-    ) -> List[FilingMetadata]:
+        form_types: list[str] | None = None,
+    ) -> list[FilingMetadata]:
         """
         Search for filings in a date range using SEC daily index files.
 
@@ -382,8 +381,8 @@ class SECClient:
         return filings
 
     def _get_daily_filings(
-        self, date: datetime, form_types: List[str]
-    ) -> List[FilingMetadata]:
+        self, date: datetime, form_types: list[str]
+    ) -> list[FilingMetadata]:
         """
         Get filings from a single day's master index file.
 
@@ -415,8 +414,8 @@ class SECClient:
         return self._parse_master_index(response_text, form_types)
 
     def _parse_master_index(
-        self, index_text: str, form_types: List[str]
-    ) -> List[FilingMetadata]:
+        self, index_text: str, form_types: list[str]
+    ) -> list[FilingMetadata]:
         """
         Parse SEC master index file format.
 
@@ -508,7 +507,7 @@ class SECClient:
 
     def resolve_primary_document_url(
         self, cik: str, accession_number: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Resolve the primary HTML document URL for a filing by fetching its index.
 
@@ -543,10 +542,23 @@ class SECClient:
                 logger.warning(f"No HTML files found for {cik}/{accession_number}")
                 return None
 
+            # IMPORTANT: Filter out exhibit files FIRST before pattern matching
+            # Exhibit files often contain form patterns (e.g., "exhibit103s-1.htm")
+            # which would incorrectly match before the actual S-1 document
+            non_exhibit_files = [
+                item
+                for item in htm_files
+                if "exhibit" not in item["name"].lower()
+                and not item["name"].lower().startswith("ex")
+            ]
+
+            # Use non-exhibit files for pattern matching if available
+            files_for_pattern_match = non_exhibit_files if non_exhibit_files else htm_files
+
             # Find primary doc (matches form type pattern)
             # Try multiple pattern matching strategies in order of preference
 
-            # Strategy 1: Look for explicit form type patterns
+            # Strategy 1: Look for explicit form type patterns in non-exhibit files
             form_patterns = [
                 "s-1",
                 "f-1",  # Standard patterns with dashes
@@ -566,7 +578,7 @@ class SECClient:
                 "registration",  # Registration statements
             ]
 
-            for item in htm_files:
+            for item in files_for_pattern_match:
                 name = item["name"].lower()
                 if any(pattern in name for pattern in form_patterns):
                     primary_doc = item["name"]
@@ -576,19 +588,11 @@ class SECClient:
                         f"{accession_no_dashes}/{primary_doc}"
                     )
 
-            # Strategy 2: Use largest HTML file (likely the main document)
-            # Exclude exhibit files (typically have 'exhibit' or 'ex' in name)
-            non_exhibit_files = [
-                item
-                for item in htm_files
-                if "exhibit" not in item["name"].lower()
-                and not item["name"].lower().startswith("ex")
-            ]
-
+            # Strategy 2: Use largest non-exhibit HTML file (likely the main document)
             files_to_consider = non_exhibit_files if non_exhibit_files else htm_files
 
             # Get file with largest size
-            largest_file = max(files_to_consider, key=lambda x: x.get("size", 0))
+            largest_file = max(files_to_consider, key=lambda x: int(x.get("size", 0) or 0))
             primary_doc = largest_file["name"]
 
             logger.debug(
@@ -607,7 +611,7 @@ class SECClient:
             )
             return None
 
-    def get_company_info(self, cik: str) -> Optional[dict]:
+    def get_company_info(self, cik: str) -> dict | None:
         """
         Get company information including SIC code from SEC submissions API.
 
@@ -669,7 +673,7 @@ class SECClient:
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
-    ) -> Optional[FilingMetadata]:
+    ) -> FilingMetadata | None:
         """
         Get filing metadata by CIK and accession number.
 
@@ -734,6 +738,137 @@ class SECClient:
             logger.error(f"Error parsing filing data: {e}")
             return None
 
+    def get_latest_registration_filing(
+        self,
+        cik: str,
+        form_types: list[str] | None = None,
+    ) -> FilingMetadata | None:
+        """
+        Get the most recent S-1/S-1/A or F-1/F-1/A filing for a company.
+
+        This is useful for finding the "final" registration statement,
+        which is typically the last S-1/A filed before IPO.
+
+        Note: For older IPOs (>2 years), the S-1 may be in archived filing
+        files rather than the "recent" filings array. This method searches
+        both recent and archived filings.
+
+        Args:
+            cik: SEC Central Index Key
+            form_types: Optional list of form types to search for.
+                        Defaults to ["S-1", "S-1/A", "F-1", "F-1/A"]
+
+        Returns:
+            FilingMetadata for the most recent matching filing, or None
+        """
+        if form_types is None:
+            form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
+
+        # Normalize CIK to 10 digits with leading zeros
+        cik_padded = cik.zfill(10)
+
+        try:
+            # Get company submissions data
+            url = self.SUBMISSIONS_URL.format(cik=cik_padded)
+            data = self._make_request(url)
+
+            company_name = data.get("name", "")
+            ticker = data.get("tickers", [None])[0] if data.get("tickers") else None
+
+            # First, search recent filings
+            recent = data.get("filings", {}).get("recent", {})
+            result = self._search_filings_array(
+                recent, form_types, cik_padded, company_name, ticker
+            )
+            if result:
+                return result
+
+            # If not found in recent, search archived filing files
+            # These contain older filings (typically >2 years old)
+            archived_files = data.get("filings", {}).get("files", [])
+            for file_info in archived_files:
+                file_name = file_info.get("name", "")
+                if not file_name:
+                    continue
+
+                # Fetch the archived filing file
+                archive_url = f"https://data.sec.gov/submissions/{file_name}"
+                logger.debug(f"Searching archived filings: {file_name}")
+
+                try:
+                    archived_data = self._make_request(archive_url)
+                    result = self._search_filings_array(
+                        archived_data, form_types, cik_padded, company_name, ticker
+                    )
+                    if result:
+                        return result
+                except Exception as e:
+                    logger.warning(f"Error fetching archived file {file_name}: {e}")
+                    continue
+
+            logger.warning(
+                f"No {form_types} filings found for CIK {cik}"
+            )
+            return None
+
+        except requests.HTTPError as e:
+            logger.error(f"HTTP error fetching filings for CIK {cik}: {e}")
+            return None
+        except (KeyError, IndexError) as e:
+            logger.error(f"Error parsing filing data for CIK {cik}: {e}")
+            return None
+
+    def _search_filings_array(
+        self,
+        filings_data: dict,
+        form_types: list[str],
+        cik_padded: str,
+        company_name: str,
+        ticker: str | None,
+    ) -> FilingMetadata | None:
+        """Search a filings array for matching form types.
+
+        Helper method for get_latest_registration_filing.
+        """
+        forms = filings_data.get("form", [])
+        accession_numbers = filings_data.get("accessionNumber", [])
+        filing_dates = filings_data.get("filingDate", [])
+        primary_docs = filings_data.get("primaryDocument", [])
+
+        # Find the first (most recent) matching filing
+        for i, form in enumerate(forms):
+            if form in form_types:
+                accession_number = accession_numbers[i]
+                accession_no_dashes = accession_number.replace("-", "")
+                primary_doc = primary_docs[i] if i < len(primary_docs) else ""
+
+                primary_doc_url = (
+                    f"{self.BASE_URL}/Archives/edgar/data/"
+                    f"{cik_padded}/{accession_no_dashes}/{primary_doc}"
+                )
+                txt_url = (
+                    f"{self.BASE_URL}/cgi-bin/viewer?action=view&cik={cik_padded}"
+                    f"&accession_number={accession_number}&xbrl_type=v"
+                )
+
+                logger.info(
+                    f"Found latest {form} for {company_name}: "
+                    f"{accession_number} ({filing_dates[i]})"
+                )
+
+                return FilingMetadata(
+                    cik=cik_padded,
+                    company_name=company_name,
+                    form_type=form,
+                    filing_date=filing_dates[i],
+                    accession_number=accession_number,
+                    primary_doc_url=primary_doc_url,
+                    txt_url=txt_url,
+                    ticker=ticker,
+                )
+
+        return None
+
 
 class MockSECClient(SECClient):
     """
@@ -742,7 +877,7 @@ class MockSECClient(SECClient):
     Returns predefined filing data instead of making real API calls.
     """
 
-    def __init__(self, mock_filings: Optional[List[FilingMetadata]] = None):
+    def __init__(self, mock_filings: list[FilingMetadata] | None = None):
         """
         Initialize mock client.
 
@@ -756,8 +891,8 @@ class MockSECClient(SECClient):
         self,
         start_date: str,
         end_date: str,
-        form_types: Optional[List[str]] = None,
-    ) -> List[FilingMetadata]:
+        form_types: list[str] | None = None,
+    ) -> list[FilingMetadata]:
         """Return mock filings filtered by date and form type."""
         if form_types is None:
             form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
@@ -777,7 +912,7 @@ class MockSECClient(SECClient):
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
-    ) -> Optional[FilingMetadata]:
+    ) -> FilingMetadata | None:
         """Return mock filing by accession number."""
         for filing in self.mock_filings:
             if filing.cik == cik and filing.accession_number == accession_number:

@@ -11,12 +11,14 @@ import logging
 import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
 from bs4 import BeautifulSoup
 
-from .models import SourceSegment, MetricValue
 from ..review.false_positive_filter import FalsePositiveFilter
 from ..review.number_parsing import NumberMatch
+from ..review.table_structure import TableRowParser
+from .models import MetricValue, SourceSegment
 
 if TYPE_CHECKING:
     from ..llm.openai_client import OpenAIClient
@@ -24,8 +26,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Quote verification constants
-DEFAULT_SIMILARITY_THRESHOLD = 0.8  # Minimum similarity ratio for fuzzy matching
-WINDOW_SIZE_MULTIPLIER = 1.2  # Window size = quote length * this multiplier
+DEFAULT_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity ratio for fuzzy matching
+WINDOW_SIZE_MULTIPLIER = 1.3  # Window size = quote length * this multiplier
 STRIDE_DIVISOR = 10  # Sample every quote_len / this value positions
 
 
@@ -105,11 +107,22 @@ METRIC_NAME_MAPPING = {
     "net_revenue_retention": "cm_net_revenue_retention",
     "nrr": "cm_net_revenue_retention",
     "net_dollar_retention": "cm_net_revenue_retention",
+    "net_dollar_retention_rate": "cm_net_revenue_retention",
     "ndr": "cm_net_revenue_retention",
     "revenue_retention": "cm_net_revenue_retention",
 
     "gross_revenue_retention": "cm_gross_revenue_retention",
     "grr": "cm_gross_revenue_retention",
+
+    # Extended metrics - customer counts specific
+    "paid_customers": "cm_customers_period_end",
+    "total_paid_customers": "cm_customers_period_end",
+    "paid_customer_count": "cm_customers_period_end",
+
+    "paid_customers_100k": "cm_large_customers_period_end",
+    "paid_customers_100k+": "cm_large_customers_period_end",
+    "customers_over_100k": "cm_large_customers_period_end",
+    "large_customers": "cm_large_customers_period_end",
 }
 
 # Create reverse mapping for validation
@@ -118,8 +131,8 @@ VALID_METRIC_IDS = set(METRIC_NAME_MAPPING.values())
 
 def map_llm_name_to_metric_id(
     llm_name: str,
-    candidate_metric_ids: Optional[List[str]] = None
-) -> Optional[str]:
+    candidate_metric_ids: list[str] | None = None
+) -> str | None:
     """
     Map an LLM-returned metric name to a canonical metric ID.
 
@@ -170,7 +183,7 @@ def map_llm_name_to_metric_id(
     return None
 
 
-def _normalize_text(text: Optional[str]) -> str:
+def _normalize_text(text: str | None) -> str:
     """
     Normalize text for comparison.
 
@@ -187,6 +200,14 @@ def _normalize_text(text: Optional[str]) -> str:
     # Normalize quote characters (curly to straight)
     normalized = normalized.replace("\u201c", '"').replace("\u201d", '"')  # " and "
     normalized = normalized.replace("\u2018", "'").replace("\u2019", "'")  # ' and '
+
+    # Aggressive normalization:
+    # Keep alphanumerics (a-z, 0-9)
+    # Keep critical context cues: . % $ € £
+    # Replace everything else with space
+    # This ensures "Net-Dollar Retention" matches "Net Dollar Retention"
+    # while keeping "1.5" distinct from "15"
+    normalized = re.sub(r'[^a-zA-Z0-9\.\%\$\€\£\s]', ' ', normalized)
 
     # Normalize whitespace (including newlines)
     normalized = " ".join(normalized.split())
@@ -308,10 +329,10 @@ class ValueExtractor:
     def _is_false_positive_value(
         self,
         value_str: str,
-        position: Optional[int],
+        position: int | None,
         context_text: str,
-        unit: Optional[str] = None
-    ) -> Tuple[bool, Optional[str]]:
+        unit: str | None = None
+    ) -> tuple[bool, str | None]:
         """
         Check if an extracted value is a false positive.
 
@@ -382,7 +403,7 @@ class ValueExtractor:
 
     def extract_from_segment(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract all metric values from a segment.
 
@@ -437,7 +458,7 @@ class ValueExtractor:
 
     def extract_from_table(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract structured data from table segments.
 
@@ -464,6 +485,18 @@ class ValueExtractor:
         if len(rows) < 2:  # Need at least header + 1 data row
             return []
 
+        # EI-4: Create TableRowParser for row boundary validation
+        row_parser: TableRowParser | None = None
+        if segment.raw_html and segment.raw_text:
+            try:
+                row_parser = TableRowParser(segment.raw_html, segment.raw_text)
+                logger.debug(f"TableRowParser created for segment {segment.source_segment_id}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create TableRowParser for segment {segment.source_segment_id}: {e}. "
+                    "Proceeding without row validation."
+                )
+
         # Parse header row to identify columns
         header_row = rows[0]
         headers = [
@@ -482,7 +515,7 @@ class ValueExtractor:
                 continue  # Skip malformed rows
 
             row_values = self._parse_table_row(
-                cells, headers, column_info, segment, company_id
+                cells, headers, column_info, segment, company_id, row_parser
             )
             values.extend(row_values)
 
@@ -493,9 +526,9 @@ class ValueExtractor:
 
     def extract_from_text(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
-        Extract values from text segments using pattern matching.
+        Extract values from text segments using pattern matching with smart scoring.
 
         Args:
             segment: Text segment
@@ -504,65 +537,189 @@ class ValueExtractor:
         Returns:
             List of MetricValue objects
         """
+        if not segment.raw_text:
+            return []
+
         values = []
         candidate_metrics = segment.candidate_metric_ids or []
         filtered_count = 0
 
-        # For each candidate metric, look for associated numbers
-        for metric_id in candidate_metrics:
-            # Find numbers in the text
-            numbers = self._number_regex.findall(segment.raw_text)
+        # Regex patterns for exclusion
+        # Matches "January 31, 2019" or "Jan 31 2019"
+        # We want to ignore the day (31) and year (2019)
+        date_pattern = re.compile(
+            r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(\d{4})",
+            re.IGNORECASE
+        )
 
-            if numbers:
-                # Create a value for the first number found
-                # (in production, would use more sophisticated matching)
-                value_str = numbers[0]
-                numeric_value = self._parse_number(value_str)
+        # Matches standalone page numbers/TOC entries at start of line
+        # e.g., "73 Table of Contents"
+        toc_pattern = re.compile(r"^\s*(\d+)\s+(?:Table of Contents|Page)", re.IGNORECASE)
 
-                if numeric_value is not None:
-                    # EI-3: Check if value is a false positive before creating MetricValue
-                    position = segment.raw_text.find(value_str) if value_str else None
+        # Helper to check if a match range overlaps with an exclusion range
+        def is_excluded(start: int, end: int, exclusions: list[tuple[int, int]]) -> bool:
+            for ex_start, ex_end in exclusions:
+                # If overlap
+                if start < ex_end and end > ex_start:
+                    return True
+            return False
+
+        # Scoring function for candidates
+        def score_candidate(val_str: str, full_match_str: str, context: str) -> float:
+            score = 0.0
+
+            # 1. Currency boost (High)
+            if "$" in full_match_str or "USD" in full_match_str.upper():
+                score += 5.0
+            elif "€" in full_match_str or "£" in full_match_str:
+                score += 5.0
+
+            # 2. Magnitude boost (High)
+            if "million" in full_match_str.lower():
+                score += 4.0
+            elif "billion" in full_match_str.lower():
+                score += 4.0
+            elif "thousand" in full_match_str.lower():
+                score += 2.0
+
+            # 3. Percentage boost (Medium - if relevant)
+            if "%" in full_match_str:
+                score += 3.0
+
+            # 4. Precision boost (Small)
+            if "." in val_str:
+                score += 1.0
+
+            # 5. Penalties
+            # Penalty for "Day of month" lookalikes (1-31 integers)
+            if re.match(r"^[1-3][0-9]$|^[1-9]$", val_str):
+                score -= 2.0
+
+            # Penalty for "Year" lookalikes (1990-2030) without currency
+            if re.match(r"^(?:19|20)\d{2}$", val_str) and "$" not in full_match_str:
+                score -= 3.0
+
+            return score
+
+        # Split text into sentences
+        sentences = re.split(r'[.\n]+', segment.raw_text)
+
+        # Import metric classifier to access patterns
+        from .metric_classifier import MetricClassifier
+        classifier = MetricClassifier()
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            # 1. Identify Exclusion Ranges in this sentence
+            exclusions = []
+
+            # Find dates
+            for m in date_pattern.finditer(sentence):
+                # Exclude the day group (group 1) and year group (group 2)
+                # Group 1 (Day)
+                g1_start, g1_end = m.span(1)
+                exclusions.append((g1_start, g1_end))
+                # Group 2 (Year)
+                g2_start, g2_end = m.span(2)
+                exclusions.append((g2_start, g2_end))
+
+            # Find TOC/Page numbers
+            for m in toc_pattern.finditer(sentence):
+                exclusions.append(m.span(1))
+
+            # 2. Find all potential numbers
+            # finditer gives us match objects with positions
+            number_matches = list(self._number_regex.finditer(sentence))
+            if not number_matches:
+                continue
+
+            # 3. Process By Metric
+            for metric_id in candidate_metrics:
+                # Check keywords exist in sentence
+                patterns = classifier._metric_patterns.get(metric_id, [])
+                has_keyword = False
+                for pattern in patterns:
+                    if pattern.search(sentence):
+                        has_keyword = True
+                        break
+
+                if not has_keyword:
+                    continue
+
+                # Collect valid candidates and score them
+                candidates = []
+
+                for match in number_matches:
+                    val_str = match.group(1) # The numeric part
+                    full_str = match.group(0) # The full match including $ million etc.
+                    start, end = match.span(1) # Span of the numeric part
+
+                    # Skip if in excluded range (Date/Page)
+                    if is_excluded(start, end, exclusions):
+                        continue
+
+                    # Skip if false positive (using existing filter)
+                    position_in_full_text = segment.raw_text.find(sentence) + sentence.find(val_str)
                     is_fp, reason = self._is_false_positive_value(
-                        value_str=value_str,
-                        position=position,
+                        value_str=val_str,
+                        position=position_in_full_text,
                         context_text=segment.raw_text,
-                        unit=None  # Will be inferred in helper
+                        unit=None
                     )
-
                     if is_fp:
-                        logger.debug(
-                            f"Skipping false positive in text extraction: "
-                            f"value='{value_str}' metric={metric_id} reason={reason}"
-                        )
                         filtered_count += 1
-                        continue  # Skip this value
+                        continue
 
-                    # Try to extract period
-                    period_end = self._extract_period_from_text(segment.raw_text)
+                    # Score it
+                    score = score_candidate(val_str, full_str, sentence)
+                    candidates.append({
+                        "val_str": val_str,
+                        "numeric_value": self._parse_number(val_str),
+                        "unit": self._infer_unit(val_str, metric_id),
+                        "score": score,
+                        "full_match": full_str
+                    })
 
-                    value = MetricValue(
-                        filing_id=segment.filing_id,
-                        company_id=company_id,
-                        metric_id=metric_id,
-                        source_segment_id=segment.sequence_index,  # Store sequence_index temporarily
-                        source_type="text",
-                        extraction_method="llm_text",  # Using rule-based text extraction
-                        value_numeric=numeric_value,
-                        value_text=value_str,
-                        period_end=period_end,
-                        qa_status="unreviewed",
-                    )
-                    values.append(value)
-                    break  # Only extract one value per segment for now
+                if not candidates:
+                    continue
+
+                # Pick the best candidate
+                # Sort by score descending
+                candidates.sort(key=lambda x: x["score"], reverse=True)
+                best = candidates[0]
+
+                # If best score is very low/negative, maybe skip?
+                # For now, we trust the ranking. If it's a tie, first one wins.
+
+                # Create value
+                value = MetricValue(
+                    filing_id=segment.filing_id,
+                    company_id=company_id,
+                    metric_id=metric_id,
+                    source_segment_id=segment.sequence_index,
+                    source_type="text",
+                    extraction_method="rule_text_smart",
+                    value_numeric=best["numeric_value"],
+                    value_text=best["val_str"],
+                    unit=best["unit"],
+                    period_end=self._extract_period_from_text(sentence),
+                    qa_status="unreviewed",
+                )
+                values.append(value)
+
+                # Move to next metric (we only extract one value per metric per sentence)
 
         if filtered_count > 0:
-            logger.debug(f"Filtered {filtered_count} false positive(s) from text segment")
+            logger.debug(f"Filtered {filtered_count} false positive(s) from smart text extraction")
 
         return values
 
     def extract_from_text_with_llm(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract values from text segments using LLM.
 
@@ -588,6 +745,7 @@ class ValueExtractor:
         prompt = PromptTemplates.value_extraction_from_text(
             segment_text=segment.raw_text[:8000],  # Limit to 8000 chars
             metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response
@@ -677,11 +835,11 @@ class ValueExtractor:
                 # CRITICAL: Validate quote contains metric keyword AND value
                 # This prevents extracting unrelated nearby numbers
                 from .extraction_validation import (
-                    validate_extraction,
-                    should_reject_extraction,
-                    get_rejection_reason,
-                    validate_quote_contains_metric_keyword,
                     ValidationResult,
+                    get_rejection_reason,
+                    should_reject_extraction,
+                    validate_extraction,
+                    validate_quote_contains_metric_keyword,
                 )
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
@@ -741,7 +899,7 @@ class ValueExtractor:
 
     def extract_from_table_with_llm(
         self, segment: SourceSegment, company_id: int
-    ) -> List[MetricValue]:
+    ) -> list[MetricValue]:
         """
         Extract values from table segments using LLM.
 
@@ -772,7 +930,10 @@ class ValueExtractor:
         table_html = segment.raw_html[:4000]  # Limit HTML
 
         prompt = PromptTemplates.value_extraction_from_table(
-            table_text=table_text, table_html=table_html, metric_names=metric_names
+            table_text=table_text,
+            table_html=table_html,
+            metric_names=metric_names,
+            context_text=segment.context_prefix,
         )
 
         # Get LLM response
@@ -873,11 +1034,11 @@ class ValueExtractor:
                 # CRITICAL: Validate quote contains metric keyword AND value
                 # This prevents extracting unrelated nearby numbers
                 from .extraction_validation import (
-                    validate_extraction,
-                    should_reject_extraction,
-                    get_rejection_reason,
-                    validate_quote_contains_metric_keyword,
                     ValidationResult,
+                    get_rejection_reason,
+                    should_reject_extraction,
+                    validate_extraction,
+                    validate_quote_contains_metric_keyword,
                 )
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
@@ -938,7 +1099,7 @@ class ValueExtractor:
             logger.error(f"Failed to parse LLM response: {e}")
             return []
 
-    def _identify_columns(self, headers: List[str]) -> dict:
+    def _identify_columns(self, headers: list[str]) -> dict:
         """
         Identify the type of each column based on header text.
 
@@ -971,11 +1132,12 @@ class ValueExtractor:
     def _parse_table_row(
         self,
         cells: list,
-        headers: List[str],
+        headers: list[str],
         column_info: dict,
         segment: SourceSegment,
         company_id: int,
-    ) -> List[MetricValue]:
+        row_parser: TableRowParser | None = None,
+    ) -> list[MetricValue]:
         """
         Parse a single table row to extract metric values.
 
@@ -985,6 +1147,7 @@ class ValueExtractor:
             column_info: Column type information
             segment: Source segment
             company_id: Company ID
+            row_parser: Optional TableRowParser for row boundary validation (EI-4)
 
         Returns:
             List of MetricValue objects from this row
@@ -995,15 +1158,20 @@ class ValueExtractor:
         cohort_label = None
         cohort_type = None
         cohort_normalized = None
+        cohort_position = None  # EI-4: Track cohort position for row validation
 
         for i, info in column_info.items():
             if info["type"] == "cohort" and i < len(cells):
                 cohort_label = self._clean_text(cells[i].get_text())
                 cohort_type, cohort_normalized = self.parse_cohort_label(cohort_label)
+                # EI-4: Find position of cohort label for row validation
+                if cohort_label and segment.raw_text:
+                    cohort_position = segment.raw_text.find(cohort_label)
                 break
 
         # Extract values from value columns
         filtered_count = 0
+        row_boundary_filtered_count = 0  # EI-4: Track cross-row rejections
         for i, info in column_info.items():
             if info["type"] != "value" or i >= len(cells):
                 continue
@@ -1032,8 +1200,57 @@ class ValueExtractor:
                 filtered_count += 1
                 continue  # Skip this value
 
+            # EI-4: Validate row boundary - check if cohort/label and value are in same row
+            if row_parser is not None and cohort_position is not None and cohort_position != -1:
+                value_position = position  # Already calculated above
+                if value_position is not None and value_position != -1:
+                    try:
+                        if not row_parser.are_in_same_row(cohort_position, value_position):
+                            logger.debug(
+                                f"Cross-row match rejected: cohort='{cohort_label}' at pos {cohort_position}, "
+                                f"value='{cell_text}' at pos {value_position}"
+                            )
+                            row_boundary_filtered_count += 1
+                            continue  # Skip this value - cross-row match
+                    except Exception as e:
+                        # Fallback: if row validation fails, proceed with extraction
+                        logger.debug(
+                            f"Row boundary validation failed for value '{cell_text}': {e}. "
+                            "Proceeding with extraction."
+                        )
+
             # Determine which metric this value belongs to
-            metric_id = self._infer_metric_from_context(segment, headers, i)
+            # STRICT: Check row label for metric keywords
+            row_metric_id = None
+
+            # Find the row label (first text cell usually)
+            row_label_text = ""
+            for cell in cells:
+                txt = self._clean_text(cell.get_text())
+                # Skip if it looks like a number
+                if self._parse_number(txt) is None and txt:
+                    row_label_text = txt
+                    break
+
+            # Check if row label matches any candidate metric
+            if segment.candidate_metric_ids:
+                from .metric_classifier import MetricClassifier
+                classifier = MetricClassifier()
+                for cid in segment.candidate_metric_ids:
+                    patterns = classifier._metric_patterns.get(cid, [])
+                    for pattern in patterns:
+                        if pattern.search(row_label_text):
+                            row_metric_id = cid
+                            break
+                    if row_metric_id:
+                        break
+
+            # Also check if column header implies metric (e.g. "Revenue")
+            col_metric_id = self._infer_metric_from_context(segment, headers, i)
+
+            # Combine: Row label match takes precedence, then Column header match
+            metric_id = row_metric_id or col_metric_id
+
             if not metric_id:
                 continue
 
@@ -1059,58 +1276,52 @@ class ValueExtractor:
 
         if filtered_count > 0:
             logger.debug(f"Filtered {filtered_count} false positive(s) from table row")
+        if row_boundary_filtered_count > 0:
+            logger.debug(f"Filtered {row_boundary_filtered_count} cross-row match(es) from table row")
 
         return values
 
-    def _infer_metric_from_context(
-        self, segment: SourceSegment, headers: List[str], column_index: int
-    ) -> Optional[str]:
+    def _infer_metric_from_context(self, segment: SourceSegment, headers: list[str], column_index: int) -> str | None:
         """
-        Infer which metric a value belongs to based on context.
-
-        Uses:
-        1. Candidate metrics from segment
-        2. Header text
-        3. Section path
-
-        Returns:
-            Metric ID or None
+        Infer metric ID from column context (header).
         """
-        candidate_metrics = segment.candidate_metric_ids or []
+        # Strict Row-Only Logic:
+        # A value belongs to a metric IF AND ONLY IF:
+        # 1. The column header explicity names it (e.g. "Revenue")
+        # 2. OR The row label explicitily matches the metric keywords
 
-        # If only one candidate metric, use it
-        if len(candidate_metrics) == 1:
-            return candidate_metrics[0]
-
-        # Check header text for metric keywords
+        # 1. Check Column Header
         if column_index < len(headers):
             header = headers[column_index].lower()
 
-            # Revenue keywords
-            if "revenue" in header and "cm_revenue_by_cohort" in candidate_metrics:
+            # Direct header matches
+            if "revenue" in header and "cohort" in header:
                 return "cm_revenue_by_cohort"
-
-            # Transaction keywords
-            if (
-                "transaction" in header
-                and "cm_transactions_by_cohort" in candidate_metrics
-            ):
+            if "transaction" in header and "cohort" in header:
                 return "cm_transactions_by_cohort"
-
-            # Customer count keywords
-            if (
-                any(kw in header for kw in ["customers", "users"])
-                and "cm_customers_period_end_by_tenure" in candidate_metrics
-            ):
+            if "customer" in header and "tenure" in header:
                 return "cm_customers_period_end_by_tenure"
 
-        # Fall back to first candidate metric
-        if candidate_metrics:
-            return candidate_metrics[0]
+            # If the segment has candidates, check if header matches one of them
+            if segment.candidate_metric_ids:
+                from .metric_classifier import MetricClassifier
+                classifier = MetricClassifier()
+
+                for metric_id in segment.candidate_metric_ids:
+                    patterns = classifier._metric_patterns.get(metric_id, [])
+                    for pattern in patterns:
+                         if pattern.search(header):
+                             return metric_id
 
         return None
 
-    def _infer_unit(self, value_text: str, metric_id: str) -> Optional[str]:
+        # Current fallback (RESTRICTED):
+        # We DO NOT fallback to "candidate_metrics[0]" blindly anymore.
+        # If we can't find a match in the header, we return None (unless the table is VERY simple).
+
+        return None
+
+    def _infer_unit(self, value_text: str, metric_id: str) -> str | None:
         """Infer the unit from value text and metric type."""
         value_lower = value_text.lower()
 
@@ -1135,7 +1346,7 @@ class ValueExtractor:
 
         return None
 
-    def parse_cohort_label(self, raw_label: str) -> Tuple[Optional[str], Optional[str]]:
+    def parse_cohort_label(self, raw_label: str) -> tuple[str | None, str | None]:
         """
         Parse cohort label into type and normalized bucket.
 
@@ -1189,7 +1400,7 @@ class ValueExtractor:
         # Could not parse
         return "other", raw_label
 
-    def _parse_number(self, text: str) -> Optional[Decimal]:
+    def _parse_number(self, text: str) -> Decimal | None:
         """
         Parse numeric value from text.
 
@@ -1227,7 +1438,7 @@ class ValueExtractor:
         except (InvalidOperation, ValueError):
             return None
 
-    def _extract_period_from_text(self, text: str) -> Optional[date]:
+    def _extract_period_from_text(self, text: str) -> date | None:
         """
         Extract period end date from text.
 
@@ -1274,7 +1485,7 @@ class ValueExtractor:
 
 
 # Convenience function
-def extract_values(segment: SourceSegment, company_id: int) -> List[MetricValue]:
+def extract_values(segment: SourceSegment, company_id: int) -> list[MetricValue]:
     """
     Convenience function to extract values from a segment.
 

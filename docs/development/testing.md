@@ -1,7 +1,7 @@
 # Testing Strategy
 
-**Version:** 2.0
-**Last Updated:** 2025-11-14
+**Version:** 2.1
+**Last Updated:** 2026-01-01
 
 ---
 
@@ -424,16 +424,42 @@ For each sampled filing:
 
 ## Regression Testing
 
+### Gold Standard Regression Tests (GS-4)
+
+Automated pytest tests that compare extraction metrics against a saved baseline:
+
+```bash
+# Run gold standard regression tests
+pytest -m gold_standard -v
+
+# Run with custom tolerance (default: 1%)
+pytest -m gold_standard --gold-standard-tolerance=0.02 -v
+
+# Skip gold standard tests (for faster CI)
+pytest -m "not gold_standard"
+```
+
+**Tests include:**
+- `test_overall_precision_above_baseline` - Fails if precision drops
+- `test_overall_recall_above_baseline` - Fails if recall drops
+- `test_overall_f1_above_baseline` - Fails if F1 drops
+- `test_no_company_recall_regressions` - Fails if any company's recall dropped
+
+**Setup:**
+1. Create baseline: `python scripts/validate_against_gold_standard.py --all --update-baseline`
+2. Baseline saved to: `data/gold_standard/baseline.json`
+3. Tests skip gracefully if baseline doesn't exist
+
+### Manual Regression Testing
+
 After making changes to extraction logic:
 
 ```bash
-# Run on fixed test set (20 known filings)
-pytest tests/test_regression.py --run-live
+# Validate against gold standard CSV
+python scripts/validate_against_gold_standard.py --all
 
 # Compare results to baseline
-python scripts/compare_to_baseline.py \
-    --current data/test_results.csv \
-    --baseline data/baseline_results.csv
+python scripts/validate_against_gold_standard.py --all --output report.json
 
 # Should show:
 # - No decrease in metrics extracted

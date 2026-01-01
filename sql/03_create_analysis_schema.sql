@@ -159,7 +159,7 @@ CREATE TABLE metric_values (
 
     -- Constraints
     CONSTRAINT check_source_type CHECK (source_type IN ('table', 'text', 'footnote', 'other')),
-    CONSTRAINT check_extraction_method CHECK (extraction_method IN ('rule_table', 'llm_table', 'llm_text', 'manual_review')),
+    CONSTRAINT check_extraction_method CHECK (extraction_method IN ('rule_table', 'rule_text_smart', 'llm_table', 'llm_text', 'manual_review')),
     CONSTRAINT check_period_type CHECK (period_type IS NULL OR period_type IN ('fy', 'quarter', 'month', 'ttm', 'since_inception', 'other')),
     CONSTRAINT check_cohort_type CHECK (cohort_type IS NULL OR cohort_type IN ('acquisition', 'tenure', 'other')),
     CONSTRAINT check_qa_status CHECK (qa_status IN ('unreviewed', 'pass', 'warning', 'fail')),

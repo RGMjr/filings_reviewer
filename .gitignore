@@ -42,8 +42,14 @@ Thumbs.db
 htmlcov/
 
 # Archives and logs
-Archive/
+/Archive/
 *.log
+
+# But keep docs/archive
+!docs/archive/
 
 # Claude setup
 .claude.json
+
+# Build artifacts
+*.egg-info/
