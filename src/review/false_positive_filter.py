@@ -186,6 +186,23 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     re.compile(r"\b\d+[-\s]?(?:minute|second)s?\b", re.IGNORECASE),
 ]
 
+# Label-embedded value pattern (CMS-2)
+# Detects numbers that are part of metric label thresholds, not actual values.
+# Example: "Paid Customers > $100,000" - the $100,000 is part of the label, not a value.
+# Matches patterns like:
+#   - "> $100,000" or ">= $50M" (comparison + currency + number)
+#   - "< 1000" or "<= 500" (comparison + number without currency)
+#   - "≥ $100K" or "≤ $1 million" (unicode operators)
+LABEL_EMBEDDED_VALUE_PATTERN: Pattern[str] = re.compile(
+    r"(?:>=?|<=?|≥|≤)\s*"  # Comparison operator (>, >=, <, <=, ≥, ≤)
+    r"\$?\s*"  # Optional currency symbol
+    r"\d[\d,]*"  # Number (with optional commas)
+    r"(?:\.\d+)?"  # Optional decimal
+    r"(?:\s*(?:thousand|million|billion|mn|bn|[KMB]))?"  # Optional magnitude suffix
+    r"\b",
+    re.IGNORECASE,
+)
+
 # Year range - numbers in this range are likely years, not metrics
 # (imported from config.py for centralized configuration)
 YEAR_MIN = YEAR_MIN
@@ -316,6 +333,32 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_paid_users',
     'cm_subscribers',
 }
+
+
+def is_spelled_out_number(raw_text: str) -> bool:
+    """
+    Check if a number text is spelled out rather than numeric.
+
+    Spelled-out numbers (e.g., "six", "twenty-one", "five million") are
+    intentionally written and unlikely to be page numbers or false positives.
+
+    Args:
+        raw_text: The raw text of the number match
+
+    Returns:
+        True if the number contains no digits (is spelled out)
+
+    Examples:
+        >>> is_spelled_out_number("six")
+        True
+        >>> is_spelled_out_number("twenty-one")
+        True
+        >>> is_spelled_out_number("123")
+        False
+        >>> is_spelled_out_number("$50,000")
+        False
+    """
+    return not any(c.isdigit() for c in raw_text)
 
 
 def is_percentage_format(raw_text: str, unit: str) -> bool:
@@ -641,11 +684,12 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, and decimals)
+        # Check minimum value threshold (skip for percentages, currency, decimals, and spelled-out)
         # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
+        # Spelled-out numbers like "six" are intentionally written - likely meaningful
         if number.unit == "count" and value is not None:
             is_decimal = "." in number.raw_text
-            if not is_decimal and abs(float(value)) < self.min_value:
+            if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
                 return True, "below_min_value"
 
         # Check if number looks like a year (only for plain integers)
@@ -658,11 +702,12 @@ class FalsePositiveFilter:
         # Check if number appears near "Table of Contents" header
         # Only filter if it looks like a page number (small integer, no currency/decimals)
         # Real metrics (e.g. "31.0 million") often appear on pages with TOC headers
+        # Spelled-out numbers (e.g., "six", "twenty") are unlikely to be page numbers
         is_plain_count = number.unit == "count"
         is_integer_format = "." not in number.raw_text
         is_small_value = value is not None and abs(float(value)) < 1000
 
-        if is_plain_count and is_integer_format and is_small_value:
+        if is_plain_count and is_integer_format and is_small_value and not is_spelled_out_number(number.raw_text):
             if is_near_table_of_contents(text, start, self.toc_proximity_chars):
                 logger.debug(
                     f"TOC proximity filter: number={number.raw_text} "
@@ -703,6 +748,16 @@ class FalsePositiveFilter:
                 if num_rel_start >= match.start() and num_rel_end <= match.end():
                     return True, "reference_number"
 
+        # CMS-2: Check if number is part of a metric label threshold
+        # Example: "Paid Customers > $100,000" - the $100,000 is label-embedded
+        # Look for comparison operator immediately before the number
+        if self._is_label_embedded_value(text, number):
+            logger.debug(
+                f"Label-embedded value filter: number={number.raw_text} "
+                f"context={text[max(0, start-30):min(len(text), end+10)]!r}"
+            )
+            return True, "label_embedded_value"
+
         # HRV-11: Check if number appears in financial statement context
         if self.filter_financial_statements:
             # First check: Is this within a financial statement section?
@@ -723,3 +778,39 @@ class FalsePositiveFilter:
                     return True, f"financial_line_item:{financial_keyword}"
 
         return False, None
+
+    def _is_label_embedded_value(
+        self, text: str, number: NumberMatch, window_chars: int = 20
+    ) -> bool:
+        """
+        Check if a number is part of a metric label threshold pattern.
+
+        Detects patterns like:
+        - "Customers > $100,000" - the $100,000 is label-embedded
+        - "ARR >= $50M" - the $50M is label-embedded
+        - "Paid Customers > $100K" - part of a threshold label
+
+        Args:
+            text: Full text containing the number
+            number: The NumberMatch to check
+            window_chars: Characters before number to search for operator
+
+        Returns:
+            True if number appears to be part of a comparison pattern
+        """
+        # Look at text before the number (with some buffer)
+        search_start = max(0, number.start - window_chars)
+
+        # Include the number itself since pattern needs to match both operator and number
+        search_text = text[search_start : number.end]
+
+        # Check if pattern matches and includes our number
+        match = LABEL_EMBEDDED_VALUE_PATTERN.search(search_text)
+        if match:
+            # Verify the pattern ends at or after our number position
+            # (relative to search_text)
+            num_rel_end = number.end - search_start
+            if match.end() >= num_rel_end - 2:  # Allow small tolerance
+                return True
+
+        return False

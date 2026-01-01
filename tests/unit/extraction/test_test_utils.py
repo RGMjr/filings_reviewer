@@ -155,7 +155,7 @@ class TestAssertClassificationMatch:
         segment.contains_methodology_flag = False
         segment.contains_numeric_disclosure_flag = True
         segment.candidate_metric_ids = ["cm_daily_active_users"]
-        segment.confidence = 0.75
+        segment.classifier_confidence = 0.75
 
         expected = {
             "contains_definition_flag": True,
@@ -195,7 +195,7 @@ class TestAssertClassificationMatch:
         segment = SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test")
         segment.contains_definition_flag = True
         segment.candidate_metric_ids = []
-        segment.confidence = 0.9
+        segment.classifier_confidence = 0.9
 
         expected = {"contains_definition_flag": True, "candidate_metric_ids": [], "min_confidence": 0.5, "max_confidence": 0.7}
 

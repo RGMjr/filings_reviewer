@@ -394,11 +394,7 @@ class MetricClassifier:
         # -----------------------------------------------------------------
         # HRV-6 Growth Metrics
         # -----------------------------------------------------------------
-        "cm_active_customers_growth": [
-            r"\bactive\s+(?:customers?|consumers?)\s+growth\b",
-            r"\b(?:customers?|consumers?)\s+growth\b",
-            r"\bgrowth\s+(?:in\s+)?active\s+(?:customers?|consumers?)\b",
-        ],
+        # NOTE: cm_active_customers_growth REMOVED - metric doesn't work as intended
         "cm_purchase_transactions_overall_growth": [
             r"\b(?:number\s+of\s+)?orders?\s+growth\b",
             r"\btransactions?\s+growth\b",

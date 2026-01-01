@@ -522,7 +522,12 @@
                             <div class="card-body">
                                 {# Show automated decision info if present #}
                                 {% if existing_decision and existing_decision.is_automated %}
-                                    <div class="alert alert-warning mb-3">
+                                    <div class="alert alert-warning mb-3"
+                                         id="automated-decision-info"
+                                         data-decision="{{ existing_decision.decision }}"
+                                         data-metric-id="{{ existing_decision.assigned_metric_id or '' }}"
+                                         data-rejection-category="{{ existing_decision.rejection_category or '' }}"
+                                         data-rejection-reason="{{ existing_decision.rejection_reason or '' }}">
                                         <div class="d-flex align-items-start">
                                             <i class="bi bi-robot me-2 fs-5"></i>
                                             <div class="flex-grow-1">
@@ -534,8 +539,13 @@
                                                 {% if existing_decision.rejection_reason %}
                                                     <br><small class="text-muted">Reason: {{ existing_decision.rejection_reason }}</small>
                                                 {% endif %}
-                                                <br><small class="text-muted fst-italic">You can override this automated decision below.</small>
                                             </div>
+                                            <button type="button"
+                                                    class="btn btn-success btn-sm ms-2"
+                                                    id="confirm-automated-btn"
+                                                    title="Confirm this automated suggestion (keyboard: F)">
+                                                ✓ Confirm <span class="badge bg-light text-dark ms-1">F</span>
+                                            </button>
                                         </div>
                                     </div>
                                 {% endif %}
@@ -922,6 +932,11 @@
                         </div>
 
                         <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">F</span>
+                            <span class="small">Confirm automated suggestion</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
                             <span class="badge bg-secondary me-2">R</span>
                             <span class="small">Reject candidate</span>
                         </div>
@@ -974,6 +989,8 @@
                 </div>
                 <div class="col">
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">A</kbd> Accept
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">F</kbd> Confirm
                     <span class="mx-1 text-muted">|</span>
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">R</kbd> Reject
                     <span class="mx-1 text-muted">|</span>

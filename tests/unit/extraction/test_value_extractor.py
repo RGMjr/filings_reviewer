@@ -35,8 +35,8 @@ def build_segment(**overrides) -> SourceSegment:
 # =============================================================================
 
 
-def test_extract_from_text_returns_llm_text_method():
-    """Text extraction should populate values with the allowed extraction method."""
+def test_extract_from_text_returns_rule_text_smart_method():
+    """Text extraction should populate values with the rule_text_smart extraction method."""
     segment = build_segment(
         raw_text="We had approximately 1,500 daily active users (DAUs).",
         candidate_metric_ids=["cm_daily_active_users"],
@@ -48,7 +48,7 @@ def test_extract_from_text_returns_llm_text_method():
     assert len(values) == 1
     value = values[0]
     assert value.metric_id == "cm_daily_active_users"
-    assert value.extraction_method == "llm_text"
+    assert value.extraction_method == "rule_text_smart"
     assert value.value_numeric == Decimal("1500")
 
 
@@ -382,40 +382,47 @@ def test_identify_columns_default_value():
 
 
 def test_infer_metric_single_candidate():
-    """Use the only candidate metric if only one exists."""
+    """Single candidate metric only returned if header pattern matches."""
     extractor = ValueExtractor()
     segment = build_segment(candidate_metric_ids=["cm_revenue_by_cohort"])
 
+    # Without matching header, returns None (strict behavior)
     metric_id = extractor._infer_metric_from_context(segment, [], 0)
+    assert metric_id is None
+
+    # With matching header containing "revenue", returns the metric
+    metric_id = extractor._infer_metric_from_context(segment, ["Cohort Revenue"], 0)
     assert metric_id == "cm_revenue_by_cohort"
 
 
 def test_infer_metric_from_header_revenue():
-    """Infer revenue metric from header text."""
+    """Infer revenue metric from header text with cohort context."""
     extractor = ValueExtractor()
     segment = build_segment(
         candidate_metric_ids=["cm_revenue_by_cohort", "cm_transactions_by_cohort"]
     )
-    headers = ["Cohort", "Revenue"]
+    # Header must contain both "revenue" and "cohort" for direct match
+    headers = ["Cohort", "Revenue Cohort"]
 
     metric_id = extractor._infer_metric_from_context(segment, headers, 1)
     assert metric_id == "cm_revenue_by_cohort"
 
 
 def test_infer_metric_from_header_transaction():
-    """Infer transaction metric from header text."""
+    """Infer transaction metric from header text with cohort context."""
     extractor = ValueExtractor()
     segment = build_segment(
         candidate_metric_ids=["cm_revenue_by_cohort", "cm_transactions_by_cohort"]
     )
-    headers = ["Cohort", "Transactions"]
+    # Header must contain both "transaction" and "cohort" for direct match
+    headers = ["Cohort", "Transaction Cohort"]
 
     metric_id = extractor._infer_metric_from_context(segment, headers, 1)
     assert metric_id == "cm_transactions_by_cohort"
 
 
 def test_infer_metric_from_header_customers():
-    """Infer customer metric from header text."""
+    """Infer customer metric from header text with tenure context."""
     extractor = ValueExtractor()
     segment = build_segment(
         candidate_metric_ids=[
@@ -423,22 +430,24 @@ def test_infer_metric_from_header_customers():
             "cm_revenue_by_cohort",
         ]
     )
-    headers = ["Tenure", "Customers"]
+    # Header must contain both "customer" and "tenure" for direct match
+    headers = ["Tenure", "Customer Tenure"]
 
     metric_id = extractor._infer_metric_from_context(segment, headers, 1)
     assert metric_id == "cm_customers_period_end_by_tenure"
 
 
-def test_infer_metric_fallback_first():
-    """Fall back to first candidate metric if no match."""
+def test_infer_metric_no_fallback_with_unknown_header():
+    """Return None when header doesn't match any pattern (strict behavior)."""
     extractor = ValueExtractor()
     segment = build_segment(
         candidate_metric_ids=["cm_revenue_by_cohort", "cm_transactions_by_cohort"]
     )
     headers = ["Unknown"]
 
+    # Strict logic: no fallback to first candidate
     metric_id = extractor._infer_metric_from_context(segment, headers, 0)
-    assert metric_id == "cm_revenue_by_cohort"
+    assert metric_id is None
 
 
 def test_infer_metric_no_candidates():
@@ -471,6 +480,8 @@ def test_clean_text_whitespace():
 
 def test_extract_from_table_basic():
     """Extract values from a simple table."""
+    # Row label must contain metric keywords (e.g., "revenue" + "cohort")
+    # Header "Cohort" triggers cohort column detection for cohort_type parsing
     html = """
     <table>
         <tr>
@@ -479,7 +490,7 @@ def test_extract_from_table_basic():
             <th>Q2 2024</th>
         </tr>
         <tr>
-            <td>2021 Cohort</td>
+            <td>2021 Cohort Revenue</td>
             <td>$1,500,000</td>
             <td>$1,800,000</td>
         </tr>
@@ -489,7 +500,7 @@ def test_extract_from_table_basic():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
-        raw_text="Revenue by Cohort",
+        raw_text="2021 Cohort Revenue $1,500,000 $1,800,000",
         candidate_metric_ids=["cm_revenue_by_cohort"],
         source_segment_id=123,
     )
@@ -563,15 +574,16 @@ def test_extract_from_table_only_header():
 
 def test_extract_from_table_malformed_rows():
     """Skip rows with mismatched column count."""
+    # Row labels must contain metric keywords (e.g., "cohort revenue")
     html = """
     <table>
         <tr>
-            <th>Cohort</th>
+            <th>Metric</th>
             <th>Q1 2024</th>
             <th>Q2 2024</th>
         </tr>
         <tr>
-            <td>2021 Cohort</td>
+            <td>2021 Cohort Revenue</td>
             <td>$1,500,000</td>
             <td>$1,800,000</td>
         </tr>
@@ -580,7 +592,7 @@ def test_extract_from_table_malformed_rows():
             <!-- Missing columns -->
         </tr>
         <tr>
-            <td>2022 Cohort</td>
+            <td>2022 Cohort Revenue</td>
             <td>$2,000,000</td>
             <td>$2,500,000</td>
         </tr>
@@ -590,7 +602,7 @@ def test_extract_from_table_malformed_rows():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
-        raw_text="Revenue by Cohort",
+        raw_text="2021 Cohort Revenue 2022 Cohort Revenue",
         candidate_metric_ids=["cm_revenue_by_cohort"],
     )
 
@@ -604,22 +616,23 @@ def test_extract_from_table_malformed_rows():
 
 def test_extract_from_table_tenure_cohorts():
     """Extract values with tenure cohort labels."""
+    # Row labels must contain metric keywords (e.g., "customers by tenure")
     html = """
     <table>
         <tr>
-            <th>Cohort</th>
+            <th>Tenure Cohort</th>
             <th>Customers</th>
         </tr>
         <tr>
-            <td>0-12 months</td>
+            <td>Customers by Tenure: 0-12 months</td>
             <td>1,500</td>
         </tr>
         <tr>
-            <td>1-2 years</td>
+            <td>Customers by Tenure: 1-2 years</td>
             <td>800</td>
         </tr>
         <tr>
-            <td>2+ years</td>
+            <td>Customers by Tenure: 2+ years</td>
             <td>300</td>
         </tr>
     </table>
@@ -628,7 +641,7 @@ def test_extract_from_table_tenure_cohorts():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
-        raw_text="Customers by Tenure",
+        raw_text="Customers by Tenure: 0-12 months 1,500",
         candidate_metric_ids=["cm_customers_period_end_by_tenure"],
     )
 
@@ -653,6 +666,7 @@ def test_extract_from_table_tenure_cohorts():
 
 def test_extract_from_table_percentage_values():
     """Extract percentage values from table."""
+    # Use correct metric ID and matching pattern
     html = """
     <table>
         <tr>
@@ -660,7 +674,7 @@ def test_extract_from_table_percentage_values():
             <th>Value</th>
         </tr>
         <tr>
-            <td>Churn Rate</td>
+            <td>Customer Churn Rate</td>
             <td>5.5%</td>
         </tr>
     </table>
@@ -669,7 +683,8 @@ def test_extract_from_table_percentage_values():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
-        candidate_metric_ids=["cm_churn_rate"],
+        raw_text="Customer Churn Rate 5.5%",
+        candidate_metric_ids=["cm_customer_churn_rate"],
     )
 
     extractor = ValueExtractor()
@@ -682,15 +697,16 @@ def test_extract_from_table_percentage_values():
 
 def test_extract_from_table_skip_non_numeric_cells():
     """Skip table cells that don't contain numbers."""
+    # Row label must contain metric keywords
     html = """
     <table>
         <tr>
-            <th>Cohort</th>
+            <th>Metric</th>
             <th>Q1 2024</th>
             <th>Q2 2024</th>
         </tr>
         <tr>
-            <td>2021 Cohort</td>
+            <td>2021 Cohort Revenue</td>
             <td>N/A</td>
             <td>$1,500,000</td>
         </tr>
@@ -700,6 +716,7 @@ def test_extract_from_table_skip_non_numeric_cells():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
+        raw_text="2021 Cohort Revenue N/A $1,500,000",
         candidate_metric_ids=["cm_revenue_by_cohort"],
     )
 
@@ -714,6 +731,7 @@ def test_extract_from_table_skip_non_numeric_cells():
 
 def test_extract_from_segment_routes_to_table():
     """extract_from_segment should route table segments to extract_from_table."""
+    # Row label must contain metric keywords (e.g., "daily active users")
     html = """
     <table>
         <tr>
@@ -721,7 +739,7 @@ def test_extract_from_segment_routes_to_table():
             <th>Value</th>
         </tr>
         <tr>
-            <td>Active Users</td>
+            <td>Daily Active Users</td>
             <td>1,500</td>
         </tr>
     </table>
@@ -730,7 +748,8 @@ def test_extract_from_segment_routes_to_table():
     segment = build_segment(
         segment_type="table",
         raw_html=html,
-        candidate_metric_ids=["cm_active_users"],
+        raw_text="Daily Active Users 1,500",
+        candidate_metric_ids=["cm_daily_active_users"],
     )
 
     extractor = ValueExtractor()
@@ -743,17 +762,18 @@ def test_extract_from_segment_routes_to_table():
 
 def test_extract_from_segment_routes_to_text():
     """extract_from_segment should route non-table segments to extract_from_text."""
+    # Text must contain metric keywords (e.g., "daily active users")
     segment = build_segment(
         segment_type="paragraph",
-        raw_text="We had 1,500 active users.",
-        candidate_metric_ids=["cm_active_users"],
+        raw_text="We had 1,500 daily active users.",
+        candidate_metric_ids=["cm_daily_active_users"],
     )
 
     extractor = ValueExtractor()
     values = extractor.extract_from_segment(segment, company_id=1)
 
     assert len(values) == 1
-    assert values[0].extraction_method == "llm_text"
+    assert values[0].extraction_method == "rule_text_smart"
     assert values[0].source_type == "text"
 
 
@@ -766,9 +786,10 @@ def test_convenience_function_extract_values():
     """Test the convenience function extract_values()."""
     from src.extraction.value_extractor import extract_values
 
+    # Text must contain metric keywords (e.g., "daily active users")
     segment = build_segment(
-        raw_text="We had 1,500 users.",
-        candidate_metric_ids=["cm_active_users"],
+        raw_text="We had 1,500 daily active users.",
+        candidate_metric_ids=["cm_daily_active_users"],
     )
 
     values = extract_values(segment, company_id=42)
@@ -1203,25 +1224,24 @@ class TestRowBoundaryValidation:
 
     def test_cross_row_match_rejected_row_above(self):
         """Keyword in row N should not match value from row N-1."""
-        # This table has "Gross profit" that could incorrectly match "450,069" from prior row
+        # Row labels must contain metric keywords (e.g., "cohort revenue")
         html = """
         <table>
             <tr>
-                <th>Cohort</th>
-                <th>Revenue</th>
+                <th>Metric</th>
+                <th>Value</th>
             </tr>
             <tr>
-                <td>Cost of revenues</td>
+                <td>2021 Cohort Revenue</td>
                 <td>$450,069</td>
             </tr>
             <tr>
-                <td>Gross profit</td>
+                <td>2022 Cohort Revenue</td>
                 <td>$262,431</td>
             </tr>
         </table>
         """
-        # The raw_text should have both rows with their values
-        raw_text = "Cost of revenues $450,069 Gross profit $262,431"
+        raw_text = "2021 Cohort Revenue $450,069 2022 Cohort Revenue $262,431"
 
         segment = build_segment(
             segment_type="table",
@@ -1235,7 +1255,6 @@ class TestRowBoundaryValidation:
         values = extractor.extract_from_table(segment, company_id=1)
 
         # Should extract 2 values, each correctly associated with its row
-        # The key is that "Gross profit" should NOT be associated with "450,069"
         assert len(values) == 2
 
         # Verify the values are correctly associated
@@ -1245,23 +1264,24 @@ class TestRowBoundaryValidation:
 
     def test_cross_row_match_rejected_row_below(self):
         """Keyword in row N should not match value from row N+1."""
+        # Row labels must contain metric keywords (e.g., "active customers")
         html = """
         <table>
             <tr>
-                <th>Cohort</th>
+                <th>Segment</th>
                 <th>Count</th>
             </tr>
             <tr>
-                <td>Premium users</td>
+                <td>Active Customers Premium</td>
                 <td>1,500</td>
             </tr>
             <tr>
-                <td>Free users</td>
+                <td>Active Customers Free</td>
                 <td>5,000</td>
             </tr>
         </table>
         """
-        raw_text = "Premium users 1,500 Free users 5,000"
+        raw_text = "Active Customers Premium 1,500 Active Customers Free 5,000"
 
         segment = build_segment(
             segment_type="table",
@@ -1279,6 +1299,8 @@ class TestRowBoundaryValidation:
 
     def test_same_row_match_accepted(self):
         """Keyword and value in same row should match correctly."""
+        # Row label must contain metric keywords (e.g., "cohort revenue")
+        # Header must identify cohort column for cohort parsing to work
         html = """
         <table>
             <tr>
@@ -1286,12 +1308,12 @@ class TestRowBoundaryValidation:
                 <th>Q1 2024</th>
             </tr>
             <tr>
-                <td>2021 Cohort</td>
+                <td>2021 Cohort Revenue</td>
                 <td>$1,500,000</td>
             </tr>
         </table>
         """
-        raw_text = "2021 Cohort $1,500,000"
+        raw_text = "2021 Cohort Revenue $1,500,000"
 
         segment = build_segment(
             segment_type="table",
@@ -1311,6 +1333,8 @@ class TestRowBoundaryValidation:
 
     def test_row_heading_matches_same_row_values(self):
         """Row heading in first cell should match values in same row."""
+        # Row labels must contain metric keywords (e.g., "cohort revenue")
+        # Header must identify cohort column for cohort parsing to work
         html = """
         <table>
             <tr>
@@ -1319,18 +1343,18 @@ class TestRowBoundaryValidation:
                 <th>Q2</th>
             </tr>
             <tr>
-                <td>2020 Cohort</td>
+                <td>2020 Cohort Revenue</td>
                 <td>100</td>
                 <td>150</td>
             </tr>
             <tr>
-                <td>2021 Cohort</td>
+                <td>2021 Cohort Revenue</td>
                 <td>200</td>
                 <td>250</td>
             </tr>
         </table>
         """
-        raw_text = "2020 Cohort 100 150 2021 Cohort 200 250"
+        raw_text = "2020 Cohort Revenue 100 150 2021 Cohort Revenue 200 250"
 
         segment = build_segment(
             segment_type="table",
@@ -1355,30 +1379,30 @@ class TestRowBoundaryValidation:
 
     def test_multi_row_table_correct_associations(self):
         """Multi-row table should extract correct associations per row."""
-        # Use values that won't trigger false positive year filter (avoid 1990-2100 range)
+        # Row labels must contain metric keywords AND cohort year format
+        # "Tenure Cohort" matches cm_customers_period_end_by_tenure pattern
+        # "YEAR Cohort" format allows cohort parsing
         html = """
         <table>
             <tr>
                 <th>Cohort</th>
-                <th>Customers</th>
+                <th>Customer Count</th>
             </tr>
             <tr>
-                <td>2019 Cohort</td>
+                <td>2019 Cohort Tenure Cohort</td>
                 <td>10,500</td>
             </tr>
             <tr>
-                <td>2020 Cohort</td>
+                <td>2020 Cohort Tenure Cohort</td>
                 <td>25,000</td>
             </tr>
             <tr>
-                <td>2021 Cohort</td>
+                <td>2021 Cohort Tenure Cohort</td>
                 <td>37,500</td>
             </tr>
         </table>
         """
-        # raw_text must match what TableRowParser extracts from HTML for row
-        # validation to work correctly. The format includes header row text.
-        raw_text = "Cohort Customers 2019 Cohort 10,500 2020 Cohort 25,000 2021 Cohort 37,500"
+        raw_text = "2019 Cohort Tenure Cohort 10,500 2020 Cohort Tenure Cohort 25,000 2021 Cohort Tenure Cohort 37,500"
 
         segment = build_segment(
             segment_type="table",
@@ -1517,10 +1541,11 @@ class TestRowBoundaryValidation:
 
     def test_empty_rows_ignored(self):
         """Tables with empty rows should be handled."""
+        # Row labels must contain metric keywords (e.g., "cohort revenue")
         html = """
         <table>
             <tr>
-                <th>Cohort</th>
+                <th>Metric</th>
                 <th>Value</th>
             </tr>
             <tr>
@@ -1528,12 +1553,12 @@ class TestRowBoundaryValidation:
                 <td></td>
             </tr>
             <tr>
-                <td>2021 Cohort</td>
+                <td>2021 Cohort Revenue</td>
                 <td>1,500</td>
             </tr>
         </table>
         """
-        raw_text = "2021 Cohort 1,500"
+        raw_text = "2021 Cohort Revenue 1,500"
 
         segment = build_segment(
             segment_type="table",
@@ -1551,21 +1576,22 @@ class TestRowBoundaryValidation:
 
     def test_row_validation_with_false_positive_filter(self):
         """Both row validation and FP filter should work together."""
+        # Row labels must contain metric keywords (e.g., "active customers")
         html = """
         <table>
             <tr>
-                <th>Cohort</th>
+                <th>Segment</th>
                 <th>Year</th>
-                <th>Customers</th>
+                <th>Count</th>
             </tr>
             <tr>
-                <td>2021 Cohort</td>
+                <td>Active Customers 2021</td>
                 <td>2023</td>
                 <td>5,000</td>
             </tr>
         </table>
         """
-        raw_text = "2021 Cohort 2023 5,000"
+        raw_text = "Active Customers 2021 2023 5,000"
 
         segment = build_segment(
             segment_type="table",

@@ -700,8 +700,9 @@ class KeywordMatcher:
                     # Overlapping substring match found - compare lengths
                     if len(kw.keyword) > len(accepted.keyword):
                         # New keyword is longer (more specific) - replace accepted
-                        logger.debug(
-                            f"Cross-metric replacement: '{accepted.keyword}' "
+                        # Log at INFO for monitoring cross-metric suppression in production
+                        logger.info(
+                            f"CMS-1 cross-metric replacement: '{accepted.keyword}' "
                             f"({accepted.metric_id}) replaced by longer "
                             f"'{kw.keyword}' ({kw.metric_id})"
                         )
@@ -710,9 +711,10 @@ class KeywordMatcher:
                         seen_metrics.discard(accepted.metric_id)
                     else:
                         # Accepted keyword is longer or equal - skip new one
-                        logger.debug(
-                            f"Filtered substring duplicate: '{kw.keyword}' "
-                            f"({kw.metric_id}) is substring of '{accepted.keyword}' "
+                        # Log at INFO for monitoring cross-metric suppression in production
+                        logger.info(
+                            f"CMS-1 cross-metric suppression: '{kw.keyword}' "
+                            f"({kw.metric_id}) suppressed by longer '{accepted.keyword}' "
                             f"({accepted.metric_id})"
                         )
                         is_substring_duplicate = True
