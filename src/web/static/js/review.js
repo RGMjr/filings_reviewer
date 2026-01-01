@@ -182,6 +182,12 @@
             elements.acceptButton.addEventListener('click', handleAccept);
         }
 
+        // Confirm automated suggestion button
+        const confirmAutomatedBtn = document.getElementById('confirm-automated-btn');
+        if (confirmAutomatedBtn) {
+            confirmAutomatedBtn.addEventListener('click', handleConfirmAutomated);
+        }
+
         // Rejection dropdown items
         elements.rejectionCategoryOptions.forEach(option => {
             option.addEventListener('click', handleRejectionCategorySelect);
@@ -484,6 +490,46 @@
             decision: 'accept',
             assigned_metric_id: metricId
         });
+    }
+
+    function handleConfirmAutomated(event) {
+        if (event) event.preventDefault();
+
+        // Find the automated decision info element
+        const automatedInfo = document.getElementById('automated-decision-info');
+        if (!automatedInfo) {
+            console.log('No automated decision to confirm');
+            return;
+        }
+
+        const decision = automatedInfo.dataset.decision;
+        const metricId = automatedInfo.dataset.metricId;
+        const rejectionCategory = automatedInfo.dataset.rejectionCategory;
+        const rejectionReason = automatedInfo.dataset.rejectionReason;
+
+        if (!decision) {
+            showError('No automated decision found to confirm');
+            return;
+        }
+
+        // Build the decision payload based on the type
+        const decisionData = { decision: decision };
+
+        if (decision === 'accept' || decision === 'reclassify') {
+            if (metricId) {
+                decisionData.assigned_metric_id = metricId;
+            }
+        } else if (decision === 'reject') {
+            if (rejectionCategory) {
+                decisionData.rejection_category = rejectionCategory;
+            }
+            if (rejectionReason) {
+                decisionData.rejection_reason = rejectionReason;
+            }
+        }
+
+        console.log('Confirming automated decision:', decisionData);
+        submitDecision(decisionData);
     }
 
     function handleRejectionCategorySelect(event) {
@@ -836,6 +882,12 @@
                 event.preventDefault();
                 console.log('Accept shortcut - button:', elements.acceptButton, 'disabled:', elements.acceptButton?.disabled);
                 handleAccept();
+                break;
+
+            case 'f':
+                event.preventDefault();
+                console.log('Confirm automated suggestion shortcut');
+                handleConfirmAutomated();
                 break;
 
             case 'r':

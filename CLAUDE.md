@@ -154,6 +154,12 @@ docker compose down
     - ARR/MRR NOT context-gated (inherently customer-related: "recurring" implies subscriptions)
     - Classification preserved: revenue synonyms still contribute to segment enrichment/richness scoring
     - Configuration: `required_context` in `config/metric_keywords.yaml` with YAML anchor sharing
+11. **Cross-metric substring suppression** (2025-12-31): When keywords from different metrics overlap:
+    - If one keyword text is a substring of another at overlapping positions, keep only the longer match
+    - Example: "Paid Customers" suppressed by "Paid Customers > $100,000" when they overlap
+    - Label-embedded values filtered: numbers following comparison operators (e.g., "> $100,000") are not extracted
+    - Logs at INFO level with "CMS-1" prefix for production monitoring
+    - **FOLLOW-UP NEEDED**: Greedy patterns in `metric_keywords.yaml` (line 254: `\bretention\s+rate[^.;]{0,50}\d+%`) can cause unexpected suppression. Consider constraining these patterns to reduce false matches.
 
 ## Documentation
 

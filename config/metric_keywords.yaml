@@ -220,6 +220,10 @@ cm_cac_payback_period:
     - '\bcac\s+payback\b'
     - '\bpayback\s+period\b'
     - '\btime\s+to\s+recover\b'
+    - '\bpayback\s+period\s+(?:on|for)\s+cac\b'
+  specific_patterns:
+    - 'payback period on CAC'
+    - 'CAC payback period'
 
 cm_customer_retention_rate:
   patterns:
@@ -464,19 +468,9 @@ cm_ltv_to_cac_ratio:
 # =============================================================================
 # Growth Metrics (added for HRV-6 improvements)
 # =============================================================================
-
-cm_active_customers_growth:
-  patterns:
-    - '\bactive\s+(?:customers?|consumers?)\s+growth\b'
-    - '\b(?:customers?|consumers?)\s+growth\b'
-    - '\bgrowth\s+(?:in\s+)?active\s+(?:customers?|consumers?)\b'
-    - '\bactive\s+(?:customers?|consumers?)[^.;]{0,30}(?:up|increased?|grew)\b'
-  exclusions:
-    - '\bacquisition\s+cost\b'
-    - '\bcac\b'
-  specific_patterns:
-    - 'active\s+consumers?\s+growth'
-    - 'active\s+customers?\s+growth'
+# NOTE: cm_active_customers_growth REMOVED - metric doesn't work as intended
+# Growth percentages are typically relative values that need context to interpret
+# =============================================================================
 
 cm_purchase_transactions_overall_growth:
   patterns:

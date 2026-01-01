@@ -19,6 +19,7 @@ from src.review.false_positive_filter import (
     YEAR_MIN,
     FalsePositiveFilter,
     is_near_table_of_contents,
+    is_spelled_out_number,
     is_toc_page_reference,
 )
 from src.review.number_parsing import NumberMatch
@@ -175,6 +176,135 @@ class TestIsFalsePositive:
         is_fp, reason = filter.is_false_positive(
             "Average AOV was $5 per transaction", number
         )
+        assert is_fp is False
+        assert reason is None
+
+
+# =============================================================================
+# Label-Embedded Value Filtering Tests (CMS-2)
+# =============================================================================
+
+
+class TestLabelEmbeddedValueFiltering:
+    """Tests for filtering numbers that are part of metric label thresholds.
+
+    Example: "Paid Customers > $100,000" - the $100,000 is part of the label,
+    not an actual metric value to extract.
+    """
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_filters_threshold_with_greater_than(self, filter):
+        """Should filter numbers following > operator."""
+        text = "Paid Customers > $100,000 grew to 500"
+        number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_threshold_with_greater_equal(self, filter):
+        """Should filter numbers following >= operator."""
+        text = "ARR >= $50M is our target"
+        number = NumberMatch(
+            start=text.find("50"),
+            end=text.find("50") + 2,
+            raw_text="50",
+            value=Decimal("50"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_threshold_with_less_than(self, filter):
+        """Should filter numbers following < operator."""
+        text = "Customers < $1000 are considered small"
+        number = NumberMatch(
+            start=text.find("1000"),
+            end=text.find("1000") + 4,
+            raw_text="1000",
+            value=Decimal("1000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_filters_unicode_comparison_operators(self, filter):
+        """Should filter numbers following unicode operators (≥, ≤)."""
+        text = "Enterprise customers ≥ $100K annually"
+        number = NumberMatch(
+            start=text.find("100"),
+            end=text.find("100") + 3,
+            raw_text="100",
+            value=Decimal("100"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+    def test_does_not_filter_standalone_currency(self, filter):
+        """Should NOT filter currency without comparison operator."""
+        text = "We earned $100,000 in revenue"
+        number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+        assert reason is None
+
+    def test_does_not_filter_plain_number(self, filter):
+        """Should NOT filter plain numbers without comparison operator."""
+        text = "We had 100000 customers"
+        number = NumberMatch(
+            start=text.find("100000"),
+            end=text.find("100000") + 6,
+            raw_text="100000",
+            value=Decimal("100000"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+        assert reason is None
+
+    def test_real_world_slack_example(self, filter):
+        """Real-world example from Slack S-1: Paid Customers > $100,000."""
+        text = "We have 500 Paid Customers > $100,000 in annual contract value"
+        # The $100,000 should be filtered
+        threshold_number = NumberMatch(
+            start=text.find("100,000"),
+            end=text.find("100,000") + 7,
+            raw_text="100,000",
+            value=Decimal("100000"),
+            unit="usd",
+        )
+        is_fp, reason = filter.is_false_positive(text, threshold_number)
+        assert is_fp is True
+        assert reason == "label_embedded_value"
+
+        # The 500 should NOT be filtered
+        count_number = NumberMatch(
+            start=text.find("500"),
+            end=text.find("500") + 3,
+            raw_text="500",
+            value=Decimal("500"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, count_number)
         assert is_fp is False
         assert reason is None
 
@@ -1604,3 +1734,73 @@ class TestFinancialStatementHeaderPatterns:
         for header in test_headers:
             matched = any(pattern.search(header) for pattern in FINANCIAL_STATEMENT_HEADERS)
             assert matched, f"Failed to match: {header}"
+
+
+# =============================================================================
+# Spelled-Out Number Detection Tests
+# =============================================================================
+
+
+class TestIsSpelledOutNumber:
+    """Tests for the is_spelled_out_number helper function."""
+
+    def test_spelled_out_returns_true(self):
+        """Spelled-out numbers should return True."""
+        assert is_spelled_out_number("six") is True
+        assert is_spelled_out_number("twenty-one") is True
+        assert is_spelled_out_number("five million") is True
+        assert is_spelled_out_number("SIX") is True
+
+    def test_numeric_returns_false(self):
+        """Numeric strings should return False."""
+        assert is_spelled_out_number("123") is False
+        assert is_spelled_out_number("50,000") is False
+        assert is_spelled_out_number("$1,234.56") is False
+        assert is_spelled_out_number("100M") is False
+
+    def test_mixed_returns_false(self):
+        """Mixed alphanumeric should return False (contains digits)."""
+        assert is_spelled_out_number("10 million") is False
+        assert is_spelled_out_number("$5.2 million") is False
+
+
+class TestSpelledOutNumberFilterExemption:
+    """Tests that spelled-out numbers are exempt from certain filters."""
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_spelled_out_exempt_from_min_value(self, filter):
+        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
+        # "six" has value 6, which is below default min_value (10)
+        # But spelled-out numbers should be exempt
+        number = NumberMatch(
+            start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("six months payback", number)
+        # Should NOT be filtered - spelled-out numbers are intentionally written
+        assert is_fp is False
+        assert reason is None
+
+    def test_spelled_out_exempt_from_toc_proximity(self, filter):
+        """Spelled-out numbers near TOC should NOT be filtered."""
+        text = "Table of Contents ... payback is six months"
+        number = NumberMatch(
+            start=text.find("six"), end=text.find("six") + 3,
+            raw_text="six", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered - spelled numbers are not page numbers
+        assert is_fp is False
+
+    def test_numeric_small_value_still_filtered(self, filter):
+        """Numeric small values should still be filtered (not exempt)."""
+        number = NumberMatch(
+            start=0, end=1, raw_text="6", value=Decimal("6"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("6 months payback", number)
+        # Should be filtered - numeric small value
+        assert is_fp is True
+        assert reason == "below_min_value"

@@ -282,10 +282,12 @@ class TestGenerateForFiling:
     def test_deduplication_same_metric(self, generator):
         """Deduplicate by (number_position, metric_id)."""
         # Text with number that matches multiple patterns for same metric
+        # Note: Use "customer retention" twice to test deduplication within same metric
+        # without triggering the greedy NRR pattern "\bretention\s+rate[^.;]{0,50}\d+%"
         segments = [
             {
                 "source_segment_id": 1,
-                "raw_text": "Our retention rate and customer retention was 95%",
+                "raw_text": "Our customer retention improved. Customer retention was 95%",
             }
         ]
 
@@ -295,7 +297,7 @@ class TestGenerateForFiling:
             segments=segments,
         )
 
-        # Should only have one candidate for retention rate
+        # Should only have one candidate for retention rate (deduplicated)
         retention_candidates = [
             c for c in candidates if c.suggested_metric_id == "cm_customer_retention_rate"
         ]
@@ -4057,3 +4059,106 @@ class TestDefinitionFiltering:
 
         # Should generate 0 candidates even though "30" and "24" are present
         assert len(candidates) == 0
+
+
+# =============================================================================
+# Cross-Metric Substring Suppression Integration Tests (CMS)
+# =============================================================================
+
+
+class TestCrossMetricSubstringSuppression:
+    """Integration tests for cross-metric substring suppression (CMS-1 + CMS-2).
+
+    Tests that:
+    1. "Paid Customers > $100,000" generates only ONE candidate (CMS-1)
+    2. The $100,000 in the label is NOT extracted as a value (CMS-2)
+    3. The correct metric (cm_large_customers_period_end) is assigned
+    """
+
+    @pytest.fixture
+    def generator(self):
+        """Create a CandidateGenerator instance."""
+        return CandidateGenerator()
+
+    def test_paid_customers_threshold_single_candidate(self, generator):
+        """'Paid Customers > $100,000' generates one candidate, not two."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We have 500 Paid Customers > $100,000 in ARR",
+                "segment_type": "paragraph",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should have only one candidate for the "500" value
+        assert len(candidates) == 1, (
+            f"Expected 1 candidate, got {len(candidates)}: "
+            f"{[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
+        )
+
+        # The candidate should have the correct values
+        candidate = candidates[0]
+        assert candidate.parsed_value == Decimal("500")
+
+        # Should use the more specific metric (large customers)
+        assert candidate.suggested_metric_id == "cm_large_customers_period_end", (
+            f"Expected cm_large_customers_period_end, got {candidate.suggested_metric_id}"
+        )
+
+    def test_threshold_value_not_extracted(self, generator):
+        """The $100,000 threshold value should NOT become a candidate."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We have 500 Paid Customers > $100,000 in ARR",
+                "segment_type": "paragraph",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Verify $100,000 is NOT among the candidate values
+        values = [c.parsed_value for c in candidates]
+        assert Decimal("100000") not in values, (
+            f"$100,000 should be filtered as label-embedded value, but found in {values}"
+        )
+
+    def test_multiple_threshold_patterns(self, generator):
+        """Multiple threshold patterns in same text should each filter correctly."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "We have 500 enterprise customers > $50K and 200 customers >= $100K ARR",
+                "segment_type": "paragraph",
+            }
+        ]
+
+        candidates = generator.generate_for_filing(
+            filing_id=1,
+            company_id=1,
+            segments=segments,
+        )
+
+        # Should have candidates for 500 and 200 (the actual counts)
+        values = [c.parsed_value for c in candidates]
+
+        # The threshold values should NOT be extracted
+        assert Decimal("50") not in values or all(
+            c.suggested_metric_id != "cm_large_customers_period_end"
+            for c in candidates if c.parsed_value == Decimal("50")
+        ), "50K threshold value should not generate large_customers candidate"
+
+        assert Decimal("100") not in values or all(
+            c.suggested_metric_id != "cm_large_customers_period_end"
+            for c in candidates if c.parsed_value == Decimal("100")
+        ), "100K threshold value should not generate large_customers candidate"

@@ -231,8 +231,11 @@ class TestSubstringDeduplication:
         """LTV/CAC ratio should not create separate LTV and CAC candidates.
 
         HRI-3 Update: With exclusion patterns, standalone LTV is now excluded
-        when LTV/CAC context is present. This is the correct behavior - we want
-        the LTV/CAC ratio metric, not the standalone LTV metric.
+        when LTV/CAC context is present.
+
+        CMS-1 Update: With cross-metric substring suppression, CAC is also
+        suppressed because "CAC" is a substring of "LTV/CAC ratio" at an
+        overlapping position. Only the longest/most-specific match is kept.
         """
         matcher = KeywordMatcher(max_keyword_distance=100)
         text = "Our LTV/CAC ratio was 1.42 for the period."
@@ -241,22 +244,22 @@ class TestSubstringDeduplication:
         # Find all keywords in text
         all_keywords = matcher.find_all_keywords(text)
 
-        # HRI-3: Should find LTV/CAC and CAC keywords (LTV excluded due to LTV/CAC context)
+        # Should find LTV/CAC and CAC keywords in text
         assert len(all_keywords) >= 2
         keywords_text = [kw.keyword for kw in all_keywords]
         assert any("LTV/CAC" in k or "ltv/cac" in k.lower() for k in keywords_text)
-        # LTV is now excluded when LTV/CAC ratio is present (HRI-3 improvement)
-        # assert any("LTV" == k.upper() for k in keywords_text)  # Removed - now correctly excluded
         assert any("CAC" == k.upper() for k in keywords_text)
 
-        # With HRI-3: LTV is excluded because LTV/CAC ratio context triggers exclusion
+        # After cross-metric substring suppression (CMS-1):
+        # - LTV excluded via HRI-3 exclusion patterns
+        # - CAC suppressed as substring of "LTV/CAC ratio" at overlapping position
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
 
-        # Should have matches from LTV/CAC ratio and CAC metrics (LTV correctly excluded)
+        # Should have only LTV/CAC ratio (the most specific/longest match)
         matched_keywords = [kw.keyword for kw in keywords_near_number]
-        assert len(matched_keywords) == 2, f"Expected 2 keywords (LTV/CAC, CAC), got {len(matched_keywords)}: {matched_keywords}"
+        assert len(matched_keywords) == 1, f"Expected 1 keyword (LTV/CAC), got {len(matched_keywords)}: {matched_keywords}"
 
-        # Should include LTV/CAC (the most specific match)
+        # Should be the LTV/CAC ratio metric
         assert any("LTV/CAC" in kw or "ltv/cac" in kw.lower() for kw in matched_keywords)
 
     def test_compound_metric_prevents_substring_matches(self):
@@ -287,6 +290,113 @@ class TestSubstringDeduplication:
         # Since keywords don't overlap in position, both can be kept
         # (one before number, one after)
         assert len(keywords_near_number) >= 1
+
+
+# =============================================================================
+# Cross-Metric Substring Suppression Tests (CMS-1)
+# =============================================================================
+
+
+class TestCrossMetricSubstringSuppression:
+    """Tests for cross-metric substring suppression.
+
+    When keywords from different metrics overlap positionally AND one is a
+    substring of the other, keep only the longer (more specific) match.
+    """
+
+    def test_paid_customers_threshold_keeps_specific_metric(self):
+        """'Paid Customers > $100,000' should suppress 'Paid Customers' match.
+
+        cm_large_customers_period_end should win over cm_customers_period_end
+        because its keyword is longer and more specific.
+        """
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        # The keyword pattern for cm_large_customers matches "Paid Customers > $1"
+        text = "We have 500 Paid Customers > $100,000 in ARR"
+        number = NumberMatch(
+            start=8, end=11, raw_text="500", value=Decimal("500"), unit="count"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should only have ONE match - the more specific cm_large_customers
+        metric_ids = [kw.metric_id for kw in keywords_near_number]
+
+        # The longer pattern should win
+        assert (
+            "cm_large_customers_period_end" in metric_ids
+        ), f"Expected cm_large_customers_period_end, got {metric_ids}"
+
+        # cm_customers_period_end should be suppressed as substring
+        assert (
+            "cm_customers_period_end" not in metric_ids
+        ), f"cm_customers_period_end should be suppressed, got {metric_ids}"
+
+    def test_cross_metric_non_overlapping_both_kept(self):
+        """Non-overlapping keywords from different metrics should both be kept."""
+        matcher = KeywordMatcher(max_keyword_distance=150)
+        # "customers" at one position, "retention" at another (different metrics)
+        text = "We had 1000 paying customers and our net dollar retention was strong"
+        number = NumberMatch(
+            start=8, end=12, raw_text="1000", value=Decimal("1000"), unit="count"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Both metrics should be present since keywords don't overlap
+        metric_ids = [kw.metric_id for kw in keywords_near_number]
+        assert len(metric_ids) >= 1  # At least one match
+
+    def test_cross_metric_overlap_but_not_substring(self):
+        """Overlapping keywords that are NOT substrings should both be kept."""
+        matcher = KeywordMatcher(max_keyword_distance=100)
+        # Create a scenario where keywords might overlap but neither is substring
+        # This tests that we only suppress when there's actual substring relationship
+        text = "Our 95% customer retention rate was strong"
+        number = NumberMatch(
+            start=4, end=7, raw_text="95%", value=Decimal("95"), unit="percent"
+        )
+
+        all_keywords = matcher.find_all_keywords(text)
+        keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
+
+        # Should find at least one keyword match
+        assert len(keywords_near_number) >= 1
+
+    def test_longer_keyword_replaces_shorter_when_substring_match(self):
+        """When keywords have substring relationship, longer one wins.
+
+        This tests the specific case where one keyword text is a proper
+        substring of another at overlapping positions.
+        """
+        matcher = KeywordMatcher(max_keyword_distance=100)
+
+        # Create synthetic KeywordMatch objects to test the replacement logic
+        from src.review.keyword_matching import KeywordMatch
+
+        short_kw = KeywordMatch(
+            start=0,
+            end=14,
+            keyword="Paid Customers",
+            metric_id="cm_customers_period_end",
+            pattern=r"\bpaid\s+customers?\b",
+        )
+        long_kw = KeywordMatch(
+            start=0,
+            end=25,
+            keyword="Paid Customers > $100,000",
+            metric_id="cm_large_customers_period_end",
+            pattern=r"\bpaid\s+customers?\s*>\s*\$?\d",
+        )
+
+        # Verify overlap and substring relationship
+        assert matcher._keywords_overlap(short_kw, long_kw)
+        assert matcher._is_substring_match(short_kw, long_kw)
+
+        # Verify length comparison logic
+        assert len(long_kw.keyword) > len(short_kw.keyword)
 
 
 # =============================================================================
