@@ -1,0 +1,30 @@
+"""
+Root pytest configuration.
+
+Provides CLI options and fixtures available to all test directories.
+"""
+
+
+def pytest_addoption(parser):
+    """Add global CLI options for tests."""
+    # Gold standard regression testing options
+    parser.addoption(
+        "--gold-standard-mode",
+        action="store",
+        default="db",
+        choices=["db", "fresh"],
+        help="Extraction mode: 'db' uses existing database, 'fresh' re-extracts (default: db)",
+    )
+    parser.addoption(
+        "--gold-standard-tolerance",
+        action="store",
+        type=float,
+        default=0.01,
+        help="Regression tolerance as decimal (e.g., 0.01 = 1%%, default: 0.01)",
+    )
+    parser.addoption(
+        "--gold-standard-update-baseline",
+        action="store_true",
+        default=False,
+        help="Update baseline instead of comparing against it",
+    )
