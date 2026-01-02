@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-01 (HRV-3/5/6/14 complete; Phases 1-3 done)
+**Last Verified**: 2026-01-01 (HRV-7 complete; 49/56 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,12 +13,12 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 16 | 11 | 0 | 5 | 0 |
-| **TOTAL** | **56** | **48** | **0** | **6** | **2** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 16 | 12 | 0 | 4 | 0 |
+| **TOTAL** | **56** | **49** | **0** | **5** | **2** |
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
-**Remaining Work**: GR-10, GR-16 blocked, HRV-7/9/12/15/16 pending (Phase 4 system improvements)
+**Remaining Work**: GR-10, GR-16 blocked, HRV-9/12/15/16 pending (Phase 4 system improvements)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -192,7 +192,7 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 |----|------|------|------|------|--------|--------------|
 | **HRV-10** | Financial statement line item patterns | M | 3-4h | MEDIUM | ✅ COMPLETE | HRV-4 |
 | **HRV-11** | Financial statement context filter | M | 2-3h | MEDIUM | ✅ COMPLETE | HRV-10 |
-| **HRV-7** | Metric ID normalization (system-wide) | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-7** | Metric ID normalization (system-wide) | M | 2-3h | LOW | ✅ COMPLETE | HRV-4 |
 | **HRV-8** | Percentage filter for count metrics | S | 1-2h | LOW | ✅ COMPLETE | HRV-4 |
 | **HRV-9** | Growth rate detection patterns | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
 | **HRV-12** | Industry-specific keyword weighting | M | 2-3h | LOW | 🟡 PENDING | HRV-9 |
@@ -334,7 +334,7 @@ Phase 4d: Validation (Sequential)
 | Phase | Worker | Task | Time | Dependencies | Status | Notes |
 |-------|--------|------|------|--------------|--------|-------|
 | 4a | 1 | HRV-10 → HRV-11 | 5-6h | HRV-4 | ✅ COMPLETE | Proof-of-concept (sequential) |
-| 4b | 2 | HRV-7 | 2-3h | HRV-4 | 🟡 PENDING | System-wide metric ID fix |
+| 4b | 2 | HRV-7 | 2-3h | HRV-4 | ✅ COMPLETE | System-wide metric ID fix (2026-01-01) |
 | 4b | 3 | HRV-8 | 1-2h | HRV-4 | ✅ COMPLETE | Impl. with HRV-10/11 (Type Validation) |
 | 4b | 4 | HRV-14 | 2-3h | HRV-4 | ✅ COMPLETE | Chart detection (2025-12-29) |
 | 4c | 5 | HRV-9 → HRV-12 | 5h | HRV-4 | 🟡 PENDING | Sequential (file conflicts) |
@@ -351,7 +351,8 @@ Phase 4d: Validation (Sequential)
 - ✅ Financial filtering complete (HRV-10, HRV-11)
 - ✅ Chart detection implemented (HRV-14)
 - ✅ Percentage filter for count metrics (HRV-8, impl. with HRV-10/11)
-- 🟡 System improvements pending: metric ID normalization, growth detection (HRV-7, HRV-9, HRV-12)
+- ✅ Metric ID normalization complete (HRV-7, 2026-01-01: cleaned up deprecated code)
+- 🟡 System improvements pending: growth detection (HRV-9, HRV-12)
 - 🟡 Candidate regeneration (HRV-15)
 - 🟡 Post-improvement validation with target: 20%+ precision, 55%+ recall (HRV-16)
 
@@ -564,7 +565,7 @@ Reference the specific task section in the corresponding plan document:
 ### Wave 4 Checklist (System Improvements - Phase 4) - REVISED
 - [x] HRV-10: Financial statement line item patterns ✅ COMPLETE (detect income/balance/cash flow line items) - Phase 4a
 - [x] HRV-11: Financial statement context filter ✅ COMPLETE (depends on HRV-10) - Phase 4a
-- [ ] HRV-7: Metric ID normalization (system-wide) 🟡 PENDING (fix MetricClassifier + validation script) - Phase 4b
+- [x] HRV-7: Metric ID normalization (system-wide) ✅ COMPLETE (clean up deprecated code, verify alias system) - Phase 4b
 - [x] HRV-8: Percentage filter for count metrics ✅ 2025-12-26 (impl. with HRV-10/11 Type Validation) - Phase 4b
 - [x] HRV-14: Chart detection ✅ 2025-12-29 (cohort chart detection implemented) - Phase 4b
 - [ ] HRV-9: Growth rate detection patterns 🟡 PENDING (add "X growth" patterns) - Phase 4c
