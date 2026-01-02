@@ -23,6 +23,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from typing import cast
 
 from .models import SourceSegment
 from .validators import ClassificationValidator
@@ -218,7 +219,9 @@ class MetricClassifier:
         from .keyword_config import get_metric_keywords
         keywords = get_metric_keywords()
         logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
-        return keywords
+        # Cast needed for mypy --strict when checking this file alone
+        # (yaml stubs not installed, so get_metric_keywords return type is Any)
+        return cast(dict[str, list[str]], keywords)
 
     def classify_segment(self, segment: SourceSegment, validate: bool = True) -> SourceSegment:
         """
