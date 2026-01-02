@@ -230,10 +230,14 @@ See `docs/README.md` for complete index. Key: `docs/architecture/system-overview
 
 ### Workflow Steps
 
-1. **Generate Worker Prompt** - Use `docs/WORKER_PROMPT_GENERATOR.md` to create task packet
-2. **Execute Task** - Follow the worker prompt requirements
-3. **Run Verification** - Execute verification commands from prompt
-4. **Gold Standard Validation** - **Required** if task modified any of:
+1. **Check Task Inventory** - Review `docs/PROJECT_TASK_INVENTORY.md` for:
+   - Task status, dependencies, and wave assignment
+   - Blocked/blocking tasks to avoid conflicts
+   - Parallel tasks that may modify same files
+2. **Generate Worker Prompt** - Use `docs/WORKER_PROMPT_GENERATOR.md` to create task packet
+3. **Execute Task** - Follow the worker prompt requirements
+4. **Run Verification** - Execute verification commands from prompt
+5. **Gold Standard Validation** - **Required** if task modified any of:
    - `config/metric_keywords.yaml`
    - `src/extraction/` modules
    - `src/review/candidate_generator.py`
@@ -241,14 +245,16 @@ See `docs/README.md` for complete index. Key: `docs/architecture/system-overview
 
    Run: `pytest -m gold_standard --gold-standard-mode=fresh -v`
    See "Gold Standard Validation" section above for full workflow.
-5. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
-6. **User Approval** - STOP and ask user before implementing improvements
-7. **Generate Follow-Ups** - Create task suggestions for deferred improvements
-8. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
-9. **Commit & Push** - With task ID reference
+6. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
+7. **User Approval** - STOP and ask user before implementing improvements
+8. **Generate Follow-Ups** - Create task suggestions for deferred improvements
+9. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
+10. **Update Task Inventory** - Mark task complete in `docs/PROJECT_TASK_INVENTORY.md`
+11. **Commit & Push** - With task ID reference
 
 ### Key Files
 
+- `docs/PROJECT_TASK_INVENTORY.md` - Central task tracking (status, dependencies, waves)
 - `docs/WORKER_PROMPT_TEMPLATE.md` (v2.6) - Task prompt format
 - `docs/WORKER_PROMPT_GENERATOR.md` (v1.1) - Meta-prompt for generating prompts
 - `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.1) - Completion documentation format
