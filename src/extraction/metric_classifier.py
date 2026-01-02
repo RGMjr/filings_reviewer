@@ -155,7 +155,7 @@ class MetricClassifier:
         'cm_repeat_purchase_rate',
         # T7: Marketplace metrics
         'cm_gmv',
-        'cm_take_rate',
+        # cm_take_rate - REMOVED 2026-01-02 (platform revenue metric, not customer metric)
         # T8: SaaS contract metrics
         'cm_acv',
         'cm_tcv',
