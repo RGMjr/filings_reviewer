@@ -156,7 +156,7 @@ METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     "cm_deferred_revenue": ["currency"],
     # Margin/rate metrics - expect percentages (NOT currency)
     "cm_gross_margin_by_cohort": ["percentage", "decimal"],
-    "cm_take_rate": ["percentage", "decimal"],
+    # cm_take_rate - REMOVED 2026-01-02 (platform revenue metric, not customer metric)
     # Retention metrics - expect percentages or decimals
     "cm_nrr": ["percentage", "decimal"],
     "cm_net_revenue_retention": ["percentage", "decimal"],

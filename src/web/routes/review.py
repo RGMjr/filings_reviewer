@@ -974,7 +974,7 @@ def _get_active_metrics() -> list[MetricData]:
                     WHEN 'cm_mrr' THEN 23
                     WHEN 'cm_expansion_revenue' THEN 24
                     WHEN 'cm_gmv' THEN 25
-                    WHEN 'cm_take_rate' THEN 26
+                    -- cm_take_rate removed (2026-01-02) - not a customer metric
 
                     -- 4. Revenue Predictability & Contracting
                     WHEN 'cm_bookings' THEN 30

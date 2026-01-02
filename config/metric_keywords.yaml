@@ -397,24 +397,9 @@ cm_gmv:
     - '\bgross\s+order\s+value\b'
     - '\bplatform\s+(?:transaction\s+)?volume\b'
 
-cm_take_rate:
-  patterns:
-    - '\btake\s+rate\b'
-    - '\bplatform\s+take\s+rate\b'
-    - '\bcommission\s+rate\b'
-    - '\bnet\s+take\s+rate\b'
-    - '\bmonetization\s+rate\b'
-    - '\bservice\s+fee\s+rate\b'
-    - '\bplatform\s+fee\s+rate\b'
-    - '\brevenue\s+as\s+a\s+percentage\s+of\s+gmv\b'
-  exclusions:
-    # Prevent cross-metric matching with margin percentages
-    - '\bcontribution\s+margin\b'
-    - '\border\s+contribution\b'
-    - '\bplatform\s+order\s+contribution\b'
-    - '\bgross\s+margin\b'
-    - '\bprofit\s+margin\b'
-    - '\boperating\s+margin\b'
+# cm_take_rate: REMOVED (2026-01-02)
+# Rationale: Take rate is a platform/marketplace revenue metric, not a customer metric.
+# It measures the platform's revenue percentage, not customer behavior or value.
 
 # =============================================================================
 # SaaS Contract Metrics

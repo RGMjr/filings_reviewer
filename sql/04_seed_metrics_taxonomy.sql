@@ -340,17 +340,18 @@ VALUES (
     1
 );
 
--- Take Rate
-INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
-VALUES (
-    'cm_take_rate',
-    'Take Rate',
-    'extended',
-    'Percentage of gross merchandise value or transaction value retained by the platform as revenue, representing the platform commission or fee rate.',
-    'unit_economics',
-    'active',
-    1
-);
+-- Take Rate - REMOVED (2026-01-02)
+-- Rationale: Take rate is a platform/marketplace revenue metric, not a customer metric.
+-- INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+-- VALUES (
+--     'cm_take_rate',
+--     'Take Rate',
+--     'extended',
+--     'Percentage of gross merchandise value or transaction value retained by the platform as revenue, representing the platform commission or fee rate.',
+--     'unit_economics',
+--     'active',
+--     1
+-- );
 
 -- Annual Contract Value
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
