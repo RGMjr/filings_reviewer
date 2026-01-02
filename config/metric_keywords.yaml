@@ -286,12 +286,13 @@ cm_daily_active_users:
     - 'daily\s+active\s+users?'
 
 cm_gross_margin_by_cohort:
+  # Only patterns that explicitly require "cohort" or "vintage" context
+  # REMOVED (2026-01-02): '\border\s+contribution\s+margin\b' and
+  # '\bplatform\s+order\s+contribution(?:\s+margin)?\b' - not cohort-specific
   patterns:
     - '\bgross\s+margin\s+by\s+cohort\b'
     - '\bcohort\s+(?:gross\s+)?margin\b'
     - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
-    - '\border\s+contribution\s+margin\b'
-    - '\bplatform\s+order\s+contribution(?:\s+margin)?\b'
 
 cm_arr:
   patterns:
