@@ -168,6 +168,23 @@ def _validate_config(config: dict[str, Any]) -> None:
                         "expected positive int"
                     )
 
+        # Validate aliases if present
+        if "aliases" in metric_config:
+            aliases_list = metric_config["aliases"]
+            if not isinstance(aliases_list, list):
+                raise KeywordConfigError(
+                    f"Invalid 'aliases' for {metric_id}: expected list"
+                )
+            for i, alias in enumerate(aliases_list):
+                if not isinstance(alias, str):
+                    raise KeywordConfigError(
+                        f"Invalid alias {i} for {metric_id}: expected string"
+                    )
+                if not alias.startswith("cm_"):
+                    raise KeywordConfigError(
+                        f"Invalid alias '{alias}' for {metric_id}: must start with 'cm_'"
+                    )
+
 
 def _is_metric_key(key: str) -> bool:
     """Check if a key is a metric (not a YAML anchor starting with underscore)."""
@@ -299,3 +316,130 @@ def list_metrics(config_path: str | None = None) -> list[str]:
     """
     config = _load_config(config_path)
     return [k for k in config.keys() if _is_metric_key(k)]
+
+
+# =============================================================================
+# Metric ID Alias Functions
+# =============================================================================
+
+
+def get_aliases(config_path: str | None = None) -> dict[str, list[str]]:
+    """
+    Get aliases for metrics.
+
+    Aliases allow a single canonical metric ID to match against alternative
+    identifiers used in external sources (e.g., gold standard files).
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Dictionary mapping canonical metric_id to list of alias IDs.
+        Only includes metrics that have aliases defined.
+        Excludes YAML anchor keys (starting with underscore).
+
+    Example:
+        >>> aliases = get_aliases()
+        >>> aliases.get("cm_customers_period_end")
+        ["cm_active_customers_total"]
+    """
+    config = _load_config(config_path)
+    return {
+        metric_id: metric_config["aliases"]
+        for metric_id, metric_config in config.items()
+        if _is_metric_key(metric_id) and "aliases" in metric_config
+    }
+
+
+def resolve_to_canonical(metric_id: str, config_path: str | None = None) -> str:
+    """
+    Resolve an alias to its canonical metric ID.
+
+    If the input is already a canonical ID or not found in aliases,
+    returns the input unchanged.
+
+    Args:
+        metric_id: The metric ID to resolve (may be canonical or alias).
+        config_path: Optional path to config file.
+
+    Returns:
+        The canonical metric ID if input was an alias, otherwise the input.
+
+    Example:
+        >>> resolve_to_canonical("cm_active_customers_total")
+        "cm_customers_period_end"  # If alias is defined
+
+        >>> resolve_to_canonical("cm_arr")
+        "cm_arr"  # No alias, returns unchanged
+    """
+    aliases = get_aliases(config_path)
+
+    # Build reverse lookup: alias -> canonical
+    alias_to_canonical: dict[str, str] = {}
+    for canonical, alias_list in aliases.items():
+        for alias in alias_list:
+            alias_to_canonical[alias] = canonical
+
+    # Return canonical if found, otherwise return input
+    return alias_to_canonical.get(metric_id, metric_id)
+
+
+def get_all_equivalent_ids(metric_id: str, config_path: str | None = None) -> set[str]:
+    """
+    Get all equivalent metric IDs (canonical + aliases) for a given ID.
+
+    Works whether input is canonical or alias.
+
+    Args:
+        metric_id: Any metric ID (canonical or alias).
+        config_path: Optional path to config file.
+
+    Returns:
+        Set containing the canonical ID and all aliases.
+        If metric has no aliases, returns set with just the input.
+
+    Example:
+        >>> get_all_equivalent_ids("cm_customers_period_end")
+        {"cm_customers_period_end", "cm_active_customers_total"}
+
+        >>> get_all_equivalent_ids("cm_active_customers_total")
+        {"cm_customers_period_end", "cm_active_customers_total"}
+    """
+    aliases = get_aliases(config_path)
+
+    # First resolve to canonical
+    canonical = resolve_to_canonical(metric_id, config_path)
+
+    # Get all aliases for the canonical ID
+    result = {canonical}
+    if canonical in aliases:
+        result.update(aliases[canonical])
+
+    return result
+
+
+def metrics_are_equivalent(
+    metric_id_1: str, metric_id_2: str, config_path: str | None = None
+) -> bool:
+    """
+    Check if two metric IDs are equivalent (same canonical or aliased).
+
+    Args:
+        metric_id_1: First metric ID.
+        metric_id_2: Second metric ID.
+        config_path: Optional path to config file.
+
+    Returns:
+        True if the metrics are equivalent (both resolve to same canonical).
+
+    Example:
+        >>> metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total")
+        True  # If alias is defined
+
+        >>> metrics_are_equivalent("cm_arr", "cm_mrr")
+        False  # Different metrics
+    """
+    return (
+        resolve_to_canonical(metric_id_1, config_path)
+        == resolve_to_canonical(metric_id_2, config_path)
+    )

@@ -86,6 +86,10 @@ cm_new_customers_acquired:
     - '\bcost\s+to\s+acquire\b'
 
 cm_customers_period_end:
+  # Aliases for gold standard compatibility
+  # cm_active_customers_total is used in some gold standards for "Active Consumers"
+  aliases:
+    - cm_active_customers_total
   patterns:
     - '\bpaid\s+customers?\b'
     - '\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b'

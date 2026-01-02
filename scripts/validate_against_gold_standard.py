@@ -45,6 +45,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
+from src.extraction.keyword_config import metrics_are_equivalent
+
 logger = logging.getLogger(__name__)
 
 # Default gold standard path
@@ -293,8 +295,9 @@ def match_candidate_to_gold_standard(
         match_type = ''
 
         # Metric ID match (most important)
+        # Use alias resolution to match equivalent metric IDs
         if candidate_metric and entry.metric_id:
-            if candidate_metric == entry.metric_id:
+            if metrics_are_equivalent(candidate_metric, entry.metric_id):
                 score += 2
                 match_type = 'metric_match'
 
@@ -832,17 +835,23 @@ Examples:
                 candidates_override=candidates,
             )
         else:
-            # Database mode - find filing in database
+            # Database mode - find filing in database using normalized name matching
+            # Fetch all filings and match using normalize_company_name for fuzzy matching
+            # (handles "Ltd" vs "Limited", "Inc" vs "Incorporated", etc.)
             query = """
                 SELECT f.filing_id, c.company_name
                 FROM filings f
                 JOIN companies c ON f.company_id = c.company_id
-                WHERE LOWER(c.company_name) = LOWER(%(company)s)
-                LIMIT 1
             """
-            filing_rows = db.query(query, {'company': args.company})
+            all_filings = db.query(query, {})
 
-            filing_id = filing_rows[0]['filing_id'] if filing_rows else None
+            # Find matching filing using normalized company names
+            filing_id = None
+            normalized_search = normalize_company_name(args.company)
+            for row in all_filings:
+                if normalize_company_name(row['company_name']) == normalized_search:
+                    filing_id = row['filing_id']
+                    break
 
             result = validate_filing(db, filing_id, args.company, company_entries, args.verbose)
 
@@ -876,17 +885,23 @@ Examples:
                     candidates_override=candidates,
                 )
             else:
-                # Database mode - find filing in database
+                # Database mode - find filing in database using normalized name matching
+                # Fetch all filings and match using normalize_company_name for fuzzy matching
+                # (handles "Ltd" vs "Limited", "Inc" vs "Incorporated", etc.)
                 query = """
                     SELECT f.filing_id, c.company_name
                     FROM filings f
                     JOIN companies c ON f.company_id = c.company_id
-                    WHERE LOWER(c.company_name) = LOWER(%(company)s)
-                    LIMIT 1
                 """
-                filing_rows = db.query(query, {'company': company})
+                all_filings = db.query(query, {})
 
-                filing_id = filing_rows[0]['filing_id'] if filing_rows else None
+                # Find matching filing using normalized company names
+                filing_id = None
+                normalized_search = normalize_company_name(company)
+                for row in all_filings:
+                    if normalize_company_name(row['company_name']) == normalized_search:
+                        filing_id = row['filing_id']
+                        break
 
                 result = validate_filing(db, filing_id, company, company_entries, args.verbose)
 

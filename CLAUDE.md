@@ -160,6 +160,12 @@ docker compose down
     - Label-embedded values filtered: numbers following comparison operators (e.g., "> $100,000") are not extracted
     - Logs at INFO level with "CMS-1" prefix for production monitoring
     - **FOLLOW-UP NEEDED**: Greedy patterns in `metric_keywords.yaml` (line 254: `\bretention\s+rate[^.;]{0,50}\d+%`) can cause unexpected suppression. Consider constraining these patterns to reduce false matches.
+12. **Metric ID alias system** (2026-01-01): Canonical metric IDs can have aliases for gold standard compatibility:
+    - Aliases defined in `config/metric_keywords.yaml` under each metric's `aliases` field
+    - Functions in `keyword_config.py`: `get_aliases()`, `resolve_to_canonical()`, `get_all_equivalent_ids()`, `metrics_are_equivalent()`
+    - Example: `cm_customers_period_end` has alias `cm_active_customers_total` (both match "Active Consumers")
+    - Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
+    - System always generates canonical IDs; aliases only used for comparison/validation
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
@@ -227,15 +233,23 @@ See `docs/README.md` for complete index. Key: `docs/architecture/system-overview
 1. **Generate Worker Prompt** - Use `docs/WORKER_PROMPT_GENERATOR.md` to create task packet
 2. **Execute Task** - Follow the worker prompt requirements
 3. **Run Verification** - Execute verification commands from prompt
-4. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
-5. **User Approval** - STOP and ask user before implementing improvements
-6. **Generate Follow-Ups** - Create task suggestions for deferred improvements
-7. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
-8. **Commit & Push** - With task ID reference
+4. **Gold Standard Validation** - **Required** if task modified any of:
+   - `config/metric_keywords.yaml`
+   - `src/extraction/` modules
+   - `src/review/candidate_generator.py`
+   - `src/review/keyword_matching.py`
+
+   Run: `pytest -m gold_standard --gold-standard-mode=fresh -v`
+   See "Gold Standard Validation" section above for full workflow.
+5. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
+6. **User Approval** - STOP and ask user before implementing improvements
+7. **Generate Follow-Ups** - Create task suggestions for deferred improvements
+8. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
+9. **Commit & Push** - With task ID reference
 
 ### Key Files
 
-- `docs/WORKER_PROMPT_TEMPLATE.md` (v2.5) - Task prompt format
+- `docs/WORKER_PROMPT_TEMPLATE.md` (v2.6) - Task prompt format
 - `docs/WORKER_PROMPT_GENERATOR.md` (v1.1) - Meta-prompt for generating prompts
 - `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.1) - Completion documentation format
 
