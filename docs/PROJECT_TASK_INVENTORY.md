@@ -186,7 +186,7 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 4. Validation re-run moved to HRV-16
 5. Definition-only mode (HRV-13) deferred to future phase
 6. Financial filtering (HRV-10/11) prioritized first as proof-of-concept
-7. File conflicts resolved: HRV-9 and HRV-12 run sequentially
+7. File conflicts resolved: HRV-9 (growth removal) and HRV-12 run sequentially
 
 | ID | Name | Size | Time | Risk | Status | Dependencies |
 |----|------|------|------|------|--------|--------------|
@@ -194,7 +194,7 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-11** | Financial statement context filter | M | 2-3h | MEDIUM | ✅ COMPLETE | HRV-10 |
 | **HRV-7** | Metric ID normalization (system-wide) | M | 2-3h | LOW | ✅ COMPLETE | HRV-4 |
 | **HRV-8** | Percentage filter for count metrics | S | 1-2h | LOW | ✅ COMPLETE | HRV-4 |
-| **HRV-9** | Growth rate detection patterns | M | 2-3h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-9** | Remove growth metric detection | S | 1h | LOW | 🟡 PENDING | HRV-4 |
 | **HRV-12** | Industry-specific keyword weighting | M | 2-3h | LOW | 🟡 PENDING | HRV-9 |
 | **HRV-14** | Chart detection | M | 2-3h | MEDIUM | ✅ COMPLETE | HRV-4 |
 | **HRV-15** | Candidate regeneration | S | 1h | LOW | 🟡 PENDING | HRV-7-14 |
@@ -215,7 +215,7 @@ Phase 4b: Core Improvements (Parallel - 2/3 complete)
 └── Worker 4: HRV-14 (Chart Detection) ~2-3h ✅ COMPLETE (2025-12-29)
 
 Phase 4c: Keyword Enhancements (Sequential - file conflicts)
-└── Worker 5: HRV-9 → HRV-12 (Growth Detection → Industry Weighting) ~5h
+└── Worker 5: HRV-9 → HRV-12 (Remove Growth → Industry Weighting) ~4h
 
 Phase 4d: Validation (Sequential)
 └── Worker 6: HRV-15 → HRV-16 (Regeneration → Validation) ~2h
@@ -224,8 +224,9 @@ Phase 4d: Validation (Sequential)
 **Phase 4 Files to Modify** (with conflict avoidance):
 | File | HRV-7 | HRV-8 | HRV-9 | HRV-10 | HRV-11 | HRV-12 | HRV-14 |
 |------|-------|-------|-------|--------|--------|--------|--------|
-| `metric_classifier.py` | ✓ | | ✓ | | | ✓ | |
-| `keyword_matching.py` | | | ✓ | | | ✓ | |
+| `metric_keywords.yaml` | | | ✓ | | | ✓ | |
+| `metric_classifier.py` | ✓ | | | | | ✓ | |
+| `keyword_matching.py` | | | | | | ✓ | |
 | `false_positive_filter.py` | | ✓ | | ✓ | ✓ | | |
 | `table_structure.py` | | | | ✓ | | | |
 | `candidate_generator.py` | | | | | ✓ | | ✓ |
@@ -233,7 +234,7 @@ Phase 4d: Validation (Sequential)
 | `html_segmenter.py` | | | | | | | ✓ |
 | `models.py` | | | | | | | ✓ |
 
-**File Conflicts**: HRV-9 and HRV-12 both modify `metric_classifier.py` and `keyword_matching.py` → Run sequentially
+**File Conflicts**: HRV-9 (YAML only) and HRV-12 both potentially modify keyword config → Run sequentially
 
 **Phase 4 Rollback Configuration**:
 | Feature | Config Flag | Default |
@@ -337,7 +338,7 @@ Phase 4d: Validation (Sequential)
 | 4b | 2 | HRV-7 | 2-3h | HRV-4 | ✅ COMPLETE | System-wide metric ID fix (2026-01-01) |
 | 4b | 3 | HRV-8 | 1-2h | HRV-4 | ✅ COMPLETE | Impl. with HRV-10/11 (Type Validation) |
 | 4b | 4 | HRV-14 | 2-3h | HRV-4 | ✅ COMPLETE | Chart detection (2025-12-29) |
-| 4c | 5 | HRV-9 → HRV-12 | 5h | HRV-4 | 🟡 PENDING | Sequential (file conflicts) |
+| 4c | 5 | HRV-9 → HRV-12 | 4h | HRV-4 | 🟡 PENDING | Sequential (file conflicts) |
 | 4d | 6 | HRV-15 → HRV-16 | 2h | All above | 🟡 PENDING | Regeneration → Validation |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase
@@ -352,7 +353,7 @@ Phase 4d: Validation (Sequential)
 - ✅ Chart detection implemented (HRV-14)
 - ✅ Percentage filter for count metrics (HRV-8, impl. with HRV-10/11)
 - ✅ Metric ID normalization complete (HRV-7, 2026-01-01: cleaned up deprecated code)
-- 🟡 System improvements pending: growth detection (HRV-9, HRV-12)
+- 🟡 System improvements pending: growth removal (HRV-9), industry weighting (HRV-12)
 - 🟡 Candidate regeneration (HRV-15)
 - 🟡 Post-improvement validation with target: 20%+ precision, 55%+ recall (HRV-16)
 
@@ -366,7 +367,7 @@ HRV-2 (Scripts) ✅ ──┬──> HRV-3 (Slack) ✅ ────────�
                               │
       ┌───────────────────────┼───────────────────────────────┐
       ▼                       ▼                               ▼
-HRV-10 (FinStmt Patterns) ✅ HRV-7 (Metric ID)          HRV-9 (Growth)
+HRV-10 (FinStmt Patterns) ✅ HRV-7 (Metric ID)          HRV-9 (Remove Growth)
       │                       │                               │
       ▼                       ├───> HRV-8 (% Filter) ✅      ▼
 HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry)
@@ -433,7 +434,7 @@ HRV-4 ← HRV-2        # Farfetch review needs validation scripts
 HRV-5 ← HRV-3,4      # New filings need validation patterns from known filings
 HRV-6 ← HRV-5        # Analysis needs all review data
 HRV-11 ← HRV-10      # Financial context filter needs line item patterns
-HRV-12 ← HRV-9       # Industry weighting needs growth detection first (file conflicts)
+HRV-12 ← HRV-9       # Industry weighting runs after growth removal (file conflicts)
 HRV-15 ← HRV-7,8,9,10,11,12,14  # Regeneration needs all improvements
 HRV-16 ← HRV-15      # Final validation needs regenerated candidates
 ```
@@ -568,7 +569,7 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-7: Metric ID normalization (system-wide) ✅ COMPLETE (clean up deprecated code, verify alias system) - Phase 4b
 - [x] HRV-8: Percentage filter for count metrics ✅ 2025-12-26 (impl. with HRV-10/11 Type Validation) - Phase 4b
 - [x] HRV-14: Chart detection ✅ 2025-12-29 (cohort chart detection implemented) - Phase 4b
-- [ ] HRV-9: Growth rate detection patterns 🟡 PENDING (add "X growth" patterns) - Phase 4c
+- [ ] HRV-9: Remove growth metric detection 🟡 PENDING (remove redundant growth patterns) - Phase 4c
 - [ ] HRV-12: Industry-specific keyword weighting 🟡 PENDING (depends on HRV-9, file conflicts) - Phase 4c
 - [ ] HRV-15: Candidate regeneration 🟡 PENDING (clear and regenerate candidates for Farfetch/Slack) - Phase 4d
 - [ ] HRV-16: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 20%+ precision, 55%+ recall) - Phase 4d

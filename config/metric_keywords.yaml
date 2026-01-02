@@ -66,7 +66,6 @@ cm_new_customers_acquired:
     - '\bnew\s+customer\s+additions?\b'
     - '\bnet\s+new\s+customers?\b'
     - '\bcustomers?\s+added\b'
-    - '\bcustomer\s+growth\b'
     - '\bacquisition\s+of\s+customers?\b'
     - '\bnew\s+users?\s+acquired\b'
     - '\bacquired\s+users?\b'
@@ -78,7 +77,6 @@ cm_new_customers_acquired:
     - '\bconsumers?\s+acquired\b'
     - '\bconsumer\s+acquisition[s]?\b'
     - '\bacquired\s+consumers?\b'
-    - '\bconsumer\s+growth\b'
     - '\bconsumers?\s+added\b'
   exclusions:
     - '\bacquisition\s+cost\b'
@@ -470,18 +468,14 @@ cm_ltv_to_cac_ratio:
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
 
 # =============================================================================
-# Growth Metrics (added for HRV-6 improvements)
+# Growth Metrics - INTENTIONALLY NOT DETECTED
 # =============================================================================
-# NOTE: cm_active_customers_growth REMOVED - metric doesn't work as intended
-# Growth percentages are typically relative values that need context to interpret
+# Decision (2026-01-02): Growth metrics are not tracked separately because:
+# 1. They always appear alongside base metrics (e.g., "1.1M customers, up 57%")
+# 2. Growth can be calculated from period-over-period base metric values
+# 3. Detecting both creates duplicate/confusing review candidates
+#
+# Previously removed metrics:
+# - cm_active_customers_growth
+# - cm_purchase_transactions_overall_growth
 # =============================================================================
-
-cm_purchase_transactions_overall_growth:
-  patterns:
-    - '\b(?:number\s+of\s+)?orders?\s+growth\b'
-    - '\btransactions?\s+growth\b'
-    - '\bgrowth\s+(?:in\s+)?(?:number\s+of\s+)?orders?\b'
-    - '\border\s+(?:volume\s+)?growth\b'
-  specific_patterns:
-    - 'number\s+of\s+orders?\s+growth'
-    - 'order\s+growth'

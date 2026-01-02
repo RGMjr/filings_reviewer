@@ -405,32 +405,17 @@ VALUES (
 );
 
 -- ============================================================================
--- GROWTH METRICS (HRV-6 Improvements)
+-- GROWTH METRICS - REMOVED (2026-01-02)
 -- ============================================================================
-
--- Active Customers Growth
-INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
-VALUES (
-    'cm_active_customers_growth',
-    'Active Customers Growth',
-    'extended',
-    'Growth rate or change in total active customers over a period.',
-    'growth',
-    'active',
-    1
-) ON CONFLICT (metric_id) DO NOTHING;
-
--- Purchase Transactions Overall Growth
-INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
-VALUES (
-    'cm_purchase_transactions_overall_growth',
-    'Purchase Transactions Growth',
-    'extended',
-    'Growth rate or change in total purchase transactions/orders over a period.',
-    'growth',
-    'active',
-    1
-) ON CONFLICT (metric_id) DO NOTHING;
+-- Decision: Growth metrics are not tracked separately because:
+-- 1. They always appear alongside base metrics (e.g., "1.1M customers, up 57%")
+-- 2. Growth can be calculated from period-over-period base metric values
+-- 3. Detecting both creates duplicate/confusing review candidates
+--
+-- Previously defined metrics (now removed):
+-- - cm_active_customers_growth
+-- - cm_purchase_transactions_overall_growth
+-- ============================================================================
 
 -- ============================================================================
 -- Verification
