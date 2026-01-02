@@ -1,4 +1,4 @@
-# WORKER PROMPT TEMPLATE (v2.4)
+# WORKER PROMPT TEMPLATE (v2.6)
 
 **Purpose**: This template provides a consistent, concise format for worker prompts. It emphasizes requirements over implementation details, allowing developers autonomy while ensuring clear acceptance criteria.
 
@@ -154,6 +154,28 @@ PARALLEL WITH: [Other tasks that can run simultaneously, or "None"]
 - [Edge case 1]
 - [Edge case 2]
 - [Common false positives/negatives]
+
+## Gold Standard Validation
+
+**[Include this section if task modifies any of: `config/metric_keywords.yaml`, `src/extraction/`, `src/review/candidate_generator.py`, `src/review/keyword_matching.py`]**
+
+This task affects metric identification logic. Gold standard validation is **required** before commit.
+
+### Validation Commands
+
+```bash
+# Quick check during development
+python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+
+# Formal validation (must pass before commit)
+pytest -m gold_standard --gold-standard-mode=fresh -v
+```
+
+### Regression Handling
+
+- If precision/recall/F1 drops: investigate before proceeding
+- If trade-off is intentional: document rationale in commit message
+- If baseline needs updating: `python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline`
 
 ## Acceptance Criteria
 
@@ -569,10 +591,19 @@ Before finalizing a worker prompt, verify:
 - [ ] If task depends on other in-progress work, conflicts identified in "Do NOT" section
 - [ ] Critical Evaluation Phase section present (required for all tasks)
 - [ ] Task size specified for evaluation depth guidance (XS/S/M/L/XL)
+- [ ] If task modifies keyword/extraction files, Gold Standard Validation section included
+- [ ] If Gold Standard Validation applies, validation commands are in Verification Commands section
 
 ---
 
 ## Version History
+
+- **v2.6** (2026-01-01): Added Gold Standard Validation integration
+  - New conditional section for tasks modifying keyword/extraction files
+  - Validation commands for quick check and formal validation
+  - Regression handling guidance
+  - 2 new checklist items for gold standard validation
+  - Aligned with CLAUDE.md Task Execution Workflow step 4
 
 - **v2.5** (2025-12-31): Added Critical Evaluation Phase
   - New mandatory section after verification, before commit
