@@ -23,7 +23,7 @@ import logging
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -203,8 +203,9 @@ def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
         Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
+    # Cast is safe: _validate_config() ensures patterns are list[str]
     return {
-        metric_id: metric_config["patterns"]
+        metric_id: cast(list[str], metric_config["patterns"])
         for metric_id, metric_config in config.items()
         if _is_metric_key(metric_id)
     }
