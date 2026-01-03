@@ -224,15 +224,22 @@ class TableRowParser:
         Returns:
             True if both positions are in the same row, False otherwise
             Returns True if no table structure detected (single "row")
+            Returns True if row cannot be determined (conservative for human review)
         """
         row1 = self.get_row_at_position(pos1)
         row2 = self.get_row_at_position(pos2)
 
         if row1 is None or row2 is None:
-            # Strict: if we can't determine row, don't allow cross-row match
-            # This prevents false positives from position mapping failures
-            logger.debug(f"Could not determine row for positions {pos1} and/or {pos2}")
-            return False
+            # Permissive: if we can't determine row, allow the match
+            # For human review systems, false negatives (missing candidates) are
+            # worse than false positives (extra candidates humans can reject).
+            # The distance-based filtering in candidate_generator still applies.
+            logger.warning(
+                f"TRS-1: Could not determine row for positions {pos1} and/or {pos2}, "
+                f"allowing match (text_len={len(self.extracted_text)}, "
+                f"mapped_rows={len(self.rows or [])})"
+            )
+            return True
 
         return row1.row_index == row2.row_index
 
@@ -243,6 +250,20 @@ class TableRowParser:
     def is_table(self) -> bool:
         """Check if the HTML contains a table structure."""
         return '<table' in self.html.lower() and len(self.rows or []) > 1
+
+    def get_coverage(self) -> tuple[int, int]:
+        """
+        Get the coverage of row mapping.
+
+        Returns:
+            Tuple of (mapped_chars, total_chars) showing how much of the
+            extracted text is covered by mapped rows.
+        """
+        if not self.rows:
+            return (0, len(self.extracted_text))
+
+        mapped_chars = sum(row.text_end - row.text_start for row in self.rows)
+        return (mapped_chars, len(self.extracted_text))
 
     def is_row_heading(self, position: int) -> bool:
         """
