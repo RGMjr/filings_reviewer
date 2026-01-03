@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-01 (HRV-7 complete; 49/56 tasks done)
+**Last Verified**: 2026-01-03 (HRV-15 complete; 50/56 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,12 +13,12 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 16 | 12 | 0 | 4 | 0 |
-| **TOTAL** | **56** | **49** | **0** | **5** | **2** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 17 | 13 | 0 | 4 | 0 |
+| **TOTAL** | **57** | **50** | **0** | **5** | **2** |
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
-**Remaining Work**: GR-10, GR-16 blocked, HRV-9/12/15/16 pending (Phase 4 system improvements)
+**Remaining Work**: GR-10, GR-16 blocked, HRV-12/16/17 pending (Phase 4 system improvements)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -194,15 +194,18 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-11** | Financial statement context filter | M | 2-3h | MEDIUM | ✅ COMPLETE | HRV-10 |
 | **HRV-7** | Metric ID normalization (system-wide) | M | 2-3h | LOW | ✅ COMPLETE | HRV-4 |
 | **HRV-8** | Percentage filter for count metrics | S | 1-2h | LOW | ✅ COMPLETE | HRV-4 |
-| **HRV-9** | Remove growth metric detection | S | 1h | LOW | 🟡 PENDING | HRV-4 |
+| **HRV-9** | Remove growth metric detection | S | 1h | LOW | ✅ COMPLETE | HRV-4 |
 | **HRV-12** | Industry-specific keyword weighting | M | 2-3h | LOW | 🟡 PENDING | HRV-9 |
 | **HRV-14** | Chart detection | M | 2-3h | MEDIUM | ✅ COMPLETE | HRV-4 |
-| **HRV-15** | Candidate regeneration | S | 1h | LOW | 🟡 PENDING | HRV-7-14 |
-| **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | 🟡 PENDING | HRV-15 |
+| **HRV-15** | Candidate regeneration | S | 1h | LOW | ✅ COMPLETE | HRV-7-14 |
+| **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | 🟡 PENDING | HRV-17 |
+| **HRV-17** | Table row parsing fix | M | 3-4h | MEDIUM | 🟡 PENDING | None |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase - lower priority, harder to validate
 
-**Phase 4 Total**: 4/9 tasks complete (HRV-8, HRV-10, HRV-11, HRV-14), ~9h remaining sequential, ~6h with safe parallelization
+**HRV-17 Context**: Investigation from HRV-15 found that `TableRowParser._parse_rows()` fails to map ~26% of table text positions (e.g., Farfetch segment 25861: 716 chars but only positions 0-528 mapped). This causes valid candidates in unmapped regions to be filtered out, explaining Farfetch's 23.9% recall vs Slack's 86.4%. See `docs/worker-prompts/WORKER_PROMPT_TASK_HRV-17.md` for details.
+
+**Phase 4 Total**: 7/10 tasks complete (HRV-7, HRV-8, HRV-9, HRV-10, HRV-11, HRV-14, HRV-15), ~7h remaining
 
 **Phase 4 Execution Order**:
 ```
@@ -217,22 +220,25 @@ Phase 4b: Core Improvements (Parallel - 2/3 complete)
 Phase 4c: Keyword Enhancements (Sequential - file conflicts)
 └── Worker 5: HRV-9 → HRV-12 (Remove Growth → Industry Weighting) ~4h
 
-Phase 4d: Validation (Sequential)
-└── Worker 6: HRV-15 → HRV-16 (Regeneration → Validation) ~2h
+Phase 4d: Table Parsing Fix (NEW)
+└── Worker 6: HRV-17 (Table row parsing fix) ~3-4h
+
+Phase 4e: Final Validation (Sequential)
+└── Worker 7: HRV-16 (Validation re-run after HRV-17) ~1h
 ```
 
 **Phase 4 Files to Modify** (with conflict avoidance):
-| File | HRV-7 | HRV-8 | HRV-9 | HRV-10 | HRV-11 | HRV-12 | HRV-14 |
-|------|-------|-------|-------|--------|--------|--------|--------|
-| `metric_keywords.yaml` | | | ✓ | | | ✓ | |
-| `metric_classifier.py` | ✓ | | | | | ✓ | |
-| `keyword_matching.py` | | | | | | ✓ | |
-| `false_positive_filter.py` | | ✓ | | ✓ | ✓ | | |
-| `table_structure.py` | | | | ✓ | | | |
-| `candidate_generator.py` | | | | | ✓ | | ✓ |
-| `config.py` | ✓ | ✓ | | | ✓ | ✓ | ✓ |
-| `html_segmenter.py` | | | | | | | ✓ |
-| `models.py` | | | | | | | ✓ |
+| File | HRV-7 | HRV-8 | HRV-9 | HRV-10 | HRV-11 | HRV-12 | HRV-14 | HRV-17 |
+|------|-------|-------|-------|--------|--------|--------|--------|--------|
+| `metric_keywords.yaml` | | | ✓ | | | ✓ | | |
+| `metric_classifier.py` | ✓ | | | | | ✓ | | |
+| `keyword_matching.py` | | | | | | ✓ | | |
+| `false_positive_filter.py` | | ✓ | | ✓ | ✓ | | | |
+| `table_structure.py` | | | | ✓ | | | | ✓ |
+| `candidate_generator.py` | | | | | ✓ | | ✓ | |
+| `config.py` | ✓ | ✓ | | | ✓ | ✓ | ✓ | |
+| `html_segmenter.py` | | | | | | | ✓ | |
+| `models.py` | | | | | | | ✓ | |
 
 **File Conflicts**: HRV-9 (YAML only) and HRV-12 both potentially modify keyword config → Run sequentially
 
@@ -338,8 +344,8 @@ Phase 4d: Validation (Sequential)
 | 4b | 2 | HRV-7 | 2-3h | HRV-4 | ✅ COMPLETE | System-wide metric ID fix (2026-01-01) |
 | 4b | 3 | HRV-8 | 1-2h | HRV-4 | ✅ COMPLETE | Impl. with HRV-10/11 (Type Validation) |
 | 4b | 4 | HRV-14 | 2-3h | HRV-4 | ✅ COMPLETE | Chart detection (2025-12-29) |
-| 4c | 5 | HRV-9 → HRV-12 | 4h | HRV-4 | 🟡 PENDING | Sequential (file conflicts) |
-| 4d | 6 | HRV-15 → HRV-16 | 2h | All above | 🟡 PENDING | Regeneration → Validation |
+| 4c | 5 | HRV-9 → HRV-12 | 4h | HRV-4 | 🟡 IN PROGRESS | HRV-9 ✅, HRV-12 pending |
+| 4d | 6 | HRV-15 → HRV-16 | 2h | All above | 🟡 IN PROGRESS | HRV-15 ✅, HRV-16 pending |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase
 
@@ -353,8 +359,9 @@ Phase 4d: Validation (Sequential)
 - ✅ Chart detection implemented (HRV-14)
 - ✅ Percentage filter for count metrics (HRV-8, impl. with HRV-10/11)
 - ✅ Metric ID normalization complete (HRV-7, 2026-01-01: cleaned up deprecated code)
-- 🟡 System improvements pending: growth removal (HRV-9), industry weighting (HRV-12)
-- 🟡 Candidate regeneration (HRV-15)
+- ✅ Growth removal complete (HRV-9, 2026-01-02)
+- 🟡 System improvements pending: industry weighting (HRV-12)
+- ✅ Candidate regeneration (HRV-15, 2026-01-03: Farfetch 16, Slack 61 candidates)
 - 🟡 Post-improvement validation with target: 20%+ precision, 55%+ recall (HRV-16)
 
 **Wave 4 Dependency Graph** (Revised):
@@ -376,7 +383,10 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry)
       └───────────────────────┴───────────────────────────────┘
                               │
                               ▼
-                    HRV-15 (Candidate Regeneration)
+                    HRV-15 (Candidate Regeneration) ✅
+                              │
+                              ▼
+                    HRV-17 (Table Row Parsing Fix)
                               │
                               ▼
                     HRV-16 (Validation Re-run)
@@ -436,7 +446,8 @@ HRV-6 ← HRV-5        # Analysis needs all review data
 HRV-11 ← HRV-10      # Financial context filter needs line item patterns
 HRV-12 ← HRV-9       # Industry weighting runs after growth removal (file conflicts)
 HRV-15 ← HRV-7,8,9,10,11,12,14  # Regeneration needs all improvements
-HRV-16 ← HRV-15      # Final validation needs regenerated candidates
+HRV-17 ← None                   # Table row parsing fix (standalone investigation)
+HRV-16 ← HRV-17                 # Final validation needs table parsing fix
 ```
 
 ### Soft Dependencies (Can Start Early)
@@ -569,10 +580,11 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-7: Metric ID normalization (system-wide) ✅ COMPLETE (clean up deprecated code, verify alias system) - Phase 4b
 - [x] HRV-8: Percentage filter for count metrics ✅ 2025-12-26 (impl. with HRV-10/11 Type Validation) - Phase 4b
 - [x] HRV-14: Chart detection ✅ 2025-12-29 (cohort chart detection implemented) - Phase 4b
-- [ ] HRV-9: Remove growth metric detection 🟡 PENDING (remove redundant growth patterns) - Phase 4c
+- [x] HRV-9: Remove growth metric detection ✅ COMPLETE (2026-01-02) - Phase 4c
 - [ ] HRV-12: Industry-specific keyword weighting 🟡 PENDING (depends on HRV-9, file conflicts) - Phase 4c
-- [ ] HRV-15: Candidate regeneration 🟡 PENDING (clear and regenerate candidates for Farfetch/Slack) - Phase 4d
-- [ ] HRV-16: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 20%+ precision, 55%+ recall) - Phase 4d
+- [x] HRV-15: Candidate regeneration ✅ COMPLETE (Farfetch: 19→16, Slack: 49→61 candidates) - Phase 4d (2026-01-03)
+- [ ] HRV-17: Table row parsing fix 🟡 PENDING (fix incomplete row mapping causing 23.9% Farfetch recall) - Phase 4d
+- [ ] HRV-16: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 20%+ precision, 55%+ recall) - Phase 4e
 
 **Deferred**: HRV-13 (Definition-only mode) - moved to future phase (lower priority, harder to validate)
 
@@ -634,4 +646,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-01 (HRV-3/5/6/8/14 complete; Phases 1-3 done; Phase 4: 4/9 done)*
+*Last verified: 2026-01-03 (HRV-17 added for table row parsing fix; Phases 1-3 done; Phase 4: 7/10 done)*
