@@ -261,6 +261,8 @@ See `docs/README.md` for complete index. Key: `docs/architecture/system-overview
 
 ### Quick Start
 
-Use `/task` command to invoke the workflow, or for M/L/XL tasks, automatically follow this structure.
+Use these slash commands for the task workflow:
+- `/task-create` - Generate a worker prompt and save it (does NOT execute)
+- `/task-run [ID]` - Execute an existing worker prompt (e.g., `/task-run HRV-17`)
 
 **Do NOT** jump directly to coding for M/L/XL tasks without creating a worker prompt first.
