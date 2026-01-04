@@ -727,39 +727,42 @@ class HTMLSegmenter:
         # Determine segment type
         segment_type = self._get_segment_type(element)
 
-        # Extract text content with appropriate method based on element type
-        if element.name == "figure":
-            # Special extraction for figure elements
-            raw_text = self._normalize_text(self._extract_figure_text(element))
-        elif segment_type == "table" or element.name == "table":
-            # Use marker extraction for table elements to preserve cell boundaries
+        full_html = str(element)
+
+        # Tables use a separate summarization flow (_handle_large_table) that needs
+        # the full element, so we preserve original behavior for tables.
+        # For non-tables, apply HRV-22 FIX: Truncate HTML FIRST, then extract text
+        # from truncated HTML to ensure consistency.
+        if segment_type == "table" or element.name == "table":
+            # Tables: extract from FULL element, let _handle_large_table handle summarization
+            raw_html = full_html[:self.TABLE_MAX_LENGTH]
             raw_text = self._extract_table_text_with_markers(element)
         else:
-            # Standard normalization for non-table elements
-            raw_text = self._normalize_text(element.get_text())
+            # Non-tables: HRV-22 FIX - truncate HTML first, then extract text
+            html_max = self.max_length
+            raw_html = full_html[:html_max]
+            truncated_soup = BeautifulSoup(raw_html, "html.parser")
+
+            if element.name == "figure":
+                figure_elem = truncated_soup.find("figure") or truncated_soup
+                raw_text = self._normalize_text(self._extract_figure_text(figure_elem))
+            else:
+                raw_text = self._normalize_text(truncated_soup.get_text())
 
         # Skip segments that are too short
         if len(raw_text) < self.min_length:
             return None
 
-        # Truncate segments that are too long
-        # Tables get a higher limit (TABLE_MAX_LENGTH) than text (max_length)
+        # Text extracted from truncated HTML is already consistent with raw_html
+        # Apply sentence-aware truncation for non-tables to ensure clean sentence endings
+        # This runs AFTER HTML truncation to maintain consistency while improving readability
         effective_max = self.TABLE_MAX_LENGTH if segment_type == "table" else self.max_length
-
-        if len(raw_text) > effective_max:
-            logger.debug(
-                f"Truncating {segment_type} segment from {len(raw_text)} to {effective_max} chars"
-            )
-            if segment_type != "table":
-                # Use sentence-aware truncation to avoid cutting mid-sentence
-                raw_text = self._truncate_at_sentence_boundary(raw_text, effective_max)
-            # Tables: DON'T truncate here - let _handle_large_table() create summary
-            # which samples from beginning, middle, and end of the table
-
-        # Extract raw HTML (limited to avoid huge storage)
-        # Tables get higher limit to preserve structure for downstream extraction
-        html_max = self.TABLE_MAX_LENGTH if segment_type == "table" else self.max_length
-        raw_html = str(element)[:html_max]
+        if segment_type != "table":
+            # Find the last complete sentence in the text for cleaner output
+            # This is especially important when HTML truncation cuts mid-sentence
+            truncated_text = self._find_last_complete_sentence(raw_text, effective_max)
+            if truncated_text and len(truncated_text) >= self.min_length:
+                raw_text = truncated_text
 
         # Extract section path and heading
         section_path, section_heading = self._extract_section_info(element)
@@ -952,12 +955,17 @@ class HTMLSegmenter:
                 if seg_type == "paragraph" and len(text_content) < self.min_length:
                     continue
 
-                # Truncate if needed - use TABLE_MAX_LENGTH for tables (HRV-22 fix)
+                # HRV-22 FIX: Truncate HTML first, then extract text from it
+                # This ensures raw_text only contains content that exists in raw_html
                 effective_max = self.TABLE_MAX_LENGTH if seg_type == "table" else self.max_length
-                if len(text_content) > effective_max:
-                    text_content = text_content[:effective_max]
                 if html_content and len(html_content) > effective_max:
                     html_content = html_content[:effective_max]
+                    # Re-extract text from truncated HTML to ensure consistency
+                    truncated_soup = BeautifulSoup(html_content, "html.parser")
+                    text_content = self._normalize_text(truncated_soup.get_text())
+                elif len(text_content) > effective_max:
+                    # Text somehow longer than HTML limit - truncate
+                    text_content = text_content[:effective_max]
 
                 # Create new segment with fractional sequence index
                 new_segment = SourceSegment(
@@ -967,7 +975,7 @@ class HTMLSegmenter:
                     section_heading=segment.section_heading,
                     sequence_index=base_sequence + (i * 0.1),  # Use fractional increments
                     raw_text=text_content,
-                    raw_html=html_content[:effective_max] if html_content else None,
+                    raw_html=html_content if html_content else None,
                     html_selector=segment.html_selector,
                     char_start_offset=segment.char_start_offset,
                     char_end_offset=segment.char_end_offset,
@@ -1282,6 +1290,62 @@ class HTMLSegmenter:
         )
         return text[:max_length]
 
+    def _find_last_complete_sentence(self, text: str, max_length: int) -> str:
+        """
+        Find text up to the last complete sentence.
+
+        Unlike _truncate_at_sentence_boundary (which only truncates when text > max_length),
+        this method always ensures the text ends at a sentence boundary. This is used
+        after HTML truncation to ensure clean sentence endings (HRV-22).
+
+        Args:
+            text: Text to potentially trim
+            max_length: Maximum allowed length
+
+        Returns:
+            Text ending at a complete sentence, or original if text already ends properly
+        """
+        if not text:
+            return text
+
+        # Check if text already ends with sentence-ending punctuation
+        stripped = text.rstrip()
+        if stripped and stripped[-1] in ".!?":
+            # Text already ends at sentence boundary
+            return text if len(text) <= max_length else self._truncate_at_sentence_boundary(
+                text, max_length
+            )
+
+        # Text was cut mid-sentence - find the last complete sentence
+        sentences = self._boundary_detector.find_sentence_boundaries(text)
+
+        if not sentences:
+            # No sentences found - return as-is
+            return text
+
+        # Check if the last detected sentence is complete
+        last_boundary = sentences[-1]
+        last_sentence_text = text[last_boundary.start : last_boundary.end].rstrip()
+
+        if last_sentence_text and last_sentence_text[-1] in ".!?":
+            # Last sentence is complete - return up to its end
+            result = text[: last_boundary.end].rstrip()
+            return result if len(result) <= max_length else self._truncate_at_sentence_boundary(
+                result, max_length
+            )
+
+        # Last sentence is incomplete - find the previous complete sentence
+        for boundary in reversed(sentences[:-1]):
+            sentence_text = text[boundary.start : boundary.end].rstrip()
+            if sentence_text and sentence_text[-1] in ".!?":
+                result = text[: boundary.end].rstrip()
+                return result if len(result) <= max_length else self._truncate_at_sentence_boundary(
+                    result, max_length
+                )
+
+        # No complete sentences found - return original
+        return text
+
     def _extract_last_sentence(self, text: str) -> str | None:
         """
         Extract the last sentence from text.
@@ -1433,8 +1497,17 @@ class HTMLSegmenter:
 
             # Update the segment with merged content if we merged anything
             if merge_count > 1:
-                segment.raw_text = merged_text.strip()
-                segment.raw_html = merged_html[: self.max_length] if merged_html else None
+                # HRV-22 FIX: Truncate HTML first, then extract text from it
+                # This ensures raw_text only contains content that exists in raw_html
+                if merged_html:
+                    truncated_html = merged_html[: self.max_length]
+                    # Re-extract text from truncated HTML to ensure consistency
+                    truncated_soup = BeautifulSoup(truncated_html, "html.parser")
+                    segment.raw_text = self._normalize_text(truncated_soup.get_text())
+                    segment.raw_html = truncated_html
+                else:
+                    segment.raw_text = merged_text.strip()
+                    segment.raw_html = None
                 segment.definition_merged_count = merge_count
                 # Update offsets to span all merged segments (SEG5)
                 segment.char_start_offset = merged_start_offset
