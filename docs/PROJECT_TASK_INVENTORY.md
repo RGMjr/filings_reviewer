@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-03 (HRV-21 complete, HRV-22 created; 53/60 tasks done)
+**Last Verified**: 2026-01-03 (HRV-22 complete; 54/60 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,12 +13,12 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 16 | 0 | 2 | 2 |
-| **TOTAL** | **60** | **53** | **0** | **3** | **4** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 17 | 0 | 1 | 2 |
+| **TOTAL** | **60** | **54** | **0** | **2** | **4** |
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
-**Remaining Work**: GR-10, GR-16 blocked; HRV-22, HRV-16 pending; HRV-12 closed, HRV-20 superseded
+**Remaining Work**: GR-10, GR-16 blocked; HRV-16 pending; HRV-12 closed, HRV-20 superseded
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -200,7 +200,7 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-15** | Candidate regeneration | S | 1h | LOW | ✅ COMPLETE | HRV-7-14 |
 | **HRV-17** | Table row parsing fix | M | 3-4h | MEDIUM | ✅ COMPLETE | None |
 | **HRV-21** | Diagnostic investigation of Farfetch segment data | M | 2-3h | NONE | ✅ COMPLETE | None |
-| **HRV-22** | Fix HTMLSegmenter raw_html/raw_text mismatch bug | M | 3-4h | MEDIUM | 🟡 PENDING | HRV-21 |
+| **HRV-22** | Fix HTMLSegmenter raw_html/raw_text mismatch bug | M | 3-4h | MEDIUM | ✅ COMPLETE | HRV-21 |
 | **HRV-20** | Remediate Farfetch data mismatch | M | 2-4h | MEDIUM | ⏸️ SUPERSEDED | HRV-22 supersedes |
 | **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | 🟡 PENDING | HRV-22 |
 
@@ -222,7 +222,7 @@ See `docs/archive/worker-prompts-closed/WORKER_PROMPT_TASK_HRV-12.md` for origin
 
 **HRV-20 Status**: ⏸️ SUPERSEDED by HRV-22. The original scope (data remediation only) is now included in HRV-22 which also fixes the root cause.
 
-**Phase 4 Total**: 9/12 tasks complete (HRV-7, HRV-8, HRV-9, HRV-10, HRV-11, HRV-14, HRV-15, HRV-17, HRV-21), HRV-12 closed, HRV-20 superseded, ~4h remaining
+**Phase 4 Total**: 10/12 tasks complete (HRV-7, HRV-8, HRV-9, HRV-10, HRV-11, HRV-14, HRV-15, HRV-17, HRV-21, HRV-22), HRV-12 closed, HRV-20 superseded, ~1h remaining
 
 **Phase 4 Execution Order**:
 ```
@@ -242,8 +242,8 @@ Phase 4d: Table Parsing + Data Fix
 ├── Worker 6: HRV-17 (Table row parsing fix) ~3-4h ✅ COMPLETE (code fix done)
 ├── Worker 7: HRV-21 (Diagnostic investigation) ~2-3h ✅ COMPLETE (confirmed data corruption)
 │   └── Findings: 13 Farfetch table segments have raw_text with 188 extra chars not in raw_html
-├── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h 🟡 PENDING
-│   └── Supersedes HRV-20: Combines root cause fix + data re-extraction
+├── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h ✅ COMPLETE
+│   └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
 └── HRV-20: ⏸️ SUPERSEDED by HRV-22
 
 Phase 4e: Final Validation (Sequential)
@@ -415,7 +415,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     HRV-21 (Diagnostic Investigation) ✅
                               │ (confirmed data corruption)
                               ▼
-                    HRV-22 (HTMLSegmenter Bug Fix + Re-extraction) 🟡
+                    HRV-22 (HTMLSegmenter Bug Fix + Re-extraction) ✅
                               │ (supersedes HRV-20)
                               ▼
                     HRV-16 (Validation Re-run) 🟡
@@ -617,7 +617,7 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-15: Candidate regeneration ✅ COMPLETE (Farfetch: 19→16, Slack: 49→61 candidates) - Phase 4d (2026-01-03)
 - [x] HRV-17: Table row parsing fix ✅ COMPLETE (code fix done; revealed data quality issue) - Phase 4d (2026-01-03)
 - [x] HRV-21: Diagnostic investigation ✅ COMPLETE (confirmed data corruption - see HRV-21_DIAGNOSTIC_FINDINGS.md) - Phase 4d
-- [ ] HRV-22: HTMLSegmenter bug fix + re-extraction 🟡 PENDING (supersedes HRV-20) - Phase 4d
+- [x] HRV-22: HTMLSegmenter bug fix + re-extraction ✅ COMPLETE (2026-01-03: fixed TABLE_MAX_LENGTH in _split_composite_segment, added validation) - Phase 4d
 - [x] HRV-20: Farfetch data mismatch remediation ⏸️ SUPERSEDED by HRV-22 - Phase 4d
 - [ ] HRV-16: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 20%+ precision, 55%+ recall) - Phase 4e
 
@@ -681,4 +681,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-03 (HRV-21 complete, HRV-22 created; Phases 1-3 done; Phase 4: 9/12 done)*
+*Last verified: 2026-01-03 (HRV-22 complete; Phases 1-3 done; Phase 4: 10/12 done)*

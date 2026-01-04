@@ -786,7 +786,55 @@ class HTMLSegmenter:
             char_end_offset=char_end,
         )
 
+        # Validate text/HTML consistency (HRV-22 monitoring)
+        self._validate_text_html_consistency(raw_text, raw_html, segment_type)
+
         return segment
+
+    def _validate_text_html_consistency(
+        self,
+        raw_text: str,
+        raw_html: str | None,
+        segment_type: str,
+    ) -> bool:
+        """
+        Validate that raw_text content is consistent with raw_html.
+
+        Checks that the text length doesn't exceed what could reasonably be
+        extracted from the HTML. This detects data corruption where raw_text
+        contains content that doesn't exist in raw_html (e.g., due to
+        inconsistent truncation limits).
+
+        Args:
+            raw_text: The normalized text content
+            raw_html: The HTML content (may be truncated)
+            segment_type: Type of segment (for logging context)
+
+        Returns:
+            True if consistent, False if mismatch detected.
+            Logs warning on mismatch for monitoring.
+        """
+        if not raw_html:
+            return True  # No HTML to validate against
+
+        try:
+            # Extract text from stored HTML
+            soup = BeautifulSoup(raw_html, "html.parser")
+            html_text = soup.get_text()
+
+            # Check if raw_text is significantly longer than extractable from HTML
+            # Allow 50 char tolerance for whitespace normalization differences
+            if len(raw_text) > len(html_text) + 50:
+                logger.warning(
+                    f"HRV-22: Text/HTML mismatch detected: raw_text={len(raw_text)} chars, "
+                    f"extractable from raw_html={len(html_text)} chars, "
+                    f"segment_type={segment_type}"
+                )
+                return False
+        except Exception as e:
+            logger.debug(f"Could not validate text/HTML consistency: {e}")
+
+        return True
 
     def _split_composite_segment(
         self,
@@ -904,10 +952,12 @@ class HTMLSegmenter:
                 if seg_type == "paragraph" and len(text_content) < self.min_length:
                     continue
 
-                # Truncate if needed
-                if len(text_content) > self.max_length:
-                    text_content = text_content[: self.max_length]
-                    html_content = html_content[: self.max_length]
+                # Truncate if needed - use TABLE_MAX_LENGTH for tables (HRV-22 fix)
+                effective_max = self.TABLE_MAX_LENGTH if seg_type == "table" else self.max_length
+                if len(text_content) > effective_max:
+                    text_content = text_content[:effective_max]
+                if html_content and len(html_content) > effective_max:
+                    html_content = html_content[:effective_max]
 
                 # Create new segment with fractional sequence index
                 new_segment = SourceSegment(
@@ -917,7 +967,7 @@ class HTMLSegmenter:
                     section_heading=segment.section_heading,
                     sequence_index=base_sequence + (i * 0.1),  # Use fractional increments
                     raw_text=text_content,
-                    raw_html=html_content[: self.max_length] if html_content else None,
+                    raw_html=html_content[:effective_max] if html_content else None,
                     html_selector=segment.html_selector,
                     char_start_offset=segment.char_start_offset,
                     char_end_offset=segment.char_end_offset,
