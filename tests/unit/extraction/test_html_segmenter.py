@@ -1492,7 +1492,7 @@ class TestCompositeSegmentSplitting:
             Path(html_path).unlink()
 
     def test_very_long_table_segment_truncated(self, temp_html_file):
-        """Very long table segments are truncated to max_length."""
+        """Very long table segments respect TABLE_MAX_LENGTH (HRV-22)."""
         # Create a very large table
         table_rows = "".join(
             f"<tr><td>Row {i}</td><td>Data {i}</td></tr>"
@@ -1516,9 +1516,18 @@ class TestCompositeSegmentSplitting:
         try:
             segments = segmenter.segment_filing(filing_id=13, html_path=html_path)
 
-            # All segments should respect max_length
+            # Segments should respect type-specific max lengths:
+            # - Paragraphs use max_length (5000)
+            # - Tables use TABLE_MAX_LENGTH (25000)
             for segment in segments:
-                assert len(segment.raw_text) <= 5000
+                if segment.segment_type == "table":
+                    assert len(segment.raw_text) <= segmenter.TABLE_MAX_LENGTH, (
+                        f"Table should be <= TABLE_MAX_LENGTH, got {len(segment.raw_text)}"
+                    )
+                else:
+                    assert len(segment.raw_text) <= segmenter.max_length, (
+                        f"Non-table should be <= max_length, got {len(segment.raw_text)}"
+                    )
 
         finally:
             Path(html_path).unlink()
@@ -5558,3 +5567,258 @@ class TestTableCellMarkers:
         assert "A" in result
         assert "[CELL]" in result
         assert "[ROW]" in result
+
+
+# =============================================================================
+# HRV-22: _split_composite_segment and Validation Tests
+# =============================================================================
+
+
+class TestSplitCompositeTableMaxLength:
+    """Tests for _split_composite_segment using correct max lengths (HRV-22)."""
+
+    def test_split_composite_table_uses_table_max_length(self):
+        """Tables from _split_composite_segment should use TABLE_MAX_LENGTH (25000)."""
+        from src.extraction.models import SourceSegment
+
+        segmenter = HTMLSegmenter()
+
+        # Create table HTML > 10000 chars but < 25000
+        # Generate ~15000 char table
+        rows = ""
+        for i in range(200):
+            rows += f"<tr><td>Row {i} with some longer text content here</td><td>Value {i}</td><td>Extra {i}</td></tr>\n"
+
+        table_html = f"<table>{rows}</table>"
+        assert len(table_html) > 10000, f"Table HTML should be > 10000 chars, got {len(table_html)}"
+        assert len(table_html) < 25000, f"Table HTML should be < 25000 chars, got {len(table_html)}"
+
+        # Create a composite segment with paragraph + table
+        composite_html = f"<div><p>Intro paragraph with enough text to meet minimum length requirements for testing.</p>{table_html}</div>"
+
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",  # Will be detected as composite
+            section_path="Test",
+            section_heading="Test",
+            sequence_index=0,
+            raw_text="",  # Will be replaced
+            raw_html=composite_html,
+        )
+
+        split_segments = segmenter._split_composite_segment(segment)
+
+        # Should have split into paragraph + table
+        table_segments = [s for s in split_segments if s.segment_type == "table"]
+        assert len(table_segments) >= 1, f"Expected table segment, got types: {[s.segment_type for s in split_segments]}"
+
+        # Table segment should NOT be truncated to 10000
+        table_seg = table_segments[0]
+        assert len(table_seg.raw_html or "") > 10000, (
+            f"Table raw_html should be > 10000 (TABLE_MAX_LENGTH), got {len(table_seg.raw_html or '')}"
+        )
+
+    def test_split_composite_paragraph_uses_max_length(self):
+        """Paragraphs from _split_composite_segment should use max_length (10000)."""
+        from src.extraction.models import SourceSegment
+
+        segmenter = HTMLSegmenter()
+
+        # Create paragraph text > 10000 chars
+        long_text = "This is a test paragraph. " * 500  # ~13000 chars
+        assert len(long_text) > 10000
+
+        paragraph_html = f"<p>{long_text}</p>"
+        table_html = "<table><tr><td>Metric</td><td>Value</td></tr><tr><td>DAU</td><td>100</td></tr></table>"
+        composite_html = f"<div>{paragraph_html}{table_html}</div>"
+
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            section_path="Test",
+            section_heading="Test",
+            sequence_index=0,
+            raw_text="",
+            raw_html=composite_html,
+        )
+
+        split_segments = segmenter._split_composite_segment(segment)
+
+        # Find paragraph segments
+        para_segments = [s for s in split_segments if s.segment_type == "paragraph"]
+        assert len(para_segments) >= 1
+
+        # Paragraph should be truncated to max_length (10000)
+        para_seg = para_segments[0]
+        assert len(para_seg.raw_text) <= segmenter.max_length, (
+            f"Paragraph text should be <= {segmenter.max_length}, got {len(para_seg.raw_text)}"
+        )
+
+    def test_split_composite_mixed_content_correct_limits(self):
+        """Mixed text+table composite should use correct limits for each piece."""
+        from src.extraction.models import SourceSegment
+
+        segmenter = HTMLSegmenter()
+
+        # Long paragraph (> 10000)
+        long_para = "Word " * 2500  # ~12500 chars
+        paragraph_html = f"<p>{long_para}</p>"
+
+        # Medium table (> 10000, < 25000)
+        rows = "".join(f"<tr><td>Row {i} extended text</td><td>Val {i}</td></tr>" for i in range(200))
+        table_html = f"<table>{rows}</table>"
+
+        composite_html = f"<div>{paragraph_html}{table_html}</div>"
+
+        segment = SourceSegment(
+            filing_id=1,
+            segment_type="paragraph",
+            section_path="Test",
+            section_heading="Test",
+            sequence_index=0,
+            raw_text="",
+            raw_html=composite_html,
+        )
+
+        split_segments = segmenter._split_composite_segment(segment)
+
+        # Get each type
+        para_segments = [s for s in split_segments if s.segment_type == "paragraph"]
+        table_segments = [s for s in split_segments if s.segment_type == "table"]
+
+        # Verify limits
+        if para_segments:
+            assert len(para_segments[0].raw_text) <= segmenter.max_length
+        if table_segments:
+            # Table should use TABLE_MAX_LENGTH, so if original was < 25000, shouldn't be truncated
+            assert len(table_segments[0].raw_html or "") <= segmenter.TABLE_MAX_LENGTH
+
+
+class TestValidateTextHtmlConsistency:
+    """Tests for _validate_text_html_consistency method (HRV-22)."""
+
+    def test_validate_consistency_detects_mismatch(self, caplog):
+        """Validation should detect when raw_text exceeds extractable HTML text."""
+        import logging
+
+        segmenter = HTMLSegmenter()
+
+        # Simulate the bug: raw_text has more content than can be extracted from raw_html
+        raw_html = "<p>Short HTML content here.</p>"  # ~25 chars extractable
+        raw_text = "Short HTML content here. But wait, there's more text that doesn't exist in the HTML! " * 3
+
+        with caplog.at_level(logging.WARNING):
+            result = segmenter._validate_text_html_consistency(raw_text, raw_html, "table")
+
+        assert result is False, "Should detect mismatch"
+        assert "HRV-22" in caplog.text, "Should log with HRV-22 prefix"
+        assert "Text/HTML mismatch" in caplog.text
+
+    def test_validate_consistency_passes_for_valid(self):
+        """Validation should pass for consistent raw_text/raw_html."""
+        segmenter = HTMLSegmenter()
+
+        raw_html = "<p>This is a paragraph with some text content for testing purposes.</p>"
+        raw_text = "This is a paragraph with some text content for testing purposes."
+
+        result = segmenter._validate_text_html_consistency(raw_text, raw_html, "paragraph")
+
+        assert result is True, "Should pass for consistent content"
+
+    def test_validate_consistency_allows_small_differences(self):
+        """Validation should allow small differences (whitespace normalization)."""
+        segmenter = HTMLSegmenter()
+
+        # HTML with extra whitespace that gets normalized
+        raw_html = "<p>   This   is   spaced   text   with   normalization.   </p>"
+        raw_text = "This is spaced text with normalization."
+
+        result = segmenter._validate_text_html_consistency(raw_text, raw_html, "paragraph")
+
+        assert result is True, "Should pass - text is shorter than HTML text"
+
+    def test_validate_consistency_handles_no_html(self):
+        """Validation should handle None raw_html gracefully."""
+        segmenter = HTMLSegmenter()
+
+        result = segmenter._validate_text_html_consistency("Some text", None, "paragraph")
+
+        assert result is True, "Should pass when no HTML to validate against"
+
+
+class TestFarfetchTablePatternRegression:
+    """Regression test for Farfetch-like table pattern (HRV-22)."""
+
+    def test_large_table_not_truncated_to_10000(self, temp_html_file):
+        """A table > 10000 chars should NOT be truncated to 10000 chars."""
+        # Generate table that will be > 10000 chars after BeautifulSoup parsing
+        # BeautifulSoup normalizes whitespace, so we need more rows
+        # Use 80 rows to ensure > 10000 chars after parsing
+        rows = ""
+        for i in range(80):
+            rows += f"<tr><td>Metric Category {i} with descriptive name here</td><td>Q1 2023 Value ${i * 100:,}</td><td>Q2 2023 Value ${i * 110:,}</td><td>Q3 2023 Value ${i * 120:,}</td></tr>"
+
+        table_html = f"<table><tr><th>Metric</th><th>Q1 2023</th><th>Q2 2023</th><th>Q3 2023</th></tr>{rows}</table>"
+
+        # Verify table is in range (note: BeautifulSoup may normalize but size will be close)
+        assert len(table_html) > 10000, f"Table size {len(table_html)} should be > 10000"
+
+        html_content = f"<!DOCTYPE html><html><body><h1>Key Metrics</h1>{table_html}</body></html>"
+
+        html_path = temp_html_file(html_content)
+        segmenter = HTMLSegmenter()
+
+        segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+        # Find table segment
+        table_segments = [s for s in segments if s.segment_type == "table"]
+        assert len(table_segments) >= 1, f"Expected table segment, got: {[s.segment_type for s in segments]}"
+
+        table_seg = table_segments[0]
+
+        # raw_html should NOT be truncated to exactly 10000
+        # It should preserve the full content (within TABLE_MAX_LENGTH)
+        assert len(table_seg.raw_html or "") != 10000, (
+            "raw_html should NOT be truncated to exactly 10000 (bug symptom)"
+        )
+        # Table should preserve content > 10000 (testing TABLE_MAX_LENGTH is used)
+        assert len(table_seg.raw_html or "") > 10000, (
+            f"raw_html should preserve content > 10000, got {len(table_seg.raw_html or '')}"
+        )
+
+    def test_extracted_text_consistent_with_html(self, temp_html_file):
+        """Extracted raw_text should be derivable from raw_html."""
+        from bs4 import BeautifulSoup
+
+        # Create table with known text content
+        table_html = """<table>
+            <tr><th>Metric</th><th>2023</th><th>2022</th></tr>
+            <tr><td>Active Consumers</td><td>1,234,567</td><td>987,654</td></tr>
+            <tr><td>Retention Rate</td><td>95%</td><td>92%</td></tr>
+        </table>"""
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body>{table_html}</body>
+        </html>
+        """
+
+        html_path = temp_html_file(html_content)
+        segmenter = HTMLSegmenter()
+
+        segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+        table_segments = [s for s in segments if s.segment_type == "table"]
+        assert len(table_segments) >= 1
+
+        table_seg = table_segments[0]
+
+        # Verify key content from raw_text exists in what can be extracted from raw_html
+        if table_seg.raw_html:
+            soup = BeautifulSoup(table_seg.raw_html, "html.parser")
+            html_extractable = soup.get_text()
+
+            # Key values should be in both
+            assert "Active Consumers" in table_seg.raw_text or "[CELL]" in table_seg.raw_text
+            # The text should be extractable from the HTML
+            assert "Active Consumers" in html_extractable
