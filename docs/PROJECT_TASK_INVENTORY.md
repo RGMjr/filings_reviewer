@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-03 (HRV-22 complete; 54/60 tasks done)
+**Last Verified**: 2026-01-04 (HRV-16 complete; 55/60 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,12 +13,12 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 17 | 0 | 1 | 2 |
-| **TOTAL** | **60** | **54** | **0** | **2** | **4** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
+| **TOTAL** | **60** | **55** | **0** | **1** | **4** |
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
-**Remaining Work**: GR-10, GR-16 blocked; HRV-16 pending; HRV-12 closed, HRV-20 superseded
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -42,7 +42,7 @@
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
 **Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
-**Status**: 🟡 IN PROGRESS - 16 tasks (Phases 1-4), Wave 4
+**Status**: ✅ PHASE 4 COMPLETE - 18/20 tasks done (2 blocked/superseded), Wave 4
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
 ---
@@ -202,7 +202,7 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-21** | Diagnostic investigation of Farfetch segment data | M | 2-3h | NONE | ✅ COMPLETE | None |
 | **HRV-22** | Fix HTMLSegmenter raw_html/raw_text mismatch bug | M | 3-4h | MEDIUM | ✅ COMPLETE | HRV-21 |
 | **HRV-20** | Remediate Farfetch data mismatch | M | 2-4h | MEDIUM | ⏸️ SUPERSEDED | HRV-22 supersedes |
-| **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | 🟡 PENDING | HRV-22 |
+| **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | ✅ COMPLETE | HRV-22 |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase - lower priority, harder to validate
 
@@ -222,7 +222,7 @@ See `docs/archive/worker-prompts-closed/WORKER_PROMPT_TASK_HRV-12.md` for origin
 
 **HRV-20 Status**: ⏸️ SUPERSEDED by HRV-22. The original scope (data remediation only) is now included in HRV-22 which also fixes the root cause.
 
-**Phase 4 Total**: 10/12 tasks complete (HRV-7, HRV-8, HRV-9, HRV-10, HRV-11, HRV-14, HRV-15, HRV-17, HRV-21, HRV-22), HRV-12 closed, HRV-20 superseded, ~1h remaining
+**Phase 4 Total**: ✅ COMPLETE (11/12 tasks complete + 1 closed), HRV-12 closed (won't do), HRV-20 superseded
 
 **Phase 4 Execution Order**:
 ```
@@ -246,8 +246,8 @@ Phase 4d: Table Parsing + Data Fix
 │   └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
 └── HRV-20: ⏸️ SUPERSEDED by HRV-22
 
-Phase 4e: Final Validation (Sequential)
-└── Worker 9: HRV-16 (Validation re-run after HRV-22) ~1h 🟡 PENDING
+Phase 4e: Final Validation (Sequential) ✅ COMPLETE
+└── Worker 9: HRV-16 (Validation re-run after HRV-22) ~1h ✅ COMPLETE
 ```
 
 **Phase 4 Files to Modify** (with conflict avoidance):
@@ -367,8 +367,8 @@ Phase 4e: Final Validation (Sequential)
 | 4b | 2 | HRV-7 | 2-3h | HRV-4 | ✅ COMPLETE | System-wide metric ID fix (2026-01-01) |
 | 4b | 3 | HRV-8 | 1-2h | HRV-4 | ✅ COMPLETE | Impl. with HRV-10/11 (Type Validation) |
 | 4b | 4 | HRV-14 | 2-3h | HRV-4 | ✅ COMPLETE | Chart detection (2025-12-29) |
-| 4c | 5 | HRV-9 → HRV-12 | 4h | HRV-4 | 🟡 IN PROGRESS | HRV-9 ✅, HRV-12 pending |
-| 4d | 6 | HRV-15 → HRV-16 | 2h | All above | 🟡 IN PROGRESS | HRV-15 ✅, HRV-16 pending |
+| 4c | 5 | HRV-9 → HRV-12 | 4h | HRV-4 | ✅ COMPLETE | HRV-9 ✅, HRV-12 ❌ closed |
+| 4d | 6 | HRV-15 → HRV-16 | 2h | All above | ✅ COMPLETE | HRV-15 ✅, HRV-16 ✅ |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase
 
@@ -385,7 +385,7 @@ Phase 4e: Final Validation (Sequential)
 - ✅ Growth removal complete (HRV-9, 2026-01-02)
 - ❌ Industry weighting (HRV-12) CLOSED - addresses wrong problem (see closure note)
 - ✅ Candidate regeneration (HRV-15, 2026-01-03: Farfetch 16, Slack 61 candidates)
-- 🟡 Post-improvement validation with target: 20%+ precision, 55%+ recall (HRV-16)
+- ✅ Post-improvement validation (HRV-16, 2026-01-04: 66.7% precision, 47.4% recall, 55.4% F1)
 
 **Wave 4 Dependency Graph** (Revised 2026-01-03):
 ```
@@ -418,7 +418,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     HRV-22 (HTMLSegmenter Bug Fix + Re-extraction) ✅
                               │ (supersedes HRV-20)
                               ▼
-                    HRV-16 (Validation Re-run) 🟡
+                    HRV-16 (Validation Re-run) ✅
 ```
 
 ---
@@ -445,15 +445,14 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     └─────────────────────────┬───────────────────────────┘
                                               │
                     ┌─────────────────────────▼───────────────────────────┐
-                    │                WAVE 4 🟡 IN PROGRESS (~6h)          │
+                    │                WAVE 4 ✅ COMPLETE                    │
                     │  HRV-1 through HRV-16 (Validation + System Improve) │
-                    │  Phases 1-3: ✅ COMPLETE | Phase 4: 4/9 complete    │
-                    │  HRV-13 deferred to future phase                    │
+                    │  Phases 1-4: ✅ COMPLETE (18/20 tasks)              │
+                    │  HRV-13 deferred; HRV-12 closed; HRV-20 superseded  │
                     └─────────────────────────────────────────────────────┘
 
-Waves 1-3 Complete: 37/40 tasks (93%)
-Wave 4 In Progress: 16 tasks (11 complete, 5 pending)
-Total Remaining Work: ~6h with safe parallelization
+Waves 1-4 Complete: 55/60 tasks (92%)
+Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, HRV-12 closed, HRV-20 superseded
 ```
 
 ---
@@ -619,7 +618,7 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-21: Diagnostic investigation ✅ COMPLETE (confirmed data corruption - see HRV-21_DIAGNOSTIC_FINDINGS.md) - Phase 4d
 - [x] HRV-22: HTMLSegmenter bug fix + re-extraction ✅ COMPLETE (2026-01-03: fixed TABLE_MAX_LENGTH in _split_composite_segment, added validation) - Phase 4d
 - [x] HRV-20: Farfetch data mismatch remediation ⏸️ SUPERSEDED by HRV-22 - Phase 4d
-- [ ] HRV-16: Validation re-run (Farfetch + Slack) 🟡 PENDING (target: 20%+ precision, 55%+ recall) - Phase 4e
+- [x] HRV-16: Validation re-run (Farfetch + Slack) ✅ COMPLETE (2026-01-04: 66.7% precision, 47.4% recall, 55.4% F1) - Phase 4e
 
 **Deferred**: HRV-13 (Definition-only mode) - moved to future phase (lower priority, harder to validate)
 
@@ -665,20 +664,21 @@ Reference the specific task section in the corresponding plan document:
 | FP patterns documented | 5+ | ✅ 5+ (see HRV-6_VALIDATION_ANALYSIS.md) |
 | FN patterns documented | 5+ | ✅ 5+ (see HRV-6_VALIDATION_ANALYSIS.md) |
 
-### After Wave 4 Phase 4 (System Improvements) - PENDING (REVISED)
-| Metric | Before (HRV-4) | Realistic Target | Stretch Goal |
-|--------|----------------|------------------|--------------|
-| Precision | 10.4% | ≥20% | ≥30% |
-| Recall | 49.3% | ≥55% | ≥65% |
-| F1 Score | 17.2% | ≥28% | ≥40% |
-| False Positives | 283 | ≤180 | ≤120 |
-| False Negatives | 34 | ≤28 | ≤20 |
+### After Wave 4 Phase 4 (System Improvements) - ✅ COMPLETE (HRV-16)
+| Metric | Before (HRV-4) | Realistic Target | Stretch Goal | **Actual** | Status |
+|--------|----------------|------------------|--------------|------------|--------|
+| Precision | 10.4% | ≥20% | ≥30% | **66.7%** | ✅ Stretch |
+| Recall | 49.3% | ≥55% | ≥65% | **47.4%** | ❌ Miss |
+| F1 Score | 17.2% | ≥28% | ≥40% | **55.4%** | ✅ Stretch |
+| False Positives | 283 | ≤180 | ≤120 | **27** | ✅ Stretch |
+| False Negatives | 34 | ≤28 | ≤20 | **60** | ❌ Miss |
 
-**Rationale for conservative targets**:
-- Some FPs are inherent to keyword-based matching
-- Gold standard includes metrics system may legitimately not detect
-- Better to exceed realistic targets than miss optimistic ones
+**Result**: PARTIAL PASS - 3/5 metrics achieved stretch targets
+- Precision improved dramatically (10.4% → 66.7%) due to FP elimination
+- Recall dropped (49.3% → 47.4%) due to aggressive filtering and growth metric removal
+- F1 improved significantly (17.2% → 55.4%) showing better overall balance
+- See `docs/analysis/HRV-16_VALIDATION_RESULTS.md` for detailed analysis
 
 ---
 
-*Last verified: 2026-01-03 (HRV-22 complete; Phases 1-3 done; Phase 4: 10/12 done)*
+*Last verified: 2026-01-04 (HRV-16 complete; Phase 4 COMPLETE; 55/60 tasks done)*
