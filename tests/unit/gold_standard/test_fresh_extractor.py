@@ -1,8 +1,8 @@
 """Unit tests for fresh_extractor module."""
 
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +17,6 @@ from src.gold_standard.fresh_extractor import (
     parse_sec_url,
     segment_and_generate,
 )
-
 
 # =============================================================================
 # Test Data

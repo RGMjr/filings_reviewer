@@ -11,9 +11,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from src.extraction.html_segmenter import HTMLSegmenter
 from src.review import CandidateGenerator
@@ -47,7 +48,7 @@ class ExtractionResult:
     success: bool
     error_message: str | None
     segments_count: int
-    candidates: list["ReviewCandidate"]
+    candidates: list[ReviewCandidate]
     local_path: Path | None
     elapsed_seconds: float
 
@@ -192,7 +193,7 @@ def segment_and_generate(
     filing_id: int = 1,
     company_id: int = 1,
     config: CandidateGenerationConfig | None = None,
-) -> tuple[list["ReviewCandidate"], int, str | None]:
+) -> tuple[list[ReviewCandidate], int, str | None]:
     """
     Segment a filing and generate candidates.
 

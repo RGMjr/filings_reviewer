@@ -51,7 +51,7 @@ class DatabaseAdapter:
     def __init__(
         self,
         connection_string: str,
-        pool: "ConnectionPool" | None = None,
+        pool: ConnectionPool | None = None,
     ):
         """
         Initialize the database adapter.

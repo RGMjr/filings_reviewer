@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -181,7 +181,7 @@ def load_baseline(path: str | Path) -> BaselineMetrics:
             f"Run validation with --update-baseline to create one."
         )
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         try:
             data = json.load(f)
         except json.JSONDecodeError as e:
@@ -305,7 +305,7 @@ def create_baseline_from_results(
         )
 
     return BaselineMetrics(
-        baseline_date=datetime.now(timezone.utc).isoformat(),
+        baseline_date=datetime.now(UTC).isoformat(),
         description=description,
         overall=overall,
         by_company=by_company,

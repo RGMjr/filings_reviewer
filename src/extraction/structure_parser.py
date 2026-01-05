@@ -41,7 +41,6 @@ pipelines - that integration happens in future tasks.
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
 
@@ -61,7 +60,7 @@ class TextSpan:
     text: str
     text_start: int
     text_end: int
-    dom_element: Optional[Tag] = None
+    dom_element: Tag | None = None
     element_type: str = "text"
 
 
@@ -246,7 +245,7 @@ class StructureParser:
         """
         return self._text
 
-    def get_element_at_position(self, text_pos: int) -> Optional[Tag]:
+    def get_element_at_position(self, text_pos: int) -> Tag | None:
         """Get DOM element containing the given text position.
 
         Args:
@@ -313,7 +312,7 @@ class StructureParser:
         """
         return [(span.text_start, span.text_end) for span in self._spans]
 
-    def get_row_at_position(self, position: int) -> Optional[RowSpan]:
+    def get_row_at_position(self, position: int) -> RowSpan | None:
         """Get the table row containing the given position.
 
         Args:
@@ -327,7 +326,7 @@ class StructureParser:
                 return row
         return None
 
-    def get_span_at_position(self, position: int) -> Optional[TextSpan]:
+    def get_span_at_position(self, position: int) -> TextSpan | None:
         """Get the text span containing the given position.
 
         Args:

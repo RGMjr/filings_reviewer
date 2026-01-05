@@ -75,7 +75,13 @@ class TableRowParser:
         self._parse_rows()
 
     def _parse_rows(self) -> None:
-        """Parse table structure and map row boundaries to text positions."""
+        """Parse table structure and map row boundaries to text positions.
+
+        Uses flexible whitespace matching to handle normalization differences
+        between HTML get_text() and HTMLSegmenter text extraction. This fixes
+        issues where <br/> tags in HTML become different whitespace in each
+        system (HRV-17 fix).
+        """
         self.rows = []
 
         # Check if HTML contains a table
@@ -120,19 +126,32 @@ class TableRowParser:
                 continue
 
             # Find where this row's text appears in the extracted text
-            # We search from current_pos forward to handle duplicate text
+            # First try exact match (fastest)
             row_start = self.extracted_text.find(row_text, current_pos)
+            matched_length = len(row_text) if row_start != -1 else 0
 
             if row_start == -1:
-                # Row text not found in extracted text (might be normalized differently)
-                # Try a more flexible search by looking for key parts
+                # Exact match failed - use flexible whitespace matching
+                # This handles cases where <br/> normalization differs
+                row_start, matched_length = self._find_row_flexible(
+                    row_text, current_pos
+                )
+
+            if row_start == -1:
+                # Still not found - try approximate match with first few words
                 row_start = self._find_row_approximate(row_text, current_pos)
+                if row_start != -1:
+                    # Estimate matched length based on row text
+                    matched_length = len(row_text)
 
             if row_start == -1:
-                logger.debug(f"Could not locate row {row_idx} text in extracted text")
+                logger.debug(
+                    f"TRS-1: Could not locate row {row_idx} text in extracted text "
+                    f"(searched from pos {current_pos})"
+                )
                 continue
 
-            row_end = row_start + len(row_text)
+            row_end = row_start + matched_length
 
             # Check if row has a header cell (th or first td with text)
             cells = tr.find_all(['th', 'td'])
@@ -143,16 +162,28 @@ class TableRowParser:
 
             if cells:
                 first_cell_text = self._normalize_text(cells[0].get_text()).strip()
-                has_header = bool(first_cell_text and not first_cell_text.replace(',', '').replace('.', '').replace('(', '').replace(')', '').replace('-', '').replace('%', '').replace('$', '').isdigit())
+                has_header = bool(
+                    first_cell_text
+                    and not first_cell_text.replace(',', '')
+                    .replace('.', '')
+                    .replace('(', '')
+                    .replace(')', '')
+                    .replace('-', '')
+                    .replace('%', '')
+                    .replace('$', '')
+                    .isdigit()
+                )
 
                 if has_header:
                     header_text = first_cell_text
-                    # Find position of header text within the row text
-                    # It should be at or near the start of the row
-                    header_offset = row_text.find(header_text)
-                    if header_offset != -1:
-                        header_start = row_start + header_offset
-                        header_end = header_start + len(header_text)
+                    # Find header position using flexible matching
+                    header_match = self._find_text_flexible(
+                        header_text,
+                        self.extracted_text[row_start:row_end]
+                    )
+                    if header_match is not None:
+                        header_start = row_start + header_match[0]
+                        header_end = row_start + header_match[1]
 
             self.rows.append(TableRow(
                 row_index=row_idx,
@@ -167,6 +198,11 @@ class TableRowParser:
 
             current_pos = row_end
 
+        # Note: We intentionally do NOT fill unmapped regions with _fill_unmapped_regions()
+        # because extending rows to cover unmapped text would allow cross-row matches
+        # between positions that are actually in different rows. It's better to have
+        # are_in_same_row() return False for unmapped positions (conservative approach).
+
         logger.debug(f"Parsed {len(self.rows)} table rows")
 
     def _normalize_text(self, text: str) -> str:
@@ -175,24 +211,92 @@ class TableRowParser:
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
+    def _find_row_flexible(
+        self, row_text: str, start_pos: int
+    ) -> tuple[int, int]:
+        """
+        Find row text with flexible whitespace matching.
+
+        This handles cases where <br/> tags in HTML become different whitespace
+        in get_text() vs HTMLSegmenter extraction:
+        - get_text(): <br/> -> newline -> normalized to space
+        - HTMLSegmenter: <br/> -> removed entirely (no space)
+
+        Returns:
+            Tuple of (start_position, matched_length) or (-1, 0) if not found
+        """
+        # Split row text into tokens (non-whitespace sequences)
+        tokens = row_text.split()
+        if not tokens:
+            return (-1, 0)
+
+        # Build regex pattern: tokens separated by optional whitespace (\s*)
+        # This matches even when whitespace is completely absent
+        pattern_parts = [re.escape(token) for token in tokens]
+        pattern = r'\s*'.join(pattern_parts)
+
+        try:
+            match = re.search(pattern, self.extracted_text[start_pos:])
+            if match:
+                return (start_pos + match.start(), match.end() - match.start())
+        except re.error as e:
+            logger.debug(f"TRS-2: Regex error in flexible match: {e}")
+
+        return (-1, 0)
+
+    def _find_text_flexible(
+        self, text: str, search_in: str
+    ) -> tuple[int, int] | None:
+        """
+        Find text with flexible whitespace matching within a string.
+
+        Returns:
+            Tuple of (start, end) positions or None if not found
+        """
+        tokens = text.split()
+        if not tokens:
+            return None
+
+        pattern_parts = [re.escape(token) for token in tokens]
+        pattern = r'\s*'.join(pattern_parts)
+
+        try:
+            match = re.search(pattern, search_in)
+            if match:
+                return (match.start(), match.end())
+        except re.error:
+            pass
+
+        return None
+
     def _find_row_approximate(self, row_text: str, start_pos: int) -> int:
         """
         Try to find row text approximately by looking for distinctive parts.
 
         This handles cases where normalization differences prevent exact match.
+        Uses flexible whitespace matching between tokens.
         """
         # Try to find the first few distinctive words
         words = row_text.split()[:3]  # First 3 words
         if not words:
             return -1
 
-        search_pattern = r'\s+'.join(re.escape(w) for w in words)
-        match = re.search(search_pattern, self.extracted_text[start_pos:])
-
-        if match:
-            return start_pos + match.start()
+        # Use \s* (zero or more) instead of \s+ to handle missing whitespace
+        search_pattern = r'\s*'.join(re.escape(w) for w in words)
+        try:
+            match = re.search(search_pattern, self.extracted_text[start_pos:])
+            if match:
+                return start_pos + match.start()
+        except re.error:
+            pass
 
         return -1
+
+    # Note: _fill_unmapped_regions() was intentionally removed.
+    # Gap-filling caused false positives by allowing cross-row matches when
+    # HTML/text mismatches resulted in unmapped regions containing multiple
+    # actual table rows (see HRV-17 investigation). The conservative approach
+    # is to leave gaps unmapped and have are_in_same_row() return False.
 
     def get_row_at_position(self, position: int) -> TableRow | None:
         """

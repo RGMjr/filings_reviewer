@@ -3,12 +3,11 @@
 Tests for GS-2: Enhanced validation script with baseline comparison and regression detection.
 """
 
-import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

@@ -400,20 +400,10 @@ class TestMetricKeywords:
                 except re.error as e:
                     pytest.fail(f"Invalid regex in {metric_id}: {pattern} - {e}")
 
-    def test_keywords_match_metric_classifier(self):
-        """METRIC_KEYWORDS should have the same metric IDs as MetricClassifier.
-
-        The YAML config is the source of truth and may have additional patterns
-        (e.g., consumer synonyms). This test verifies metric ID parity only.
-        """
-        from src.extraction.metric_classifier import MetricClassifier
-
-        # Verify we have the same metrics defined
-        assert set(METRIC_KEYWORDS.keys()) == set(MetricClassifier.METRIC_KEYWORDS.keys())
-
-        # Note: Pattern matching is NOT required to be identical.
-        # YAML config can have additional patterns (e.g., consumer synonyms).
-        # MetricClassifier patterns are a subset for extraction pipeline.
+    # test_keywords_match_metric_classifier removed (2026-01-03):
+    # After YAML externalization (2025-12-27), MetricClassifier no longer has
+    # METRIC_KEYWORDS class attribute. YAML config/metric_keywords.yaml is the
+    # single source of truth. Keyword loading is tested in test_keyword_matching.py.
 
 
 # =============================================================================

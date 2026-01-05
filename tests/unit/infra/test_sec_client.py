@@ -4,7 +4,7 @@ Unit tests for SEC client pattern matching, URL resolution, retry logic, and met
 
 import json
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 import requests

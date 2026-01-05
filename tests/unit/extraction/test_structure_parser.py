@@ -10,9 +10,8 @@ Test categories:
 4. Edge cases (colspan, nested elements, large tables)
 """
 
-import pytest
 
-from src.extraction.structure_parser import StructureParser, TextSpan, RowSpan
+from src.extraction.structure_parser import RowSpan, StructureParser, TextSpan
 
 
 class TestBasicParsing:

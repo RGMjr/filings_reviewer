@@ -5,13 +5,11 @@ Tests the metric ID alias system that enables matching between canonical
 metric IDs and alternative identifiers used in gold standard files.
 """
 
-import pytest
 
 from src.extraction.keyword_config import (
     get_aliases,
     get_all_equivalent_ids,
     get_metric_keywords,
-    KeywordConfigError,
     list_metrics,
     metrics_are_equivalent,
     reload_config,

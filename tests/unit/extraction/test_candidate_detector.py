@@ -18,9 +18,7 @@ import pytest
 from src.extraction.candidate_detector import (
     DEFAULT_KEYWORDS,
     CandidateDetector,
-    DetectedCandidate,
 )
-
 
 # =============================================================================
 # Fixtures
