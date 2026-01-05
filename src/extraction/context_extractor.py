@@ -46,7 +46,6 @@ pipelines yet - that will happen in future integration tasks.
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from src.extraction.structure_parser import StructureParser
 
@@ -65,9 +64,9 @@ class ExtractedContext:
     """
 
     text: str
-    row_text: Optional[str] = None
-    column_header: Optional[str] = None
-    row_header: Optional[str] = None
+    row_text: str | None = None
+    column_header: str | None = None
+    row_header: str | None = None
     position_start: int = 0
     position_end: int = 0
 
@@ -102,7 +101,7 @@ class ContextExtractor:
         self,
         text: str,
         position: int,
-        html: Optional[str] = None,
+        html: str | None = None,
         segment_type: str = "paragraph",
     ) -> ExtractedContext:
         """Extract context around a position in text.
@@ -200,8 +199,8 @@ class ContextExtractor:
         clean_text = self._clean_markers(row_text)
 
         # Initialize headers
-        row_header: Optional[str] = None
-        column_header: Optional[str] = None
+        row_header: str | None = None
+        column_header: str | None = None
 
         # Extract headers if requested
         if self.include_headers and row.cells:
@@ -252,8 +251,8 @@ class ContextExtractor:
     def format_table_context(
         self,
         row_text: str,
-        column_header: Optional[str] = None,
-        row_header: Optional[str] = None,
+        column_header: str | None = None,
+        row_header: str | None = None,
     ) -> str:
         """Format table context for display with headers.
 

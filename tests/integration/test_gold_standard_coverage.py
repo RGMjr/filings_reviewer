@@ -17,7 +17,6 @@ Run `scripts/ingest_golden_set.py` if filings are missing.
 import logging
 from decimal import Decimal
 from pathlib import Path
-from typing import Generator
 
 import pytest
 

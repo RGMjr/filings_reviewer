@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import FilingMetadata, MockSECClient
 
-
 # =============================================================================
 # Test Data Helper Functions
 # =============================================================================

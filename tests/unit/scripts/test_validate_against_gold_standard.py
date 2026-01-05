@@ -9,28 +9,23 @@ Tests cover:
 - Precision/recall/F1 calculation
 """
 
-import csv
-import io
+# Import the module under test
+import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Import the module under test
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from scripts.validate_against_gold_standard import (
     GoldStandardEntry,
-    ValidationMatch,
     ValidationResult,
+    get_entries_for_company,
+    load_gold_standard,
+    match_candidate_to_gold_standard,
     normalize_metric_id,
     normalize_value,
-    load_gold_standard,
-    get_entries_for_company,
-    match_candidate_to_gold_standard,
-    validate_filing,
     result_to_dict,
 )
 

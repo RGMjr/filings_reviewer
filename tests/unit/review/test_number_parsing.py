@@ -10,9 +10,9 @@ import pytest
 
 from src.review.number_parsing import (
     NUMBER_REGEX,
+    SPELLED_NUMBER_REGEX,
     NumberParser,
     parse_spelled_number,
-    SPELLED_NUMBER_REGEX,
 )
 
 # =============================================================================

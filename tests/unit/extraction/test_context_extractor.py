@@ -5,11 +5,9 @@ Tests ExtractedContext dataclass and ContextExtractor class,
 including paragraph and table context extraction.
 """
 
-import pytest
 
 from src.extraction.context_extractor import ContextExtractor, ExtractedContext
 from src.extraction.structure_parser import StructureParser
-
 
 # =============================================================================
 # Paragraph Context Tests

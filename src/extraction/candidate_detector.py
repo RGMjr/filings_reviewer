@@ -55,7 +55,6 @@ import logging
 import re
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 from src.extraction.structure_parser import StructureParser
 from src.review.false_positive_filter import FalsePositiveFilter
@@ -89,7 +88,7 @@ class DetectedCandidate:
     keyword_position: int
     value: Decimal
     value_position: int
-    unit: Optional[str]
+    unit: str | None
     confidence: float
     same_row: bool
     same_cell: bool
@@ -174,7 +173,7 @@ class CandidateDetector:
         self,
         use_false_positive_filter: bool = True,
         use_row_validation: bool = True,
-        keywords: Optional[list[str]] = None,
+        keywords: list[str] | None = None,
         max_keyword_distance: int = 100,
     ) -> None:
         """Initialize the candidate detector.
@@ -195,7 +194,7 @@ class CandidateDetector:
         self.MAX_KEYWORD_DISTANCE = max_keyword_distance
 
         # Initialize components
-        self._fp_filter: Optional[FalsePositiveFilter] = (
+        self._fp_filter: FalsePositiveFilter | None = (
             FalsePositiveFilter() if use_false_positive_filter else None
         )
         self._number_parser = NumberParser()
@@ -209,7 +208,7 @@ class CandidateDetector:
     def detect(
         self,
         text: str,
-        html: Optional[str] = None,
+        html: str | None = None,
         segment_type: str = "paragraph",
     ) -> list[DetectedCandidate]:
         """Detect metric candidates in text.
@@ -240,7 +239,7 @@ class CandidateDetector:
             return []
 
         # Parse structure if HTML available and segment is table
-        parser: Optional[StructureParser] = None
+        parser: StructureParser | None = None
         if html and segment_type == "table":
             try:
                 temp_parser = StructureParser(html)
@@ -363,7 +362,7 @@ class CandidateDetector:
         num: NumberMatch,
         kw_pos: int,
         text: str,
-        parser: Optional[StructureParser],
+        parser: StructureParser | None,
     ) -> bool:
         """Check if keyword-number pair is a valid match.
 
@@ -392,7 +391,7 @@ class CandidateDetector:
         return True
 
     def _check_same_row(
-        self, pos1: int, pos2: int, parser: Optional[StructureParser]
+        self, pos1: int, pos2: int, parser: StructureParser | None
     ) -> bool:
         """Check if two positions are in the same table row.
 
@@ -411,7 +410,7 @@ class CandidateDetector:
         return True
 
     def _check_same_cell(
-        self, pos1: int, pos2: int, parser: Optional[StructureParser]
+        self, pos1: int, pos2: int, parser: StructureParser | None
     ) -> bool:
         """Check if two positions are in the same table cell.
 

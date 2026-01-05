@@ -27,7 +27,6 @@ import pytest
 from src.extraction.models import SourceSegment
 from src.extraction.segment_enricher import SegmentEnricher
 
-
 # =============================================================================
 # Throughput Thresholds (segments/second)
 # =============================================================================
@@ -177,7 +176,7 @@ def create_goldmine_segments(count: int) -> list[SourceSegment]:
                 f"reached ${(i + 1) * 100} million, up from ${i * 100} million in the "
                 f"prior year. Customer lifetime value was $15,000 with CAC of $3,000."
             ),
-            raw_html=f"<p>Net Dollar Retention was 143%...</p>",
+            raw_html="<p>Net Dollar Retention was 143%...</p>",
             candidate_metric_ids=[
                 "cm_net_revenue_retention",
                 "cm_active_users_daily",

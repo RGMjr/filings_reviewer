@@ -9,6 +9,8 @@ import logging
 import time
 from datetime import datetime
 from decimal import Decimal
+
+# Import needed for type annotations
 from typing import TypedDict
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
@@ -20,9 +22,6 @@ from src.review.models import (
     REVIEW_STATUSES,
 )
 from src.web.app import get_db
-
-# Import needed for type annotations
-from typing import Any
 
 review_bp = Blueprint("review", __name__)
 logger = logging.getLogger(__name__)
