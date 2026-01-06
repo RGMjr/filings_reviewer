@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-04 (HRV-16 complete; 55/60 tasks done)
+**Last Verified**: 2026-01-06 (DUP-1 complete; 57/65 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -14,11 +14,15 @@
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
 | HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
-| **TOTAL** | **60** | **55** | **0** | **1** | **4** |
+| INVESTIGATION (INV) | 2 | 1 | 0 | 1 | 0 |
+| DUPLICATE_PREVENTION (DUP) | 3 | 1 | 0 | 2 | 0 |
+| **TOTAL** | **65** | **57** | **0** | **4** | **4** |
+
+**Note**: INV-1 archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: Wave 4 - Human Review Validation (build confidence before scaling)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded
+**Next Priority**: INV-1-FIX (Implement Farfetch extraction fix based on INV-1 findings)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; INV-1-FIX pending
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -281,6 +285,44 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | F1 Score | 17.2% | ≥28% | ≥40% |
 | False Positives | 283 | ≤180 | ≤120 |
 | False Negatives | 34 | ≤28 | ≤20 |
+
+---
+
+### INVESTIGATION Tasks (INV-Series)
+
+**Goal**: Ad-hoc investigation and debugging tasks for extraction pipeline issues
+**Status**: Active
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **INV-1** | Investigate Farfetch Extraction Failure | M | 2-3h | NONE | ✅ COMPLETE (archived) | None | INV-1-FIX |
+| **INV-1-FIX** | Implement Farfetch extraction fix (Approach A) | S | 1-2h | LOW | 🟡 PENDING (prompt ready) | INV-1 | None |
+
+**INV-1 Completion Note** (2026-01-06): Investigation complete. Root cause identified:
+- `_compute_element_offsets()` at `html_segmenter.py:659-711` causes O(n*m) complexity
+- BeautifulSoup HTML normalization causes 100% offset lookup failures for Farfetch
+- 7,760 elements × 2.75MB HTML = ~21 billion character comparisons
+- Recommended fix: Approach A - Skip offset computation for large filings (>1MB or >5,000 elements)
+- See `docs/investigation/INV-1_FARFETCH_EXTRACTION_REPORT.md` for full report
+
+---
+
+### DUPLICATE_PREVENTION Tasks (DUP-Series)
+
+**Goal**: Prevent duplicate review candidates and enable learning from suppressed alternatives
+**Status**: Active (1/3 complete)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **DUP-1** | Database schema migration (unique indexes + suppressed_candidates) | M | 2-3h | LOW | ✅ COMPLETE | None | DUP-2, DUP-3 |
+| **DUP-2** | Upsert logic and suppression logging | M | 2-3h | LOW | 🟡 PENDING | DUP-1 | DUP-3 |
+| **DUP-3** | Deduplicator helpers integration | M | 2-3h | LOW | 🟡 PENDING | DUP-2 | None |
+
+**DUP-1 Completion Note** (2026-01-06): Database schema migration complete:
+- Created `sql/08_add_suppressed_candidates.sql` with unique indexes and suppressed_candidates table
+- Unique indexes prevent duplicate candidates at database level
+- `suppressed_candidates` table captures alternatives for pattern learning
+- Migration is idempotent (safe to run multiple times)
 
 ---
 
@@ -681,4 +723,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-04 (HRV-16 complete; Phase 4 COMPLETE; 55/60 tasks done)*
+*Last verified: 2026-01-06 (INV-1 archived; INV-1-FIX prompt created; 56/62 tasks done)*
