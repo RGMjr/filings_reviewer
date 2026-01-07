@@ -1069,27 +1069,405 @@ class DatabaseAdapter:
         )
         return rows_updated
 
-    def bulk_insert_review_candidates(
-        self, candidates: list[dict[str, Any]]
-    ) -> list[int]:
-        """
-        Bulk insert multiple review candidates efficiently.
+    # =========================================================================
+    # Private Helpers for Conflict Resolution
+    # =========================================================================
 
-        Uses PostgreSQL UNNEST for efficient single-statement bulk insert.
+    def _fetch_conflicting_candidates(
+        self,
+        cur,
+        uniqueness_keys: list[tuple],
+        has_segment: bool,
+    ) -> dict[tuple, dict[str, Any]]:
+        """
+        Fetch existing candidates that would conflict with the given keys.
 
         Args:
-            candidates: List of candidate dictionaries with fields matching
-                        insert_review_candidate parameters
+            cur: Database cursor
+            uniqueness_keys: List of uniqueness key tuples:
+                - If has_segment=True: (filing_id, segment_id, char_pos, metric_id)
+                - If has_segment=False: (filing_id, char_pos, metric_id)
+            has_segment: If True, keys include segment_id (non-NULL case)
 
         Returns:
-            List of inserted candidate_ids (in same order as input)
+            Dict mapping uniqueness_key -> existing candidate row dict
+        """
+        if not uniqueness_keys:
+            return {}
+
+        if has_segment:
+            # Candidates WITH source_segment_id
+            sql = """
+                SELECT candidate_id, filing_id, source_segment_id, char_position,
+                       suggested_metric_id, suggestion_confidence, context_text,
+                       raw_number_text, parsed_value, parsed_unit,
+                       triggering_keyword, keyword_distance, keyword_position,
+                       features, company_id
+                FROM review_candidates
+                WHERE (filing_id, source_segment_id, char_position, suggested_metric_id)
+                      IN (SELECT * FROM UNNEST(
+                          %(filing_ids)s::bigint[],
+                          %(segment_ids)s::bigint[],
+                          %(char_positions)s::int[],
+                          %(metric_ids)s::text[]
+                      ))
+                  AND source_segment_id IS NOT NULL
+            """
+            params = {
+                "filing_ids": [k[0] for k in uniqueness_keys],
+                "segment_ids": [k[1] for k in uniqueness_keys],
+                "char_positions": [k[2] for k in uniqueness_keys],
+                "metric_ids": [k[3] for k in uniqueness_keys],
+            }
+        else:
+            # Candidates WITHOUT source_segment_id (NULL case)
+            sql = """
+                SELECT candidate_id, filing_id, source_segment_id, char_position,
+                       suggested_metric_id, suggestion_confidence, context_text,
+                       raw_number_text, parsed_value, parsed_unit,
+                       triggering_keyword, keyword_distance, keyword_position,
+                       features, company_id
+                FROM review_candidates
+                WHERE (filing_id, char_position, suggested_metric_id)
+                      IN (SELECT * FROM UNNEST(
+                          %(filing_ids)s::bigint[],
+                          %(char_positions)s::int[],
+                          %(metric_ids)s::text[]
+                      ))
+                  AND source_segment_id IS NULL
+            """
+            params = {
+                "filing_ids": [k[0] for k in uniqueness_keys],
+                "char_positions": [k[1] for k in uniqueness_keys],
+                "metric_ids": [k[2] for k in uniqueness_keys],
+            }
+
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+
+        # Map uniqueness_key -> row
+        result: dict[tuple, dict[str, Any]] = {}
+        for row in rows:
+            if has_segment:
+                key = (
+                    row["filing_id"],
+                    row["source_segment_id"],
+                    row["char_position"],
+                    row["suggested_metric_id"],
+                )
+            else:
+                key = (
+                    row["filing_id"],
+                    row["char_position"],
+                    row["suggested_metric_id"],
+                )
+            result[key] = dict(row)
+
+        return result
+
+    def _bulk_log_suppressed(
+        self,
+        cur,
+        entries: list[dict[str, Any]],
+    ) -> list[int]:
+        """
+        Bulk insert suppressed candidate records.
+
+        Args:
+            cur: Database cursor
+            entries: List of dicts with suppressed_candidates columns
+
+        Returns:
+            List of suppressed_id values
+        """
+        if not entries:
+            return []
+
+        # Build arrays for UNNEST
+        filing_ids = []
+        company_ids = []
+        source_segment_ids = []
+        char_positions = []
+        context_texts = []
+        raw_number_texts = []
+        parsed_values = []
+        parsed_units = []
+        triggering_keywords = []
+        keyword_distances = []
+        keyword_positions = []
+        suggested_metric_ids = []
+        suggestion_confidences = []
+        features_list = []
+        winner_candidate_ids = []
+        suppression_reasons = []
+        winner_confidences = []
+
+        for entry in entries:
+            filing_ids.append(entry["filing_id"])
+            company_ids.append(entry["company_id"])
+            source_segment_ids.append(entry.get("source_segment_id"))
+            char_positions.append(entry["char_position"])
+            context_texts.append(entry["context_text"])
+            raw_number_texts.append(entry["raw_number_text"])
+            parsed_values.append(entry.get("parsed_value"))
+            parsed_units.append(entry.get("parsed_unit"))
+            triggering_keywords.append(entry["triggering_keyword"])
+            keyword_distances.append(entry["keyword_distance"])
+            keyword_positions.append(entry["keyword_position"])
+            suggested_metric_ids.append(entry.get("suggested_metric_id"))
+            suggestion_confidences.append(entry.get("suggestion_confidence"))
+            features = entry.get("features")
+            features_list.append(json.dumps(features) if features else None)
+            winner_candidate_ids.append(entry["winner_candidate_id"])
+            suppression_reasons.append(entry["suppression_reason"])
+            winner_confidences.append(entry.get("winner_confidence"))
+
+        sql = """
+            INSERT INTO suppressed_candidates (
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                winner_candidate_id, suppression_reason, winner_confidence
+            )
+            SELECT
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                winner_candidate_id, suppression_reason, winner_confidence
+            FROM UNNEST(
+                %(filing_ids)s::bigint[],
+                %(company_ids)s::bigint[],
+                %(source_segment_ids)s::bigint[],
+                %(char_positions)s::int[],
+                %(context_texts)s::text[],
+                %(raw_number_texts)s::text[],
+                %(parsed_values)s::numeric[],
+                %(parsed_units)s::text[],
+                %(triggering_keywords)s::text[],
+                %(keyword_distances)s::int[],
+                %(keyword_positions)s::text[],
+                %(suggested_metric_ids)s::text[],
+                %(suggestion_confidences)s::numeric[],
+                %(features_list)s::jsonb[],
+                %(winner_candidate_ids)s::bigint[],
+                %(suppression_reasons)s::text[],
+                %(winner_confidences)s::numeric[]
+            ) WITH ORDINALITY AS t(
+                filing_id, company_id, source_segment_id,
+                char_position, context_text, raw_number_text,
+                parsed_value, parsed_unit,
+                triggering_keyword, keyword_distance, keyword_position,
+                suggested_metric_id, suggestion_confidence, features,
+                winner_candidate_id, suppression_reason, winner_confidence,
+                ord
+            )
+            ORDER BY ord
+            RETURNING suppressed_id
+        """
+
+        cur.execute(
+            sql,
+            {
+                "filing_ids": filing_ids,
+                "company_ids": company_ids,
+                "source_segment_ids": source_segment_ids,
+                "char_positions": char_positions,
+                "context_texts": context_texts,
+                "raw_number_texts": raw_number_texts,
+                "parsed_values": parsed_values,
+                "parsed_units": parsed_units,
+                "triggering_keywords": triggering_keywords,
+                "keyword_distances": keyword_distances,
+                "keyword_positions": keyword_positions,
+                "suggested_metric_ids": suggested_metric_ids,
+                "suggestion_confidences": suggestion_confidences,
+                "features_list": features_list,
+                "winner_candidate_ids": winner_candidate_ids,
+                "suppression_reasons": suppression_reasons,
+                "winner_confidences": winner_confidences,
+            },
+        )
+        results = cur.fetchall()
+        return [row["suppressed_id"] for row in results]
+
+    def _identify_runner_ups(
+        self,
+        candidates: list[dict[str, Any]],
+        final_ids: list[int],
+        winner_metrics: dict[int, tuple[str | None, float | None]],
+    ) -> list[dict[str, Any]]:
+        """
+        Identify runner-up candidates for each position.
+
+        Groups by position_key (filing_id, segment_id, char_position).
+        For each position with multiple metric suggestions, finds the
+        best alternative to the winner.
+
+        Args:
+            candidates: Original input candidates
+            final_ids: Final candidate_id for each input (in same order)
+            winner_metrics: Dict of candidate_id -> (metric_id, confidence)
+
+        Returns:
+            List of suppression entries for runner-ups
+        """
+        # Group candidates by position_key
+        # position_key = (filing_id, source_segment_id, char_position)
+        from collections import defaultdict
+
+        position_groups: dict[tuple, list[tuple[int, dict[str, Any]]]] = defaultdict(
+            list
+        )
+
+        for idx, candidate in enumerate(candidates):
+            position_key = (
+                candidate["filing_id"],
+                candidate.get("source_segment_id"),
+                candidate["char_position"],
+            )
+            position_groups[position_key].append((idx, candidate))
+
+        runner_up_entries: list[dict[str, Any]] = []
+
+        for position_key, group in position_groups.items():
+            if len(group) < 2:
+                # No alternatives at this position
+                continue
+
+            # Find the winner at this position
+            # The winner is the one whose final_id is in winner_metrics
+            # and has the highest confidence
+            winner_idx = None
+            winner_id = None
+            winner_metric = None
+            winner_conf = None
+
+            for idx, cand in group:
+                cand_id = final_ids[idx]
+                if cand_id in winner_metrics:
+                    metric_id, conf = winner_metrics[cand_id]
+                    if winner_idx is None or (conf or 0) > (winner_conf or 0):
+                        winner_idx = idx
+                        winner_id = cand_id
+                        winner_metric = metric_id
+                        winner_conf = conf
+
+            if winner_id is None:
+                # No winner found (shouldn't happen)
+                continue
+
+            # Find the best runner-up: highest confidence with different metric
+            runner_up_idx = None
+            runner_up_conf = -1.0
+
+            for idx, cand in group:
+                cand_metric = cand.get("suggested_metric_id")
+                cand_conf = cand.get("suggestion_confidence") or 0
+
+                # Must have different metric than winner
+                if cand_metric == winner_metric:
+                    continue
+
+                # Must be a different candidate (not the winner)
+                if idx == winner_idx:
+                    continue
+
+                if cand_conf > runner_up_conf:
+                    runner_up_idx = idx
+                    runner_up_conf = cand_conf
+
+            if runner_up_idx is not None:
+                runner_cand = candidates[runner_up_idx]
+                runner_up_entries.append(
+                    {
+                        "filing_id": runner_cand["filing_id"],
+                        "company_id": runner_cand["company_id"],
+                        "source_segment_id": runner_cand.get("source_segment_id"),
+                        "char_position": runner_cand["char_position"],
+                        "context_text": runner_cand["context_text"],
+                        "raw_number_text": runner_cand["raw_number_text"],
+                        "parsed_value": runner_cand.get("parsed_value"),
+                        "parsed_unit": runner_cand.get("parsed_unit"),
+                        "triggering_keyword": runner_cand["triggering_keyword"],
+                        "keyword_distance": runner_cand["keyword_distance"],
+                        "keyword_position": runner_cand["keyword_position"],
+                        "suggested_metric_id": runner_cand.get("suggested_metric_id"),
+                        "suggestion_confidence": runner_cand.get(
+                            "suggestion_confidence"
+                        ),
+                        "features": runner_cand.get("features"),
+                        "winner_candidate_id": winner_id,
+                        "suppression_reason": "runner_up",
+                        "winner_confidence": winner_conf,
+                        "input_index": runner_up_idx,
+                    }
+                )
+
+        return runner_up_entries
+
+    # =========================================================================
+    # Review Candidates - Public Methods
+    # =========================================================================
+
+    def bulk_insert_review_candidates(
+        self,
+        candidates: list[dict[str, Any]],
+        *,
+        log_suppressed: bool = False,
+    ) -> list[int] | tuple[list[int], list[dict[str, Any]]]:
+        """
+        Bulk insert review candidates with conflict resolution.
+
+        Handles conflicts by keeping higher-confidence candidates. When
+        log_suppressed=True, also captures suppressed alternatives and
+        runner-ups for UI display.
+
+        Uses a two-phase algorithm:
+        1. Conflict Detection: Pre-fetch existing candidates, resolve by confidence
+        2. Runner-Up Capture: Log best alternative metric at each position
+
+        Args:
+            candidates: List of candidate dicts. Required keys:
+                - filing_id, company_id, char_position, context_text
+                - raw_number_text, triggering_keyword, keyword_distance
+                - keyword_position
+              Optional keys:
+                - source_segment_id, parsed_value, parsed_unit
+                - suggested_metric_id, suggestion_confidence, features
+                - review_batch_id
+
+            log_suppressed: If True, log suppressed candidates to
+                suppressed_candidates table and return detailed info.
+
+        Returns:
+            If log_suppressed=False (default):
+                list[int] - candidate_ids, one per input, in input order.
+                           For conflicts where input loses, returns winner's ID.
+
+            If log_suppressed=True:
+                tuple[list[int], list[dict]] where:
+                    - list[int]: candidate_ids as above
+                    - list[dict]: suppression log entries with keys:
+                        - suppressed_id: ID in suppressed_candidates table
+                        - winner_candidate_id: ID of winning candidate
+                        - suppression_reason: 'lower_confidence' | 'runner_up'
+                        - input_index: index in original candidates list (or None)
+
+        Guarantees:
+            - len(returned_ids) == len(candidates) ALWAYS
+            - returned_ids[i] is the candidate_id for candidates[i]
+            - Order preserved: zip(candidates, returned_ids, strict=True) is safe
 
         Raises:
             ValidationError: If any candidate has invalid keyword_position
             ValidationError: If any candidate has invalid suggestion_confidence
         """
         if not candidates:
-            return []
+            return ([], []) if log_suppressed else []
 
         # Validate all candidates first (fail fast before any DB work)
         for i, candidate in enumerate(candidates):
@@ -1105,6 +1483,330 @@ class DatabaseAdapter:
                 "suggestion_confidence",
                 context=f"candidate {i}",
             )
+
+        # =====================================================================
+        # Phase 1: Within-Batch Deduplication
+        # =====================================================================
+        # Before checking the database, we first deduplicate within the input batch.
+        # This handles the case where the same candidate appears multiple times in
+        # a single call (e.g., from overlapping keyword matches).
+        #
+        # Uniqueness is determined by:
+        #   - WITH segment: (filing_id, source_segment_id, char_position, metric_id)
+        #   - WITHOUT segment: (filing_id, char_position, metric_id)
+        #
+        # When duplicates exist, highest confidence wins. Ties go to first occurrence.
+        # Losers are tracked in batch_suppressed for later logging.
+
+        # input_keys[i] = (uniqueness_key, has_segment) for candidates[i]
+        input_keys: list[tuple[tuple, bool]] = []
+
+        # batch_winners[ukey] = (input_index, confidence) for the best candidate per key
+        batch_winners: dict[tuple, tuple[int, float]] = {}
+
+        # batch_suppressed = [(loser_index, winner_index), ...] for within-batch losers
+        batch_suppressed: list[tuple[int, int]] = []
+
+        for idx, candidate in enumerate(candidates):
+            segment_id = candidate.get("source_segment_id")
+            has_segment = segment_id is not None
+
+            # Build uniqueness key - different structure for NULL vs non-NULL segment
+            # because PostgreSQL partial indexes require separate handling
+            if has_segment:
+                ukey: tuple = (
+                    candidate["filing_id"],
+                    segment_id,
+                    candidate["char_position"],
+                    candidate.get("suggested_metric_id"),
+                )
+            else:
+                ukey = (
+                    candidate["filing_id"],
+                    candidate["char_position"],
+                    candidate.get("suggested_metric_id"),
+                )
+
+            input_keys.append((ukey, has_segment))
+            conf = candidate.get("suggestion_confidence") or 0
+
+            if ukey in batch_winners:
+                # Duplicate found - compare confidence to determine winner
+                existing_idx, existing_conf = batch_winners[ukey]
+                if conf > existing_conf:
+                    # New candidate wins, previous winner becomes suppressed
+                    batch_suppressed.append((existing_idx, idx))
+                    batch_winners[ukey] = (idx, conf)
+                else:
+                    # Existing winner keeps position (ties favor earlier occurrence)
+                    batch_suppressed.append((idx, existing_idx))
+            else:
+                # First occurrence of this key - becomes initial winner
+                batch_winners[ukey] = (idx, conf)
+
+        # =====================================================================
+        # Phase 2: Database Conflict Resolution
+        # =====================================================================
+        # Now we check if any batch winners conflict with existing DB rows.
+        # This handles idempotent re-runs where candidate generation is executed
+        # multiple times for the same filing.
+        #
+        # We split candidates into two groups based on source_segment_id:
+        #   - WITH segment: Uses uq_review_candidates_with_segment partial index
+        #   - WITHOUT segment: Uses uq_review_candidates_without_segment partial index
+        #
+        # PostgreSQL partial indexes don't work with a single ON CONFLICT clause,
+        # so we must query each group separately.
+
+        # Separate batch winners by segment presence for partial index compatibility
+        with_segment_keys: list[tuple[int, tuple]] = []  # [(input_idx, ukey), ...]
+        without_segment_keys: list[tuple[int, tuple]] = []
+
+        for ukey, (input_idx, _) in batch_winners.items():
+            _, has_segment = input_keys[input_idx]
+            if has_segment:
+                with_segment_keys.append((input_idx, ukey))
+            else:
+                without_segment_keys.append((input_idx, ukey))
+
+        # Prepare result tracking
+        final_ids: list[int | None] = [None] * len(candidates)
+        suppression_entries: list[dict[str, Any]] = []
+        # Track winner metrics for runner-up detection
+        winner_metrics: dict[int, tuple[str | None, float | None]] = {}
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Fetch existing conflicts
+                existing_with_seg = self._fetch_conflicting_candidates(
+                    cur, [k for _, k in with_segment_keys], has_segment=True
+                )
+                existing_without_seg = self._fetch_conflicting_candidates(
+                    cur, [k for _, k in without_segment_keys], has_segment=False
+                )
+
+                # Candidates to insert (batch winners that don't lose to DB)
+                to_insert: list[tuple[int, dict[str, Any]]] = []
+                # Candidates to update (batch winners that beat DB)
+                to_update: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = (
+                    []
+                )  # (input_idx, existing_id, new_cand, old_cand)
+
+                # Process with-segment candidates
+                for input_idx, ukey in with_segment_keys:
+                    candidate = candidates[input_idx]
+                    # Convert to float for consistent comparison (DB returns Decimal)
+                    new_conf = float(candidate.get("suggestion_confidence") or 0)
+
+                    if ukey in existing_with_seg:
+                        existing = existing_with_seg[ukey]
+                        existing_conf = float(existing.get("suggestion_confidence") or 0)
+                        existing_id = existing["candidate_id"]
+
+                        if new_conf > existing_conf:
+                            # New wins: update existing row, log old as suppressed
+                            to_update.append(
+                                (input_idx, existing_id, candidate, existing)
+                            )
+                            final_ids[input_idx] = existing_id
+                        else:
+                            # Existing wins: skip insert, log new as suppressed
+                            final_ids[input_idx] = existing_id
+                            if log_suppressed:
+                                suppression_entries.append(
+                                    {
+                                        **candidate,
+                                        "winner_candidate_id": existing_id,
+                                        "suppression_reason": "lower_confidence",
+                                        "winner_confidence": existing_conf,
+                                        "input_index": input_idx,
+                                    }
+                                )
+                            # Track winner metric
+                            winner_metrics[existing_id] = (
+                                existing.get("suggested_metric_id"),
+                                existing_conf,
+                            )
+                    else:
+                        # No conflict: insert new
+                        to_insert.append((input_idx, candidate))
+
+                # Process without-segment candidates
+                for input_idx, ukey in without_segment_keys:
+                    candidate = candidates[input_idx]
+                    # Convert to float for consistent comparison (DB returns Decimal)
+                    new_conf = float(candidate.get("suggestion_confidence") or 0)
+
+                    if ukey in existing_without_seg:
+                        existing = existing_without_seg[ukey]
+                        existing_conf = float(existing.get("suggestion_confidence") or 0)
+                        existing_id = existing["candidate_id"]
+
+                        if new_conf > existing_conf:
+                            # New wins
+                            to_update.append(
+                                (input_idx, existing_id, candidate, existing)
+                            )
+                            final_ids[input_idx] = existing_id
+                        else:
+                            # Existing wins
+                            final_ids[input_idx] = existing_id
+                            if log_suppressed:
+                                suppression_entries.append(
+                                    {
+                                        **candidate,
+                                        "winner_candidate_id": existing_id,
+                                        "suppression_reason": "lower_confidence",
+                                        "winner_confidence": existing_conf,
+                                        "input_index": input_idx,
+                                    }
+                                )
+                            winner_metrics[existing_id] = (
+                                existing.get("suggested_metric_id"),
+                                existing_conf,
+                            )
+                    else:
+                        to_insert.append((input_idx, candidate))
+
+                # =====================================================================
+                # Execute Inserts
+                # =====================================================================
+                if to_insert:
+                    # Sort by input_idx to maintain order in RETURNING
+                    to_insert.sort(key=lambda x: x[0])
+                    insert_candidates = [c for _, c in to_insert]
+                    insert_indices = [idx for idx, _ in to_insert]
+
+                    inserted_ids = self._execute_bulk_insert(cur, insert_candidates)
+
+                    for i, cid in enumerate(inserted_ids):
+                        input_idx = insert_indices[i]
+                        final_ids[input_idx] = cid
+                        # Track winner metric
+                        cand = insert_candidates[i]
+                        winner_metrics[cid] = (
+                            cand.get("suggested_metric_id"),
+                            cand.get("suggestion_confidence"),
+                        )
+
+                # =====================================================================
+                # Execute Updates (winner replaces existing)
+                # =====================================================================
+                for input_idx, existing_id, new_cand, old_cand in to_update:
+                    # Log old candidate as suppressed
+                    if log_suppressed:
+                        suppression_entries.append(
+                            {
+                                "filing_id": old_cand["filing_id"],
+                                "company_id": old_cand["company_id"],
+                                "source_segment_id": old_cand.get("source_segment_id"),
+                                "char_position": old_cand["char_position"],
+                                "context_text": old_cand["context_text"],
+                                "raw_number_text": old_cand["raw_number_text"],
+                                "parsed_value": old_cand.get("parsed_value"),
+                                "parsed_unit": old_cand.get("parsed_unit"),
+                                "triggering_keyword": old_cand["triggering_keyword"],
+                                "keyword_distance": old_cand["keyword_distance"],
+                                "keyword_position": old_cand["keyword_position"],
+                                "suggested_metric_id": old_cand.get(
+                                    "suggested_metric_id"
+                                ),
+                                "suggestion_confidence": old_cand.get(
+                                    "suggestion_confidence"
+                                ),
+                                "features": old_cand.get("features"),
+                                "winner_candidate_id": existing_id,
+                                "suppression_reason": "lower_confidence",
+                                "winner_confidence": new_cand.get(
+                                    "suggestion_confidence"
+                                ),
+                                "input_index": None,  # From DB, not input
+                            }
+                        )
+
+                    # Update the existing row with new values
+                    self._execute_update(cur, existing_id, new_cand)
+
+                    # Track winner metric
+                    winner_metrics[existing_id] = (
+                        new_cand.get("suggested_metric_id"),
+                        new_cand.get("suggestion_confidence"),
+                    )
+
+                # =====================================================================
+                # Handle Within-Batch Suppressed
+                # =====================================================================
+                for loser_idx, winner_idx in batch_suppressed:
+                    winner_id = final_ids[winner_idx]
+                    if winner_id is not None:
+                        final_ids[loser_idx] = winner_id
+                        if log_suppressed:
+                            loser_cand = candidates[loser_idx]
+                            winner_cand = candidates[winner_idx]
+                            suppression_entries.append(
+                                {
+                                    **loser_cand,
+                                    "winner_candidate_id": winner_id,
+                                    "suppression_reason": "lower_confidence",
+                                    "winner_confidence": winner_cand.get(
+                                        "suggestion_confidence"
+                                    ),
+                                    "input_index": loser_idx,
+                                }
+                            )
+
+                # =====================================================================
+                # Phase 3: Runner-Up Detection
+                # =====================================================================
+                # For UI enhancement: at each position (filing, segment, char_position),
+                # identify the best ALTERNATIVE metric suggestion. This allows the review
+                # UI to show "We suggested X, but also considered Y" for faster
+                # reclassification when the reviewer disagrees with the suggestion.
+                #
+                # Runner-up is logged with reason='runner_up' and differs from
+                # 'lower_confidence' in that it has a DIFFERENT metric_id than the winner.
+                if log_suppressed:
+                    # Sanity check: all candidates should have a final_id by now
+                    assert all(
+                        fid is not None for fid in final_ids
+                    ), "All final_ids must be set"
+
+                    runner_ups = self._identify_runner_ups(
+                        candidates, final_ids, winner_metrics  # type: ignore
+                    )
+                    suppression_entries.extend(runner_ups)
+
+                    # Bulk insert all suppression records (lower_confidence + runner_up)
+                    if suppression_entries:
+                        suppressed_ids = self._bulk_log_suppressed(
+                            cur, suppression_entries
+                        )
+                        # Annotate entries with their DB IDs for return value
+                        for i, entry in enumerate(suppression_entries):
+                            entry["suppressed_id"] = suppressed_ids[i]
+
+        # Build result
+        result_ids: list[int] = [fid for fid in final_ids if fid is not None]
+        assert len(result_ids) == len(candidates), (
+            f"Result length {len(result_ids)} != input length {len(candidates)}"
+        )
+
+        logger.debug(
+            f"Bulk processed {len(candidates)} review candidates: "
+            f"{len(to_insert)} inserted, {len(to_update)} updated, "
+            f"{len(batch_suppressed)} batch-deduplicated"
+        )
+
+        if log_suppressed:
+            return result_ids, suppression_entries
+        return result_ids
+
+    def _execute_bulk_insert(
+        self, cur, candidates: list[dict[str, Any]]
+    ) -> list[int]:
+        """Execute bulk insert and return candidate_ids in order."""
+        if not candidates:
+            return []
 
         # Build arrays for UNNEST bulk insert
         filing_ids = []
@@ -1141,8 +1843,6 @@ class DatabaseAdapter:
             features_list.append(json.dumps(features) if features else None)
             review_batch_ids.append(candidate.get("review_batch_id"))
 
-        # Use UNNEST with ORDINALITY for efficient single-statement bulk insert
-        # WITH ORDINALITY ensures we preserve input array order via ORDER BY ord
         sql = """
             INSERT INTO review_candidates (
                 filing_id, company_id, source_segment_id,
@@ -1188,33 +1888,70 @@ class DatabaseAdapter:
             RETURNING candidate_id
         """
 
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql,
-                    {
-                        "filing_ids": filing_ids,
-                        "company_ids": company_ids,
-                        "source_segment_ids": source_segment_ids,
-                        "char_positions": char_positions,
-                        "context_texts": context_texts,
-                        "raw_number_texts": raw_number_texts,
-                        "parsed_values": parsed_values,
-                        "parsed_units": parsed_units,
-                        "triggering_keywords": triggering_keywords,
-                        "keyword_distances": keyword_distances,
-                        "keyword_positions": keyword_positions,
-                        "suggested_metric_ids": suggested_metric_ids,
-                        "suggestion_confidences": suggestion_confidences,
-                        "features_list": features_list,
-                        "review_batch_ids": review_batch_ids,
-                    },
-                )
-                results = cur.fetchall()
-                inserted_ids = [row["candidate_id"] for row in results]
+        cur.execute(
+            sql,
+            {
+                "filing_ids": filing_ids,
+                "company_ids": company_ids,
+                "source_segment_ids": source_segment_ids,
+                "char_positions": char_positions,
+                "context_texts": context_texts,
+                "raw_number_texts": raw_number_texts,
+                "parsed_values": parsed_values,
+                "parsed_units": parsed_units,
+                "triggering_keywords": triggering_keywords,
+                "keyword_distances": keyword_distances,
+                "keyword_positions": keyword_positions,
+                "suggested_metric_ids": suggested_metric_ids,
+                "suggestion_confidences": suggestion_confidences,
+                "features_list": features_list,
+                "review_batch_ids": review_batch_ids,
+            },
+        )
+        results = cur.fetchall()
+        return [row["candidate_id"] for row in results]
 
-        logger.debug(f"Bulk inserted {len(inserted_ids)} review candidates")
-        return inserted_ids
+    def _execute_update(
+        self, cur, candidate_id: int, candidate: dict[str, Any]
+    ) -> None:
+        """Update an existing candidate with new values."""
+        features = candidate.get("features")
+        features_json = json.dumps(features) if features else None
+
+        sql = """
+            UPDATE review_candidates SET
+                context_text = %(context_text)s,
+                raw_number_text = %(raw_number_text)s,
+                parsed_value = %(parsed_value)s,
+                parsed_unit = %(parsed_unit)s,
+                triggering_keyword = %(triggering_keyword)s,
+                keyword_distance = %(keyword_distance)s,
+                keyword_position = %(keyword_position)s,
+                suggested_metric_id = %(suggested_metric_id)s,
+                suggestion_confidence = %(suggestion_confidence)s,
+                features = %(features)s,
+                review_batch_id = %(review_batch_id)s,
+                updated_at = now()
+            WHERE candidate_id = %(candidate_id)s
+        """
+
+        cur.execute(
+            sql,
+            {
+                "candidate_id": candidate_id,
+                "context_text": candidate["context_text"],
+                "raw_number_text": candidate["raw_number_text"],
+                "parsed_value": candidate.get("parsed_value"),
+                "parsed_unit": candidate.get("parsed_unit"),
+                "triggering_keyword": candidate["triggering_keyword"],
+                "keyword_distance": candidate["keyword_distance"],
+                "keyword_position": candidate["keyword_position"],
+                "suggested_metric_id": candidate.get("suggested_metric_id"),
+                "suggestion_confidence": candidate.get("suggestion_confidence"),
+                "features": features_json,
+                "review_batch_id": candidate.get("review_batch_id"),
+            },
+        )
 
     # =========================================================================
     # Review Decisions Methods
