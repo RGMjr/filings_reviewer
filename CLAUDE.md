@@ -231,6 +231,15 @@ This adds the official Playwright MCP server, enabling browser automation tools 
 
 See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM.md`
 
+## Metric Lifecycle
+
+See `docs/development/metric-lifecycle-process.md` for the authoritative guide on:
+- Adding new metrics (patterns, database, mapping, UI)
+- Deprecating metrics (preserving historical data)
+- Removing metrics (when no production data exists)
+- Metric ID naming conventions (`cm_` prefix)
+- Dropdown category ordering (5 semantic categories)
+
 ## Task Execution Workflow
 
 **IMPORTANT**: This project uses a structured worker prompt workflow for task execution.
