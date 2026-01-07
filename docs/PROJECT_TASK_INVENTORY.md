@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-5 complete; 59/74 tasks done)
+**Last Verified**: 2026-01-07 (DUP-2 complete; 60/74 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -15,10 +15,10 @@
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
 | HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
 | INVESTIGATION (INV) | 2 | 1 | 0 | 1 | 0 |
-| DUPLICATE_PREVENTION (DUP) | 3 | 1 | 0 | 2 | 0 |
+| DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 8 | 1 | 0 | 7 | 0 |
-| **TOTAL** | **74** | **59** | **0** | **11** | **4** |
+| **TOTAL** | **74** | **60** | **0** | **10** | **4** |
 
 **Note**: INV-1 archived to `docs/archive/worker-prompts-completed/`
 
@@ -317,19 +317,28 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 ### DUPLICATE_PREVENTION Tasks (DUP-Series)
 
 **Goal**: Prevent duplicate review candidates and enable learning from suppressed alternatives
-**Status**: Active (1/3 complete)
+**Status**: Active (2/3 complete)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **DUP-1** | Database schema migration (unique indexes + suppressed_candidates) | M | 2-3h | LOW | ✅ COMPLETE | None | DUP-2, DUP-3 |
-| **DUP-2** | Upsert logic and suppression logging | M | 2-3h | LOW | 🟡 PENDING | DUP-1 | DUP-3 |
+| **DUP-2** | Upsert logic and suppression logging | L | 5-6h | MEDIUM | ✅ COMPLETE | DUP-1 | DUP-3 |
 | **DUP-3** | Deduplicator helpers integration | M | 2-3h | LOW | 🟡 PENDING | DUP-2 | None |
 
 **DUP-1 Completion Note** (2026-01-06): Database schema migration complete:
 - Created `sql/08_add_suppressed_candidates.sql` with unique indexes and suppressed_candidates table
 - Unique indexes prevent duplicate candidates at database level
 - `suppressed_candidates` table captures alternatives for pattern learning
-- Migration is idempotent (safe to run multiple times)
+
+**DUP-2 Completion Note** (2026-01-07): Upsert logic with runner-up capture complete:
+- Added `'runner_up'` to `check_suppression_reason` constraint
+- Implemented two-phase algorithm in `bulk_insert_review_candidates()`:
+  - Phase 1: Within-batch deduplication (highest confidence wins)
+  - Phase 2: Database conflict resolution (pre-fetch + compare)
+  - Phase 3: Runner-up capture (best alternative metric at each position)
+- Added `log_suppressed=True` parameter for capturing suppression details
+- 25 new integration tests, all existing tests (95) still passing
+- Return contract preserved: `zip(candidates, result_ids, strict=True)` is safe
 
 ---
 
