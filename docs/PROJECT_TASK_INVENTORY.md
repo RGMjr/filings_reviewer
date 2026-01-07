@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (MET-11 scope revised; 76/90 tasks done)
+**Last Verified**: 2026-01-07 (UXI-2-TEST-F2/F3/F4 dropped; 79/90 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -17,15 +17,15 @@
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 13 | 6 | 0 | 5 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 9 | 0 | 1 | 0 |
-| **TOTAL** | **90** | **76** | **0** | **10** | **4** |
+| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 1 | 0 |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
+| **TOTAL** | **90** | **79** | **0** | **5** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 5 UXI tasks pending; MET-11 cleanup only (MET-3/4/5/6 retroactively marked complete via MET-1/7/8)
+**Next Priority**: Wave 5 - UX Improvements (UXI-9 "Other" rejection category)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; UXI-9 pending (UXI-2-TEST-F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -54,7 +54,7 @@
 
 ### UX_IMPROVEMENT_PLAN.md
 **Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 IN PROGRESS - 3/8 tasks done, Wave 5 (UXI-4/UXI-7 dropped)
+**Status**: 🟡 IN PROGRESS - 8/13 tasks done, Wave 5 (UXI-4/7/8 + F2/F3/F4 dropped)
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
@@ -402,11 +402,13 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **UXI-2-TEST** | E2E tests for metric dropdown search | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 | UXI-2-TEST-F* |
+| **UXI-2-TEST** | E2E tests for metric dropdown search | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 | None |
 | **UXI-2-TEST-F1** | E2E test for reclassify selection submission | S | 30min | NONE | ✅ COMPLETE | UXI-2-TEST | None |
-| **UXI-2-TEST-F2** | E2E test for partial match search | XS | 30-45min | NONE | 🟡 PENDING | UXI-2-TEST | None |
-| **UXI-2-TEST-F3** | E2E test automation script | S | 1-2h | NONE | 🟡 PENDING | UXI-2-TEST | None |
-| **UXI-2-TEST-F4** | Visual regression E2E tests | M | 2-3h | LOW | 🟡 PENDING | UXI-2-TEST | None |
+
+**Dropped Tasks** (2026-01-07): UXI-2-TEST-F2, F3, F4 dropped after critical evaluation:
+- F2 (partial match test): Already implicitly covered by existing tests
+- F3 (automation script): Wrong approach - shell script for manual Playwright MCP tests adds no value over README
+- F4 (visual regression): Without automated comparison, just produces screenshots with no regression detection
 
 **UXI-2-TEST Completion Note** (2026-01-07): Created E2E test suite for UXI-2 metric dropdown search:
 - Created `tests/e2e/` directory with `__init__.py`, `conftest.py`, `test_metric_dropdown_search.py`
@@ -495,7 +497,7 @@ Phase 3:
 
 **Goal**: Improve metric dropdown ordering, ensure metric consistency, and establish lifecycle documentation
 **Plan Location**: `docs/worker-prompts/WORKER_PROMPT_TASK_MET-*.md`
-**Status**: 🟡 IN PROGRESS - 9/10 complete, 1 pending (MET-11 cleanup only)
+**Status**: ✅ COMPLETE - 10/10 tasks done
 
 #### Background
 
@@ -569,13 +571,13 @@ The MET workstream addressed issues identified during a critical evaluation of d
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-11** | Final validation and cleanup | XS | 30m | LOW | 🟡 PENDING | MET-7, MET-8, MET-9 | None |
+| **MET-11** | Final validation and cleanup | XS | 30m | LOW | ✅ COMPLETE | MET-7, MET-8, MET-9 | None |
 
-**MET-11 Scope (Revised 2026-01-07)**: Original scope was obsolete - code already committed via MET-1/7/8. New scope:
-1. Verify live DB matches SQL definitions
-2. Run gold standard validation
-3. Commit pending false_positive_filter.py fix (adds 4 metrics to COUNT_ONLY_METRICS)
-4. Update inventory and archive worker prompts
+**MET-11 Completion Note** (2026-01-07):
+- Verified live DB: Deprecated GMV, Bookings, Billings, ACV, TCV; added cm_ltv_to_cac_ratio_by_cohort
+- Gold standard validation passed (12/12 tests)
+- false_positive_filter.py fix already committed in fd7be05
+- MET workstream complete: 10/10 tasks
 
 **MET-10**: Consolidated into MET-2 (2026-01-07). Archived to `docs/archive/worker-prompts-consolidated/`.
 
@@ -617,10 +619,10 @@ Phase 4 (Cleanup):
 |--------|--------|-------|
 | Dropdown uses semantic ordering | ✅ Yes | MET-8 |
 | Both dropdowns use same order | ✅ Yes | MET-8 |
-| Gold standard validation passed | ✅ Yes | MET-1 validated |
+| Gold standard validation passed | ✅ Yes | MET-1, MET-11 validated |
 | Tests for ordering logic | ✅ Yes | MET-8/MET-9 (8 tests) |
 | Lifecycle process documented | ✅ Yes | MET-2 |
-| All changes committed | 🟡 Pending | MET-11 (minor fix only) |
+| All changes committed | ✅ Yes | MET-11 (DB synced, prompts archived) |
 
 ---
 
