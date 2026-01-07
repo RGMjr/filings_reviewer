@@ -340,6 +340,11 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_monthly_active_users',  # MAU count
     'cm_paid_users',
     'cm_subscribers',
+    # Customer count metrics (added 2026-01-07 - were missing, causing % false matches)
+    'cm_customers_period_end',
+    'cm_active_customers_total',
+    'cm_large_customers_period_end',
+    'cm_new_customers_acquired',
 }
 
 
