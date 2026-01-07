@@ -243,8 +243,9 @@ class ContextExtractor:
         """
         # Replace [CELL] with pipe separator
         text = self.CELL_MARKER_PATTERN.sub(" | ", text)
-        # Remove [ROW] markers
-        text = self.ROW_MARKER_PATTERN.sub("", text)
+        # DFP-1: Replace [ROW] markers with space to preserve word boundaries
+        # (Previously replaced with empty string, causing adjacent values to concatenate)
+        text = self.ROW_MARKER_PATTERN.sub(" ", text)
         # Normalize whitespace
         return " ".join(text.split())
 

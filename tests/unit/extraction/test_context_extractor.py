@@ -607,3 +607,118 @@ class TestContextExtractorIntegration:
         assert ctx.row_header == "Revenue"
         assert ctx.position_start == 10
         assert ctx.position_end == 50
+
+
+# =============================================================================
+# DFP-1: ROW Marker Stripping Tests
+# =============================================================================
+
+
+class TestRowMarkerStripping:
+    """DFP-1: Tests for ROW marker stripping that preserves word boundaries.
+
+    Bug fix: [ROW] markers were being replaced with empty string, causing
+    adjacent values to concatenate (e.g., "2019 [ROW] 2020" -> "20192020").
+    Fix: Replace [ROW] with space to preserve word boundaries.
+    """
+
+    def test_row_marker_preserves_space_between_values(self) -> None:
+        """'2019 [ROW] 2020' should become '2019 2020', not '20192020'."""
+        extractor = ContextExtractor()
+        text = "2019 [ROW] 2020"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "2019 2020"
+        assert "20192020" not in cleaned  # No concatenation
+
+    def test_row_marker_preserves_space_between_words(self) -> None:
+        """'Header [ROW] Data' should become 'Header Data', not 'HeaderData'."""
+        extractor = ContextExtractor()
+        text = "Header [ROW] Data"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "Header Data"
+        assert "HeaderData" not in cleaned
+
+    def test_multiple_row_markers_preserved(self) -> None:
+        """'A [ROW] B [ROW] C' should become 'A B C'."""
+        extractor = ContextExtractor()
+        text = "A [ROW] B [ROW] C"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "A B C"
+
+    def test_cell_markers_still_work(self) -> None:
+        """[CELL] markers should still convert to pipe separators."""
+        extractor = ContextExtractor()
+        text = "Revenue [CELL] 100 [CELL] 150"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "Revenue | 100 | 150"
+        assert "[CELL]" not in cleaned
+
+    def test_combined_cell_and_row_markers(self) -> None:
+        """'A [CELL] B [ROW] C [CELL] D' should work correctly."""
+        extractor = ContextExtractor()
+        text = "A [CELL] B [ROW] C [CELL] D"
+        cleaned = extractor._clean_markers(text)
+
+        # [CELL] becomes " | ", [ROW] becomes space, then whitespace normalized
+        assert "A | B C | D" == cleaned
+        assert "[CELL]" not in cleaned
+        assert "[ROW]" not in cleaned
+
+    def test_row_marker_at_start(self) -> None:
+        """[ROW] at start should not leave leading space."""
+        extractor = ContextExtractor()
+        text = "[ROW] Content here"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "Content here"
+        assert not cleaned.startswith(" ")
+
+    def test_row_marker_at_end(self) -> None:
+        """[ROW] at end should not leave trailing space."""
+        extractor = ContextExtractor()
+        text = "Content here [ROW]"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "Content here"
+        assert not cleaned.endswith(" ")
+
+    def test_multiple_consecutive_row_markers(self) -> None:
+        """Multiple consecutive [ROW] markers should normalize to single space."""
+        extractor = ContextExtractor()
+        text = "A [ROW] [ROW] B"
+        cleaned = extractor._clean_markers(text)
+
+        assert cleaned == "A B"
+
+    def test_real_world_table_row(self) -> None:
+        """Test with realistic table row data."""
+        extractor = ContextExtractor()
+        # Simulates a row with fiscal year headers
+        text = "Revenue [CELL] January 31, [CELL] 2019 [ROW] 2020 [ROW] 2021"
+        cleaned = extractor._clean_markers(text)
+
+        # Should preserve years as separate tokens
+        assert "2019" in cleaned
+        assert "2020" in cleaned
+        assert "2021" in cleaned
+        assert "20192020" not in cleaned  # No year concatenation
+        assert "20202021" not in cleaned
+
+    def test_snowflake_filing_example(self) -> None:
+        """Test case from Snowflake filing that triggered the bug.
+
+        Original text had '2019 [ROW] 2020' becoming '20192020'.
+        """
+        extractor = ContextExtractor()
+        text = "Fiscal Year Ended January 31, [CELL] 2019 [ROW] 2020"
+        cleaned = extractor._clean_markers(text)
+
+        # Years should be separate
+        assert "2019" in cleaned
+        assert "2020" in cleaned
+        # Should NOT have concatenated years
+        assert "20192020" not in cleaned
