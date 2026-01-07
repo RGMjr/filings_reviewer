@@ -17,15 +17,15 @@
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 8 | 3 | 0 | 5 | 0 |
+| UX_IMPROVEMENT (UXI) | 8 | 3 | 0 | 4 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 1 | 4 | 5 | 0 |
-| **TOTAL** | **85** | **65** | **4** | **12** | **4** |
+| **TOTAL** | **85** | **65** | **4** | **11** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 5 UXI tasks pending (UXI-1 ✅, UXI-3 ✅, UXI-5 ✅, UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 4 UXI tasks pending (UXI-1 ✅, UXI-3 ✅, UXI-5 ✅, UXI-4/UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -54,7 +54,7 @@
 
 ### UX_IMPROVEMENT_PLAN.md
 **Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 IN PROGRESS - 3/8 tasks done, Wave 5 (UXI-7 dropped)
+**Status**: 🟡 IN PROGRESS - 3/8 tasks done, Wave 5 (UXI-4/UXI-7 dropped)
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
@@ -402,7 +402,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **UXI-4** | Recent metrics section in dropdown | S | 1-2h | LOW | 🟡 PENDING | UXI-2 | None |
+| **UXI-4** | Recent metrics section in dropdown | S | 1-2h | LOW | ~~DROPPED~~ | UXI-2 | None |
 | **UXI-6** | Bulk action limit increase (20→50) | S | 1-2h | LOW | 🟡 PENDING | None | None |
 
 #### Phase 3: UX Polish (Lower Priority)
@@ -413,6 +413,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | **UXI-9** | "Other" rejection category UX | XS | <30m | NONE | 🟡 PENDING | None | None |
 
 **Dropped Tasks**:
+- ~~**UXI-4** Recent metrics section~~ - Redundant with UXI-2 search functionality; sessionStorage choice contradicted business rationale
 - ~~**UXI-7** Metric abbreviation inline display~~ - Low value, maintenance burden
 
 **UXI-1 Completion Note** (2026-01-07): Dropdown keyboard navigation complete with UXI-1a fix:
@@ -439,9 +440,9 @@ Phase 1 (Parallel):
 ├── UXI-3 (Skip Shortcut) ✅ ────────────────────────────────────┤
 └── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
 
-Phase 2 (Parallel, UXI-4 depends on UXI-2):
-├── UXI-4 (Recent Metrics) ← UXI-2 ──────────────────────────────┐
-└── UXI-6 (Bulk Action Limit) ───────────────────────────────────┼──> Phase 3
+Phase 2 (Parallel):
+├── UXI-4 (Recent Metrics) ~~DROPPED~~ (redundant with UXI-2)
+└── UXI-6 (Bulk Action Limit) ───────────────────────────────────┬──> Phase 3
 
 Phase 3 (Parallel):
 ├── UXI-8 (Focus Management)
@@ -768,7 +769,6 @@ HRV-21 ← None                   # Diagnostic investigation (verify HRV-17 clai
 HRV-22 ← HRV-21                 # HTMLSegmenter bug fix (supersedes HRV-20)
 HRV-20 ← SUPERSEDED             # Superseded by HRV-22
 HRV-16 ← HRV-22                 # Final validation needs data fix
-UXI-4 ← UXI-2                   # Recent metrics needs search input structure
 ```
 
 ### Soft Dependencies (Can Start Early)
@@ -782,7 +782,7 @@ HRV-2 ← (none)           # Validation scripts can start immediately
 HRV-7,8,9,10,14 ← HRV-4  # Phase 4 improvements depend on HRV-4 analysis (can run parallel)
 HRV-12 ← HRV-9           # CLOSED - Won't Do
 UXI-1,2,3,5 ← (none)     # Phase 1 UXI tasks are independent (can start immediately)
-UXI-4,6,8,9 ← (none)     # Phase 2-3 UXI tasks are independent (UXI-4 after UXI-2)
+UXI-6,8,9 ← (none)       # Phase 2-3 UXI tasks are independent
 ```
 
 ---
@@ -996,4 +996,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-07 (MET-2 complete; 64/85 tasks complete, 4 partial, 13 pending, 4 blocked)*
+*Last verified: 2026-01-07 (UXI-4 dropped; 65/85 tasks complete, 4 partial, 11 pending, 4 blocked)*
