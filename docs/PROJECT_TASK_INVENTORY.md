@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (MET-2 complete; 64/85 tasks done)
+**Last Verified**: 2026-01-07 (UXI-3 complete; 65/85 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -17,15 +17,15 @@
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 8 | 2 | 0 | 6 | 0 |
+| UX_IMPROVEMENT (UXI) | 8 | 3 | 0 | 5 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 1 | 4 | 5 | 0 |
-| **TOTAL** | **85** | **64** | **4** | **13** | **4** |
+| **TOTAL** | **85** | **65** | **4** | **12** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 6 UXI tasks pending (UXI-1 ✅, UXI-5 ✅, UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 5 UXI tasks pending (UXI-1 ✅, UXI-3 ✅, UXI-5 ✅, UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -54,7 +54,7 @@
 
 ### UX_IMPROVEMENT_PLAN.md
 **Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 IN PROGRESS - 2/8 tasks done, Wave 5 (UXI-7 dropped)
+**Status**: 🟡 IN PROGRESS - 3/8 tasks done, Wave 5 (UXI-7 dropped)
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
@@ -387,7 +387,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 **Plan Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 IN PROGRESS - 2/8 tasks done, Wave 5 (UXI-7 dropped)
+**Status**: 🟡 IN PROGRESS - 3/8 tasks done, Wave 5 (UXI-7 dropped)
 
 #### Phase 1: Keyboard Navigation + Quick Wins (High Priority)
 
@@ -395,7 +395,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 |----|------|------|------|------|--------|--------------|---------|
 | **UXI-1** | Dropdown keyboard navigation (number keys + arrows) | M | 2-3h | LOW | ✅ COMPLETE | None | UXI-4 |
 | **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
-| **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | 🟡 PENDING | None | None |
+| **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
 | **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | ✅ COMPLETE | None | None |
 
 #### Phase 2: Dropdown Improvements (Medium Priority)
@@ -423,12 +423,20 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 - Improvement: Added focus event listeners to sync state with Bootstrap's focus management
 - See `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
 
+**UXI-3 Completion Note** (2026-01-07): Skip/defer keyboard shortcut complete:
+- S key triggers skip action (sets status to "skipped", navigates to next candidate)
+- API endpoint: `POST /api/candidates/<id>/skip` with filter parameter support
+- Template updates: Skipped badges in sidebar (⏭) and header, keyboard hints updated
+- Protection: Cannot skip already-reviewed candidates (preserves decision data)
+- Idempotent: Re-skipping allowed, filter-aware navigation preserved
+- Tests: 7 unit tests with 100% coverage on skip endpoint
+
 **UXI Dependency Graph**:
 ```
 Phase 1 (Parallel):
-├── UXI-1 (Dropdown Keyboard Nav) ─────────────────────────────────┐
+├── UXI-1 (Dropdown Keyboard Nav) ✅ ──────────────────────────────┐
 ├── UXI-2 (Metric Dropdown Search) ──────────────────────────────┼──> Phase 2
-├── UXI-3 (Skip Shortcut) ───────────────────────────────────────┤
+├── UXI-3 (Skip Shortcut) ✅ ────────────────────────────────────┤
 └── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
 
 Phase 2 (Parallel, UXI-4 depends on UXI-2):
@@ -505,7 +513,7 @@ The MET workstream addresses issues identified during a critical evaluation of d
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-7** | Resolve alias contradiction (cm_active_customers_total) | S | 1-2h | LOW | 🟡 PENDING | None | MET-9, MET-11 |
+| **MET-7** | Resolve alias contradiction (cm_active_customers_total) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9, MET-11 |
 | **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | 🟡 PENDING | None | MET-9 |
 | **MET-9** | Add tests for dropdown ordering | S | 1-2h | LOW | 🟡 PENDING | MET-7, MET-8 | MET-11 |
 

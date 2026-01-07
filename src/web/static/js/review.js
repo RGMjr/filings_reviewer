@@ -581,8 +581,11 @@
                 <kbd class="bg-secondary text-light px-2 py-1 rounded">Esc</kbd> Close
             `;
         } else if (dropdownType === 'reclassify') {
+            // UXI-2: Updated hints to mention search
             hintsHtml = `
-                <kbd class="bg-secondary text-light px-2 py-1 rounded">↑↓</kbd> Navigate
+                <span class="text-muted">Type to search</span>
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">↓</kbd> Navigate
                 <span class="mx-1 text-muted">|</span>
                 <kbd class="bg-secondary text-light px-2 py-1 rounded">Enter</kbd> Select
                 <span class="mx-1 text-muted">|</span>
@@ -1120,6 +1123,32 @@
         }, 3000);
     }
 
+    /**
+     * Show a generic toast notification.
+     * @param {string} message - Message to display
+     * @param {string} type - Bootstrap alert type: 'success', 'info', 'warning', 'danger'
+     */
+    function showToast(message, type = 'info') {
+        const flash = document.createElement('div');
+        flash.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        flash.style.top = '80px';
+        flash.style.right = '20px';
+        flash.style.zIndex = '1050';
+        flash.setAttribute('role', 'alert');
+
+        flash.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+
+        document.body.appendChild(flash);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            flash.remove();
+        }, 3000);
+    }
+
     // =========================================================================
     // Character Counters
     // =========================================================================
@@ -1284,6 +1313,12 @@
                 navigateToPrevious();
                 break;
 
+            case 's':
+                event.preventDefault();
+                console.log('Skip shortcut triggered');
+                skipCandidate();
+                break;
+
             case 'enter':
                 // Only confirm if rejection panel is visible
                 if (state.rejectionPanelVisible) {
@@ -1345,6 +1380,70 @@
                 searchInput.focus();
             }
         }, 100);
+    }
+
+    /**
+     * Skip the current candidate without making a decision.
+     * Sets status to 'skipped' and navigates to the next candidate.
+     */
+    async function skipCandidate() {
+        // Guard against double submission
+        if (state.submitting) {
+            console.log('Submission already in progress, ignoring skip');
+            return;
+        }
+
+        state.submitting = true;
+
+        try {
+            // Build payload with filter state for consistent navigation
+            const payload = {
+                filter_status: state.filters.status,
+                filter_metric: state.filters.metric,
+                filter_confidence: state.filters.confidence,
+                filter_sort: state.filters.sort
+            };
+
+            const response = await fetch(`/api/candidates/${state.candidateId}/skip`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error('Skip failed:', data);
+                if (response.status === 400) {
+                    showToast(data.message || 'Cannot skip this candidate', 'warning');
+                } else if (response.status === 404) {
+                    showToast('Candidate not found', 'danger');
+                } else {
+                    showToast('Failed to skip candidate', 'danger');
+                }
+                return;
+            }
+
+            console.log('Candidate skipped successfully:', data);
+            showToast('Skipped - moving to next', 'info');
+
+            // Navigate to next candidate or show completion message
+            if (data.next_candidate && data.next_candidate.url) {
+                setTimeout(() => {
+                    window.location.href = data.next_candidate.url;
+                }, 500);
+            } else {
+                // No more candidates
+                showToast('No more pending candidates', 'info');
+            }
+        } catch (error) {
+            console.error('Error skipping candidate:', error);
+            showToast('Failed to skip candidate', 'danger');
+        } finally {
+            state.submitting = false;
+        }
     }
 
     function navigateToNext() {
