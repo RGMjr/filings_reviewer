@@ -13,19 +13,19 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 |
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| **TOTAL** | **90** | **79** | **0** | **4** | **4** |
+| **TOTAL** | **89** | **79** | **0** | **4** | **3** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: None - UXI workstream complete (UXI-9 dropped)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; UXI workstream ✅ COMPLETE (UXI-4/7/8/9 + F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed; UXI workstream ✅ COMPLETE (UXI-4/7/8/9 + F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -49,7 +49,7 @@
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
 **Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
-**Status**: ✅ PHASE 4 COMPLETE - 18/20 tasks done (2 blocked/superseded), Wave 4
+**Status**: ✅ PHASE 4 COMPLETE - 18/19 tasks done (1 deferred), Wave 4
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
 ### UX_IMPROVEMENT_PLAN.md
@@ -213,7 +213,6 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-17** | Table row parsing fix | M | 3-4h | MEDIUM | ✅ COMPLETE | None |
 | **HRV-21** | Diagnostic investigation of Farfetch segment data | M | 2-3h | NONE | ✅ COMPLETE | None |
 | **HRV-22** | Fix HTMLSegmenter raw_html/raw_text mismatch bug | M | 3-4h | MEDIUM | ✅ COMPLETE | HRV-21 |
-| **HRV-20** | Remediate Farfetch data mismatch | M | 2-4h | MEDIUM | ⏸️ SUPERSEDED | HRV-22 supersedes |
 | **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | ✅ COMPLETE | HRV-22 |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase - lower priority, harder to validate
@@ -226,15 +225,13 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 - Section 4 of HRV-6 recommends pattern additions, not industry weighting
 See `docs/archive/worker-prompts-closed/WORKER_PROMPT_TASK_HRV-12.md` for original task spec. The actual root causes of FPs are addressed by HRV-8 (percentages), HRV-10/11 (financial statements), and HRV-17 (table spillover).
 
-**HRV-17 Status Note** (2026-01-03): Code fix COMPLETE - added flexible whitespace matching to handle `<br/>` normalization differences. Investigation revealed that Farfetch's low recall (23.9%) is NOT due to parser logic but due to **data quality issue**: 60% of Farfetch segments (48/80) have `raw_text` containing content that doesn't exist in `raw_html`. Created HRV-20 to diagnose and remediate.
+**HRV-17 Status Note** (2026-01-03): Code fix COMPLETE - added flexible whitespace matching to handle `<br/>` normalization differences. Investigation revealed that Farfetch's low recall (23.9%) is NOT due to parser logic but due to **data quality issue**: 60% of Farfetch segments (48/80) have `raw_text` containing content that doesn't exist in `raw_html`. Root cause fixed in HRV-22.
 
-**HRV-21 Status Note** (2026-01-03): ✅ COMPLETE. Investigation CONFIRMED data corruption is real. Root cause: HTMLSegmenter bug where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. For tables > 10,000 chars (e.g., Farfetch 13,666 char table), this creates mismatch where `raw_text` contains 188 extra chars not in `raw_html`. 13 Farfetch table segments affected. Recommendation: HRV-20 should PROCEED with fix to HTMLSegmenter AND data re-extraction. See `docs/archive/HRV-21_DIAGNOSTIC_FINDINGS.md` for full analysis.
+**HRV-21 Status Note** (2026-01-03): ✅ COMPLETE. Investigation CONFIRMED data corruption is real. Root cause: HTMLSegmenter bug where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. For tables > 10,000 chars (e.g., Farfetch 13,666 char table), this creates mismatch where `raw_text` contains 188 extra chars not in `raw_html`. 13 Farfetch table segments affected. See `docs/archive/HRV-21_DIAGNOSTIC_FINDINGS.md` for full analysis.
 
-**HRV-22 Context** (2026-01-03): Created from HRV-21 findings. Fixes the root cause in HTMLSegmenter where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. Supersedes HRV-20 (combines bug fix + data re-extraction). See `docs/worker-prompts/WORKER_PROMPT_TASK_HRV-22.md`.
+**HRV-22 Context** (2026-01-03): Created from HRV-21 findings. Fixes the root cause in HTMLSegmenter where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. Includes bug fix + data re-extraction. See `docs/worker-prompts/WORKER_PROMPT_TASK_HRV-22.md`.
 
-**HRV-20 Status**: ⏸️ SUPERSEDED by HRV-22. The original scope (data remediation only) is now included in HRV-22 which also fixes the root cause.
-
-**Phase 4 Total**: ✅ COMPLETE (11/12 tasks complete + 1 closed), HRV-12 closed (won't do), HRV-20 superseded
+**Phase 4 Total**: ✅ COMPLETE (11/12 tasks complete + 1 closed), HRV-12 closed (won't do)
 
 **Phase 4 Execution Order**:
 ```
@@ -254,9 +251,8 @@ Phase 4d: Table Parsing + Data Fix
 ├── Worker 6: HRV-17 (Table row parsing fix) ~3-4h ✅ COMPLETE (code fix done)
 ├── Worker 7: HRV-21 (Diagnostic investigation) ~2-3h ✅ COMPLETE (confirmed data corruption)
 │   └── Findings: 13 Farfetch table segments have raw_text with 188 extra chars not in raw_html
-├── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h ✅ COMPLETE
-│   └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
-└── HRV-20: ⏸️ SUPERSEDED by HRV-22
+└── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h ✅ COMPLETE
+    └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
 
 Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 └── Worker 9: HRV-16 (Validation re-run after HRV-22) ~1h ✅ COMPLETE
@@ -769,7 +765,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                               │ (confirmed data corruption)
                               ▼
                     HRV-22 (HTMLSegmenter Bug Fix + Re-extraction) ✅
-                              │ (supersedes HRV-20)
+                              │
                               ▼
                     HRV-16 (Validation Re-run) ✅
 ```
@@ -800,8 +796,8 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     ┌─────────────────────────▼───────────────────────────┐
                     │                WAVE 4 ✅ COMPLETE                    │
                     │  HRV-1 through HRV-16 (Validation + System Improve) │
-                    │  Phases 1-4: ✅ COMPLETE (18/20 tasks)              │
-                    │  HRV-13 deferred; HRV-12 closed; HRV-20 superseded  │
+                    │  Phases 1-4: ✅ COMPLETE (18/19 tasks)              │
+                    │  HRV-13 deferred; HRV-12 closed                     │
                     └─────────────────────────┬───────────────────────────┘
                                               │
                     ┌─────────────────────────▼───────────────────────────┐
@@ -811,7 +807,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     │  Focus: Keyboard nav, dropdown search, usability   │
                     └─────────────────────────────────────────────────────┘
 
-Waves 1-5 Complete: 79/90 tasks (88%)
+Waves 1-5 Complete: 79/89 tasks (89%)
 Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked
 ```
 
@@ -836,8 +832,7 @@ HRV-12 ← HRV-9       # Industry weighting - CLOSED (Won't Do)
 HRV-15 ← HRV-7,8,9,10,11,14  # Regeneration needs all improvements (HRV-12 closed)
 HRV-17 ← None                   # Table row parsing fix (standalone investigation) ✅ COMPLETE
 HRV-21 ← None                   # Diagnostic investigation (verify HRV-17 claims) ✅ COMPLETE
-HRV-22 ← HRV-21                 # HTMLSegmenter bug fix (supersedes HRV-20)
-HRV-20 ← SUPERSEDED             # Superseded by HRV-22
+HRV-22 ← HRV-21                 # HTMLSegmenter bug fix + data re-extraction ✅ COMPLETE
 HRV-16 ← HRV-22                 # Final validation needs data fix
 ```
 
@@ -979,7 +974,6 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-17: Table row parsing fix ✅ COMPLETE (code fix done; revealed data quality issue) - Phase 4d (2026-01-03)
 - [x] HRV-21: Diagnostic investigation ✅ COMPLETE (confirmed data corruption - see HRV-21_DIAGNOSTIC_FINDINGS.md) - Phase 4d
 - [x] HRV-22: HTMLSegmenter bug fix + re-extraction ✅ COMPLETE (2026-01-03: fixed TABLE_MAX_LENGTH in _split_composite_segment, added validation) - Phase 4d
-- [x] HRV-20: Farfetch data mismatch remediation ⏸️ SUPERSEDED by HRV-22 - Phase 4d
 - [x] HRV-16: Validation re-run (Farfetch + Slack) ✅ COMPLETE (2026-01-04: 66.7% precision, 47.4% recall, 55.4% F1) - Phase 4e
 
 **Deferred**: HRV-13 (Definition-only mode) - moved to future phase (lower priority, harder to validate)
@@ -1043,27 +1037,11 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
----
-
 ## Known Issues / Technical Debt
 
-### ISSUE-1: mypy type error in number_parsing.py (pre-existing)
-
-**Discovered**: 2026-01-07 (during DFP-1 task execution)
-**Location**: `src/review/number_parsing.py:301`
-**Error**: `Incompatible types in assignment (expression has type "int | None", variable has type "Decimal")`
-**Severity**: Low (does not affect runtime behavior, mypy --strict only)
-
-**Root Cause Investigation Notes**:
-- The error is in `number_parsing.py`, NOT in files modified by recent tasks
-- Line 301 likely involves a variable declared as `Decimal` being assigned a value that could be `int | None`
-- This occurs in code that parses numeric values from text
-- The type annotation is overly strict - the runtime code likely handles the None case elsewhere
-- To find: `grep -n "Decimal" src/review/number_parsing.py | head -20` to see variable declarations
-- To fix: Either update the type annotation to `Decimal | int | None` or add proper type narrowing/conversion
-
-**Impact**: None on functionality - only fails `mypy --strict` checks on the review module
+_No known issues._
 
 ---
 
-*Last verified: 2026-01-07 (UXI-9 dropped; UXI workstream complete; 79/90 tasks complete, 0 partial, 4 pending, 4 blocked)*
+*Last verified: 2026-01-07 (ISSUE-1 fixed; 79/89 tasks complete, 1 pending, 3 blocked)*
+
