@@ -485,8 +485,18 @@ The MET workstream addresses issues identified during a critical evaluation of d
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-1** | Metric Consistency Audit | L | 4-8h | LOW | 🟡 PENDING | None | MET-3, MET-4 |
+| **MET-1** | Metric Consistency Audit | L | 4-8h | LOW | ✅ COMPLETE | None | MET-3, MET-4 |
 | **MET-2** | Metric Lifecycle Process Documentation | S | 1-2h | NONE | ✅ COMPLETE | None | MET-5, MET-6 |
+
+**MET-1 Completion Note** (2026-01-07): Comprehensive audit completed with fixes:
+- Generated audit report: `docs/reports/MET-1-metric-consistency-audit.md`
+- Resolved alias contradiction: `cm_customers_period_end` and `cm_active_customers_total` are now distinct metrics (Option A)
+- Added `cm_customers_period_end` to SQL (was missing)
+- Deprecated `cm_deferred_revenue` in SQL (financial metric, not customer metric)
+- Fixed 20 test fixture IDs (`cm_active_users_total` → `cm_active_customers_total`)
+- Added 32 new METRIC_NAME_MAPPING entries for active metrics
+- Updated CLAUDE.md with design decision #14 (customer count metric distinction)
+- All gold standard tests pass (12/12)
 
 **MET-2 Note**: MET-10 was consolidated into MET-2 (2026-01-07). See `docs/archive/worker-prompts-consolidated/`.
 

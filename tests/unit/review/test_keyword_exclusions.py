@@ -352,16 +352,25 @@ class TestRegressionExistingBehavior:
             assert "cm_net_revenue_retention" in matched_metrics, f"NRR should match: {text}"
 
     def test_existing_active_customers_patterns(self) -> None:
-        """Ensure active customers patterns still work."""
-        texts = [
-            "Active customers reached 1 million",
-            "Total customers grew by 20%",
-        ]
+        """Ensure active customers patterns still work.
+
+        Note: "Total customers" and "Active customers" are now distinct metrics (MET-1):
+        - cm_active_customers_total: engagement-based ("active customers")
+        - cm_customers_period_end: period-end stock count ("total customers")
+        """
         matcher = KeywordMatcher()
-        for text in texts:
-            matches = matcher.find_all_keywords(text)
-            matched_metrics = {m.metric_id for m in matches}
-            assert "cm_active_customers_total" in matched_metrics, f"Should match: {text}"
+
+        # "Active customers" → cm_active_customers_total
+        text1 = "Active customers reached 1 million"
+        matches1 = matcher.find_all_keywords(text1)
+        matched_metrics1 = {m.metric_id for m in matches1}
+        assert "cm_active_customers_total" in matched_metrics1, f"Should match cm_active_customers_total: {text1}"
+
+        # "Total customers" → cm_customers_period_end (NOT cm_active_customers_total)
+        text2 = "Total customers grew by 20%"
+        matches2 = matcher.find_all_keywords(text2)
+        matched_metrics2 = {m.metric_id for m in matches2}
+        assert "cm_customers_period_end" in matched_metrics2, f"Should match cm_customers_period_end: {text2}"
 
     def test_existing_churn_patterns(self) -> None:
         """Ensure churn patterns still work."""

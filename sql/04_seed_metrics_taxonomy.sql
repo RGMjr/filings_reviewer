@@ -72,6 +72,19 @@ VALUES (
     1
 ) ON CONFLICT (metric_id) DO NOTHING;
 
+-- CM5: Customers at Period End (stock count)
+-- Added 2026-01-07 (MET-1): Distinct from cm_active_customers_total (engagement-based)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_customers_period_end',
+    'Customers at Period End',
+    'core',
+    'Total count of customers at the end of the reporting period, regardless of activity level. Includes paid customers, total customers, customer base counts.',
+    'customer_count',
+    'active',
+    1
+) ON CONFLICT (metric_id) DO NOTHING;
+
 -- ============================================================================
 -- EXTENDED METRICS (Phase 1)
 -- ============================================================================
@@ -268,7 +281,7 @@ VALUES (
     1
 );
 
--- Bookings
+-- Bookings (DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_bookings',
@@ -276,11 +289,11 @@ VALUES (
     'extended',
     'Total value of customer contracts signed in a period, representing committed future revenue.',
     'revenue_predictability',
-    'active',
+    'deprecated',
     1
 );
 
--- Billings
+-- Billings (DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_billings',
@@ -288,11 +301,11 @@ VALUES (
     'extended',
     'Total amounts invoiced to customers in a period, typically revenue plus change in deferred revenue.',
     'revenue_predictability',
-    'active',
+    'deprecated',
     1
 );
 
--- Deferred Revenue
+-- Deferred Revenue (DEPRECATED 2026-01-07: Financial metric, not customer metric)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_deferred_revenue',
@@ -300,7 +313,7 @@ VALUES (
     'extended',
     'Payments received from customers for services not yet delivered, representing future revenue obligation.',
     'revenue_predictability',
-    'active',
+    'deprecated',
     1
 );
 
@@ -328,7 +341,7 @@ VALUES (
     1
 );
 
--- Gross Merchandise Value
+-- Gross Merchandise Value (DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_gmv',
@@ -336,7 +349,7 @@ VALUES (
     'extended',
     'Total value of merchandise sold through the platform over a defined period, before deductions for returns, discounts, or platform fees.',
     'transaction_volume',
-    'active',
+    'deprecated',
     1
 );
 
@@ -353,7 +366,7 @@ VALUES (
 --     1
 -- );
 
--- Annual Contract Value
+-- Annual Contract Value (DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_acv',
@@ -361,11 +374,11 @@ VALUES (
     'extended',
     'Average or total annual value of customer contracts, commonly used by SaaS and subscription businesses.',
     'revenue_predictability',
-    'active',
+    'deprecated',
     1
 );
 
--- Total Contract Value
+-- Total Contract Value (DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific)
 INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
 VALUES (
     'cm_tcv',
@@ -373,7 +386,7 @@ VALUES (
     'extended',
     'Total value of customer contracts including all future committed revenue over the contract lifetime.',
     'revenue_predictability',
-    'active',
+    'deprecated',
     1
 );
 
@@ -402,6 +415,18 @@ VALUES (
     'Ratio of customer lifetime value to customer acquisition cost.',
     'unit_economics',
     'experimental',
+    1
+);
+
+-- LTV to CAC Ratio by Cohort (added 2026-01-07)
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status, version)
+VALUES (
+    'cm_ltv_to_cac_ratio_by_cohort',
+    'LTV/CAC Ratio by Cohort',
+    'extended',
+    'LTV to CAC ratio analyzed by customer acquisition cohort, showing unit economics evolution over time.',
+    'unit_economics',
+    'active',
     1
 );
 
