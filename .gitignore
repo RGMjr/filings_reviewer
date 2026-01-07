@@ -53,3 +53,4 @@ htmlcov/
 
 # Build artifacts
 *.egg-info/
+.playwright-mcp/
