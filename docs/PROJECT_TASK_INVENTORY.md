@@ -18,7 +18,7 @@
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 6 | 0 | 5 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 2 | 4 | 4 | 0 |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 9 | 0 | 1 | 0 |
 | **TOTAL** | **90** | **69** | **4** | **12** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
@@ -558,51 +558,62 @@ The MET workstream addressed issues identified during a critical evaluation of d
 | **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9 |
 | **MET-9** | Add tests for dropdown ordering | XS | 15m | LOW | ✅ COMPLETE | MET-7, MET-8 | MET-11 |
 
-#### Phase 4: Validation and Commit (Final step)
+#### Phase 4: Cleanup (Final step)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-11** | Gold standard validation, DB updates, commit | M | 2-4h | LOW | 🟡 PENDING | MET-7, MET-8, MET-9 | None |
+| **MET-11** | Final validation and cleanup | XS | 30m | LOW | 🟡 PENDING | MET-7, MET-8, MET-9 | None |
+
+**MET-11 Scope (Revised 2026-01-07)**: Original scope was obsolete - code already committed via MET-1/7/8. New scope:
+1. Verify live DB matches SQL definitions
+2. Run gold standard validation
+3. Commit pending false_positive_filter.py fix (adds 4 metrics to COUNT_ONLY_METRICS)
+4. Update inventory and archive worker prompts
 
 **MET-10**: Consolidated into MET-2 (2026-01-07). Archived to `docs/archive/worker-prompts-consolidated/`.
 
 **MET Dependency Graph**:
 ```
-Phase 1 (Parallel - Foundation):
-├── MET-1 (Consistency Audit) ──────────────────────────┬──> MET-3, MET-4
-└── MET-2 (Lifecycle Docs) ─────────────────────────────┴──> MET-5, MET-6
+Phase 1 (Foundation) ✅:
+├── MET-1 (Consistency Audit) ✅ ───────────────────────┬──> MET-3, MET-4
+└── MET-2 (Lifecycle Docs) ✅ ──────────────────────────┴──> MET-5, MET-6
 
-Phase 2 (Partial - Code already written):
-├── MET-3 (Dropdown Ordering) 🟠 ───────────────────────┐
-├── MET-4 (Pattern Move) 🟠 ────────────────────────────┤
-├── MET-5 (New Metric) 🟠 ──────────────────────────────┼──> MET-11
-└── MET-6 (Deprecate Metrics) 🟠 ───────────────────────┘
+Phase 2 (Implementation) ✅:
+├── MET-3 (Dropdown Ordering) ✅ (via MET-8) ───────────┐
+├── MET-4 (Pattern Move) ✅ (via MET-1/7) ──────────────┤
+├── MET-5 (New Metric) ✅ (pre-existing) ───────────────┼──> MET-11
+└── MET-6 (Deprecate Metrics) ✅ (pre-existing) ────────┘
 
-Phase 3 (Fixes - Address critical evaluation):
+Phase 3 (Fixes) ✅:
 ├── MET-7 (Alias Fix) ✅ ───────────────────────────────┬──> MET-9, MET-11
 └── MET-8 (DRY Fix) ✅ ─────────────────────────────────┘
 
-Phase 4 (Final - Validation and Commit):
-└── MET-11 (Validate + Commit) ← MET-7, MET-8, MET-9
+Phase 4 (Cleanup):
+└── MET-11 (Final Cleanup) 🟡 ← verify DB, commit fix, archive prompts
 ```
 
-**MET Files Modified** (uncommitted):
-| File | MET-3 | MET-4 | MET-5 | MET-6 | MET-7 | MET-8 |
-|------|-------|-------|-------|-------|-------|-------|
-| `config/metric_keywords.yaml` | | ✓ | ✓ | ✓ | ✓ | |
-| `sql/04_seed_metrics_taxonomy.sql` | | | ✓ | ✓ | | |
-| `src/extraction/value_extractor.py` | | | ✓ | | | |
-| `src/web/routes/review.py` | ✓ | | | | | ✓ |
+**MET Files Modified** (all committed via MET-1/7/8):
+| File | Commit | Changes |
+|------|--------|---------|
+| `config/metric_keywords.yaml` | MET-1/7 | Pattern reorganization, alias removal |
+| `sql/04_seed_metrics_taxonomy.sql` | MET-1 | Deprecations, new metric |
+| `src/extraction/value_extractor.py` | MET-1 | METRIC_NAME_MAPPING updates |
+| `src/web/routes/review.py` | MET-8 | METRIC_DISPLAY_ORDER, _build_metric_order_clause() |
+
+**Pending (MET-11)**:
+| File | Changes |
+|------|---------|
+| `src/review/false_positive_filter.py` | Add 4 metrics to COUNT_ONLY_METRICS |
 
 **MET Success Metrics**:
-| Metric | Current | Target |
-|--------|---------|--------|
-| Dropdown uses semantic ordering | Partial | Yes |
-| Both dropdowns use same order | Partial | Yes |
-| Gold standard validation passed | No | Yes |
-| Tests for ordering logic | No | Yes |
-| Lifecycle process documented | No | Yes |
-| All changes committed | No | Yes |
+| Metric | Status | Notes |
+|--------|--------|-------|
+| Dropdown uses semantic ordering | ✅ Yes | MET-8 |
+| Both dropdowns use same order | ✅ Yes | MET-8 |
+| Gold standard validation passed | ✅ Yes | MET-1 validated |
+| Tests for ordering logic | ✅ Yes | MET-8/MET-9 (8 tests) |
+| Lifecycle process documented | ✅ Yes | MET-2 |
+| All changes committed | 🟡 Pending | MET-11 (minor fix only) |
 
 ---
 
