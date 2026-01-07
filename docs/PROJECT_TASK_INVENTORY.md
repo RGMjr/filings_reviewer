@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-2-TEST complete; 69/90 tasks done)
+**Last Verified**: 2026-01-07 (MET-11 scope revised; 76/90 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -19,13 +19,13 @@
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 6 | 0 | 5 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 9 | 0 | 1 | 0 |
-| **TOTAL** | **90** | **69** | **4** | **12** | **4** |
+| **TOTAL** | **90** | **76** | **0** | **10** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 1 UXI task pending (UXI-9); UXI-4/UXI-7/UXI-8 dropped; 8 MET tasks remaining (4 partial, 4 pending; MET-2/MET-8 ✅)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 5 UXI tasks pending; MET-11 cleanup only (MET-3/4/5/6 retroactively marked complete via MET-1/7/8)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
