@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-06 (UXI-7 dropped; 57/73 tasks done)
+**Last Verified**: 2026-01-07 (UXI-5 complete; 59/74 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -17,14 +17,14 @@
 | INVESTIGATION (INV) | 2 | 1 | 0 | 1 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 1 | 0 | 2 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 8 | 0 | 0 | 8 | 0 |
-| **TOTAL** | **74** | **58** | **0** | **12** | **4** |
+| UX_IMPROVEMENT (UXI) | 8 | 1 | 0 | 7 | 0 |
+| **TOTAL** | **74** | **59** | **0** | **11** | **4** |
 
 **Note**: INV-1 archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 8 UXI tasks pending (UXI-7 dropped)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 7 UXI tasks pending (UXI-5 ✅, UXI-7 dropped)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -53,7 +53,7 @@
 
 ### UX_IMPROVEMENT_PLAN.md
 **Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 PENDING - 0/8 tasks done, Wave 5 (UXI-7 dropped, UXI-5 moved to Phase 1)
+**Status**: 🟡 IN PROGRESS - 1/8 tasks done, Wave 5 (UXI-7 dropped)
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
@@ -355,7 +355,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 
 **Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 **Plan Location**: `docs/UX_IMPROVEMENT_PLAN.md`
-**Status**: 🟡 PENDING - 0/8 tasks done, Wave 5 (UXI-7 dropped)
+**Status**: 🟡 IN PROGRESS - 1/8 tasks done, Wave 5 (UXI-7 dropped)
 
 #### Phase 1: Keyboard Navigation + Quick Wins (High Priority)
 
@@ -364,7 +364,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | **UXI-1** | Dropdown keyboard navigation (number keys + arrows) | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
 | **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
 | **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | 🟡 PENDING | None | None |
-| **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | 🟡 PENDING | None | None |
+| **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | ✅ COMPLETE | None | None |
 
 #### Phase 2: Dropdown Improvements (Medium Priority)
 
@@ -389,7 +389,7 @@ Phase 1 (Parallel):
 ├── UXI-1 (Dropdown Keyboard Nav) ─────────────────────────────────┐
 ├── UXI-2 (Metric Dropdown Search) ──────────────────────────────┼──> Phase 2
 ├── UXI-3 (Skip Shortcut) ───────────────────────────────────────┤
-└── UXI-5 (Confidence Tooltips) ─────────────────────────────────┘
+└── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
 
 Phase 2 (Parallel, UXI-4 depends on UXI-2):
 ├── UXI-4 (Recent Metrics) ← UXI-2 ──────────────────────────────┐
@@ -585,15 +585,15 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     └─────────────────────────┬───────────────────────────┘
                                               │
                     ┌─────────────────────────▼───────────────────────────┐
-                    │                WAVE 5 🟡 PENDING                    │
+                    │                WAVE 5 🟡 IN PROGRESS               │
                     │  UXI-1 through UXI-9 (excl. UXI-7, dropped)        │
-                    │  Phases 1-3: 🟡 PENDING (0/8 tasks)                │
+                    │  Phases 1-3: 🟡 IN PROGRESS (1/8 tasks)            │
                     │  Focus: Keyboard nav, dropdown search, usability   │
                     └─────────────────────────────────────────────────────┘
 
 Waves 1-4 Complete: 57/73 tasks (78%)
-Wave 5 Pending: 8 UXI tasks (UXI-7 dropped)
-Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, 8 UXI tasks pending
+Wave 5 In Progress: 1/8 UXI tasks complete (UXI-7 dropped)
+Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, 7 UXI tasks pending
 ```
 
 ---
@@ -848,4 +848,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-07 (DFP-1 complete; 58/74 tasks done)*
+*Last verified: 2026-01-07 (UXI-5 complete; 59/74 tasks done)*
