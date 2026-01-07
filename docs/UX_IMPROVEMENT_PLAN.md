@@ -19,13 +19,14 @@ This plan addresses UI/UX improvements identified in a comprehensive review of t
 | Priority | Tasks | Effort | Status |
 |----------|-------|--------|--------|
 | High | UXI-1, UXI-2, UXI-3, UXI-5 | 6-9 hours | Complete |
-| Medium | UXI-6 | 1-2 hours | Pending |
-| Low | UXI-8, UXI-9 | 1-2 hours | Pending |
-| **Total** | **6 tasks** | **8-13 hours** | |
+| Medium | UXI-6 | 30 min | Complete |
+| Low | UXI-9 | <30 min | Pending |
+| **Total** | **5 tasks** | **7-10 hours** | |
 
 **Dropped Tasks**:
 - UXI-4 (Recent Metrics) - Redundant with UXI-2 search functionality; sessionStorage choice contradicted business rationale
 - UXI-7 (Metric Abbreviations) - Low value, adds maintenance burden for abbreviation list
+- UXI-8 (Focus Management) - Existing keyboard shortcuts already solve the stated problem; auto-focus on Accept would bias reviews and harm accessibility
 
 ---
 
@@ -145,18 +146,15 @@ This plan addresses UI/UX improvements identified in a comprehensive review of t
 
 ## Phase 3: UX Polish (Lower Priority)
 
-### UXI-8: Focus Management After Navigation
+### ~~UXI-8: Focus Management After Navigation~~ (DROPPED)
 
-**Problem**: After navigating to next candidate, focus is not explicitly managed.
+**Status**: DROPPED (2026-01-07)
 
-**Solution**: After navigation, auto-focus the Accept button or first actionable element.
-
-| Aspect | Details |
-|--------|---------|
-| Size | S (1 hour) |
-| Risk | Low |
-| Files | `src/web/static/js/review.js` |
-| Dependencies | None |
+**Reason**: The problem statement was inaccurate. Existing keyboard shortcuts (`A`, `R`, `C`, `N`, `P`) already provide immediate keyboard access to all actions - no tabbing required. Additionally, auto-focusing the Accept button would:
+1. Bias the review process toward acceptance
+2. Potentially harm accessibility (WCAG 2.4.3 Focus Order, 3.2.1 On Focus)
+3. Risk accidental submissions if Enter is pressed during page load
+4. Skip the natural "read first, then act" workflow
 
 ---
 
@@ -184,12 +182,12 @@ Phase 1 (Parallel) - COMPLETE:
 ├── UXI-3 (Skip Shortcut) ✅ ────────────────────────────────────┤
 └── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
 
-Phase 2 (Parallel):
+Phase 2 - COMPLETE:
 ├── UXI-4 (Recent Metrics) ~~DROPPED~~ (redundant with UXI-2)
-└── UXI-6 (Bulk Action Limit) ───────────────────────────────────┬──> Phase 3
+└── UXI-6 (Bulk Action Limit) ✅ ────────────────────────────────┬──> Phase 3
 
-Phase 3 (Parallel):
-├── UXI-8 (Focus Management)
+Phase 3:
+├── UXI-8 (Focus Management) ~~DROPPED~~ (keyboard shortcuts already solve this)
 └── UXI-9 ("Other" Rejection UX)
 ```
 
@@ -234,8 +232,8 @@ Phase 3 (Parallel):
 ## Execution Order (Recommended)
 
 1. **Phase 1** (Complete): UXI-1 ✅, UXI-2 ✅, UXI-3 ✅, UXI-5 ✅
-2. **Phase 2**: UXI-6 (UXI-4 dropped)
-3. **Phase 3** (Can parallelize): UXI-8, UXI-9
+2. **Phase 2** (Complete): UXI-6 ✅ (UXI-4 dropped)
+3. **Phase 3**: UXI-9 (UXI-8 dropped)
 
 ---
 
