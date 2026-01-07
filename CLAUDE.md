@@ -190,6 +190,12 @@ This adds the official Playwright MCP server, enabling browser automation tools 
       - "We have 8,000 active customers" → `cm_active_customers_total`
     - Both metrics exist in SQL with `status = 'active'`
     - METRIC_NAME_MAPPING in `value_extractor.py` routes LLM names to correct canonical ID
+15. **Unit-type validation filtering** (2026-01-07): Candidate generation filters metric-unit mismatches:
+    - `COUNT_ONLY_METRICS`: Customer counts must be plain integers (filters percentages, currencies)
+    - `PERCENTAGE_ONLY_METRICS`: Retention/churn rates must be percentages
+    - `DOLLAR_ONLY_METRICS`: Revenue metrics (ARR, LTV, CAC) must be currency
+    - Defined in `src/review/false_positive_filter.py`, applied in `candidate_generator.py:802-838`
+    - Example: "146% retention" won't match `cm_large_customers_period_end` (expects count)
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 

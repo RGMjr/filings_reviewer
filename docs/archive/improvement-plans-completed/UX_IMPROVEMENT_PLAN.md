@@ -1,7 +1,7 @@
 # Human Review UI/UX Improvement Plan
 
 **Created**: 2026-01-06
-**Status**: PLANNING
+**Status**: ✅ COMPLETE
 **Goal**: Improve reviewer productivity and interface usability
 
 ---
@@ -20,13 +20,13 @@ This plan addresses UI/UX improvements identified in a comprehensive review of t
 |----------|-------|--------|--------|
 | High | UXI-1, UXI-2, UXI-3, UXI-5 | 6-9 hours | Complete |
 | Medium | UXI-6 | 30 min | Complete |
-| Low | UXI-9 | <30 min | Pending |
-| **Total** | **5 tasks** | **7-10 hours** | |
+| **Total** | **6 tasks** | **7-10 hours** | ✅ Complete |
 
 **Dropped Tasks**:
 - UXI-4 (Recent Metrics) - Redundant with UXI-2 search functionality; sessionStorage choice contradicted business rationale
 - UXI-7 (Metric Abbreviations) - Low value, adds maintenance burden for abbreviation list
 - UXI-8 (Focus Management) - Existing keyboard shortcuts already solve the stated problem; auto-focus on Accept would bias reviews and harm accessibility
+- UXI-9 ("Other" Rejection UX) - Auto-focus already implemented for ALL categories (`review.js:846-849`); proposed helper text duplicates existing placeholder ("Why is this not the correct metric?")
 
 ---
 
@@ -158,18 +158,11 @@ This plan addresses UI/UX improvements identified in a comprehensive review of t
 
 ---
 
-### UXI-9: "Other" Rejection Category UX
+### ~~UXI-9: "Other" Rejection Category UX~~ (DROPPED)
 
-**Problem**: Selecting "Other" requires additional text, but this isn't obvious.
+**Status**: DROPPED (2026-01-07)
 
-**Solution**: When "Other" is selected, auto-focus the rejection reason textarea and show helper text indicating input is required.
-
-| Aspect | Details |
-|--------|---------|
-| Size | XS (<30 min) |
-| Risk | None |
-| Files | `src/web/static/js/review.js` |
-| Dependencies | None |
+**Reason**: The core requirement (auto-focus textarea) is already implemented for ALL rejection categories in `review.js:846-849`. The proposed helper text ("Please describe why...") would duplicate the existing placeholder ("Why is this not the correct metric?") and label ("Additional Details"). Adding special treatment for "Other" alone creates inconsistent UX.
 
 ---
 
@@ -186,9 +179,9 @@ Phase 2 - COMPLETE:
 ├── UXI-4 (Recent Metrics) ~~DROPPED~~ (redundant with UXI-2)
 └── UXI-6 (Bulk Action Limit) ✅ ────────────────────────────────┬──> Phase 3
 
-Phase 3:
+Phase 3 - ALL DROPPED:
 ├── UXI-8 (Focus Management) ~~DROPPED~~ (keyboard shortcuts already solve this)
-└── UXI-9 ("Other" Rejection UX)
+└── UXI-9 ("Other" Rejection UX) ~~DROPPED~~ (auto-focus already implemented for all categories)
 ```
 
 ---
@@ -233,7 +226,9 @@ Phase 3:
 
 1. **Phase 1** (Complete): UXI-1 ✅, UXI-2 ✅, UXI-3 ✅, UXI-5 ✅
 2. **Phase 2** (Complete): UXI-6 ✅ (UXI-4 dropped)
-3. **Phase 3**: UXI-9 (UXI-8 dropped)
+3. **Phase 3** (Complete): All dropped (UXI-8, UXI-9)
+
+**Workstream Status**: ✅ COMPLETE (6/6 implemented tasks done, 4 dropped)
 
 ---
 
