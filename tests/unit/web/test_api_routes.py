@@ -1018,3 +1018,180 @@ class TestExpandedContext:
         assert data["status"] == "success"
         assert data["segment_count"] == 2
         assert data["can_expand"] is True
+
+
+# =============================================================================
+# TestSkipCandidate - Skip endpoint tests (UXI-3)
+# =============================================================================
+
+
+class TestSkipCandidate:
+    """Test POST /api/candidates/<id>/skip endpoint."""
+
+    def test_skip_pending_candidate_success(self, client, mock_db):
+        """Test successful skip of a pending candidate."""
+        # Setup mock
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.update_candidate_status.return_value = True
+        # Mock next candidate navigation
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 124, "review_status": "pending"}
+        ]
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/candidates/123/skip",
+                json={
+                    "filter_status": "pending",
+                    "filter_metric": "all",
+                    "filter_confidence": "all",
+                    "filter_sort": "position",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["candidate_id"] == 123
+        assert data["next_candidate"]["candidate_id"] == 124
+        assert "/review/5?candidate_id=124" in data["next_candidate"]["url"]
+
+        # Verify database calls
+        mock_db.get_review_candidate.assert_called_once_with(123)
+        mock_db.update_candidate_status.assert_called_once_with(123, "skipped")
+
+    def test_skip_returns_next_candidate_with_filters_preserved(self, client, mock_db):
+        """Test skip returns next candidate URL with filter parameters preserved."""
+        # Setup mock
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.update_candidate_status.return_value = True
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 124, "review_status": "pending"}
+        ]
+
+        # Make request with custom filters
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/candidates/123/skip",
+                json={
+                    "filter_status": "pending",
+                    "filter_metric": "cm_arr",
+                    "filter_confidence": "high",
+                    "filter_sort": "confidence_desc",
+                },
+            )
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert "metric=cm_arr" in data["next_candidate"]["url"]
+        assert "confidence=high" in data["next_candidate"]["url"]
+        assert "sort=confidence_desc" in data["next_candidate"]["url"]
+
+    def test_skip_with_no_next_candidate(self, client, mock_db):
+        """Test skip returns null next_candidate when no more pending candidates."""
+        # Setup mock
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+        mock_db.update_candidate_status.return_value = True
+        mock_db.get_review_candidates_with_decisions.return_value = []  # No more candidates
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post("/api/candidates/123/skip", json={})
+
+        # Verify response
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["candidate_id"] == 123
+        assert data["next_candidate"] is None
+
+    def test_skip_invalid_candidate_returns_404(self, client, mock_db):
+        """Test skip with non-existent candidate returns 404."""
+        # Setup mock
+        mock_db.get_review_candidate.return_value = None
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post("/api/candidates/999/skip", json={})
+
+        # Verify response
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "not found" in data["message"].lower()
+
+    def test_skip_reviewed_candidate_returns_400(self, client, mock_db):
+        """Test skip of already-reviewed candidate returns 400 error."""
+        # Setup mock - candidate is already reviewed
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "reviewed",  # Already has a decision
+        }
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post("/api/candidates/123/skip", json={})
+
+        # Verify response
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "reviewed" in data["message"].lower()
+        # Should NOT call update_candidate_status
+        mock_db.update_candidate_status.assert_not_called()
+
+    def test_skip_already_skipped_candidate_succeeds(self, client, mock_db):
+        """Test re-skipping an already-skipped candidate succeeds (idempotent)."""
+        # Setup mock - candidate is already skipped
+        mock_db.get_review_candidate.return_value = {
+            "candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "skipped",  # Already skipped
+        }
+        mock_db.update_candidate_status.return_value = True
+        mock_db.get_review_candidates_with_decisions.return_value = [
+            {"candidate_id": 124, "review_status": "pending"}
+        ]
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post("/api/candidates/123/skip", json={})
+
+        # Verify response - should succeed (idempotent)
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        # Status update should still be called (no-op but safe)
+        mock_db.update_candidate_status.assert_called_once_with(123, "skipped")
+
+    def test_skip_database_error_returns_500(self, client, mock_db):
+        """Test skip returns 500 on unexpected database error."""
+        # Setup mock - database throws exception
+        mock_db.get_review_candidate.side_effect = Exception("Database connection lost")
+
+        # Make request
+        with patch("src.web.routes.api.get_db", return_value=mock_db):
+            response = client.post("/api/candidates/123/skip", json={})
+
+        # Verify response
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "internal server error" in data["message"].lower()

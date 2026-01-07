@@ -434,6 +434,124 @@ def create_decision():
         )
 
 
+@api_bp.route("/candidates/<int:candidate_id>/skip", methods=["POST"])
+def skip_candidate(candidate_id: int):
+    """
+    Skip a candidate without making a decision.
+
+    Sets the candidate status to 'skipped' and returns the next candidate URL.
+    Skip is a status change, NOT a decision - no decision record is created.
+
+    Request Body (optional):
+        {
+            "filter_status": str (optional, default: "all"),
+            "filter_metric": str (optional, default: "all"),
+            "filter_confidence": str (optional, default: "all"),
+            "filter_sort": str (optional, default: "position")
+        }
+
+    Returns:
+        200: Candidate skipped successfully
+        {
+            "status": "success",
+            "candidate_id": int,
+            "next_candidate": {
+                "candidate_id": int,
+                "url": str
+            } | null
+        }
+
+        400: Cannot skip a reviewed candidate
+        {
+            "status": "error",
+            "message": "Cannot skip a reviewed candidate"
+        }
+
+        404: Candidate not found
+        {
+            "status": "error",
+            "message": "Candidate not found"
+        }
+
+        500: Internal server error
+        {
+            "status": "error",
+            "message": "Internal server error"
+        }
+    """
+    db = get_db()
+
+    try:
+        # Validate candidate exists
+        candidate = db.get_review_candidate(candidate_id)
+        if not candidate:
+            logger.warning(f"Skip: Candidate not found: {candidate_id}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Candidate not found",
+                    }
+                ),
+                404,
+            )
+
+        # Block skipping reviewed candidates (would lose decision data)
+        if candidate.get("review_status") == "reviewed":
+            logger.warning(f"Skip: Cannot skip reviewed candidate: {candidate_id}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Cannot skip a reviewed candidate",
+                    }
+                ),
+                400,
+            )
+
+        # Update candidate status to 'skipped'
+        db.update_candidate_status(candidate_id, "skipped")
+
+        logger.info(f"Skipped candidate {candidate_id}")
+
+        # Get next candidate (respecting filters)
+        data = request.get_json() if request.is_json else {}
+        filing_id = candidate["filing_id"]
+        filters = {
+            "status": data.get("filter_status", "all"),
+            "metric": data.get("filter_metric", "all"),
+            "confidence": data.get("filter_confidence", "all"),
+            "sort": data.get("filter_sort", "position"),
+        }
+        next_cand = _get_next_candidate_info(db, filing_id, candidate_id, filters)
+
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "candidate_id": candidate_id,
+                    "next_candidate": next_cand,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error skipping candidate {candidate_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Internal server error",
+                }
+            ),
+            500,
+        )
+
+
 @api_bp.route("/decisions/<int:decision_id>", methods=["DELETE"])
 def undo_decision(decision_id: int):
     """
