@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (MET-8 complete; 68/85 tasks done)
+**Last Verified**: 2026-01-07 (UXI-2-TEST complete; 69/90 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -17,9 +17,9 @@
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 8 | 5 | 0 | 1 | 0 |
+| UX_IMPROVEMENT (UXI) | 13 | 6 | 0 | 5 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 2 | 4 | 4 | 0 |
-| **TOTAL** | **85** | **68** | **4** | **8** | **4** |
+| **TOTAL** | **90** | **69** | **4** | **12** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
@@ -398,6 +398,23 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
 | **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | ✅ COMPLETE | None | None |
 
+#### Phase 1.5: E2E Testing (Additive)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-2-TEST** | E2E tests for metric dropdown search | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 | UXI-2-TEST-F* |
+| **UXI-2-TEST-F1** | E2E test for reclassify selection submission | S | 1-2h | NONE | 🟡 PENDING | UXI-2-TEST | None |
+| **UXI-2-TEST-F2** | E2E test for partial match search | XS | 30-45min | NONE | 🟡 PENDING | UXI-2-TEST | None |
+| **UXI-2-TEST-F3** | E2E test automation script | S | 1-2h | NONE | 🟡 PENDING | UXI-2-TEST | None |
+| **UXI-2-TEST-F4** | Visual regression E2E tests | M | 2-3h | LOW | 🟡 PENDING | UXI-2-TEST | None |
+
+**UXI-2-TEST Completion Note** (2026-01-07): Created E2E test suite for UXI-2 metric dropdown search:
+- Created `tests/e2e/` directory with `__init__.py`, `conftest.py`, `test_metric_dropdown_search.py`
+- 6 required tests documented (search filtering, clear button, no matches, auto-focus, state reset, arrow navigation)
+- 2 optional tests documented (single match Enter, case insensitivity)
+- All 6 required tests verified passing via Playwright MCP
+- Tests use Playwright MCP tools for browser automation (not pytest)
+
 #### Phase 2: Dropdown Improvements (Medium Priority)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
@@ -471,16 +488,18 @@ Phase 3:
 
 **Goal**: Improve metric dropdown ordering, ensure metric consistency, and establish lifecycle documentation
 **Plan Location**: `docs/worker-prompts/WORKER_PROMPT_TASK_MET-*.md`
-**Status**: 🟡 IN PROGRESS - 2/10 complete, 4 partial, 4 pending
+**Status**: 🟡 IN PROGRESS - 9/10 complete, 1 pending (MET-11 cleanup only)
 
 #### Background
 
-The MET workstream addresses issues identified during a critical evaluation of dropdown ordering work:
-1. Dropdown ordering was implemented but not validated or committed
-2. Alias logic has a contradiction (`cm_active_customers_total` as both alias and standalone metric)
-3. DRY violation: ordering defined in both SQL CASE statement and Python dict
-4. No tests for new ordering functionality
-5. Lifecycle process documentation not created
+The MET workstream addressed issues identified during a critical evaluation of dropdown ordering work:
+1. ✅ Dropdown ordering implemented and committed (MET-8)
+2. ✅ Alias contradiction resolved (MET-7)
+3. ✅ DRY violation eliminated (MET-8)
+4. ✅ Tests added for ordering functionality (MET-8/MET-9)
+5. ✅ Lifecycle process documented (MET-2)
+
+**Critical Evaluation (2026-01-07)**: MET-3/4/5/6 were incorrectly marked as "partial" - the work was already completed via MET-1, MET-7, and MET-8. MET-11 scope reduced to cleanup only.
 
 #### Phase 1: Foundation (Parallel, no dependencies)
 
@@ -516,18 +535,20 @@ The MET workstream addresses issues identified during a critical evaluation of d
 - Also modified `_get_unique_metrics_for_filing()` to use semantic ordering (was alphabetical)
 - Added 3 tests in `TestGetUniqueMetricsForFiling` for filter dropdown ordering
 
-#### Phase 2: Implementation (Code changes already made, need completion)
+#### Phase 2: Implementation (All Complete)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-3** | Update dropdown ordering in review.py | S | 1-2h | LOW | 🟠 PARTIAL | MET-1 | MET-11 |
-| **MET-4** | Move "total customers" patterns in YAML | S | 1h | LOW | 🟠 PARTIAL | MET-1 | MET-11 |
-| **MET-5** | Add cm_ltv_to_cac_ratio_by_cohort metric | S | 1h | LOW | 🟠 PARTIAL | MET-2 | MET-11 |
-| **MET-6** | Deprecate GMV, Bookings, Billings, ACV, TCV | S | 1h | LOW | 🟠 PARTIAL | MET-2 | MET-11 |
+| **MET-3** | Update dropdown ordering in review.py | S | 1-2h | LOW | ✅ COMPLETE | MET-1 | MET-11 |
+| **MET-4** | Move "total customers" patterns in YAML | S | 1h | LOW | ✅ COMPLETE | MET-1 | MET-11 |
+| **MET-5** | Add cm_ltv_to_cac_ratio_by_cohort metric | S | 1h | LOW | ✅ COMPLETE | MET-2 | MET-11 |
+| **MET-6** | Deprecate GMV, Bookings, Billings, ACV, TCV | S | 1h | LOW | ✅ COMPLETE | MET-2 | MET-11 |
 
-**Partial Status Notes** (2026-01-07):
-- MET-3/4/5/6 code changes were implemented but NOT validated or committed
-- Changes exist in working tree but need: gold standard validation, DB updates, tests, commit
+**Completion Notes** (2026-01-07 - Critical Evaluation):
+- MET-3: Completed via MET-8 (commit b9c9ecd) - dropdown ordering implemented
+- MET-4: Completed via MET-1/MET-7 - semantic distinction between cm_customers_period_end and cm_active_customers_total established
+- MET-5: Already implemented - cm_ltv_to_cac_ratio_by_cohort exists in YAML:480, SQL:424, value_extractor.py
+- MET-6: Already implemented - all 5 metrics have `status = 'deprecated'` in SQL file
 
 #### Phase 3: Fixes and Improvements (Address critical evaluation findings)
 
@@ -535,7 +556,7 @@ The MET workstream addresses issues identified during a critical evaluation of d
 |----|------|------|------|------|--------|--------------|---------|
 | **MET-7** | Resolve alias contradiction (cm_active_customers_total) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9, MET-11 |
 | **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9 |
-| **MET-9** | Add tests for dropdown ordering | S | 1-2h | LOW | 🟡 PENDING | MET-7, MET-8 | MET-11 |
+| **MET-9** | Add tests for dropdown ordering | XS | 15m | LOW | ✅ COMPLETE | MET-7, MET-8 | MET-11 |
 
 #### Phase 4: Validation and Commit (Final step)
 
@@ -1015,4 +1036,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-07 (MET-8 complete; 68/85 tasks complete, 4 partial, 8 pending, 4 blocked)*
+*Last verified: 2026-01-07 (UXI-2-TEST complete; 69/90 tasks complete, 4 partial, 12 pending, 4 blocked)*
