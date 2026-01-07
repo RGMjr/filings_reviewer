@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-06 (DUP-1 complete; 57/65 tasks done)
+**Last Verified**: 2026-01-06 (UXI-7 dropped; 57/73 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -16,13 +16,15 @@
 | HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
 | INVESTIGATION (INV) | 2 | 1 | 0 | 1 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 1 | 0 | 2 | 0 |
-| **TOTAL** | **65** | **57** | **0** | **4** | **4** |
+| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
+| UX_IMPROVEMENT (UXI) | 8 | 0 | 0 | 8 | 0 |
+| **TOTAL** | **74** | **58** | **0** | **12** | **4** |
 
 **Note**: INV-1 archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: INV-1-FIX (Implement Farfetch extraction fix based on INV-1 findings)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; INV-1-FIX pending
+**Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 8 UXI tasks pending (UXI-7 dropped)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -48,6 +50,11 @@
 **Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
 **Status**: ✅ PHASE 4 COMPLETE - 18/20 tasks done (2 blocked/superseded), Wave 4
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
+
+### UX_IMPROVEMENT_PLAN.md
+**Location**: `docs/UX_IMPROVEMENT_PLAN.md`
+**Status**: 🟡 PENDING - 0/8 tasks done, Wave 5 (UXI-7 dropped, UXI-5 moved to Phase 1)
+**Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
 
@@ -326,6 +333,90 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 
 ---
 
+### DATE_FALSE_POSITIVE Tasks (DFP-Series)
+
+**Goal**: Fix date-related false positive filtering gaps
+**Status**: ✅ COMPLETE - 1/1 tasks done
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **DFP-1** | Fix date false positive filtering (Month DD pattern + ROW marker stripping) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
+
+**DFP-1 Completion Note** (2026-01-07): Fixed two bugs causing date-related false positives:
+1. Added "Month DD" date pattern to `DATE_CONTEXT_PATTERNS` in `false_positive_filter.py` - filters day numbers from headers like "January 31," without requiring a year
+2. Fixed ROW marker stripping in `context_extractor.py` - now uses `" "` instead of `""` to preserve word boundaries (prevents "2019 [ROW] 2020" → "20192020")
+- 23 new tests added (13 date pattern + 10 marker stripping)
+- 98% coverage on false_positive_filter.py, 97% coverage on context_extractor.py
+- All gold standard tests pass
+
+---
+
+### UX_IMPROVEMENT Tasks (UXI-Series)
+
+**Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
+**Plan Location**: `docs/UX_IMPROVEMENT_PLAN.md`
+**Status**: 🟡 PENDING - 0/8 tasks done, Wave 5 (UXI-7 dropped)
+
+#### Phase 1: Keyboard Navigation + Quick Wins (High Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-1** | Dropdown keyboard navigation (number keys + arrows) | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
+| **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
+| **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | 🟡 PENDING | None | None |
+| **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | 🟡 PENDING | None | None |
+
+#### Phase 2: Dropdown Improvements (Medium Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-4** | Recent metrics section in dropdown | S | 1-2h | LOW | 🟡 PENDING | UXI-2 | None |
+| **UXI-6** | Bulk action limit increase (20→50) | S | 1-2h | LOW | 🟡 PENDING | None | None |
+
+#### Phase 3: UX Polish (Lower Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-8** | Focus management after navigation | S | 1h | LOW | 🟡 PENDING | None | None |
+| **UXI-9** | "Other" rejection category UX | XS | <30m | NONE | 🟡 PENDING | None | None |
+
+**Dropped Tasks**:
+- ~~**UXI-7** Metric abbreviation inline display~~ - Low value, maintenance burden
+
+**UXI Dependency Graph**:
+```
+Phase 1 (Parallel):
+├── UXI-1 (Dropdown Keyboard Nav) ─────────────────────────────────┐
+├── UXI-2 (Metric Dropdown Search) ──────────────────────────────┼──> Phase 2
+├── UXI-3 (Skip Shortcut) ───────────────────────────────────────┤
+└── UXI-5 (Confidence Tooltips) ─────────────────────────────────┘
+
+Phase 2 (Parallel, UXI-4 depends on UXI-2):
+├── UXI-4 (Recent Metrics) ← UXI-2 ──────────────────────────────┐
+└── UXI-6 (Bulk Action Limit) ───────────────────────────────────┼──> Phase 3
+
+Phase 3 (Parallel):
+├── UXI-8 (Focus Management)
+└── UXI-9 ("Other" Rejection UX)
+```
+
+**UXI Files to Modify**:
+| File | UXI-1 | UXI-2 | UXI-3 | UXI-4 | UXI-5 | UXI-6 | UXI-8 | UXI-9 |
+|------|-------|-------|-------|-------|-------|-------|-------|-------|
+| `review.js` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ |
+| `review.html` | | ✓ | | ✓ | ✓ | | | |
+| `api.py` | | | ✓ | | | ✓ | | |
+
+**UXI Success Metrics**:
+| Metric | Current | Target |
+|--------|---------|--------|
+| Mouse clicks per decision | ~3-5 | ~1-2 |
+| Time to select metric (reclassify) | ~5-10 sec | ~2-3 sec |
+| Keyboard-only workflow possible | No | Yes |
+| Skip functionality | None | Available |
+
+---
+
 ## Parallel Execution Plan
 
 ### Wave 1: Quick Wins ✅ COMPLETE
@@ -491,10 +582,18 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     │  HRV-1 through HRV-16 (Validation + System Improve) │
                     │  Phases 1-4: ✅ COMPLETE (18/20 tasks)              │
                     │  HRV-13 deferred; HRV-12 closed; HRV-20 superseded  │
+                    └─────────────────────────┬───────────────────────────┘
+                                              │
+                    ┌─────────────────────────▼───────────────────────────┐
+                    │                WAVE 5 🟡 PENDING                    │
+                    │  UXI-1 through UXI-9 (excl. UXI-7, dropped)        │
+                    │  Phases 1-3: 🟡 PENDING (0/8 tasks)                │
+                    │  Focus: Keyboard nav, dropdown search, usability   │
                     └─────────────────────────────────────────────────────┘
 
-Waves 1-4 Complete: 55/60 tasks (92%)
-Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, HRV-12 closed, HRV-20 superseded
+Waves 1-4 Complete: 57/73 tasks (78%)
+Wave 5 Pending: 8 UXI tasks (UXI-7 dropped)
+Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, 8 UXI tasks pending
 ```
 
 ---
@@ -521,6 +620,7 @@ HRV-21 ← None                   # Diagnostic investigation (verify HRV-17 clai
 HRV-22 ← HRV-21                 # HTMLSegmenter bug fix (supersedes HRV-20)
 HRV-20 ← SUPERSEDED             # Superseded by HRV-22
 HRV-16 ← HRV-22                 # Final validation needs data fix
+UXI-4 ← UXI-2                   # Recent metrics needs search input structure
 ```
 
 ### Soft Dependencies (Can Start Early)
@@ -533,6 +633,8 @@ HRV-1 ← (none)           # CSV schema can start immediately
 HRV-2 ← (none)           # Validation scripts can start immediately
 HRV-7,8,9,10,14 ← HRV-4  # Phase 4 improvements depend on HRV-4 analysis (can run parallel)
 HRV-12 ← HRV-9           # CLOSED - Won't Do
+UXI-1,2,3,5 ← (none)     # Phase 1 UXI tasks are independent (can start immediately)
+UXI-4,6,8,9 ← (none)     # Phase 2-3 UXI tasks are independent (UXI-4 after UXI-2)
 ```
 
 ---
@@ -723,4 +825,27 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-06 (INV-1 archived; INV-1-FIX prompt created; 56/62 tasks done)*
+---
+
+## Known Issues / Technical Debt
+
+### ISSUE-1: mypy type error in number_parsing.py (pre-existing)
+
+**Discovered**: 2026-01-07 (during DFP-1 task execution)
+**Location**: `src/review/number_parsing.py:301`
+**Error**: `Incompatible types in assignment (expression has type "int | None", variable has type "Decimal")`
+**Severity**: Low (does not affect runtime behavior, mypy --strict only)
+
+**Root Cause Investigation Notes**:
+- The error is in `number_parsing.py`, NOT in files modified by recent tasks
+- Line 301 likely involves a variable declared as `Decimal` being assigned a value that could be `int | None`
+- This occurs in code that parses numeric values from text
+- The type annotation is overly strict - the runtime code likely handles the None case elsewhere
+- To find: `grep -n "Decimal" src/review/number_parsing.py | head -20` to see variable declarations
+- To fix: Either update the type annotation to `Decimal | int | None` or add proper type narrowing/conversion
+
+**Impact**: None on functionality - only fails `mypy --strict` checks on the review module
+
+---
+
+*Last verified: 2026-01-07 (DFP-1 complete; 58/74 tasks done)*
