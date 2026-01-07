@@ -222,8 +222,8 @@ CREATE TABLE source_segments (
 
     -- Location/provenance
     html_selector TEXT,
-    char_start_offset INTEGER,
-    char_end_offset INTEGER,
+    char_start_offset INTEGER,  -- DEPRECATED: Always NULL (INV-1-FIX-v2)
+    char_end_offset INTEGER,    -- DEPRECATED: Always NULL (INV-1-FIX-v2)
     page_number INTEGER,
 
     -- Content
@@ -267,8 +267,8 @@ CREATE INDEX idx_segments_numeric ON source_segments(filing_id)
 | `section_heading` | text | no | Heading text associated with the segment's section. |
 | `sequence_index` | integer | yes | Ordering of segment within the filing (0-based). |
 | `html_selector` | text | no | XPath/CSS selector for precise location. |
-| `char_start_offset` | integer | no | Start character index in normalized filing text. |
-| `char_end_offset` | integer | no | End character index in normalized filing text. |
+| `char_start_offset` | integer | no | **DEPRECATED (INV-1-FIX-v2)**: Always NULL. Use `html_selector` for source location. |
+| `char_end_offset` | integer | no | **DEPRECATED (INV-1-FIX-v2)**: Always NULL. Use `html_selector` for source location. |
 | `page_number` | integer | no | Page number in PDF, if available. |
 | `raw_text` | text | yes | Normalized plain text (visible content only). |
 | `raw_html` | text | no | Original HTML snippet. May be large. |
