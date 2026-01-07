@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-6 complete, UXI-8 dropped; 67/85 tasks done)
+**Last Verified**: 2026-01-07 (MET-8 complete; 68/85 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -18,14 +18,14 @@
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 8 | 5 | 0 | 1 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 1 | 4 | 5 | 0 |
-| **TOTAL** | **85** | **67** | **4** | **9** | **4** |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 2 | 4 | 4 | 0 |
+| **TOTAL** | **85** | **68** | **4** | **8** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 1 UXI task pending (UXI-9); UXI-4/UXI-7/UXI-8 dropped; 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 1 UXI task pending (UXI-9); UXI-4/UXI-7/UXI-8 dropped; 8 MET tasks remaining (4 partial, 4 pending; MET-2/MET-8 ✅)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -471,7 +471,7 @@ Phase 3:
 
 **Goal**: Improve metric dropdown ordering, ensure metric consistency, and establish lifecycle documentation
 **Plan Location**: `docs/worker-prompts/WORKER_PROMPT_TASK_MET-*.md`
-**Status**: 🟡 IN PROGRESS - 1/10 complete, 4 partial, 5 pending
+**Status**: 🟡 IN PROGRESS - 2/10 complete, 4 partial, 4 pending
 
 #### Background
 
@@ -508,6 +508,14 @@ The MET workstream addresses issues identified during a critical evaluation of d
 - Metric ID naming conventions and dropdown category ordering
 - Updated CLAUDE.md with reference to new documentation
 
+**MET-8 Completion Note** (2026-01-07): Eliminated DRY violation in dropdown ordering:
+- Created `_build_metric_order_clause()` helper function to generate SQL CASE dynamically
+- Modified `_get_active_metrics()` to use helper (removed 45-line hardcoded SQL)
+- Added safety documentation to `METRIC_DISPLAY_ORDER` dict (single source of truth)
+- Added 5 unit tests in `TestBuildMetricOrderClause` class (SQL structure, content, count)
+- Also modified `_get_unique_metrics_for_filing()` to use semantic ordering (was alphabetical)
+- Added 3 tests in `TestGetUniqueMetricsForFiling` for filter dropdown ordering
+
 #### Phase 2: Implementation (Code changes already made, need completion)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
@@ -526,7 +534,7 @@ The MET workstream addresses issues identified during a critical evaluation of d
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **MET-7** | Resolve alias contradiction (cm_active_customers_total) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9, MET-11 |
-| **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | 🟡 PENDING | None | MET-9 |
+| **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9 |
 | **MET-9** | Add tests for dropdown ordering | S | 1-2h | LOW | 🟡 PENDING | MET-7, MET-8 | MET-11 |
 
 #### Phase 4: Validation and Commit (Final step)
@@ -550,8 +558,8 @@ Phase 2 (Partial - Code already written):
 └── MET-6 (Deprecate Metrics) 🟠 ───────────────────────┘
 
 Phase 3 (Fixes - Address critical evaluation):
-├── MET-7 (Alias Fix) ──────────────────────────────────┬──> MET-9, MET-11
-└── MET-8 (DRY Fix) ────────────────────────────────────┘
+├── MET-7 (Alias Fix) ✅ ───────────────────────────────┬──> MET-9, MET-11
+└── MET-8 (DRY Fix) ✅ ─────────────────────────────────┘
 
 Phase 4 (Final - Validation and Commit):
 └── MET-11 (Validate + Commit) ← MET-7, MET-8, MET-9
@@ -1007,4 +1015,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-07 (UXI-4 dropped; 65/85 tasks complete, 4 partial, 11 pending, 4 blocked)*
+*Last verified: 2026-01-07 (MET-8 complete; 68/85 tasks complete, 4 partial, 8 pending, 4 blocked)*
