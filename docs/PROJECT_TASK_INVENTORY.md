@@ -403,7 +403,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **UXI-2-TEST** | E2E tests for metric dropdown search | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 | UXI-2-TEST-F* |
-| **UXI-2-TEST-F1** | E2E test for reclassify selection submission | S | 1-2h | NONE | 🟡 PENDING | UXI-2-TEST | None |
+| **UXI-2-TEST-F1** | E2E test for reclassify selection submission | S | 30min | NONE | ✅ COMPLETE | UXI-2-TEST | None |
 | **UXI-2-TEST-F2** | E2E test for partial match search | XS | 30-45min | NONE | 🟡 PENDING | UXI-2-TEST | None |
 | **UXI-2-TEST-F3** | E2E test automation script | S | 1-2h | NONE | 🟡 PENDING | UXI-2-TEST | None |
 | **UXI-2-TEST-F4** | Visual regression E2E tests | M | 2-3h | LOW | 🟡 PENDING | UXI-2-TEST | None |
@@ -414,6 +414,13 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 - 2 optional tests documented (single match Enter, case insensitivity)
 - All 6 required tests verified passing via Playwright MCP
 - Tests use Playwright MCP tools for browser automation (not pytest)
+
+**UXI-2-TEST-F1 Completion Note** (2026-01-07): Enhanced Test 7 instead of creating duplicate test:
+- Upgraded `test_single_match_enter_select` from optional to required
+- Added submission verification: toast notification + URL navigation assertions
+- Added `success_toast` and `error_toast` selectors to conftest.py
+- Now 7 required tests, 1 optional test
+- Approach: Enhanced existing test rather than duplicating ~80% of test steps
 
 #### Phase 2: Dropdown Improvements (Medium Priority)
 

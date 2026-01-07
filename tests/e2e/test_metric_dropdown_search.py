@@ -235,32 +235,46 @@ def test_arrow_navigation():
 
 
 # =============================================================================
-# Test 7 (Optional): Single Match Auto-Select with Enter
+# Test 7: Single Match Enter Select with Submission Verification
 # =============================================================================
 
 def test_single_match_enter_select():
     """
-    Test: When only one metric matches, pressing Enter selects it.
+    Test: When only one metric matches, pressing Enter selects AND submits it.
+
+    This test verifies the FULL reclassification flow from search to submission.
 
     Steps (execute via Playwright MCP):
     1. browser_navigate to review page with pending candidate
-    2. browser_press_key 'c' to open dropdown
-    3. browser_type a unique search term that matches only one metric
+    2. browser_snapshot to record current URL and candidate ID
+    3. browser_press_key 'c' to open dropdown
+    4. browser_type a unique search term that matches only one metric
        (e.g., 'dau' for Daily Active Users, or 'logo' for Logo Retention)
-    4. browser_snapshot to verify single match
-    5. browser_press_key 'Enter' to select
+    5. browser_snapshot to verify single match visible
+    6. browser_press_key 'Enter' to select and submit
+    7. browser_wait_for text='Success' (toast notification)
+    8. browser_snapshot to verify navigation occurred
 
     Expected Results:
-    - Dropdown should close
-    - Decision should be submitted with the matched metric
-    - OR error if no single match (test should use a term with exactly 1 match)
+    - Dropdown should close after Enter
+    - Success toast notification should appear (contains "Success")
+    - Page should navigate to next candidate OR filings list
+    - URL should change from original (proves navigation happened)
+
+    Assertions:
+    - Toast with "Success" text visible within 2 seconds
+    - URL changed from original review page
+    - If next candidate exists: new candidate ID in URL
+    - If no more candidates: redirects to /filings
 
     Note: This test requires knowing which search terms produce single matches.
     Check the metric dropdown content first via browser_snapshot.
+    Good single-match terms: 'dau', 'mau', 'wau', 'logo', 'gmv'
 
     DOM Selectors:
     - Search input: {search_input}
     - Visible metrics: {visible_metric}
+    - Success toast: .alert-success, .toast-success, or text "Success"
     """.format(**SELECTORS)
     pass
 
@@ -343,16 +357,16 @@ def get_test_setup_instructions():
 TEST SUMMARY - UXI-2 Metric Dropdown Search E2E Tests
 =====================================================
 
-Required Tests (6):
+Required Tests (7):
 1. test_search_filters_metrics - Type "arr", verify filtering
 2. test_clear_button_resets_filter - Click X, verify all visible
 3. test_no_matches_message - Type "xyz123", verify message
 4. test_autofocus_on_open - Press C, verify input focused
 5. test_state_reset_on_close - Close/reopen, verify cleared
 6. test_arrow_navigation - Type + ArrowDown, verify focus
+7. test_single_match_enter_select - Single match + Enter + verify submission
 
-Optional Tests (2):
-7. test_single_match_enter_select - Single match + Enter
+Optional Tests (1):
 8. test_case_insensitivity - ARR vs arr comparison
 
 Execution Order:
@@ -364,10 +378,11 @@ For efficiency, run tests in sequence reusing browser state where possible:
 5. Test 2 (clear) - clear and verify
 6. Test 3 (no matches) - type 'xyz123'
 7. Test 5 (close/reopen) - escape and reopen
-8. Optional tests as needed
+8. Test 7 (submission) - single match + Enter, verify toast + navigation
 
 Pass Criteria:
-- All 6 required tests must pass
+- All 7 required tests must pass
 - UI should respond within 1 second for each interaction
 - No console errors during tests
+- Test 7 must verify success toast AND navigation occurs
 """
