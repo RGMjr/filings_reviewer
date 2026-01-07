@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-1 complete; 63/85 tasks done)
+**Last Verified**: 2026-01-07 (MET-2 complete; 64/85 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -18,14 +18,14 @@
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 8 | 2 | 0 | 6 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 0 | 4 | 6 | 0 |
-| **TOTAL** | **85** | **63** | **4** | **14** | **4** |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 1 | 4 | 5 | 0 |
+| **TOTAL** | **85** | **64** | **4** | **13** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 6 UXI tasks pending (UXI-1 ✅, UXI-5 ✅, UXI-7 dropped); 10 MET tasks (4 partial, 6 pending)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 6 UXI tasks pending (UXI-1 ✅, UXI-5 ✅, UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -476,8 +476,8 @@ The MET workstream addresses issues identified during a critical evaluation of d
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **MET-1** | Metric Consistency Audit | M | 2-4h | LOW | 🟡 PENDING | None | MET-3, MET-4 |
-| **MET-2** | Metric Lifecycle Process Documentation | S | 1-2h | NONE | 🟡 PENDING | None | MET-5, MET-6 |
+| **MET-1** | Metric Consistency Audit | L | 4-8h | LOW | 🟡 PENDING | None | MET-3, MET-4 |
+| **MET-2** | Metric Lifecycle Process Documentation | S | 1-2h | NONE | ✅ COMPLETE | None | MET-5, MET-6 |
 
 **MET-2 Note**: MET-10 was consolidated into MET-2 (2026-01-07). See `docs/archive/worker-prompts-consolidated/`.
 
