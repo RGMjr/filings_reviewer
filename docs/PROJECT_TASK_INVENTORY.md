@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-3 complete; 65/85 tasks done)
+**Last Verified**: 2026-01-07 (UXI-6 complete, UXI-8 dropped; 67/85 tasks done)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -17,15 +17,15 @@
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 8 | 3 | 0 | 4 | 0 |
+| UX_IMPROVEMENT (UXI) | 8 | 5 | 0 | 1 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 1 | 4 | 5 | 0 |
-| **TOTAL** | **85** | **65** | **4** | **11** | **4** |
+| **TOTAL** | **85** | **67** | **4** | **9** | **4** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: Wave 5 - UX Improvements (keyboard navigation, dropdown search, usability) + MET workstream (metric dropdown ordering)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 4 UXI tasks pending (UXI-1 ✅, UXI-3 ✅, UXI-5 ✅, UXI-4/UXI-7 dropped); 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; 1 UXI task pending (UXI-9); UXI-4/UXI-7/UXI-8 dropped; 9 MET tasks remaining (4 partial, 5 pending; MET-2 ✅)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -403,18 +403,19 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **UXI-4** | Recent metrics section in dropdown | S | 1-2h | LOW | ~~DROPPED~~ | UXI-2 | None |
-| **UXI-6** | Bulk action limit increase (20→50) | S | 1-2h | LOW | 🟡 PENDING | None | None |
+| **UXI-6** | Bulk action limit increase (20→50) | XS | 30min | LOW | ✅ DONE | None | None |
 
 #### Phase 3: UX Polish (Lower Priority)
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **UXI-8** | Focus management after navigation | S | 1h | LOW | 🟡 PENDING | None | None |
+| **UXI-8** | Focus management after navigation | S | 1h | LOW | ~~DROPPED~~ | None | None |
 | **UXI-9** | "Other" rejection category UX | XS | <30m | NONE | 🟡 PENDING | None | None |
 
 **Dropped Tasks**:
 - ~~**UXI-4** Recent metrics section~~ - Redundant with UXI-2 search functionality; sessionStorage choice contradicted business rationale
 - ~~**UXI-7** Metric abbreviation inline display~~ - Low value, maintenance burden
+- ~~**UXI-8** Focus management after navigation~~ - Existing keyboard shortcuts (`A`, `R`, `C`) already provide equivalent functionality; auto-focus on Accept could bias reviews and harm accessibility (WCAG 2.4.3, 3.2.1)
 
 **UXI-1 Completion Note** (2026-01-07): Dropdown keyboard navigation complete with UXI-1a fix:
 - Core functionality: R/C keys open dropdowns, number keys 1-6 select rejection categories
@@ -444,8 +445,8 @@ Phase 2 (Parallel):
 ├── UXI-4 (Recent Metrics) ~~DROPPED~~ (redundant with UXI-2)
 └── UXI-6 (Bulk Action Limit) ───────────────────────────────────┬──> Phase 3
 
-Phase 3 (Parallel):
-├── UXI-8 (Focus Management)
+Phase 3:
+├── UXI-8 (Focus Management) ~~DROPPED~~ (keyboard shortcuts already solve this)
 └── UXI-9 ("Other" Rejection UX)
 ```
 

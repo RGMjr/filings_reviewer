@@ -354,8 +354,8 @@
             return;
         }
 
-        if (state.selectedCandidates.size > 20) {
-            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+        if (state.selectedCandidates.size > 50) {
+            alert('Maximum 50 candidates per bulk action. Please deselect some candidates.');
             return;
         }
 
@@ -388,8 +388,8 @@
             return;
         }
 
-        if (state.selectedCandidates.size > 20) {
-            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+        if (state.selectedCandidates.size > 50) {
+            alert('Maximum 50 candidates per bulk action. Please deselect some candidates.');
             return;
         }
 
