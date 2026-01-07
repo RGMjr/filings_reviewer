@@ -90,6 +90,10 @@ SELECTORS = {
     "visible_metric": ".metric-list > li:not(.d-none)",
     "no_matches": ".no-matches-message",
 
+    # Feedback/notifications
+    "success_toast": ".alert-success",
+    "error_toast": ".alert-danger",
+
     # Navigation
     "filings_link": "a[href='/filings']",
     "filing_row": ".filing-row",
