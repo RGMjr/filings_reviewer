@@ -39,11 +39,17 @@ class TestGetAliases:
         for metric_id in aliases.keys():
             assert not metric_id.startswith("_"), f"Should not include YAML anchor {metric_id}"
 
-    def test_includes_known_alias(self):
-        """Should include the known cm_customers_period_end -> cm_active_customers_total alias."""
+    def test_no_customer_metric_alias(self):
+        """cm_customers_period_end and cm_active_customers_total are DISTINCT metrics, not aliases.
+
+        These metrics have different semantic meanings:
+        - cm_customers_period_end: Stock count at period end ("total customers")
+        - cm_active_customers_total: Engagement-based count ("active customers")
+        """
         aliases = get_aliases()
-        assert "cm_customers_period_end" in aliases
-        assert "cm_active_customers_total" in aliases["cm_customers_period_end"]
+        # cm_customers_period_end should NOT have cm_active_customers_total as an alias
+        if "cm_customers_period_end" in aliases:
+            assert "cm_active_customers_total" not in aliases["cm_customers_period_end"]
 
 
 class TestResolveToCanonical:
@@ -64,10 +70,15 @@ class TestResolveToCanonical:
         result = resolve_to_canonical("")
         assert result == ""
 
-    def test_alias_resolves_to_canonical(self):
-        """cm_active_customers_total resolves to cm_customers_period_end."""
+    def test_distinct_metrics_stay_separate(self):
+        """cm_active_customers_total stays as itself (not an alias of cm_customers_period_end).
+
+        These are semantically distinct metrics - "active" implies engagement criteria,
+        while "period end" is a simple stock count.
+        """
         result = resolve_to_canonical("cm_active_customers_total")
-        assert result == "cm_customers_period_end"
+        # Should NOT resolve to cm_customers_period_end - they are distinct
+        assert result == "cm_active_customers_total"
 
     def test_canonical_id_stays_canonical(self):
         """cm_customers_period_end stays as cm_customers_period_end."""
@@ -84,17 +95,19 @@ class TestGetAllEquivalentIds:
         assert "cm_arr" in result
         assert len(result) == 1
 
-    def test_includes_canonical_and_aliases(self):
-        """Returns set with canonical and all aliases for cm_customers_period_end."""
+    def test_metric_without_aliases_returns_only_itself(self):
+        """cm_customers_period_end has no aliases, returns only itself."""
         result = get_all_equivalent_ids("cm_customers_period_end")
         assert "cm_customers_period_end" in result
-        assert "cm_active_customers_total" in result
+        # cm_active_customers_total is a DISTINCT metric, not an alias
+        assert "cm_active_customers_total" not in result
 
-    def test_alias_input_returns_full_set(self):
-        """Alias as input also returns full set."""
+    def test_distinct_metric_returns_only_itself(self):
+        """cm_active_customers_total is distinct from cm_customers_period_end."""
         result = get_all_equivalent_ids("cm_active_customers_total")
-        assert "cm_customers_period_end" in result
+        # Should only contain itself, not cm_customers_period_end
         assert "cm_active_customers_total" in result
+        assert "cm_customers_period_end" not in result
 
     def test_unknown_id_returns_set_with_input(self):
         """Unknown ID returns set containing just that ID."""
@@ -113,10 +126,15 @@ class TestMetricsAreEquivalent:
         """Different non-aliased IDs are not equivalent."""
         assert metrics_are_equivalent("cm_arr", "cm_mrr") is False
 
-    def test_canonical_and_alias_are_equivalent(self):
-        """cm_customers_period_end and cm_active_customers_total are equivalent."""
-        assert metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total") is True
-        assert metrics_are_equivalent("cm_active_customers_total", "cm_customers_period_end") is True
+    def test_distinct_customer_metrics_not_equivalent(self):
+        """cm_customers_period_end and cm_active_customers_total are NOT equivalent.
+
+        These are semantically distinct:
+        - cm_customers_period_end: Stock count ("total customers")
+        - cm_active_customers_total: Engagement-based ("active customers")
+        """
+        assert metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total") is False
+        assert metrics_are_equivalent("cm_active_customers_total", "cm_customers_period_end") is False
 
     def test_empty_string_handling(self):
         """Empty strings are handled gracefully."""
