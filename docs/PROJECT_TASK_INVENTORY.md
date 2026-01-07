@@ -394,7 +394,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **UXI-1** | Dropdown keyboard navigation (number keys + arrows) | M | 2-3h | LOW | ✅ COMPLETE | None | UXI-4 |
-| **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | 🟡 PENDING | None | UXI-4 |
+| **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | ✅ COMPLETE | None | UXI-4 |
 | **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
 | **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | ✅ COMPLETE | None | None |
 
@@ -435,7 +435,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 ```
 Phase 1 (Parallel):
 ├── UXI-1 (Dropdown Keyboard Nav) ✅ ──────────────────────────────┐
-├── UXI-2 (Metric Dropdown Search) ──────────────────────────────┼──> Phase 2
+├── UXI-2 (Metric Dropdown Search) ✅ ────────────────────────────┼──> Phase 2
 ├── UXI-3 (Skip Shortcut) ✅ ────────────────────────────────────┤
 └── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
 
