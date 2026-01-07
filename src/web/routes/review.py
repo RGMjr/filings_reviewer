@@ -167,6 +167,7 @@ class FilingListItem(TypedDict):
     pending_count: int  # Pending candidates for this filing
     reviewed_count: int  # Reviewed candidates for this filing
     review_status: str  # Overall status: 'pending' or 'reviewed'
+    extraction_date: datetime  # When candidates were extracted (MIN created_at)
 
 
 class FilingData(TypedDict):
@@ -442,6 +443,13 @@ def review_filing(filing_id: int):
             "has_active_filters": has_active_filters,
         }
 
+        # Compute extraction date (earliest candidate creation) from all candidates
+        extraction_date = None
+        if all_candidates:
+            created_dates = [c.get("created_at") for c in all_candidates if c.get("created_at")]
+            if created_dates:
+                extraction_date = min(created_dates)
+
         # Render template with documented data contract
         # Template: review.html
         # Data contract:
@@ -458,6 +466,7 @@ def review_filing(filing_id: int):
         #   - total_candidates_unfiltered: int - Total number of candidates (unfiltered)
         #   - pending_count: int - Number of pending candidates (in filtered set)
         #   - reviewed_count: int - Number of reviewed candidates (in filtered set)
+        #   - extraction_date: datetime | None - When candidates were first extracted
         return render_template(
             "review.html",
             filing=filing,
@@ -473,6 +482,7 @@ def review_filing(filing_id: int):
             total_candidates_unfiltered=total_candidates_unfiltered,
             pending_count=pending_count,
             reviewed_count=reviewed_count,
+            extraction_date=extraction_date,
         )
 
     except Exception as e:
