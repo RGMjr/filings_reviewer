@@ -51,19 +51,23 @@
 
                 {# Filing metadata grid #}
                 <div class="row text-muted small">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">Form Type</div>
                         <div>{{ filing.form_type }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">Filing Date</div>
                         <div>{{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <div class="d-block text-uppercase fw-bold mb-1">Extracted</div>
+                        <div>{{ extraction_date.strftime('%Y-%m-%d') if extraction_date else 'N/A' }}</div>
+                    </div>
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">CIK</div>
                         <div>{{ filing.cik }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <div class="d-block text-uppercase fw-bold mb-1">Accession</div>
                         <div class="font-monospace" style="font-size: 0.75rem;">
                             {{ filing.accession_number }}

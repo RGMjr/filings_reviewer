@@ -166,11 +166,15 @@
                 <span class="ms-3 stat-label">Date:</span>
                 <span class="stat-value">{{ filing.filing_date.strftime('%Y-%m-%d') }}</span>
               </div>
-              <div class="mb-3">
+              <div class="mb-1">
                 <span class="stat-label">Accession:</span>
                 <span class="stat-value" style="font-size: 0.8em; font-family: monospace;">
                   {{ filing.accession_number }}
                 </span>
+              </div>
+              <div class="mb-3">
+                <span class="stat-label">Extracted:</span>
+                <span class="stat-value">{{ filing.extraction_date.strftime('%Y-%m-%d') if filing.extraction_date else 'N/A' }}</span>
               </div>
             </div>
 
