@@ -11,10 +11,11 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector, context_extractor, structure_parser, candidate_detector
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
-└── llm/            # OpenAI integration: openai_client.py, prompts.py
+├── llm/            # OpenAI integration: openai_client.py, prompts.py
+└── gold_standard/  # Validation: baseline.py, fresh_extractor.py
 config/
 └── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
 ```
@@ -25,7 +26,7 @@ config/
 
 ## Database Schema
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `filing_metric_incidence`, `review_candidates`, `review_decisions`, `learned_patterns`. Schema files in `sql/` (01-07).
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `filing_metric_incidence`, `review_candidates`, `review_decisions`, `learned_patterns`. Schema files in `sql/` (00-08).
 
 API keys go in `.env` (gitignored). See `.env.template`.
 
@@ -105,6 +106,16 @@ docker compose up -d
 docker compose down
 ```
 
+## Claude Code MCP Servers (Optional)
+
+For browser automation when testing the Flask review UI:
+
+```bash
+claude mcp add --transport stdio playwright -- npx -y @playwright/mcp@latest
+```
+
+This adds the official Playwright MCP server, enabling browser automation tools (navigate, click, type, snapshot) for testing the web interface.
+
 ## SEC EDGAR Integration
 
 - **Rate Limiting**: 100ms minimum between requests per SEC guidelines
@@ -166,6 +177,12 @@ docker compose down
     - Example: `cm_customers_period_end` has alias `cm_active_customers_total` (both match "Active Consumers")
     - Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
     - System always generates canonical IDs; aliases only used for comparison/validation
+13. **Character offset computation removed** (2026-01-07): `char_start_offset` and `char_end_offset` fields are always NULL:
+    - Removed `_compute_element_offsets()` from HTMLSegmenter (INV-1-FIX-v2)
+    - Root cause: BeautifulSoup HTML normalization caused O(n*m) performance issues (~105s for large filings)
+    - Impact: None - offset data was not used by any feature (review UI uses keyword text matching)
+    - Alternative: Use `html_selector` (CSS selector) for source location if needed
+    - DB columns retained for schema compatibility
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
@@ -212,7 +229,7 @@ docker compose down
 
 ## Documentation
 
-See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM_PLAN.md`
+See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM.md`
 
 ## Task Execution Workflow
 
