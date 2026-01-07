@@ -461,7 +461,7 @@ Phase 3 (Parallel):
 
 **Goal**: Improve metric dropdown ordering, ensure metric consistency, and establish lifecycle documentation
 **Plan Location**: `docs/worker-prompts/WORKER_PROMPT_TASK_MET-*.md`
-**Status**: 🟡 IN PROGRESS - 0/10 complete, 4 partial, 6 pending
+**Status**: 🟡 IN PROGRESS - 1/10 complete, 4 partial, 5 pending
 
 #### Background
 
@@ -480,6 +480,13 @@ The MET workstream addresses issues identified during a critical evaluation of d
 | **MET-2** | Metric Lifecycle Process Documentation | S | 1-2h | NONE | ✅ COMPLETE | None | MET-5, MET-6 |
 
 **MET-2 Note**: MET-10 was consolidated into MET-2 (2026-01-07). See `docs/archive/worker-prompts-consolidated/`.
+
+**MET-2 Completion Note** (2026-01-07): Created comprehensive `docs/development/metric-lifecycle-process.md` documenting:
+- Step-by-step processes for adding, deprecating, and removing metrics
+- All 5 locations where metrics are defined (YAML, SQL, Python mapping, review.py ordering, docs)
+- Practical examples and checklists for each operation
+- Metric ID naming conventions and dropdown category ordering
+- Updated CLAUDE.md with reference to new documentation
 
 #### Phase 2: Implementation (Code changes already made, need completion)
 
@@ -981,4 +988,4 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-07 (UXI-1 complete; 63/85 tasks complete, 4 partial, 14 pending, 4 blocked)*
+*Last verified: 2026-01-07 (MET-2 complete; 64/85 tasks complete, 4 partial, 13 pending, 4 blocked)*
