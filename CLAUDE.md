@@ -174,7 +174,6 @@ This adds the official Playwright MCP server, enabling browser automation tools 
 12. **Metric ID alias system** (2026-01-01): Canonical metric IDs can have aliases for gold standard compatibility:
     - Aliases defined in `config/metric_keywords.yaml` under each metric's `aliases` field
     - Functions in `keyword_config.py`: `get_aliases()`, `resolve_to_canonical()`, `get_all_equivalent_ids()`, `metrics_are_equivalent()`
-    - Example: `cm_customers_period_end` has alias `cm_active_customers_total` (both match "Active Consumers")
     - Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
     - System always generates canonical IDs; aliases only used for comparison/validation
 13. **Character offset computation removed** (2026-01-07): `char_start_offset` and `char_end_offset` fields are always NULL:
@@ -183,6 +182,14 @@ This adds the official Playwright MCP server, enabling browser automation tools 
     - Impact: None - offset data was not used by any feature (review UI uses keyword text matching)
     - Alternative: Use `html_selector` (CSS selector) for source location if needed
     - DB columns retained for schema compatibility
+14. **Customer count metric distinction** (2026-01-07, MET-1): Two semantically distinct customer count metrics:
+    - `cm_customers_period_end`: Period-end stock count (total customers, paid customers, customer base)
+    - `cm_active_customers_total`: Engagement-based count (active customers, active users, active accounts)
+    - These are NOT aliases - they measure different things:
+      - "We have 10,000 total customers" → `cm_customers_period_end`
+      - "We have 8,000 active customers" → `cm_active_customers_total`
+    - Both metrics exist in SQL with `status = 'active'`
+    - METRIC_NAME_MAPPING in `value_extractor.py` routes LLM names to correct canonical ID
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
