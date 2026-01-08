@@ -275,6 +275,18 @@ class HTMLSegmenter:
             if element.name == "figure" and element.find_parent("figure"):
                 continue
 
+            # Skip div that only wraps a table with no additional text content
+            # This prevents duplicate extraction - the inner table will be extracted separately
+            # with correct type and [ROW]/[CELL] markers
+            if element.name == "div":
+                inner_table = element.find("table")
+                if inner_table:
+                    div_text = self._normalize_text(element.get_text())
+                    table_text = self._normalize_text(inner_table.get_text())
+                    if div_text == table_text:
+                        # Div adds nothing beyond the table - skip it
+                        continue
+
             # Skip elements nested in a div that contains BOTH text and tables (L5 composite splitting)
             # Those elements will be extracted when the parent div is split
             if element.name in ["p", "table"]:
@@ -864,9 +876,13 @@ class HTMLSegmenter:
                     if text_content.strip():  # Only add non-empty text
                         content_pieces.append(("text", text_before, text_content))
 
-                # Add the table
+                # Add the table with [ROW]/[CELL] markers for row-aware matching
                 table_soup = BeautifulSoup(table_html, "html.parser")
-                table_text = self._normalize_text(table_soup.get_text())
+                table_elem = table_soup.find("table")
+                if table_elem:
+                    table_text = self._extract_table_text_with_markers(table_elem)
+                else:
+                    table_text = self._normalize_text(table_soup.get_text())
                 if table_text.strip():  # Only add non-empty tables
                     content_pieces.append(("table", table_html, table_text))
 
@@ -903,7 +919,14 @@ class HTMLSegmenter:
                     html_content = html_content[:effective_max]
                     # Re-extract text from truncated HTML to ensure consistency
                     truncated_soup = BeautifulSoup(html_content, "html.parser")
-                    text_content = self._normalize_text(truncated_soup.get_text())
+                    if seg_type == "table":
+                        table_elem = truncated_soup.find("table")
+                        if table_elem:
+                            text_content = self._extract_table_text_with_markers(table_elem)
+                        else:
+                            text_content = self._normalize_text(truncated_soup.get_text())
+                    else:
+                        text_content = self._normalize_text(truncated_soup.get_text())
                 elif len(text_content) > effective_max:
                     # Text somehow longer than HTML limit - truncate
                     text_content = text_content[:effective_max]
