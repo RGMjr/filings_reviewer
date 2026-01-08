@@ -196,6 +196,12 @@ This adds the official Playwright MCP server, enabling browser automation tools 
     - `DOLLAR_ONLY_METRICS`: Revenue metrics (ARR, LTV, CAC) must be currency
     - Defined in `src/review/false_positive_filter.py`, applied in `candidate_generator.py:802-838`
     - Example: "146% retention" won't match `cm_large_customers_period_end` (expects count)
+16. **Div-wrapped table deduplication** (2026-01-07): Tables inside `<div>` wrappers are now handled correctly:
+    - Skip `<div>` elements that contain only a `<table>` (no additional text) - prevents duplicate extraction
+    - Composite split tables (from divs with text + table) now get `[ROW]`/`[CELL]` markers
+    - Fixes cross-row false positives where keywords from one table row matched numbers in another row
+    - Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
+    - Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 

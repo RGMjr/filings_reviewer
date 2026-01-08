@@ -5471,3 +5471,266 @@ class TestFarfetchTablePatternRegression:
             assert "Active Consumers" in table_seg.raw_text or "[CELL]" in table_seg.raw_text
             # The text should be extractable from the HTML
             assert "Active Consumers" in html_extractable
+
+
+class TestDivOnlyTableSkip:
+    """Test that div elements wrapping only a table are skipped to prevent duplicates."""
+
+    def test_div_wrapping_only_table_produces_single_segment(self, temp_html_file):
+        """A div containing only a table should produce a single table segment, not duplicates."""
+        html = """
+        <html><body>
+            <div style="padding:10px;">
+                <table>
+                    <tr><th>Metric</th><th>2023</th><th>2022</th></tr>
+                    <tr><td>Paid Customers</td><td>88,000</td><td>59,000</td></tr>
+                    <tr><td>Large Customers</td><td>575</td><td>298</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have exactly one table segment, not a paragraph + table
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            paragraph_segments = [s for s in segments if s.segment_type == "paragraph"]
+
+            assert len(table_segments) == 1, (
+                f"Expected 1 table segment, got {len(table_segments)}"
+            )
+            # The div wrapper should NOT create a paragraph segment
+            # (any paragraph would have the same content as the table)
+            for p in paragraph_segments:
+                # If there's a paragraph with the same content as table, that's a bug
+                assert "Paid Customers" not in p.raw_text, (
+                    "Div wrapper should be skipped, not extracted as paragraph"
+                )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_div_wrapping_table_extracts_with_markers(self, temp_html_file):
+        """The inner table should have [ROW] and [CELL] markers."""
+        html = """
+        <html><body>
+            <div>
+                <table>
+                    <tr><td>Revenue</td><td>$1M</td></tr>
+                    <tr><td>Users</td><td>10,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) == 1
+
+            table_seg = table_segments[0]
+            # Should have markers for row-aware matching
+            assert "[ROW]" in table_seg.raw_text, (
+                f"Table should have [ROW] markers, got: {table_seg.raw_text}"
+            )
+            assert "[CELL]" in table_seg.raw_text, (
+                f"Table should have [CELL] markers, got: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_div_with_text_and_table_not_skipped(self, temp_html_file):
+        """A div with both text and table should be split, not skipped."""
+        html = """
+        <html><body>
+            <div>
+                <p>Our key metrics for the quarter:</p>
+                <table>
+                    <tr><td>Active Users</td><td>50,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have both paragraph and table segments
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            paragraph_segments = [s for s in segments if s.segment_type == "paragraph"]
+
+            assert len(table_segments) >= 1, "Should have at least 1 table segment"
+            assert len(paragraph_segments) >= 1, "Should have at least 1 paragraph segment"
+
+            # Paragraph should have intro text
+            assert any("key metrics" in p.raw_text.lower() for p in paragraph_segments)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_divs_with_table_no_duplicates(self, temp_html_file):
+        """Multiple nested divs wrapping a table should still produce single table segment."""
+        html = """
+        <html><body>
+            <div class="outer">
+                <div class="middle">
+                    <div class="inner">
+                        <table>
+                            <tr><td>Metric</td><td>Value</td></tr>
+                            <tr><td>ARR</td><td>$10M</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+
+            # Should have exactly 1 table segment, not multiple from nested divs
+            assert len(table_segments) == 1, (
+                f"Expected 1 table segment from nested divs, got {len(table_segments)}"
+            )
+
+            # No paragraph duplicates with table content
+            for seg in segments:
+                if seg.segment_type == "paragraph":
+                    assert "ARR" not in seg.raw_text, (
+                        "Nested div wrappers should not create paragraph duplicates"
+                    )
+
+        finally:
+            Path(html_path).unlink()
+
+
+class TestCompositeSplitTableMarkers:
+    """Test that tables from composite segment splitting get [ROW]/[CELL] markers."""
+
+    def test_composite_split_table_has_markers(self, temp_html_file):
+        """When a div with text+table is split, the table segment should have markers."""
+        html = """
+        <html><body>
+            <div>
+                <p>The following table shows our customer growth metrics:</p>
+                <table>
+                    <tr><th>Period</th><th>Customers</th></tr>
+                    <tr><td>Q1</td><td>10,000</td></tr>
+                    <tr><td>Q2</td><td>15,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) >= 1, "Should have at least 1 table segment"
+
+            table_seg = table_segments[0]
+            # Composite split tables should have markers
+            assert "[ROW]" in table_seg.raw_text, (
+                f"Composite split table should have [ROW] markers, got: {table_seg.raw_text}"
+            )
+            assert "[CELL]" in table_seg.raw_text, (
+                f"Composite split table should have [CELL] markers, got: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_composite_split_preserves_row_structure(self, temp_html_file):
+        """Composite split table markers should correctly reflect row boundaries."""
+        html = """
+        <html><body>
+            <div>
+                <p>Retention metrics by cohort:</p>
+                <table>
+                    <tr><td>Cohort</td><td>Year 1</td><td>Year 2</td></tr>
+                    <tr><td>2022</td><td>100%</td><td>85%</td></tr>
+                    <tr><td>2023</td><td>100%</td><td>90%</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) >= 1
+
+            table_seg = table_segments[0]
+
+            # Should have 2 [ROW] markers separating 3 rows
+            row_count = table_seg.raw_text.count("[ROW]")
+            assert row_count == 2, (
+                f"Expected 2 [ROW] markers for 3 rows, got {row_count}: {table_seg.raw_text}"
+            )
+
+            # Should have [CELL] markers within rows
+            cell_count = table_seg.raw_text.count("[CELL]")
+            assert cell_count >= 4, (  # At least 2 cells per row * 2+ rows with cells
+                f"Expected at least 4 [CELL] markers, got {cell_count}: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_multiple_tables_in_composite_all_have_markers(self, temp_html_file):
+        """When a div has text and multiple tables, all split tables get markers."""
+        html = """
+        <html><body>
+            <div>
+                <p>Revenue breakdown:</p>
+                <table>
+                    <tr><td>Product A</td><td>$5M</td></tr>
+                </table>
+                <p>Cost breakdown:</p>
+                <table>
+                    <tr><td>Operations</td><td>$2M</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=10)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+
+            # Both tables should have markers
+            for i, table_seg in enumerate(table_segments):
+                assert "[CELL]" in table_seg.raw_text, (
+                    f"Table {i} should have [CELL] markers, got: {table_seg.raw_text}"
+                )
+
+        finally:
+            Path(html_path).unlink()
