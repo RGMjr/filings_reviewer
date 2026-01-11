@@ -195,7 +195,7 @@ def generate_candidates_for_filing(
 
             # Log suppression summary
             if suppression_entries:
-                reasons = {}
+                reasons: dict[str, int] = {}
                 for entry in suppression_entries:
                     reason = entry.get("suppression_reason", "unknown")
                     reasons[reason] = reasons.get(reason, 0) + 1

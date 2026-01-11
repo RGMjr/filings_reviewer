@@ -43,7 +43,6 @@ METRIC_NAME_MAPPING = {
 
     "customers_by_tenure": "cm_customers_period_end_by_tenure",
     "customer_count_by_tenure": "cm_customers_period_end_by_tenure",
-    "customers_period_end": "cm_customers_period_end_by_tenure",
     "customer_cohort_count": "cm_customers_period_end_by_tenure",
 
     "revenue_by_cohort": "cm_revenue_by_cohort",
