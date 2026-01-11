@@ -960,7 +960,7 @@ class TestFalsePositiveFiltering:
         segments = [
             {
                 "source_segment_id": 1,
-                "raw_text": """For the year ended December 31, 2023, we had revenue of $100 million.
+                "raw_text": """For the year ended December 31, 2023, we had ARR of $100 million.
 As of 12/31/2023, our customer count reached 50,000 active customers.
 See Note 5 on page 123 for details. Version 2.0 of our software launched.""",
             }
@@ -3118,8 +3118,8 @@ class TestL3KeywordDirectionIntegration:
             "segment_type": "paragraph",
             "raw_text": (
                 "We had 50000 active customers in Q1. "
-                "Our gross margin was 52% in the same period."
-                #   ^kw before      ^num  ^kw after  ^num
+                "Our net revenue retention was 152% in the same period."
+                #   ^kw before              ^num  ^kw after  ^num
             ),
         }
 
@@ -3137,14 +3137,14 @@ class TestL3KeywordDirectionIntegration:
             c for c in candidates
             if "50000" in c.raw_number_text or c.parsed_value == Decimal("50000")
         ]
-        margin_candidates = [
+        retention_candidates = [
             c for c in candidates
-            if "52" in c.raw_number_text and c.parsed_unit in ("%", "percent")
+            if "152" in c.raw_number_text and c.parsed_unit in ("%", "percent")
         ]
 
         # Verify we found both
         assert len(customer_candidates) >= 1, "Should find customer candidate"
-        assert len(margin_candidates) >= 1, "Should find margin candidate"
+        assert len(retention_candidates) >= 1, "Should find retention candidate"
 
         # Customer candidates should have keyword AFTER number (50000 active customers)
         for candidate in customer_candidates:
@@ -3153,11 +3153,11 @@ class TestL3KeywordDirectionIntegration:
                     f"'active customers' should be after 50000, got '{candidate.keyword_position}'"
                 )
 
-        # Margin candidates should have keyword BEFORE number (margin was 52%)
-        for candidate in margin_candidates:
-            if "margin" in candidate.triggering_keyword.lower():
+        # Retention candidates should have keyword BEFORE number (net revenue retention was 152%)
+        for candidate in retention_candidates:
+            if "retention" in candidate.triggering_keyword.lower():
                 assert candidate.keyword_position == "before", (
-                    f"'gross margin' should be before 52%, got '{candidate.keyword_position}'"
+                    f"'net revenue retention' should be before 152%, got '{candidate.keyword_position}'"
                 )
 
     def test_direction_preserved_in_to_dict(self):

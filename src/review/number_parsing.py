@@ -298,14 +298,14 @@ class NumberParser:
                     continue
 
                 # Parse the spelled-out number
-                value = parse_spelled_number(raw_text)
-                if value is not None:
+                spelled_value = parse_spelled_number(raw_text)
+                if spelled_value is not None:
                     matches.append(
                         NumberMatch(
                             start=start,
                             end=end,
                             raw_text=raw_text,
-                            value=Decimal(value),
+                            value=Decimal(spelled_value),
                             unit="count",  # spelled-out numbers are counts
                         )
                     )
