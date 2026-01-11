@@ -29,7 +29,7 @@ def sample_segment() -> SourceSegment:
         filing_id=1,
         segment_type="paragraph",
         raw_text="We had 1.2 million active users in 2023, representing 25% growth year-over-year.",
-        candidate_metric_ids=["cm_active_users_total", "cm_user_growth_rate"],
+        candidate_metric_ids=["cm_active_customers_total", "cm_user_growth_rate"],
         classifier_confidence=0.85,
     )
 
@@ -138,7 +138,7 @@ class TestPerformanceLogging:
                 filing_id=1,
                 segment_type="paragraph",
                 raw_text="We had 1.2 million active users.",
-                candidate_metric_ids=["cm_active_users_total"],
+                candidate_metric_ids=["cm_active_customers_total"],
                 classifier_confidence=0.8,
             ),
         ]
@@ -343,7 +343,7 @@ class TestMetricDensity:
             filing_id=1,
             segment_type="paragraph",
             raw_text="x" * 200,  # 200 characters
-            candidate_metric_ids=["cm_active_users_total", "cm_customer_churn_rate"],
+            candidate_metric_ids=["cm_active_customers_total", "cm_customer_churn_rate"],
         )
 
         enricher.enrich_batch([segment])
@@ -360,8 +360,8 @@ class TestMetricDensity:
             segment_type="paragraph",
             raw_text="x" * 100,  # 100 characters
             candidate_metric_ids=[
-                "cm_active_users_total",
-                "cm_active_users_total",  # duplicate
+                "cm_active_customers_total",
+                "cm_active_customers_total",  # duplicate
                 "cm_customer_churn_rate",
             ],
         )
@@ -379,7 +379,7 @@ class TestMetricDensity:
             filing_id=1,
             segment_type="paragraph",
             raw_text="",
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
         )
 
         enricher.enrich_batch([segment])
@@ -412,7 +412,7 @@ class TestMetricDensity:
             segment_type="paragraph",
             raw_text="x" * 79,
             candidate_metric_ids=[
-                "cm_active_users_total",
+                "cm_active_customers_total",
                 "cm_customer_churn_rate",
                 "cm_arr",
             ],
@@ -432,7 +432,7 @@ class TestMetricDensity:
             segment_type="paragraph",
             raw_text="x" * 10,  # Very short text
             candidate_metric_ids=[
-                "cm_active_users_total",
+                "cm_active_customers_total",
                 "cm_customer_churn_rate",
                 "cm_arr",
                 "cm_mrr",
@@ -463,7 +463,7 @@ class TestDistinctMetricCount:
             segment_type="paragraph",
             raw_text="Sample text",
             candidate_metric_ids=[
-                "cm_active_users_total",
+                "cm_active_customers_total",
                 "cm_customer_churn_rate",
                 "cm_arr",
             ],
@@ -482,8 +482,8 @@ class TestDistinctMetricCount:
             segment_type="paragraph",
             raw_text="Sample text",
             candidate_metric_ids=[
-                "cm_active_users_total",
-                "cm_active_users_total",  # duplicate
+                "cm_active_customers_total",
+                "cm_active_customers_total",  # duplicate
                 "cm_customer_churn_rate",
                 "cm_customer_churn_rate",  # duplicate
                 "cm_arr",
@@ -553,7 +553,7 @@ class TestEdgeCases:
             filing_id=1,
             segment_type="paragraph",
             raw_text="   ",  # 3 whitespace characters
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
         )
 
         enricher.enrich_batch([segment])
@@ -573,7 +573,7 @@ class TestEdgeCases:
             section_heading="Customer Metrics",
             sequence_index=5,
             raw_text="x" * 100,
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
             classifier_confidence=0.95,
             contains_definition_flag=True,
             contains_methodology_flag=True,
@@ -622,7 +622,7 @@ class TestEdgeCases:
             filing_id=1,
             segment_type="paragraph",
             raw_text="x",  # 1 character
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
         )
 
         enricher.enrich_batch([segment])
@@ -640,7 +640,7 @@ class TestEdgeCases:
             segment_type="paragraph",
             sequence_index=5,
             raw_text="Test text",
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
         )
 
         # Mock _enrich_segment to raise an exception
@@ -957,7 +957,7 @@ class TestTemporalTrendDetection:
                 filing_id=1,
                 segment_type="paragraph",
                 raw_text="Users as of 2023.",
-                candidate_metric_ids=["cm_active_users_total"],
+                candidate_metric_ids=["cm_active_customers_total"],
             ),
         ]
 
@@ -1206,7 +1206,7 @@ class TestCohortBreakdownDetection:
             filing_id=1,
             segment_type="paragraph",
             raw_text="We track active users monthly.",
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
         )
 
         enricher.enrich_batch([segment])
@@ -1726,7 +1726,7 @@ class TestImageDetection:
             segment_type="paragraph",
             raw_text="x" * 100 + " Revenue grew from 2021 to 2023. 44.4% of consumers were new.",
             raw_html='<div><img src="chart.png" width="500" height="300"><svg><rect/></svg></div>',
-            candidate_metric_ids=["cm_revenue", "cm_active_users_total"],
+            candidate_metric_ids=["cm_revenue", "cm_active_customers_total"],
         )
 
         enricher.enrich_batch([segment])
@@ -1980,7 +1980,7 @@ class TestRichnessScore:
             filing_id=1,
             segment_type="paragraph",
             raw_text="Sample text",
-            candidate_metric_ids=["cm_active_users_total"],
+            candidate_metric_ids=["cm_active_customers_total"],
             classifier_confidence=0.0,
         )
 
@@ -1998,7 +1998,7 @@ class TestRichnessScore:
             segment_type="paragraph",
             raw_text="Sample text",
             candidate_metric_ids=[
-                "cm_active_users_total",
+                "cm_active_customers_total",
                 "cm_customer_churn_rate",
                 "cm_arr",
                 "cm_mrr",

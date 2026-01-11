@@ -112,7 +112,8 @@ CREATE TABLE suppressed_candidates (
         CHECK (suppression_reason IN (
             'lower_confidence',    -- Lost confidence comparison at same position
             'cross_sentence',      -- Same-sentence match preferred over cross-sentence
-            'duplicate_execution'  -- Candidate gen was run twice
+            'duplicate_execution', -- Candidate gen was run twice
+            'runner_up'            -- Best alternative metric for position (for UI)
         )),
 
     -- Validate confidence score range (same as review_candidates)

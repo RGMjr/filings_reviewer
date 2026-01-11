@@ -2953,361 +2953,10 @@ class TestParallelSentenceDetection:
 
 
 # =============================================================================
-# SEG5: Character Offset Tracking Tests
+# NOTE: SEG5 (Character Offset Tracking) tests were removed in INV-1-FIX-v2.
+# Offset computation was removed as it caused O(n*m) performance issues and
+# the data was not used by any feature. Use html_selector for source location.
 # =============================================================================
-
-
-class TestCharacterOffsetTracking:
-    """Test character offset tracking for source segments (SEG5)."""
-
-    def test_single_paragraph_offset_populated(self, temp_html_file):
-        """Single paragraph has char_start_offset and char_end_offset populated."""
-        html = """<html><body>
-            <p>This is a test paragraph with enough content to pass the minimum segment length requirement.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 1
-            segment = segments[0]
-
-            # Offsets should be populated
-            assert segment.char_start_offset is not None
-            assert segment.char_end_offset is not None
-            assert segment.char_start_offset >= 0
-            assert segment.char_end_offset > segment.char_start_offset
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_multiple_paragraphs_distinct_offsets(self, temp_html_file):
-        """Multiple paragraphs have distinct, ordered offsets."""
-        html = """<html><body>
-            <p>First paragraph with enough content to pass the minimum segment length requirement here.</p>
-            <p>Second paragraph also with enough content to ensure it passes the minimum segment length.</p>
-            <p>Third paragraph contains sufficient text to meet the minimum segment length requirement.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 3
-
-            # All segments should have offsets
-            for segment in segments:
-                assert segment.char_start_offset is not None
-                assert segment.char_end_offset is not None
-
-            # Offsets should be distinct
-            offsets = [(s.char_start_offset, s.char_end_offset) for s in segments]
-            assert len(offsets) == len(set(offsets)), "Offsets should be distinct"
-
-            # Offsets should be in increasing order
-            for i in range(len(segments) - 1):
-                assert segments[i].char_end_offset <= segments[i + 1].char_start_offset, \
-                    f"Segment {i} end should be before segment {i+1} start"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_table_offset_captures_full_table(self, temp_html_file):
-        """Table element offsets capture the full table HTML when matching succeeds."""
-        html = """<html><body><table><tr><th>Quarter</th><th>Revenue</th><th>Description</th></tr><tr><td>Q1 2024</td><td>$5M</td><td>Strong quarter with customer growth</td></tr><tr><td>Q2 2024</td><td>$6M</td><td>Continued expansion in new markets</td></tr><tr><td>Q3 2024</td><td>$7M</td><td>Record quarterly performance achieved</td></tr></table></body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            tables = [s for s in segments if s.segment_type == 'table']
-            assert len(tables) >= 1
-
-            table_seg = tables[0]
-
-            # Offsets should be populated if string matching succeeded
-            # (May be None if BeautifulSoup reformatted the HTML)
-            if table_seg.char_start_offset is not None:
-                assert table_seg.char_end_offset is not None
-                # Verify offset span is reasonable (table HTML should be > 100 chars)
-                offset_span = table_seg.char_end_offset - table_seg.char_start_offset
-                assert offset_span > 100, "Table offset span should cover full table HTML"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_mixed_content_relative_offsets(self, temp_html_file):
-        """Paragraphs and tables in mixed content have correct relative offsets."""
-        html = """<html><body><p>First paragraph appears before the table and contains enough text to pass minimum length.</p><table><tr><th>Metric</th><th>Value</th><th>Description</th></tr><tr><td>Revenue</td><td>$10M</td><td>Total quarterly revenue</td></tr><tr><td>Customers</td><td>5000</td><td>Active customer count</td></tr></table><p>Second paragraph appears after the table and also contains sufficient text for requirements.</p></body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 3
-
-            # Filter segments with valid offsets
-            segments_with_offsets = [
-                s for s in segments
-                if s.char_start_offset is not None and s.char_end_offset is not None
-            ]
-
-            # Most segments should have offsets (paragraphs usually match well)
-            assert len(segments_with_offsets) >= 2, "At least paragraphs should have offsets"
-
-            # Verify they're in document order
-            for i in range(len(segments_with_offsets) - 1):
-                assert segments_with_offsets[i].char_start_offset < segments_with_offsets[i + 1].char_start_offset, \
-                    "Segments should be in document order"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_composite_segment_splitting_preserves_offsets(self, temp_html_file):
-        """Composite segments that get split preserve parent offsets."""
-        html = """<html><body>
-            <div>
-                <p>Text before table with enough content to pass the minimum segment length requirement.</p>
-                <table>
-                    <tr><th>Header</th></tr>
-                    <tr><td>Data value here</td></tr>
-                </table>
-            </div>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            # Should have split into text and table
-            assert len(segments) >= 2
-
-            # Child segments should have valid offsets (inherited from parent or computed)
-            for segment in segments:
-                # Offsets may be None in some edge cases, but if populated should be valid
-                if segment.char_start_offset is not None:
-                    assert segment.char_end_offset is not None
-                    assert segment.char_end_offset > segment.char_start_offset
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_definition_merging_spans_offsets(self, temp_html_file):
-        """Merged definition segments have offsets spanning all original segments."""
-        html = """<html><body>
-            <p>We define active customers as customers who have made at least one purchase.</p>
-            <p>and who have logged into our platform at least once in the preceding 90 days.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            # Should be merged into one segment
-            assert len(segments) == 1
-            merged_seg = segments[0]
-
-            # Should have offsets
-            assert merged_seg.char_start_offset is not None
-            assert merged_seg.char_end_offset is not None
-
-            # Merged text should include both parts
-            assert 'active customers' in merged_seg.raw_text
-            assert '90 days' in merged_seg.raw_text
-
-            # Offset span should cover both original paragraphs
-            offset_span = merged_seg.char_end_offset - merged_seg.char_start_offset
-            assert offset_span > 100, "Merged segment should span multiple paragraphs"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_list_items_distinct_offsets(self, temp_html_file):
-        """Each list item has distinct character offsets."""
-        html = """<html><body>
-            <ul>
-                <li>First list item with enough content to pass the minimum segment length requirement.</li>
-                <li>Second list item also with enough content to ensure it passes the minimum length.</li>
-                <li>Third list item contains sufficient text to meet the minimum segment length requirement.</li>
-            </ul>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            list_items = [s for s in segments if s.segment_type == 'list_item']
-            assert len(list_items) >= 3
-
-            # Each list item should have distinct offsets
-            for item in list_items:
-                assert item.char_start_offset is not None
-                assert item.char_end_offset is not None
-                assert item.char_end_offset > item.char_start_offset
-
-            # Offsets should be distinct
-            offsets = [(s.char_start_offset, s.char_end_offset) for s in list_items]
-            assert len(offsets) == len(set(offsets)), "List item offsets should be distinct"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_minimal_html_graceful_handling(self, temp_html_file):
-        """Minimal or empty HTML is handled gracefully (offsets may be None)."""
-        html = """<html><body></body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            # Should not raise exception
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            # May have no segments or segments with None offsets
-            # This is acceptable - just verify no exceptions
-            assert isinstance(segments, list)
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_substring_extraction_verification(self, temp_html_file):
-        """Offsets allow extracting original HTML substring."""
-        html = """<html><body>
-            <p>This is a test paragraph with sufficient content to pass the minimum segment length.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-
-        # Read the HTML content
-        with open(html_path) as f:
-            html_content = f.read()
-
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 1
-            segment = segments[0]
-
-            if segment.char_start_offset is not None and segment.char_end_offset is not None:
-                # Extract substring using offsets
-                extracted = html_content[segment.char_start_offset:segment.char_end_offset]
-
-                # Should contain the paragraph tag and text
-                assert '<p>' in extracted
-                assert 'test paragraph' in extracted
-                assert '</p>' in extracted
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_offset_ordering_non_overlapping(self, temp_html_file):
-        """Segment offsets are non-overlapping and properly ordered."""
-        html = """<html><body>
-            <p>First paragraph with enough text to pass the minimum segment length requirement here.</p>
-            <p>Second paragraph also with enough text to ensure it passes the minimum segment length.</p>
-            <p>Third paragraph contains sufficient text to meet the minimum segment length requirement.</p>
-            <p>Fourth paragraph has more than enough content to satisfy the minimum length requirement.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 4
-
-            # Filter segments with valid offsets
-            segments_with_offsets = [
-                s for s in segments
-                if s.char_start_offset is not None and s.char_end_offset is not None
-            ]
-
-            assert len(segments_with_offsets) >= 4, "Most segments should have offsets"
-
-            # Verify non-overlapping: seg[i].end <= seg[i+1].start
-            for i in range(len(segments_with_offsets) - 1):
-                current = segments_with_offsets[i]
-                next_seg = segments_with_offsets[i + 1]
-
-                assert current.char_end_offset <= next_seg.char_start_offset, \
-                    f"Segment {i} overlaps with segment {i+1}"
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_unicode_content_offset_handling(self, temp_html_file):
-        """Character offsets work correctly with Unicode content."""
-        html = """<html><body>
-            <p>This paragraph contains Unicode characters: é, ñ, ü, 中文 and has enough text for minimum length.</p>
-        </body></html>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 1
-            segment = segments[0]
-
-            # Offsets should be populated
-            assert segment.char_start_offset is not None
-            assert segment.char_end_offset is not None
-
-            # Unicode content should be in the segment
-            assert 'é' in segment.raw_text or '中文' in segment.raw_text
-
-        finally:
-            Path(html_path).unlink()
-
-    def test_sgml_format_offset_tracking(self, temp_html_file):
-        """Offsets work with SGML format filings."""
-        html = """<DOCUMENT>
-            <TYPE>S-1
-            <TEXT>
-            <HTML><BODY>
-                <p>This is SGML format content with enough text to pass the minimum segment length requirement.</p>
-            </BODY></HTML>
-            </TEXT>
-        </DOCUMENT>"""
-
-        html_path = temp_html_file(html)
-        segmenter = HTMLSegmenter()
-
-        try:
-            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
-
-            assert len(segments) >= 1
-
-            # Should have offsets even in SGML format
-            for segment in segments:
-                if len(segment.raw_text) >= 50:  # Reasonable length segment
-                    # Offsets may be None for some edge cases, but should work for main content
-                    # Just verify no exceptions and basic validity if populated
-                    if segment.char_start_offset is not None:
-                        assert segment.char_end_offset is not None
-                        assert segment.char_end_offset > segment.char_start_offset
-
-        finally:
-            Path(html_path).unlink()
 
 
 # ===== SEG6: Hierarchical Section Path Tests =====
@@ -5822,3 +5471,266 @@ class TestFarfetchTablePatternRegression:
             assert "Active Consumers" in table_seg.raw_text or "[CELL]" in table_seg.raw_text
             # The text should be extractable from the HTML
             assert "Active Consumers" in html_extractable
+
+
+class TestDivOnlyTableSkip:
+    """Test that div elements wrapping only a table are skipped to prevent duplicates."""
+
+    def test_div_wrapping_only_table_produces_single_segment(self, temp_html_file):
+        """A div containing only a table should produce a single table segment, not duplicates."""
+        html = """
+        <html><body>
+            <div style="padding:10px;">
+                <table>
+                    <tr><th>Metric</th><th>2023</th><th>2022</th></tr>
+                    <tr><td>Paid Customers</td><td>88,000</td><td>59,000</td></tr>
+                    <tr><td>Large Customers</td><td>575</td><td>298</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have exactly one table segment, not a paragraph + table
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            paragraph_segments = [s for s in segments if s.segment_type == "paragraph"]
+
+            assert len(table_segments) == 1, (
+                f"Expected 1 table segment, got {len(table_segments)}"
+            )
+            # The div wrapper should NOT create a paragraph segment
+            # (any paragraph would have the same content as the table)
+            for p in paragraph_segments:
+                # If there's a paragraph with the same content as table, that's a bug
+                assert "Paid Customers" not in p.raw_text, (
+                    "Div wrapper should be skipped, not extracted as paragraph"
+                )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_div_wrapping_table_extracts_with_markers(self, temp_html_file):
+        """The inner table should have [ROW] and [CELL] markers."""
+        html = """
+        <html><body>
+            <div>
+                <table>
+                    <tr><td>Revenue</td><td>$1M</td></tr>
+                    <tr><td>Users</td><td>10,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) == 1
+
+            table_seg = table_segments[0]
+            # Should have markers for row-aware matching
+            assert "[ROW]" in table_seg.raw_text, (
+                f"Table should have [ROW] markers, got: {table_seg.raw_text}"
+            )
+            assert "[CELL]" in table_seg.raw_text, (
+                f"Table should have [CELL] markers, got: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_div_with_text_and_table_not_skipped(self, temp_html_file):
+        """A div with both text and table should be split, not skipped."""
+        html = """
+        <html><body>
+            <div>
+                <p>Our key metrics for the quarter:</p>
+                <table>
+                    <tr><td>Active Users</td><td>50,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            # Should have both paragraph and table segments
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            paragraph_segments = [s for s in segments if s.segment_type == "paragraph"]
+
+            assert len(table_segments) >= 1, "Should have at least 1 table segment"
+            assert len(paragraph_segments) >= 1, "Should have at least 1 paragraph segment"
+
+            # Paragraph should have intro text
+            assert any("key metrics" in p.raw_text.lower() for p in paragraph_segments)
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_nested_divs_with_table_no_duplicates(self, temp_html_file):
+        """Multiple nested divs wrapping a table should still produce single table segment."""
+        html = """
+        <html><body>
+            <div class="outer">
+                <div class="middle">
+                    <div class="inner">
+                        <table>
+                            <tr><td>Metric</td><td>Value</td></tr>
+                            <tr><td>ARR</td><td>$10M</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+
+            # Should have exactly 1 table segment, not multiple from nested divs
+            assert len(table_segments) == 1, (
+                f"Expected 1 table segment from nested divs, got {len(table_segments)}"
+            )
+
+            # No paragraph duplicates with table content
+            for seg in segments:
+                if seg.segment_type == "paragraph":
+                    assert "ARR" not in seg.raw_text, (
+                        "Nested div wrappers should not create paragraph duplicates"
+                    )
+
+        finally:
+            Path(html_path).unlink()
+
+
+class TestCompositeSplitTableMarkers:
+    """Test that tables from composite segment splitting get [ROW]/[CELL] markers."""
+
+    def test_composite_split_table_has_markers(self, temp_html_file):
+        """When a div with text+table is split, the table segment should have markers."""
+        html = """
+        <html><body>
+            <div>
+                <p>The following table shows our customer growth metrics:</p>
+                <table>
+                    <tr><th>Period</th><th>Customers</th></tr>
+                    <tr><td>Q1</td><td>10,000</td></tr>
+                    <tr><td>Q2</td><td>15,000</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) >= 1, "Should have at least 1 table segment"
+
+            table_seg = table_segments[0]
+            # Composite split tables should have markers
+            assert "[ROW]" in table_seg.raw_text, (
+                f"Composite split table should have [ROW] markers, got: {table_seg.raw_text}"
+            )
+            assert "[CELL]" in table_seg.raw_text, (
+                f"Composite split table should have [CELL] markers, got: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_composite_split_preserves_row_structure(self, temp_html_file):
+        """Composite split table markers should correctly reflect row boundaries."""
+        html = """
+        <html><body>
+            <div>
+                <p>Retention metrics by cohort:</p>
+                <table>
+                    <tr><td>Cohort</td><td>Year 1</td><td>Year 2</td></tr>
+                    <tr><td>2022</td><td>100%</td><td>85%</td></tr>
+                    <tr><td>2023</td><td>100%</td><td>90%</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=20)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+            assert len(table_segments) >= 1
+
+            table_seg = table_segments[0]
+
+            # Should have 2 [ROW] markers separating 3 rows
+            row_count = table_seg.raw_text.count("[ROW]")
+            assert row_count == 2, (
+                f"Expected 2 [ROW] markers for 3 rows, got {row_count}: {table_seg.raw_text}"
+            )
+
+            # Should have [CELL] markers within rows
+            cell_count = table_seg.raw_text.count("[CELL]")
+            assert cell_count >= 4, (  # At least 2 cells per row * 2+ rows with cells
+                f"Expected at least 4 [CELL] markers, got {cell_count}: {table_seg.raw_text}"
+            )
+
+        finally:
+            Path(html_path).unlink()
+
+    def test_multiple_tables_in_composite_all_have_markers(self, temp_html_file):
+        """When a div has text and multiple tables, all split tables get markers."""
+        html = """
+        <html><body>
+            <div>
+                <p>Revenue breakdown:</p>
+                <table>
+                    <tr><td>Product A</td><td>$5M</td></tr>
+                </table>
+                <p>Cost breakdown:</p>
+                <table>
+                    <tr><td>Operations</td><td>$2M</td></tr>
+                </table>
+            </div>
+        </body></html>
+        """
+
+        html_path = temp_html_file(html)
+        segmenter = HTMLSegmenter(min_length=10)
+
+        try:
+            segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
+
+            table_segments = [s for s in segments if s.segment_type == "table"]
+
+            # Both tables should have markers
+            for i, table_seg in enumerate(table_segments):
+                assert "[CELL]" in table_seg.raw_text, (
+                    f"Table {i} should have [CELL] markers, got: {table_seg.raw_text}"
+                )
+
+        finally:
+            Path(html_path).unlink()

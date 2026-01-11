@@ -245,6 +245,7 @@ def clean_db(test_db_adapter):
                 """
                 DO $$
                 BEGIN
+                    TRUNCATE TABLE suppressed_candidates CASCADE;
                     TRUNCATE TABLE learned_patterns CASCADE;
                     TRUNCATE TABLE review_decisions CASCADE;
                     TRUNCATE TABLE review_candidates CASCADE;
@@ -272,6 +273,7 @@ def clean_db(test_db_adapter):
                 """
                 DO $$
                 BEGIN
+                    TRUNCATE TABLE suppressed_candidates CASCADE;
                     TRUNCATE TABLE learned_patterns CASCADE;
                     TRUNCATE TABLE review_decisions CASCADE;
                     TRUNCATE TABLE review_candidates CASCADE;

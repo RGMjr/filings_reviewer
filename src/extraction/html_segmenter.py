@@ -221,10 +221,6 @@ class HTMLSegmenter:
             self._metrics.warnings.append("Empty HTML content")
             return []
 
-        # Store original HTML for offset tracking (SEG5)
-        self._original_html = html_content
-        self._last_search_position = 0  # Track position for incremental search
-
         # Parse with BeautifulSoup
         try:
             soup = BeautifulSoup(html_content, "html.parser")
@@ -278,6 +274,18 @@ class HTMLSegmenter:
                 continue
             if element.name == "figure" and element.find_parent("figure"):
                 continue
+
+            # Skip div that only wraps a table with no additional text content
+            # This prevents duplicate extraction - the inner table will be extracted separately
+            # with correct type and [ROW]/[CELL] markers
+            if element.name == "div":
+                inner_table = element.find("table")
+                if inner_table:
+                    div_text = self._normalize_text(element.get_text())
+                    table_text = self._normalize_text(inner_table.get_text())
+                    if div_text == table_text:
+                        # Div adds nothing beyond the table - skip it
+                        continue
 
             # Skip elements nested in a div that contains BOTH text and tables (L5 composite splitting)
             # Those elements will be extracted when the parent div is split
@@ -656,60 +664,6 @@ class HTMLSegmenter:
             logger.debug(f"Error generating CSS selector: {e}")
             return None
 
-    def _compute_element_offsets(
-        self, element: Tag, search_start: int = 0
-    ) -> tuple[int | None, int | None]:
-        """
-        Compute character offsets for an HTML element in the original HTML.
-
-        Uses string matching to find the element's position in the original HTML content.
-        This enables precise source location tracking for UI highlighting and debugging.
-
-        Args:
-            element: BeautifulSoup Tag element
-            search_start: Position to start searching from (optimization for sequential elements)
-
-        Returns:
-            Tuple of (char_start_offset, char_end_offset) or (None, None) if not found
-
-        Implementation Note (SEG5):
-            We use string matching because BeautifulSoup's html.parser doesn't provide
-            sourceline/sourcepos attributes (only lxml parser does). This approach:
-            - Finds element HTML in original content using incremental search
-            - Tracks last search position to avoid re-scanning entire file
-            - Handles cases where element can't be found gracefully (returns None)
-        """
-        if not hasattr(self, "_original_html") or not self._original_html:
-            return None, None
-
-        try:
-            # Get element's HTML representation
-            element_html = str(element)
-
-            # Search for this element in the original HTML, starting from search_start
-            # This incremental approach is faster than searching from 0 each time
-            pos = self._original_html.find(element_html, search_start)
-
-            if pos >= 0:
-                char_start = pos
-                char_end = pos + len(element_html)
-                # Update last search position for next call
-                self._last_search_position = char_end
-                return char_start, char_end
-            else:
-                # Element not found - may have been modified during parsing
-                # This is not an error - we just can't track the offset
-                logger.debug(
-                    f"Could not find element in original HTML (may have been modified): "
-                    f"{element_html[:100]}..."
-                )
-                return None, None
-
-        except Exception as e:
-            # Any error in offset computation should not break segmentation
-            logger.debug(f"Error computing element offsets: {e}")
-            return None, None
-
     def _extract_segment(
         self, element: Tag, filing_id: int, sequence_index: int
     ) -> SourceSegment | None:
@@ -767,15 +721,14 @@ class HTMLSegmenter:
         # Extract section path and heading
         section_path, section_heading = self._extract_section_info(element)
 
-        # Compute character offsets (SEG5)
-        char_start, char_end = self._compute_element_offsets(
-            element, search_start=getattr(self, "_last_search_position", 0)
-        )
-
         # Generate CSS selector for DOM location (SEG10)
         html_selector = self._generate_css_selector(element)
 
         # Build segment
+        # Note: char_start_offset and char_end_offset are intentionally None.
+        # Offset computation was removed (INV-1-FIX-v2) as it caused O(n*m)
+        # performance issues and the data was not used by any feature.
+        # Use html_selector for source location if needed.
         segment = SourceSegment(
             filing_id=filing_id,
             segment_type=segment_type,
@@ -785,8 +738,8 @@ class HTMLSegmenter:
             raw_text=raw_text,
             raw_html=raw_html,
             html_selector=html_selector,
-            char_start_offset=char_start,
-            char_end_offset=char_end,
+            char_start_offset=None,
+            char_end_offset=None,
         )
 
         # Validate text/HTML consistency (HRV-22 monitoring)
@@ -923,9 +876,13 @@ class HTMLSegmenter:
                     if text_content.strip():  # Only add non-empty text
                         content_pieces.append(("text", text_before, text_content))
 
-                # Add the table
+                # Add the table with [ROW]/[CELL] markers for row-aware matching
                 table_soup = BeautifulSoup(table_html, "html.parser")
-                table_text = self._normalize_text(table_soup.get_text())
+                table_elem = table_soup.find("table")
+                if table_elem:
+                    table_text = self._extract_table_text_with_markers(table_elem)
+                else:
+                    table_text = self._normalize_text(table_soup.get_text())
                 if table_text.strip():  # Only add non-empty tables
                     content_pieces.append(("table", table_html, table_text))
 
@@ -962,7 +919,14 @@ class HTMLSegmenter:
                     html_content = html_content[:effective_max]
                     # Re-extract text from truncated HTML to ensure consistency
                     truncated_soup = BeautifulSoup(html_content, "html.parser")
-                    text_content = self._normalize_text(truncated_soup.get_text())
+                    if seg_type == "table":
+                        table_elem = truncated_soup.find("table")
+                        if table_elem:
+                            text_content = self._extract_table_text_with_markers(table_elem)
+                        else:
+                            text_content = self._normalize_text(truncated_soup.get_text())
+                    else:
+                        text_content = self._normalize_text(truncated_soup.get_text())
                 elif len(text_content) > effective_max:
                     # Text somehow longer than HTML limit - truncate
                     text_content = text_content[:effective_max]
@@ -1461,11 +1425,6 @@ class HTMLSegmenter:
             merge_count = 1
             j = i + 1
 
-            # Track offsets for merged segment (SEG5)
-            # Use earliest start and latest end from all merged segments
-            merged_start_offset = segment.char_start_offset
-            merged_end_offset = segment.char_end_offset
-
             while (
                 j < len(segments)
                 and merge_count < self.DEFINITION_LOOKAHEAD_MAX
@@ -1486,13 +1445,6 @@ class HTMLSegmenter:
                     merged_html += next_seg.raw_html
                 merge_count += 1
 
-                # Update offsets to span all merged segments (SEG5)
-                if next_seg.char_end_offset is not None:
-                    merged_end_offset = next_seg.char_end_offset
-                if merged_start_offset is None and next_seg.char_start_offset is not None:
-                    # If first segment had no offset, use first available
-                    merged_start_offset = next_seg.char_start_offset
-
                 j += 1
 
             # Update the segment with merged content if we merged anything
@@ -1509,9 +1461,6 @@ class HTMLSegmenter:
                     segment.raw_text = merged_text.strip()
                     segment.raw_html = None
                 segment.definition_merged_count = merge_count
-                # Update offsets to span all merged segments (SEG5)
-                segment.char_start_offset = merged_start_offset
-                segment.char_end_offset = merged_end_offset
                 logger.debug(
                     f"Merged {merge_count} segments into definition "
                     f"({len(segment.raw_text)} chars)"
@@ -1795,11 +1744,6 @@ class HTMLSegmenter:
             # Extract section info
             section_path, section_heading = self._extract_section_info(list_element)
 
-            # Compute character offsets for this list item (SEG5)
-            char_start, char_end = self._compute_element_offsets(
-                li, search_start=getattr(self, "_last_search_position", 0)
-            )
-
             # Generate CSS selector for DOM location (SEG10)
             html_selector = self._generate_css_selector(li)
 
@@ -1813,8 +1757,8 @@ class HTMLSegmenter:
                 raw_html=str(li)[: self.max_length],
                 html_selector=html_selector,
                 context_prefix=intro_text,  # Include intro as context
-                char_start_offset=char_start,
-                char_end_offset=char_end,
+                char_start_offset=None,
+                char_end_offset=None,
             )
 
             segments.append(segment)

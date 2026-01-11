@@ -1,7 +1,7 @@
 # System Architecture Overview
 
-**Version:** 2.1
-**Last Updated:** 2025-12-16
+**Version:** 2.3
+**Last Updated:** 2026-01-07
 **Status:** Production Ready
 
 ---
@@ -156,6 +156,8 @@ The system is organized into six logical layers:
                    │   │  - values       │  │
                    │   │  - definitions  │  │
                    │   │  - incidence    │  │
+                   │   │  - review_cands │  │
+                   │   │  - suppressed   │  │
                    │   └─────────────────┘  │
                    └────────────────────────┘
 ```
@@ -197,6 +199,27 @@ The system is organized into six logical layers:
 **Output:** Updated segments with classification flags
 **Technology:** Keyword matching + optional LLM
 **Status:** Complete (98% test coverage)
+
+### 4.5. Structure Parser
+**Purpose:** Parse table row structure to prevent cross-row keyword matches
+**Input:** HTML table segments
+**Output:** Structured row data with cell boundaries
+**Technology:** BeautifulSoup HTML parsing
+**Status:** Complete (97% test coverage)
+
+### 4.6. Candidate Detector
+**Purpose:** Unified detection of metric candidates across segment types
+**Input:** Classified segments
+**Output:** Candidate matches with positions and confidence
+**Technology:** Rule-based pattern matching with context awareness
+**Status:** Complete (97% test coverage)
+
+### 4.7. Context Extractor
+**Purpose:** Extract surrounding context for metric values
+**Input:** Segment text with value positions
+**Output:** Context windows around detected values
+**Technology:** Text analysis and window extraction
+**Status:** Complete
 
 ### 5. Value Extractor
 **Purpose:** Extract numeric values from tables and text
@@ -379,6 +402,8 @@ Filing Metadata (from Discovery)
   - `source_segments(filing_id, segment_type)`
   - `metric_values(filing_id, metric_id)` and `(metric_id, period_end)`
   - `filing_metric_incidence(metric_id, filing_id)`
+  - `review_candidates`: partial unique indexes on `(filing_id, source_segment_id, char_position, suggested_metric_id)` for NULL and non-NULL segment cases
+  - `suppressed_candidates(winner_candidate_id, suppression_reason)`
 
 ### Long-Running Operations
 
@@ -434,6 +459,9 @@ The component graph remains the same; only configuration and some extraction rul
 | FilingFetcher | Complete | 94% |
 | HTMLSegmenter | Complete | 80% |
 | MetricClassifier | Complete | 98% |
+| StructureParser | Complete | 97% |
+| CandidateDetector | Complete | 97% |
+| ContextExtractor | Complete | N/A |
 | SegmentEnricher | Complete | 98% |
 | ValueExtractor | Complete | 66% |
 | DefinitionExtractor | Complete | 89% |
@@ -457,6 +485,16 @@ Every extracted value links back to source segment with quote verification
 
 ### 3. Idempotent Operations
 Re-running any stage is safe (upserts, not inserts)
+
+**Review Candidate Deduplication:**
+- Two-phase conflict resolution in `bulk_insert_review_candidates()`
+- Phase 1: Within-batch deduplication (highest confidence wins)
+- Phase 2: Database conflict resolution via pre-fetch + compare
+- Partial unique indexes handle NULL vs non-NULL `source_segment_id` separately
+- Suppressed candidates logged to `suppressed_candidates` table with reason codes:
+  - `lower_confidence`: Lost confidence comparison at same position+metric
+  - `runner_up`: Best alternative metric for position (enables UI quick-select)
+- Return contract preserved: `zip(candidates, result_ids, strict=True)` always safe
 
 ### 4. Conservative Classification
 "Require BOTH" signals for business type exclusions to minimize false positives
@@ -516,6 +554,6 @@ Re-running any stage is safe (upserts, not inserts)
 
 ---
 
-**Last Updated:** 2025-12-09
-**Version:** 2.0
+**Last Updated:** 2026-01-07
+**Version:** 2.3
 **Status:** Production Ready

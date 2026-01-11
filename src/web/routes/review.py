@@ -167,6 +167,7 @@ class FilingListItem(TypedDict):
     pending_count: int  # Pending candidates for this filing
     reviewed_count: int  # Reviewed candidates for this filing
     review_status: str  # Overall status: 'pending' or 'reviewed'
+    extraction_date: datetime  # When candidates were extracted (MIN created_at)
 
 
 class FilingData(TypedDict):
@@ -442,6 +443,13 @@ def review_filing(filing_id: int):
             "has_active_filters": has_active_filters,
         }
 
+        # Compute extraction date (earliest candidate creation) from all candidates
+        extraction_date = None
+        if all_candidates:
+            created_dates = [c.get("created_at") for c in all_candidates if c.get("created_at")]
+            if created_dates:
+                extraction_date = min(created_dates)
+
         # Render template with documented data contract
         # Template: review.html
         # Data contract:
@@ -458,6 +466,7 @@ def review_filing(filing_id: int):
         #   - total_candidates_unfiltered: int - Total number of candidates (unfiltered)
         #   - pending_count: int - Number of pending candidates (in filtered set)
         #   - reviewed_count: int - Number of reviewed candidates (in filtered set)
+        #   - extraction_date: datetime | None - When candidates were first extracted
         return render_template(
             "review.html",
             filing=filing,
@@ -473,6 +482,7 @@ def review_filing(filing_id: int):
             total_candidates_unfiltered=total_candidates_unfiltered,
             pending_count=pending_count,
             reviewed_count=reviewed_count,
+            extraction_date=extraction_date,
         )
 
     except Exception as e:
@@ -943,68 +953,93 @@ def _get_active_metrics() -> list[MetricData]:
     Cached in Flask g object to avoid repeated queries.
     Returns list sorted by logical grouping (customer count, transactions, revenue, etc.).
 
+    Ordering is generated dynamically from METRIC_DISPLAY_ORDER dict - the single source
+    of truth for dropdown ordering. See _build_metric_order_clause() for SQL generation.
+
     Returns:
         List[MetricData]: Active metrics with metric_id, display_name, metric_class, primary_concept
     """
     if "metrics" not in g:
         db = get_db()
-        metrics_sql = """
+        # Build ORDER BY clause from METRIC_DISPLAY_ORDER (single source of truth)
+        order_clause = _build_metric_order_clause()
+        metrics_sql = f"""
             SELECT metric_id, display_name, metric_class, primary_concept
             FROM metrics
             WHERE status = 'active'
-            ORDER BY
-                CASE metric_id
-                    -- 1. Customer Count Metrics
-                    WHEN 'cm_new_customers_acquired' THEN 1
-                    WHEN 'cm_active_customers_total' THEN 2
-                    WHEN 'cm_customers_period_end_by_tenure' THEN 3
-                    WHEN 'cm_monthly_active_users' THEN 4
-                    WHEN 'cm_daily_active_users' THEN 5
-
-                    -- 2. Transaction & Purchase Behavior
-                    WHEN 'cm_transactions_by_cohort' THEN 10
-                    WHEN 'cm_repeat_purchase_rate' THEN 11
-                    WHEN 'cm_average_order_value' THEN 12
-
-                    -- 3. Revenue Metrics
-                    WHEN 'cm_revenue_by_cohort' THEN 20
-                    WHEN 'cm_revenue_per_customer' THEN 21
-                    WHEN 'cm_arr' THEN 22
-                    WHEN 'cm_mrr' THEN 23
-                    WHEN 'cm_expansion_revenue' THEN 24
-                    WHEN 'cm_gmv' THEN 25
-                    -- cm_take_rate removed (2026-01-02) - not a customer metric
-
-                    -- 4. Revenue Predictability & Contracting
-                    WHEN 'cm_bookings' THEN 30
-                    WHEN 'cm_billings' THEN 31
-                    WHEN 'cm_deferred_revenue' THEN 32
-                    WHEN 'cm_acv' THEN 33
-                    WHEN 'cm_tcv' THEN 34
-
-                    -- 5. Revenue Concentration
-                    WHEN 'cm_revenue_concentration' THEN 40
-
-                    -- 6. Gross Margin (by cohort only - overall margin is not a customer metric)
-                    WHEN 'cm_gross_margin_by_cohort' THEN 51
-
-                    -- 7. Retention, Churn & Attrition
-                    WHEN 'cm_customer_retention_rate' THEN 60
-                    WHEN 'cm_customer_churn_rate' THEN 61
-                    WHEN 'cm_net_revenue_retention' THEN 62
-                    WHEN 'cm_gross_revenue_retention' THEN 63
-
-                    -- 8. Unit Economics & CAC
-                    WHEN 'cm_customer_acquisition_cost' THEN 70
-                    WHEN 'cm_cac_payback_period' THEN 71
-
-                    -- Future metrics (if any become active)
-                    ELSE 99
-                END
+            ORDER BY {order_clause}
         """
         g.metrics = db.query(metrics_sql)
 
     return g.metrics
+
+
+# Metric ordering for dropdowns - semantic grouping by business category.
+# This is the SINGLE SOURCE OF TRUTH for dropdown ordering.
+# The SQL CASE statement is generated dynamically from this dict.
+#
+# ORDERING CONVENTION:
+#   - Category 1 (Customer Counts): 1-9
+#   - Category 2 (Transactions): 11-19
+#   - Category 3 (Revenue): 21-29
+#   - Category 4 (Retention/Churn): 31-39
+#   - Category 5 (Unit Economics): 41-49
+#   Gaps allow inserting new metrics without renumbering existing ones.
+#
+# SAFETY: These IDs are used in f-string SQL generation. This is safe because
+# they are hardcoded constants. Never add user-supplied values to this dict.
+METRIC_DISPLAY_ORDER: dict[str, int] = {
+    # Category 1: Customer Count Metrics (1-9)
+    "cm_customers_period_end": 1,
+    "cm_active_customers_total": 2,
+    "cm_daily_active_users": 3,
+    "cm_monthly_active_users": 4,
+    "cm_large_customers_period_end": 5,
+    "cm_new_customers_acquired": 6,
+    "cm_customers_period_end_by_tenure": 7,
+    # Category 2: Transaction & Purchase Behavior (11-19)
+    "cm_purchase_transactions_overall": 11,
+    "cm_transactions_by_cohort": 12,
+    "cm_repeat_purchase_rate": 13,
+    "cm_average_order_value": 14,
+    # Category 3: Revenue Metrics (21-29)
+    "cm_arr": 21,
+    "cm_mrr": 22,
+    "cm_revenue_per_customer": 23,
+    "cm_revenue_by_cohort": 24,
+    "cm_gross_margin_by_cohort": 25,
+    "cm_expansion_revenue": 26,
+    "cm_revenue_concentration": 27,
+    # Category 4: Retention, Churn & Attrition (31-39)
+    "cm_net_revenue_retention": 31,
+    "cm_gross_revenue_retention": 32,
+    "cm_customer_churn_rate": 33,
+    "cm_customer_retention_rate": 34,
+    # Category 5: Unit Economics & CAC (41-49)
+    "cm_lifetime_value_per_customer": 41,
+    "cm_customer_acquisition_cost": 42,
+    "cm_ltv_to_cac_ratio": 43,
+    "cm_ltv_to_cac_ratio_by_cohort": 44,
+    "cm_cac_payback_period": 45,
+}
+
+
+def _build_metric_order_clause() -> str:
+    """
+    Build SQL CASE statement for metric ordering from METRIC_DISPLAY_ORDER.
+
+    Returns:
+        SQL CASE expression string for ORDER BY clause.
+
+    SAFETY NOTE: This uses f-string SQL building which is safe ONLY because
+    metric_ids are hardcoded constants from METRIC_DISPLAY_ORDER, never user input.
+    DO NOT copy this pattern for user-supplied values.
+    """
+    clauses = [
+        f"WHEN '{metric_id}' THEN {order}"
+        for metric_id, order in METRIC_DISPLAY_ORDER.items()
+    ]
+    return "CASE metric_id\n" + "\n".join(clauses) + "\nELSE 99\nEND"
 
 
 def _get_unique_metrics_for_filing(candidates: list[dict]) -> list[str]:
@@ -1015,14 +1050,16 @@ def _get_unique_metrics_for_filing(candidates: list[dict]) -> list[str]:
         candidates: List of candidate dicts with suggested_metric_id
 
     Returns:
-        Sorted list of unique metric IDs present in candidates
+        List of unique metric IDs sorted by semantic business grouping
+        (same ordering as reclassify dropdown for consistency)
     """
     unique_metrics = set()
     for candidate in candidates:
         metric_id = candidate.get("suggested_metric_id")
         if metric_id:
             unique_metrics.add(metric_id)
-    return sorted(unique_metrics)
+    # Sort by semantic grouping order, unknown metrics at end
+    return sorted(unique_metrics, key=lambda m: METRIC_DISPLAY_ORDER.get(m, 99))
 
 
 def _highlight_context(

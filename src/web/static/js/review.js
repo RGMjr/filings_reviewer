@@ -39,7 +39,10 @@
             metric: 'all',
             confidence: 'all',
             sort: 'position'
-        }
+        },
+        // UXI-1: Dropdown keyboard navigation state
+        activeDropdown: null, // 'rejection', 'reclassify', or null
+        dropdownFocusIndex: -1 // Current focused item index (-1 = none)
     };
 
     // =========================================================================
@@ -93,6 +96,7 @@
         initializeHintsPanel();
         initializeHistoryPanel();
         initializeContextExpansion();
+        initializeMetricSearch(); // UXI-2: Metric search in reclassify dropdown
 
         // Save current position to localStorage
         saveReviewProgress();
@@ -222,6 +226,9 @@
 
         // HRI-8: Bulk action event handlers
         initializeBulkActions();
+
+        // UXI-1: Dropdown keyboard navigation event handlers
+        initializeDropdownKeyboardNavigation();
     }
 
     // =========================================================================
@@ -347,8 +354,8 @@
             return;
         }
 
-        if (state.selectedCandidates.size > 20) {
-            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+        if (state.selectedCandidates.size > 50) {
+            alert('Maximum 50 candidates per bulk action. Please deselect some candidates.');
             return;
         }
 
@@ -381,8 +388,8 @@
             return;
         }
 
-        if (state.selectedCandidates.size > 20) {
-            alert('Maximum 20 candidates per bulk action. Please deselect some candidates.');
+        if (state.selectedCandidates.size > 50) {
+            alert('Maximum 50 candidates per bulk action. Please deselect some candidates.');
             return;
         }
 
@@ -466,6 +473,296 @@
             confirmBtn.disabled = false;
             loadingSpinner.classList.add('d-none');
             btnText.textContent = 'Confirm';
+        }
+    }
+
+    // =========================================================================
+    // Dropdown Keyboard Navigation (UXI-1)
+    // =========================================================================
+
+    /**
+     * Initialize dropdown keyboard navigation event handlers.
+     * Listens to Bootstrap dropdown show/hide events to track active dropdown state.
+     */
+    function initializeDropdownKeyboardNavigation() {
+        // Find dropdown buttons
+        const rejectDropdownBtn = document.querySelector('.btn-danger.dropdown-toggle');
+        const reclassifyDropdownBtn = document.querySelector('.btn-warning.dropdown-toggle');
+
+        if (rejectDropdownBtn) {
+            // Bootstrap 5 uses 'shown.bs.dropdown' and 'hidden.bs.dropdown' events
+            rejectDropdownBtn.addEventListener('shown.bs.dropdown', () => {
+                state.activeDropdown = 'rejection';
+                state.dropdownFocusIndex = 0;
+                updateDropdownFocus();
+                attachDropdownFocusListeners(); // UXI-1a: Sync state with Bootstrap focus
+                showDropdownHints('rejection');
+                console.log('Rejection dropdown opened');
+            });
+
+            rejectDropdownBtn.addEventListener('hidden.bs.dropdown', () => {
+                clearDropdownState();
+                restoreDefaultHints();
+                console.log('Rejection dropdown closed');
+            });
+        }
+
+        if (reclassifyDropdownBtn) {
+            reclassifyDropdownBtn.addEventListener('shown.bs.dropdown', () => {
+                state.activeDropdown = 'reclassify';
+                // UXI-2: Start with no item focused, focus search input instead
+                state.dropdownFocusIndex = -1;
+                attachDropdownFocusListeners(); // UXI-1a: Sync state with Bootstrap focus
+                showDropdownHints('reclassify');
+                // UXI-2: Focus search input
+                const searchInput = document.getElementById('metric-search-input');
+                if (searchInput) {
+                    setTimeout(() => searchInput.focus(), 50);
+                }
+                console.log('Reclassify dropdown opened');
+            });
+
+            reclassifyDropdownBtn.addEventListener('hidden.bs.dropdown', () => {
+                // UXI-2: Clear search when dropdown closes
+                clearMetricSearch();
+                clearDropdownState();
+                restoreDefaultHints();
+                console.log('Reclassify dropdown closed');
+            });
+        }
+    }
+
+    /**
+     * Attach focus event listeners to dropdown items to sync state with Bootstrap's
+     * native keyboard navigation. UXI-1a: When Bootstrap handles arrow keys and moves
+     * focus, this keeps our state.dropdownFocusIndex in sync.
+     */
+    function attachDropdownFocusListeners() {
+        const items = getActiveDropdownItems();
+        items.forEach((item, index) => {
+            // Use a one-time listener that gets cleaned up when dropdown closes
+            item.addEventListener('focus', function onFocus() {
+                if (state.activeDropdown) {
+                    state.dropdownFocusIndex = index;
+                    // Update visual focus indicator to match
+                    updateDropdownFocus();
+                }
+            });
+        });
+    }
+
+    // Store original hints content for restoration
+    let originalHintsContent = null;
+
+    /**
+     * Show dropdown-specific keyboard hints
+     * @param {string} dropdownType 'rejection' or 'reclassify'
+     */
+    function showDropdownHints(dropdownType) {
+        const hintsPanel = document.getElementById('keyboard-hints');
+        if (!hintsPanel) return;
+
+        // Store original content if not already stored
+        const hintsRow = hintsPanel.querySelector('.row > .col');
+        if (hintsRow && !originalHintsContent) {
+            originalHintsContent = hintsRow.innerHTML;
+        }
+
+        // Build dropdown-specific hints
+        let hintsHtml = '';
+        if (dropdownType === 'rejection') {
+            hintsHtml = `
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">1-6</kbd> Select category
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">↑↓</kbd> Navigate
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">Enter</kbd> Select
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">Esc</kbd> Close
+            `;
+        } else if (dropdownType === 'reclassify') {
+            // UXI-2: Updated hints to mention search
+            hintsHtml = `
+                <span class="text-muted">Type to search</span>
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">↓</kbd> Navigate
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">Enter</kbd> Select
+                <span class="mx-1 text-muted">|</span>
+                <kbd class="bg-secondary text-light px-2 py-1 rounded">Esc</kbd> Close
+            `;
+        }
+
+        if (hintsRow && hintsHtml) {
+            hintsRow.innerHTML = hintsHtml;
+            // Show hints panel if hidden
+            hintsPanel.classList.remove('d-none');
+        }
+    }
+
+    /**
+     * Restore default keyboard hints content
+     */
+    function restoreDefaultHints() {
+        if (!originalHintsContent) return;
+
+        const hintsPanel = document.getElementById('keyboard-hints');
+        if (!hintsPanel) return;
+
+        const hintsRow = hintsPanel.querySelector('.row > .col');
+        if (hintsRow) {
+            hintsRow.innerHTML = originalHintsContent;
+        }
+    }
+
+    /**
+     * Clear dropdown navigation state
+     */
+    function clearDropdownState() {
+        // Remove visual focus from all items
+        removeDropdownFocus();
+        state.activeDropdown = null;
+        state.dropdownFocusIndex = -1;
+    }
+
+    /**
+     * Get the currently active dropdown items
+     * UXI-2: For reclassify dropdown, filter out hidden items (d-none class on parent li)
+     * @returns {NodeList} List of dropdown item elements
+     */
+    function getActiveDropdownItems() {
+        if (state.activeDropdown === 'rejection') {
+            return document.querySelectorAll('.rejection-category-option');
+        } else if (state.activeDropdown === 'reclassify') {
+            // UXI-2: Only return visible metric options (exclude those in hidden li)
+            return document.querySelectorAll('.metric-list > li:not(.d-none) > .metric-option');
+        }
+        return [];
+    }
+
+    /**
+     * Update visual focus indicator on dropdown items
+     */
+    function updateDropdownFocus() {
+        const items = getActiveDropdownItems();
+        if (items.length === 0) return;
+
+        // Remove focus from all items
+        removeDropdownFocus();
+
+        // Add focus to current item
+        if (state.dropdownFocusIndex >= 0 && state.dropdownFocusIndex < items.length) {
+            const focusedItem = items[state.dropdownFocusIndex];
+            focusedItem.classList.add('keyboard-focus');
+            // Scroll item into view within dropdown
+            focusedItem.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+        }
+    }
+
+    /**
+     * Remove visual focus from all dropdown items
+     */
+    function removeDropdownFocus() {
+        document.querySelectorAll('.dropdown-item.keyboard-focus').forEach(item => {
+            item.classList.remove('keyboard-focus');
+        });
+    }
+
+    /**
+     * Navigate dropdown with arrow keys
+     * @param {string} direction 'up' or 'down'
+     */
+    function navigateDropdown(direction) {
+        if (!state.activeDropdown) return;
+
+        const items = getActiveDropdownItems();
+        if (items.length === 0) return;
+
+        if (direction === 'down') {
+            state.dropdownFocusIndex = (state.dropdownFocusIndex + 1) % items.length;
+        } else if (direction === 'up') {
+            state.dropdownFocusIndex = state.dropdownFocusIndex <= 0
+                ? items.length - 1
+                : state.dropdownFocusIndex - 1;
+        }
+
+        updateDropdownFocus();
+        console.log(`Dropdown navigation: ${direction}, index: ${state.dropdownFocusIndex}`);
+    }
+
+    /**
+     * Select the currently focused dropdown item
+     * UXI-1a: Fixed to use document.activeElement instead of stale state index
+     * UXI-2: Auto-select single visible match when Enter pressed in search
+     * Bootstrap handles arrow key navigation and manages focus natively,
+     * so we query the actually focused element rather than our internal state.
+     */
+    function selectFocusedDropdownItem() {
+        if (!state.activeDropdown) return;
+
+        const items = getActiveDropdownItems();
+        if (items.length === 0) return;
+
+        // UXI-2: Auto-select single visible match when Enter pressed in search
+        if (state.activeDropdown === 'reclassify' && state.dropdownFocusIndex === -1) {
+            if (items.length === 1) {
+                items[0].click();
+                console.log('UXI-2: Auto-selected single visible match');
+                return;
+            }
+        }
+
+        // UXI-1a: Use document.activeElement (Bootstrap manages focus on arrow keys)
+        const focusedElement = document.activeElement;
+        if (focusedElement &&
+            (focusedElement.classList.contains('rejection-category-option') ||
+             focusedElement.classList.contains('metric-option'))) {
+            focusedElement.click();
+            // Find index for logging
+            const index = Array.from(items).indexOf(focusedElement);
+            console.log('Selected dropdown item via activeElement:', index);
+            return;
+        }
+
+        // Fallback to index-based selection (for when state is valid)
+        if (state.dropdownFocusIndex >= 0 && state.dropdownFocusIndex < items.length) {
+            const item = items[state.dropdownFocusIndex];
+            item.click();
+            console.log('Selected dropdown item via state index:', state.dropdownFocusIndex);
+        }
+    }
+
+    /**
+     * Select rejection category by number key (1-6)
+     * @param {number} num The number key pressed (1-6)
+     */
+    function selectRejectionByNumber(num) {
+        if (state.activeDropdown !== 'rejection') return;
+
+        const items = document.querySelectorAll('.rejection-category-option');
+        const index = num - 1; // Convert 1-based to 0-based index
+
+        if (index >= 0 && index < items.length) {
+            items[index].click();
+            console.log(`Selected rejection category ${num}`);
+        }
+    }
+
+    /**
+     * Close the currently active dropdown
+     */
+    function closeActiveDropdown() {
+        if (!state.activeDropdown) return;
+
+        const dropdownBtn = state.activeDropdown === 'rejection'
+            ? document.querySelector('.btn-danger.dropdown-toggle')
+            : document.querySelector('.btn-warning.dropdown-toggle');
+
+        if (dropdownBtn) {
+            const dropdown = bootstrap.Dropdown.getInstance(dropdownBtn);
+            if (dropdown) {
+                dropdown.hide();
+            }
         }
     }
 
@@ -826,6 +1123,32 @@
         }, 3000);
     }
 
+    /**
+     * Show a generic toast notification.
+     * @param {string} message - Message to display
+     * @param {string} type - Bootstrap alert type: 'success', 'info', 'warning', 'danger'
+     */
+    function showToast(message, type = 'info') {
+        const flash = document.createElement('div');
+        flash.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        flash.style.top = '80px';
+        flash.style.right = '20px';
+        flash.style.zIndex = '1050';
+        flash.setAttribute('role', 'alert');
+
+        flash.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+
+        document.body.appendChild(flash);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            flash.remove();
+        }, 3000);
+    }
+
     // =========================================================================
     // Character Counters
     // =========================================================================
@@ -869,6 +1192,43 @@
                             activeElement.tagName === 'TEXTAREA' ||
                             activeElement.isContentEditable;
 
+        // UXI-2: Check if in metric search input specifically
+        const isInMetricSearch = activeElement.id === 'metric-search-input';
+
+        // UXI-2: Handle special keys in metric search input
+        if (isInMetricSearch && state.activeDropdown === 'reclassify') {
+            const key = event.key.toLowerCase();
+
+            if (key === 'enter') {
+                // Enter in search input: select single match or focused item
+                event.preventDefault();
+                selectFocusedDropdownItem();
+                return;
+            }
+
+            if (key === 'arrowdown') {
+                // ArrowDown from search: move focus to first visible item
+                event.preventDefault();
+                const items = getActiveDropdownItems();
+                if (items.length > 0) {
+                    state.dropdownFocusIndex = 0;
+                    updateDropdownFocus();
+                    items[0].focus();
+                }
+                return;
+            }
+
+            if (key === 'escape') {
+                // Escape: close dropdown
+                event.preventDefault();
+                closeActiveDropdown();
+                return;
+            }
+
+            // Let other keys (ArrowUp, ArrowLeft, ArrowRight, letters) work normally in input
+            return;
+        }
+
         if (isInputField) {
             console.log('Keyboard shortcut ignored - focus in input field:', activeElement.tagName);
             return;
@@ -876,6 +1236,45 @@
 
         const key = event.key.toLowerCase();
         console.log('Keyboard shortcut pressed:', key);
+
+        // UXI-1: Handle dropdown-specific shortcuts first
+        if (state.activeDropdown) {
+            switch (key) {
+                case 'arrowdown':
+                    event.preventDefault();
+                    navigateDropdown('down');
+                    return;
+
+                case 'arrowup':
+                    event.preventDefault();
+                    navigateDropdown('up');
+                    return;
+
+                case 'enter':
+                    event.preventDefault();
+                    selectFocusedDropdownItem();
+                    return;
+
+                case 'escape':
+                    event.preventDefault();
+                    closeActiveDropdown();
+                    return;
+
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                    // Number keys only work for rejection dropdown
+                    if (state.activeDropdown === 'rejection') {
+                        event.preventDefault();
+                        selectRejectionByNumber(parseInt(key, 10));
+                        return;
+                    }
+                    break;
+            }
+        }
 
         switch (key) {
             case 'a':
@@ -912,6 +1311,12 @@
                 event.preventDefault();
                 console.log('Previous shortcut triggered');
                 navigateToPrevious();
+                break;
+
+            case 's':
+                event.preventDefault();
+                console.log('Skip shortcut triggered');
+                skipCandidate();
                 break;
 
             case 'enter':
@@ -968,11 +1373,77 @@
         const dropdown = new bootstrap.Dropdown(reclassifyButton);
         dropdown.show();
 
-        // Focus first dropdown item after dropdown opens
+        // UXI-2: Focus search input instead of first item
         setTimeout(() => {
-            const firstItem = document.querySelector('.metric-option');
-            if (firstItem) firstItem.focus();
+            const searchInput = document.getElementById('metric-search-input');
+            if (searchInput) {
+                searchInput.focus();
+            }
         }, 100);
+    }
+
+    /**
+     * Skip the current candidate without making a decision.
+     * Sets status to 'skipped' and navigates to the next candidate.
+     */
+    async function skipCandidate() {
+        // Guard against double submission
+        if (state.submitting) {
+            console.log('Submission already in progress, ignoring skip');
+            return;
+        }
+
+        state.submitting = true;
+
+        try {
+            // Build payload with filter state for consistent navigation
+            const payload = {
+                filter_status: state.filters.status,
+                filter_metric: state.filters.metric,
+                filter_confidence: state.filters.confidence,
+                filter_sort: state.filters.sort
+            };
+
+            const response = await fetch(`/api/candidates/${state.candidateId}/skip`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error('Skip failed:', data);
+                if (response.status === 400) {
+                    showToast(data.message || 'Cannot skip this candidate', 'warning');
+                } else if (response.status === 404) {
+                    showToast('Candidate not found', 'danger');
+                } else {
+                    showToast('Failed to skip candidate', 'danger');
+                }
+                return;
+            }
+
+            console.log('Candidate skipped successfully:', data);
+            showToast('Skipped - moving to next', 'info');
+
+            // Navigate to next candidate or show completion message
+            if (data.next_candidate && data.next_candidate.url) {
+                setTimeout(() => {
+                    window.location.href = data.next_candidate.url;
+                }, 500);
+            } else {
+                // No more candidates
+                showToast('No more pending candidates', 'info');
+            }
+        } catch (error) {
+            console.error('Error skipping candidate:', error);
+            showToast('Failed to skip candidate', 'danger');
+        } finally {
+            state.submitting = false;
+        }
     }
 
     function navigateToNext() {
@@ -1582,6 +2053,100 @@
         // Update button text
         showMoreText.style.display = 'inline';
         showLessText.style.display = 'none';
+    }
+
+    // =========================================================================
+    // Metric Search (UXI-2)
+    // =========================================================================
+
+    /**
+     * Initialize metric search functionality for reclassify dropdown
+     * UXI-2: Adds search input filtering and clear button behavior
+     */
+    function initializeMetricSearch() {
+        const searchInput = document.getElementById('metric-search-input');
+        const clearBtn = document.querySelector('.metric-search-clear');
+
+        if (!searchInput) return;
+
+        // Filter on input
+        searchInput.addEventListener('input', (e) => {
+            filterMetrics(e.target.value);
+        });
+
+        // Clear button
+        if (clearBtn) {
+            clearBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent dropdown close
+                searchInput.value = '';
+                filterMetrics('');
+                searchInput.focus();
+            });
+        }
+
+        // Prevent dropdown close when clicking in search
+        searchInput.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        console.log('UXI-2: Metric search initialized');
+    }
+
+    /**
+     * Filter metrics in the reclassify dropdown based on search query
+     * UXI-2: Matches against metric_id and display_name (case-insensitive)
+     * @param {string} query The search query
+     */
+    function filterMetrics(query) {
+        const clearBtn = document.querySelector('.metric-search-clear');
+        const noMatchesMsg = document.querySelector('.no-matches-message');
+        const metricItems = document.querySelectorAll('.metric-list > li');
+
+        const normalizedQuery = query.toLowerCase().trim();
+        let visibleCount = 0;
+
+        metricItems.forEach(li => {
+            const option = li.querySelector('.metric-option');
+            if (!option) return;
+
+            const metricId = option.dataset.metricId?.toLowerCase() || '';
+            const displayName = option.textContent?.toLowerCase() || '';
+
+            const matches = normalizedQuery === '' ||
+                           metricId.includes(normalizedQuery) ||
+                           displayName.includes(normalizedQuery);
+
+            li.classList.toggle('d-none', !matches);
+            if (matches) visibleCount++;
+        });
+
+        // Show/hide clear button
+        if (clearBtn) {
+            clearBtn.classList.toggle('visible', query.length > 0);
+        }
+
+        // Show/hide no matches message
+        if (noMatchesMsg) {
+            noMatchesMsg.classList.toggle('visible', visibleCount === 0 && normalizedQuery !== '');
+        }
+
+        // Reset focus index when filtering
+        state.dropdownFocusIndex = -1;
+        removeDropdownFocus();
+
+        console.log(`UXI-2: Filtered metrics, ${visibleCount} visible`);
+    }
+
+    /**
+     * Clear the metric search input and reset filter
+     * UXI-2: Called when dropdown closes
+     */
+    function clearMetricSearch() {
+        const searchInput = document.getElementById('metric-search-input');
+        if (searchInput) {
+            searchInput.value = '';
+            filterMetrics('');
+        }
     }
 
     // =========================================================================

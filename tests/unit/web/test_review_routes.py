@@ -1147,3 +1147,125 @@ def test_stats_handles_empty_database(client, mock_db, mock_render_template):
     call_args = mock_render_template.call_args
     assert call_args[1]["overall_stats"]["total_decisions"] == 0
     assert call_args[1]["metric_stats"] == []
+
+
+# =============================================================================
+# Test _build_metric_order_clause() (MET-8)
+# =============================================================================
+
+
+class TestBuildMetricOrderClause:
+    """Tests for _build_metric_order_clause SQL generation."""
+
+    def test_generates_valid_case_statement(self):
+        """Verify generated SQL has correct structure."""
+        from src.web.routes.review import _build_metric_order_clause
+
+        clause = _build_metric_order_clause()
+
+        assert clause.startswith("CASE metric_id")
+        assert "ELSE 99" in clause
+        assert clause.endswith("END")
+
+    def test_includes_all_metrics_from_dict(self):
+        """Verify every metric in METRIC_DISPLAY_ORDER appears in SQL."""
+        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+
+        clause = _build_metric_order_clause()
+
+        for metric_id, order in METRIC_DISPLAY_ORDER.items():
+            assert f"WHEN '{metric_id}' THEN {order}" in clause
+
+    def test_ordering_values_are_integers(self):
+        """Verify all THEN values are valid integers."""
+        import re
+
+        from src.web.routes.review import _build_metric_order_clause
+
+        clause = _build_metric_order_clause()
+        then_values = re.findall(r"THEN (\d+)", clause)
+
+        assert len(then_values) > 0
+        for val in then_values:
+            assert val.isdigit()
+
+    def test_no_user_input_in_clause(self):
+        """Verify the clause only contains hardcoded metric IDs from METRIC_DISPLAY_ORDER."""
+        import re
+
+        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+
+        clause = _build_metric_order_clause()
+
+        # Extract all metric IDs from the generated SQL
+        metric_ids_in_clause = re.findall(r"WHEN '([^']+)' THEN", clause)
+
+        # All should match entries in METRIC_DISPLAY_ORDER
+        for metric_id in metric_ids_in_clause:
+            assert metric_id in METRIC_DISPLAY_ORDER, f"Unexpected metric_id: {metric_id}"
+
+    def test_clause_count_matches_dict_count(self):
+        """Verify number of WHEN clauses matches dict entries."""
+        import re
+
+        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+
+        clause = _build_metric_order_clause()
+        when_clauses = re.findall(r"WHEN '[^']+' THEN \d+", clause)
+
+        assert len(when_clauses) == len(METRIC_DISPLAY_ORDER)
+
+
+class TestGetUniqueMetricsForFiling:
+    """Tests for _get_unique_metrics_for_filing filter dropdown helper."""
+
+    def test_semantic_ordering(self):
+        """Verify filter dropdown uses semantic ordering, not alphabetical."""
+        from src.web.routes.review import _get_unique_metrics_for_filing
+
+        # Create candidates with metrics from different categories
+        candidates = [
+            {"suggested_metric_id": "cm_arr"},  # Revenue (21)
+            {"suggested_metric_id": "cm_customers_period_end"},  # Customer Count (1)
+            {"suggested_metric_id": "cm_net_revenue_retention"},  # Retention (31)
+            {"suggested_metric_id": "cm_customer_acquisition_cost"},  # Unit Economics (42)
+        ]
+
+        result = _get_unique_metrics_for_filing(candidates)
+
+        # Should be ordered by category, not alphabetically
+        assert result == [
+            "cm_customers_period_end",  # Category 1
+            "cm_arr",  # Category 3
+            "cm_net_revenue_retention",  # Category 4
+            "cm_customer_acquisition_cost",  # Category 5
+        ]
+
+    def test_deduplicates(self):
+        """Verify duplicate metric IDs are removed."""
+        from src.web.routes.review import _get_unique_metrics_for_filing
+
+        candidates = [
+            {"suggested_metric_id": "cm_arr"},
+            {"suggested_metric_id": "cm_arr"},
+            {"suggested_metric_id": "cm_arr"},
+        ]
+
+        result = _get_unique_metrics_for_filing(candidates)
+
+        assert result == ["cm_arr"]
+        assert len(result) == 1
+
+    def test_unknown_metric_at_end(self):
+        """Unknown metrics should sort to end (order 99)."""
+        from src.web.routes.review import _get_unique_metrics_for_filing
+
+        candidates = [
+            {"suggested_metric_id": "cm_unknown_metric"},
+            {"suggested_metric_id": "cm_customers_period_end"},
+        ]
+
+        result = _get_unique_metrics_for_filing(candidates)
+
+        assert result[0] == "cm_customers_period_end"
+        assert result[-1] == "cm_unknown_metric"

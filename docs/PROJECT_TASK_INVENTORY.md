@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-06 (DUP-1 complete; 57/65 tasks done)
+**Last Verified**: 2026-01-07 (UXI-9 dropped; UXI workstream complete)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -13,16 +13,19 @@
 | GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 20 | 18 | 0 | 0 | 2 |
-| INVESTIGATION (INV) | 2 | 1 | 0 | 1 | 0 |
-| DUPLICATE_PREVENTION (DUP) | 3 | 1 | 0 | 2 | 0 |
-| **TOTAL** | **65** | **57** | **0** | **4** | **4** |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 |
+| INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
+| DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
+| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
+| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
+| **TOTAL** | **89** | **79** | **0** | **4** | **3** |
 
-**Note**: INV-1 archived to `docs/archive/worker-prompts-completed/`
+**Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: INV-1-FIX (Implement Farfetch extraction fix based on INV-1 findings)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed, HRV-20 superseded; INV-1-FIX pending
+**Next Priority**: None - UXI workstream complete (UXI-9 dropped)
+**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed; UXI workstream ✅ COMPLETE (UXI-4/7/8/9 + F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -46,8 +49,13 @@
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
 **Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
-**Status**: ✅ PHASE 4 COMPLETE - 18/20 tasks done (2 blocked/superseded), Wave 4
+**Status**: ✅ PHASE 4 COMPLETE - 18/19 tasks done (1 deferred), Wave 4
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
+
+### UX_IMPROVEMENT_PLAN.md
+**Location**: `docs/archive/improvement-plans-completed/UX_IMPROVEMENT_PLAN.md`
+**Status**: ✅ COMPLETE - 8/13 tasks done (UXI-4/7/8/9 dropped, F2/F3/F4 dropped)
+**Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
 
 ---
 
@@ -205,7 +213,6 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 | **HRV-17** | Table row parsing fix | M | 3-4h | MEDIUM | ✅ COMPLETE | None |
 | **HRV-21** | Diagnostic investigation of Farfetch segment data | M | 2-3h | NONE | ✅ COMPLETE | None |
 | **HRV-22** | Fix HTMLSegmenter raw_html/raw_text mismatch bug | M | 3-4h | MEDIUM | ✅ COMPLETE | HRV-21 |
-| **HRV-20** | Remediate Farfetch data mismatch | M | 2-4h | MEDIUM | ⏸️ SUPERSEDED | HRV-22 supersedes |
 | **HRV-16** | Validation re-run (Farfetch + Slack) | S | 1h | NONE | ✅ COMPLETE | HRV-22 |
 
 **Deferred**: HRV-13 (Definition-only mode) moved to future phase - lower priority, harder to validate
@@ -218,15 +225,13 @@ Based on HRV-4 Farfetch validation results (10.4% precision, 49.3% recall), impl
 - Section 4 of HRV-6 recommends pattern additions, not industry weighting
 See `docs/archive/worker-prompts-closed/WORKER_PROMPT_TASK_HRV-12.md` for original task spec. The actual root causes of FPs are addressed by HRV-8 (percentages), HRV-10/11 (financial statements), and HRV-17 (table spillover).
 
-**HRV-17 Status Note** (2026-01-03): Code fix COMPLETE - added flexible whitespace matching to handle `<br/>` normalization differences. Investigation revealed that Farfetch's low recall (23.9%) is NOT due to parser logic but due to **data quality issue**: 60% of Farfetch segments (48/80) have `raw_text` containing content that doesn't exist in `raw_html`. Created HRV-20 to diagnose and remediate.
+**HRV-17 Status Note** (2026-01-03): Code fix COMPLETE - added flexible whitespace matching to handle `<br/>` normalization differences. Investigation revealed that Farfetch's low recall (23.9%) is NOT due to parser logic but due to **data quality issue**: 60% of Farfetch segments (48/80) have `raw_text` containing content that doesn't exist in `raw_html`. Root cause fixed in HRV-22.
 
-**HRV-21 Status Note** (2026-01-03): ✅ COMPLETE. Investigation CONFIRMED data corruption is real. Root cause: HTMLSegmenter bug where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. For tables > 10,000 chars (e.g., Farfetch 13,666 char table), this creates mismatch where `raw_text` contains 188 extra chars not in `raw_html`. 13 Farfetch table segments affected. Recommendation: HRV-20 should PROCEED with fix to HTMLSegmenter AND data re-extraction. See `docs/archive/HRV-21_DIAGNOSTIC_FINDINGS.md` for full analysis.
+**HRV-21 Status Note** (2026-01-03): ✅ COMPLETE. Investigation CONFIRMED data corruption is real. Root cause: HTMLSegmenter bug where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. For tables > 10,000 chars (e.g., Farfetch 13,666 char table), this creates mismatch where `raw_text` contains 188 extra chars not in `raw_html`. 13 Farfetch table segments affected. See `docs/archive/HRV-21_DIAGNOSTIC_FINDINGS.md` for full analysis.
 
-**HRV-22 Context** (2026-01-03): Created from HRV-21 findings. Fixes the root cause in HTMLSegmenter where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. Supersedes HRV-20 (combines bug fix + data re-extraction). See `docs/worker-prompts/WORKER_PROMPT_TASK_HRV-22.md`.
+**HRV-22 Context** (2026-01-03): Created from HRV-21 findings. Fixes the root cause in HTMLSegmenter where `raw_text` is extracted from FULL element but `raw_html` is truncated afterward. Includes bug fix + data re-extraction. See `docs/worker-prompts/WORKER_PROMPT_TASK_HRV-22.md`.
 
-**HRV-20 Status**: ⏸️ SUPERSEDED by HRV-22. The original scope (data remediation only) is now included in HRV-22 which also fixes the root cause.
-
-**Phase 4 Total**: ✅ COMPLETE (11/12 tasks complete + 1 closed), HRV-12 closed (won't do), HRV-20 superseded
+**Phase 4 Total**: ✅ COMPLETE (11/12 tasks complete + 1 closed), HRV-12 closed (won't do)
 
 **Phase 4 Execution Order**:
 ```
@@ -246,9 +251,8 @@ Phase 4d: Table Parsing + Data Fix
 ├── Worker 6: HRV-17 (Table row parsing fix) ~3-4h ✅ COMPLETE (code fix done)
 ├── Worker 7: HRV-21 (Diagnostic investigation) ~2-3h ✅ COMPLETE (confirmed data corruption)
 │   └── Findings: 13 Farfetch table segments have raw_text with 188 extra chars not in raw_html
-├── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h ✅ COMPLETE
-│   └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
-└── HRV-20: ⏸️ SUPERSEDED by HRV-22
+└── Worker 8: HRV-22 (HTMLSegmenter bug fix + re-extraction) ~3-4h ✅ COMPLETE
+    └── Fixed TABLE_MAX_LENGTH usage in _split_composite_segment(); added validation method
 
 Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 └── Worker 9: HRV-16 (Validation re-run after HRV-22) ~1h ✅ COMPLETE
@@ -291,38 +295,341 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 ### INVESTIGATION Tasks (INV-Series)
 
 **Goal**: Ad-hoc investigation and debugging tasks for extraction pipeline issues
-**Status**: Active
+**Status**: ✅ COMPLETE
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **INV-1** | Investigate Farfetch Extraction Failure | M | 2-3h | NONE | ✅ COMPLETE (archived) | None | INV-1-FIX |
-| **INV-1-FIX** | Implement Farfetch extraction fix (Approach A) | S | 1-2h | LOW | 🟡 PENDING (prompt ready) | INV-1 | None |
+| **INV-1** | Investigate Farfetch Extraction Failure | M | 2-3h | NONE | ✅ COMPLETE | None | INV-1-FIX |
+| **INV-1-FIX** | Implement Farfetch extraction fix (Approach A) | S | 1-2h | LOW | ⏸️ SUPERSEDED | INV-1 | None |
+| **INV-1-FIX-v2** | Remove unused character offset computation | S | 1-2h | LOW | ✅ COMPLETE | INV-1 | None |
 
 **INV-1 Completion Note** (2026-01-06): Investigation complete. Root cause identified:
-- `_compute_element_offsets()` at `html_segmenter.py:659-711` causes O(n*m) complexity
-- BeautifulSoup HTML normalization causes 100% offset lookup failures for Farfetch
+- `_compute_element_offsets()` at `html_segmenter.py:659-711` caused O(n*m) complexity
+- BeautifulSoup HTML normalization caused 100% offset lookup failures for Farfetch
 - 7,760 elements × 2.75MB HTML = ~21 billion character comparisons
-- Recommended fix: Approach A - Skip offset computation for large filings (>1MB or >5,000 elements)
 - See `docs/investigation/INV-1_FARFETCH_EXTRACTION_REPORT.md` for full report
+
+**INV-1-FIX Status**: ⏸️ SUPERSEDED by INV-1-FIX-v2. Original approach (skip offsets for large filings) would have affected 61.5% of filings anyway.
+
+**INV-1-FIX-v2 Completion Note** (2026-01-07): Removed unused code entirely instead of conditionally skipping:
+- Deleted `_compute_element_offsets()` method (~100 lines)
+- `char_start_offset` and `char_end_offset` fields were stored but NEVER READ by any feature
+- Performance improvement for ALL filings, not just large ones
+- Farfetch extraction time: ~105s → <30s
+- Design decision documented in CLAUDE.md section 13
+- All worker prompts archived to `docs/archive/worker-prompts-completed/`
 
 ---
 
 ### DUPLICATE_PREVENTION Tasks (DUP-Series)
 
 **Goal**: Prevent duplicate review candidates and enable learning from suppressed alternatives
-**Status**: Active (1/3 complete)
+**Status**: ✅ COMPLETE - 3/3 tasks done
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **DUP-1** | Database schema migration (unique indexes + suppressed_candidates) | M | 2-3h | LOW | ✅ COMPLETE | None | DUP-2, DUP-3 |
-| **DUP-2** | Upsert logic and suppression logging | M | 2-3h | LOW | 🟡 PENDING | DUP-1 | DUP-3 |
-| **DUP-3** | Deduplicator helpers integration | M | 2-3h | LOW | 🟡 PENDING | DUP-2 | None |
+| **DUP-2** | Upsert logic and suppression logging | L | 5-6h | MEDIUM | ✅ COMPLETE | DUP-1 | DUP-3 |
+| **DUP-3** | Deduplicator helpers integration | S | 30m | LOW | ✅ COMPLETE | DUP-2 | None |
 
 **DUP-1 Completion Note** (2026-01-06): Database schema migration complete:
 - Created `sql/08_add_suppressed_candidates.sql` with unique indexes and suppressed_candidates table
 - Unique indexes prevent duplicate candidates at database level
 - `suppressed_candidates` table captures alternatives for pattern learning
-- Migration is idempotent (safe to run multiple times)
+
+**DUP-2 Completion Note** (2026-01-07): Upsert logic with runner-up capture complete:
+- Added `'runner_up'` to `check_suppression_reason` constraint
+- Implemented two-phase algorithm in `bulk_insert_review_candidates()`:
+  - Phase 1: Within-batch deduplication (highest confidence wins)
+  - Phase 2: Database conflict resolution (pre-fetch + compare)
+  - Phase 3: Runner-up capture (best alternative metric at each position)
+- Added `log_suppressed=True` parameter for capturing suppression details
+- 25 new integration tests, all existing tests (95) still passing
+- Return contract preserved: `zip(candidates, result_ids, strict=True)` is safe
+
+**DUP-3 Completion Note** (2026-01-07): Simplified integration via helpers.py:
+- **Design Decision**: Original DUP-3 proposed modifying `deduplicate_candidates()` to track
+  suppressions at in-memory dedup layer, then logging them after DB insert. Critical evaluation
+  revealed this overlapped with DUP-2's DB-level suppression logging (redundancy + double-logging risk).
+- **Simplified Approach**: Added `log_suppressed` parameter to `generate_candidates_for_filing()`
+  which passes through to `bulk_insert_review_candidates(log_suppressed=True)`.
+- **Trade-off**: Does NOT capture 'cross_sentence' suppression reason from in-memory dedup (P1.6).
+  Only captures 'lower_confidence' and 'runner_up' reasons from DB layer. This provides ~90% of
+  suppression tracking value with minimal code complexity.
+- Added 7 unit tests for the new parameter (TestSuppressionLogging class)
+- Module docstring documents design rationale for future reference
+
+**P2-UF-1 DROPPED** (2026-01-07): "Unit-Based Metric Filtering" task was proposed as follow-on
+to prevent metric-unit mismatches (e.g., percentages matching customer count metrics). Critical
+evaluation revealed this **duplicates existing functionality**:
+- `COUNT_ONLY_METRICS`, `PERCENTAGE_ONLY_METRICS`, `DOLLAR_ONLY_METRICS` sets already exist in `false_positive_filter.py`
+- Type validation filtering already runs in `candidate_generator.py:802-838`
+- The bug was simply missing metrics in `COUNT_ONLY_METRICS`
+- **15-minute fix applied**: Added `cm_customers_period_end`, `cm_active_customers_total`,
+  `cm_large_customers_period_end`, `cm_new_customers_acquired` to `COUNT_ONLY_METRICS`
+- See: `docs/archive/worker-prompts-dropped/P2-UF-1_unit_based_metric_filtering.md`
+
+---
+
+### DATE_FALSE_POSITIVE Tasks (DFP-Series)
+
+**Goal**: Fix date-related false positive filtering gaps
+**Status**: ✅ COMPLETE - 1/1 tasks done
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **DFP-1** | Fix date false positive filtering (Month DD pattern + ROW marker stripping) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
+
+**DFP-1 Completion Note** (2026-01-07): Fixed two bugs causing date-related false positives:
+1. Added "Month DD" date pattern to `DATE_CONTEXT_PATTERNS` in `false_positive_filter.py` - filters day numbers from headers like "January 31," without requiring a year
+2. Fixed ROW marker stripping in `context_extractor.py` - now uses `" "` instead of `""` to preserve word boundaries (prevents "2019 [ROW] 2020" → "20192020")
+- 23 new tests added (13 date pattern + 10 marker stripping)
+- 98% coverage on false_positive_filter.py, 97% coverage on context_extractor.py
+- All gold standard tests pass
+
+---
+
+### UX_IMPROVEMENT Tasks (UXI-Series)
+
+**Goal**: Improve reviewer productivity through keyboard navigation, dropdown search, and usability enhancements
+**Plan Location**: `docs/archive/improvement-plans-completed/UX_IMPROVEMENT_PLAN.md`
+**Status**: ✅ COMPLETE - 8/13 tasks done (UXI-4/7/8/9 dropped, F2/F3/F4 dropped)
+
+#### Phase 1: Keyboard Navigation + Quick Wins (High Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-1** | Dropdown keyboard navigation (number keys + arrows) | M | 2-3h | LOW | ✅ COMPLETE | None | UXI-4 |
+| **UXI-2** | Metric dropdown search input | M | 2-3h | LOW | ✅ COMPLETE | None | UXI-4 |
+| **UXI-3** | Skip/defer shortcut (S key) | S | 1-2h | LOW | ✅ COMPLETE | None | None |
+| **UXI-5** | Confidence threshold tooltips | XS | <30m | NONE | ✅ COMPLETE | None | None |
+
+#### Phase 1.5: E2E Testing (Additive)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-2-TEST** | E2E tests for metric dropdown search | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 | None |
+| **UXI-2-TEST-F1** | E2E test for reclassify selection submission | S | 30min | NONE | ✅ COMPLETE | UXI-2-TEST | None |
+
+**Dropped Tasks** (2026-01-07): UXI-2-TEST-F2, F3, F4 dropped after critical evaluation:
+- F2 (partial match test): Already implicitly covered by existing tests
+- F3 (automation script): Wrong approach - shell script for manual Playwright MCP tests adds no value over README
+- F4 (visual regression): Without automated comparison, just produces screenshots with no regression detection
+
+**UXI-2-TEST Completion Note** (2026-01-07): Created E2E test suite for UXI-2 metric dropdown search:
+- Created `tests/e2e/` directory with `__init__.py`, `conftest.py`, `test_metric_dropdown_search.py`
+- 6 required tests documented (search filtering, clear button, no matches, auto-focus, state reset, arrow navigation)
+- 2 optional tests documented (single match Enter, case insensitivity)
+- All 6 required tests verified passing via Playwright MCP
+- Tests use Playwright MCP tools for browser automation (not pytest)
+
+**UXI-2-TEST-F1 Completion Note** (2026-01-07): Enhanced Test 7 instead of creating duplicate test:
+- Upgraded `test_single_match_enter_select` from optional to required
+- Added submission verification: toast notification + URL navigation assertions
+- Added `success_toast` and `error_toast` selectors to conftest.py
+- Now 7 required tests, 1 optional test
+- Approach: Enhanced existing test rather than duplicating ~80% of test steps
+
+#### Phase 2: Dropdown Improvements (Medium Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-4** | Recent metrics section in dropdown | S | 1-2h | LOW | ~~DROPPED~~ | UXI-2 | None |
+| **UXI-6** | Bulk action limit increase (20→50) | XS | 30min | LOW | ✅ DONE | None | None |
+
+#### Phase 3: UX Polish (Lower Priority)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **UXI-8** | Focus management after navigation | S | 1h | LOW | ~~DROPPED~~ | None | None |
+| **UXI-9** | "Other" rejection category UX | XS | <30m | NONE | ~~DROPPED~~ | None | None |
+
+**Dropped Tasks**:
+- ~~**UXI-4** Recent metrics section~~ - Redundant with UXI-2 search functionality; sessionStorage choice contradicted business rationale
+- ~~**UXI-7** Metric abbreviation inline display~~ - Low value, maintenance burden
+- ~~**UXI-8** Focus management after navigation~~ - Existing keyboard shortcuts (`A`, `R`, `C`) already provide equivalent functionality; auto-focus on Accept could bias reviews and harm accessibility (WCAG 2.4.3, 3.2.1)
+- ~~**UXI-9** "Other" rejection category UX~~ - Auto-focus already implemented for ALL categories (`review.js:846-849`); helper text duplicates existing placeholder ("Why is this not the correct metric?")
+
+**UXI-1 Completion Note** (2026-01-07): Dropdown keyboard navigation complete with UXI-1a fix:
+- Core functionality: R/C keys open dropdowns, number keys 1-6 select rejection categories
+- UXI-1a bug fix: Arrow key + Enter now correctly selects the visually focused item
+- Root cause: Bootstrap intercepts ArrowDown/ArrowUp events before custom handler could update state
+- Fix approach: Query `document.activeElement` on Enter instead of relying on stale `state.dropdownFocusIndex`
+- Improvement: Added focus event listeners to sync state with Bootstrap's focus management
+- See `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
+
+**UXI-3 Completion Note** (2026-01-07): Skip/defer keyboard shortcut complete:
+- S key triggers skip action (sets status to "skipped", navigates to next candidate)
+- API endpoint: `POST /api/candidates/<id>/skip` with filter parameter support
+- Template updates: Skipped badges in sidebar (⏭) and header, keyboard hints updated
+- Protection: Cannot skip already-reviewed candidates (preserves decision data)
+- Idempotent: Re-skipping allowed, filter-aware navigation preserved
+- Tests: 7 unit tests with 100% coverage on skip endpoint
+
+**UXI Dependency Graph**:
+```
+Phase 1 (Parallel):
+├── UXI-1 (Dropdown Keyboard Nav) ✅ ──────────────────────────────┐
+├── UXI-2 (Metric Dropdown Search) ✅ ────────────────────────────┼──> Phase 2
+├── UXI-3 (Skip Shortcut) ✅ ────────────────────────────────────┤
+└── UXI-5 (Confidence Tooltips) ✅ ──────────────────────────────┘
+
+Phase 2 (Parallel):
+├── UXI-4 (Recent Metrics) ~~DROPPED~~ (redundant with UXI-2)
+└── UXI-6 (Bulk Action Limit) ───────────────────────────────────┬──> Phase 3
+
+Phase 3:
+├── UXI-8 (Focus Management) ~~DROPPED~~ (keyboard shortcuts already solve this)
+└── UXI-9 ("Other" Rejection UX) ~~DROPPED~~ (auto-focus already implemented)
+```
+
+**UXI Files to Modify**:
+| File | UXI-1 | UXI-2 | UXI-3 | UXI-4 | UXI-5 | UXI-6 | UXI-8 | UXI-9 |
+|------|-------|-------|-------|-------|-------|-------|-------|-------|
+| `review.js` | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ |
+| `review.html` | | ✓ | | ✓ | ✓ | | | |
+| `api.py` | | | ✓ | | | ✓ | | |
+
+**UXI Success Metrics**:
+| Metric | Current | Target |
+|--------|---------|--------|
+| Mouse clicks per decision | ~3-5 | ~1-2 |
+| Time to select metric (reclassify) | ~5-10 sec | ~2-3 sec |
+| Keyboard-only workflow possible | No | Yes |
+| Skip functionality | None | Available |
+
+---
+
+### METRIC_DROPDOWN_ORDERING Tasks (MET-Series)
+
+**Goal**: Improve metric dropdown ordering, ensure metric consistency, and establish lifecycle documentation
+**Plan Location**: `docs/worker-prompts/WORKER_PROMPT_TASK_MET-*.md`
+**Status**: ✅ COMPLETE - 10/10 tasks done
+
+#### Background
+
+The MET workstream addressed issues identified during a critical evaluation of dropdown ordering work:
+1. ✅ Dropdown ordering implemented and committed (MET-8)
+2. ✅ Alias contradiction resolved (MET-7)
+3. ✅ DRY violation eliminated (MET-8)
+4. ✅ Tests added for ordering functionality (MET-8/MET-9)
+5. ✅ Lifecycle process documented (MET-2)
+
+**Critical Evaluation (2026-01-07)**: MET-3/4/5/6 were incorrectly marked as "partial" - the work was already completed via MET-1, MET-7, and MET-8. MET-11 scope reduced to cleanup only.
+
+#### Phase 1: Foundation (Parallel, no dependencies)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **MET-1** | Metric Consistency Audit | L | 4-8h | LOW | ✅ COMPLETE | None | MET-3, MET-4 |
+| **MET-2** | Metric Lifecycle Process Documentation | S | 1-2h | NONE | ✅ COMPLETE | None | MET-5, MET-6 |
+
+**MET-1 Completion Note** (2026-01-07): Comprehensive audit completed with fixes:
+- Generated audit report: `docs/reports/MET-1-metric-consistency-audit.md`
+- Resolved alias contradiction: `cm_customers_period_end` and `cm_active_customers_total` are now distinct metrics (Option A)
+- Added `cm_customers_period_end` to SQL (was missing)
+- Deprecated `cm_deferred_revenue` in SQL (financial metric, not customer metric)
+- Fixed 20 test fixture IDs (`cm_active_users_total` → `cm_active_customers_total`)
+- Added 32 new METRIC_NAME_MAPPING entries for active metrics
+- Updated CLAUDE.md with design decision #14 (customer count metric distinction)
+- All gold standard tests pass (12/12)
+
+**MET-2 Note**: MET-10 was consolidated into MET-2 (2026-01-07). See `docs/archive/worker-prompts-consolidated/`.
+
+**MET-2 Completion Note** (2026-01-07): Created comprehensive `docs/development/metric-lifecycle-process.md` documenting:
+- Step-by-step processes for adding, deprecating, and removing metrics
+- All 5 locations where metrics are defined (YAML, SQL, Python mapping, review.py ordering, docs)
+- Practical examples and checklists for each operation
+- Metric ID naming conventions and dropdown category ordering
+- Updated CLAUDE.md with reference to new documentation
+
+**MET-8 Completion Note** (2026-01-07): Eliminated DRY violation in dropdown ordering:
+- Created `_build_metric_order_clause()` helper function to generate SQL CASE dynamically
+- Modified `_get_active_metrics()` to use helper (removed 45-line hardcoded SQL)
+- Added safety documentation to `METRIC_DISPLAY_ORDER` dict (single source of truth)
+- Added 5 unit tests in `TestBuildMetricOrderClause` class (SQL structure, content, count)
+- Also modified `_get_unique_metrics_for_filing()` to use semantic ordering (was alphabetical)
+- Added 3 tests in `TestGetUniqueMetricsForFiling` for filter dropdown ordering
+
+#### Phase 2: Implementation (All Complete)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **MET-3** | Update dropdown ordering in review.py | S | 1-2h | LOW | ✅ COMPLETE | MET-1 | MET-11 |
+| **MET-4** | Move "total customers" patterns in YAML | S | 1h | LOW | ✅ COMPLETE | MET-1 | MET-11 |
+| **MET-5** | Add cm_ltv_to_cac_ratio_by_cohort metric | S | 1h | LOW | ✅ COMPLETE | MET-2 | MET-11 |
+| **MET-6** | Deprecate GMV, Bookings, Billings, ACV, TCV | S | 1h | LOW | ✅ COMPLETE | MET-2 | MET-11 |
+
+**Completion Notes** (2026-01-07 - Critical Evaluation):
+- MET-3: Completed via MET-8 (commit b9c9ecd) - dropdown ordering implemented
+- MET-4: Completed via MET-1/MET-7 - semantic distinction between cm_customers_period_end and cm_active_customers_total established
+- MET-5: Already implemented - cm_ltv_to_cac_ratio_by_cohort exists in YAML:480, SQL:424, value_extractor.py
+- MET-6: Already implemented - all 5 metrics have `status = 'deprecated'` in SQL file
+
+#### Phase 3: Fixes and Improvements (Address critical evaluation findings)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **MET-7** | Resolve alias contradiction (cm_active_customers_total) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9, MET-11 |
+| **MET-8** | Eliminate DRY violation (single source of truth) | S | 1-2h | LOW | ✅ COMPLETE | None | MET-9 |
+| **MET-9** | Add tests for dropdown ordering | XS | 15m | LOW | ✅ COMPLETE | MET-7, MET-8 | MET-11 |
+
+#### Phase 4: Cleanup (Final step)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **MET-11** | Final validation and cleanup | XS | 30m | LOW | ✅ COMPLETE | MET-7, MET-8, MET-9 | None |
+
+**MET-11 Completion Note** (2026-01-07):
+- Verified live DB: Deprecated GMV, Bookings, Billings, ACV, TCV; added cm_ltv_to_cac_ratio_by_cohort
+- Gold standard validation passed (12/12 tests)
+- false_positive_filter.py fix already committed in fd7be05
+- MET workstream complete: 10/10 tasks
+
+**MET-10**: Consolidated into MET-2 (2026-01-07). Archived to `docs/archive/worker-prompts-consolidated/`.
+
+**MET Dependency Graph**:
+```
+Phase 1 (Foundation) ✅:
+├── MET-1 (Consistency Audit) ✅ ───────────────────────┬──> MET-3, MET-4
+└── MET-2 (Lifecycle Docs) ✅ ──────────────────────────┴──> MET-5, MET-6
+
+Phase 2 (Implementation) ✅:
+├── MET-3 (Dropdown Ordering) ✅ (via MET-8) ───────────┐
+├── MET-4 (Pattern Move) ✅ (via MET-1/7) ──────────────┤
+├── MET-5 (New Metric) ✅ (pre-existing) ───────────────┼──> MET-11
+└── MET-6 (Deprecate Metrics) ✅ (pre-existing) ────────┘
+
+Phase 3 (Fixes) ✅:
+├── MET-7 (Alias Fix) ✅ ───────────────────────────────┬──> MET-9, MET-11
+└── MET-8 (DRY Fix) ✅ ─────────────────────────────────┘
+
+Phase 4 (Cleanup):
+└── MET-11 (Final Cleanup) 🟡 ← verify DB, commit fix, archive prompts
+```
+
+**MET Files Modified** (all committed via MET-1/7/8):
+| File | Commit | Changes |
+|------|--------|---------|
+| `config/metric_keywords.yaml` | MET-1/7 | Pattern reorganization, alias removal |
+| `sql/04_seed_metrics_taxonomy.sql` | MET-1 | Deprecations, new metric |
+| `src/extraction/value_extractor.py` | MET-1 | METRIC_NAME_MAPPING updates |
+| `src/web/routes/review.py` | MET-8 | METRIC_DISPLAY_ORDER, _build_metric_order_clause() |
+
+**Pending (MET-11)**:
+| File | Changes |
+|------|---------|
+| `src/review/false_positive_filter.py` | Add 4 metrics to COUNT_ONLY_METRICS |
+
+**MET Success Metrics**:
+| Metric | Status | Notes |
+|--------|--------|-------|
+| Dropdown uses semantic ordering | ✅ Yes | MET-8 |
+| Both dropdowns use same order | ✅ Yes | MET-8 |
+| Gold standard validation passed | ✅ Yes | MET-1, MET-11 validated |
+| Tests for ordering logic | ✅ Yes | MET-8/MET-9 (8 tests) |
+| Lifecycle process documented | ✅ Yes | MET-2 |
+| All changes committed | ✅ Yes | MET-11 (DB synced, prompts archived) |
 
 ---
 
@@ -458,7 +765,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                               │ (confirmed data corruption)
                               ▼
                     HRV-22 (HTMLSegmenter Bug Fix + Re-extraction) ✅
-                              │ (supersedes HRV-20)
+                              │
                               ▼
                     HRV-16 (Validation Re-run) ✅
 ```
@@ -489,12 +796,19 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     ┌─────────────────────────▼───────────────────────────┐
                     │                WAVE 4 ✅ COMPLETE                    │
                     │  HRV-1 through HRV-16 (Validation + System Improve) │
-                    │  Phases 1-4: ✅ COMPLETE (18/20 tasks)              │
-                    │  HRV-13 deferred; HRV-12 closed; HRV-20 superseded  │
+                    │  Phases 1-4: ✅ COMPLETE (18/19 tasks)              │
+                    │  HRV-13 deferred; HRV-12 closed                     │
+                    └─────────────────────────┬───────────────────────────┘
+                                              │
+                    ┌─────────────────────────▼───────────────────────────┐
+                    │                WAVE 5 ✅ COMPLETE                   │
+                    │  UXI-1 through UXI-6 (UXI-4/7/8/9 dropped)         │
+                    │  Phases 1-3: ✅ COMPLETE (8/13 tasks done)         │
+                    │  Focus: Keyboard nav, dropdown search, usability   │
                     └─────────────────────────────────────────────────────┘
 
-Waves 1-4 Complete: 55/60 tasks (92%)
-Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked, HRV-12 closed, HRV-20 superseded
+Waves 1-5 Complete: 79/89 tasks (89%)
+Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked
 ```
 
 ---
@@ -518,8 +832,7 @@ HRV-12 ← HRV-9       # Industry weighting - CLOSED (Won't Do)
 HRV-15 ← HRV-7,8,9,10,11,14  # Regeneration needs all improvements (HRV-12 closed)
 HRV-17 ← None                   # Table row parsing fix (standalone investigation) ✅ COMPLETE
 HRV-21 ← None                   # Diagnostic investigation (verify HRV-17 claims) ✅ COMPLETE
-HRV-22 ← HRV-21                 # HTMLSegmenter bug fix (supersedes HRV-20)
-HRV-20 ← SUPERSEDED             # Superseded by HRV-22
+HRV-22 ← HRV-21                 # HTMLSegmenter bug fix + data re-extraction ✅ COMPLETE
 HRV-16 ← HRV-22                 # Final validation needs data fix
 ```
 
@@ -533,6 +846,8 @@ HRV-1 ← (none)           # CSV schema can start immediately
 HRV-2 ← (none)           # Validation scripts can start immediately
 HRV-7,8,9,10,14 ← HRV-4  # Phase 4 improvements depend on HRV-4 analysis (can run parallel)
 HRV-12 ← HRV-9           # CLOSED - Won't Do
+UXI-1,2,3,5 ← (none)     # Phase 1 UXI tasks are independent (can start immediately)
+UXI-6,8,9 ← (none)       # Phase 2-3 UXI tasks are independent
 ```
 
 ---
@@ -659,7 +974,6 @@ Reference the specific task section in the corresponding plan document:
 - [x] HRV-17: Table row parsing fix ✅ COMPLETE (code fix done; revealed data quality issue) - Phase 4d (2026-01-03)
 - [x] HRV-21: Diagnostic investigation ✅ COMPLETE (confirmed data corruption - see HRV-21_DIAGNOSTIC_FINDINGS.md) - Phase 4d
 - [x] HRV-22: HTMLSegmenter bug fix + re-extraction ✅ COMPLETE (2026-01-03: fixed TABLE_MAX_LENGTH in _split_composite_segment, added validation) - Phase 4d
-- [x] HRV-20: Farfetch data mismatch remediation ⏸️ SUPERSEDED by HRV-22 - Phase 4d
 - [x] HRV-16: Validation re-run (Farfetch + Slack) ✅ COMPLETE (2026-01-04: 66.7% precision, 47.4% recall, 55.4% F1) - Phase 4e
 
 **Deferred**: HRV-13 (Definition-only mode) - moved to future phase (lower priority, harder to validate)
@@ -723,4 +1037,11 @@ Reference the specific task section in the corresponding plan document:
 
 ---
 
-*Last verified: 2026-01-06 (INV-1 archived; INV-1-FIX prompt created; 56/62 tasks done)*
+## Known Issues / Technical Debt
+
+_No known issues._
+
+---
+
+*Last verified: 2026-01-07 (ISSUE-1 fixed; 79/89 tasks complete, 1 pending, 3 blocked)*
+

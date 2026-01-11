@@ -151,6 +151,14 @@ DATE_CONTEXT_PATTERNS: list[Pattern[str]] = [
         r"Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2},?\s+\d{4}",
         re.IGNORECASE,
     ),
+    # DFP-1: Month DD without year - "January 31," in table headers
+    # Matches: "January 31,", "June 30,", "Jul 31", "September 30" (with or without comma)
+    # This catches day numbers from fiscal period headers that don't include a year
+    re.compile(
+        r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|"
+        r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2}\b",
+        re.IGNORECASE,
+    ),
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)
@@ -332,6 +340,11 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_monthly_active_users',  # MAU count
     'cm_paid_users',
     'cm_subscribers',
+    # Customer count metrics (added 2026-01-07 - were missing, causing % false matches)
+    'cm_customers_period_end',
+    'cm_active_customers_total',
+    'cm_large_customers_period_end',
+    'cm_new_customers_acquired',
 }
 
 

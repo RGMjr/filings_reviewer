@@ -660,7 +660,9 @@
    ============================================================================= */
 .metric-selector {
     max-height: 300px;
-    overflow-y: auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .metric-selector .metric-option {
@@ -686,6 +688,69 @@
 .metric-selector .metric-name {
     font-size: 0.875rem;
     color: var(--color-text);
+}
+
+/* =============================================================================
+   Metric Search (UXI-2)
+   ============================================================================= */
+.metric-search-container {
+    flex-shrink: 0;
+    padding: 0.5rem;
+    background: white;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.metric-search-clear {
+    display: none;
+    border-left: 0;
+}
+
+.metric-search-clear.visible {
+    display: block;
+}
+
+.metric-list-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0; /* Required for flex overflow */
+}
+
+.metric-list-wrapper .metric-list {
+    margin: 0;
+    padding: 0;
+}
+
+.no-matches-message {
+    display: none;
+    flex-shrink: 0;
+    text-align: center;
+    color: var(--color-muted);
+    padding: 0.75rem;
+}
+
+.no-matches-message.visible {
+    display: block;
+}
+
+/* =============================================================================
+   Dropdown Keyboard Navigation (UXI-1)
+   ============================================================================= */
+.dropdown-item.keyboard-focus {
+    background-color: var(--bs-primary, #0d6efd);
+    color: white;
+    outline: none;
+}
+
+.dropdown-item.keyboard-focus .small,
+.dropdown-item.keyboard-focus .text-primary,
+.dropdown-item.keyboard-focus .text-muted {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Ensure keyboard focus takes precedence over hover */
+.dropdown-item.keyboard-focus:hover {
+    background-color: var(--bs-primary, #0d6efd);
+    color: white;
 }
 
 /* =============================================================================

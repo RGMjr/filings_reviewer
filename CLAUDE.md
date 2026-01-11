@@ -11,10 +11,11 @@ src/
 ├── infra/          # db.py (PostgreSQL), sec_client.py (SEC EDGAR API), validation.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector
+├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector, context_extractor, structure_parser, candidate_detector
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
-└── llm/            # OpenAI integration: openai_client.py, prompts.py
+├── llm/            # OpenAI integration: openai_client.py, prompts.py
+└── gold_standard/  # Validation: baseline.py, fresh_extractor.py
 config/
 └── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
 ```
@@ -25,7 +26,7 @@ config/
 
 ## Database Schema
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `filing_metric_incidence`, `review_candidates`, `review_decisions`, `learned_patterns`. Schema files in `sql/` (01-07).
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `filing_metric_incidence`, `review_candidates`, `review_decisions`, `learned_patterns`. Schema files in `sql/` (00-08).
 
 API keys go in `.env` (gitignored). See `.env.template`.
 
@@ -105,6 +106,16 @@ docker compose up -d
 docker compose down
 ```
 
+## Claude Code MCP Servers (Optional)
+
+For browser automation when testing the Flask review UI:
+
+```bash
+claude mcp add --transport stdio playwright -- npx -y @playwright/mcp@latest
+```
+
+This adds the official Playwright MCP server, enabling browser automation tools (navigate, click, type, snapshot) for testing the web interface.
+
 ## SEC EDGAR Integration
 
 - **Rate Limiting**: 100ms minimum between requests per SEC guidelines
@@ -163,9 +174,34 @@ docker compose down
 12. **Metric ID alias system** (2026-01-01): Canonical metric IDs can have aliases for gold standard compatibility:
     - Aliases defined in `config/metric_keywords.yaml` under each metric's `aliases` field
     - Functions in `keyword_config.py`: `get_aliases()`, `resolve_to_canonical()`, `get_all_equivalent_ids()`, `metrics_are_equivalent()`
-    - Example: `cm_customers_period_end` has alias `cm_active_customers_total` (both match "Active Consumers")
     - Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
     - System always generates canonical IDs; aliases only used for comparison/validation
+13. **Character offset computation removed** (2026-01-07): `char_start_offset` and `char_end_offset` fields are always NULL:
+    - Removed `_compute_element_offsets()` from HTMLSegmenter (INV-1-FIX-v2)
+    - Root cause: BeautifulSoup HTML normalization caused O(n*m) performance issues (~105s for large filings)
+    - Impact: None - offset data was not used by any feature (review UI uses keyword text matching)
+    - Alternative: Use `html_selector` (CSS selector) for source location if needed
+    - DB columns retained for schema compatibility
+14. **Customer count metric distinction** (2026-01-07, MET-1): Two semantically distinct customer count metrics:
+    - `cm_customers_period_end`: Period-end stock count (total customers, paid customers, customer base)
+    - `cm_active_customers_total`: Engagement-based count (active customers, active users, active accounts)
+    - These are NOT aliases - they measure different things:
+      - "We have 10,000 total customers" → `cm_customers_period_end`
+      - "We have 8,000 active customers" → `cm_active_customers_total`
+    - Both metrics exist in SQL with `status = 'active'`
+    - METRIC_NAME_MAPPING in `value_extractor.py` routes LLM names to correct canonical ID
+15. **Unit-type validation filtering** (2026-01-07): Candidate generation filters metric-unit mismatches:
+    - `COUNT_ONLY_METRICS`: Customer counts must be plain integers (filters percentages, currencies)
+    - `PERCENTAGE_ONLY_METRICS`: Retention/churn rates must be percentages
+    - `DOLLAR_ONLY_METRICS`: Revenue metrics (ARR, LTV, CAC) must be currency
+    - Defined in `src/review/false_positive_filter.py`, applied in `candidate_generator.py:802-838`
+    - Example: "146% retention" won't match `cm_large_customers_period_end` (expects count)
+16. **Div-wrapped table deduplication** (2026-01-07): Tables inside `<div>` wrappers are now handled correctly:
+    - Skip `<div>` elements that contain only a `<table>` (no additional text) - prevents duplicate extraction
+    - Composite split tables (from divs with text + table) now get `[ROW]`/`[CELL]` markers
+    - Fixes cross-row false positives where keywords from one table row matched numbers in another row
+    - Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
+    - Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
@@ -212,7 +248,16 @@ docker compose down
 
 ## Documentation
 
-See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM_PLAN.md`
+See `docs/README.md` for complete index. Key: `docs/architecture/system-overview.md`, `docs/HUMAN_REVIEW_SYSTEM.md`
+
+## Metric Lifecycle
+
+See `docs/development/metric-lifecycle-process.md` for the authoritative guide on:
+- Adding new metrics (patterns, database, mapping, UI)
+- Deprecating metrics (preserving historical data)
+- Removing metrics (when no production data exists)
+- Metric ID naming conventions (`cm_` prefix)
+- Dropdown category ordering (5 semantic categories)
 
 ## Task Execution Workflow
 

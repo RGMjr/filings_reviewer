@@ -55,6 +55,11 @@ _revenue_synonym_context: &revenue_synonym_context
 # =============================================================================
 # Core Metrics
 # =============================================================================
+# SEMANTIC DISTINCTIONS - Customer Count Metrics:
+#   cm_customers_period_end: Stock count at period end ("total customers", "paid customers")
+#   cm_active_customers_total: Engagement-based count ("active customers" - implies activity criteria)
+#   These are DISTINCT metrics, not aliases. "Total" ≠ "Active"
+# =============================================================================
 
 cm_new_customers_acquired:
   patterns:
@@ -84,10 +89,8 @@ cm_new_customers_acquired:
     - '\bcost\s+to\s+acquire\b'
 
 cm_customers_period_end:
-  # Aliases for gold standard compatibility
-  # cm_active_customers_total is used in some gold standards for "Active Consumers"
-  aliases:
-    - cm_active_customers_total
+  # Period-end customer count (stock count at end of period)
+  # Distinct from cm_active_customers_total which is engagement-based
   patterns:
     - '\bpaid\s+customers?\b'
     - '\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b'
@@ -97,6 +100,14 @@ cm_customers_period_end:
     - '\bend[- ]of[- ]period\s+customers?\b'
     - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
     - '\bactive\s+consumers?\b'
+    # Total customer count patterns (moved from cm_active_customers_total 2026-01-07)
+    # "Total customers" represents a stock count, not engagement-based "active" customers
+    - '\btotal\s+customers?\b'
+    - '\btotal\s+consumers?\b'
+    - '\bcustomer\s+base\b'
+    - '\bconsumer\s+base\b'
+    - '\btotal\s+accounts?\b'
+    - '\btotal\s+clients?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -106,6 +117,9 @@ cm_customers_period_end:
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
+    - 'total\s+customers?'
+    - 'total\s+consumers?'
+    - 'customer\s+base'
 
 cm_large_customers_period_end:
   patterns:
@@ -169,22 +183,20 @@ cm_purchase_transactions_overall:
 # =============================================================================
 
 cm_active_customers_total:
+  # "Active" customers implies engagement-based measurement (e.g., logged in, made purchase)
+  # Distinct from "total" customers which is a simple headcount at period end
+  # "Total" patterns moved to cm_customers_period_end (2026-01-07)
   patterns:
     - '\bactive\s+customers?\b'
     - '\bactive\s+consumers?\b'
-    - '\btotal\s+customers?\b'
-    - '\btotal\s+consumers?\b'
-    - '\bcustomer\s+base\b'
-    - '\bconsumer\s+base\b'
     - '\bactive\s+accounts?\b'
-    - '\btotal\s+accounts?\b'
     - '\bactive\s+clients?\b'
-    - '\btotal\s+clients?\b'
+    - '\bactive\s+users?\b'
+    - '\bactive\s+subscribers?\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
-    - 'total\s+customers?'
-    - 'total\s+consumers?'
+    - 'active\s+accounts?'
 
 cm_revenue_per_customer:
   patterns:
@@ -334,10 +346,14 @@ cm_revenue_concentration:
     - '\bcustomer\s+[A-D]\b'
 
 # =============================================================================
-# Revenue Predictability Metrics
+# Revenue Predictability Metrics (DEPRECATED 2026-01-07)
 # =============================================================================
+# These are financial metrics, not customer metrics unless cohort-specific.
+# Patterns retained for historical data interpretation but metrics are deprecated
+# in the database and excluded from UI dropdowns.
 
 cm_bookings:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
     - '\bbookings\b'
@@ -349,6 +365,7 @@ cm_bookings:
     - '\bannual\s+bookings\b'
 
 cm_billings:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
     - '\bbillings\b'
@@ -382,10 +399,13 @@ cm_repeat_purchase_rate:
     - '\brepurchase\s+rate\b'
 
 # =============================================================================
-# Marketplace / Platform Metrics
+# Marketplace / Platform Metrics (DEPRECATED 2026-01-07)
 # =============================================================================
+# GMV is a financial metric, not a customer metric unless cohort-specific.
+# Patterns retained for historical data interpretation but metric is deprecated.
 
 cm_gmv:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
     - '\bgmv\b'
@@ -403,10 +423,13 @@ cm_gmv:
 # It measures the platform's revenue percentage, not customer behavior or value.
 
 # =============================================================================
-# SaaS Contract Metrics
+# SaaS Contract Metrics (DEPRECATED 2026-01-07)
 # =============================================================================
+# These are financial metrics, not customer metrics unless cohort-specific.
+# Patterns retained for historical data interpretation but metrics are deprecated.
 
 cm_acv:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
     - '\bacv\b'
@@ -417,6 +440,7 @@ cm_acv:
     - '\bcontract\s+value\s+per\s+customer\b'
 
 cm_tcv:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
     - '\btcv\b'
@@ -452,6 +476,18 @@ cm_ltv_to_cac_ratio:
     - '\bltv\s*[:/]\s*cac(?:\s+ratio)?\b'
     - '\bltv\s+to\s+cac(?:\s+ratio)?\b'
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
+
+cm_ltv_to_cac_ratio_by_cohort:
+  # LTV/CAC ratio analyzed by acquisition cohort (added 2026-01-07)
+  patterns:
+    - '\bltv\s*[:/]\s*cac\s+by\s+cohort\b'
+    - '\bltv\s+to\s+cac\s+(?:ratio\s+)?by\s+cohort\b'
+    - '\bcohort\s+ltv\s*[:/]\s*cac\b'
+    - '\bltv[:/]cac[^.;]{0,50}\bcohort\b'
+    - '\bcohort[^.;]{0,50}\bltv[:/]cac\b'
+  specific_patterns:
+    - 'ltv\s*[:/]\s*cac\s+by\s+cohort'
+    - 'cohort\s+ltv\s*[:/]\s*cac'
 
 # =============================================================================
 # Growth Metrics - INTENTIONALLY NOT DETECTED
