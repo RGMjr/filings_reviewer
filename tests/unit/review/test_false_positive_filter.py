@@ -1804,3 +1804,202 @@ class TestSpelledOutNumberFilterExemption:
         # Should be filtered - numeric small value
         assert is_fp is True
         assert reason == "below_min_value"
+
+
+# =============================================================================
+# DFP-1: Month DD Date Pattern Tests (without year)
+# =============================================================================
+
+
+class TestMonthDDDatePattern:
+    """DFP-1: Tests for filtering day numbers from 'Month DD' patterns without year.
+
+    Example: "January 31," in table headers - the "31" should be filtered.
+    """
+
+    @pytest.fixture
+    def filter(self):
+        """Create a FalsePositiveFilter instance."""
+        return FalsePositiveFilter()
+
+    def test_january_31_comma_filtered(self, filter):
+        """'January 31,' should filter out '31' as part_of_date."""
+        text = "Fiscal Year Ended January 31, Revenue"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_june_30_comma_filtered(self, filter):
+        """'June 30,' should filter out '30' as part_of_date."""
+        text = "Six Months Ended June 30, Results"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_september_30_no_comma_filtered(self, filter):
+        """'September 30' (no comma) should filter out '30' as part_of_date."""
+        text = "Quarter Ended September 30 Revenue"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_jul_31_abbreviated_filtered(self, filter):
+        """'Jul 31' (abbreviated) should filter out '31' as part_of_date."""
+        text = "Period Ended Jul 31 Performance"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_fiscal_year_ended_january_31_filtered(self, filter):
+        """'Fiscal Year Ended January 31,' should filter '31'."""
+        text = "Fiscal Year Ended January 31, Three Months Ended"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_six_months_ended_july_31_filtered(self, filter):
+        """'Six Months Ended July 31,' should filter '31'."""
+        text = "Six Months Ended July 31, Revenue Growth"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_31_million_customers_not_filtered(self, filter):
+        """'31 million customers' should NOT be filtered (not a date)."""
+        text = "We reached 31 million customers in the quarter"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31000000"),  # 31 million
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered as part_of_date
+        assert reason != "part_of_date"
+
+    def test_30_percent_growth_not_filtered(self, filter):
+        """'30%' should NOT be filtered by date pattern."""
+        text = "Revenue grew 30% year over year"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30%",
+            value=Decimal("30"),
+            unit="percentage",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered as part_of_date
+        assert reason != "part_of_date"
+
+    def test_dollar_31_not_filtered(self, filter):
+        """'$31' should NOT be filtered by date pattern."""
+        text = "Average purchase was $31"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="$31",
+            value=Decimal("31"),
+            unit="currency",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Should NOT be filtered as part_of_date
+        assert reason != "part_of_date"
+
+    def test_dec_31_abbreviated_filtered(self, filter):
+        """'Dec 31' (abbreviated) should filter out '31'."""
+        text = "Year End Dec 31 Balance"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_sept_30_abbreviated_filtered(self, filter):
+        """'Sept 30' (alternate September abbreviation) should filter out '30'."""
+        text = "Quarter End Sept 30 Financials"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_case_insensitive_january(self, filter):
+        """Pattern should be case-insensitive."""
+        text = "JANUARY 31, fiscal year end"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_april_15_middle_month_filtered(self, filter):
+        """'April 15' (mid-month date) should filter '15'."""
+        text = "Due Date April 15 Payment"
+        number = NumberMatch(
+            start=text.find("15"),
+            end=text.find("15") + 2,
+            raw_text="15",
+            value=Decimal("15"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"

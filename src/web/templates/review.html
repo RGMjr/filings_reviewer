@@ -51,19 +51,23 @@
 
                 {# Filing metadata grid #}
                 <div class="row text-muted small">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">Form Type</div>
                         <div>{{ filing.form_type }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">Filing Date</div>
                         <div>{{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <div class="d-block text-uppercase fw-bold mb-1">Extracted</div>
+                        <div>{{ extraction_date.strftime('%Y-%m-%d') if extraction_date else 'N/A' }}</div>
+                    </div>
+                    <div class="col-md-2">
                         <div class="d-block text-uppercase fw-bold mb-1">CIK</div>
                         <div>{{ filing.cik }}</div>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <div class="d-block text-uppercase fw-bold mb-1">Accession</div>
                         <div class="font-monospace" style="font-size: 0.75rem;">
                             {{ filing.accession_number }}
@@ -231,6 +235,8 @@
                                 </div>
                                 {% if current_candidate.review_status == 'reviewed' %}
                                     <span class="badge bg-success">Reviewed</span>
+                                {% elif current_candidate.review_status == 'skipped' %}
+                                    <span class="badge bg-secondary">Skipped</span>
                                 {% else %}
                                     <span class="badge bg-warning text-dark">Pending</span>
                                 {% endif %}
@@ -413,7 +419,15 @@
                                             {% endif %}
 
                                             <div>
-                                                <span class="badge bg-{{ conf_color }}">
+                                                {% if conf_label == 'High' %}
+                                                    {% set conf_tooltip = 'Strong keyword match with nearby value. High likelihood of correct metric.' %}
+                                                {% elif conf_label == 'Medium' %}
+                                                    {% set conf_tooltip = 'Moderate match or distant keyword. Review context carefully.' %}
+                                                {% else %}
+                                                    {% set conf_tooltip = 'Weak signals or conflicting features. May be false positive.' %}
+                                                {% endif %}
+                                                <span class="badge bg-{{ conf_color }}"
+                                                      title="{{ conf_tooltip }}">
                                                     {{ conf_label }} Confidence ({{ "{:.0f}".format(conf * 100) }}%)
                                                 </span>
                                             </div>
@@ -612,18 +626,40 @@
                                                 Reclassify
                                                 <span class="badge bg-light text-dark ms-2">C</span>
                                             </button>
-                                            <ul class="dropdown-menu metric-selector" style="max-height: 300px; overflow-y: auto;">
+                                            <ul class="dropdown-menu metric-selector">
+                                                {# UXI-2: Search input for filtering metrics #}
+                                                <li class="metric-search-container">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text"
+                                                               id="metric-search-input"
+                                                               class="form-control metric-search-input"
+                                                               placeholder="Search metrics..."
+                                                               autocomplete="off"
+                                                               aria-label="Search metrics">
+                                                        <button class="btn btn-outline-secondary metric-search-clear"
+                                                                type="button"
+                                                                aria-label="Clear search">×</button>
+                                                    </div>
+                                                </li>
                                                 <li><h6 class="dropdown-header">Choose Correct Metric</h6></li>
-                                                {% for metric in metrics %}
-                                                    <li>
-                                                        <a class="dropdown-item metric-option"
-                                                           href="#"
-                                                           data-metric-id="{{ metric.metric_id }}">
-                                                            <div class="small text-primary">{{ metric.metric_id }}</div>
-                                                            <div>{{ metric.display_name }}</div>
-                                                        </a>
-                                                    </li>
-                                                {% endfor %}
+                                                <li class="metric-list-wrapper">
+                                                    <ul class="metric-list list-unstyled mb-0">
+                                                        {% for metric in metrics %}
+                                                            <li>
+                                                                <a class="dropdown-item metric-option"
+                                                                   href="#"
+                                                                   data-metric-id="{{ metric.metric_id }}"
+                                                                   role="option">
+                                                                    <div class="small text-primary">{{ metric.metric_id }}</div>
+                                                                    <div>{{ metric.display_name }}</div>
+                                                                </a>
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </li>
+                                                <li class="no-matches-message" aria-live="polite">
+                                                    No matching metrics
+                                                </li>
                                             </ul>
                                         </div>
                                     </div>
@@ -744,16 +780,19 @@
                                                 {% if conf >= 0.7 %}
                                                     {% set conf_color = 'success' %}
                                                     {% set conf_label = 'High' %}
+                                                    {% set conf_tooltip = 'Strong keyword match with nearby value. High likelihood of correct metric.' %}
                                                 {% elif conf >= 0.4 %}
                                                     {% set conf_color = 'warning' %}
                                                     {% set conf_label = 'Medium' %}
+                                                    {% set conf_tooltip = 'Moderate match or distant keyword. Review context carefully.' %}
                                                 {% else %}
                                                     {% set conf_color = 'danger' %}
                                                     {% set conf_label = 'Low' %}
+                                                    {% set conf_tooltip = 'Weak signals or conflicting features. May be false positive.' %}
                                                 {% endif %}
                                                 <span class="badge bg-{{ conf_color }} ms-1"
                                                       style="font-size: 0.65rem;"
-                                                      title="{{ conf_label }} confidence - System's confidence in this metric classification"
+                                                      title="{{ conf_tooltip }}"
                                                       aria-label="{{ conf_label }} confidence: {{ "{:.0f}".format(conf * 100) }} percent">
                                                     {{ "{:.0f}".format(conf * 100) }}%
                                                 </span>
@@ -782,6 +821,8 @@
                                                     <span class="badge bg-warning">⟲</span>
                                                 {% endif %}
                                             {% endif %}
+                                        {% elif candidate.review_status == 'skipped' %}
+                                            <span class="badge bg-secondary" title="Skipped for later review">⏭</span>
                                         {% else %}
                                             <span class="badge bg-secondary">Pending</span>
                                         {% endif %}
@@ -957,6 +998,11 @@
                         </div>
 
                         <div class="d-flex align-items-center mb-2">
+                            <span class="badge bg-secondary me-2">S</span>
+                            <span class="small">Skip candidate</span>
+                        </div>
+
+                        <div class="d-flex align-items-center mb-2">
                             <span class="badge bg-secondary me-2">Enter</span>
                             <span class="small">Confirm rejection</span>
                         </div>
@@ -999,6 +1045,8 @@
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">N</kbd> Next
                     <span class="mx-1 text-muted">|</span>
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">P</kbd> Previous
+                    <span class="mx-1 text-muted">|</span>
+                    <kbd class="bg-secondary text-light px-2 py-1 rounded">S</kbd> Skip
                     <span class="mx-1 text-muted">|</span>
                     <kbd class="bg-secondary text-light px-2 py-1 rounded">Enter</kbd> Confirm
                     <span class="mx-1 text-muted">|</span>

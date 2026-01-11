@@ -43,7 +43,6 @@ METRIC_NAME_MAPPING = {
 
     "customers_by_tenure": "cm_customers_period_end_by_tenure",
     "customer_count_by_tenure": "cm_customers_period_end_by_tenure",
-    "customers_period_end": "cm_customers_period_end_by_tenure",
     "customer_cohort_count": "cm_customers_period_end_by_tenure",
 
     "revenue_by_cohort": "cm_revenue_by_cohort",
@@ -94,6 +93,10 @@ METRIC_NAME_MAPPING = {
     "ltv_cac": "cm_ltv_to_cac_ratio",
     "ltv_cac_ratio": "cm_ltv_to_cac_ratio",
 
+    "ltv_to_cac_ratio_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
+    "ltv_cac_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
+    "cohort_ltv_cac": "cm_ltv_to_cac_ratio_by_cohort",
+
     # Extended metrics - retention
     "customer_retention_rate": "cm_customer_retention_rate",
     "retention_rate": "cm_customer_retention_rate",
@@ -114,15 +117,59 @@ METRIC_NAME_MAPPING = {
     "gross_revenue_retention": "cm_gross_revenue_retention",
     "grr": "cm_gross_revenue_retention",
 
-    # Extended metrics - customer counts specific
+    # Extended metrics - customer counts specific (period-end stock count)
     "paid_customers": "cm_customers_period_end",
     "total_paid_customers": "cm_customers_period_end",
     "paid_customer_count": "cm_customers_period_end",
+    "customers_period_end": "cm_customers_period_end",
+    "period_end_customers": "cm_customers_period_end",
+    "customer_base": "cm_customers_period_end",
+    "total_customer_count": "cm_customers_period_end",
+    "customers_at_period_end": "cm_customers_period_end",
 
     "paid_customers_100k": "cm_large_customers_period_end",
     "paid_customers_100k+": "cm_large_customers_period_end",
     "customers_over_100k": "cm_large_customers_period_end",
     "large_customers": "cm_large_customers_period_end",
+    "enterprise_customers": "cm_large_customers_period_end",
+
+    # Extended metrics - recurring revenue
+    "arr": "cm_arr",
+    "annual_recurring_revenue": "cm_arr",
+    "annualized_recurring_revenue": "cm_arr",
+
+    "mrr": "cm_mrr",
+    "monthly_recurring_revenue": "cm_mrr",
+
+    # Extended metrics - transactions
+    "purchase_transactions": "cm_purchase_transactions_overall",
+    "total_transactions": "cm_purchase_transactions_overall",
+    "transaction_count": "cm_purchase_transactions_overall",
+    "order_count": "cm_purchase_transactions_overall",
+    "total_orders": "cm_purchase_transactions_overall",
+
+    # Extended metrics - cohort economics
+    "gross_margin_by_cohort": "cm_gross_margin_by_cohort",
+    "cohort_gross_margin": "cm_gross_margin_by_cohort",
+    "cohort_margin": "cm_gross_margin_by_cohort",
+
+    # Extended metrics - expansion and concentration
+    "expansion_revenue": "cm_expansion_revenue",
+    "upsell_revenue": "cm_expansion_revenue",
+    "cross_sell_revenue": "cm_expansion_revenue",
+
+    "revenue_concentration": "cm_revenue_concentration",
+    "customer_concentration": "cm_revenue_concentration",
+    "top_customers": "cm_revenue_concentration",
+
+    # Extended metrics - e-commerce
+    "average_order_value": "cm_average_order_value",
+    "aov": "cm_average_order_value",
+    "avg_order_value": "cm_average_order_value",
+
+    "repeat_purchase_rate": "cm_repeat_purchase_rate",
+    "repeat_purchases": "cm_repeat_purchase_rate",
+    "purchase_frequency": "cm_repeat_purchase_rate",
 }
 
 # Create reverse mapping for validation

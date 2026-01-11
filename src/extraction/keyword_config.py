@@ -341,8 +341,8 @@ def get_aliases(config_path: str | None = None) -> dict[str, list[str]]:
 
     Example:
         >>> aliases = get_aliases()
-        >>> aliases.get("cm_customers_period_end")
-        ["cm_active_customers_total"]
+        >>> aliases.get("cm_example_metric")
+        ["cm_example_alias"]  # If defined in YAML
     """
     config = _load_config(config_path)
     return {
@@ -367,8 +367,8 @@ def resolve_to_canonical(metric_id: str, config_path: str | None = None) -> str:
         The canonical metric ID if input was an alias, otherwise the input.
 
     Example:
-        >>> resolve_to_canonical("cm_active_customers_total")
-        "cm_customers_period_end"  # If alias is defined
+        >>> resolve_to_canonical("cm_example_alias")
+        "cm_example_metric"  # If alias is defined
 
         >>> resolve_to_canonical("cm_arr")
         "cm_arr"  # No alias, returns unchanged
@@ -400,11 +400,11 @@ def get_all_equivalent_ids(metric_id: str, config_path: str | None = None) -> se
         If metric has no aliases, returns set with just the input.
 
     Example:
-        >>> get_all_equivalent_ids("cm_customers_period_end")
-        {"cm_customers_period_end", "cm_active_customers_total"}
+        >>> get_all_equivalent_ids("cm_example_metric")
+        {"cm_example_metric", "cm_example_alias"}  # If aliases defined
 
-        >>> get_all_equivalent_ids("cm_active_customers_total")
-        {"cm_customers_period_end", "cm_active_customers_total"}
+        >>> get_all_equivalent_ids("cm_arr")
+        {"cm_arr"}  # No aliases, returns just the input
     """
     aliases = get_aliases(config_path)
 
@@ -434,7 +434,7 @@ def metrics_are_equivalent(
         True if the metrics are equivalent (both resolve to same canonical).
 
     Example:
-        >>> metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total")
+        >>> metrics_are_equivalent("cm_example_metric", "cm_example_alias")
         True  # If alias is defined
 
         >>> metrics_are_equivalent("cm_arr", "cm_mrr")

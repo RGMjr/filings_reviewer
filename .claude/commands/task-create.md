@@ -34,10 +34,59 @@ If they choose to skip, advise them to use `/task-run` and stop.
    - File conflicts
 4. Generate worker prompt following template v2.6
 
-## Step 4: Save and STOP
+## Step 4: Critical Prompt Evaluation
+
+Before saving, perform a structured evaluation of the generated prompt:
+
+### 4.1 Completeness Check
+- [ ] Objective clearly states WHAT and WHY
+- [ ] Implementation Requirements focus on WHAT, not HOW
+- [ ] Acceptance Criteria are specific and testable
+- [ ] Test Requirements include coverage target and categories
+- [ ] Verification Commands are copy-pasteable
+- [ ] "Do NOT" section prevents scope creep and conflicts
+
+### 4.2 Quality Assessment
+Evaluate against these criteria (score 1-3 each):
+1. **Clarity**: Are requirements unambiguous? Would two developers implement the same thing?
+2. **Scope**: Is the task well-bounded? Is it achievable in the estimated time?
+3. **Testability**: Can each acceptance criterion be objectively verified?
+4. **Risk Calibration**: Does the risk level match the actual risk? Are mitigations appropriate?
+5. **Dependencies**: Are all prerequisites identified? Are blocked/unlocked tasks correct?
+
+### 4.3 Identify Issues and Improvements
+List any problems found:
+- **Critical** (must fix before saving): Missing sections, ambiguous requirements, incorrect dependencies
+- **Recommended** (should fix): Vague acceptance criteria, missing edge cases, over-specification
+- **Optional** (nice to have): Style improvements, additional examples, better organization
+
+### 4.4 Generate Evaluation Summary
+Create a brief summary like:
+
+```
+## Prompt Quality Assessment
+
+**Overall Score**: [Good/Acceptable/Needs Work]
+
+**Strengths**:
+- [Strength 1]
+- [Strength 2]
+
+**Issues Found**:
+- [Critical: issue] (if any)
+- [Recommended: issue]
+- [Optional: issue]
+
+**Suggested Improvements**:
+1. [Specific improvement 1]
+2. [Specific improvement 2]
+```
+
+## Step 5: Save and Present
 
 1. Write to `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
-2. Display summary:
+2. Display the evaluation summary from Step 4.4
+3. Display final summary:
    > "✅ Worker prompt created: `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
    >
    > **Task:** [Name]
