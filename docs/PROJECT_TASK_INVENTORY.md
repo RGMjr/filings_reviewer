@@ -19,12 +19,13 @@
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| **TOTAL** | **89** | **79** | **0** | **4** | **3** |
+| IMAGE_EXTRACTION (IMG) | 3 | 1 | 0 | 2 | 0 |
+| **TOTAL** | **92** | **80** | **0** | **6** | **3** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: None - UXI workstream complete (UXI-9 dropped)
+**Next Priority**: IMG-Series Phase 0 Discovery (evaluate chart image extraction feasibility)
 **Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed; UXI workstream ✅ COMPLETE (UXI-4/7/8/9 + F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
@@ -630,6 +631,51 @@ Phase 4 (Cleanup):
 | Tests for ordering logic | ✅ Yes | MET-8/MET-9 (8 tests) |
 | Lifecycle process documented | ✅ Yes | MET-2 |
 | All changes committed | ✅ Yes | MET-11 (DB synced, prompts archived) |
+
+---
+
+### IMAGE_EXTRACTION Tasks (IMG-Series)
+
+**Goal**: Evaluate feasibility of extracting metrics from chart images in SEC filings
+**Plan Location**: `.claude/plans/flickering-tumbling-kernighan.md`
+**Status**: 🟡 PENDING - Phase 0 Discovery
+
+#### Phase 0: Discovery (Prerequisite for all other phases)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **IMG-0-1** | Chart Image Discovery Script | S | 1-2h | NONE | ✅ COMPLETE | None | IMG-0-2 |
+| **IMG-0-2** | Chart Image Sample Analysis | M | 2-3h | NONE | 🟡 PENDING | IMG-0-1 | IMG-0-3 |
+| **IMG-0-3** | Discovery Decision Report | S | 1h | NONE | 🟡 PENDING | IMG-0-2 | Phase 1 (if GO) |
+
+**Phase 0 Dependency Graph**:
+```
+IMG-0-1 (Discovery Script) ──> IMG-0-2 (Sample Analysis) ──> IMG-0-3 (Decision Report)
+                                                                      │
+                                                          ┌───────────┴───────────┐
+                                                          ▼                       ▼
+                                                    GO: Phase 1              NO-GO: Archive
+```
+
+**Worker Prompts**: `docs/worker-prompts/WORKER_PROMPT_TASK_IMG-0-*.md`
+
+**Phase 0 Deliverables**:
+- Discovery script to catalog chart images across all filings (IMG-0-1)
+- Manual analysis of 30-50 sampled images with classification (IMG-0-2)
+- Go/no-go decision document based on ROI analysis (IMG-0-3)
+
+**Decision Criteria** (IMG-0-3):
+- **GO if**: ≥30% filings have extractable charts, ≥20% values unique to charts, ≥50% Easy/Medium difficulty
+- **NO-GO if**: <10% filings have valuable charts, <10% unique values, >70% Hard difficulty
+- **CONDITIONAL if**: Borderline metrics or specific chart types valuable
+
+**Future Phases** (contingent on Phase 0 GO decision):
+- Phase 1: Database schema + image fetcher
+- Phase 2: Vision LLM integration
+- Phase 3: Chart classification + routing
+- Phase 4: Value mapping + review candidates
+- Phase 5: Review UI integration
+- Phase 6: Pipeline integration + testing
 
 ---
 
