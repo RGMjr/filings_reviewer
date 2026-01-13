@@ -286,6 +286,86 @@ class TestGetNextPendingImageCandidate:
         assert next_candidate is not None
         assert next_candidate["image_candidate_id"] == candidate_ids[2]
 
+    def test_returns_next_after_current_candidate(self, clean_db):
+        """Test that passing current_candidate_id returns the NEXT pending candidate.
+
+        This is the key navigation test - when reviewing candidate N, calling
+        get_next_pending_image_candidate(filing_id, N) should return candidate N+1.
+        """
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Create 5 pending candidates
+        candidate_ids = []
+        for i in range(5):
+            cid = clean_db.insert_image_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                image_src=f"chart{i}.jpg",
+                image_url=f"https://sec.gov/chart{i}.jpg",
+                image_index=i + 1,
+            )
+            candidate_ids.append(cid)
+
+        # Get next after first candidate - should return second
+        next_after_first = clean_db.get_next_pending_image_candidate(
+            filing_id, current_candidate_id=candidate_ids[0]
+        )
+        assert next_after_first is not None
+        assert next_after_first["image_candidate_id"] == candidate_ids[1]
+
+        # Get next after second candidate - should return third
+        next_after_second = clean_db.get_next_pending_image_candidate(
+            filing_id, current_candidate_id=candidate_ids[1]
+        )
+        assert next_after_second is not None
+        assert next_after_second["image_candidate_id"] == candidate_ids[2]
+
+        # Get next after last candidate - should return None
+        next_after_last = clean_db.get_next_pending_image_candidate(
+            filing_id, current_candidate_id=candidate_ids[4]
+        )
+        assert next_after_last is None
+
+    def test_next_candidate_skips_reviewed_in_middle(self, clean_db):
+        """Test navigation skips reviewed candidates in the middle of the list.
+
+        Scenario: 5 candidates, #2 and #3 are reviewed. After #1, should get #4.
+        """
+        company_id, filing_id = create_test_company_and_filing(clean_db)
+
+        # Create 5 candidates
+        candidate_ids = []
+        for i in range(5):
+            cid = clean_db.insert_image_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                image_src=f"chart{i}.jpg",
+                image_url=f"https://sec.gov/chart{i}.jpg",
+                image_index=i + 1,
+            )
+            candidate_ids.append(cid)
+
+        # Review candidates 1 and 2 (indices 1, 2 - the middle ones)
+        clean_db.insert_image_review_decision(
+            image_candidate_id=candidate_ids[1],
+            decision="relevant",
+            chart_type="line_chart",
+        )
+        clean_db.insert_image_review_decision(
+            image_candidate_id=candidate_ids[2],
+            decision="not_relevant",
+            rejection_reason="decorative",
+        )
+
+        # Get next after first pending (candidate_ids[0]) - should skip reviewed ones
+        next_candidate = clean_db.get_next_pending_image_candidate(
+            filing_id, current_candidate_id=candidate_ids[0]
+        )
+
+        assert next_candidate is not None
+        # Should return candidate_ids[3] since [1] and [2] are reviewed
+        assert next_candidate["image_candidate_id"] == candidate_ids[3]
+
 
 # =============================================================================
 # Decision CRUD Tests

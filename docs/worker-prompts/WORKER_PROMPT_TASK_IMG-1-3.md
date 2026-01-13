@@ -87,6 +87,10 @@ Create a script that reads the image inventory CSV and populates `image_review_c
    - Use `insert_image_review_candidate()` from DatabaseAdapter
    - Upsert behavior (skip duplicates on filing_id + image_src)
    - Track: inserted count, skipped count, error count
+   - **IMPORTANT**: Insert order determines review order. The review UI uses
+     `image_candidate_id` ordering for navigation. Process CSV in tier priority
+     order (seed_list first, then tier_1_cohort, tier_2_large, tier_3_all)
+     so high-value charts appear first during review.
 
 5. **CLI Interface**
    ```bash
