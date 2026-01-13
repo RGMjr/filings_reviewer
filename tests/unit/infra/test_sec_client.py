@@ -1207,3 +1207,285 @@ class TestGetFilingByAccession:
         filing = client.get_filing_by_accession("1234567", "0001193125-24-999999")  # Not in list
 
         assert filing is None
+
+
+class TestFetchImage:
+    """Test suite for fetch_image method."""
+
+    def test_fetch_image_success(self):
+        """Test successful image download."""
+        # Create mock image response (JPEG magic bytes)
+        image_bytes = b"\xff\xd8\xff\xe0" + b"fake jpeg content"
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=image_bytes,
+            headers={"Content-Type": "image/jpeg", "Content-Length": str(len(image_bytes))},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart1.jpg",
+            elapsed_seconds=0.5
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart1.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="0001234567",
+            accession_number="0001234567-24-000001",
+            filename="chart1.jpg",
+        )
+
+        assert result is not None
+        assert result == image_bytes
+
+    def test_fetch_image_strips_leading_zeros_from_cik(self):
+        """Test that leading zeros are stripped from CIK in URL."""
+        image_bytes = b"\xff\xd8\xff\xe0" + b"content"
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=image_bytes,
+            headers={"Content-Type": "image/jpeg"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000199999924000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        # URL should use stripped CIK (1234567, not 0001234567)
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000199999924000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="0001234567",  # Padded CIK
+            accession_number="0001999999-24-000001",  # Different accession to avoid substring match
+            filename="chart.jpg",
+        )
+
+        assert result is not None
+        # Verify the request was made with stripped CIK
+        assert len(mock_client.request_history) == 1
+        # The URL should have /data/1234567/ not /data/0001234567/
+        assert "/data/1234567/" in mock_client.request_history[0]
+        assert "/data/0001234567/" not in mock_client.request_history[0]
+
+    def test_fetch_image_removes_dashes_from_accession(self):
+        """Test that dashes are removed from accession number in URL."""
+        image_bytes = b"\xff\xd8\xff\xe0" + b"content"
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=image_bytes,
+            headers={"Content-Type": "image/jpeg"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        # URL should use accession without dashes
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",  # With dashes
+            filename="chart.jpg",
+        )
+
+        assert result is not None
+        # Verify the request was made with no dashes
+        assert "000123456724000001" in mock_client.request_history[0]
+
+    def test_fetch_image_404_returns_none(self):
+        """Test that 404 error returns None."""
+        mock_error = requests.HTTPError("404 Not Found")
+        mock_error.response = Mock(status_code=404)
+
+        mock_client = MockHTTPClient()
+        mock_client.failures["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_error
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+        )
+
+        assert result is None
+
+    def test_fetch_image_network_error_returns_none(self):
+        """Test that network errors return None."""
+        mock_client = MockHTTPClient()
+        mock_client.failures["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = ConnectionError("Network error")
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+        )
+
+        assert result is None
+
+    def test_fetch_image_invalid_content_type_returns_none(self):
+        """Test that non-image Content-Type returns None."""
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=b"<html>Not an image</html>",
+            headers={"Content-Type": "text/html"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+        )
+
+        assert result is None
+
+    def test_fetch_image_exceeds_size_limit_via_content_length(self):
+        """Test that oversized images (via Content-Length) return None."""
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=b"",  # Actual content doesn't matter, Content-Length is checked first
+            headers={
+                "Content-Type": "image/jpeg",
+                "Content-Length": str(20 * 1024 * 1024),  # 20MB, exceeds default 10MB
+            },
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+        )
+
+        assert result is None
+
+    def test_fetch_image_exceeds_size_limit_via_content_size(self):
+        """Test that oversized images (via actual content) return None."""
+        # Create content that exceeds size limit but with no Content-Length header
+        large_content = b"\xff\xd8\xff\xe0" + (b"x" * (15 * 1024 * 1024))  # ~15MB
+
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=large_content,
+            headers={"Content-Type": "image/jpeg"},  # No Content-Length
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+        )
+
+        assert result is None
+
+    def test_fetch_image_custom_size_limit(self):
+        """Test that custom size limit is respected."""
+        # Small content but with custom 1KB limit
+        small_content = b"\xff\xd8\xff\xe0" + (b"x" * 2000)  # ~2KB
+
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=small_content,
+            headers={"Content-Type": "image/jpeg"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+        result = client.fetch_image(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+            filename="chart.jpg",
+            max_size_bytes=1024,  # 1KB limit
+        )
+
+        # Should return None because content exceeds custom limit
+        assert result is None
+
+    def test_fetch_image_respects_rate_limiting(self):
+        """Test that rate limiting is applied between requests."""
+        image_bytes = b"\xff\xd8\xff\xe0" + b"content"
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=image_bytes,
+            headers={"Content-Type": "image/jpeg"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.1
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        client = SECClient(http_client=mock_client)
+
+        # Make two requests and check timing
+        start = time.time()
+        client.fetch_image("1234567", "0001234567-24-000001", "chart.jpg")
+        client.fetch_image("1234567", "0001234567-24-000001", "chart.jpg")
+        elapsed = time.time() - start
+
+        # Should have rate limiting delay between requests
+        assert elapsed >= client.MIN_REQUEST_INTERVAL
+
+    def test_fetch_image_tracks_metrics(self):
+        """Test that metrics are tracked for image requests."""
+        image_bytes = b"\xff\xd8\xff\xe0" + b"content"
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=image_bytes,
+            headers={"Content-Type": "image/jpeg"},
+            url="https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg",
+            elapsed_seconds=0.25
+        )
+
+        mock_client = MockHTTPClient()
+        mock_client.responses["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_response
+
+        metrics = SECClientMetrics()
+        client = SECClient(http_client=mock_client, metrics=metrics)
+
+        result = client.fetch_image("1234567", "0001234567-24-000001", "chart.jpg")
+
+        assert result is not None
+        summary = metrics.get_summary()
+        assert summary["requests_total"] == 1
+        assert summary["requests_success"] == 1
+        assert summary["requests_failed"] == 0
+
+    def test_fetch_image_tracks_failed_metrics(self):
+        """Test that failed requests are tracked in metrics."""
+        mock_error = requests.HTTPError("500 Server Error")
+        mock_error.response = Mock(status_code=500)
+
+        mock_client = MockHTTPClient()
+        mock_client.failures["https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"] = mock_error
+
+        metrics = SECClientMetrics()
+        client = SECClient(http_client=mock_client, metrics=metrics)
+
+        result = client.fetch_image("1234567", "0001234567-24-000001", "chart.jpg")
+
+        assert result is None
+        summary = metrics.get_summary()
+        assert summary["requests_total"] == 1
+        assert summary["requests_failed"] == 1
