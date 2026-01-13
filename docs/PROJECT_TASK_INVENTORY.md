@@ -753,7 +753,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
 | **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | ✅ COMPLETE | VIS-1a | VIS-2a, VIS-3 |
-| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | 🟡 PENDING | VIS-2 ✅ | None |
+| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | ✅ COMPLETE | VIS-2 ✅ | None |
 | **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
 | **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
 
@@ -779,6 +779,13 @@ IMG-1-3    IMG-1-4    IMG-1-5
 - VIS-2a: Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
 - VIS-2b: Add Claude Vision as alternative provider (protocol pattern)
 - VIS-2c: Optimize for high-volume extraction with rate limit awareness
+
+**VIS-2a Completion Note** (2026-01-13):
+- Added optional `image_cache_dir` parameter to `SECClient.__init__()`
+- Cache structure: `{cache_dir}/{cik}/{accession_no_dashes}/{filename}`
+- Cache hit returns stored bytes without SEC request; cache miss fetches and caches
+- Backward compatible (caching disabled by default)
+- 13 new tests in `TestImageCaching` class, all passing
 
 **Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
 
