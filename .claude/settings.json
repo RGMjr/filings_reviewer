@@ -1,0 +1,50 @@
+{
+  "$schema": "https://claude.ai/schemas/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Skill",
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash(pytest*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(mypy*)",
+      "Bash(black*)",
+      "Bash(ruff*)",
+      "Bash(python scripts/validate_against_gold_standard.py*)",
+      "Bash(python scripts/sync_github_issues.py*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)*",
+      "Bash(sudo*)",
+      "Bash(curl*|*bash)",
+      "Bash(*> /etc/*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/stop-hook-git-check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "project": {
+    "testCommand": "pytest",
+    "lintCommand": "ruff check src/ tests/",
+    "typeCheckCommand": "mypy src/review/ --strict",
+    "coverageThreshold": 75
+  }
+}
