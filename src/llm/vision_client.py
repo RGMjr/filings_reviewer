@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 
 
 # Supported image formats with their magic bytes
+# WebP files start with "RIFF" followed by file size (4 bytes) then "WEBP"
 IMAGE_SIGNATURES: dict[bytes, str] = {
     b"\xff\xd8\xff": "image/jpeg",
     b"\x89PNG\r\n\x1a\n": "image/png",
     b"GIF87a": "image/gif",
     b"GIF89a": "image/gif",
 }
+
+# WebP requires special handling - check for RIFF header + WEBP at offset 8
+WEBP_RIFF_HEADER = b"RIFF"
+WEBP_MAGIC = b"WEBP"
 
 
 def detect_mime_type(image_bytes: bytes) -> str:
@@ -36,9 +41,19 @@ def detect_mime_type(image_bytes: bytes) -> str:
     Returns:
         MIME type string (defaults to "image/png" if unknown)
     """
+    # Check standard signatures first
     for signature, mime_type in IMAGE_SIGNATURES.items():
         if image_bytes.startswith(signature):
             return mime_type
+
+    # Check for WebP: RIFF header + "WEBP" at offset 8
+    if (
+        len(image_bytes) >= 12
+        and image_bytes.startswith(WEBP_RIFF_HEADER)
+        and image_bytes[8:12] == WEBP_MAGIC
+    ):
+        return "image/webp"
+
     # Default to PNG for unknown formats (OpenAI will reject if invalid)
     return "image/png"
 
@@ -120,8 +135,15 @@ class VisionClient:
             VisionResponse with content and metadata
 
         Raises:
+            ValueError: On invalid inputs (empty image or prompt)
             openai.APIError: On API failures (after retries exhausted)
         """
+        # Input validation - fail fast before API call
+        if not image_bytes:
+            raise ValueError("image_bytes cannot be empty")
+        if not prompt or not prompt.strip():
+            raise ValueError("prompt cannot be empty")
+
         if max_retries is None:
             max_retries = self.DEFAULT_MAX_RETRIES
 
