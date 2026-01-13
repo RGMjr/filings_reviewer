@@ -3061,6 +3061,7 @@ class DatabaseAdapter:
                 COUNT(rc.candidate_id) as total_candidates,
                 COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'pending') as pending_count,
                 COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'reviewed') as reviewed_count,
+                COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'skipped') as skipped_count,
                 MIN(rc.created_at) as extraction_date
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
