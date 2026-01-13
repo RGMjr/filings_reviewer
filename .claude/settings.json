@@ -2,6 +2,7 @@
   "$schema": "https://claude.ai/schemas/claude-code-settings.json",
   "permissions": {
     "allow": [
+      "Skill",
       "Read",
       "Glob",
       "Grep",
@@ -17,7 +18,8 @@
       "Bash(mypy*)",
       "Bash(black*)",
       "Bash(ruff*)",
-      "Bash(python scripts/validate_against_gold_standard.py*)"
+      "Bash(python scripts/validate_against_gold_standard.py*)",
+      "Bash(python scripts/sync_github_issues.py*)"
     ],
     "deny": [
       "Bash(rm -rf /)*",
@@ -26,13 +28,18 @@
       "Bash(*> /etc/*)"
     ]
   },
-  "preferences": {
-    "defaultModel": "sonnet",
-    "taskModels": {
-      "planning": "opus",
-      "implementation": "sonnet",
-      "review": "opus"
-    }
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/stop-hook-git-check.sh"
+          }
+        ]
+      }
+    ]
   },
   "project": {
     "testCommand": "pytest",
