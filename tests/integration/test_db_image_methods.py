@@ -569,6 +569,31 @@ class TestDeleteImageReviewDecision:
         assert result is False
 
 
+class TestGetImageDecisionById:
+    """Tests for get_image_decision_by_id method."""
+
+    def test_returns_decision_with_filing_id(self, clean_db):
+        """Test that method returns decision details including filing_id."""
+        company_id, filing_id, candidate_id, decision_id = create_test_image_decision(
+            clean_db
+        )
+
+        result = clean_db.get_image_decision_by_id(decision_id)
+
+        assert result is not None
+        assert result["image_decision_id"] == decision_id
+        assert result["image_candidate_id"] == candidate_id
+        assert result["filing_id"] == filing_id
+        assert result["decision"] == "relevant"
+        assert result["chart_type"] == "cohort_table"
+        assert "created_at" in result
+
+    def test_returns_none_for_nonexistent(self, clean_db):
+        """Test returns None when decision doesn't exist."""
+        result = clean_db.get_image_decision_by_id(999999)
+        assert result is None
+
+
 class TestUpdateImageCandidateStatus:
     """Tests for update_image_candidate_status method."""
 
