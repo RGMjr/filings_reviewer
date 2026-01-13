@@ -51,6 +51,9 @@ htmlcov/
 # Claude setup
 .claude.json
 
+# But keep project-specific Claude settings
+!.claude/settings.json
+
 # Build artifacts
 *.egg-info/
 .playwright-mcp/
