@@ -818,6 +818,103 @@ class SECClient:
             logger.error(f"Error parsing filing data for CIK {cik}: {e}")
             return None
 
+    def fetch_image(
+        self,
+        cik: str,
+        accession_number: str,
+        filename: str,
+        *,
+        max_size_bytes: int = 10 * 1024 * 1024,  # 10MB default limit
+    ) -> bytes | None:
+        """
+        Fetch an image file from SEC EDGAR.
+
+        Args:
+            cik: SEC Central Index Key (will NOT be zero-padded - SEC URLs use raw CIK)
+            accession_number: SEC accession number (with dashes, e.g., "0001234567-24-000001")
+            filename: Image filename from the filing (e.g., "chart1.jpg")
+            max_size_bytes: Maximum allowed image size (default 10MB)
+
+        Returns:
+            Raw image bytes, or None if fetch failed (404, network error, too large)
+
+        Note:
+            - Respects existing rate limiting (100ms minimum between requests)
+            - Validates Content-Type is an image type
+            - Logs warnings for failures (does not raise exceptions)
+        """
+        # Strip leading zeros from CIK for URL construction
+        cik_stripped = cik.lstrip("0") or "0"
+
+        # Remove dashes from accession number for URL path
+        accession_no_dashes = accession_number.replace("-", "")
+
+        url = (
+            f"{self.BASE_URL}/Archives/edgar/data/"
+            f"{cik_stripped}/{accession_no_dashes}/{filename}"
+        )
+
+        try:
+            self._rate_limit()
+
+            logger.debug(f"Fetching image: {url}")
+
+            # Record request attempt
+            if self._metrics:
+                self._metrics.record_request()
+
+            # Use HTTP client for request
+            http_response = self._http_client.get(url, timeout=30.0)
+
+            # Record success timing
+            if self._metrics:
+                self._metrics.record_success(http_response.elapsed_seconds)
+
+            # Validate Content-Type is an image
+            content_type = http_response.headers.get("Content-Type", "").lower()
+            if not content_type.startswith("image/"):
+                logger.warning(
+                    f"Invalid Content-Type for image {filename}: {content_type}"
+                )
+                return None
+
+            # Check Content-Length before reading full response
+            content_length = http_response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > max_size_bytes:
+                        logger.warning(
+                            f"Image {filename} exceeds size limit: "
+                            f"{size} > {max_size_bytes} bytes"
+                        )
+                        return None
+                except ValueError:
+                    pass  # Invalid Content-Length header, proceed with download
+
+            # Check actual content size
+            image_bytes = http_response.content
+            if len(image_bytes) > max_size_bytes:
+                logger.warning(
+                    f"Image {filename} exceeds size limit: "
+                    f"{len(image_bytes)} > {max_size_bytes} bytes"
+                )
+                return None
+
+            logger.debug(
+                f"Fetched image {filename}: {len(image_bytes)} bytes, "
+                f"{http_response.elapsed_seconds:.3f}s"
+            )
+            return image_bytes
+
+        except Exception as e:
+            elapsed = 0.0
+            if self._metrics:
+                self._metrics.record_failure(elapsed)
+
+            logger.warning(f"Failed to fetch image {filename} from {url}: {e}")
+            return None
+
     def _search_filings_array(
         self,
         filings_data: dict,
