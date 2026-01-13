@@ -19,9 +19,9 @@
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| IMAGE_EXTRACTION (IMG) | 11 | 1 | 0 | 10 | 0 |
-| VISUAL_INTERPRETATION (VIS) | 3 | 2 | 0 | 1 | 0 |
-| **TOTAL** | **103** | **83** | **0** | **12** | **3** |
+| IMAGE_EXTRACTION (IMG) | 11 | 2 | 0 | 9 | 0 |
+| VISUAL_INTERPRETATION (VIS) | 6 | 2 | 0 | 4 | 0 |
+| **TOTAL** | **106** | **84** | **0** | **14** | **3** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
@@ -666,7 +666,7 @@ Phase 4 (Cleanup):
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **IMG-1-1** | Database Schema for Image Review | S | 30-60m | NONE | 🟡 PENDING | None | IMG-1-2 |
+| **IMG-1-1** | Database Schema for Image Review | S | 30-60m | NONE | ✅ COMPLETE | None | IMG-1-2 |
 | **IMG-1-2** | Database Methods for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-1 | IMG-1-3,4,5 |
 | **IMG-1-3** | Image Candidate Generation Script | S | 1-2h | NONE | 🟡 PENDING | IMG-1-2 | IMG-1-8 |
 | **IMG-1-4** | Page Routes for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-2 | IMG-1-6 |
@@ -752,14 +752,24 @@ IMG-1-3    IMG-1-4    IMG-1-5
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | 🟡 PENDING | VIS-1a | VIS-3 |
+| **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | 🟡 PENDING | VIS-1a | VIS-2a, VIS-3 |
+| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | 🟡 PENDING | VIS-2 | None |
+| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | 🟡 PENDING | VIS-2 | None |
+| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | 🟡 PENDING | VIS-2 | None |
 
-**VIS-2 Scope**:
+**VIS-2 Scope** (Worker Prompt v2.7):
 - Create `VisionClient` class wrapping OpenAI GPT-4o Vision API
-- Add `fetch_image()` method to `SECClient`
+- Add `fetch_image()` method to `SECClient` with size limits and Content-Type validation
 - Create `ChartValueExtractor` with structured output parsing
+- MIME type detection for JPEG/PNG/GIF
 - Integration with existing `CohortChartDetector`
-- 25+ unit tests, ≥85% coverage, mypy --strict
+- 25+ unit tests, ≥85% coverage (chart_value_extractor), ≥90% coverage (vision_client)
+- `mypy --strict` on both new modules
+
+**VIS-2a/b/c Scope** (Follow-up tasks defined in VIS-2 v2.7):
+- VIS-2a: Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
+- VIS-2b: Add Claude Vision as alternative provider (protocol pattern)
+- VIS-2c: Optimize for high-volume extraction with rate limit awareness
 
 **Worker Prompts**: `docs/worker-prompts/WORKER_PROMPT_TASK_VIS-*.md`
 
@@ -1178,5 +1188,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-12 (IMG-1-* tasks added; IMG-0-2/0-3 superseded; 81/100 tasks complete, 11 pending, 3 blocked)*
+*Last verified: 2026-01-13 (IMG-1-1 complete; 84/106 tasks complete, 14 pending, 3 blocked)*
 

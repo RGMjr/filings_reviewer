@@ -48,9 +48,11 @@ Create the database schema for storing image review candidates and human review 
 1. **Table: `image_review_candidates`**
    - Primary key: `image_candidate_id BIGSERIAL`
    - Foreign keys: `filing_id` (filings), `company_id` (companies)
-   - Image identification: `image_src TEXT`, `image_url TEXT`
+   - Optional foreign key: `source_segment_id` (source_segments) - for segment-level detection linkage
+   - Image identification: `image_src TEXT NOT NULL`, `image_url TEXT NOT NULL`
    - Metadata: `image_width INT`, `image_height INT`, `image_alt TEXT`
    - Context: `preceding_text TEXT`, `detected_keywords TEXT[]`
+   - Discovery metadata (from CSV): `cohort_keyword_nearby BOOLEAN`, `image_index INT` (position in filing)
    - Scoring: `cohort_confidence NUMERIC(3,2)`, `is_decorative BOOLEAN`
    - **Pattern learning**: `detection_tier TEXT` with CHECK constraint for values: 'tier_1_cohort', 'tier_2_large', 'tier_3_all', 'seed_list'
    - Status: `review_status TEXT` DEFAULT 'pending' with CHECK for: 'pending', 'reviewed', 'skipped'
@@ -93,9 +95,10 @@ Create the database schema for storing image review candidates and human review 
 
 ### Error Handling
 
-- Use CASCADE for filing/company foreign keys
-- Use SET NULL for optional segment reference
-- All NOT NULL constraints where appropriate
+- Use CASCADE for filing/company foreign keys on DELETE
+- Use SET NULL for `source_segment_id` on DELETE (optional reference)
+- `image_src` and `image_url` are NOT NULL (required for identification)
+- All other columns nullable unless business logic requires otherwise
 
 ## Test Requirements
 
@@ -111,6 +114,8 @@ Schema validation via psql:
 
 - [ ] `sql/09_create_image_review_schema.sql` created
 - [ ] Both tables created with all columns
+- [ ] `source_segment_id` optional FK to `source_segments` with ON DELETE SET NULL
+- [ ] `cohort_keyword_nearby BOOLEAN` and `image_index INT` columns exist
 - [ ] `detection_tier` column exists with CHECK constraint
 - [ ] Chart type and rejection reason CHECK constraints work
 - [ ] Unique constraint on `(filing_id, image_src)` works
@@ -137,17 +142,31 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
   -c "\dt image_*"
 
-# Verify columns
+# Verify columns (should show source_segment_id, cohort_keyword_nearby, image_index)
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
   -c "\d image_review_candidates"
 
-# Test constraint - should fail
+# Test CHECK constraint - should FAIL (invalid tier)
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
-  -c "INSERT INTO image_review_candidates (filing_id, company_id, image_src, image_url, detection_tier, review_status) VALUES (1, 1, 'test.jpg', 'http://test', 'invalid_tier', 'pending');"
+  -c "INSERT INTO image_review_candidates (filing_id, company_id, image_src, image_url, detection_tier, review_status)
+      SELECT f.filing_id, f.company_id, 'test_invalid.jpg', 'http://test', 'invalid_tier', 'pending'
+      FROM filings f LIMIT 1;"
 
-# Test constraint - should succeed
+# Test CHECK constraint - should SUCCEED (valid tier)
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
-  -c "INSERT INTO image_review_candidates (filing_id, company_id, image_src, image_url, detection_tier, review_status) VALUES (1, 1, 'test.jpg', 'http://test', 'tier_1_cohort', 'pending');"
+  -c "INSERT INTO image_review_candidates (filing_id, company_id, image_src, image_url, detection_tier, review_status, cohort_keyword_nearby, image_index)
+      SELECT f.filing_id, f.company_id, 'test_valid.jpg', 'http://test', 'tier_1_cohort', 'pending', true, 1
+      FROM filings f LIMIT 1;"
+
+# Verify unique constraint - should FAIL (duplicate image_src for same filing)
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
+  -c "INSERT INTO image_review_candidates (filing_id, company_id, image_src, image_url, detection_tier, review_status)
+      SELECT f.filing_id, f.company_id, 'test_valid.jpg', 'http://test2', 'tier_2_large', 'pending'
+      FROM filings f LIMIT 1;"
+
+# Cleanup test data
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
+  -c "DELETE FROM image_review_candidates WHERE image_src LIKE 'test_%';"
 ```
 
 ## Reference
@@ -159,5 +178,6 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis_test \
 
 ---
 
-**Last Updated**: 2026-01-12
+**Last Updated**: 2026-01-13
 **Format Version**: 2.6
+**Revision Note**: Added `source_segment_id`, `cohort_keyword_nearby`, `image_index` columns; fixed verification commands to use subqueries instead of hardcoded IDs
