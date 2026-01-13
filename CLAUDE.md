@@ -114,7 +114,13 @@ For browser automation when testing the Flask review UI:
 claude mcp add --transport stdio playwright -- npx -y @playwright/mcp@latest
 ```
 
-This adds the official Playwright MCP server, enabling browser automation tools (navigate, click, type, snapshot) for testing the web interface.
+For GitHub issue/PR management:
+
+```bash
+claude mcp add github -- npx -y @anthropic-ai/mcp-github
+```
+
+This enables direct GitHub operations (create/close issues, manage PRs, update labels) without manual API calls.
 
 ## SEC EDGAR Integration
 
@@ -307,7 +313,14 @@ See `docs/development/metric-lifecycle-process.md` for the authoritative guide o
 ### Quick Start
 
 Use these slash commands for the task workflow:
-- `/task-create` - Generate a worker prompt and save it (does NOT execute)
-- `/task-run [ID]` - Execute an existing worker prompt (e.g., `/task-run HRV-17`)
+- `/task-create [ID]` - Generate a worker prompt and save it (does NOT execute)
+- `/task-run [ID]` - Execute an existing worker prompt with auto-context loading (e.g., `/task-run HRV-17`)
 
 **Do NOT** jump directly to coding for M/L/XL tasks without creating a worker prompt first.
+
+### Additional Workflow Tools
+
+- **Lightweight Template**: `docs/WORKER_PROMPT_TEMPLATE_LITE.md` - Use for XS/S tasks (<2 hours)
+- **GitHub Sync**: `python scripts/sync_github_issues.py --check` - Compare task inventory with GitHub issues
+- **Doc Maintenance**: `docs/DOCUMENTATION_MAINTENANCE.md` - Quarterly cleanup checklist
+- **Project Settings**: `.claude/settings.json` - Pre-approved tool permissions for this project
