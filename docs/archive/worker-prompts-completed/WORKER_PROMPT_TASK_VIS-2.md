@@ -21,7 +21,7 @@ PARALLEL WITH: None - foundational infrastructure task
 
 ## Objective
 
-Build an automated pipeline that downloads chart images from SEC filings and extracts structured metric data using LLM Vision (OpenAI GPT-4o or Claude).
+Build an automated pipeline that downloads chart images from SEC filings and extracts structured metric data using LLM Vision (OpenAI GPT-4o).
 
 **Business Rationale**: High-value cohort metrics in SEC filings (ARR by cohort, GMV by vintage, retention curves) exist ONLY in chart images. VIS-1/VIS-1a research confirmed that:
 - DePlot/MatCha (academic chart-to-table models) fail catastrophically on stacked area charts (0% accuracy)
@@ -66,20 +66,60 @@ Without this pipeline, we cannot extract metrics that companies deliberately pre
 
 Add method to download images from SEC EDGAR:
 
-- **URL Construction**: `https://www.sec.gov/Archives/edgar/data/{CIK}/{accession_formatted}/{filename}`
-- **Rate limiting**: Respect existing 100ms minimum between requests
-- **User-Agent**: Use existing `SEC_USER_AGENT` configuration
-- **Error handling**: Return `None` on 404/network errors, log warnings
-- **Caching**: Optional - consider caching in `data/images/{cik}/{accession}/`
+```python
+def fetch_image(
+    self,
+    cik: str,
+    accession_number: str,
+    filename: str,
+    *,
+    max_size_bytes: int = 10 * 1024 * 1024,  # 10MB default limit
+) -> bytes | None:
+    """
+    Fetch an image file from SEC EDGAR.
+
+    Args:
+        cik: SEC Central Index Key (will be zero-padded)
+        accession_number: SEC accession number (with dashes, e.g., "0001234567-24-000001")
+        filename: Image filename from the filing (e.g., "chart1.jpg")
+        max_size_bytes: Maximum allowed image size (default 10MB)
+
+    Returns:
+        Raw image bytes, or None if fetch failed (404, network error, too large)
+
+    Note:
+        - Respects existing rate limiting (100ms minimum between requests)
+        - Validates Content-Type is an image type
+        - Logs warnings for failures (does not raise exceptions)
+    """
+```
+
+**URL Construction**: `https://www.sec.gov/Archives/edgar/data/{CIK}/{accession_no_dashes}/{filename}`
+- CIK should NOT be zero-padded in the URL (SEC uses raw CIK)
+- Accession number should have dashes removed
+
+**Implementation Requirements**:
+- Use `self._http_client.get()` for consistency with existing code
+- Call `self._rate_limit()` before the request
+- Validate `Content-Type` header starts with `image/`
+- Check `Content-Length` against `max_size_bytes` before downloading
+- Return `None` on any error (404, network, validation failure)
+- Log at WARNING level for failures
 
 ### 2. Chart Value Extractor (`chart_value_extractor.py`)
 
 #### Core Data Structures
 
 ```python
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+
 @dataclass
 class ExtractedChartValue:
     """Single extracted value from a chart."""
+
     metric_type: str          # e.g., "ARR", "GMV", "retention"
     cohort_label: str         # e.g., "FY2015", "2010 cohort"
     period: str               # e.g., "FY2019", "2017"
@@ -88,17 +128,20 @@ class ExtractedChartValue:
     confidence: float         # 0.0-1.0
     source_image: str         # Image filename for provenance
 
+
 @dataclass
 class ChartExtractionResult:
     """Complete extraction result for one chart."""
+
     chart_title: str | None
     metric_type: str
-    values: list[ExtractedChartValue]
-    has_y_axis_scale: bool    # Critical for value accuracy
-    extraction_confidence: float
-    raw_llm_response: str     # Preserve for debugging
-    cost_usd: float
-    latency_ms: int
+    values: list[ExtractedChartValue] = field(default_factory=list)
+    has_y_axis_scale: bool = False    # Critical for value accuracy
+    extraction_confidence: float = 0.0
+    raw_llm_response: str = ""        # Preserve for debugging
+    cost_usd: float = 0.0
+    latency_ms: int = 0
+    error: str | None = None          # Error message if extraction failed
 ```
 
 #### Extraction Prompt
@@ -140,17 +183,43 @@ from __future__ import annotations
 
 import base64
 import logging
+import time
 from dataclasses import dataclass
-from typing import Any
 
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 
+# Supported image formats with their magic bytes
+IMAGE_SIGNATURES: dict[bytes, str] = {
+    b"\xff\xd8\xff": "image/jpeg",
+    b"\x89PNG\r\n\x1a\n": "image/png",
+    b"GIF87a": "image/gif",
+    b"GIF89a": "image/gif",
+}
+
+
+def detect_mime_type(image_bytes: bytes) -> str:
+    """Detect MIME type from image magic bytes.
+
+    Args:
+        image_bytes: Raw image bytes
+
+    Returns:
+        MIME type string (defaults to "image/png" if unknown)
+    """
+    for signature, mime_type in IMAGE_SIGNATURES.items():
+        if image_bytes.startswith(signature):
+            return mime_type
+    # Default to PNG for unknown formats (OpenAI will reject if invalid)
+    return "image/png"
+
+
 @dataclass
 class VisionResponse:
     """Response from Vision LLM."""
+
     content: str
     model: str
     prompt_tokens: int
@@ -166,11 +235,17 @@ class VisionClient:
     in the future via subclassing or protocol pattern.
     """
 
-    # GPT-4o pricing (as of 2024)
-    COST_PER_1K_INPUT_TOKENS = 0.0025  # $2.50/1M
-    COST_PER_1K_OUTPUT_TOKENS = 0.01   # $10/1M
+    # GPT-4o pricing per 1M tokens (as of 2025-01)
+    # Source: https://openai.com/pricing
+    COST_PER_1M_INPUT_TOKENS: float = 2.50   # $2.50/1M input
+    COST_PER_1M_OUTPUT_TOKENS: float = 10.00  # $10.00/1M output
 
     def __init__(self, model: str = "gpt-4o") -> None:
+        """Initialize VisionClient.
+
+        Args:
+            model: OpenAI model to use (default: gpt-4o)
+        """
         self.model = model
         self._client = OpenAI()  # Uses OPENAI_API_KEY from env
 
@@ -179,27 +254,29 @@ class VisionClient:
         image_bytes: bytes,
         prompt: str,
         *,
-        detail: str = "high",  # "high" for accuracy, "low" for speed/cost
+        detail: str = "high",
         max_tokens: int = 2000,
     ) -> VisionResponse:
         """Send image to Vision LLM for analysis.
 
         Args:
-            image_bytes: Raw image bytes (JPEG or PNG)
+            image_bytes: Raw image bytes (JPEG, PNG, or GIF)
             prompt: Text prompt describing what to extract
-            detail: Image detail level ("high" or "low")
+            detail: Image detail level ("high" for accuracy, "low" for speed/cost)
             max_tokens: Maximum response tokens
 
         Returns:
             VisionResponse with content and metadata
+
+        Raises:
+            openai.APIError: On API failures (after retries exhausted)
         """
         # Encode image as base64
         b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
 
-        # Determine MIME type (simple heuristic)
-        mime_type = "image/jpeg" if image_bytes[:2] == b'\xff\xd8' else "image/png"
+        # Detect MIME type from magic bytes
+        mime_type = detect_mime_type(image_bytes)
 
-        import time
         start_ms = int(time.time() * 1000)
 
         response = self._client.chat.completions.create(
@@ -213,10 +290,10 @@ class VisionClient:
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:{mime_type};base64,{b64_image}",
-                                "detail": detail
-                            }
-                        }
-                    ]
+                                "detail": detail,
+                            },
+                        },
+                    ],
                 }
             ],
             max_tokens=max_tokens,
@@ -229,10 +306,10 @@ class VisionClient:
         prompt_tokens = usage.prompt_tokens if usage else 0
         completion_tokens = usage.completion_tokens if usage else 0
 
-        # Calculate cost
+        # Calculate cost (per 1M tokens)
         cost_usd = (
-            (prompt_tokens / 1000) * self.COST_PER_1K_INPUT_TOKENS +
-            (completion_tokens / 1000) * self.COST_PER_1K_OUTPUT_TOKENS
+            (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS
+            + (completion_tokens / 1_000_000) * self.COST_PER_1M_OUTPUT_TOKENS
         )
 
         return VisionResponse(
@@ -251,35 +328,52 @@ The pipeline connects `CohortChartDetector` → `SECClient` → `VisionClient` �
 
 ```python
 # Pipeline: Detection → Fetch → Extract
+import logging
+
 from src.extraction.cohort_chart_detector import CohortChartDetector
-from src.extraction.chart_value_extractor import ChartValueExtractor
+from src.extraction.chart_value_extractor import ChartValueExtractor, ChartExtractionResult
 from src.infra.sec_client import SECClient
+
+logger = logging.getLogger(__name__)
+
 
 def extract_chart_metrics(
     html_content: str,
     cik: str,
-    accession_number: str
+    accession_number: str,
 ) -> list[ChartExtractionResult]:
     """Extract metrics from cohort charts in a filing.
 
     This is the integration pattern showing how components connect.
     Actual implementation may vary.
+
+    Args:
+        html_content: Raw HTML content of the filing
+        cik: SEC Central Index Key
+        accession_number: SEC accession number (with dashes)
+
+    Returns:
+        List of extraction results (one per chart)
     """
     # Step 1: Detect chart candidates
     detector = CohortChartDetector()
     candidates = detector.detect_from_html(html_content)
 
+    if not candidates:
+        logger.info("No cohort chart candidates detected")
+        return []
+
     # Step 2: Fetch and extract from each candidate
     sec_client = SECClient()
     extractor = ChartValueExtractor()  # Uses VisionClient internally
 
-    results = []
+    results: list[ChartExtractionResult] = []
     for candidate in candidates:
         # Fetch image bytes from SEC EDGAR
         image_bytes = sec_client.fetch_image(
             cik=cik,
             accession_number=accession_number,
-            filename=candidate.image_src
+            filename=candidate.image_src,
         )
 
         if image_bytes is None:
@@ -290,10 +384,11 @@ def extract_chart_metrics(
         result = extractor.extract(
             image_bytes=image_bytes,
             context=candidate.preceding_text,  # Helps LLM understand chart
-            source_image=candidate.image_src
+            source_image=candidate.image_src,
         )
         results.append(result)
 
+    logger.info(f"Extracted {len(results)} chart results from {len(candidates)} candidates")
     return results
 ```
 
@@ -336,7 +431,7 @@ response = client.chat.completions.create(
 
 ### 6. Response Parsing
 
-- Parse JSON from LLM response
+- Parse JSON from LLM response (handle markdown code blocks: ```json...```)
 - Validate structure matches expected schema
 - Handle missing fields gracefully (None/default values)
 - Calculate confidence based on:
@@ -346,9 +441,9 @@ response = client.chat.completions.create(
 
 ### 7. Error Handling
 
-- **Image fetch failure**: Log warning, return empty result
-- **LLM API error**: Retry with existing backoff logic, return empty result on exhaustion
-- **JSON parse failure**: Log warning with raw response, return partial result if possible
+- **Image fetch failure**: Log warning, skip image (don't fail entire extraction)
+- **LLM API error**: Let OpenAI client handle retries; on exhaustion, return result with error field set
+- **JSON parse failure**: Log warning with raw response, return partial result with `error` field
 - **No values extracted**: Return result with empty values list, confidence 0.0
 
 ### 8. Confidence Calibration
@@ -365,26 +460,32 @@ Based on VIS-1 research findings:
 
 ## Test Requirements
 
-### Coverage Target: **≥ 85%** for `chart_value_extractor.py`
+### Coverage Target: **≥ 85%** for `chart_value_extractor.py`, **≥ 90%** for `vision_client.py`
 
 ### Test Categories (25+ tests recommended)
 
-1. **Image Fetcher Tests** (5-7 tests)
+1. **Image Fetcher Tests** (`test_sec_client.py`) (5-7 tests)
    - Successful image download (mock response)
    - 404 handling (return None)
-   - Network error handling
+   - Network error handling (return None)
    - Rate limiting respected
    - URL construction with edge cases (accession formats)
+   - Content-Type validation (reject non-images)
+   - Size limit enforcement (reject oversized images)
 
-2. **Prompt Construction Tests** (3-5 tests)
-   - Vision message format is correct
-   - Base64 encoding works for JPEG/PNG
-   - Context from `CohortChartCandidate.preceding_text` is included
+2. **VisionClient Tests** (`test_vision_client.py`) (6-8 tests)
+   - MIME type detection for JPEG, PNG, GIF
+   - Unknown format defaults to PNG
+   - Base64 encoding correctness
+   - Cost calculation accuracy (verify math)
+   - Latency tracking
+   - API error propagation
 
-3. **Response Parsing Tests** (8-10 tests)
+3. **Response Parsing Tests** (`test_chart_value_extractor.py`) (8-10 tests)
    - Valid JSON parsing with all fields
+   - JSON wrapped in markdown code blocks
    - Missing optional fields handled
-   - Invalid JSON returns partial result
+   - Invalid JSON returns error result
    - Empty cohorts list handled
    - Malformed values handled
    - Unicode in chart titles handled
@@ -394,11 +495,45 @@ Based on VIS-1 research findings:
    - Multiple cohorts vs single cohort
    - Parse success vs failure impact
    - Edge case: confidence capped at 1.0
+   - Edge case: confidence floored at 0.0
 
 5. **Integration Tests** (3-4 tests)
    - End-to-end mock: fetch → extract → result
    - `CohortChartCandidate` input integration
-   - Cost tracking integration
+   - Cost tracking accumulation
+
+### Test Fixtures
+
+Include realistic mock GPT-4o responses based on VIS-GPT4O-VALIDATION.md:
+
+```python
+# Mock response for Slack ARR chart (NO Y-axis scale)
+MOCK_SLACK_RESPONSE = '''{
+  "chart_title": "Annual Recurring Revenue (ARR) by Annual Cohort through January 31, 2019",
+  "metric_type": "ARR",
+  "has_y_axis_scale": false,
+  "cohorts": [
+    {"label": "FY2015", "values": [{"period": "FY2019", "value": null, "unit": "USD (no scale)"}]},
+    {"label": "FY2016", "values": [{"period": "FY2019", "value": null, "unit": "USD (no scale)"}]},
+    {"label": "FY2017", "values": [{"period": "FY2019", "value": null, "unit": "USD (no scale)"}]},
+    {"label": "FY2018", "values": [{"period": "FY2019", "value": null, "unit": "USD (no scale)"}]},
+    {"label": "FY2019", "values": [{"period": "FY2019", "value": null, "unit": "USD (no scale)"}]}
+  ],
+  "annotations": []
+}'''
+
+# Mock response for Farfetch GMV chart (HAS Y-axis scale)
+MOCK_FARFETCH_RESPONSE = '''{
+  "chart_title": null,
+  "metric_type": "GMV",
+  "has_y_axis_scale": true,
+  "cohorts": [
+    {"label": "2008", "values": [{"period": "2017", "value": 15, "unit": "USD millions"}]},
+    {"label": "New in 2017", "values": [{"period": "2017", "value": 400, "unit": "USD millions"}]}
+  ],
+  "annotations": ["44.4% New Consumers in 2017", "55.6% Existing Consumers in 2017"]
+}'''
+```
 
 ### Known Edge Cases to Test
 
@@ -406,19 +541,26 @@ Based on VIS-1 research findings:
 - Image with Y-axis but low resolution
 - Chart with percentage annotations (Farfetch 44.4%/55.6%)
 - Non-cohort chart fed to extractor (should return low confidence)
-- Very large image (>5MB)
+- Very large image (>10MB, should be rejected by fetch_image)
+- Unsupported image format (e.g., TIFF, BMP)
+- LLM returns malformed JSON
+- LLM returns JSON wrapped in ```json code blocks
 
 ## Acceptance Criteria
 
 - [ ] `sec_client.fetch_image()` downloads images from SEC EDGAR
+- [ ] `fetch_image()` validates Content-Type and enforces size limits
+- [ ] `VisionClient` correctly detects MIME types for JPEG, PNG, GIF
+- [ ] `VisionClient` cost calculation uses per-1M-token pricing (not per-1K)
 - [ ] `ChartValueExtractor` sends images to GPT-4o Vision and parses responses
 - [ ] Structured `ExtractedChartValue` objects returned with all required fields
 - [ ] Confidence scores reflect Y-axis visibility and extraction completeness
 - [ ] Cost tracking integrated (per-image and cumulative)
 - [ ] **25+ unit tests** covering all categories
-- [ ] **Test coverage ≥ 85%** for new module
+- [ ] **Test coverage ≥ 85%** for `chart_value_extractor.py`
+- [ ] **Test coverage ≥ 90%** for `vision_client.py`
 - [ ] All tests pass
-- [ ] `mypy src/extraction/chart_value_extractor.py --strict` passes
+- [ ] `mypy src/llm/vision_client.py src/extraction/chart_value_extractor.py --strict` passes
 - [ ] NO changes to existing extraction logic (additive only)
 - [ ] Images without Y-axis scales flagged with lower confidence
 
@@ -426,7 +568,7 @@ Based on VIS-1 research findings:
 
 - Modify `cohort_chart_detector.py` (detection is separate from extraction)
 - Add new LLM models - use existing GPT-4o configuration
-- Implement caching in this task (can be added later)
+- Implement caching in this task (deferred to VIS-2a)
 - Create database schema for chart values (that's VIS-3)
 - Build UI components (that's VIS-3)
 - Process real filings - only test with mocked responses
@@ -436,16 +578,22 @@ Based on VIS-1 research findings:
 ```bash
 # Run new tests
 TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
-  python3 -m pytest tests/unit/extraction/test_chart_value_extractor.py \
-  tests/unit/infra/test_sec_client.py -v
+  python3 -m pytest tests/unit/llm/test_vision_client.py \
+  tests/unit/extraction/test_chart_value_extractor.py \
+  tests/unit/infra/test_sec_client.py -v --tb=short
 
-# Check coverage
+# Check coverage for vision_client
+TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
+  python3 -m pytest tests/unit/llm/test_vision_client.py \
+  --cov=src.llm.vision_client --cov-report=term-missing --cov-fail-under=90
+
+# Check coverage for chart_value_extractor
 TEST_DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis_test" \
   python3 -m pytest tests/unit/extraction/test_chart_value_extractor.py \
-  --cov=src.extraction.chart_value_extractor --cov-report=term-missing
+  --cov=src.extraction.chart_value_extractor --cov-report=term-missing --cov-fail-under=85
 
 # Type safety check
-mypy src/extraction/chart_value_extractor.py --strict
+mypy src/llm/vision_client.py src/extraction/chart_value_extractor.py --strict
 
 # Verify no changes to existing extraction
 git diff src/extraction/cohort_chart_detector.py  # Should be empty
@@ -462,11 +610,12 @@ After verification passes but BEFORE committing:
 - [ ] DRY principle followed
 - [ ] Error handling appropriate (not over/under-engineered)
 - [ ] Logging at appropriate levels (INFO for operations, WARNING for recoverable errors)
+- [ ] All imports at top of file (no inline imports)
 
 ### 2. Test Coverage Assessment
 - [ ] All edge cases from VIS-1 research covered
 - [ ] Negative tests for API failures
-- [ ] Mock responses match real GPT-4o Vision format
+- [ ] Mock responses match real GPT-4o Vision format (from VIS-GPT4O-VALIDATION.md)
 
 ### 3. Architecture Alignment
 - [ ] Follows patterns in CLAUDE.md
@@ -482,6 +631,12 @@ Document potential improvements discovered:
 ### 5. User Approval (REQUIRED)
 **STOP and present findings before committing.**
 
+## Follow-Up Tasks (Out of Scope for VIS-2)
+
+1. **VIS-2a: Image Caching** - Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
+2. **VIS-2b: Claude Vision Support** - Add Claude Vision as alternative provider (protocol pattern)
+3. **VIS-2c: Batch Processing** - Optimize for high-volume extraction with rate limit awareness
+
 ## Expected Impact
 
 **Before VIS-2**:
@@ -496,11 +651,21 @@ Document potential improvements discovered:
 ## Reference
 
 - **Research**: `docs/research/VIS-1-chart-extraction-results.md`, `docs/research/VIS-1a-extended-evaluation-results.md`
+- **Validation**: `docs/research/VIS-GPT4O-VALIDATION.md` (GPT-4o test results)
 - **Dependencies**: VIS-1 ✅, VIS-1a ✅
 - **Related**: `src/extraction/cohort_chart_detector.py`, `src/llm/openai_client.py`
 
 ---
 
 **Last Updated**: 2026-01-13
-**Format Version**: 2.6
+**Format Version**: 2.7
 **Branch**: `feature/visual-exploration`
+**Revision Notes**:
+- Fixed VisionClient cost calculation (per-1M, not per-1K tokens)
+- Added MIME type detection for JPEG/PNG/GIF (not just JPEG)
+- Added `fetch_image()` size limit and Content-Type validation
+- Added test fixtures from VIS-GPT4O-VALIDATION.md
+- Added coverage targets per module (90% vision_client, 85% chart_value_extractor)
+- Added `error` field to ChartExtractionResult
+- Defined follow-up tasks (VIS-2a/b/c)
+- Moved `import time` to top of file in code examples

@@ -20,8 +20,8 @@
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
 | IMAGE_EXTRACTION (IMG) | 11 | 2 | 0 | 9 | 0 |
-| VISUAL_INTERPRETATION (VIS) | 6 | 2 | 0 | 4 | 0 |
-| **TOTAL** | **106** | **84** | **0** | **14** | **3** |
+| VISUAL_INTERPRETATION (VIS) | 6 | 3 | 0 | 3 | 0 |
+| **TOTAL** | **106** | **85** | **0** | **13** | **3** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
@@ -752,10 +752,10 @@ IMG-1-3    IMG-1-4    IMG-1-5
 
 | ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
 |----|------|------|------|------|--------|--------------|---------|
-| **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | 🟡 PENDING | VIS-1a | VIS-2a, VIS-3 |
-| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | 🟡 PENDING | VIS-2 | None |
-| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | 🟡 PENDING | VIS-2 | None |
-| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | 🟡 PENDING | VIS-2 | None |
+| **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | ✅ COMPLETE | VIS-1a | VIS-2a, VIS-3 |
+| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | 🟡 PENDING | VIS-2 ✅ | None |
+| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
+| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
 
 **VIS-2 Scope** (Worker Prompt v2.7):
 - Create `VisionClient` class wrapping OpenAI GPT-4o Vision API
@@ -765,6 +765,15 @@ IMG-1-3    IMG-1-4    IMG-1-5
 - Integration with existing `CohortChartDetector`
 - 25+ unit tests, ≥85% coverage (chart_value_extractor), ≥90% coverage (vision_client)
 - `mypy --strict` on both new modules
+
+**VIS-2 Completion Note** (2026-01-13):
+- Created `src/llm/vision_client.py` with VisionClient class (GPT-4o Vision API wrapper)
+- Added `fetch_image()` method to `src/infra/sec_client.py` (CIK stripping, Content-Type validation, size limits)
+- Created `src/extraction/chart_value_extractor.py` with ChartValueExtractor (JSON parsing, confidence scoring)
+- Added retry logic with exponential backoff (RateLimitError, APIConnectionError, 5xx errors)
+- Updated `src/llm/__init__.py` exports (VisionClient, VisionResponse)
+- 90 tests pass, VisionClient 97% coverage, ChartValueExtractor 97% coverage
+- Cost tracking: $2.50/1M input tokens, $10.00/1M output tokens
 
 **VIS-2a/b/c Scope** (Follow-up tasks defined in VIS-2 v2.7):
 - VIS-2a: Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
@@ -1188,5 +1197,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-13 (IMG-1-1 complete; 84/106 tasks complete, 14 pending, 3 blocked)*
+*Last verified: 2026-01-13 (VIS-2 complete; 85/106 tasks complete, 13 pending, 3 blocked)*
 
