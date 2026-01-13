@@ -661,6 +661,10 @@
 .metric-selector {
     max-height: 300px;
     overflow: hidden;
+}
+
+/* Override Bootstrap's display: block with flex when dropdown is shown */
+.metric-selector.show {
     display: flex;
     flex-direction: column;
 }
