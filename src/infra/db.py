@@ -3840,6 +3840,40 @@ class DatabaseAdapter:
         )
         return decision_id
 
+    def get_image_decision_by_id(
+        self,
+        image_decision_id: int,
+    ) -> dict | None:
+        """
+        Get an image review decision by its ID.
+
+        Args:
+            image_decision_id: Decision ID to retrieve
+
+        Returns:
+            Dict with decision details or None if not found
+        """
+        sql = """
+            SELECT
+                ird.image_decision_id,
+                ird.image_candidate_id,
+                ird.decision,
+                ird.chart_type,
+                ird.rejection_reason,
+                ird.reviewer_id,
+                ird.reviewer_notes,
+                ird.review_time_seconds,
+                ird.created_at,
+                irc.filing_id
+            FROM image_review_decisions ird
+            JOIN image_review_candidates irc
+                ON ird.image_candidate_id = irc.image_candidate_id
+            WHERE ird.image_decision_id = %(image_decision_id)s
+        """
+
+        results = self.query(sql, {"image_decision_id": image_decision_id})
+        return results[0] if results else None
+
     def delete_image_review_decision(
         self,
         image_decision_id: int,
