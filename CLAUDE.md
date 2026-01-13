@@ -208,6 +208,12 @@ This enables direct GitHub operations (create/close issues, manage PRs, update l
     - Fixes cross-row false positives where keywords from one table row matched numbers in another row
     - Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
     - Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
+17. **Image caching for SEC downloads** (2026-01-13, VIS-2a): Optional caching for `fetch_image()`:
+    - Enable via `SECClient(image_cache_dir="data/images")`
+    - Cache structure: `{cache_dir}/{cik}/{accession_no_dashes}/{filename}`
+    - Cache hit avoids SEC request; cache miss fetches and stores
+    - Disabled by default (backward compatible)
+    - Test coverage: `TestImageCaching` in test_sec_client.py (13 tests)
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
