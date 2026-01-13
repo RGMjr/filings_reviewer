@@ -19,9 +19,9 @@
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| IMAGE_EXTRACTION (IMG) | 11 | 3 | 0 | 8 | 0 |
+| IMAGE_EXTRACTION (IMG) | 11 | 4 | 0 | 7 | 0 |
 | VISUAL_INTERPRETATION (VIS) | 6 | 3 | 0 | 3 | 0 |
-| **TOTAL** | **106** | **86** | **0** | **12** | **3** |
+| **TOTAL** | **106** | **87** | **0** | **11** | **3** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
@@ -668,7 +668,7 @@ Phase 4 (Cleanup):
 |----|------|------|------|------|--------|--------------|---------|
 | **IMG-1-1** | Database Schema for Image Review | S | 30-60m | NONE | ✅ COMPLETE | None | IMG-1-2 |
 | **IMG-1-2** | Database Methods for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-1 | IMG-1-3,4,5 |
-| **IMG-1-3** | Image Candidate Generation Script | S | 1-2h | NONE | 🟡 PENDING | IMG-1-2 | IMG-1-8 |
+| **IMG-1-3** | Image Candidate Generation Script | S | 1-2h | NONE | ✅ COMPLETE | IMG-1-2 | IMG-1-8 |
 | **IMG-1-4** | Page Routes for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-2 | IMG-1-6 |
 | **IMG-1-5** | API Routes for Image Decisions | M | 2-3h | LOW | 🟡 PENDING | IMG-1-2 | IMG-1-7 |
 | **IMG-1-6** | HTML Templates for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-4 | IMG-1-7 |
@@ -780,7 +780,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 - VIS-2b: Add Claude Vision as alternative provider (protocol pattern)
 - VIS-2c: Optimize for high-volume extraction with rate limit awareness
 
-**Worker Prompts**: `docs/worker-prompts/WORKER_PROMPT_TASK_VIS-*.md`
+**Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
 
 **Future Tasks** (defined after VIS-2):
 - VIS-3: Review UI Integration for Chart Metrics

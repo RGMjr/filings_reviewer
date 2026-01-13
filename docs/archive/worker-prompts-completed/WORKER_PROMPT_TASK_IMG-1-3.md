@@ -201,5 +201,21 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
 
 ---
 
-**Last Updated**: 2026-01-12
+## Completion Notes (2026-01-13)
+
+**Status**: ✅ COMPLETE
+
+**Results**:
+- 131 unique candidates created from 152 CSV rows
+- Tier distribution: 2 seed_list, 62 tier_2_large, 67 tier_3_all
+- 16 decorative images excluded, 5 CSV duplicates skipped
+
+**Follow-up Improvements** (not implemented, low priority):
+1. Dry-run could detect CSV duplicates upfront (currently only actual insertion de-dupes)
+2. Add `--tier` filter to generate only specific tiers
+3. Add progress bar for large CSV files (tqdm)
+
+---
+
+**Last Updated**: 2026-01-13
 **Format Version**: 2.6
