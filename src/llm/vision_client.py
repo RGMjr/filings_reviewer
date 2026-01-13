@@ -5,6 +5,18 @@ specifically for extracting structured data from chart images in SEC filings.
 
 Design: OpenAI-only for now. Can be extended to support Claude Vision
 in the future via subclassing or protocol pattern.
+
+Future Improvements:
+    1. Timing precision: Consider using time.perf_counter() instead of time.time()
+       for latency_ms measurement. time.perf_counter() provides monotonic,
+       high-resolution timing better suited for measuring elapsed time.
+
+    2. Pipeline integration: This client is standalone. To integrate with the
+       extraction pipeline, orchestrate as:
+       - CohortChartDetector.detect_charts_in_filing() -> list of image candidates
+       - SECClient.fetch_image() -> download each image
+       - ChartValueExtractor.extract() -> extract values from each image
+       See VIS-2a for planned caching to avoid repeated SEC downloads.
 """
 from __future__ import annotations
 
