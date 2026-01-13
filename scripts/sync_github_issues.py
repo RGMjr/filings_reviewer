@@ -47,25 +47,56 @@ def parse_task_inventory(inventory_path: Path) -> dict[str, TaskStatus]:
     tasks = {}
     content = inventory_path.read_text()
 
-    # Pattern matches task rows in markdown tables
+    # Process line by line for more reliable parsing
+    # Handles variable table formats:
     # | **GR-1** | Lower goldmine threshold | S | 1h | LOW | ✅ COMPLETE | None |
-    pattern = r'\|\s*\*\*([A-Z]+-\d+[a-zA-Z]?)\*\*\s*\|\s*([^|]+)\|[^|]*\|[^|]*\|[^|]*\|\s*(✅ COMPLETE|🟡 PENDING|🔴 BLOCKED|⏸️|❌ CLOSED)'
+    # | **UXI-2-TEST** | E2E tests | M | 2-3h | NONE | ✅ COMPLETE | UXI-2 |
+    # | **INV-1-FIX-v2** | Remove unused code | S | 1-2h | LOW | ✅ COMPLETE | INV-1 |
+    # | **HRI-12** | Inter-rater agreement | P3 | ⏸️ BLOCKED | Requires multi-user |
 
-    for match in re.finditer(pattern, content):
-        task_id = match.group(1)
-        name = match.group(2).strip()
-        status_str = match.group(3)
+    # Task ID: PREFIX-NUMBER with optional multi-part suffixes (-TEST, -FIX-v2, etc.)
+    task_id_pattern = re.compile(r'\*\*([A-Z]+-\d+(?:-[A-Za-z0-9]+)*)\*\*')
 
-        if '✅ COMPLETE' in status_str:
+    for line in content.split('\n'):
+        # Skip non-table lines
+        if not line.strip().startswith('|'):
+            continue
+
+        # Find task ID in the line
+        task_match = task_id_pattern.search(line)
+        if not task_match:
+            continue
+
+        task_id = task_match.group(1)
+
+        # Extract name (second column after task ID)
+        parts = line.split('|')
+        name = ''
+        for i, part in enumerate(parts):
+            if f'**{task_id}**' in part and i + 1 < len(parts):
+                name = parts[i + 1].strip()
+                break
+
+        # Find status by looking for emoji indicators anywhere in the line
+        if '✅' in line:
             status = 'complete'
-        elif '🟡 PENDING' in status_str:
+        elif '🟡' in line:
             status = 'pending'
-        elif '🔴 BLOCKED' in status_str:
+        elif '🔴' in line:
             status = 'blocked'
-        elif '❌ CLOSED' in status_str:
+        elif '⏸️' in line:
+            # Handle ⏸️ BLOCKED, ⏸️ SUPERSEDED, etc.
+            if 'BLOCKED' in line:
+                status = 'blocked'
+            elif 'SUPERSEDED' in line:
+                status = 'superseded'
+            else:
+                status = 'paused'
+        elif '❌' in line:
             status = 'closed'
         else:
-            status = 'other'
+            # No status emoji found, skip this line
+            continue
 
         # Extract workstream from task ID prefix
         workstream = task_id.split('-')[0]
