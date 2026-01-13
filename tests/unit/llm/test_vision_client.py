@@ -73,6 +73,30 @@ class TestDetectMimeType:
         assert b"GIF87a" in IMAGE_SIGNATURES
         assert b"GIF89a" in IMAGE_SIGNATURES
 
+    def test_detect_webp(self):
+        """Test detection of WebP images."""
+        # WebP format: RIFF + 4 bytes size + WEBP
+        webp_bytes = b"RIFF\x00\x00\x00\x00WEBP" + b"rest of webp content"
+        assert detect_mime_type(webp_bytes) == "image/webp"
+
+    def test_detect_webp_with_size_bytes(self):
+        """Test WebP detection with actual size bytes."""
+        # More realistic WebP header with size bytes
+        webp_bytes = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"rest"
+        assert detect_mime_type(webp_bytes) == "image/webp"
+
+    def test_detect_webp_too_short(self):
+        """Test that truncated WebP headers default to PNG."""
+        # Only 8 bytes - missing WEBP magic
+        short_webp = b"RIFF\x00\x00\x00\x00"
+        assert detect_mime_type(short_webp) == "image/png"
+
+    def test_detect_riff_not_webp(self):
+        """Test that RIFF files that aren't WebP default to PNG."""
+        # RIFF WAV file (audio)
+        wav_bytes = b"RIFF\x00\x00\x00\x00WAVE" + b"rest"
+        assert detect_mime_type(wav_bytes) == "image/png"
+
 
 class TestVisionResponse:
     """Test suite for VisionResponse dataclass."""
@@ -457,6 +481,49 @@ class TestVisionClientAnalyzeImage:
                 prompt="test",
                 max_retries=0,
             )
+
+
+class TestInputValidation:
+    """Test suite for input validation."""
+
+    @patch("src.llm.vision_client.OpenAI")
+    def test_empty_image_bytes_raises_error(self, mock_openai):
+        """Test that empty image bytes raise ValueError."""
+        client = VisionClient()
+
+        with pytest.raises(ValueError, match="image_bytes cannot be empty"):
+            client.analyze_image(image_bytes=b"", prompt="test")
+
+    @patch("src.llm.vision_client.OpenAI")
+    def test_empty_prompt_raises_error(self, mock_openai):
+        """Test that empty prompt raises ValueError."""
+        client = VisionClient()
+
+        with pytest.raises(ValueError, match="prompt cannot be empty"):
+            client.analyze_image(image_bytes=b"\xff\xd8\xff\xe0test", prompt="")
+
+    @patch("src.llm.vision_client.OpenAI")
+    def test_whitespace_only_prompt_raises_error(self, mock_openai):
+        """Test that whitespace-only prompt raises ValueError."""
+        client = VisionClient()
+
+        with pytest.raises(ValueError, match="prompt cannot be empty"):
+            client.analyze_image(image_bytes=b"\xff\xd8\xff\xe0test", prompt="   ")
+
+    @patch("src.llm.vision_client.OpenAI")
+    def test_validation_before_api_call(self, mock_openai):
+        """Test that validation happens before API call is made."""
+        mock_client_instance = MagicMock()
+        mock_openai.return_value = mock_client_instance
+
+        client = VisionClient()
+
+        # Should raise without calling API
+        with pytest.raises(ValueError):
+            client.analyze_image(image_bytes=b"", prompt="test")
+
+        # Verify API was never called
+        mock_client_instance.chat.completions.create.assert_not_called()
 
 
 class TestRetryLogic:
