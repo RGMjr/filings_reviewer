@@ -209,6 +209,52 @@ Both LLM estimates are within reasonable range given visual estimation uncertain
 
 ---
 
+## Future Enhancement: Proportional Extraction with Context
+
+**Discovery**: When provided with a known total value from filing text, GPT-4o can estimate individual cohort values using pixel proportion analysis - even for charts WITHOUT Y-axis scales.
+
+### Test Case: Slack ARR with Total Provided
+
+**Input**: "Total ARR at end of FY2019 is $516,972,000"
+
+**Output**:
+```json
+{
+  "chart_title": "Annual Recurring Revenue (ARR) by Annual Cohort through January 31, 2019",
+  "metric_type": "ARR",
+  "has_y_axis_scale": false,
+  "cohorts": [
+    {"label": "FY2015", "values": [{"period": "FY2019", "value": 97509228, "unit": "USD"}]},
+    {"label": "FY2016", "values": [{"period": "FY2019", "value": 193576011, "unit": "USD"}]},
+    {"label": "FY2017", "values": [{"period": "FY2019", "value": 86258163, "unit": "USD"}]},
+    {"label": "FY2018", "values": [{"period": "FY2019", "value": 74430121, "unit": "USD"}]},
+    {"label": "FY2019", "values": [{"period": "FY2019", "value": 65198478, "unit": "USD"}]}
+  ]
+}
+```
+
+**Pixel Share Analysis**:
+| Cohort | Pixel Share | ARR (USD) |
+|--------|-------------|-----------|
+| FY2015 | 18.86% | $97.5M |
+| FY2016 | 37.44% | $193.6M |
+| FY2017 | 16.69% | $86.3M |
+| FY2018 | 14.40% | $74.4M |
+| FY2019 | 12.61% | $65.2M |
+| **Total** | **100%** | **$517.0M** |
+
+### Implications for Future Work
+
+This capability could be added as **VIS-2a: Context-Enriched Extraction**:
+
+1. Search `preceding_text` for total values (e.g., "ARR of $516.9 million")
+2. If `has_y_axis_scale: false` AND total found, provide to GPT-4o
+3. Mark confidence as 0.6-0.7 (estimated from proportion, not direct read)
+
+**Deferred**: Keep VIS-2 simple (direct extraction only). Add proportional extraction as follow-on task after VIS-2 is validated.
+
+---
+
 **Last Updated**: 2026-01-13
 **Task ID**: VIS-GPT4O
 **Author**: Manual testing (Claude Code assisted)
