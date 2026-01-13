@@ -1,33 +1,33 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-9 dropped; UXI workstream complete)
+**Last Verified**: 2026-01-13 (VIS-2b dropped, VIS-2c deferred)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
 
 ## Executive Summary
 
-| Plan | Total Tasks | Complete | Partial | Pending | Blocked |
-|------|-------------|----------|---------|---------|---------|
-| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
-| EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
-| HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 |
-| INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
-| DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
-| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| IMAGE_EXTRACTION (IMG) | 11 | 4 | 0 | 7 | 0 |
-| VISUAL_INTERPRETATION (VIS) | 6 | 3 | 0 | 3 | 0 |
-| **TOTAL** | **106** | **87** | **0** | **11** | **3** |
+| Plan | Total Tasks | Complete | Partial | Pending | Blocked | Dropped/Deferred |
+|------|-------------|----------|---------|---------|---------|------------------|
+| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 | 0 |
+| EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 | 0 |
+| HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 | 0 |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 | 0 |
+| INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 | 0 |
+| DUPLICATE_PREVENTION (DUP) | 3 | 3 | 0 | 0 | 0 | 0 |
+| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 | 0 |
+| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 | 5 |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 | 0 |
+| IMAGE_EXTRACTION (IMG) | 11 | 5 | 0 | 4 | 0 | 2 |
+| VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
+| **TOTAL** | **106** | **89** | **0** | **5** | **3** | **9** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed; UXI workstream ✅ COMPLETE; MET workstream ✅ COMPLETE; IMG-0-2/0-3 superseded by IMG-1-* tasks
+**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization); IMG-1-6 through IMG-1-8 pending
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -669,8 +669,8 @@ Phase 4 (Cleanup):
 | **IMG-1-1** | Database Schema for Image Review | S | 30-60m | NONE | ✅ COMPLETE | None | IMG-1-2 |
 | **IMG-1-2** | Database Methods for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-1 | IMG-1-3,4,5 |
 | **IMG-1-3** | Image Candidate Generation Script | S | 1-2h | NONE | ✅ COMPLETE | IMG-1-2 | IMG-1-8 |
-| **IMG-1-4** | Page Routes for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-2 | IMG-1-6 |
-| **IMG-1-5** | API Routes for Image Decisions | M | 2-3h | LOW | 🟡 PENDING | IMG-1-2 | IMG-1-7 |
+| **IMG-1-4** | Page Routes for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-2 | IMG-1-6 |
+| **IMG-1-5** | API Routes for Image Decisions | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-2 | IMG-1-7 |
 | **IMG-1-6** | HTML Templates for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-4 | IMG-1-7 |
 | **IMG-1-7** | Keyboard Shortcuts and JavaScript | M | 2-3h | LOW | 🟡 PENDING | IMG-1-5,6 | IMG-1-8 |
 | **IMG-1-8** | Integration Tests | S | 1-2h | NONE | 🟡 PENDING | IMG-1-4,5,6,7 | None |
@@ -728,7 +728,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 
 **Goal**: Implement LLM Vision-based chart value extraction for cohort charts
 **Branch**: `feature/visual-exploration`
-**Status**: 🟡 IN PROGRESS - Research complete, implementation pending
+**Status**: ✅ CORE COMPLETE - VIS-2/2a done; VIS-2b dropped, VIS-2c deferred; VIS-3 future work
 
 #### Research Phase (Complete)
 
@@ -754,8 +754,8 @@ IMG-1-3    IMG-1-4    IMG-1-5
 |----|------|------|------|------|--------|--------------|---------|
 | **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | ✅ COMPLETE | VIS-1a | VIS-2a, VIS-3 |
 | **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | ✅ COMPLETE | VIS-2 ✅ | None |
-| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
-| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | 🟡 PENDING | VIS-2 ✅ | None |
+| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | ~~DROPPED~~ | VIS-2 ✅ | None |
+| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | ⏸️ DEFERRED | VIS-2 ✅ | None |
 
 **VIS-2 Scope** (Worker Prompt v2.7):
 - Create `VisionClient` class wrapping OpenAI GPT-4o Vision API
@@ -786,6 +786,20 @@ IMG-1-3    IMG-1-4    IMG-1-5
 - Cache hit returns stored bytes without SEC request; cache miss fetches and caches
 - Backward compatible (caching disabled by default)
 - 13 new tests in `TestImageCaching` class, all passing
+
+**VIS-2b Dropped** (2026-01-13): DROPPED - Claude Vision provides no demonstrated advantage over GPT-4o:
+- Research (VIS-1, VIS-1a, VIS-GPT4O-VALIDATION) shows both models perform equivalently (~80% accuracy on Farfetch, 100% precision on Slack)
+- Both correctly identify missing Y-axis scales without hallucination
+- Adding a provider abstraction layer adds complexity with no benefit (YAGNI)
+- If GPT-4o becomes unavailable or underperforms in production, Claude can be added then
+- Decision: Single-provider implementation is sufficient for current needs
+
+**VIS-2c Deferred** (2026-01-13): DEFERRED - Premature optimization:
+- No demonstrated batch processing bottleneck exists yet
+- Image review UI (IMG-1-*) not complete - no production usage data
+- Current volume is low (<100 images in inventory)
+- Revisit after IMG-1-8 complete and real usage patterns emerge
+- Decision: Optimize when actual performance data justifies the effort
 
 **Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
 
@@ -1204,5 +1218,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-13 (IMG-1-2 complete; 86/106 tasks complete, 12 pending, 3 blocked)*
+*Last verified: 2026-01-13 (IMG-1-4 complete; 89/106 tasks complete, 5 pending, 3 blocked, 9 dropped/deferred)*
 
