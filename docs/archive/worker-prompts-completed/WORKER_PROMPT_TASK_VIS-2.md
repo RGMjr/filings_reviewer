@@ -633,9 +633,9 @@ Document potential improvements discovered:
 
 ## Follow-Up Tasks (Out of Scope for VIS-2)
 
-1. **VIS-2a: Image Caching** - Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
-2. **VIS-2b: Claude Vision Support** - Add Claude Vision as alternative provider (protocol pattern)
-3. **VIS-2c: Batch Processing** - Optimize for high-volume extraction with rate limit awareness
+1. **VIS-2a: Image Caching** ✅ COMPLETE (2026-01-13) - Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
+2. **VIS-2b: Claude Vision Support** ~~DROPPED~~ (2026-01-13) - Research showed GPT-4o and Claude Vision perform equivalently; adding provider abstraction adds complexity with no benefit (YAGNI)
+3. **VIS-2c: Batch Processing** ⏸️ DEFERRED (2026-01-13) - Premature optimization; no demonstrated bottleneck exists; revisit after IMG-1-8 complete with real usage data
 
 ## Expected Impact
 
