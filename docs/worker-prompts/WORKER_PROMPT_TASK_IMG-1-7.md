@@ -46,6 +46,20 @@ Create JavaScript for keyboard-driven image review with AJAX decision submission
 - `src/web/static/js/review.js` - Existing review JS (patterns to follow)
 - `src/web/routes/api_images.py` - API endpoints to call
 
+## API Response Format
+
+**IMPORTANT**: The image API uses `status` (not `success`) for consistency with existing `api.py`:
+
+```json
+// Success response
+{"status": "success", "decision_id": 123, "next_candidate": {...}}
+
+// Error response
+{"status": "error", "message": "Error description"}
+```
+
+Check `data.status === 'success'` in JavaScript, not `data.success`.
+
 ## Implementation Requirements
 
 ### Core Functionality
@@ -214,7 +228,7 @@ Create JavaScript for keyboard-driven image review with AJAX decision submission
 
        const data = await response.json();
 
-       if (data.success) {
+       if (data.status === 'success') {
          showToast('Decision saved', 'success');
          closeDropdowns();
 
@@ -226,7 +240,7 @@ Create JavaScript for keyboard-driven image review with AJAX decision submission
            window.location.href = `/review/images/filings`;
          }
        } else {
-         showToast(data.error || 'Error saving decision', 'error');
+         showToast(data.message || 'Error saving decision', 'error');
        }
      } catch (err) {
        showToast('Network error', 'error');
@@ -250,7 +264,7 @@ Create JavaScript for keyboard-driven image review with AJAX decision submission
 
        const data = await response.json();
 
-       if (data.success && data.next_candidate) {
+       if (data.status === 'success' && data.next_candidate) {
          window.location.href = data.next_candidate.url;
        } else {
          window.location.href = `/review/images/filings`;
@@ -278,7 +292,7 @@ Create JavaScript for keyboard-driven image review with AJAX decision submission
        });
 
        const data = await response.json();
-       if (data.success) {
+       if (data.status === 'success') {
          showToast('Decision undone', 'success');
          window.location.reload();
        }
