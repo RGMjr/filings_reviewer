@@ -12,9 +12,12 @@ from typing import TypedDict
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
+from src.infra.db import DatabaseAdapter
 from src.review.models import (
+    IMAGE_CHART_TYPE_LABELS,
     IMAGE_CHART_TYPES,
     IMAGE_DECISIONS,
+    IMAGE_REJECTION_REASON_LABELS,
     IMAGE_REJECTION_REASONS,
     IMAGE_REVIEW_STATUSES,
 )
@@ -225,24 +228,12 @@ def review_filing(filing_id: int):
             "has_active_filters": has_active_filters,
         }
 
-        # Build chart_types and rejection_reasons for dropdowns
+        # Build chart_types and rejection_reasons for dropdowns from models.py
         chart_types = [
-            ("cohort_table", "Cohort Table"),
-            ("cohort_heatmap", "Cohort Heatmap"),
-            ("line_chart", "Line Chart"),
-            ("bar_chart", "Bar Chart"),
-            ("stacked_bar", "Stacked Bar"),
-            ("other_chart", "Other Chart"),
-            ("mixed", "Mixed"),
+            (ct, IMAGE_CHART_TYPE_LABELS[ct]) for ct in IMAGE_CHART_TYPES
         ]
-
         rejection_reasons = [
-            ("decorative", "Decorative (logo, icon)"),
-            ("not_a_chart", "Not a Chart"),
-            ("wrong_subject", "Wrong Subject"),
-            ("duplicate", "Duplicate"),
-            ("unreadable", "Unreadable"),
-            ("other", "Other"),
+            (rr, IMAGE_REJECTION_REASON_LABELS[rr]) for rr in IMAGE_REJECTION_REASONS
         ]
 
         return render_template(
@@ -382,7 +373,7 @@ def _paginate(
     return result
 
 
-def _get_filing_data(db, filing_id: int) -> dict | None:
+def _get_filing_data(db: DatabaseAdapter, filing_id: int) -> dict | None:
     """
     Get filing metadata with company info.
 

@@ -158,6 +158,17 @@ IMAGE_CHART_TYPES = (
     "mixed",
 )
 
+# Display labels for chart types (for dropdowns)
+IMAGE_CHART_TYPE_LABELS: dict[str, str] = {
+    "cohort_table": "Cohort Table",
+    "cohort_heatmap": "Cohort Heatmap",
+    "line_chart": "Line Chart",
+    "bar_chart": "Bar Chart",
+    "stacked_bar": "Stacked Bar",
+    "other_chart": "Other Chart",
+    "mixed": "Mixed",
+}
+
 # ImageReviewDecision.rejection_reason
 IMAGE_REJECTION_REASONS = (
     "decorative",
@@ -167,6 +178,16 @@ IMAGE_REJECTION_REASONS = (
     "unreadable",
     "other",
 )
+
+# Display labels for rejection reasons (for dropdowns)
+IMAGE_REJECTION_REASON_LABELS: dict[str, str] = {
+    "decorative": "Decorative (logo, icon)",
+    "not_a_chart": "Not a Chart",
+    "wrong_subject": "Wrong Subject",
+    "duplicate": "Duplicate",
+    "unreadable": "Unreadable",
+    "other": "Other",
+}
 
 # Detection tier priority for sorting (lower = higher priority)
 IMAGE_TIER_PRIORITY = {
