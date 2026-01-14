@@ -199,3 +199,9 @@ mypy src/infra/db.py --ignore-missing-imports
 
 **Last Updated**: 2026-01-12
 **Format Version**: 2.6
+
+---
+
+## Post-Completion Note (IMG-1-5)
+
+**Added 2026-01-13**: The `get_image_decision_by_id(image_decision_id)` method was missing from the original requirements but was needed by IMG-1-5 (API routes) for the undo/delete endpoint. This method was added to `src/infra/db.py` as part of IMG-1-5 implementation, along with integration tests in `tests/integration/test_db_image_methods.py::TestGetImageDecisionById`.

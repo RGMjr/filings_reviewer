@@ -674,6 +674,7 @@ Phase 4 (Cleanup):
 | **IMG-1-6** | HTML Templates for Image Review | M | 2-3h | LOW | 🟡 PENDING | IMG-1-4 | IMG-1-7 |
 | **IMG-1-7** | Keyboard Shortcuts and JavaScript | M | 2-3h | LOW | 🟡 PENDING | IMG-1-5,6 | IMG-1-8 |
 | **IMG-1-8** | Integration Tests | S | 1-2h | NONE | 🟡 PENDING | IMG-1-4,5,6,7 | None |
+| **IMG-1-9** | Audit Logging for Image API | XS | 30m | NONE | 🟡 PENDING | IMG-1-5 | None |
 
 **Phase 1 Dependency Graph**:
 ```
