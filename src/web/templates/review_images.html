@@ -181,12 +181,7 @@
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <div>
                                 <h5 class="mb-1">
-                                    Image #{{ loop.index if loop else '' }}
-                                    {% for idx, c in candidates|enumerate %}
-                                        {% if c.image_candidate_id == current_candidate.image_candidate_id %}
-                                            {{ idx + 1 }}
-                                        {% endif %}
-                                    {% endfor %}
+                                    Image #{% for c in candidates %}{% if c.image_candidate_id == current_candidate.image_candidate_id %}{{ loop.index }}{% endif %}{% endfor %}
                                 </h5>
                                 <small class="text-muted">{{ current_candidate.image_src }}</small>
                             </div>
@@ -281,7 +276,19 @@
                         </div>
 
                         {% else %}
-                        {# Already reviewed - show decision and undo option #}
+                        {# Already reviewed or skipped - show decision and undo option #}
+                        {% if current_candidate.review_status == 'skipped' %}
+                        <div class="alert alert-secondary mb-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>Status:</strong> Skipped
+                                </div>
+                                <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
+                                    <span class="badge bg-secondary me-1">U</span> Undo
+                                </button>
+                            </div>
+                        </div>
+                        {% else %}
                         <div class="alert {{ 'alert-success' if current_candidate.decision == 'relevant' else 'alert-secondary' }} mb-3">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
@@ -308,6 +315,7 @@
                             </div>
                             {% endif %}
                         </div>
+                        {% endif %}
 
                         {# Navigation to next #}
                         <div class="d-flex justify-content-end">
@@ -446,7 +454,7 @@
         {# =================================================================
            Keyboard Hints Bar (fixed bottom)
            ================================================================= #}
-        <div id="keyboard-hints" class="keyboard-hints-bar">
+        <div id="keyboard-hints" class="keyboard-hints-bar d-none">
             <div class="container-fluid">
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="hints-content">
