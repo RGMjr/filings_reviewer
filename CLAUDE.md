@@ -214,7 +214,13 @@ This enables direct GitHub operations (create/close issues, manage PRs, update l
     - Cache hit avoids SEC request; cache miss fetches and stores
     - Disabled by default (backward compatible)
     - Test coverage: `TestImageCaching` in test_sec_client.py (13 tests)
-18. **Row-aware exclusion filtering** (2026-01-15, EXT-FN-1): Number-context exclusions respect table row boundaries:
+18. **cm_billings exclusion patterns** (2026-01-14, EXT-FP-1): Reduce false positives for billings metric:
+    - 17 exclusion patterns added to `config/metric_keywords.yaml` under `cm_billings.exclusions`
+    - Filters: Free Cash Flow rows, cash flow statement paragraphs, accounting line items
+    - Patterns: `cash flows?`, `operating (activities|cash|assets)`, `depreciation and amortization`, etc.
+    - Result: cm_billings candidates reduced from 49 to 6 (88% reduction) on Slack filing
+    - Test coverage: `TestExclusionPatternBillings` in test_keyword_exclusions.py (15 tests)
+19. **Row-aware exclusion filtering** (2026-01-15, EXT-FN-1): Number-context exclusions respect table row boundaries:
     - `should_exclude_for_number_context()` accepts optional `table_row_parser` parameter
     - When parser provided and segment is a table, exclusion context limited to same row only
     - Prevents cross-row false exclusions (e.g., "Net Dollar Retention Rate" excluding values from "Paid Customers >$100,000" row)

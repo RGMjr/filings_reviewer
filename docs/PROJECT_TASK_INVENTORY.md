@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-14 (IMG-1-9 complete)
+**Last Verified**: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -1219,5 +1219,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-14 (IMG-1-9 complete; 93/106 tasks complete, 1 pending, 3 blocked, 9 dropped/deferred)*
+*Last verified: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete; 94/107 tasks complete, 1 pending, 3 blocked, 9 dropped/deferred)*
 
