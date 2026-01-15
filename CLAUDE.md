@@ -214,6 +214,13 @@ This enables direct GitHub operations (create/close issues, manage PRs, update l
     - Cache hit avoids SEC request; cache miss fetches and stores
     - Disabled by default (backward compatible)
     - Test coverage: `TestImageCaching` in test_sec_client.py (13 tests)
+18. **Row-aware exclusion filtering** (2026-01-15, EXT-FN-1): Number-context exclusions respect table row boundaries:
+    - `should_exclude_for_number_context()` accepts optional `table_row_parser` parameter
+    - When parser provided and segment is a table, exclusion context limited to same row only
+    - Prevents cross-row false exclusions (e.g., "Net Dollar Retention Rate" excluding values from "Paid Customers >$100,000" row)
+    - Falls back to 100-char window for non-table segments or when position not in parsed rows
+    - Implementation: `keyword_matching.py:314-382`, called from `candidate_generator.py:652-657`
+    - Test coverage: 14 tests in `TestShouldExclude*` classes in test_keyword_matching.py
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
