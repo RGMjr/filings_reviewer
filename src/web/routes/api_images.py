@@ -109,7 +109,7 @@ def create_image_decision():
         review_time_seconds = data.get("review_time_seconds")
 
         # Validate candidate exists
-        candidate = db.get_image_candidate(image_candidate_id)
+        candidate = db.get_image_review_candidate(image_candidate_id)
         if not candidate:
             logger.warning(f"Image candidate not found: {image_candidate_id}")
             return (
@@ -233,7 +233,7 @@ def skip_image_candidate(image_candidate_id: int):
 
     try:
         # Validate candidate exists
-        candidate = db.get_image_candidate(image_candidate_id)
+        candidate = db.get_image_review_candidate(image_candidate_id)
         if not candidate:
             logger.warning(f"Skip: Image candidate not found: {image_candidate_id}")
             return (
