@@ -372,6 +372,30 @@ cm_billings:
     - '\btotal\s+billings\b'
     - '\bcalculated\s+billings\b'
     - '\badjusted\s+billings\b'
+  exclusions:
+    # Cash flow metrics (from Slack table - these appear in same segment as "Calculated Billings")
+    - '\bfree\s+cash\s+flows?\b'
+    - '\badjusted\s+free\s+cash\s+flows?\b'
+    - '\bcash\s+flows?\b'
+    - '\boperating\s+(?:activities|cash|assets)\b'
+    - '\bnet\s+loss\b'
+    # Cash flow statement line items (common accounting terms)
+    - '\bnon[- ]cash\s+charges?\b'
+    - '\bdepreciation\s+and\s+amortization\b'
+    - '\bstock[- ]based\s+compensation\b'
+    - '\baccounts\s+(?:payable|receivable)\b'
+    - '\bprepaid\s+expenses?\b'
+    - '\baccrued\s+expenses?\b'
+    # Tender offer / compensation items
+    - '\btender\s+offer\b'
+    - '\brepurchases?\s+deemed\s+compensation\b'
+    # Revenue line items (general financial statements)
+    - '\brevenue\b'
+    - '\bdeferred\s+revenue\b'
+    - '\bcost\s+of\s+(?:revenue|sales)\b'
+    - '\bnet\s+revenue\b'
+    # Period markers (accounting context)
+    - '\b(?:beginning|end)\s+of\s+period\b'
 
 # =============================================================================
 # E-Commerce / Consumer Metrics
