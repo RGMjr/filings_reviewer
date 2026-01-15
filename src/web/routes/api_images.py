@@ -9,10 +9,11 @@ Response format follows existing api.py patterns for consistency.
 """
 
 import logging
+import time
 from typing import Any
 
 import psycopg
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request, session
 
 from src.infra.validation import ValidationError
 from src.review.models import (
@@ -24,6 +25,100 @@ from src.web.app import get_db
 
 api_images_bp = Blueprint("api_images", __name__, url_prefix="/api")
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Audit Logging Hooks
+# =============================================================================
+# These hooks automatically log all API requests for audit trail and analytics.
+# Logs are stored in review_audit_log table.
+
+
+@api_images_bp.before_request
+def _log_request_start():
+    """
+    Hook that runs before each request to image API routes.
+
+    Captures request start time for response time calculation.
+    Stored in Flask g object for access in after_request hook.
+    """
+    g.request_start_time = time.time()
+
+
+@api_images_bp.after_request
+def _log_request_complete(response):
+    """
+    Hook that runs after each request to image API routes.
+
+    Logs request details to audit_log table including:
+    - Session ID, IP address, user agent
+    - Route name, HTTP method, URL path
+    - Image candidate ID if present in request body
+    - Decision details (chart_type, rejection_reason) for POST /image-decisions
+    - Response status and time
+
+    Args:
+        response: Flask response object
+
+    Returns:
+        Unmodified response object
+    """
+    try:
+        # Calculate response time
+        response_time_ms = None
+        if hasattr(g, "request_start_time"):
+            response_time_ms = int((time.time() - g.request_start_time) * 1000)
+
+        # Extract IDs and decision info from request
+        candidate_id = None
+        filing_id = None
+        query_params = None
+
+        # Check URL path parameters first (for skip/delete endpoints)
+        if request.view_args:
+            candidate_id = request.view_args.get("image_candidate_id")
+            if request.view_args.get("image_decision_id"):
+                # For delete endpoint, store decision_id in query_params
+                query_params = {"image_decision_id": request.view_args["image_decision_id"]}
+
+        # For POST requests with JSON body, extract decision details
+        if request.method == "POST" and request.is_json:
+            data = request.get_json(silent=True) or {}
+            # Extract image_candidate_id from body (overrides URL param if present)
+            if "image_candidate_id" in data:
+                candidate_id = data.get("image_candidate_id")
+            # Capture decision-specific fields in query_params
+            query_params = query_params or {}
+            if "decision" in data:
+                query_params["decision"] = data["decision"]
+            if "chart_type" in data:
+                query_params["chart_type"] = data["chart_type"]
+            if "rejection_reason" in data:
+                query_params["rejection_reason"] = data["rejection_reason"]
+            # Only store non-empty query_params
+            if not query_params:
+                query_params = None
+
+        # Get database connection and insert audit log
+        db = get_db()
+        db.insert_audit_log(
+            session_id=session.get("_id"),
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+            route_name=request.endpoint or "unknown",
+            http_method=request.method,
+            url_path=request.path,
+            filing_id=filing_id,
+            candidate_id=candidate_id,
+            query_params=query_params,
+            response_status=response.status_code,
+            response_time_ms=response_time_ms,
+        )
+    except Exception as e:
+        # Log error but don't break the response
+        logger.error(f"Failed to insert audit log: {e}")
+
+    return response
 
 
 # =============================================================================
