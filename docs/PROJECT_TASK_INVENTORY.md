@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-14 (IMG-1-8 complete)
+**Last Verified**: 2026-01-14 (IMG-1-9 complete)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -19,15 +19,15 @@
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 | 0 |
 | UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 | 5 |
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 | 0 |
-| IMAGE_EXTRACTION (IMG) | 11 | 8 | 0 | 1 | 0 | 2 |
+| IMAGE_EXTRACTION (IMG) | 11 | 9 | 0 | 0 | 0 | 2 |
 | VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
-| **TOTAL** | **106** | **92** | **0** | **2** | **3** | **9** |
+| **TOTAL** | **106** | **93** | **0** | **1** | **3** | **9** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
-**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization); IMG-1-9 pending
+**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -674,7 +674,7 @@ Phase 4 (Cleanup):
 | **IMG-1-6** | HTML Templates for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-4 | IMG-1-7 |
 | **IMG-1-7** | Keyboard Shortcuts and JavaScript | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-5,6 | IMG-1-8 |
 | **IMG-1-8** | Integration Tests | S | 1-2h | NONE | ✅ COMPLETE | IMG-1-4,5,6,7 | None |
-| **IMG-1-9** | Audit Logging for Image API | XS | 30m | NONE | 🟡 PENDING | IMG-1-5 | None |
+| **IMG-1-9** | Audit Logging for Image API | XS | 30m | NONE | ✅ COMPLETE | IMG-1-5 | None |
 
 **Phase 1 Dependency Graph**:
 ```
@@ -1219,5 +1219,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-14 (IMG-1-7 complete; 91/106 tasks complete, 3 pending, 3 blocked, 9 dropped/deferred)*
+*Last verified: 2026-01-14 (IMG-1-9 complete; 93/106 tasks complete, 1 pending, 3 blocked, 9 dropped/deferred)*
 
