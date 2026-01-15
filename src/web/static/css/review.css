@@ -1262,6 +1262,18 @@
     text-align: left;
 }
 
+/* Dropdown Option Highlight (keyboard navigation) */
+.dropdown-options .btn.dropdown-option-highlight {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: white;
+}
+
+.dropdown-options .btn.dropdown-option-highlight .badge {
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    color: var(--bs-primary) !important;
+}
+
 /* Context Panel (Right Column) */
 .image-context-panel {
     width: 300px;

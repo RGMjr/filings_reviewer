@@ -14,7 +14,8 @@
      id="review-container"
      data-filing-id="{{ filing.filing_id }}"
      data-candidate-id="{{ current_candidate.image_candidate_id if current_candidate else '' }}"
-     data-candidates='{{ all_candidates | tojson }}'>
+     data-candidates='{{ all_candidates | tojson }}'
+     data-decision-id="{{ current_candidate.image_decision_id if current_candidate and current_candidate.image_decision_id else '' }}">
 
     {% if not candidates or candidates|length == 0 %}
         {# Empty state: No candidates for this filing #}
@@ -492,36 +493,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-// Minimal inline JavaScript for keyboard hints toggle only
-// Full interactivity will be added in IMG-1-7
-(function() {
-    'use strict';
-
-    const hintsBar = document.getElementById('keyboard-hints');
-    const toggleBtn = document.getElementById('toggle-hints');
-    const closeBtn = document.getElementById('close-hints');
-
-    if (toggleBtn && hintsBar) {
-        toggleBtn.addEventListener('click', function() {
-            hintsBar.classList.toggle('d-none');
-        });
-    }
-
-    if (closeBtn && hintsBar) {
-        closeBtn.addEventListener('click', function() {
-            hintsBar.classList.add('d-none');
-        });
-    }
-
-    // Toggle with ? key
-    document.addEventListener('keydown', function(e) {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-        if (e.key === '?' || e.key === 'h' || e.key === 'H') {
-            e.preventDefault();
-            if (hintsBar) hintsBar.classList.toggle('d-none');
-        }
-    });
-})();
-</script>
+<script src="{{ url_for('static', filename='js/review_images.js') }}"></script>
 {% endblock %}
