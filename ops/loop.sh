@@ -5,12 +5,14 @@
 # Usage:
 #   ./ops/loop.sh extract [max_iterations]    # Run extraction loop
 #   ./ops/loop.sh validate [max_iterations]   # Run validation loop
+#   ./ops/loop.sh dryrun [max_iterations]     # Test loop without database
 #   ./ops/loop.sh plan [max_iterations]       # Run planning mode
 #
 # Examples:
 #   ./ops/loop.sh extract           # Unlimited extraction iterations
 #   ./ops/loop.sh extract 10        # Max 10 filings
 #   ./ops/loop.sh validate 5        # Validate up to 5 filings
+#   ./ops/loop.sh dryrun 2          # Test with 2 simulated filings
 #
 
 set -euo pipefail
@@ -52,9 +54,15 @@ case "$MODE" in
         COMPLETION_PROMISE="PLANNING_COMPLETE"
         PAUSE_PROMISE="PLANNING_PAUSED"
         ;;
+    dryrun)
+        PROMPT_FILE="$SCRIPT_DIR/PROMPT_dryrun.md"
+        PLAN_FILE="$SCRIPT_DIR/DRYRUN_PLAN.md"
+        COMPLETION_PROMISE="DRYRUN_COMPLETE"
+        PAUSE_PROMISE="DRYRUN_PAUSED"
+        ;;
     *)
         echo -e "${RED}Error: Unknown mode '$MODE'${NC}"
-        echo "Usage: $0 {extract|validate|plan} [max_iterations]"
+        echo "Usage: $0 {extract|validate|dryrun|plan} [max_iterations]"
         exit 1
         ;;
 esac
