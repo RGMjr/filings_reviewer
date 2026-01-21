@@ -1,31 +1,33 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-07 (UXI-9 dropped; UXI workstream complete)
+**Last Verified**: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete)
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
 
 ## Executive Summary
 
-| Plan | Total Tasks | Complete | Partial | Pending | Blocked |
-|------|-------------|----------|---------|---------|---------|
-| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 |
-| EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 |
-| HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 |
-| INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 |
-| DUPLICATE_PREVENTION (DUP) | 3 | 2 | 0 | 1 | 0 |
-| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 |
-| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 |
-| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 |
-| **TOTAL** | **89** | **79** | **0** | **4** | **3** |
+| Plan | Total Tasks | Complete | Partial | Pending | Blocked | Dropped/Deferred |
+|------|-------------|----------|---------|---------|---------|------------------|
+| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 | 0 |
+| EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 | 0 |
+| HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 | 0 |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 | 0 |
+| INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 | 0 |
+| DUPLICATE_PREVENTION (DUP) | 3 | 3 | 0 | 0 | 0 | 0 |
+| DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 | 0 |
+| UX_IMPROVEMENT (UXI) | 13 | 8 | 0 | 0 | 0 | 5 |
+| METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 | 0 |
+| IMAGE_EXTRACTION (IMG) | 11 | 9 | 0 | 0 | 0 | 2 |
+| VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
+| **TOTAL** | **106** | **93** | **0** | **1** | **3** | **9** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
-**Next Priority**: None - UXI workstream complete (UXI-9 dropped)
-**Remaining Work**: GR-10 pending, GR-16 blocked; HRV-12 closed; UXI workstream ✅ COMPLETE (UXI-4/7/8/9 + F2/F3/F4 dropped); MET workstream ✅ COMPLETE (10/10)
+**Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
+**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization)
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -633,6 +635,180 @@ Phase 4 (Cleanup):
 
 ---
 
+### IMAGE_EXTRACTION Tasks (IMG-Series)
+
+**Goal**: Build human review UI for chart images to enable rapid classification and pattern learning
+**Plan Location**: `.claude/plans/gentle-prancing-yao.md`
+**Status**: 🟡 IN PROGRESS - Phase 1 Human Review UI
+
+#### Phase 0: Discovery (SUPERSEDED)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **IMG-0-1** | Chart Image Discovery Script | S | 1-2h | NONE | ✅ COMPLETE | None | IMG-1-* |
+| **IMG-0-2** | Chart Image Sample Analysis | M | 2-3h | NONE | ⏸️ SUPERSEDED | IMG-0-1 | - |
+| **IMG-0-3** | Discovery Decision Report | S | 1h | NONE | ⏸️ SUPERSEDED | IMG-0-2 | - |
+
+**Phase 0 Notes**:
+- IMG-0-1 generated `chart_image_inventory.csv` (152 images, 136 non-decorative)
+- IMG-0-2/0-3 superseded by IMG-1-* human review UI approach
+- Archived to `docs/archive/worker-prompts-superseded/`
+
+---
+
+#### Phase 1: Human Review UI (8 tasks, 5 waves)
+
+**Rationale**: Build human review interface for chart image classification with:
+- Four-tier pre-filtering (cohort keywords, large images, all non-decorative, seed list)
+- Keyboard-driven rapid review (Y/N/S/U/arrows/1-7)
+- Pattern learning via `detection_tier` field
+- Chart type classification (7 types) and rejection reasons (6 types)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **IMG-1-1** | Database Schema for Image Review | S | 30-60m | NONE | ✅ COMPLETE | None | IMG-1-2 |
+| **IMG-1-2** | Database Methods for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-1 | IMG-1-3,4,5 |
+| **IMG-1-3** | Image Candidate Generation Script | S | 1-2h | NONE | ✅ COMPLETE | IMG-1-2 | IMG-1-8 |
+| **IMG-1-4** | Page Routes for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-2 | IMG-1-6 |
+| **IMG-1-5** | API Routes for Image Decisions | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-2 | IMG-1-7 |
+| **IMG-1-6** | HTML Templates for Image Review | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-4 | IMG-1-7 |
+| **IMG-1-7** | Keyboard Shortcuts and JavaScript | M | 2-3h | LOW | ✅ COMPLETE | IMG-1-5,6 | IMG-1-8 |
+| **IMG-1-8** | Integration Tests | S | 1-2h | NONE | ✅ COMPLETE | IMG-1-4,5,6,7 | None |
+| **IMG-1-9** | Audit Logging for Image API | XS | 30m | NONE | ✅ COMPLETE | IMG-1-5 | None |
+
+**Phase 1 Dependency Graph**:
+```
+IMG-1-1 (Schema)
+    │
+    ▼
+IMG-1-2 (DB Methods)
+    │
+    ├──────────┬──────────┐
+    ▼          ▼          ▼
+IMG-1-3    IMG-1-4    IMG-1-5
+(Script)   (Pages)    (API)
+              │          │
+              ▼          │
+           IMG-1-6 ◄─────┘
+           (Templates)
+              │
+              ▼
+           IMG-1-7
+           (JavaScript)
+              │
+              ▼
+           IMG-1-8
+           (Integration)
+```
+
+**Worker Prompts**: `docs/worker-prompts/WORKER_PROMPT_TASK_IMG-1-*.md`
+
+**Phase 1 Deliverables**:
+- Database tables: `image_review_candidates`, `image_review_decisions`
+- Flask routes: `/review/images/filings`, `/review/images/<filing_id>`, `/review/images/<filing_id>/next`
+- API endpoints: `POST /api/image-decisions`, `POST /api/image-candidates/<id>/skip`, `DELETE /api/image-decisions/<id>`
+- 3-column UI: thumbnail sidebar, main image display, context panel
+- Keyboard shortcuts: Y (relevant), N (not relevant), S (skip), U (undo), ←→ (nav), 1-7 (dropdown)
+- Pattern learning: `detection_tier` field tracks how images were included for analysis
+
+**Seed List** (known valuable charts):
+- Slack ARR cohort: `https://www.sec.gov/Archives/edgar/data/1764925/000162828019007428/mdaa2.jpg`
+- Farfetch GMV cohort: `https://www.sec.gov/Archives/edgar/data/1740915/000119312518252315/g532260g12o45.jpg`
+
+---
+
+#### Future Phases (contingent on Phase 1 learnings)
+
+- Phase 2: Vision LLM integration for automated extraction
+- Phase 3: Chart classification + routing based on review patterns
+- Phase 4: Value mapping + metric extraction from charts
+
+---
+
+### VISUAL_INTERPRETATION Tasks (VIS-Series)
+
+**Goal**: Implement LLM Vision-based chart value extraction for cohort charts
+**Branch**: `feature/visual-exploration`
+**Status**: ✅ CORE COMPLETE - VIS-2/2a done; VIS-2b dropped, VIS-2c deferred; VIS-3 future work
+
+#### Research Phase (Complete)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **VIS-1** | Chart Extraction Tool Accuracy Evaluation | S | 1-2h | NONE | ✅ COMPLETE | None | VIS-1a |
+| **VIS-1a** | Extended Chart Extraction Tool Evaluation | S | 2-3h | NONE | ✅ COMPLETE | VIS-1 | VIS-2 |
+
+**Research Findings**:
+- DePlot: **FAIL** - Hallucinated values on stacked area charts (0% precision)
+- MatCha: **FAIL** - Same issues as DePlot (garbage output)
+- Claude Vision: **PASS** - 100% precision Slack, ~80% Farfetch, no hallucinations
+- GPT-4o Vision: **PASS** - Correctly identifies missing Y-axis, extracts values when scale visible
+
+**Research Docs**:
+- `docs/research/VIS-1-chart-extraction-results.md`
+- `docs/research/VIS-1a-extended-evaluation-results.md`
+- `docs/research/VIS-GPT4O-VALIDATION.md`
+
+#### Implementation Phase (Pending)
+
+| ID | Name | Size | Time | Risk | Status | Dependencies | Unlocks |
+|----|------|------|------|------|--------|--------------|---------|
+| **VIS-2** | LLM Vision Chart Value Extraction Pipeline | L | 4-6h | LOW | ✅ COMPLETE | VIS-1a | VIS-2a, VIS-3 |
+| **VIS-2a** | Image Caching for SEC Downloads | S | 1-2h | NONE | ✅ COMPLETE | VIS-2 ✅ | None |
+| **VIS-2b** | Claude Vision Provider Support | M | 2-3h | LOW | ~~DROPPED~~ | VIS-2 ✅ | None |
+| **VIS-2c** | Batch Processing Optimization | M | 2-3h | LOW | ⏸️ DEFERRED | VIS-2 ✅ | None |
+
+**VIS-2 Scope** (Worker Prompt v2.7):
+- Create `VisionClient` class wrapping OpenAI GPT-4o Vision API
+- Add `fetch_image()` method to `SECClient` with size limits and Content-Type validation
+- Create `ChartValueExtractor` with structured output parsing
+- MIME type detection for JPEG/PNG/GIF
+- Integration with existing `CohortChartDetector`
+- 25+ unit tests, ≥85% coverage (chart_value_extractor), ≥90% coverage (vision_client)
+- `mypy --strict` on both new modules
+
+**VIS-2 Completion Note** (2026-01-13):
+- Created `src/llm/vision_client.py` with VisionClient class (GPT-4o Vision API wrapper)
+- Added `fetch_image()` method to `src/infra/sec_client.py` (CIK stripping, Content-Type validation, size limits)
+- Created `src/extraction/chart_value_extractor.py` with ChartValueExtractor (JSON parsing, confidence scoring)
+- Added retry logic with exponential backoff (RateLimitError, APIConnectionError, 5xx errors)
+- Updated `src/llm/__init__.py` exports (VisionClient, VisionResponse)
+- 90 tests pass, VisionClient 97% coverage, ChartValueExtractor 97% coverage
+- Cost tracking: $2.50/1M input tokens, $10.00/1M output tokens
+
+**VIS-2a/b/c Scope** (Follow-up tasks defined in VIS-2 v2.7):
+- VIS-2a: Cache downloaded images to `data/images/{cik}/{accession}/` to avoid repeated SEC requests
+- VIS-2b: Add Claude Vision as alternative provider (protocol pattern)
+- VIS-2c: Optimize for high-volume extraction with rate limit awareness
+
+**VIS-2a Completion Note** (2026-01-13):
+- Added optional `image_cache_dir` parameter to `SECClient.__init__()`
+- Cache structure: `{cache_dir}/{cik}/{accession_no_dashes}/{filename}`
+- Cache hit returns stored bytes without SEC request; cache miss fetches and caches
+- Backward compatible (caching disabled by default)
+- 13 new tests in `TestImageCaching` class, all passing
+
+**VIS-2b Dropped** (2026-01-13): DROPPED - Claude Vision provides no demonstrated advantage over GPT-4o:
+- Research (VIS-1, VIS-1a, VIS-GPT4O-VALIDATION) shows both models perform equivalently (~80% accuracy on Farfetch, 100% precision on Slack)
+- Both correctly identify missing Y-axis scales without hallucination
+- Adding a provider abstraction layer adds complexity with no benefit (YAGNI)
+- If GPT-4o becomes unavailable or underperforms in production, Claude can be added then
+- Decision: Single-provider implementation is sufficient for current needs
+
+**VIS-2c Deferred** (2026-01-13): DEFERRED - Premature optimization:
+- No demonstrated batch processing bottleneck exists yet
+- Image review UI (IMG-1-*) not complete - no production usage data
+- Current volume is low (<100 images in inventory)
+- Revisit after IMG-1-8 complete and real usage patterns emerge
+- Decision: Optimize when actual performance data justifies the effort
+
+**Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
+
+**Future Tasks** (defined after VIS-2):
+- VIS-3: Review UI Integration for Chart Metrics
+
+---
+
 ## Parallel Execution Plan
 
 ### Wave 1: Quick Wins ✅ COMPLETE
@@ -1043,5 +1219,5 @@ _No known issues._
 
 ---
 
-*Last verified: 2026-01-07 (ISSUE-1 fixed; 79/89 tasks complete, 1 pending, 3 blocked)*
+*Last verified: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete; 94/107 tasks complete, 1 pending, 3 blocked, 9 dropped/deferred)*
 

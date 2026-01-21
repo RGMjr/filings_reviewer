@@ -134,6 +134,69 @@ PATTERN_TYPES = ("accept_rule", "reject_rule", "feature_weight")
 # LearnedPattern.status
 PATTERN_STATUSES = ("candidate", "approved", "rejected", "deprecated")
 
+# =============================================================================
+# Image Review Constants (aligned with sql/09_create_image_review_schema.sql)
+# =============================================================================
+
+# ImageReviewCandidate.review_status
+IMAGE_REVIEW_STATUSES = ("pending", "reviewed", "skipped")
+
+# ImageReviewCandidate.detection_tier
+IMAGE_DETECTION_TIERS = ("tier_1_cohort", "tier_2_large", "tier_3_all", "seed_list")
+
+# ImageReviewDecision.decision
+IMAGE_DECISIONS = ("relevant", "not_relevant")
+
+# ImageReviewDecision.chart_type
+IMAGE_CHART_TYPES = (
+    "cohort_table",
+    "cohort_heatmap",
+    "line_chart",
+    "bar_chart",
+    "stacked_bar",
+    "other_chart",
+    "mixed",
+)
+
+# Display labels for chart types (for dropdowns)
+IMAGE_CHART_TYPE_LABELS: dict[str, str] = {
+    "cohort_table": "Cohort Table",
+    "cohort_heatmap": "Cohort Heatmap",
+    "line_chart": "Line Chart",
+    "bar_chart": "Bar Chart",
+    "stacked_bar": "Stacked Bar",
+    "other_chart": "Other Chart",
+    "mixed": "Mixed",
+}
+
+# ImageReviewDecision.rejection_reason
+IMAGE_REJECTION_REASONS = (
+    "decorative",
+    "not_a_chart",
+    "wrong_subject",
+    "duplicate",
+    "unreadable",
+    "other",
+)
+
+# Display labels for rejection reasons (for dropdowns)
+IMAGE_REJECTION_REASON_LABELS: dict[str, str] = {
+    "decorative": "Decorative (logo, icon)",
+    "not_a_chart": "Not a Chart",
+    "wrong_subject": "Wrong Subject",
+    "duplicate": "Duplicate",
+    "unreadable": "Unreadable",
+    "other": "Other",
+}
+
+# Detection tier priority for sorting (lower = higher priority)
+IMAGE_TIER_PRIORITY = {
+    "seed_list": 0,
+    "tier_1_cohort": 1,
+    "tier_2_large": 2,
+    "tier_3_all": 3,
+}
+
 
 # =============================================================================
 # CandidateFeatures

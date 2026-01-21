@@ -2,25 +2,77 @@
 
 You are executing an existing worker prompt.
 
-## Step 1: Locate Worker Prompt
+## Arguments
 
-If the user provided a task ID (e.g., `HRV-17`):
+Task ID: $ARGUMENTS
+
+## Step 1: Load Context and Locate Prompt
+
+### 1.1 Parse Arguments
+
+**If `$ARGUMENTS` is provided:**
+- Use it as the task ID (e.g., `HRV-17`, `IMG-2`)
+
+**If `$ARGUMENTS` is empty or not provided:**
+- Ask: "Which task would you like to execute? Provide the task ID (e.g., HRV-17)."
+
+### 1.2 Load Essential Context
+
+Before proceeding, read these files to establish full project context:
+1. `CLAUDE.md` - project standards, patterns, and key decisions
+2. `docs/PROJECT_TASK_INVENTORY.md` - task dependencies and status
+3. `docs/WORKER_PROMPT_TEMPLATE.md` - understand prompt structure
+
+### 1.3 Locate Worker Prompt
+
 - Look for `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
+- If not found, check `docs/archive/worker-prompts/` subdirectories
 
-If no ID provided, ask: "Which task would you like to execute? Provide the task ID (e.g., HRV-17) or path to the worker prompt."
+## Step 2: Critical Review Before Execution (REQUIRED)
 
-If the file doesn't exist, check `docs/archive/worker-prompts/` subdirectories.
+Read the worker prompt file, then perform a critical review considering how the codebase may have evolved since the prompt was created.
 
-## Step 2: Read and Validate
+### 2.1 Codebase Evolution Check
 
-1. Read the worker prompt file
-2. Confirm with user:
-   > "I found worker prompt for **[TASK NAME]**:
-   > - Size: [size]
-   > - Status: [status]
-   > - Depends on: [deps]
-   >
-   > Ready to execute?"
+Examine the key files mentioned in the worker prompt:
+- Have any of the target files changed significantly?
+- Are there new patterns or conventions that should apply?
+- Have dependencies been added/removed that affect this task?
+- Are there recent commits that overlap with this task's scope?
+
+### 2.2 Prompt Quality Assessment
+
+Review the worker prompt for:
+- **Stale assumptions**: Requirements that no longer apply
+- **Missing context**: New code patterns or files not accounted for
+- **Scope conflicts**: Other recent changes that affect this task
+- **Ambiguities**: Unclear requirements that need clarification
+- **Gaps**: Missing acceptance criteria or test requirements
+
+### 2.3 Present Review to User
+
+**STOP and present findings:**
+
+> "I've reviewed worker prompt **[TASK NAME]** against the current codebase:
+>
+> **Task Summary**: [Brief description]
+> **Size**: [size] | **Status**: [status] | **Depends on**: [deps]
+>
+> **Review Findings**:
+> - [Finding 1: e.g., "File X has been modified since prompt creation"]
+> - [Finding 2: e.g., "New pattern Y should be followed"]
+> - [Finding 3: e.g., "Acceptance criterion Z is ambiguous"]
+>
+> *(If no issues found: "No issues found - prompt appears current and complete.")*
+>
+> Would you like me to:
+> 1. **Execute as-is** - proceed with current prompt
+> 2. **Update prompt first** - edit the worker prompt to address findings, then re-run `/task-run [ID]`
+> 3. **Discuss** - talk through specific concerns before deciding"
+
+**Wait for user response before proceeding.**
+
+If user chooses to update the prompt, make the edits and STOP - tell them to re-run `/task-run [ID]` with the updated prompt.
 
 ## Step 3: Execute Task
 

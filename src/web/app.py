@@ -333,6 +333,16 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(api_bp, url_prefix="/api")
 
+    # Image review API blueprint (IMG-1-5)
+    from src.web.routes.api_images import api_images_bp
+
+    app.register_blueprint(api_images_bp)
+
+    # Image review page routes (IMG-1-4)
+    from src.web.routes.review_images import review_images_bp
+
+    app.register_blueprint(review_images_bp)
+
 
 def _wants_json_response() -> bool:
     """Check if the client prefers JSON over HTML."""

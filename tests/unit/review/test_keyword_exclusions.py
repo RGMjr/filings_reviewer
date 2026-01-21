@@ -428,3 +428,154 @@ Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios"""
         assert "cm_customer_acquisition_cost" in matched_metrics
         # New customers should NOT match because 'acquisition cost' is present
         assert "cm_new_customers_acquired" not in matched_metrics
+
+
+class TestExclusionPatternBillings:
+    """Tests for cm_billings exclusion patterns (EXT-FP-1).
+
+    These tests verify that cm_billings does NOT match values from:
+    - Free Cash Flow rows in financial tables
+    - Cash flow statement paragraphs
+    - Other financial statement line items
+    """
+
+    def test_free_cash_flow_excludes_billings_keyword(self) -> None:
+        """'Free Cash Flow' in context should exclude billings keyword match."""
+        text = "Calculated Billings $143,390 [ROW] Free Cash Flow $114,038"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        # The billings keyword should be excluded due to "Free Cash Flow" in ±50 char context
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        # Keyword-level exclusion happens during find_all_keywords
+        assert len(billings_matches) == 0
+
+    def test_adjusted_free_cash_flow_excludes_billings(self) -> None:
+        """'Adjusted Free Cash Flow' should exclude billings."""
+        text = "billings Adjusted Free Cash Flow was negative"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_cash_flows_plural_excludes_billings(self) -> None:
+        """'cash flows' (plural) should exclude billings."""
+        text = "Our operating cash flows improved while billings increased"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_operating_activities_excludes_billings(self) -> None:
+        """'operating activities' should exclude billings."""
+        text = "During the period, operating activities used cash. Billings grew."
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_net_loss_excludes_billings(self) -> None:
+        """'net loss' should exclude billings."""
+        text = "net loss of $50 million impacted billings growth"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_depreciation_and_amortization_excludes_billings(self) -> None:
+        """'depreciation and amortization' should exclude billings."""
+        # Context must be within ±50 chars of keyword for exclusion to apply
+        text = "billings depreciation and amortization $5M"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_stock_based_compensation_excludes_billings(self) -> None:
+        """'stock-based compensation' should exclude billings."""
+        text = "stock-based compensation expense and billings growth"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_tender_offer_excludes_billings(self) -> None:
+        """'tender offer' should exclude billings."""
+        text = "Tender offer payments and Calculated Billings"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_revenue_excludes_billings(self) -> None:
+        """'revenue' in context should exclude billings."""
+        text = "Revenue increased by $50M. Billings also grew."
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    def test_deferred_revenue_excludes_billings(self) -> None:
+        """'deferred revenue' should exclude billings."""
+        text = "Deferred revenue plus billings equals total"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        billings_matches = [m for m in matches if m.metric_id == "cm_billings"]
+        assert len(billings_matches) == 0
+
+    # Preservation tests - billings SHOULD match in clean context
+
+    def test_calculated_billings_matches_without_exclusions(self) -> None:
+        """'Calculated Billings' should match when no exclusion patterns present."""
+        text = "Our Calculated Billings reached $500M this quarter."
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        matched_metrics = {m.metric_id for m in matches}
+        assert "cm_billings" in matched_metrics
+
+    def test_total_billings_matches_without_exclusions(self) -> None:
+        """'total billings' should match when no exclusion patterns present."""
+        text = "Total billings for the period were strong."
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        matched_metrics = {m.metric_id for m in matches}
+        assert "cm_billings" in matched_metrics
+
+    def test_billings_with_cohort_context_matches(self) -> None:
+        """Billings with cohort context should still match."""
+        text = "Billings by cohort showed improvement across all customer segments."
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        matched_metrics = {m.metric_id for m in matches}
+        assert "cm_billings" in matched_metrics
+
+    # Number-context exclusion tests (via should_exclude_for_number_context)
+
+    def test_number_context_excludes_near_free_cash_flow(self) -> None:
+        """Numbers near 'Free Cash Flow' should be excluded via number-context check."""
+        text = "Free Cash Flow [CELL] $ [CELL] (114,038 [CELL] )"
+        matcher = KeywordMatcher()
+
+        # Position of "114,038" in text
+        excluded, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_billings",
+            text=text,
+            number_position=30,  # Approximate position of 114,038
+            window_chars=100,
+        )
+        assert excluded is True
+        assert "free" in reason.lower() and "cash" in reason.lower()
+
+    def test_number_context_preserves_calculated_billings_row(self) -> None:
+        """Numbers in 'Calculated Billings' row should NOT be excluded."""
+        text = "Calculated Billings [CELL] $ [CELL] 143,390 [CELL] $ [CELL] 289,013"
+        matcher = KeywordMatcher()
+
+        # Position of "143,390" - should NOT be excluded
+        excluded, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_billings",
+            text=text,
+            number_position=40,  # Approximate position of 143,390
+            window_chars=100,
+        )
+        assert excluded is False
+        assert reason is None

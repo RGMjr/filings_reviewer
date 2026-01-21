@@ -87,6 +87,7 @@ from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
     from src.review.boundary_detection import TextBoundary
+    from src.review.marker_row_parser import MarkerRowParser
     from src.review.table_structure import TableRowParser
 
 logger = logging.getLogger(__name__)
@@ -316,6 +317,7 @@ class KeywordMatcher:
         text: str,
         number_position: int,
         window_chars: int = 100,
+        table_row_parser: "TableRowParser | MarkerRowParser | None" = None,
     ) -> tuple[bool, str | None]:
         """
         Check if a candidate should be excluded based on NUMBER context.
@@ -328,11 +330,19 @@ class KeywordMatcher:
         but some false positives occur when numbers are far from keywords
         but near exclusion-worthy context.
 
+        EXT-FN-1 Enhancement: When a table_row_parser is provided and the
+        segment is a table, the exclusion context is limited to ONLY the text
+        within the same table row as the number. This prevents false exclusions
+        where keywords like "Net Dollar Retention Rate" in an adjacent row
+        incorrectly exclude values from the "Paid Customers >$100,000" row.
+
         Args:
             metric_id: The metric ID to check exclusions for
             text: The full text containing the number
             number_position: Character position of the number in text
             window_chars: Characters around number position to check (default: 100)
+            table_row_parser: Optional parser for table row boundaries. If provided
+                and segment is a table, limits exclusion context to same row only.
 
         Returns:
             Tuple of (should_exclude, reason)
@@ -342,9 +352,28 @@ class KeywordMatcher:
         if metric_id not in self._compiled_exclusions:
             return False, None
 
-        start = max(0, number_position - window_chars)
-        end = min(len(text), number_position + window_chars)
-        context = text[start:end]
+        # EXT-FN-1: If table_row_parser provided and it's a table,
+        # limit exclusion context to the same row as the number
+        if table_row_parser is not None and table_row_parser.is_table():
+            row = table_row_parser.get_row_at_position(number_position)
+            if row is not None:
+                # Use row text as context instead of window-based context
+                context = row.row_text
+            else:
+                # Position not in any row - fall back to window-based context
+                # This is unexpected in normal operation, so log at debug level
+                logger.debug(
+                    f"EXT-FN-1: Position {number_position} not in parsed rows, "
+                    f"using {window_chars}-char window fallback"
+                )
+                start = max(0, number_position - window_chars)
+                end = min(len(text), number_position + window_chars)
+                context = text[start:end]
+        else:
+            # No table parser or not a table - use original window-based context
+            start = max(0, number_position - window_chars)
+            end = min(len(text), number_position + window_chars)
+            context = text[start:end]
 
         for pattern in self._compiled_exclusions[metric_id]:
             if pattern.search(context):

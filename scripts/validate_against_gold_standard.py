@@ -571,6 +571,7 @@ def get_fresh_candidates(
     filings_dir: str,
     allow_sec_fetch: bool,
     verbose: bool = False,
+    company_name: str | None = None,
 ) -> list[dict]:
     """
     Get candidates using fresh extraction from filing HTML.
@@ -580,6 +581,7 @@ def get_fresh_candidates(
         filings_dir: Base directory for cached filings
         allow_sec_fetch: Whether to fetch from SEC if not cached
         verbose: Print progress details
+        company_name: Optional company name for gold_standard path lookup
 
     Returns:
         List of candidate dicts ready for validation matching
@@ -594,6 +596,7 @@ def get_fresh_candidates(
         company_id=1,
         base_dir=filings_dir,
         allow_sec_fetch=allow_sec_fetch,
+        company_name=company_name,
     )
 
     if not result.success:
@@ -824,6 +827,7 @@ Examples:
                 filings_dir=args.filings_dir,
                 allow_sec_fetch=args.allow_sec_fetch,
                 verbose=args.verbose,
+                company_name=args.company,
             )
 
             result = validate_filing(
@@ -874,6 +878,7 @@ Examples:
                     filings_dir=args.filings_dir,
                     allow_sec_fetch=args.allow_sec_fetch,
                     verbose=args.verbose,
+                    company_name=company,
                 )
 
                 result = validate_filing(

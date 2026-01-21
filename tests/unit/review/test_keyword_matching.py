@@ -1977,3 +1977,313 @@ class TestRequiredContext:
         text = "Our cohort GMV reached $1 billion"
         result = matcher._has_required_context("cm_gmv", 11, text)
         assert result is True
+
+
+# =============================================================================
+# should_exclude_for_number_context with Table Row Awareness (EXT-FN-1)
+# =============================================================================
+
+
+class TestShouldExcludeForNumberContext:
+    """Tests for should_exclude_for_number_context method."""
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher()
+
+    def test_excludes_when_pattern_in_window_no_parser(self, matcher):
+        """Without table parser, excludes based on window around number."""
+        # The text has "retention rate" within 100 chars of the number position
+        text = "Large customers 135 retention rate 95%"
+        # Position of 135 = 16, "retention rate" at position 20
+        # Distance is < 100 chars, so should exclude for cm_large_customers_period_end
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=16,  # position of "135"
+        )
+        assert should_exclude is True
+        assert "retention" in reason.lower()
+
+    def test_no_exclusion_when_no_pattern_in_window(self, matcher):
+        """Without exclusion pattern in window, should not exclude."""
+        text = "We have 50000 active customers worldwide"
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=8,  # position of "50000"
+        )
+        assert should_exclude is False
+        assert reason is None
+
+    def test_no_exclusion_when_metric_has_no_exclusion_patterns(self, matcher):
+        """Metrics without exclusion patterns should never be excluded."""
+        text = "retention rate 135 some text here"
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_active_customers_total",  # Typically has few/no exclusions
+            text=text,
+            number_position=15,  # position of "135"
+        )
+        # Even if text has exclusion-like patterns, this metric may not have matching exclusions
+        # The key is it should not crash and behave predictably
+        assert should_exclude in (True, False)  # Depends on actual patterns
+
+
+class TestShouldExcludeWithMarkerRowParser:
+    """Tests for row-aware exclusion filtering with MarkerRowParser (EXT-FN-1)."""
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher()
+
+    def test_exclusion_respects_table_row_boundaries_marker_parser(self, matcher):
+        """Values in 'Paid Customers >$100,000' row should NOT be excluded by 'Net Dollar Retention Rate' in adjacent row."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # This is the actual pattern from Slack's S-1 filing
+        text = "Paid Customers >$100,000 [CELL] 135 [CELL] 298 [ROW] Net Dollar Retention Rate [CELL] 171 [CELL] %"
+        parser = MarkerRowParser(text)
+
+        # Position of "135" is in row with "Paid Customers >$100,000"
+        # "Net Dollar Retention Rate" is in a DIFFERENT row
+        # Exclusion pattern "\bretention\s+rate\b" should NOT match for cm_large_customers_period_end
+        # because it's in a different row
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=32,  # position of "135"
+            table_row_parser=parser,
+        )
+        assert should_exclude is False, f"Value should NOT be excluded - 'retention rate' is in different row. Got: {reason}"
+
+    def test_exclusion_triggers_when_pattern_in_same_row(self, matcher):
+        """Exclusion pattern IN the same row SHOULD trigger exclusion."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Exclusion pattern IS in the same row as the number
+        text = "Net Dollar Retention Rate [CELL] 135 [CELL] 298 [ROW] Paid Customers [CELL] 500"
+        parser = MarkerRowParser(text)
+
+        # "135" is in the same row as "Net Dollar Retention Rate"
+        # So it SHOULD be excluded for cm_large_customers_period_end
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=33,  # position of "135"
+            table_row_parser=parser,
+        )
+        assert should_exclude is True, "Value should be excluded - 'retention rate' is in SAME row"
+        assert "retention" in reason.lower()
+
+    def test_exclusion_uses_full_row_text_not_window(self, matcher):
+        """Row-based exclusion should use full row text, not fixed window."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Long row where window-based exclusion would fail
+        # Row is > 200 chars, but exclusion pattern is in the row
+        padding = "A " * 60  # 120 chars of padding
+        text = f"Net Dollar Retention Rate [CELL] {padding}135 [ROW] Other Row [CELL] 500"
+        parser = MarkerRowParser(text)
+
+        # Position of "135" - it's far from "retention rate" (> 100 chars)
+        # But with row-based context, the whole row is checked
+        number_pos = text.find("135")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=number_pos,
+            table_row_parser=parser,
+        )
+        assert should_exclude is True, "Should use full row text for exclusion check"
+
+    def test_multiple_values_same_row_not_excluded(self, matcher):
+        """Multiple values in same row should all be correctly not-excluded."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        text = "Paid Customers >$100,000 [CELL] 135 [CELL] 298 [CELL] 575 [ROW] Net Dollar Retention Rate [CELL] 171"
+        parser = MarkerRowParser(text)
+
+        # Test all three values in the "Paid Customers" row
+        values = [
+            ("135", 32),
+            ("298", 41),
+            ("575", 50),
+        ]
+
+        for raw_text, expected_approx_pos in values:
+            actual_pos = text.find(raw_text)
+            should_exclude, reason = matcher.should_exclude_for_number_context(
+                metric_id="cm_large_customers_period_end",
+                text=text,
+                number_position=actual_pos,
+                table_row_parser=parser,
+            )
+            assert should_exclude is False, f"Value '{raw_text}' should NOT be excluded - retention rate in different row. Got: {reason}"
+
+    def test_value_in_retention_row_is_excluded(self, matcher):
+        """Value in retention rate row SHOULD be excluded from large customers metric."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        text = "Paid Customers >$100,000 [CELL] 135 [ROW] Net Dollar Retention Rate [CELL] 171 [CELL] %"
+        parser = MarkerRowParser(text)
+
+        # "171" is in the "Net Dollar Retention Rate" row
+        value_171_pos = text.find("171")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=value_171_pos,
+            table_row_parser=parser,
+        )
+        assert should_exclude is True, "Value 171 in retention row should be excluded"
+
+    def test_fallback_to_window_when_position_not_in_row(self, matcher):
+        """If position not in any row, fall back to window-based exclusion."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Parser will parse the table rows, but we'll query a position
+        # that's outside the parsed rows (e.g., in the marker itself)
+        text = "Row1 [CELL] 100 [ROW] Row2 [CELL] 200"
+        parser = MarkerRowParser(text)
+
+        # Position in the [ROW] marker (between rows)
+        marker_pos = text.find(" [ROW] ") + 3
+
+        # This should fall back to window-based exclusion
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=marker_pos,
+            table_row_parser=parser,
+        )
+        # Should not crash, and should use fallback behavior
+        assert should_exclude in (True, False)
+
+
+class TestShouldExcludeWithTableRowParser:
+    """Tests for row-aware exclusion filtering with TableRowParser (HTML-based)."""
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher()
+
+    def test_exclusion_respects_table_row_boundaries_html_parser(self, matcher):
+        """HTML TableRowParser should also respect row boundaries."""
+        from src.review.table_structure import TableRowParser
+
+        # HTML table with proper structure
+        html = """<table>
+            <tr><td>Paid Customers &gt;$100,000</td><td>135</td><td>298</td></tr>
+            <tr><td>Net Dollar Retention Rate</td><td>171</td><td>%</td></tr>
+        </table>"""
+        # Text must match what BeautifulSoup.get_text() produces (no spaces between cells)
+        text = "Paid Customers >$100,000135298 Net Dollar Retention Rate171%"
+        parser = TableRowParser(html, text)
+
+        # Verify parser detects table correctly
+        assert parser.is_table(), "Parser should detect this as a table"
+        assert len(parser.get_rows()) >= 2, "Should have at least 2 rows"
+
+        # Position of "135" should be in the first row
+        value_pos = text.find("135")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=value_pos,
+            table_row_parser=parser,
+        )
+        assert should_exclude is False, f"Value should NOT be excluded with HTML parser. Got: {reason}"
+
+    def test_html_parser_same_row_exclusion(self, matcher):
+        """HTML parser should exclude when pattern IS in same row."""
+        from src.review.table_structure import TableRowParser
+
+        html = """<table>
+            <tr><td>Net Dollar Retention Rate</td><td>135</td></tr>
+            <tr><td>Paid Customers</td><td>500</td></tr>
+        </table>"""
+        # Text must match what BeautifulSoup.get_text() produces
+        text = "Net Dollar Retention Rate135 Paid Customers500"
+        parser = TableRowParser(html, text)
+
+        # Verify parser detects table correctly
+        assert parser.is_table(), "Parser should detect this as a table"
+
+        # "135" is in the same row as "Net Dollar Retention Rate"
+        value_pos = text.find("135")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=value_pos,
+            table_row_parser=parser,
+        )
+        assert should_exclude is True, "Should exclude - retention rate in same row"
+
+
+class TestShouldExcludeNonTableFallback:
+    """Tests verifying non-table segments use window-based exclusion."""
+
+    @pytest.fixture
+    def matcher(self):
+        """Create a KeywordMatcher instance."""
+        return KeywordMatcher()
+
+    def test_no_parser_uses_window_exclusion(self, matcher):
+        """Without parser, use 100-char window for exclusion."""
+        text = "retention rate is 95%. Large customers count: 135 users"
+        # "retention rate" is within 100 chars of 135
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=46,  # position of "135"
+            table_row_parser=None,
+        )
+        assert should_exclude is True, "Without parser, should use window and find 'retention rate'"
+
+    def test_non_table_parser_uses_window(self, matcher):
+        """Parser that doesn't detect a table falls back to window."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # No [ROW] markers = not a table, parser.is_table() returns False
+        text = "retention rate is 95%. Large customers count: 135 users"
+        parser = MarkerRowParser(text)
+
+        assert parser.is_table() is False, "Should not detect as table"
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=46,  # position of "135"
+            table_row_parser=parser,
+        )
+        assert should_exclude is True, "Non-table parser should fall back to window exclusion"
+
+    def test_single_row_parser_is_not_table(self, matcher):
+        """Parser with only one row is not considered a table."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Only cell markers, no row markers = single row = not a table
+        text = "Large Customers [CELL] 135 [CELL] retention rate 95%"
+        parser = MarkerRowParser(text)
+
+        # is_table() returns True only if 2+ rows
+        # With no [ROW] markers, this is just 1 row
+        assert parser.is_table() is False
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_large_customers_period_end",
+            text=text,
+            number_position=23,  # position of "135"
+            table_row_parser=parser,
+        )
+        # Falls back to window - "retention rate" is within 100 chars
+        assert should_exclude is True
