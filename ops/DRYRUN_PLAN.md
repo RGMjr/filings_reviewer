@@ -8,13 +8,14 @@
 
 ## Test Filings
 
-- [ ] 0001740260 | Farfetch | F-1 | Test filing 2
+<!-- All test filings processed -->
 
 ---
 
 ## Completed
 
 - [x] 0001764925 | Slack Technologies | S-1 | (dry-run test - iteration 1)
+- [x] 0001740260 | Farfetch | F-1 | (dry-run test - iteration 2)
 
 ---
 
@@ -23,5 +24,5 @@
 | Metric | Count |
 |--------|-------|
 | Total | 2 |
-| Completed | 1 |
-| Remaining | 1 |
+| Completed | 2 |
+| Remaining | 0 |
