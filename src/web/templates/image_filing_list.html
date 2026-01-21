@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}Image Review - Filings{% endblock %}
+
+{% block nav_items %}
+{{ super() }}
+<li class="nav-item">
+    <a class="nav-link active" href="{{ url_for('review_images.filing_list') }}">Image Review</a>
+</li>
+{% endblock %}
+
+{% block content %}
+{# Page Header #}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1>Image Review</h1>
+        <p class="text-muted">Review images (charts, cohort tables, visualizations) detected in SEC filings</p>
+    </div>
+</div>
+
+{# Overall Progress Section #}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Overall Progress</h5>
+                <p class="mb-2">
+                    {{ progress.reviewed_count }}/{{ progress.total_candidates }} reviewed
+                    ({{ progress.review_pct|round(0)|int }}%)
+                </p>
+                <p class="text-muted mb-3">
+                    {{ progress.filings_with_pending }} of {{ progress.total_filings }}
+                    filings have pending image candidates
+                </p>
+
+                {# Multi-segment progress bar #}
+                <div class="progress" style="height: 20px;">
+                    {% if progress.total_candidates > 0 %}
+                        {# Reviewed segment (green) #}
+                        {% if progress.reviewed_count > 0 %}
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: {{ progress.review_pct }}%"
+                             aria-valuenow="{{ progress.reviewed_count }}"
+                             aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+                            Reviewed: {{ progress.reviewed_count }}
+                        </div>
+                        {% endif %}
+
+                        {# Pending segment (yellow) #}
+                        {% if progress.pending_count > 0 %}
+                        {% set pending_pct = (progress.pending_count / progress.total_candidates * 100)|round(1) %}
+                        <div class="progress-bar bg-warning text-dark" role="progressbar"
+                             style="width: {{ pending_pct }}%"
+                             aria-valuenow="{{ progress.pending_count }}"
+                             aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+                            Pending: {{ progress.pending_count }}
+                        </div>
+                        {% endif %}
+
+                        {# Skipped segment (grey) #}
+                        {% if progress.skipped_count > 0 %}
+                        {% set skipped_pct = (progress.skipped_count / progress.total_candidates * 100)|round(1) %}
+                        <div class="progress-bar bg-secondary" role="progressbar"
+                             style="width: {{ skipped_pct }}%"
+                             aria-valuenow="{{ progress.skipped_count }}"
+                             aria-valuemin="0" aria-valuemax="{{ progress.total_candidates }}">
+                            Skipped: {{ progress.skipped_count }}
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        {# No candidates - show empty progress bar #}
+                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%">
+                            No candidates
+                        </div>
+                    {% endif %}
+                </div>
+
+                {# Tier breakdown #}
+                {% if progress.by_tier %}
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <small class="text-muted">By Detection Tier:</small>
+                        <div class="d-flex flex-wrap gap-2 mt-1">
+                            {% for tier, count in progress.by_tier.items() %}
+                            <span class="badge bg-{{ 'primary' if tier == 'tier_1_cohort' else ('info' if tier == 'tier_2_large' else ('secondary' if tier == 'tier_3_all' else 'dark')) }}">
+                                {{ tier|replace('_', ' ')|title }}: {{ count }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Filter Controls #}
+<div class="row mb-3">
+    <div class="col-12">
+        <form method="get" action="{{ url_for('review_images.filing_list') }}" class="mb-3">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label for="status-filter" class="form-label">Filter by status:</label>
+                    <select class="form-select" id="status-filter" name="status">
+                        <option value="" {% if not current_status_filter %}selected{% endif %}>
+                            All Filings
+                        </option>
+                        {% for status in review_statuses %}
+                        <option value="{{ status }}"
+                                {% if current_status_filter == status %}selected{% endif %}>
+                            {{ status|capitalize }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        Apply Filter
+                    </button>
+                </div>
+                {% if current_status_filter %}
+                <div class="col-md-2">
+                    <a href="{{ url_for('review_images.filing_list') }}" class="btn btn-outline-secondary w-100">
+                        Clear Filter
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+{# Filing Table #}
+<div class="row mb-4">
+    <div class="col-12">
+        {% if filings %}
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 image-filing-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Company Name</th>
+                                <th scope="col">Accession #</th>
+                                <th scope="col" class="text-center">Total</th>
+                                <th scope="col" class="text-center">Pending</th>
+                                <th scope="col" class="text-center">Reviewed</th>
+                                <th scope="col" style="width: 150px;">Progress</th>
+                                <th scope="col" class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for filing in filings %}
+                            {% set review_pct = (filing.reviewed_count / filing.total_candidates * 100) if filing.total_candidates > 0 else 0 %}
+                            <tr class="image-filing-row" data-filing-id="{{ filing.filing_id }}">
+                                <td>
+                                    <a href="{{ url_for('review_images.review_filing', filing_id=filing.filing_id) }}"
+                                       class="text-decoration-none fw-semibold">
+                                        {{ filing.company_name }}
+                                    </a>
+                                    <br>
+                                    <small class="text-muted">{{ filing.form_type }} - {{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</small>
+                                </td>
+                                <td>
+                                    <code class="small">{{ filing.accession_number }}</code>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-secondary">{{ filing.total_candidates }}</span>
+                                </td>
+                                <td class="text-center">
+                                    {% if filing.pending_count > 0 %}
+                                    <span class="badge bg-warning text-dark">{{ filing.pending_count }}</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-muted">0</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if filing.reviewed_count > 0 %}
+                                    <span class="badge bg-success">{{ filing.reviewed_count }}</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-muted">0</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-success" role="progressbar"
+                                             style="width: {{ review_pct }}%"
+                                             aria-valuenow="{{ filing.reviewed_count }}"
+                                             aria-valuemin="0" aria-valuemax="{{ filing.total_candidates }}">
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">{{ review_pct|round(0)|int }}%</small>
+                                </td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('review_images.review_filing', filing_id=filing.filing_id) }}"
+                                       class="btn btn-sm {{ 'btn-primary' if filing.pending_count > 0 else 'btn-outline-secondary' }}">
+                                        {% if filing.pending_count > 0 %}
+                                        Review
+                                        {% else %}
+                                        View
+                                        {% endif %}
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        {# Empty state #}
+        <div class="alert alert-info" role="alert">
+            <h4 class="alert-heading">No filings found</h4>
+            <p>No filings found with image candidates.</p>
+            <hr>
+            <p class="mb-0">
+                To get started, run the cohort chart detection pipeline:<br>
+                <code>python scripts/detect_cohort_images.py</code>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Pagination Controls #}
+{% if pagination.total_pages > 1 %}
+<div class="row mt-4">
+    <div class="col-12">
+        <nav aria-label="Filings pagination">
+            <ul class="pagination justify-content-center">
+                {# Previous button #}
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    {% if pagination.has_prev %}
+                    <a class="page-link"
+                       href="{{ url_for('review_images.filing_list', status=current_status_filter, page=pagination.page - 1, per_page=pagination.per_page) }}">
+                        &laquo; Previous
+                    </a>
+                    {% else %}
+                    <span class="page-link">&laquo; Previous</span>
+                    {% endif %}
+                </li>
+
+                {# Page numbers (show current page +/- 2, always show first and last) #}
+                {% for page_num in range(1, pagination.total_pages + 1) %}
+                    {% if page_num == 1 or page_num == pagination.total_pages or (page_num >= pagination.page - 2 and page_num <= pagination.page + 2) %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                        <a class="page-link"
+                           href="{{ url_for('review_images.filing_list', status=current_status_filter, page=page_num, per_page=pagination.per_page) }}">
+                            {{ page_num }}
+                        </a>
+                    </li>
+                    {% elif page_num == pagination.page - 3 or page_num == pagination.page + 3 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                {# Next button #}
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    {% if pagination.has_next %}
+                    <a class="page-link"
+                       href="{{ url_for('review_images.filing_list', status=current_status_filter, page=pagination.page + 1, per_page=pagination.per_page) }}">
+                        Next &raquo;
+                    </a>
+                    {% else %}
+                    <span class="page-link">Next &raquo;</span>
+                    {% endif %}
+                </li>
+            </ul>
+
+            {# Page info text #}
+            <p class="text-center text-muted">
+                Page {{ pagination.page }} of {{ pagination.total_pages }}
+                &bull;
+                Showing {{ pagination.offset + 1 }}-{{ [pagination.offset + pagination.limit, pagination.total_count]|min }}
+                of {{ pagination.total_count }} filings
+            </p>
+        </nav>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

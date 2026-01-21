@@ -661,6 +661,10 @@
 .metric-selector {
     max-height: 300px;
     overflow: hidden;
+}
+
+/* Override Bootstrap's display: block with flex when dropdown is shown */
+.metric-selector.show {
     display: flex;
     flex-direction: column;
 }
@@ -1017,5 +1021,397 @@
     .context-text .extracted-number {
         border: 1px solid #000;
         background-color: #f0f0f0;
+    }
+}
+
+/* =============================================================================
+   Image Review Styles (IMG-1-6)
+   ============================================================================= */
+
+/* Image Review Container */
+.image-review-container {
+    max-width: 1600px;
+    padding-bottom: 60px; /* Space for keyboard hints bar */
+}
+
+/* 3-Column Layout */
+.image-review-layout {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 1rem;
+}
+
+/* Thumbnail Sidebar (Left Column) */
+.image-thumbnail-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+}
+
+.image-thumbnail-sidebar .card {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 200px);
+}
+
+.thumbnail-list-container {
+    max-height: calc(100vh - 280px);
+    overflow-y: auto;
+}
+
+.thumbnail-item {
+    padding: 0.5rem;
+    border-left: 3px solid transparent;
+    transition: all 0.15s ease;
+}
+
+.thumbnail-item.active {
+    border-left-color: var(--bs-primary);
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+.thumbnail-item.reviewed {
+    opacity: 0.7;
+}
+
+.thumbnail-item:hover:not(.active) {
+    background-color: var(--color-bg-light);
+}
+
+.thumbnail-preview {
+    width: 50px;
+    height: 50px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    overflow: hidden;
+    background-color: var(--color-bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thumbnail-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.thumbnail-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+    font-size: 1.25rem;
+}
+
+.thumbnail-info {
+    min-width: 0;
+}
+
+.thumbnail-index {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-muted);
+}
+
+/* Status Indicators */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: bold;
+}
+
+.status-indicator.relevant {
+    background-color: var(--decision-accept);
+    color: white;
+}
+
+.status-indicator.not-relevant {
+    background-color: var(--decision-reject);
+    color: white;
+}
+
+.status-indicator.skipped {
+    background-color: var(--decision-skip);
+    color: white;
+}
+
+/* Tier Badges */
+.tier-badge {
+    display: inline-block;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.tier-badge.tier-tier_1_cohort,
+.tier-badge.tier-seed_list {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.tier-badge.tier-tier_2_large {
+    background-color: #0dcaf0;
+    color: #000;
+}
+
+.tier-badge.tier-tier_3_all,
+.tier-badge.tier-unknown {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Image Tier Badge (larger, in main display) */
+.image-tier-badge {
+    font-size: 0.75rem;
+}
+
+.image-tier-badge.tier-tier_1_cohort {
+    background-color: #0d6efd;
+}
+
+.image-tier-badge.tier-tier_2_large {
+    background-color: #0dcaf0;
+    color: #000;
+}
+
+.image-tier-badge.tier-tier_3_all {
+    background-color: #6c757d;
+}
+
+.image-tier-badge.tier-seed_list {
+    background-color: #212529;
+}
+
+/* Main Image Display (Center Column) */
+.image-main-display {
+    flex: 1;
+    min-width: 0;
+}
+
+.main-image-container {
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.main-image-container img.main-image {
+    max-width: 100%;
+    max-height: 70vh;
+    cursor: pointer;
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.main-image-container img.main-image:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.image-metadata {
+    text-align: center;
+}
+
+/* Decision Buttons for Image Review */
+.image-review-container .decision-buttons {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.image-review-container .decision-buttons .btn {
+    min-width: 140px;
+}
+
+/* Dropdown Panels */
+.dropdown-panel {
+    background-color: var(--color-bg-light);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.dropdown-panel h6 {
+    margin-bottom: 0.75rem;
+    color: var(--color-text-dark);
+}
+
+.dropdown-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.dropdown-options .btn {
+    flex: 1 1 auto;
+    min-width: 150px;
+    text-align: left;
+}
+
+/* Dropdown Option Highlight (keyboard navigation) */
+.dropdown-options .btn.dropdown-option-highlight {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: white;
+}
+
+.dropdown-options .btn.dropdown-option-highlight .badge {
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    color: var(--bs-primary) !important;
+}
+
+/* Context Panel (Right Column) */
+.image-context-panel {
+    width: 300px;
+    flex-shrink: 0;
+}
+
+.image-context-panel .card {
+    position: sticky;
+    top: 80px;
+}
+
+.context-section {
+    margin-bottom: 1rem;
+}
+
+.context-section:last-child {
+    margin-bottom: 0;
+}
+
+.preceding-text-box {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1.5;
+}
+
+.keyword-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.keyword-badge {
+    font-size: 0.75rem;
+}
+
+.tier-explanation {
+    font-size: 0.875rem;
+}
+
+/* Keyboard Hints Bar */
+.keyboard-hints-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: #212529;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    z-index: 1040;
+}
+
+.keyboard-hints-bar kbd {
+    background-color: #495057;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+}
+
+.keyboard-toggle-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1030;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Image Filing Table */
+.image-filing-table {
+    font-size: 0.9375rem;
+}
+
+.image-filing-table th {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.image-filing-row:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Responsive Adjustments for Image Review */
+@media (max-width: 1200px) {
+    .image-context-panel {
+        width: 250px;
+    }
+}
+
+@media (max-width: 992px) {
+    .image-review-layout {
+        flex-wrap: wrap;
+    }
+
+    .image-thumbnail-sidebar {
+        width: 100%;
+        order: 2;
+    }
+
+    .image-thumbnail-sidebar .card {
+        position: static;
+        max-height: none;
+    }
+
+    .thumbnail-list-container {
+        max-height: 200px;
+    }
+
+    .image-main-display {
+        width: 100%;
+        order: 1;
+    }
+
+    .image-context-panel {
+        width: 100%;
+        order: 3;
+    }
+
+    .image-context-panel .card {
+        position: static;
+    }
+
+    .keyboard-hints-bar {
+        display: none;
+    }
+
+    .keyboard-toggle-btn {
+        display: none;
     }
 }

@@ -2,16 +2,25 @@
 
 You are creating a worker prompt for a task. You will generate the prompt and STOP - do not execute.
 
-## Step 1: Task Assessment
+## Arguments
 
-First, assess the task size:
+Task ID or description: $ARGUMENTS
+
+## Step 1: Parse Arguments and Assess Task
+
+**If `$ARGUMENTS` is provided:**
+- If it looks like a task ID (e.g., `HRV-18`, `IMG-2`), use it as the task ID
+- If it's a description, use it to understand the task and generate an appropriate ID
+
+**If `$ARGUMENTS` is empty or not provided:**
+- Ask: "What task would you like me to create a worker prompt for? Provide a task ID or description."
+
+**Assess the task size:**
 - **XS** (<30 min): Simple fix, single file
 - **S** (30 min - 2 hr): Small feature, few files
 - **M** (2-4 hr): Medium feature, multiple files
 - **L** (4-8 hr): Large feature, many files
 - **XL** (>8 hr): Major feature, consider decomposition
-
-Ask: "What task would you like me to create a worker prompt for?"
 
 ## Step 2: Size-Based Handling
 
@@ -82,11 +91,34 @@ Create a brief summary like:
 2. [Specific improvement 2]
 ```
 
-## Step 5: Save and Present
+## Step 5: User Approval (REQUIRED)
+
+**STOP and present the evaluation to the user:**
+
+> "I've drafted the worker prompt and completed my evaluation:
+>
+> **Overall Score**: [Good/Acceptable/Needs Work]
+>
+> **Issues Found**:
+> - [List any Critical/Recommended/Optional issues]
+>
+> **Suggested Improvements**:
+> 1. [Improvement 1]
+> 2. [Improvement 2]
+>
+> Would you like me to:
+> 1. **Save as-is** - proceed with current prompt
+> 2. **Apply improvements** - implement the suggested changes before saving
+> 3. **Discuss** - talk through specific concerns before deciding"
+
+**Wait for user response before proceeding.**
+
+If user requests changes, update the prompt and re-evaluate before saving.
+
+## Step 6: Save and Present
 
 1. Write to `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
-2. Display the evaluation summary from Step 4.4
-3. Display final summary:
+2. Display final summary:
    > "✅ Worker prompt created: `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
    >
    > **Task:** [Name]

@@ -648,10 +648,12 @@ class CandidateGenerator:
                     # Early exclusion check around NUMBER position
                     # This catches FPs where number is near exclusion context
                     # (e.g., contribution margin values matched to take rate)
+                    # EXT-FN-1: Pass table_row_parser to limit exclusion context to same row
                     should_exclude, reason = self._keyword_matcher.should_exclude_for_number_context(
                         metric_id=kw.metric_id,
                         text=text,
                         number_position=num.start,
+                        table_row_parser=table_row_parser,
                     )
                     if should_exclude:
                         segment_stats["excluded_by_number_context"] = (

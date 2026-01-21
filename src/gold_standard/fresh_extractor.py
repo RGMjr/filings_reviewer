@@ -91,25 +91,69 @@ def parse_sec_url(url: str) -> ParsedSecUrl | None:
     return ParsedSecUrl(cik=cik_padded, accession=accession, filename=filename)
 
 
+def _normalize_company_for_path(company_name: str) -> str:
+    """
+    Normalize company name for gold_standard directory path lookup.
+
+    Examples:
+        "Slack Technologies" -> "Slack_Technologies"
+        "Farfetch, Ltd" -> "Farfetch_Ltd"
+        "Samsara Vision Inc." -> "Samsara_Vision_Inc_"
+        "PlayAGS, Inc." -> "PlayAGS,_Inc_"
+
+    Args:
+        company_name: Company name from gold standard
+
+    Returns:
+        Normalized string suitable for directory name matching
+    """
+    if not company_name:
+        return ""
+
+    # Replace spaces with underscores
+    normalized = company_name.replace(" ", "_")
+
+    # Replace periods with underscores (Inc. -> Inc_)
+    normalized = normalized.replace(".", "_")
+
+    # Remove trailing underscore if it's a double (from ". " -> "__")
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+
+    return normalized
+
+
 def find_local_filing(
     parsed_url: ParsedSecUrl,
     base_dir: str | Path = "data/filings",
+    company_name: str | None = None,
 ) -> Path | None:
     """
     Find a cached filing in the local filesystem.
 
-    Checks multiple path patterns:
-    1. {base_dir}/{CIK}/{accession}/{filename}
-    2. {base_dir}/{CIK}/{accession}/primary.htm (common alternative)
-    3. {base_dir}/{CIK_unpadded}/{accession}/{filename}
+    Checks multiple path patterns (in order):
+    1. data/gold_standard/{normalized_company}/filing.html (if company_name provided)
+    2. {base_dir}/{CIK}/{accession}/{filename}
+    3. {base_dir}/{CIK}/{accession}/primary.htm (common alternative)
+    4. {base_dir}/{CIK_unpadded}/{accession}/{filename}
+    5. {base_dir}/{CIK_unpadded}/{accession}/primary.htm
 
     Args:
         parsed_url: Parsed SEC URL components
         base_dir: Base directory for cached filings
+        company_name: Optional company name for gold_standard lookup
 
     Returns:
         Path to cached file if found, None otherwise
     """
+    # Try gold_standard path first if company_name provided
+    if company_name:
+        normalized = _normalize_company_for_path(company_name)
+        gold_standard_path = Path("data/gold_standard") / normalized / "filing.html"
+        if gold_standard_path.exists():
+            logger.debug(f"Found filing in gold_standard: {gold_standard_path}")
+            return gold_standard_path
+
     base_path = Path(base_dir)
 
     # Try the primary path with zero-padded CIK
@@ -247,12 +291,13 @@ def extract_fresh(
     base_dir: str | Path = "data/filings",
     allow_sec_fetch: bool = True,
     config: CandidateGenerationConfig | None = None,
+    company_name: str | None = None,
 ) -> ExtractionResult:
     """
     Perform fresh extraction for a single filing.
 
     1. Parse SEC URL to locate filing
-    2. Check local cache first
+    2. Check local cache first (including gold_standard directory if company_name provided)
     3. Optionally fetch from SEC if not cached
     4. Segment HTML and generate candidates
 
@@ -263,6 +308,7 @@ def extract_fresh(
         base_dir: Base directory for cached filings
         allow_sec_fetch: Whether to fetch from SEC if not cached
         config: Optional candidate generation config
+        company_name: Optional company name for gold_standard path lookup
 
     Returns:
         ExtractionResult with candidates or error info
@@ -282,8 +328,8 @@ def extract_fresh(
             elapsed_seconds=time.time() - start_time,
         )
 
-    # Find local filing
-    local_path = find_local_filing(parsed, base_dir)
+    # Find local filing (checks gold_standard first if company_name provided)
+    local_path = find_local_filing(parsed, base_dir, company_name=company_name)
 
     if local_path is None:
         if allow_sec_fetch:

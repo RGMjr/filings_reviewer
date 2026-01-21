@@ -205,6 +205,12 @@
                 <span class="stat-label">Pending review:</span>
                 <span class="stat-value text-warning">{{ filing.pending_count }}</span>
               </div>
+              {% if filing.skipped_count > 0 %}
+              <div class="d-flex justify-content-between mb-1">
+                <span class="stat-label">Skipped:</span>
+                <span class="stat-value text-secondary">{{ filing.skipped_count }}</span>
+              </div>
+              {% endif %}
               <div class="d-flex justify-content-between">
                 <span class="stat-label">Already reviewed:</span>
                 <span class="stat-value text-success">{{ filing.reviewed_count }}</span>

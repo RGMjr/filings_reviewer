@@ -188,6 +188,109 @@ def create_test_decision(
     return company_id, filing_id, candidate_id, decision_id
 
 
+def create_test_image_candidate(
+    db: DatabaseAdapter,
+    filing_id: int | None = None,
+    company_id: int | None = None,
+    image_src: str = "chart1.jpg",
+    image_url: str = "https://sec.gov/Archives/edgar/data/123/chart1.jpg",
+    detection_tier: str = "tier_1_cohort",
+    cohort_confidence: float = 0.85,
+    image_index: int = 1,
+    cohort_keyword_nearby: bool = True,
+    preceding_text: str = "Our cohort analysis shows...",
+    detected_keywords: list[str] | None = None,
+) -> tuple[int, int, int]:
+    """
+    Create a test image candidate (with company and filing if needed).
+
+    Args:
+        db: Database adapter instance
+        filing_id: Optional existing filing_id (creates filing if None)
+        company_id: Optional existing company_id (required if filing_id provided)
+        image_src: Image filename
+        image_url: Full URL to image
+        detection_tier: Discovery method
+        cohort_confidence: Confidence score 0.0-1.0
+        image_index: Position in filing
+        cohort_keyword_nearby: Whether 'cohort' keyword nearby
+        preceding_text: Context text before image
+        detected_keywords: Keywords found near image
+
+    Returns:
+        Tuple of (company_id, filing_id, image_candidate_id)
+    """
+    if filing_id is None:
+        company_id, filing_id = create_test_company_and_filing(db)
+
+    if detected_keywords is None:
+        detected_keywords = ["cohort", "retention"]
+
+    image_candidate_id = db.insert_image_review_candidate(
+        filing_id=filing_id,
+        company_id=company_id,
+        image_src=image_src,
+        image_url=image_url,
+        detection_tier=detection_tier,
+        cohort_confidence=cohort_confidence,
+        image_index=image_index,
+        cohort_keyword_nearby=cohort_keyword_nearby,
+        preceding_text=preceding_text,
+        detected_keywords=detected_keywords,
+    )
+    return company_id, filing_id, image_candidate_id
+
+
+def create_test_image_decision(
+    db: DatabaseAdapter,
+    image_candidate_id: int | None = None,
+    decision: str = "relevant",
+    chart_type: str | None = "cohort_table",
+    rejection_reason: str | None = None,
+    reviewer_id: str | None = "test_reviewer",
+    review_time_seconds: int | None = 30,
+) -> tuple[int, int, int, int]:
+    """
+    Create a test image decision (with candidate, filing, company if needed).
+
+    Args:
+        db: Database adapter instance
+        image_candidate_id: Optional existing candidate (creates one if None)
+        decision: 'relevant' or 'not_relevant'
+        chart_type: Chart type (required if decision='relevant')
+        rejection_reason: Reason (required if decision='not_relevant')
+        reviewer_id: Identifier for reviewer
+        review_time_seconds: Time spent on decision
+
+    Returns:
+        Tuple of (company_id, filing_id, image_candidate_id, image_decision_id)
+    """
+    if image_candidate_id is None:
+        company_id, filing_id, image_candidate_id = create_test_image_candidate(db)
+    else:
+        # Get company_id and filing_id from the candidate
+        candidate = db.get_image_review_candidate(image_candidate_id)
+        company_id = candidate["company_id"]
+        filing_id = candidate["filing_id"]
+
+    # Adjust params based on decision type
+    if decision == "not_relevant":
+        chart_type = None
+        rejection_reason = rejection_reason or "not_a_chart"
+    else:
+        rejection_reason = None
+
+    decision_id = db.insert_image_review_decision(
+        image_candidate_id=image_candidate_id,
+        decision=decision,
+        chart_type=chart_type,
+        rejection_reason=rejection_reason,
+        reviewer_id=reviewer_id,
+        review_time_seconds=review_time_seconds,
+    )
+    return company_id, filing_id, image_candidate_id, decision_id
+
+
 # Load environment
 load_dotenv()
 
@@ -255,6 +358,19 @@ def clean_db(test_db_adapter):
                 END $$;
                 """
             )
+            # Image review tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE image_review_decisions CASCADE;
+                    TRUNCATE TABLE image_review_candidates CASCADE;
+                EXCEPTION WHEN undefined_table THEN
+                    -- Tables don't exist yet, ignore
+                    NULL;
+                END $$;
+                """
+            )
             cur.execute("TRUNCATE TABLE filings CASCADE")
             cur.execute("TRUNCATE TABLE companies CASCADE")
 
@@ -277,6 +393,19 @@ def clean_db(test_db_adapter):
                     TRUNCATE TABLE learned_patterns CASCADE;
                     TRUNCATE TABLE review_decisions CASCADE;
                     TRUNCATE TABLE review_candidates CASCADE;
+                EXCEPTION WHEN undefined_table THEN
+                    -- Tables don't exist yet, ignore
+                    NULL;
+                END $$;
+                """
+            )
+            # Image review tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE image_review_decisions CASCADE;
+                    TRUNCATE TABLE image_review_candidates CASCADE;
                 EXCEPTION WHEN undefined_table THEN
                     -- Tables don't exist yet, ignore
                     NULL;

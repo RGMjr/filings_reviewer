@@ -9,6 +9,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 import requests
 
@@ -154,6 +155,7 @@ class SECClient:
         user_agent: str = "filings-reviewer info@example.com",
         http_client: HTTPClient | None = None,
         metrics: SECClientMetrics | None = None,
+        image_cache_dir: str | Path | None = None,
     ):
         """
         Initialize SEC client.
@@ -166,6 +168,9 @@ class SECClient:
                 mock clients for testing.
             metrics: Optional metrics collector for tracking request statistics.
                 If None, metrics collection is disabled.
+            image_cache_dir: Optional directory for caching downloaded images.
+                Structure: {cache_dir}/{cik}/{accession_no_dashes}/{filename}
+                If None, images are not cached (fetched fresh each time).
         """
         self.user_agent = user_agent
 
@@ -177,6 +182,11 @@ class SECClient:
 
         # Optional metrics collection
         self._metrics = metrics
+
+        # Optional image caching
+        self._image_cache_dir: Path | None = None
+        if image_cache_dir is not None:
+            self._image_cache_dir = Path(image_cache_dir)
 
         # Keep session for backward compatibility with existing code
         # TODO: Remove once all code migrated to http_client
@@ -816,6 +826,169 @@ class SECClient:
             return None
         except (KeyError, IndexError) as e:
             logger.error(f"Error parsing filing data for CIK {cik}: {e}")
+            return None
+
+    def _get_image_cache_path(
+        self, cik: str, accession_number: str, filename: str
+    ) -> Path | None:
+        """Get cache path for an image, or None if caching disabled.
+
+        Args:
+            cik: SEC Central Index Key (raw, will be stripped of leading zeros)
+            accession_number: SEC accession number (with dashes)
+            filename: Image filename
+
+        Returns:
+            Path to cached image file, or None if caching is disabled
+        """
+        if self._image_cache_dir is None:
+            return None
+
+        cik_stripped = cik.lstrip("0") or "0"
+        accession_no_dashes = accession_number.replace("-", "")
+
+        return self._image_cache_dir / cik_stripped / accession_no_dashes / filename
+
+    def _read_cached_image(self, cache_path: Path) -> bytes | None:
+        """Read image from cache if it exists.
+
+        Args:
+            cache_path: Path to cached image file
+
+        Returns:
+            Image bytes if cached, None otherwise
+        """
+        if cache_path.exists():
+            try:
+                image_bytes = cache_path.read_bytes()
+                logger.debug(f"Cache hit: {cache_path} ({len(image_bytes)} bytes)")
+                return image_bytes
+            except OSError as e:
+                logger.warning(f"Failed to read cached image {cache_path}: {e}")
+        return None
+
+    def _write_cached_image(self, cache_path: Path, image_bytes: bytes) -> None:
+        """Write image to cache.
+
+        Args:
+            cache_path: Path to cache file
+            image_bytes: Image data to cache
+        """
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(image_bytes)
+            logger.debug(f"Cached image: {cache_path} ({len(image_bytes)} bytes)")
+        except OSError as e:
+            logger.warning(f"Failed to cache image {cache_path}: {e}")
+
+    def fetch_image(
+        self,
+        cik: str,
+        accession_number: str,
+        filename: str,
+        *,
+        max_size_bytes: int = 10 * 1024 * 1024,  # 10MB default limit
+    ) -> bytes | None:
+        """
+        Fetch an image file from SEC EDGAR, with optional caching.
+
+        Args:
+            cik: SEC Central Index Key (will NOT be zero-padded - SEC URLs use raw CIK)
+            accession_number: SEC accession number (with dashes, e.g., "0001234567-24-000001")
+            filename: Image filename from the filing (e.g., "chart1.jpg")
+            max_size_bytes: Maximum allowed image size (default 10MB)
+
+        Returns:
+            Raw image bytes, or None if fetch failed (404, network error, too large)
+
+        Note:
+            - If image_cache_dir was set, checks cache before fetching from SEC
+            - Respects existing rate limiting (100ms minimum between requests)
+            - Validates Content-Type is an image type
+            - Logs warnings for failures (does not raise exceptions)
+        """
+        # Check cache first (if enabled)
+        cache_path = self._get_image_cache_path(cik, accession_number, filename)
+        if cache_path is not None:
+            cached = self._read_cached_image(cache_path)
+            if cached is not None:
+                return cached
+
+        # Strip leading zeros from CIK for URL construction
+        cik_stripped = cik.lstrip("0") or "0"
+
+        # Remove dashes from accession number for URL path
+        accession_no_dashes = accession_number.replace("-", "")
+
+        url = (
+            f"{self.BASE_URL}/Archives/edgar/data/"
+            f"{cik_stripped}/{accession_no_dashes}/{filename}"
+        )
+
+        try:
+            self._rate_limit()
+
+            logger.debug(f"Fetching image: {url}")
+
+            # Record request attempt
+            if self._metrics:
+                self._metrics.record_request()
+
+            # Use HTTP client for request
+            http_response = self._http_client.get(url, timeout=30.0)
+
+            # Record success timing
+            if self._metrics:
+                self._metrics.record_success(http_response.elapsed_seconds)
+
+            # Validate Content-Type is an image
+            content_type = http_response.headers.get("Content-Type", "").lower()
+            if not content_type.startswith("image/"):
+                logger.warning(
+                    f"Invalid Content-Type for image {filename}: {content_type}"
+                )
+                return None
+
+            # Check Content-Length before reading full response
+            content_length = http_response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > max_size_bytes:
+                        logger.warning(
+                            f"Image {filename} exceeds size limit: "
+                            f"{size} > {max_size_bytes} bytes"
+                        )
+                        return None
+                except ValueError:
+                    pass  # Invalid Content-Length header, proceed with download
+
+            # Check actual content size
+            image_bytes = http_response.content
+            if len(image_bytes) > max_size_bytes:
+                logger.warning(
+                    f"Image {filename} exceeds size limit: "
+                    f"{len(image_bytes)} > {max_size_bytes} bytes"
+                )
+                return None
+
+            logger.debug(
+                f"Fetched image {filename}: {len(image_bytes)} bytes, "
+                f"{http_response.elapsed_seconds:.3f}s"
+            )
+
+            # Cache the downloaded image (if caching enabled)
+            if cache_path is not None:
+                self._write_cached_image(cache_path, image_bytes)
+
+            return image_bytes
+
+        except Exception as e:
+            elapsed = 0.0
+            if self._metrics:
+                self._metrics.record_failure(elapsed)
+
+            logger.warning(f"Failed to fetch image {filename} from {url}: {e}")
             return None
 
     def _search_filings_array(
