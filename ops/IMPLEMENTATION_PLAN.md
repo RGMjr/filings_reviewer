@@ -77,7 +77,10 @@
 
 ### Phase 4: Validation
 
-- [ ] FIX-7 | Run gold standard validation | Verify improvements with pytest -m gold_standard
+- [ ] FIX-7 | Run full gold standard validation | Verify improvements with pytest -m gold_standard --gold-standard-mode=fresh
+  - Note: Requires fresh extraction with FIX-5 applied to see impact on table value extraction
+  - Current validation (with old candidates): P=65.9%, R=61.4%, F1=63.5% (same as after FIX-3)
+  - Expected improvement after fresh extraction: Better recall for wide tables (missing values from early columns)
 
 ---
 
@@ -92,5 +95,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 4 |
-| Remaining | 3 |
+| Completed | 5 |
+| Remaining | 2 |
