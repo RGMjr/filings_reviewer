@@ -87,12 +87,14 @@ Create a brief summary like:
 1. Write to `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
 2. Display the evaluation summary from Step 4.4
 3. Display final summary:
-   > "✅ Worker prompt created: `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
+   > "Worker prompt created: `docs/worker-prompts/WORKER_PROMPT_TASK_[ID].md`
    >
    > **Task:** [Name]
    > **Size:** [XS/S/M/L/XL]
    > **Depends on:** [dependencies or None]
    >
-   > To execute this task, run: `/task-run [ID]`"
+   > **Execution options:**
+   > - Interactive: `/task-run [ID]` (supervised, with approval gates)
+   > - Autonomous: `/ralph develop [ID]` (overnight, auto-commits)"
 
 **DO NOT proceed to execution. STOP here.**

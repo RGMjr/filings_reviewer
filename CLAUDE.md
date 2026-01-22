@@ -324,3 +324,87 @@ Use these slash commands for the task workflow:
 - **GitHub Sync**: `python scripts/sync_github_issues.py --check` - Compare task inventory with GitHub issues
 - **Doc Maintenance**: `docs/DOCUMENTATION_MAINTENANCE.md` - Quarterly cleanup checklist
 - **Project Settings**: `.claude/settings.json` - Pre-approved tool permissions for this project
+
+## Ralph Loop Autonomous Execution
+
+Ralph Loop enables autonomous task execution with fresh context per iteration, avoiding "context rot" in long-running operations.
+
+### When to Use Ralph vs Interactive
+
+| Scenario | Use Ralph | Use Interactive (`/task-run`) |
+|----------|-----------|-------------------------------|
+| Overnight bulk work | Yes | No |
+| Single task, present | No | Yes |
+| M/L/XL tasks, stepping away | Yes | No |
+| Requires human judgment | No | Yes |
+| Investigation/analysis | Yes (`analyze` mode) | Sometimes |
+| Series of bug fixes | Yes (`implement` mode) | Sometimes |
+| Coverage improvement | Yes (`test` mode) | Sometimes |
+
+### Ralph Modes
+
+| Mode | Purpose | Command |
+|------|---------|---------|
+| `develop` | Execute Worker Prompt task | `./ops/loop.sh develop [max_iter] [--isolated]` |
+| `refactor` | Safe refactoring with test preservation | `./ops/loop.sh refactor` |
+| `test` | Coverage improvement | `./ops/loop.sh test` |
+| `analyze` | Investigation and root cause analysis | `./ops/loop.sh analyze` |
+| `implement` | Fix implementation from analysis | `./ops/loop.sh implement` |
+| `extract` | Bulk filing extraction | `./ops/loop.sh extract` |
+| `validate` | Bulk validation | `./ops/loop.sh validate` |
+
+### Branch Isolation
+
+Ralph supports three isolation modes (third argument):
+
+| Flag | Behavior | Use When |
+|------|----------|----------|
+| `--isolated` | Creates `ralph/[mode]-[date]-[id]` branch (default) | Overnight runs, risky changes |
+| `--current` | Uses current branch (blocks main/master) | Supervised daytime work |
+| `--yolo` | No branch protection | Expert use only |
+
+### Starting Ralph for Overnight Work
+
+```bash
+# Create worker prompt (if not exists)
+/task-create MET-15
+
+# Start Ralph in background with logging
+nohup ./ops/loop.sh develop 20 --isolated > ops/logs/ralph_$(date +%Y%m%d).log 2>&1 &
+
+# Check progress in the morning
+cat ops/DEVELOPMENT_PLAN.md
+git log --oneline -20
+```
+
+### Guardrails
+
+- **Pre-flight**: Tests must pass, no uncommitted changes
+- **Branch isolation**: Configurable per run (default: `--isolated`)
+- **Commit gate**: Tests must pass before each commit
+- **3 consecutive errors**: Pauses for human review
+- **Test regression**: Rolls back and pauses
+- **>500 line diff**: Pauses for review
+- **4 hour max runtime**: Stops gracefully
+- **Protected files**: Never modifies `.env`, `*.pem`, schema files
+- **Recovery points**: Git tag before each iteration
+
+### Recovery
+
+```bash
+# List checkpoints
+git tag | grep ralph-checkpoint
+
+# Rollback to specific checkpoint
+git reset --hard ralph-checkpoint-5
+
+# View overnight changes
+git diff main..HEAD
+```
+
+### Key Files
+
+- `ops/loop.sh` - Main orchestrator
+- `ops/PROMPT_[mode].md` - Mode-specific instructions
+- `ops/[MODE]_PLAN.md` - Task checklists
+- `ops/README.md` - Full Ralph documentation

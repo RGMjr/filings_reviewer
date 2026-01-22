@@ -1,6 +1,6 @@
 # Ralph Operations Directory
 
-This directory contains the Ralph methodology setup for autonomous bulk operations.
+This directory contains the Ralph methodology setup for autonomous task execution.
 
 ## Overview
 
@@ -13,38 +13,79 @@ ops/
 ├── README.md              # This file
 ├── loop.sh                # Main orchestrator script
 ├── AGENTS.md              # Operational commands reference
-├── PROMPT_extract.md      # Extraction loop instructions
-├── PROMPT_validate.md     # Validation loop instructions
+│
+├── # Development Modes
+├── PROMPT_develop.md      # Worker Prompt task execution
+├── PROMPT_refactor.md     # Safe refactoring with test preservation
+├── PROMPT_test.md         # Coverage improvement
+├── DEVELOPMENT_PLAN.md    # Development task checklist
+├── REFACTOR_PLAN.md       # Refactoring task checklist
+├── TEST_PLAN.md           # Test coverage targets
+│
+├── # Analysis/Implementation Modes
+├── PROMPT_analyze.md      # Investigation/analysis
+├── PROMPT_implement.md    # Fix implementation
+├── ANALYSIS_PLAN.md       # Analysis task checklist
+├── IMPLEMENTATION_PLAN.md # Implementation task checklist
+│
+├── # Bulk Operations Modes
+├── PROMPT_extract.md      # Bulk filing extraction
+├── PROMPT_validate.md     # Bulk validation
 ├── EXTRACTION_PLAN.md     # Filing list for extraction
 ├── VALIDATION_PLAN.md     # Filing list for validation
-├── VALIDATION_RESULTS.md  # Accumulated validation results
+│
+├── completion-reports/    # Auto-generated completion reports
 └── logs/                  # Iteration logs (created on first run)
 ```
 
 ## Quick Start
 
-### 1. Populate the Plan
-
-Edit `EXTRACTION_PLAN.md` or `VALIDATION_PLAN.md` to add filings:
-
-```markdown
-- [ ] 0001234567 | Company Name | S-1 | Notes
-```
-
-### 2. Run the Loop
+### Usage
 
 ```bash
-# Extract filings (unlimited)
-./ops/loop.sh extract
+./ops/loop.sh <mode> [max_iterations] [--isolated|--current|--yolo]
+```
 
-# Extract max 10 filings
-./ops/loop.sh extract 10
+### Available Modes
 
-# Validate against gold standard
-./ops/loop.sh validate
+| Mode | Purpose | Plan File |
+|------|---------|-----------|
+| `develop` | Execute Worker Prompt tasks | DEVELOPMENT_PLAN.md |
+| `refactor` | Safe refactoring with test preservation | REFACTOR_PLAN.md |
+| `test` | Coverage improvement | TEST_PLAN.md |
+| `analyze` | Investigation/analysis | ANALYSIS_PLAN.md |
+| `implement` | Apply fixes from analysis | IMPLEMENTATION_PLAN.md |
+| `extract` | Bulk filing extraction | EXTRACTION_PLAN.md |
+| `validate` | Bulk validation | VALIDATION_PLAN.md |
 
-# Validate max 5 filings
-./ops/loop.sh validate 5
+### Branch Isolation (3rd argument)
+
+| Flag | Behavior | Recommended For |
+|------|----------|-----------------|
+| `--isolated` | Creates `ralph/[mode]-[date]-[id]` branch | Overnight runs (default) |
+| `--current` | Uses current branch (blocks main/master) | Supervised daytime work |
+| `--yolo` | No branch protection | Expert use only |
+
+### Examples
+
+```bash
+# Development: Execute Worker Prompt task
+./ops/loop.sh develop 20 --isolated
+
+# Refactoring: Safe code changes
+./ops/loop.sh refactor 10 --current
+
+# Test writing: Improve coverage
+./ops/loop.sh test 15
+
+# Analysis: Investigation workflow
+./ops/loop.sh analyze 5
+
+# Bulk extraction (original use case)
+./ops/loop.sh extract 50
+
+# Overnight run in background
+nohup ./ops/loop.sh develop 30 --isolated > ops/logs/overnight.log 2>&1 &
 ```
 
 ### 3. Monitor Progress
@@ -87,7 +128,7 @@ Each iteration:
 ## Key Principles
 
 ### 1. One Task Per Iteration
-Never process multiple filings in one iteration. This keeps context focused.
+Never process multiple tasks in one iteration. This keeps context focused.
 
 ### 2. File-Based State
 All state lives in files (plan, results), not in Claude's memory.
@@ -97,6 +138,47 @@ Tasks aren't marked complete until verification passes.
 
 ### 4. Fresh Context
 Each iteration starts clean - no accumulated context pollution.
+
+### 5. Branch Isolation (New)
+Development modes create isolated branches by default, protecting main.
+
+### 6. Recovery Points (New)
+Git tags created before each iteration for easy rollback.
+
+## Guardrails
+
+Ralph includes multiple safety mechanisms:
+
+| Guardrail | Trigger | Action |
+|-----------|---------|--------|
+| Pre-flight tests | Tests fail before start | Abort |
+| Uncommitted changes | Dirty working directory | Abort |
+| Branch protection | On main/master with --current | Abort |
+| Commit gate | Tests fail after changes | Rollback + pause |
+| Consecutive errors | 3 errors in a row | Pause |
+| Large diff | >500 lines changed | Pause |
+| Max runtime | 4 hours elapsed | Stop |
+| Disk space | <1GB free | Pause |
+
+## Recovery
+
+```bash
+# List all checkpoints
+git tag | grep ralph-checkpoint
+
+# View what happened at checkpoint N
+git show ralph-checkpoint-N
+
+# Rollback to checkpoint N
+git reset --hard ralph-checkpoint-N
+
+# View all overnight changes
+git diff main..HEAD
+
+# Discard entire Ralph branch
+git checkout main
+git branch -D ralph/develop-20260122-MET-15
+```
 
 ## Customization
 
