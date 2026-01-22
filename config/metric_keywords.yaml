@@ -365,6 +365,8 @@ cm_bookings:
     - '\bannual\s+bookings\b'
 
 cm_billings:
+  status: deprecated
+  deprecation_reason: "GAAP financial metric, not customer-specific. Use ARR/MRR for recurring revenue metrics."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:

@@ -7,12 +7,15 @@
 #   ./ops/loop.sh validate [max_iterations]   # Run validation loop
 #   ./ops/loop.sh dryrun [max_iterations]     # Test loop without database
 #   ./ops/loop.sh plan [max_iterations]       # Run planning mode
+#   ./ops/loop.sh analyze [max_iterations]    # Run analysis/investigation mode
+#   ./ops/loop.sh implement [max_iterations]  # Run implementation/fix mode
 #
 # Examples:
 #   ./ops/loop.sh extract           # Unlimited extraction iterations
 #   ./ops/loop.sh extract 10        # Max 10 filings
 #   ./ops/loop.sh validate 5        # Validate up to 5 filings
 #   ./ops/loop.sh dryrun 2          # Test with 2 simulated filings
+#   ./ops/loop.sh analyze 3         # Run 3 analysis tasks
 #
 
 set -euo pipefail
@@ -60,9 +63,21 @@ case "$MODE" in
         COMPLETION_PROMISE="DRYRUN_COMPLETE"
         PAUSE_PROMISE="DRYRUN_PAUSED"
         ;;
+    analyze)
+        PROMPT_FILE="$SCRIPT_DIR/PROMPT_analyze.md"
+        PLAN_FILE="$SCRIPT_DIR/ANALYSIS_PLAN.md"
+        COMPLETION_PROMISE="ANALYSIS_COMPLETE"
+        PAUSE_PROMISE="ANALYSIS_PAUSED"
+        ;;
+    implement)
+        PROMPT_FILE="$SCRIPT_DIR/PROMPT_implement.md"
+        PLAN_FILE="$SCRIPT_DIR/IMPLEMENTATION_PLAN.md"
+        COMPLETION_PROMISE="IMPLEMENTATION_COMPLETE"
+        PAUSE_PROMISE="IMPLEMENTATION_PAUSED"
+        ;;
     *)
         echo -e "${RED}Error: Unknown mode '$MODE'${NC}"
-        echo "Usage: $0 {extract|validate|dryrun|plan} [max_iterations]"
+        echo "Usage: $0 {extract|validate|dryrun|plan|analyze|implement} [max_iterations]"
         exit 1
         ;;
 esac
@@ -136,6 +151,14 @@ while true; do
         if grep -q "<promise>$PAUSE_PROMISE</promise>" "$ITER_LOG"; then
             echo -e "${YELLOW}Pause promise detected. Human review needed.${NC}"
             break
+        fi
+
+        # Check for iteration-complete promise (for analyze/implement modes)
+        if grep -q "<promise>ANALYSIS_ITERATION_COMPLETE</promise>" "$ITER_LOG"; then
+            echo -e "${GREEN}  Analysis iteration complete. Continuing to next task...${NC}"
+        fi
+        if grep -q "<promise>IMPLEMENTATION_ITERATION_COMPLETE</promise>" "$ITER_LOG"; then
+            echo -e "${GREEN}  Implementation iteration complete. Continuing to next task...${NC}"
         fi
 
         # Success - reset error counter
