@@ -20,7 +20,7 @@
 ### Gold Standard Filings
 <!-- Only filings with gold standard data can be validated -->
 
-- [ ] 0001764925 | Slack Technologies | GS: slack_gold_standard.csv
+- [x] 0001764925 | Slack Technologies | GS: slack_gold_standard.csv - P=28.6% R=63.6% F1=39.4% [REGRESSION]
 - [ ] 0001740260 | Farfetch | GS: farfetch_gold_standard.csv
 - [ ] 0001640147 | Snowflake | GS: snowflake_gold_standard.csv
 
@@ -36,6 +36,8 @@
 
 <!-- Results format: [x] CIK | Company | P=XX% R=XX% F1=XX% -->
 
+- [x] 0001764925 | Slack Technologies | P=28.6% R=63.6% F1=39.4%
+
 ---
 
 ## Skipped
@@ -47,6 +49,8 @@
 ## Regressions
 
 <!-- Format: [REGRESSION] CIK | Company | Metric dropped: XX% -> YY% -->
+
+- [REGRESSION] 0001764925 | Slack Technologies | Precision: 76% -> 28.6% (-47.4%), Recall: 84% -> 63.6% (-20.4%), F1: 80% -> 39.4% (-40.6%)
 
 ---
 
@@ -61,9 +65,9 @@
 | Metric | Count |
 |--------|-------|
 | Total Filings | 5 |
-| Validated | 0 |
+| Validated | 1 |
 | Skipped | 0 |
-| Regressions | 0 |
+| Regressions | 1 |
 | Errors | 0 |
 
 ---
