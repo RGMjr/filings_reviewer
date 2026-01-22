@@ -12,6 +12,7 @@
 |-------|------------|----------------|
 | cm_billings 49 FP | Context-gating not working | Debug `_has_required_context()` |
 | cm_mrr misclassification | MRR keyword in NRR definition | Add cm_mrr to DOLLAR_ONLY_METRICS |
+| cm_customers_period_end FP | Proximity + semantic mismatch | Tighten window, add exclusions |
 | Missing table values | TBD | TBD |
 | Validation matching | TBD | TBD |
 
@@ -80,6 +81,63 @@
 - If not, add it to ensure percentage values are filtered out
 - Verify unit-type filtering is applied in candidate generation flow
 - Consider adding exclusion pattern to `cm_mrr`: exclude matches where "retention" appears nearby
+
+### TASK-3: cm_customers_period_end False Positives ("10 million", "eight", "twelve")
+
+**Root Cause**: Overly broad keyword patterns matching non-customer-count numbers
+
+**Evidence**:
+1. **"10 million" match**:
+   - Keyword: `'organizations with three or more users'`
+   - Context: "...Daily active users exceeded 10 million. As of January 31, 2019, Slack had more than 600,000 organizations with three or more users..."
+   - The keyword pattern `\borganizations?\s+(?:with\s+)?(?:three|\d+)\s+(?:or\s+more\s+)?users?\b` matches "organizations with three or more users"
+   - But the **proximity search** picks up "10 million" from earlier in the sentence (referring to daily active users, not organizations)
+   - **This is a proximity mismatch**: the keyword refers to one concept (qualifying organizations), but the number refers to a different concept (total DAUs)
+
+2. **"eight" match**:
+   - Keyword: `'Paid Customer'`
+   - Context: "...currently used in over 150 countries and available in eight languages..."
+   - Matched "eight" which refers to **number of languages**, not customers
+   - **This is semantic context error**: "available in eight [languages]" has nothing to do with customer counts
+
+3. **"twelve" match**:
+   - Keyword: `'Paid Customers'`
+   - Context: "...net of contraction or attrition over the trailing twelve months..."
+   - Matched "twelve" which is part of **time period** ("trailing twelve months"), not a customer count
+   - **This is temporal reference error**: "twelve months" should be filtered as a date/time component
+
+**Keyword Configuration**:
+```yaml
+cm_customers_period_end:
+  patterns:
+    - '\bpaid\s+customers?\b'
+    - '\bfree\s+(?:subscription\s+)?(?:plan\s+)?(?:organizations?|customers?)\b'
+    - '\borganizations?\s+on\s+(?:our\s+)?free\s+(?:subscription\s+)?plan\b'
+    - '\borganizations?\s+(?:with\s+)?(?:three|\d+)\s+(?:or\s+more\s+)?users?\b'
+```
+
+**Analysis**:
+- All three false positives involve **simple keyword proximity matching** without semantic validation
+- The system correctly finds keywords like "Paid Customer" and "organizations with three or more users"
+- But it then accepts ANY nearby number, regardless of what that number actually measures
+- Existing `enhanced_date_filter()` should catch "twelve months" but apparently doesn't filter word-form numbers in temporal contexts
+
+**Comparison to Other Metrics**:
+- These false positives are different from `cm_billings` (which should have context-gating) or `cm_mrr` (which should have unit-type filtering)
+- `cm_customers_period_end` is a COUNT_ONLY_METRICS candidate, so unit-type filtering should prevent percentages and currencies
+- But it doesn't prevent word-form numbers in wrong contexts (languages, time periods, etc.)
+
+**Root Issues**:
+1. **Proximity window too large**: finding numbers far from the actual keyword
+2. **No semantic validation**: not checking if the number logically relates to the keyword
+3. **Incomplete date filtering**: "twelve months" not filtered by `enhanced_date_filter()` when number is in word form
+4. **No noun-phrase boundary detection**: "eight languages" vs "eight customers" treated identically
+
+**Next Steps**:
+- Consider tightening proximity window for customer count keywords (currently 1500 chars may be too large)
+- Add "months" exclusion pattern to `enhanced_date_filter()` for word-form numbers
+- Add context exclusion patterns for `cm_customers_period_end`: "languages", "countries", "months", "weeks", "days"
+- Consider requiring the number to appear in same sentence as keyword (not just same 1500-char window)
 
 ---
 
