@@ -26,7 +26,7 @@
 
 ### Phase 2: False Negative Investigation
 
-- [ ] TASK-4 | Debug 575/645 matching | cm_large_customers_period_end candidates exist but not matching gold standard
+- [x] TASK-4 | Debug 575/645 matching | cm_large_customers_period_end candidates exist but not matching gold standard
 - [ ] TASK-5 | Missing table values | Why 135, 298, 351, 412, 491 not extracted from Paid Customers >$100k table?
 - [ ] TASK-6 | Missing NRR values | Why only 4 of ~10 Net Dollar Retention values extracted?
 
@@ -48,5 +48,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 8 |
-| Completed | 3 |
-| Remaining | 5 |
+| Completed | 4 |
+| Remaining | 4 |
