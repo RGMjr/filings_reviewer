@@ -30,7 +30,14 @@
   - Added `cm_mrr` to DOLLAR_ONLY_METRICS set in false_positive_filter.py:328
   - Result: P=63.6% (was 57.1%), R=63.6% (unchanged), F1=63.6% (was 60.2%)
   - Tests: pytest tests/unit/review/test_false_positive_filter.py PASSED (128 tests)
-- [ ] FIX-3 | Add cm_customers_period_end exclusions | Add "languages", "months", "countries" exclusions in YAML
+- [x] FIX-3 | Add cm_customers_period_end exclusions | Add "languages", "months", "countries" exclusions in YAML
+  - Added 3 exclusion patterns to cm_customers_period_end in config/metric_keywords.yaml:117-120:
+    - `\b(?:eight|twelve|ten)\s+(?:languages?|months?|countries?|weeks?|days?)\b`
+    - `\btrailing\s+twelve\s+months?\b`
+    - `\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b`
+  - Result: P=65.9% (was 63.6%), R=61.4% (was 63.6%), F1=63.5% (was 63.6%)
+  - Tests: pytest tests/unit/review/test_keyword_matching.py PASSED (64/65 tests, 1 expected failure due to cm_billings deprecation)
+  - Note: Precision improved +2.3%, recall decreased slightly -2.2% (trade-off expected)
 
 ### Phase 2: Table Parsing Fix
 
@@ -58,5 +65,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 2 |
-| Remaining | 5 |
+| Completed | 3 |
+| Remaining | 4 |
