@@ -10,8 +10,8 @@
 
 | Issue | Root Cause | Recommendation |
 |-------|------------|----------------|
-| cm_billings 49 FP | TBD | TBD |
-| cm_mrr misclassification | TBD | TBD |
+| cm_billings 49 FP | Context-gating not working | Debug `_has_required_context()` |
+| cm_mrr misclassification | MRR keyword in NRR definition | Add cm_mrr to DOLLAR_ONLY_METRICS |
 | Missing table values | TBD | TBD |
 | Validation matching | TBD | TBD |
 
@@ -48,6 +48,38 @@
 - Debug exactly where cm_billings candidates are generated (fresh_extractor vs candidate_generator)
 - Add logging to see if `_has_required_context()` is actually being called
 - Check if context patterns are being compiled correctly
+
+### TASK-2: cm_mrr Misclassification (171%, 152%, 143%, 138%)
+
+**Root Cause**: Keyword proximity matching without semantic context awareness
+
+**Evidence**:
+1. Found 4 percentage values tagged as `cm_mrr`: 171%, 152%, 143%, 138%
+2. All 4 values are actually **Net Dollar Retention Rate** values, not MRR
+3. Context shows: "We then divide the total **Current Period MRR** by the total **Prior Period MRR** to arrive at our Net Dollar Retention Rate."
+4. The keyword "MRR" appears in the *definition* of Net Dollar Retention Rate, causing proximity-based matching to incorrectly tag the retention percentages as MRR values
+5. Full context: "Our Net Dollar Retention Rate has declined from 171% as of January 31, 2017 to 152% as of January 31, 2018 to 143% as of January 31, 2019 to 138% as of April 30, 2019"
+
+**Keyword Configuration**:
+- `cm_mrr`: patterns include `\bmrr\b` (simple word boundary match)
+- `cm_net_revenue_retention`: patterns include `\bnet\s+dollar\s+retention\b`, `\bretention\s+rate[^.;]{0,50}\d+%`
+
+**Analysis**:
+- The keyword "MRR" is correctly detected in proximity to the percentages
+- However, the system fails to recognize these are retention percentages, not MRR values
+- The `cm_net_revenue_retention` pattern `\bretention\s+rate[^.;]{0,50}\d+%` SHOULD match these values but is apparently being outranked by `cm_mrr`
+- This is a **keyword priority** issue: when multiple metrics match, the wrong one is being selected
+
+**Root Issue**: Unit-type filtering should have caught this
+- MRR should be a currency value (DOLLAR_ONLY_METRICS), not a percentage
+- Percentages should automatically be routed to retention/churn metrics
+- `false_positive_filter.py` may not be applied correctly, or MRR is not in DOLLAR_ONLY_METRICS list
+
+**Next Steps**:
+- Check if `cm_mrr` is in `DOLLAR_ONLY_METRICS` in `src/review/false_positive_filter.py`
+- If not, add it to ensure percentage values are filtered out
+- Verify unit-type filtering is applied in candidate generation flow
+- Consider adding exclusion pattern to `cm_mrr`: exclude matches where "retention" appears nearby
 
 ---
 
