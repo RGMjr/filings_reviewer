@@ -53,11 +53,23 @@
     * Values 135, 298, 351 (cells 1, 4, 10) are missing
   - **Next Step**: Need to debug the candidate generation or keyword matching logic that processes the table text
   - Possible issues:
-    1. Keyword matching proximity window may not span the full table row
+    1. Keyword matching proximity window may not span the full table row ✓ CONFIRMED
     2. Row-aware matching may have bugs that prevent finding all numbers in a [ROW] segment
     3. Value extraction may stop after finding first N values
     4. Table structure parsing in candidate_generator.py may have cell filtering logic
-- [ ] FIX-5 | Fix table value extraction | Ensure ALL data cells in table rows are extracted
+- [x] FIX-5 | Fix table value extraction | Ensure ALL data cells in table rows are extracted
+  - **Root Cause Confirmed**: keyword_matching.py:554 applied 100-char distance filter before table row filtering
+  - **Fix**: Modified keyword_matching.py:546-568 to skip distance filter when table_row_parser is present
+  - **Logic**: For tables with row/cell structure ([ROW]/[CELL] markers), disable distance filter in Phase 1
+    and rely on Phase 2.75 (table row filtering) to ensure keyword and number are in same row
+  - **Benefit**: Allows matching values >100 chars from row heading keyword, as long as they're in same row
+  - **Safety**: Distance still computed for ranking; cross-row matches prevented by Phase 2.75 filter
+  - **Tests**:
+    - Created tests/unit/review/test_table_row_distance_fix.py with 2 tests
+    - test_wide_table_extracts_all_row_values: Verifies all 5 values extracted from wide table (135, 298, 575, 351, 645)
+    - test_multi_row_table_prevents_cross_row_matches: Verifies cross-row matching still prevented
+    - Both tests PASS
+    - Existing tests: 64/65 tests in test_keyword_matching.py PASS (1 expected failure for cm_billings deprecation)
 
 ### Phase 3: Validation Matching Fix
 
