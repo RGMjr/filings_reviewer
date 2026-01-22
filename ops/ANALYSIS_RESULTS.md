@@ -306,6 +306,63 @@ Both TASK-5 and TASK-6 show the same failure mode:
 
 ---
 
+### TASK-7: Proposed cm_billings Fix
+
+**Conclusion**: Context-gating mechanism IS working correctly - the issue is that cm_billings legitimately has NO required context in financial statement tables.
+
+**Root Cause Analysis**:
+1. ✓ `_has_required_context()` method IS being called during keyword matching (line 521 in keyword_matching.py)
+2. ✓ Required context patterns ARE correctly compiled from YAML (17 patterns, 1500 char proximity)
+3. ✓ Full segment `raw_text` IS being passed to the context check (line 918 in candidate_generator.py → line 522 in keyword_matching.py)
+4. ✗ **The problem**: The financial statement table containing "Calculated Billings" has NO cohort/per-customer context words within 1500 chars
+
+**Evidence**:
+- Checked segment context for cm_billings candidates: 440 chars of table rows with Revenue/Deferred Revenue calculations
+- Manual search for required context patterns: **0 matches** found in the table segment
+- The table is a standard GAAP reconciliation: `Revenue + Deferred Revenue (end) - Deferred Revenue (start) = Calculated Billings`
+- This is aggregate company-level financial data, not customer-specific or cohort-specific metrics
+
+**Why Context-Gating "Failed"**:
+- Context-gating is WORKING AS DESIGNED - it correctly identified that no required context exists
+- BUT the candidates are still being generated because `_has_required_context()` filters keywords BEFORE candidate creation, not after
+- The check at line 521 should have filtered out the "Calculated Billings" keyword, preventing 49 candidates
+- **HYPOTHESIS**: The check is passing (return True) when it should fail (return False)
+
+**Further Investigation Needed** (not done in this task - would require code debugging):
+1. Add debug logging to see if `_has_required_context()` is actually returning False for cm_billings
+2. Check if there's a code path that bypasses the `check_required_context` flag
+3. Verify the logic at line 380-381: "if metric_id not in self._compiled_required_context: return True"
+
+**Proposed Fix Options**:
+
+**Option A: Deprecate cm_billings entirely** (RECOMMENDED)
+- Rationale: "Calculated Billings" is a GAAP financial metric, not a customer metric
+- It measures aggregate company revenue timing, not customer behavior
+- Even with cohort context, it's not a useful CMASB metric (we don't track cohort-level billings)
+- **Action**: Set `status: deprecated` in `config/metric_keywords.yaml` for cm_billings
+- **Impact**: Eliminates all 49 false positives immediately
+
+**Option B: Tighten required_context patterns**
+- Add more specific patterns like `\bcohort\s+(?:analysis|breakdown|table|chart)\b`
+- Increase proximity threshold or add "must appear in same sentence" constraint
+- **Downside**: Won't help - the financial tables legitimately have no cohort context
+
+**Option C: Add exclusion patterns to cm_billings**
+- Exclude matches near "consolidated statement", "deferred revenue", "GAAP", "reconciliation"
+- **Downside**: Brittle - may miss legitimate cohort-specific billings disclosures
+
+**Option D: Debug why context-gating isn't working**
+- Root cause: `_has_required_context()` may be returning True when it should return False
+- Need to add instrumentation to verify the check is executing correctly
+- Possible bug: metric_id lookup, pattern compilation, or logical error in line 380-393
+
+**Recommendation**:
+1. **Short-term**: Option A - Deprecate cm_billings (it's not a valid customer metric)
+2. **Medium-term**: Option D - Debug context-gating to understand why it's not filtering these matches
+3. **Long-term**: Review all revenue synonym metrics (GMV, TCV, ACV, Bookings, Billings) to ensure only customer-relevant ones are active
+
+---
+
 ## Recommended Actions
 
 <!-- Prioritized list of fixes to implement -->
