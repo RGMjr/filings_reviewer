@@ -41,7 +41,22 @@
 
 ### Phase 2: Table Parsing Fix
 
-- [ ] FIX-4 | Investigate table parsing | Debug why only rightmost 2 columns extracted from multi-period tables
+- [x] FIX-4 | Investigate table parsing | Debug why only rightmost 2 columns extracted from multi-period tables
+  - **Investigation Complete**:
+  - Code Review: `_extract_table_text_with_markers()` in html_segmenter.py:1073-1154 correctly extracts ALL cells
+  - Method uses `tr.find_all(["td", "th"], recursive=False)` which gets all cells in each row
+  - Adds [CELL] markers between cells and [ROW] markers between rows
+  - **Root Cause**: The issue is NOT in table text extraction, but in how candidates are generated from the table text
+  - Evidence from ANALYSIS_RESULTS.md:
+    * Table contains values in cells 0,1,4,7,10,13: "Paid Customers >$100,000", 135, 298, 575, 351, 645
+    * Only values 575 and 645 (cells 7 and 13) are being extracted
+    * Values 135, 298, 351 (cells 1, 4, 10) are missing
+  - **Next Step**: Need to debug the candidate generation or keyword matching logic that processes the table text
+  - Possible issues:
+    1. Keyword matching proximity window may not span the full table row
+    2. Row-aware matching may have bugs that prevent finding all numbers in a [ROW] segment
+    3. Value extraction may stop after finding first N values
+    4. Table structure parsing in candidate_generator.py may have cell filtering logic
 - [ ] FIX-5 | Fix table value extraction | Ensure ALL data cells in table rows are extracted
 
 ### Phase 3: Validation Matching Fix
@@ -65,5 +80,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 3 |
-| Remaining | 4 |
+| Completed | 4 |
+| Remaining | 3 |
