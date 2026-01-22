@@ -4,7 +4,7 @@
 **Purpose**: Achieve human baseline metrics (P=76%, R=84%, F1=80%)
 **Mode**: Ralph autonomous loop
 
-**Current**: P=65.9%, R=61.4%, F1=63.5%
+**Current**: P=64.2%, R=77.3%, F1=70.1%
 **Target**: P=76%, R=84%, F1=80%
 
 ---
@@ -23,7 +23,8 @@
 
 ### Phase 1: Recall Recovery (+23pp needed)
 
-- [ ] FIX-A | Context-based percentage detection | cm_net_revenue_retention values (138%, 171%, 152%, 143%, 149%) extracted as counts and filtered - need context-based detection
+- [x] FIX-A | Context-based percentage detection | cm_net_revenue_retention values (138%, 171%, 152%, 143%, 149%) extracted as counts and filtered - need context-based detection
+  **Result**: R=77.3% (+15.9pp), P=64.2% (-1.7pp), F1=70.1% (+6.6pp). Retention values now correctly extracted. Unit tests pass (1104 tests).
 - [ ] FIX-B | Flexible keyword patterns | "Paid Customers > $100,000" pattern doesn't match due to spacing - update regex in metric_keywords.yaml
 - [ ] FIX-C | Definition-only validation handling | Skip definition-only entries (no numeric values) in validation - don't count as false negatives
 
@@ -155,5 +156,5 @@ If blocked or need human review:
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 5 |
-| Completed | 0 |
-| Remaining | 5 |
+| Completed | 1 |
+| Remaining | 4 |
