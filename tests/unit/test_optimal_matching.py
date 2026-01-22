@@ -43,6 +43,7 @@ def test_optimal_matching_prefers_higher_scores():
             definition="Annual Recurring Revenue",
             source_quote="ARR was 1000000",
             line_number=1,
+            is_definition_only=False,
         )
     ]
 
@@ -120,6 +121,7 @@ def test_optimal_matching_handles_overlapping_candidates():
             definition="Annual Recurring Revenue",
             source_quote="ARR reached 5000000",
             line_number=1,
+            is_definition_only=False,
         )
     ]
 

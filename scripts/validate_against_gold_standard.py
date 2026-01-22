@@ -68,6 +68,7 @@ class GoldStandardEntry:
     definition: str
     source_quote: str  # "Quote/context"
     line_number: int  # Line number in CSV for reference
+    is_definition_only: bool  # True if this is a definition without numeric value
 
 
 @dataclass
@@ -201,6 +202,9 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
             if not metric_id and is_new_metric:
                 metric_id = normalize_metric_id(new_metric_val)
 
+            # Check if this is a definition-only entry
+            is_def_only = row.get('is_definition_only', '').strip().lower() == 'x'
+
             entry = GoldStandardEntry(
                 document_url=row.get('Document URL', ''),
                 company=row.get('Company', ''),
@@ -214,6 +218,7 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
                 definition=row.get('Definition', ''),
                 source_quote=row.get('Quote/context', ''),
                 line_number=line_num,
+                is_definition_only=is_def_only,
             )
             entries.append(entry)
 
@@ -374,6 +379,21 @@ def validate_filing(
     else:
         candidates = []
 
+    # Filter out definition-only entries (no numeric values) from gold standard
+    # These cannot be detected by our system and should not count as false negatives
+    gold_entries_with_values = []
+    definition_only_entries = []
+
+    for entry in gold_entries:
+        # Definition-only if flag is set AND no raw/scaled values
+        if entry.is_definition_only and not entry.raw_value.strip() and not entry.scaled_value.strip():
+            definition_only_entries.append(entry)
+        else:
+            gold_entries_with_values.append(entry)
+
+    if definition_only_entries and verbose:
+        logger.info(f"  Skipping {len(definition_only_entries)} definition-only entries (no numeric values)")
+
     # Two-pass optimal matching:
     # 1. Build all candidate-gold pairs with scores
     # 2. Sort by score and assign greedily
@@ -386,7 +406,7 @@ def validate_filing(
         candidate_value = candidate.get('parsed_value')
         candidate_raw = candidate.get('raw_number_text', '')
 
-        for entry in gold_entries:
+        for entry in gold_entries_with_values:
             score = 0
             match_type = ''
 
@@ -465,10 +485,10 @@ def validate_filing(
                 f"gold entry line {entry.line_number} ({match_type}, score={score:.1f})"
             )
 
-    # Calculate metrics
+    # Calculate metrics (using only gold entries with values)
     true_positives = len(tp_matches)
     false_positives = len(candidates) - true_positives
-    false_negatives = len(gold_entries) - true_positives
+    false_negatives = len(gold_entries_with_values) - true_positives
 
     precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
     recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
@@ -477,13 +497,13 @@ def validate_filing(
     # Collect FP candidates
     fp_candidates = [c for c in candidates if c['candidate_id'] not in matched_candidates]
 
-    # Collect FN entries
-    fn_entries = [e for e in gold_entries if e.line_number not in matched_entries]
+    # Collect FN entries (only from gold entries with values)
+    fn_entries = [e for e in gold_entries_with_values if e.line_number not in matched_entries]
 
     return ValidationResult(
         filing_id=filing_id,
         company_name=company_name,
-        gold_standard_count=len(gold_entries),
+        gold_standard_count=len(gold_entries_with_values),
         candidate_count=len(candidates),
         true_positives=true_positives,
         false_positives=false_positives,
