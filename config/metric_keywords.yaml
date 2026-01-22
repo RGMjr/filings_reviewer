@@ -127,12 +127,13 @@ cm_customers_period_end:
 
 cm_large_customers_period_end:
   patterns:
-    - '\bpaid\s+customers?\s*>\s*\$?\d'
+    - '\bpaid\s+customers?\s*>\s*\$[\d,]+'
     - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
     - '\blarge\s+(?:enterprise\s+)?customers?\b'
     - '\benterprise\s+customers?\b'
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
-    - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$\d+'
+    - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
+    - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'

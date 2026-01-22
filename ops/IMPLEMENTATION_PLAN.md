@@ -25,7 +25,8 @@
 
 - [x] FIX-A | Context-based percentage detection | cm_net_revenue_retention values (138%, 171%, 152%, 143%, 149%) extracted as counts and filtered - need context-based detection
   **Result**: R=77.3% (+15.9pp), P=64.2% (-1.7pp), F1=70.1% (+6.6pp). Retention values now correctly extracted. Unit tests pass (1104 tests).
-- [ ] FIX-B | Flexible keyword patterns | "Paid Customers > $100,000" pattern doesn't match due to spacing - update regex in metric_keywords.yaml
+- [x] FIX-B | Flexible keyword patterns | "Paid Customers > $100,000" pattern doesn't match due to spacing - update regex in metric_keywords.yaml
+  **Result**: P=66.7% (+2.5pp), R=77.3% (maintained), F1=71.6% (+1.5pp). Patterns now detect "Paid Customers >$100,000" matches. Keyword tests pass (284 tests).
 - [ ] FIX-C | Definition-only validation handling | Skip definition-only entries (no numeric values) in validation - don't count as false negatives
 
 ### Phase 2: Precision Recovery (+10pp needed)
