@@ -55,5 +55,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 0 |
-| Remaining | 7 |
+| Completed | 1 |
+| Remaining | 6 |
