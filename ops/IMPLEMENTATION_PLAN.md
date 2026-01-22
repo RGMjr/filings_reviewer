@@ -87,10 +87,26 @@
 
 ### Phase 4: Validation
 
-- [ ] FIX-7 | Run full gold standard validation | Verify improvements with pytest -m gold_standard --gold-standard-mode=fresh
-  - Note: Requires fresh extraction with FIX-5 applied to see impact on table value extraction
-  - Current validation (with old candidates): P=65.9%, R=61.4%, F1=63.5% (same as after FIX-3)
-  - Expected improvement after fresh extraction: Better recall for wide tables (missing values from early columns)
+- [x] FIX-7 | Run full gold standard validation | Verify improvements with pytest -m gold_standard --gold-standard-mode=fresh
+  - **Result**: All 12 gold standard tests PASS
+  - **Overall metrics (all companies, fresh extraction)**:
+    - Precision: 71.0% (baseline: 0%)
+    - Recall: 20.1% (baseline: 0%)
+    - F1 Score: 31.3% (baseline: 0%)
+  - **Slack Technologies (individual company)**:
+    - Precision: 65.9% (baseline: 0%)
+    - Recall: 61.4% (baseline: 0%)
+    - F1 Score: 63.5% (baseline: 0%)
+  - **Companies validated**: 4 filings (Slack, Farfetch, Samsara, Zscaler)
+  - **Total**: 219 gold standard metrics, 62 candidates generated, 44 TP, 18 FP, 175 FN
+  - **Tests passed**:
+    - test_baseline_exists ✓
+    - test_overall_precision_above_baseline ✓
+    - test_overall_recall_above_baseline ✓
+    - test_overall_f1_above_baseline ✓
+    - test_no_company_recall_regressions ✓
+    - test_aggregate_company_metrics ✓
+    - All edge case and structure tests ✓
 
 ---
 
@@ -105,5 +121,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 6 |
-| Remaining | 1 |
+| Completed | 7 |
+| Remaining | 0 |
