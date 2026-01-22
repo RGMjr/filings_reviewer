@@ -238,6 +238,72 @@ The table has empty cells between data cells (for spacing), and the extraction l
 - Debug why only rightmost values in a table row are being extracted
 - Check if `table_structure.py` is correctly identifying all data cells in a row
 
+### TASK-6: Missing NRR Values (149% not extracted)
+
+**Root Cause**: Same table structure parsing issue as TASK-5 - only extracting rightmost column values
+
+**Evidence**:
+1. **Table structure** (from filing HTML):
+   ```
+   Row 6: Net Dollar Retention Rate | 171 | % |  | 152 | % |  | 143 | % |  | 149 | % |  | 138 | %
+   ```
+   - Cell structure: Row header in cell 0, then alternating value/unit cells with empty spacer cells
+   - Five NRR values: 171%, 152%, 143%, 149%, 138%
+
+2. **Extracted candidates** (from fresh_extractor.py):
+   - 138% ✓ (rightmost column - Apr 30, 2019)
+   - 171% ✓ (from prose text, not table)
+   - 152% ✓ (from prose text, not table)
+   - 143% ✓ (from prose text, not table)
+   - 149% ✗ MISSING
+
+3. **Where 149% appears**:
+   - In table: Row 6, Cell 10 (April 30, 2018 column)
+   - In context of other candidates: `...tention Rate [CELL] 171 [CELL] % [CELL] 152 [CELL] % [CELL] 143 [CELL] % [CELL] 149 [CELL]...` (seen in cm_customers_period_end candidate context)
+   - The value "149" is VISIBLE in the segment text but NOT extracted as its own candidate
+
+4. **Why other NRR values were found**:
+   - 171%, 152%, 143% were extracted from **prose descriptions**, not from the table:
+     - "Net Dollar Retention Rate was 138% as of April 30, 2019"
+     - "from 171% as of January 31, 2017 to 152% as of January 31, 2018 to 143% as of January 31, 2019"
+     - "Net Dollar Retention Rate of 152% as of January 31, 2018"
+     - "Net Dollar Retention Rate of 143% as of January 31, 2019"
+   - 138% was extracted from BOTH prose AND table (rightmost column)
+   - 149% ONLY appears in the table (no prose mention), so it's entirely dependent on table extraction
+
+**Analysis**:
+- This is **the same root cause as TASK-5**: table column filtering issue
+- The table has 5 columns of data, but extraction is only capturing values from certain positions
+- 149% is in the middle column (cell 10) and is being skipped by the extraction logic
+- The keyword "Net Dollar Retention Rate" is correctly matching the row header
+- But the value extraction is missing values from intermediate columns (cells 1, 4, 10)
+- Only extracting from cell 13 (rightmost: 138%) from the table itself
+
+**Pattern**:
+Both TASK-5 and TASK-6 show the same failure mode:
+- Five values per row: cells 1, 4, 7, 10, 13
+- Extraction finds: cells 7, 13 (rightmost two columns)
+- Extraction misses: cells 1, 4, 10 (leftmost three columns)
+
+**This confirms the table structure parsing bug hypothesis from TASK-5**
+
+**Root Issue**:
+- `html_segmenter.py` or `keyword_matching.py` is only extracting values from the last 2 data columns of multi-period tables
+- Empty spacer cells (cells 2,3,5,6,8,9,11,12) may be breaking the row-based extraction logic
+- Proximity-based number matching may have a range limitation that only reaches the rightmost values
+
+**Impact**:
+- Missing 149% means **1 false negative** for cm_net_revenue_retention
+- This directly impacts recall: we should have found 5 NRR values from the table, but only found 1
+- The other 3 NRR values were rescued by prose extraction (lucky that the filing included prose descriptions)
+- For filings that ONLY present metrics in tables without prose descriptions, we would miss 60% of the values
+
+**Next Steps** (same as TASK-5):
+- Debug table row parsing in `html_segmenter.py`
+- Check if `[ROW]` markers correctly include all data cells or only some
+- Verify `keyword_matching.py` correctly iterates through all cells in a row
+- Fix table-aware extraction to capture ALL numeric cells in a table row, not just rightmost ones
+
 ---
 
 ## Recommended Actions
