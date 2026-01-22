@@ -20,7 +20,6 @@
 ### Priority 1: Gold Standard Filings (Re-extraction)
 <!-- These filings have gold standard data for validation -->
 
-- [ ] 0001764925 | Slack Technologies | S-1 | Gold standard: 25 metrics
 - [ ] 0001740260 | Farfetch | F-1 | Gold standard: 67 metrics
 - [ ] 0001640147 | Snowflake | S-1 | Gold standard: 24 metrics
 
@@ -46,6 +45,8 @@
 
 <!-- Filings move here after successful extraction -->
 
+- [x] 0001764925 | Slack Technologies | S-1 | 80 segments, 29 candidates (gold standard: 25 metrics)
+
 ---
 
 ## Errors
@@ -59,9 +60,9 @@
 | Metric | Count |
 |--------|-------|
 | Total Filings | 8 |
-| Completed | 0 |
+| Completed | 1 |
 | Errors | 0 |
-| Remaining | 8 |
+| Remaining | 7 |
 
 ---
 
