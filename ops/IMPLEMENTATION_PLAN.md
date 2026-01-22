@@ -159,5 +159,5 @@ If blocked or need human review:
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 5 |
-| Completed | 3 |
-| Remaining | 2 |
+| Completed | 4 |
+| Remaining | 1 |
