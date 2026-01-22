@@ -21,7 +21,7 @@
 ### Phase 1: False Positive Investigation
 
 - [x] TASK-1 | Analyze cm_billings FP | Why are 49 cm_billings candidates generated? Review keyword patterns and sample matches
-- [ ] TASK-2 | Analyze cm_mrr FP | Why 171% and 152% tagged as cm_mrr instead of cm_net_revenue_retention?
+- [x] TASK-2 | Analyze cm_mrr FP | Why 171% and 152% tagged as cm_mrr instead of cm_net_revenue_retention?
 - [ ] TASK-3 | Analyze cm_customers_period_end FP | Why "10 million", "eight", "twelve" tagged as customer counts?
 
 ### Phase 2: False Negative Investigation
@@ -48,5 +48,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 8 |
-| Completed | 1 |
-| Remaining | 7 |
+| Completed | 2 |
+| Remaining | 6 |
