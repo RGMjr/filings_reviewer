@@ -82,3 +82,20 @@ Wait for response before proceeding.
 - `docs/WORKER_PROMPT_GENERATOR.md` (v1.2)
 - `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.0)
 - `docs/PROJECT_TASK_INVENTORY.md`
+
+---
+
+**Alternative: Autonomous Execution**
+
+For M/L/XL tasks or overnight work, consider using Ralph Loop instead:
+```
+/ralph develop [ID]
+```
+
+Ralph provides:
+- Fresh context per iteration (avoids context rot)
+- Automatic checkpoints for rollback
+- Branch isolation for safety
+- Commit-per-step for traceability
+
+See `/ralph` for details.
