@@ -177,6 +177,67 @@ cm_customers_period_end:
 
 **Conclusion**: This is likely NOT a keyword/matching bug, but rather an issue with the validation script's matching deduplication logic or database state. The candidates ARE being generated correctly.
 
+### TASK-5: Missing Table Values (135, 298, 351, 412, 491)
+
+**Root Cause**: Table structure parsing issue - only extracting values from specific cell positions
+
+**Evidence**:
+1. **Table location**: Table 49 in the HTML contains the "Paid Customers >$100,000" metric
+2. **Table structure**:
+   - Row 5, Cell 0: "Paid Customers >$100,000" (header)
+   - Row 5, Cell 1: 135 (Jan 31, 2017)
+   - Row 5, Cell 4: 298 (Jan 31, 2018)
+   - Row 5, Cell 7: 575 (Jan 31, 2019) ✓ EXTRACTED
+   - Row 5, Cell 10: 351 (Apr 30, 2018)
+   - Row 5, Cell 13: 645 (Apr 30, 2019) ✓ EXTRACTED
+
+3. **Extracted text** (via BeautifulSoup `get_text()`):
+   ```
+   'Paid Customers >$100,000135 298 575 351 645'
+   ```
+
+4. **What was extracted**: Only 2 of 5 values (575 and 645)
+   - Both extracted values are from cells 7 and 13 (the last two data columns)
+   - Missing values are from cells 1, 4, and 10 (earlier columns)
+
+5. **Table context**:
+   ```
+   As of January 31,        As of April 30,
+   2017   2018   2019       2018   2019
+
+   Paid Customers            37,000  59,000  88,000    67,000  95,000
+   Paid Customers >$100,000  135     298     575       351     645
+   Net Dollar Retention Rate 171%    152%    143%      149%    138%
+   ```
+
+**Analysis**:
+- This is a **table column filtering issue**, not a keyword matching issue
+- The keyword "Paid Customers >$1" is correctly matching the row header
+- But the value extraction is only capturing values from certain cell positions
+- Possible causes:
+  1. **Cell colspan/rowspan handling**: Empty cells (indices 2,3,5,6,8,9,11,12) may be breaking extraction logic
+  2. **Row/cell iteration logic**: Code may only be checking specific cell indices
+  3. **Table structure normalization**: HTML segmenter may not be normalizing the table structure correctly
+  4. **Number proximity search**: Keyword matching may have a proximity cutoff that only reaches the rightmost values
+
+**Hypothesis**:
+The table has empty cells between data cells (for spacing), and the extraction logic is:
+- Finding the keyword "Paid Customers >$100,000" in cell 0
+- Searching for numbers in subsequent cells
+- But only finding numbers in cells 7 and 13 due to proximity/iteration issues
+- Missing cells 1, 4, 10 which contain 135, 298, 351
+
+**This is NOT a keyword config issue** - it's a table structure parsing bug in:
+- `src/extraction/html_segmenter.py` (table parsing)
+- `src/review/keyword_matching.py` (row-based matching logic)
+- `src/review/candidate_generator.py` (table-aware extraction)
+
+**Next Steps**:
+- Check how `html_segmenter.py` parses tables with empty cells
+- Verify `keyword_matching.py` correctly handles `[ROW]` markers for table rows
+- Debug why only rightmost values in a table row are being extracted
+- Check if `table_structure.py` is correctly identifying all data cells in a row
+
 ---
 
 ## Recommended Actions
