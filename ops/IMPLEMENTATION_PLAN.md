@@ -73,7 +73,17 @@
 
 ### Phase 3: Validation Matching Fix
 
-- [ ] FIX-6 | Implement two-pass optimal matching | Sort matches by score before assignment in validate_against_gold_standard.py
+- [x] FIX-6 | Implement two-pass optimal matching | Sort matches by score before assignment in validate_against_gold_standard.py
+  - Replaced first-come-first-served matching with optimal two-pass algorithm:
+    1. Phase 1: Build all candidate-gold pairs with scores (lines 380-432)
+    2. Phase 2: Sort by score descending and assign greedily (lines 434-466)
+  - Scoring unchanged: metric match (2), exact value (3), close value (2.5), text variant (1), keyword (0.5)
+  - Prevents suboptimal matches where weak match claims entry before strong match
+  - Result on Slack: P=65.9%, R=61.4%, F1=63.5% (no change - no suboptimal matches existed)
+  - Tests: Created tests/unit/test_optimal_matching.py with 2 tests verifying:
+    * Higher-scored matches win over lower-scored matches
+    * Multiple candidates competing for same entry: best match wins
+    * Both tests PASS
 
 ### Phase 4: Validation
 
@@ -95,5 +105,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 5 |
-| Remaining | 2 |
+| Completed | 6 |
+| Remaining | 1 |

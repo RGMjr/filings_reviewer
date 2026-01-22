@@ -374,31 +374,96 @@ def validate_filing(
     else:
         candidates = []
 
+    # Two-pass optimal matching:
+    # 1. Build all candidate-gold pairs with scores
+    # 2. Sort by score and assign greedily
+
+    # Phase 1: Build all possible matches with scores
+    potential_matches: list[tuple[float, int, dict, GoldStandardEntry, str]] = []
+
+    for candidate in candidates:
+        candidate_metric = normalize_metric_id(candidate.get('suggested_metric_id', ''))
+        candidate_value = candidate.get('parsed_value')
+        candidate_raw = candidate.get('raw_number_text', '')
+
+        for entry in gold_entries:
+            score = 0
+            match_type = ''
+
+            # Metric ID match (most important)
+            if candidate_metric and entry.metric_id:
+                if metrics_are_equivalent(candidate_metric, entry.metric_id):
+                    score += 2
+                    match_type = 'metric_match'
+
+            # Value match
+            gold_value = normalize_value(entry.raw_value) or normalize_value(entry.scaled_value)
+
+            if candidate_value is not None and gold_value is not None:
+                try:
+                    if candidate_value == gold_value:
+                        score += 3
+                        match_type = 'exact_value'
+                    elif abs(candidate_value - gold_value) / max(gold_value, 1e-10) < 0.01:
+                        score += 2.5
+                        match_type = 'close_value'
+                except (TypeError, ZeroDivisionError):
+                    pass
+
+            # Text variant match
+            if entry.text_variant:
+                variant_lower = entry.text_variant.lower()
+                raw_lower = candidate_raw.lower()
+                context_lower = candidate.get('context_text', '').lower()
+
+                if variant_lower in context_lower or variant_lower in raw_lower:
+                    score += 1
+
+            # Triggering keyword match
+            keyword = candidate.get('triggering_keyword', '').lower()
+            if keyword and (keyword in entry.text_variant.lower() or
+                           keyword in entry.definition.lower()):
+                score += 0.5
+
+            # Only consider matches with score >= 2 (at least metric OR value match)
+            if score >= 2:
+                potential_matches.append((
+                    score,
+                    candidate['candidate_id'],
+                    candidate,
+                    entry,
+                    match_type
+                ))
+
+    # Phase 2: Sort by score (descending) and assign greedily
+    potential_matches.sort(key=lambda x: x[0], reverse=True)
+
     matched_entries: set[int] = set()  # Line numbers matched
     matched_candidates: set[int] = set()  # Candidate IDs matched
     tp_matches: list[ValidationMatch] = []
 
-    # Try to match each candidate
-    for candidate in candidates:
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+    for score, candidate_id, candidate, entry, match_type in potential_matches:
+        # Skip if candidate or entry already matched
+        if candidate_id in matched_candidates:
+            continue
+        if entry.line_number in matched_entries:
+            continue
 
-        if match:
-            matched_entries.add(match.line_number)
-            matched_candidates.add(candidate['candidate_id'])
-            tp_matches.append(ValidationMatch(
-                candidate_id=candidate['candidate_id'],
-                gold_entry=match,
-                match_type=match_type,
-                confidence=1.0,
-            ))
+        # Assign this match
+        matched_entries.add(entry.line_number)
+        matched_candidates.add(candidate_id)
+        tp_matches.append(ValidationMatch(
+            candidate_id=candidate_id,
+            gold_entry=entry,
+            match_type=match_type,
+            confidence=1.0,
+        ))
 
-            if verbose:
-                logger.info(
-                    f"  TP: candidate {candidate['candidate_id']} matched "
-                    f"gold entry line {match.line_number} ({match_type})"
-                )
+        if verbose:
+            logger.info(
+                f"  TP: candidate {candidate_id} matched "
+                f"gold entry line {entry.line_number} ({match_type}, score={score:.1f})"
+            )
 
     # Calculate metrics
     true_positives = len(tp_matches)
