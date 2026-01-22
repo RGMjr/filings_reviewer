@@ -361,6 +361,102 @@ Both TASK-5 and TASK-6 show the same failure mode:
 2. **Medium-term**: Option D - Debug context-gating to understand why it's not filtering these matches
 3. **Long-term**: Review all revenue synonym metrics (GMV, TCV, ACV, Bookings, Billings) to ensure only customer-relevant ones are active
 
+### TASK-8: Validation Matching Fix
+
+**Conclusion**: Validation script has a **greedy matching bug** that allows lower-quality matches to block better matches.
+
+**Root Cause**: First-come-first-served matching algorithm
+
+**Evidence**:
+1. **Matching Logic** (scripts/validate_against_gold_standard.py:266-344):
+   - Iterates through candidates sequentially (line 382)
+   - For each candidate, finds best gold entry that hasn't been matched yet (lines 290-292)
+   - Once matched, adds gold entry to `matched_entries` set (line 388)
+   - Prevents that gold entry from being matched by subsequent candidates (line 291-292 check)
+
+2. **The Problem**:
+   - Candidate processing order is arbitrary (depends on database query order)
+   - If a LOWER-QUALITY match is processed first, it can claim a gold entry
+   - This blocks a HIGHER-QUALITY match from claiming that same gold entry later
+   - Example scenario:
+     ```
+     Gold entry: value=575, metric=cm_large_customers_period_end
+     Candidate A (processed first): value=575, metric=cm_customers_period_end → score=3 (value only)
+     Candidate B (processed second): value=575, metric=cm_large_customers_period_end → BLOCKED
+     ```
+   - Candidate A matches (score=3, just value match)
+   - Candidate B is the CORRECT match (score=5, metric+value) but arrives too late
+
+3. **Why This Explains TASK-4**:
+   - The 575/645 candidates with `cm_large_customers_period_end` ARE being generated correctly
+   - But they may be getting blocked by other candidates that match the same values
+   - Checking the false positive list: there ARE multiple candidates with same values but different metric IDs
+   - If `cm_customers_period_end` candidate matches 575 first, it blocks `cm_large_customers_period_end` from matching
+
+4. **Scoring System Analysis**:
+   - Metric match: +2
+   - Exact value match: +3
+   - Close value match: +2.5
+   - Text variant match: +1
+   - Keyword match: +0.5
+   - Minimum threshold: 2
+   - **Problem**: Value-only match (score=3) meets threshold, but metric+value match (score=5) is better
+
+**Proposed Fix**: Two-pass optimal matching algorithm
+
+**Algorithm**:
+```python
+# Pass 1: Find ALL possible matches for each candidate
+candidate_matches = []  # List of (candidate, gold_entry, score, match_type)
+for candidate in candidates:
+    for gold_entry in gold_entries:
+        score, match_type = compute_match_score(candidate, gold_entry)
+        if score >= 2:  # Meets threshold
+            candidate_matches.append((candidate, gold_entry, score, match_type))
+
+# Pass 2: Sort by score (descending) and assign greedily
+candidate_matches.sort(key=lambda x: x[2], reverse=True)
+matched_entries = set()
+matched_candidates = set()
+tp_matches = []
+
+for candidate, gold_entry, score, match_type in candidate_matches:
+    if (candidate['candidate_id'] in matched_candidates or
+        gold_entry.line_number in matched_entries):
+        continue  # Already matched
+
+    # Assign this match
+    matched_entries.add(gold_entry.line_number)
+    matched_candidates.add(candidate['candidate_id'])
+    tp_matches.append(ValidationMatch(...))
+```
+
+**Why This Works**:
+- Builds complete bipartite match graph first (all candidates × all gold entries)
+- Sorts matches by quality (score) before assigning
+- Ensures highest-quality matches are assigned first
+- Lower-quality matches can't block higher-quality ones
+
+**Impact**:
+- Should increase True Positives (better matching)
+- Should reduce False Positives (fewer wrong matches stealing gold entries)
+- Should reduce False Negatives (correct matches no longer blocked)
+- Expected validation improvement: +5-10% on all metrics
+
+**Implementation Location**:
+- File: `scripts/validate_against_gold_standard.py`
+- Function: `validate_filing()` (lines 347-432)
+- Changes needed:
+  1. Refactor `match_candidate_to_gold_standard()` to return ALL matches above threshold, not just best
+  2. Collect all candidate-gold pairs with scores
+  3. Sort by score before assigning
+  4. Iterate through sorted list, skipping already-matched items
+
+**Testing**:
+- Run validation on Slack filing before/after fix
+- Expected: 575/645 candidates should now match correctly
+- Monitor for regression in other filings (ensure optimal matching doesn't break edge cases)
+
 ---
 
 ## Recommended Actions
