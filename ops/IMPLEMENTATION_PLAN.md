@@ -4,7 +4,7 @@
 **Purpose**: Achieve human baseline metrics (P=76%, R=84%, F1=80%)
 **Mode**: Ralph autonomous loop
 
-**Current**: P=64.2%, R=77.3%, F1=70.1%
+**Current**: P=60.8%, R=81.6%, F1=69.7%
 **Target**: P=76%, R=84%, F1=80%
 
 ---
@@ -27,7 +27,8 @@
   **Result**: R=77.3% (+15.9pp), P=64.2% (-1.7pp), F1=70.1% (+6.6pp). Retention values now correctly extracted. Unit tests pass (1104 tests).
 - [x] FIX-B | Flexible keyword patterns | "Paid Customers > $100,000" pattern doesn't match due to spacing - update regex in metric_keywords.yaml
   **Result**: P=66.7% (+2.5pp), R=77.3% (maintained), F1=71.6% (+1.5pp). Patterns now detect "Paid Customers >$100,000" matches. Keyword tests pass (284 tests).
-- [ ] FIX-C | Definition-only validation handling | Skip definition-only entries (no numeric values) in validation - don't count as false negatives
+- [x] FIX-C | Definition-only validation handling | Skip definition-only entries (no numeric values) in validation - don't count as false negatives
+  **Result**: P=60.8% (-5.9pp), R=81.6% (+4.3pp), F1=69.7% (-1.9pp). Gold standard now 38 entries (filtered 6 definition-only). Unit tests pass (3110 tests).
 
 ### Phase 2: Precision Recovery (+10pp needed)
 
@@ -157,5 +158,5 @@ If blocked or need human review:
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 5 |
-| Completed | 1 |
-| Remaining | 4 |
+| Completed | 3 |
+| Remaining | 2 |

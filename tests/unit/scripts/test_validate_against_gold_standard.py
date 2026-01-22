@@ -203,12 +203,14 @@ class TestGetEntriesForCompany:
             GoldStandardEntry(
                 document_url="", company="Slack Technologies", metric_id="cm_dau",
                 is_new_metric=False, text_variant="", raw_value="", scaled_value="",
-                scale_unit="", period="", definition="", source_quote="", line_number=1
+                scale_unit="", period="", definition="", source_quote="", line_number=1,
+                is_definition_only=False
             ),
             GoldStandardEntry(
                 document_url="", company="Another Corp", metric_id="cm_arr",
                 is_new_metric=False, text_variant="", raw_value="", scaled_value="",
-                scale_unit="", period="", definition="", source_quote="", line_number=2
+                scale_unit="", period="", definition="", source_quote="", line_number=2,
+                is_definition_only=False
             ),
         ]
 
@@ -225,7 +227,8 @@ class TestGetEntriesForCompany:
             GoldStandardEntry(
                 document_url="", company="Slack Technologies", metric_id="cm_dau",
                 is_new_metric=False, text_variant="", raw_value="", scaled_value="",
-                scale_unit="", period="", definition="", source_quote="", line_number=1
+                scale_unit="", period="", definition="", source_quote="", line_number=1,
+                is_definition_only=False
             ),
         ]
 
@@ -251,7 +254,8 @@ class TestMatchCandidateToGoldStandard:
                 document_url="", company="Test", metric_id="cm_dau",
                 is_new_metric=False, text_variant="daily active users",
                 raw_value="10 million", scaled_value="10", scale_unit="million",
-                period="", definition="", source_quote="", line_number=5
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
@@ -277,7 +281,8 @@ class TestMatchCandidateToGoldStandard:
                 document_url="", company="Test", metric_id="cm_revenue",
                 is_new_metric=False, text_variant="revenue",
                 raw_value="1 million", scaled_value="1", scale_unit="million",
-                period="", definition="", source_quote="", line_number=10
+                period="", definition="", source_quote="", line_number=10,
+                is_definition_only=False
             ),
         ]
 
@@ -302,7 +307,8 @@ class TestMatchCandidateToGoldStandard:
                 document_url="", company="Test", metric_id="cm_dau",
                 is_new_metric=False, text_variant="daily active users",
                 raw_value="10 million", scaled_value="", scale_unit="",
-                period="", definition="", source_quote="", line_number=5
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
@@ -326,7 +332,8 @@ class TestMatchCandidateToGoldStandard:
                 document_url="", company="Test", metric_id="cm_dau",
                 is_new_metric=False, text_variant="daily active users",
                 raw_value="10 million", scaled_value="", scale_unit="",
-                period="", definition="", source_quote="", line_number=5
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
@@ -414,7 +421,8 @@ class TestResultToDict:
             document_url="https://example.com", company="Test", metric_id="cm_missing",
             is_new_metric=False, text_variant="missing metric",
             raw_value="100", scaled_value="", scale_unit="",
-            period="", definition="", source_quote="", line_number=42
+            period="", definition="", source_quote="", line_number=42,
+            is_definition_only=False
         )
 
         result = ValidationResult(
