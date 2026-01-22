@@ -32,7 +32,8 @@
 
 ### Phase 2: Precision Recovery (+10pp needed)
 
-- [ ] FIX-D | Review FIX-3 exclusions | Check if cm_customers_period_end exclusions are too aggressive - may need relaxation
+- [x] FIX-D | Review FIX-3 exclusions | Check if cm_customers_period_end exclusions are too aggressive - may need relaxation
+  **Result**: FIX-3 exclusions are beneficial. Removing them decreased P from 60.8% to 57.4% (-3.4pp) with no recall improvement. Exclusions should REMAIN. FIX-3 patterns effectively filter word-form numbers in non-customer contexts (e.g., "twelve months", "eight languages").
 
 ### Phase 3: Final Validation
 
