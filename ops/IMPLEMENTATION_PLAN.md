@@ -26,7 +26,10 @@
   - Updated keyword_matching.py to filter deprecated metrics from METRIC_KEYWORDS, EXCLUSIONS, and REQUIRED_CONTEXT
   - Result: P=57.1% (was 28.6%), R=63.6% (unchanged), F1=60.2% (was 39.4%)
   - Tests: pytest tests/unit/review/test_keyword_matching.py PASSED (91 tests)
-- [ ] FIX-2 | Add cm_mrr to DOLLAR_ONLY_METRICS | In src/review/false_positive_filter.py - eliminates 4 FP
+- [x] FIX-2 | Add cm_mrr to DOLLAR_ONLY_METRICS | In src/review/false_positive_filter.py - eliminates 4 FP
+  - Added `cm_mrr` to DOLLAR_ONLY_METRICS set in false_positive_filter.py:328
+  - Result: P=63.6% (was 57.1%), R=63.6% (unchanged), F1=63.6% (was 60.2%)
+  - Tests: pytest tests/unit/review/test_false_positive_filter.py PASSED (128 tests)
 - [ ] FIX-3 | Add cm_customers_period_end exclusions | Add "languages", "months", "countries" exclusions in YAML
 
 ### Phase 2: Table Parsing Fix
@@ -55,5 +58,5 @@
 | Metric | Count |
 |--------|-------|
 | Total Tasks | 7 |
-| Completed | 1 |
-| Remaining | 6 |
+| Completed | 2 |
+| Remaining | 5 |
