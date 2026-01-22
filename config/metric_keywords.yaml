@@ -114,6 +114,10 @@ cm_customers_period_end:
     - '\bndr\b'
     - '\bnrr\b'
     - '\b\d+%\s*(?:as\s+of|for|during)\b'
+    # FIX-3: Exclude word-form numbers in non-customer contexts (languages, time periods, etc.)
+    - '\b(?:eight|twelve|ten)\s+(?:languages?|months?|countries?|weeks?|days?)\b'
+    - '\btrailing\s+twelve\s+months?\b'
+    - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
