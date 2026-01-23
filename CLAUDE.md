@@ -208,6 +208,14 @@ This enables direct GitHub operations (create/close issues, manage PRs, update l
     - Fixes cross-row false positives where keywords from one table row matched numbers in another row
     - Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
     - Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
+17. **Post-number unit filtering** (2026-01-23): YAML exclusion patterns filter numbers followed by non-metric units:
+    - Pattern: `\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:unit_words)\b` handles scale words ("million") and hyphenated words ("third-party")
+    - `cm_daily_active_users`: Excludes "applications", "countries", "languages", "integrations"
+    - `cm_customers_period_end`: Excludes "hours"
+    - `cm_active_customers_total`: Excludes "hours", "countries", "languages"
+    - `cm_new_customers_acquired`: Excludes "applications", "integrations"
+    - Examples filtered: "450,000 third-party applications", "50 million hours", "150 countries"
+    - Validated against gold standard: no regression on valid metrics like "88,000 Paid Customers"
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 

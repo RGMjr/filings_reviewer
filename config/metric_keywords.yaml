@@ -87,6 +87,8 @@ cm_new_customers_acquired:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
     - '\bcost\s+to\s+acquire\b'
+    # FIX-FP: Exclude numbers followed by non-metric units (applications, integrations)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|integrations?)\b'
 
 cm_customers_period_end:
   # Period-end customer count (stock count at end of period)
@@ -118,6 +120,8 @@ cm_customers_period_end:
     - '\b(?:eight|twelve|ten)\s+(?:languages?|months?|countries?|weeks?|days?)\b'
     - '\btrailing\s+twelve\s+months?\b'
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
+    # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -198,6 +202,9 @@ cm_active_customers_total:
     - '\bactive\s+clients?\b'
     - '\bactive\s+users?\b'
     - '\bactive\s+subscribers?\b'
+  exclusions:
+    # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -299,6 +306,9 @@ cm_daily_active_users:
   patterns:
     - '\bdau\b'
     - '\bdaily\s+active\s+users?\b'
+  exclusions:
+    # FIX-FP: Exclude numbers followed by non-metric units (applications, countries, languages)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|countries?|languages?|integrations?)\b'
   specific_patterns:
     - 'daily\s+active\s+users?'
 
