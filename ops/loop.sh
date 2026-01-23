@@ -170,7 +170,8 @@ preflight_checks() {
     # 3. For develop/refactor/test modes, run tests first
     if [[ "$MODE" == "develop" || "$MODE" == "refactor" || "$MODE" == "test" ]]; then
         echo -e "  Running baseline tests..."
-        if ! pytest tests/unit/ -q --tb=no 2>/dev/null; then
+        # Skip coverage check for pre-flight (--no-cov)
+        if ! pytest tests/unit/ -q --tb=no --no-cov 2>/dev/null; then
             echo -e "${RED}ERROR: Baseline tests failing. Fix before starting Ralph.${NC}"
             return 1
         fi
