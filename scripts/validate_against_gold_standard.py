@@ -68,6 +68,7 @@ class GoldStandardEntry:
     definition: str
     source_quote: str  # "Quote/context"
     line_number: int  # Line number in CSV for reference
+    is_definition_only: bool  # True if this is a definition without numeric value
 
 
 @dataclass
@@ -201,6 +202,9 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
             if not metric_id and is_new_metric:
                 metric_id = normalize_metric_id(new_metric_val)
 
+            # Check if this is a definition-only entry
+            is_def_only = row.get('is_definition_only', '').strip().lower() == 'x'
+
             entry = GoldStandardEntry(
                 document_url=row.get('Document URL', ''),
                 company=row.get('Company', ''),
@@ -214,6 +218,7 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
                 definition=row.get('Definition', ''),
                 source_quote=row.get('Quote/context', ''),
                 line_number=line_num,
+                is_definition_only=is_def_only,
             )
             entries.append(entry)
 
@@ -374,36 +379,116 @@ def validate_filing(
     else:
         candidates = []
 
+    # Filter out definition-only entries (no numeric values) from gold standard
+    # These cannot be detected by our system and should not count as false negatives
+    gold_entries_with_values = []
+    definition_only_entries = []
+
+    for entry in gold_entries:
+        # Definition-only if flag is set AND no raw/scaled values
+        if entry.is_definition_only and not entry.raw_value.strip() and not entry.scaled_value.strip():
+            definition_only_entries.append(entry)
+        else:
+            gold_entries_with_values.append(entry)
+
+    if definition_only_entries and verbose:
+        logger.info(f"  Skipping {len(definition_only_entries)} definition-only entries (no numeric values)")
+
+    # Two-pass optimal matching:
+    # 1. Build all candidate-gold pairs with scores
+    # 2. Sort by score and assign greedily
+
+    # Phase 1: Build all possible matches with scores
+    potential_matches: list[tuple[float, int, dict, GoldStandardEntry, str]] = []
+
+    for candidate in candidates:
+        candidate_metric = normalize_metric_id(candidate.get('suggested_metric_id', ''))
+        candidate_value = candidate.get('parsed_value')
+        candidate_raw = candidate.get('raw_number_text', '')
+
+        for entry in gold_entries_with_values:
+            score = 0
+            match_type = ''
+
+            # Metric ID match (most important)
+            if candidate_metric and entry.metric_id:
+                if metrics_are_equivalent(candidate_metric, entry.metric_id):
+                    score += 2
+                    match_type = 'metric_match'
+
+            # Value match
+            gold_value = normalize_value(entry.raw_value) or normalize_value(entry.scaled_value)
+
+            if candidate_value is not None and gold_value is not None:
+                try:
+                    if candidate_value == gold_value:
+                        score += 3
+                        match_type = 'exact_value'
+                    elif abs(candidate_value - gold_value) / max(gold_value, 1e-10) < 0.01:
+                        score += 2.5
+                        match_type = 'close_value'
+                except (TypeError, ZeroDivisionError):
+                    pass
+
+            # Text variant match
+            if entry.text_variant:
+                variant_lower = entry.text_variant.lower()
+                raw_lower = candidate_raw.lower()
+                context_lower = candidate.get('context_text', '').lower()
+
+                if variant_lower in context_lower or variant_lower in raw_lower:
+                    score += 1
+
+            # Triggering keyword match
+            keyword = candidate.get('triggering_keyword', '').lower()
+            if keyword and (keyword in entry.text_variant.lower() or
+                           keyword in entry.definition.lower()):
+                score += 0.5
+
+            # Only consider matches with score >= 2 (at least metric OR value match)
+            if score >= 2:
+                potential_matches.append((
+                    score,
+                    candidate['candidate_id'],
+                    candidate,
+                    entry,
+                    match_type
+                ))
+
+    # Phase 2: Sort by score (descending) and assign greedily
+    potential_matches.sort(key=lambda x: x[0], reverse=True)
+
     matched_entries: set[int] = set()  # Line numbers matched
     matched_candidates: set[int] = set()  # Candidate IDs matched
     tp_matches: list[ValidationMatch] = []
 
-    # Try to match each candidate
-    for candidate in candidates:
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+    for score, candidate_id, candidate, entry, match_type in potential_matches:
+        # Skip if candidate or entry already matched
+        if candidate_id in matched_candidates:
+            continue
+        if entry.line_number in matched_entries:
+            continue
 
-        if match:
-            matched_entries.add(match.line_number)
-            matched_candidates.add(candidate['candidate_id'])
-            tp_matches.append(ValidationMatch(
-                candidate_id=candidate['candidate_id'],
-                gold_entry=match,
-                match_type=match_type,
-                confidence=1.0,
-            ))
+        # Assign this match
+        matched_entries.add(entry.line_number)
+        matched_candidates.add(candidate_id)
+        tp_matches.append(ValidationMatch(
+            candidate_id=candidate_id,
+            gold_entry=entry,
+            match_type=match_type,
+            confidence=1.0,
+        ))
 
-            if verbose:
-                logger.info(
-                    f"  TP: candidate {candidate['candidate_id']} matched "
-                    f"gold entry line {match.line_number} ({match_type})"
-                )
+        if verbose:
+            logger.info(
+                f"  TP: candidate {candidate_id} matched "
+                f"gold entry line {entry.line_number} ({match_type}, score={score:.1f})"
+            )
 
-    # Calculate metrics
+    # Calculate metrics (using only gold entries with values)
     true_positives = len(tp_matches)
     false_positives = len(candidates) - true_positives
-    false_negatives = len(gold_entries) - true_positives
+    false_negatives = len(gold_entries_with_values) - true_positives
 
     precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
     recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
@@ -412,13 +497,13 @@ def validate_filing(
     # Collect FP candidates
     fp_candidates = [c for c in candidates if c['candidate_id'] not in matched_candidates]
 
-    # Collect FN entries
-    fn_entries = [e for e in gold_entries if e.line_number not in matched_entries]
+    # Collect FN entries (only from gold entries with values)
+    fn_entries = [e for e in gold_entries_with_values if e.line_number not in matched_entries]
 
     return ValidationResult(
         filing_id=filing_id,
         company_name=company_name,
-        gold_standard_count=len(gold_entries),
+        gold_standard_count=len(gold_entries_with_values),
         candidate_count=len(candidates),
         true_positives=true_positives,
         false_positives=false_positives,

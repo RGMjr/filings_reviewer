@@ -325,6 +325,7 @@ PERCENTAGE_ONLY_METRICS: set[str] = {
 # Metrics that should ONLY be dollar amounts (not percentages or plain counts)
 DOLLAR_ONLY_METRICS: set[str] = {
     'cm_arr',  # ARR should be $X million, not 40% or 100
+    'cm_mrr',  # MRR should be $X million, not 40% or 100
     'cm_tcv',  # Total contract value
     'cm_acv',  # Annual contract value
     'cm_ltv',  # Lifetime value
@@ -396,6 +397,57 @@ def is_percentage_format(raw_text: str, unit: str) -> bool:
                 return True
         except (ValueError, TypeError):
             pass
+
+    return False
+
+
+def should_treat_as_percentage(metric_id: str, raw_text: str, unit: str, context_text: str | None = None) -> bool:
+    """
+    Context-based percentage detection for retention metrics.
+
+    FIX-A: Handles cases where retention percentages are extracted as plain numbers
+    (e.g., "138" instead of "138%"). When a retention metric has retention context,
+    treat the value as a percentage even without the % symbol.
+
+    Args:
+        metric_id: The metric identifier (e.g., 'cm_net_revenue_retention')
+        raw_text: The raw text of the number match
+        unit: The parsed unit (e.g., 'count', 'percentage', 'currency')
+        context_text: Optional context text around the number
+
+    Returns:
+        True if the value should be treated as a percentage
+
+    Examples:
+        >>> # Explicit percentage
+        >>> should_treat_as_percentage('cm_net_revenue_retention', '138%', 'percentage')
+        True
+
+        >>> # Plain number with retention context
+        >>> should_treat_as_percentage('cm_net_revenue_retention', '138', 'count', 'net revenue retention of 138')
+        True
+
+        >>> # Plain number without retention context
+        >>> should_treat_as_percentage('cm_net_revenue_retention', '138', 'count', 'customers of 138')
+        False
+    """
+    # First check explicit percentage format
+    if is_percentage_format(raw_text, unit):
+        return True
+
+    # FIX-A: Retention metrics with retention context are percentages
+    # This handles values like "138" that should be "138%" in retention contexts
+    if metric_id in {'cm_net_revenue_retention', 'cm_gross_revenue_retention', 'cm_gross_retention_rate'}:
+        if context_text:
+            context_lower = context_text.lower()
+            # Check for retention-related keywords in context
+            retention_keywords = [
+                'retention', 'retained', 'churn', 'renewal', 'renewals',
+                'net dollar retention', 'ndr', 'net revenue retention', 'nrr',
+                'gross retention', 'grr', 'dollar-based net expansion'
+            ]
+            if any(keyword in context_lower for keyword in retention_keywords):
+                return True
 
     return False
 

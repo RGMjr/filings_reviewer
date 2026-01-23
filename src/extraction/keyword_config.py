@@ -185,10 +185,67 @@ def _validate_config(config: dict[str, Any]) -> None:
                         f"Invalid alias '{alias}' for {metric_id}: must start with 'cm_'"
                     )
 
+        # Validate status if present
+        if "status" in metric_config:
+            status = metric_config["status"]
+            if not isinstance(status, str):
+                raise KeywordConfigError(
+                    f"Invalid 'status' for {metric_id}: expected string"
+                )
+            if status not in ("active", "deprecated"):
+                raise KeywordConfigError(
+                    f"Invalid 'status' value for {metric_id}: expected 'active' or 'deprecated'"
+                )
+
+        # Validate deprecation_reason if present
+        if "deprecation_reason" in metric_config:
+            reason = metric_config["deprecation_reason"]
+            if not isinstance(reason, str):
+                raise KeywordConfigError(
+                    f"Invalid 'deprecation_reason' for {metric_id}: expected string"
+                )
+
 
 def _is_metric_key(key: str) -> bool:
     """Check if a key is a metric (not a YAML anchor starting with underscore)."""
     return not key.startswith("_")
+
+
+def is_metric_deprecated(metric_id: str, config_path: str | None = None) -> bool:
+    """
+    Check if a metric is deprecated.
+
+    Args:
+        metric_id: The metric identifier to check.
+        config_path: Optional path to config file.
+
+    Returns:
+        True if the metric has status='deprecated', False otherwise.
+    """
+    config = _load_config(config_path)
+    metric_config = config.get(metric_id)
+    if not metric_config:
+        return False
+    return metric_config.get("status") == "deprecated"
+
+
+def get_active_metrics(config_path: str | None = None) -> list[str]:
+    """
+    Get all active (non-deprecated) metric IDs.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        List of metric IDs that are not deprecated.
+        Excludes YAML anchor keys (starting with underscore).
+    """
+    config = _load_config(config_path)
+    return [
+        metric_id
+        for metric_id in config.keys()
+        if _is_metric_key(metric_id) and config[metric_id].get("status") != "deprecated"
+    ]
 
 
 def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
