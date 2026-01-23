@@ -523,7 +523,10 @@ class TestExclusionPatternBillings:
         assert len(billings_matches) == 0
 
     # Preservation tests - billings SHOULD match in clean context
+    # NOTE: cm_billings is now deprecated (status: deprecated in metric_keywords.yaml)
+    # These tests are skipped because KeywordMatcher excludes deprecated metrics by default
 
+    @pytest.mark.skip(reason="cm_billings is deprecated - metric excluded from matching")
     def test_calculated_billings_matches_without_exclusions(self) -> None:
         """'Calculated Billings' should match when no exclusion patterns present."""
         text = "Our Calculated Billings reached $500M this quarter."
@@ -532,6 +535,7 @@ class TestExclusionPatternBillings:
         matched_metrics = {m.metric_id for m in matches}
         assert "cm_billings" in matched_metrics
 
+    @pytest.mark.skip(reason="cm_billings is deprecated - metric excluded from matching")
     def test_total_billings_matches_without_exclusions(self) -> None:
         """'total billings' should match when no exclusion patterns present."""
         text = "Total billings for the period were strong."
@@ -540,6 +544,7 @@ class TestExclusionPatternBillings:
         matched_metrics = {m.metric_id for m in matches}
         assert "cm_billings" in matched_metrics
 
+    @pytest.mark.skip(reason="cm_billings is deprecated - metric excluded from matching")
     def test_billings_with_cohort_context_matches(self) -> None:
         """Billings with cohort context should still match."""
         text = "Billings by cohort showed improvement across all customer segments."
@@ -550,6 +555,7 @@ class TestExclusionPatternBillings:
 
     # Number-context exclusion tests (via should_exclude_for_number_context)
 
+    @pytest.mark.skip(reason="cm_billings is deprecated - metric excluded from matching")
     def test_number_context_excludes_near_free_cash_flow(self) -> None:
         """Numbers near 'Free Cash Flow' should be excluded via number-context check."""
         text = "Free Cash Flow [CELL] $ [CELL] (114,038 [CELL] )"
@@ -565,6 +571,7 @@ class TestExclusionPatternBillings:
         assert excluded is True
         assert "free" in reason.lower() and "cash" in reason.lower()
 
+    @pytest.mark.skip(reason="cm_billings is deprecated - metric excluded from matching")
     def test_number_context_preserves_calculated_billings_row(self) -> None:
         """Numbers in 'Calculated Billings' row should NOT be excluded."""
         text = "Calculated Billings [CELL] $ [CELL] 143,390 [CELL] $ [CELL] 289,013"
