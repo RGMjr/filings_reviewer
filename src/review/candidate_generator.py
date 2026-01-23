@@ -153,6 +153,7 @@ from src.review.false_positive_filter import (
     is_count_format,
     is_dollar_format,
     is_percentage_format,
+    should_treat_as_percentage,
 )
 from src.review.feature_extractor import (
     FeatureExtractor,
@@ -810,13 +811,15 @@ class CandidateGenerator:
                 metric_id = candidate.suggested_metric_id
                 raw_text = candidate.raw_number_text
                 unit = candidate.parsed_unit or "count"
+                context_text = candidate.context_text  # FIX-A: Get context for context-aware checks
 
                 # Check if metric has type constraints
                 type_mismatch = False
                 mismatch_reason = None
 
                 if metric_id in PERCENTAGE_ONLY_METRICS:
-                    if not is_percentage_format(raw_text, unit):
+                    # FIX-A: Use context-aware percentage detection for retention metrics
+                    if not should_treat_as_percentage(metric_id, raw_text, unit, context_text):
                         type_mismatch = True
                         mismatch_reason = f"{metric_id} expects percentage, got {unit}"
 

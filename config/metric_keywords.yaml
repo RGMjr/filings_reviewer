@@ -87,6 +87,8 @@ cm_new_customers_acquired:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
     - '\bcost\s+to\s+acquire\b'
+    # FIX-FP: Exclude numbers followed by non-metric units (applications, integrations)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|integrations?)\b'
 
 cm_customers_period_end:
   # Period-end customer count (stock count at end of period)
@@ -114,6 +116,12 @@ cm_customers_period_end:
     - '\bndr\b'
     - '\bnrr\b'
     - '\b\d+%\s*(?:as\s+of|for|during)\b'
+    # FIX-3: Exclude word-form numbers in non-customer contexts (languages, time periods, etc.)
+    - '\b(?:eight|twelve|ten)\s+(?:languages?|months?|countries?|weeks?|days?)\b'
+    - '\btrailing\s+twelve\s+months?\b'
+    - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
+    # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -123,12 +131,13 @@ cm_customers_period_end:
 
 cm_large_customers_period_end:
   patterns:
-    - '\bpaid\s+customers?\s*>\s*\$?\d'
+    - '\bpaid\s+customers?\s*>\s*\$[\d,]+'
     - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
     - '\blarge\s+(?:enterprise\s+)?customers?\b'
     - '\benterprise\s+customers?\b'
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
-    - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$\d+'
+    - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
+    - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -193,6 +202,9 @@ cm_active_customers_total:
     - '\bactive\s+clients?\b'
     - '\bactive\s+users?\b'
     - '\bactive\s+subscribers?\b'
+  exclusions:
+    # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -294,6 +306,9 @@ cm_daily_active_users:
   patterns:
     - '\bdau\b'
     - '\bdaily\s+active\s+users?\b'
+  exclusions:
+    # FIX-FP: Exclude numbers followed by non-metric units (applications, countries, languages)
+    - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|countries?|languages?|integrations?)\b'
   specific_patterns:
     - 'daily\s+active\s+users?'
 
@@ -365,6 +380,8 @@ cm_bookings:
     - '\bannual\s+bookings\b'
 
 cm_billings:
+  status: deprecated
+  deprecation_reason: "GAAP financial metric, not customer-specific. Use ARR/MRR for recurring revenue metrics."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:

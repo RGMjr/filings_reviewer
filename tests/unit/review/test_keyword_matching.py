@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from src.extraction.keyword_config import is_metric_deprecated
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
     METRIC_REQUIRED_CONTEXT,
@@ -1684,8 +1685,11 @@ class TestRequiredContext:
         assert isinstance(METRIC_REQUIRED_CONTEXT, dict)
 
     def test_revenue_synonyms_have_required_context(self):
-        """All 5 revenue synonym metrics should have required context."""
+        """All active revenue synonym metrics should have required context."""
         for metric_id in self.REVENUE_SYNONYM_METRICS:
+            # Skip deprecated metrics (FIX-A: cm_billings was deprecated)
+            if is_metric_deprecated(metric_id):
+                continue
             assert metric_id in METRIC_REQUIRED_CONTEXT, \
                 f"{metric_id} should have required_context defined"
             assert "patterns" in METRIC_REQUIRED_CONTEXT[metric_id]
@@ -1696,7 +1700,7 @@ class TestRequiredContext:
         assert "cm_arr" not in METRIC_REQUIRED_CONTEXT
         assert "cm_mrr" not in METRIC_REQUIRED_CONTEXT
 
-    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_without_context_no_match(self, matcher, metric_id):
         """Revenue synonyms without cohort/per-customer context should not generate matches."""
         # Build text with the metric keyword but NO cohort/per-customer context
@@ -1736,7 +1740,7 @@ class TestRequiredContext:
         assert len(metric_matches) == 0, \
             f"{metric_id} should not match without cohort/per-customer context"
 
-    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_with_cohort_context_generates_match(self, matcher, metric_id):
         """Revenue synonyms with cohort context should generate matches."""
         # Build text with the metric keyword AND cohort context
@@ -1774,7 +1778,7 @@ class TestRequiredContext:
         assert len(metric_matches) >= 1, \
             f"{metric_id} should match when cohort context is present"
 
-    @pytest.mark.parametrize("metric_id", REVENUE_SYNONYM_METRICS)
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_with_per_customer_context_generates_match(self, matcher, metric_id):
         """Revenue synonyms with per-customer context should generate matches."""
         # Build text with the metric keyword AND per-customer context

@@ -98,23 +98,48 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 def _load_metric_keywords() -> dict[str, list[str]]:
-    """Load metric keywords from YAML config.
+    """Load metric keywords from YAML config, excluding deprecated metrics.
 
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_metric_keywords
-    return cast(dict[str, list[str]], get_metric_keywords())
+    from src.extraction.keyword_config import get_metric_keywords, is_metric_deprecated
+
+    all_keywords = get_metric_keywords()
+
+    # Filter out deprecated metrics
+    active_keywords = {
+        metric_id: patterns
+        for metric_id, patterns in all_keywords.items()
+        if not is_metric_deprecated(metric_id)
+    }
+
+    logger.info(
+        f"Loaded {len(active_keywords)} active metrics "
+        f"({len(all_keywords) - len(active_keywords)} deprecated, skipped)"
+    )
+
+    return cast(dict[str, list[str]], active_keywords)
 
 
 def _load_exclusion_patterns() -> dict[str, list[str]]:
-    """Load exclusion patterns from YAML config.
+    """Load exclusion patterns from YAML config, excluding deprecated metrics.
 
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_exclusion_patterns
-    return cast(dict[str, list[str]], get_exclusion_patterns())
+    from src.extraction.keyword_config import get_exclusion_patterns, is_metric_deprecated
+
+    all_exclusions = get_exclusion_patterns()
+
+    # Filter out deprecated metrics
+    active_exclusions = {
+        metric_id: patterns
+        for metric_id, patterns in all_exclusions.items()
+        if not is_metric_deprecated(metric_id)
+    }
+
+    return cast(dict[str, list[str]], active_exclusions)
 
 
 def _load_specific_patterns() -> list[str]:
@@ -128,7 +153,7 @@ def _load_specific_patterns() -> list[str]:
 
 
 def _load_required_context() -> dict[str, dict[str, Any]]:
-    """Load required context patterns from YAML config.
+    """Load required context patterns from YAML config, excluding deprecated metrics.
 
     Required context patterns gate which metrics generate review candidates.
     Metrics with required_context only generate candidates when at least one
@@ -137,8 +162,18 @@ def _load_required_context() -> dict[str, dict[str, Any]]:
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_required_context
-    return cast(dict[str, dict[str, Any]], get_required_context())
+    from src.extraction.keyword_config import get_required_context, is_metric_deprecated
+
+    all_context = get_required_context()
+
+    # Filter out deprecated metrics
+    active_context = {
+        metric_id: context
+        for metric_id, context in all_context.items()
+        if not is_metric_deprecated(metric_id)
+    }
+
+    return cast(dict[str, dict[str, Any]], active_context)
 
 
 # =============================================================================
@@ -540,22 +575,34 @@ class KeywordMatcher:
         # Phase 1: Collect all keywords within distance with their distances and directions
         # Store as (keyword, raw_distance, direction) for L4 multiplier application
         # Also filter by required context for revenue synonym metrics
+        #
+        # FIX-5: For tables with row/cell structure, skip distance filter in Phase 1
+        # and rely on Phase 2.75 (table row filtering) instead. This prevents
+        # missing values in wide tables where the row heading keyword is >100 chars
+        # from some values in the same row. Distance is still computed for ranking.
+        # Note: We check for table_row_parser presence (not just is_table()) because
+        # single-row tables with [CELL] markers also need unrestricted same-row matching.
+        has_table_structure = table_row_parser is not None
+
         candidates_with_distance: list[tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
             dist = self.calculate_distance_from_positions(
                 number.start, number.end, kw.start, kw.end
             )
-            if dist <= self.max_keyword_distance:
-                # Check required context for context-gated metrics (GMV, TCV, etc.)
-                if check_required_context and not self._has_required_context(
-                    kw.metric_id, kw.start, text
-                ):
-                    logger.debug(
-                        f"Filtered keyword '{kw.keyword}' ({kw.metric_id}): "
-                        f"required cohort/per-customer context not present"
-                    )
-                    continue
-                candidates_with_distance.append((kw, dist))
+            # Apply distance filter only if NOT in a table with row structure
+            if not has_table_structure and dist > self.max_keyword_distance:
+                continue
+
+            # Check required context for context-gated metrics (GMV, TCV, etc.)
+            if check_required_context and not self._has_required_context(
+                kw.metric_id, kw.start, text
+            ):
+                logger.debug(
+                    f"Filtered keyword '{kw.keyword}' ({kw.metric_id}): "
+                    f"required cohort/per-customer context not present"
+                )
+                continue
+            candidates_with_distance.append((kw, dist))
 
         if not candidates_with_distance:
             return []
