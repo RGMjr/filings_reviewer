@@ -22,7 +22,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-4 | Generate stable XPath locators for every HTML element (_generate_xpath method implemented with position-based XPath, 6/6 tests pass, mypy --strict passes)
 - [x] AC-5 | Port paragraph detection from V1 (min 50 chars, max 10000) (_extract_paragraph_segments implemented, filters by length, skips nested tables, 8/8 tests pass)
 - [x] AC-6 | Port table detection with div-wrapper deduplication from V1 (_extract_table_segments, _should_skip_div_wrapper implemented, 7/7 tests pass, 74 total tests pass)
-- [ ] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output
+- [x] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output (_extract_table_text_with_markers implemented, 10/10 tests pass, 84 total tests pass, mypy --strict passes)
 - [ ] AC-8 | Port definition/methodology block detection from V1
 - [ ] AC-9 | Extract ImageAsset objects with nearby text context
 - [ ] AC-10 | Create Segment objects with dom_locator (XPath), segment_type, text, sequence
@@ -47,6 +47,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 4 | AC-4 | Complete | Implemented _generate_xpath method with position-based XPath, 6 comprehensive tests, stable across re-parsing, 59 tests pass |
 | 5 | AC-5 | Complete | Implemented _extract_paragraph_segments with V1 logic: min/max length filters, skip tables/nested divs, normalize whitespace, 67 tests pass |
 | 6 | AC-6 | Complete | Implemented table detection with div-wrapper deduplication: _extract_table_segments, _should_skip_div_wrapper, 7 new tests, 74 total tests pass |
+| 7 | AC-7 | Complete | Implemented _extract_table_text_with_markers with cell/row boundary markers: 10 comprehensive tests, 84 total tests pass, mypy --strict passes |
 
 ---
 
