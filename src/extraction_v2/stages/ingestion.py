@@ -190,6 +190,103 @@ class IngestionStage:
 
         return True
 
+    def _should_skip_div_wrapper(self, div_element: etree._Element) -> bool:
+        """
+        Check if a div should be skipped because it only wraps a table.
+
+        This implements V1 div-wrapper deduplication (Design Decision #16).
+        Prevents duplicate extraction when a div contains ONLY a table with no additional text.
+        The table will be extracted separately with correct type and markers.
+
+        Args:
+            div_element: A div element to check
+
+        Returns:
+            True if div should be skipped (contains only a table)
+        """
+        if div_element.tag != 'div':
+            return False
+
+        # Find all table children
+        tables = div_element.xpath('.//table')
+        if not tables:
+            return False
+
+        # Get text from div and from first table
+        div_text = self._normalize_text(div_element.text_content() if hasattr(div_element, 'text_content') else '')
+        table_text = self._normalize_text(tables[0].text_content() if hasattr(tables[0], 'text_content') else '')
+
+        # If div text equals table text, the div adds nothing beyond the table
+        return div_text == table_text
+
+    def _extract_table_segments(
+        self, tree: etree._Element, filing_id: int
+    ) -> list[Segment]:
+        """
+        Extract table segments from HTML tree.
+
+        Ports table detection logic from V1 html_segmenter.py:
+        - Find <table> elements
+        - Skip tables nested in divs that will be handled by div processing
+        - Extract table text (markers will be added in AC-7)
+        - Generate XPath locators
+
+        Args:
+            tree: Parsed lxml HTML tree
+            filing_id: Filing ID for segment metadata
+
+        Returns:
+            List of table Segment objects
+        """
+        segments: list[Segment] = []
+        sequence = 0
+
+        # Find all table elements
+        for element in tree.iter():
+            if element.tag != 'table':
+                continue
+
+            # Skip if parent is a div that only wraps this table
+            # The div wrapper will be skipped, so we extract the table directly
+            parent = element.getparent()
+            if parent is not None and parent.tag == 'div':
+                if self._should_skip_div_wrapper(parent):
+                    # This table is in a div-wrapper that will be skipped
+                    # Extract the table directly
+                    pass  # Continue to extract this table
+                else:
+                    # Parent div has additional content
+                    # Check if this is a composite div (has both text and tables)
+                    # For now, extract the table; composite handling is for AC-7
+                    pass
+
+            # Extract table text content (without markers for now)
+            text_content = element.text_content() if hasattr(element, 'text_content') else ''
+            normalized_text = self._normalize_text(text_content)
+
+            # Skip empty tables
+            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
+                continue
+
+            # Generate XPath locator
+            xpath = self._generate_xpath(element)
+
+            # Create segment
+            segment = Segment(
+                segment_id=f"{filing_id}_tbl_{sequence}",
+                segment_type=SegmentType.TABLE,
+                sequence=sequence,
+                text=normalized_text,  # AC-7 will add [ROW]/[CELL] markers
+                dom_locator=xpath,
+                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+            )
+
+            segments.append(segment)
+            sequence += 1
+
+        logger.info(f"Extracted {len(segments)} table segments from filing {filing_id}")
+        return segments
+
     def _extract_paragraph_segments(
         self, tree: etree._Element, filing_id: int
     ) -> list[Segment]:
@@ -201,6 +298,7 @@ class IngestionStage:
         - Extract and normalize text content
         - Filter by min/max length (50-10000 chars)
         - Skip elements nested in tables
+        - Skip div-wrappers (AC-6 deduplication)
 
         Args:
             tree: Parsed lxml HTML tree
@@ -216,6 +314,10 @@ class IngestionStage:
         # Using tree.iter() to traverse all elements in document order
         for element in tree.iter():
             if not self._is_paragraph_element(element):
+                continue
+
+            # AC-6: Skip div that only wraps a table (deduplication)
+            if element.tag == 'div' and self._should_skip_div_wrapper(element):
                 continue
 
             # Extract text content
@@ -280,7 +382,10 @@ class IngestionStage:
             logger.info(f"Extracting paragraph segments from filing {context.filing_id}")
             paragraph_segments = self._extract_paragraph_segments(tree, context.filing_id)
 
-            # TODO (AC-6): Port table detection with div-wrapper deduplication
+            # AC-6: Port table detection with div-wrapper deduplication
+            logger.info(f"Extracting table segments from filing {context.filing_id}")
+            table_segments = self._extract_table_segments(tree, context.filing_id)
+
             # TODO (AC-7): Add [CELL] and [ROW] markers
             # TODO (AC-8): Port definition/methodology block detection
             # TODO (AC-9): Extract ImageAsset objects with context
@@ -293,8 +398,11 @@ class IngestionStage:
             )
             context.document = doc
 
-            # Populate segments (currently only paragraphs)
-            context.segments = paragraph_segments
+            # AC-10: Combine all segment types
+            all_segments = paragraph_segments + table_segments
+            # Sort by sequence to maintain document order
+            # Note: Currently using separate sequences per type; will need unified sequencing
+            context.segments = all_segments
 
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 

@@ -605,3 +605,236 @@ class TestParagraphDetection:
         assert segments[0].sequence == 0
         assert segments[1].sequence == 1
         assert segments[2].sequence == 2
+
+
+class TestTableDetection:
+    """Test table detection with div-wrapper deduplication (AC-6)."""
+
+    def test_extract_simple_table(self, tmp_path: Path) -> None:
+        """Test extracting a simple table."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>2024</th>
+                    <th>2023</th>
+                </tr>
+                <tr>
+                    <td>Daily Active Users</td>
+                    <td>10 million</td>
+                    <td>8 million</td>
+                </tr>
+                <tr>
+                    <td>Paid Customers</td>
+                    <td>50,000</td>
+                    <td>40,000</td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_table_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        assert segments[0].segment_type.value == "table"
+        assert "Daily Active Users" in segments[0].text
+        assert "10 million" in segments[0].text
+
+    def test_skip_div_only_table_wrapper(self, tmp_path: Path) -> None:
+        """Test that divs containing only a table are skipped during paragraph extraction."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <table>
+                    <tr><th>Metric</th><th>2024</th><th>2023</th></tr>
+                    <tr><td>Daily Active Users</td><td>10 million</td><td>8 million</td></tr>
+                    <tr><td>Paid Customers</td><td>50,000</td><td>40,000</td></tr>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # The div should be skipped in paragraph extraction
+        paragraph_segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+        assert len(paragraph_segments) == 0
+
+        # But the table should be extracted
+        table_segments = stage._extract_table_segments(tree, filing_id=12345)
+        assert len(table_segments) == 1
+        assert "Daily Active Users" in table_segments[0].text
+
+    def test_extract_div_with_text_and_table(self, tmp_path: Path) -> None:
+        """Test that divs with both text and table are extracted (composite segment)."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                Some introductory text about the table below that provides context.
+                <table>
+                    <tr><th>Metric</th><th>2024</th><th>2023</th></tr>
+                    <tr><td>Daily Active Users</td><td>10 million</td><td>8 million</td></tr>
+                    <tr><td>Paid Customers</td><td>50,000</td><td>40,000</td></tr>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # The div should be extracted as a paragraph (has text + table)
+        paragraph_segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+        assert len(paragraph_segments) == 1
+        assert "introductory text" in paragraph_segments[0].text
+
+        # The table should also be extracted separately
+        table_segments = stage._extract_table_segments(tree, filing_id=12345)
+        assert len(table_segments) == 1
+        assert "Daily Active Users" in table_segments[0].text
+
+    def test_table_has_xpath_locator(self, tmp_path: Path) -> None:
+        """Test that extracted tables have XPath locators."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>First Table with enough content for extraction</td><td>100</td></tr>
+            </table>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>Second Table with enough content for extraction</td><td>200</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_table_segments(tree, filing_id=12345)
+
+        assert len(segments) == 2
+        assert segments[0].dom_locator == "/html/body[1]/table[1]"
+        assert segments[1].dom_locator == "/html/body[1]/table[2]"
+
+    def test_filter_empty_tables(self, tmp_path: Path) -> None:
+        """Test that empty tables are filtered out."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td></td></tr>
+            </table>
+            <table>
+                <tr><td>This table has enough content to be extracted properly</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_table_segments(tree, filing_id=12345)
+
+        # Only the table with content should be extracted
+        assert len(segments) == 1
+        assert "enough content" in segments[0].text
+
+    def test_table_sequence_numbering(self, tmp_path: Path) -> None:
+        """Test that tables are numbered sequentially."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>First table with enough content for extraction</td><td>100</td></tr>
+            </table>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>Second table with enough content for extraction</td><td>200</td></tr>
+            </table>
+            <table>
+                <tr><th>Metric</th><th>Value</th></tr>
+                <tr><td>Third table with enough content for extraction</td><td>300</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_table_segments(tree, filing_id=12345)
+
+        assert len(segments) == 3
+        assert segments[0].sequence == 0
+        assert segments[1].sequence == 1
+        assert segments[2].sequence == 2
+
+    def test_should_skip_div_wrapper_detection(self, tmp_path: Path) -> None:
+        """Test _should_skip_div_wrapper helper method."""
+        html_content = b"""
+        <html>
+        <body>
+            <div id="wrapper-only">
+                <table>
+                    <tr><td>Table content only</td></tr>
+                </table>
+            </div>
+            <div id="wrapper-with-text">
+                Some text content that makes this more than just a wrapper.
+                <table>
+                    <tr><td>Table content</td></tr>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Find the two divs
+        wrapper_only = tree.xpath("//div[@id='wrapper-only']")[0]
+        wrapper_with_text = tree.xpath("//div[@id='wrapper-with-text']")[0]
+
+        # Wrapper-only div should be skipped
+        assert stage._should_skip_div_wrapper(wrapper_only) is True
+
+        # Wrapper with additional text should not be skipped
+        assert stage._should_skip_div_wrapper(wrapper_with_text) is False
