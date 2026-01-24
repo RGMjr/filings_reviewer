@@ -38,6 +38,7 @@ from src.extraction_v2.models import (
     Segment,
     Table,
 )
+from src.extraction_v2.stages.ingestion import IngestionStage
 
 logger = logging.getLogger(__name__)
 
@@ -348,42 +349,7 @@ class V2Pipeline:
 # ============================================================================
 # Stage Implementations (Stubs - to be implemented in separate modules)
 # ============================================================================
-
-
-class IngestionStage:
-    """
-    Stage 1: Ingestion & Parsing.
-
-    - Fetch HTML, preserve DOM structure
-    - Generate Segments with stable XPath locators
-    - Extract image assets with nearby text
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Parse HTML and generate segments."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement HTML parsing with lxml
-        # TODO: Generate Segment objects with XPath locators
-        # TODO: Extract ImageAsset objects
-
-        # Placeholder implementation
-        context.document = Document(
-            doc_id=str(context.filing_id),
-            html_path=str(context.html_path),
-        )
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.INGESTION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=1,
-            items_output=len(context.segments),
-            metadata={"segment_count": len(context.segments)},
-        )
+# Note: IngestionStage is now imported from src.extraction_v2.stages.ingestion
 
 
 class SectionClassificationStage:
