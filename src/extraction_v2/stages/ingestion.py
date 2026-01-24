@@ -92,6 +92,52 @@ class IngestionStage:
             logger.error(f"Unexpected error parsing HTML {html_path}: {e}")
             return None
 
+    def _generate_xpath(self, element: etree._Element) -> str:
+        """
+        Generate a stable XPath locator for an element.
+
+        Creates an absolute XPath using element positions within parent.
+        Format: /html[1]/body[1]/div[2]/p[3]
+
+        This XPath is stable across re-parsing of the same HTML document.
+
+        Args:
+            element: lxml Element to generate XPath for
+
+        Returns:
+            Absolute XPath string
+        """
+        # Build path from root to element
+        path_parts: list[str] = []
+
+        current = element
+        while current is not None:
+            # Get parent to calculate position
+            parent = current.getparent()
+
+            if parent is None:
+                # Root element - just use tag name
+                path_parts.insert(0, current.tag)
+            else:
+                # Count siblings of same type before this element
+                tag = current.tag
+                siblings_before = 0
+
+                for sibling in parent:
+                    if sibling is current:
+                        break
+                    if sibling.tag == tag:
+                        siblings_before += 1
+
+                # XPath positions are 1-indexed
+                position = siblings_before + 1
+                path_parts.insert(0, f"{tag}[{position}]")
+
+            current = parent
+
+        # Prepend / for absolute path
+        return "/" + "/".join(path_parts)
+
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
         Parse HTML and generate segments with XPath locators.
