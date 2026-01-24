@@ -219,6 +219,85 @@ class IngestionStage:
         # If div text equals table text, the div adds nothing beyond the table
         return div_text == table_text
 
+    def _extract_table_text_with_markers(self, table_element: etree._Element) -> str:
+        """
+        Extract table text with cell/row boundary markers.
+
+        Preserves table cell boundaries by adding [CELL] and [ROW] markers
+        during HTML-to-text conversion. This prevents adjacent numeric values
+        from merging together when table structure is lost.
+
+        Args:
+            table_element: lxml Element (table or element containing table)
+
+        Returns:
+            Text with cell boundaries marked: "Value [CELL] 171% [CELL] 152% [ROW] ..."
+            Empty string if table has no content or parsing fails
+
+        Marker format:
+            - Cell separator: " [CELL] " between cells in same row
+            - Row separator: " [ROW] " between table rows
+            - Empty/whitespace-only cells are skipped (no empty markers)
+            - No markers at start or end of text (only between content)
+
+        Example:
+            Input HTML:
+                <table>
+                  <tr><td>Metric</td><td>2023</td><td>2022</td></tr>
+                  <tr><td>Retention Rate</td><td>171%</td><td>152%</td></tr>
+                </table>
+
+            Output text:
+                "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%"
+        """
+        try:
+            # Find the table element (may be element itself or nested)
+            table = table_element if table_element.tag == 'table' else table_element.xpath('.//table')[0] if table_element.xpath('.//table') else None
+
+            if table is None:
+                # No table found - fall back to standard normalization
+                logger.debug("No table found in element, using standard normalization")
+                return self._normalize_text(table_element.text_content() if hasattr(table_element, 'text_content') else '')
+
+            # Extract rows and cells
+            row_texts: list[str] = []
+
+            # Find all rows (tr elements)
+            rows = table.xpath('.//tr')
+
+            for row in rows:
+                # Find all cells in this row (both td and th)
+                cells = row.xpath('./td | ./th')
+
+                if not cells:
+                    # Empty row - skip
+                    continue
+
+                # Extract and normalize text from each cell
+                cell_texts = []
+                for cell in cells:
+                    cell_text = self._normalize_text(cell.text_content() if hasattr(cell, 'text_content') else '')
+                    # Skip empty cells (no empty markers)
+                    if cell_text:
+                        cell_texts.append(cell_text)
+
+                # Join cells with [CELL] marker
+                if cell_texts:
+                    row_text = " [CELL] ".join(cell_texts)
+                    row_texts.append(row_text)
+
+            # Join rows with [ROW] marker
+            if row_texts:
+                return " [ROW] ".join(row_texts)
+            else:
+                # Empty table - no content
+                return ""
+
+        except Exception as e:
+            # Any error in table parsing should fall back to standard normalization
+            logger.warning(f"Error extracting table text with markers: {e}, falling back to standard normalization")
+            return self._normalize_text(table_element.text_content() if hasattr(table_element, 'text_content') else '')
+
     def _extract_table_segments(
         self, tree: etree._Element, filing_id: int
     ) -> list[Segment]:
@@ -260,9 +339,8 @@ class IngestionStage:
                     # For now, extract the table; composite handling is for AC-7
                     pass
 
-            # Extract table text content (without markers for now)
-            text_content = element.text_content() if hasattr(element, 'text_content') else ''
-            normalized_text = self._normalize_text(text_content)
+            # AC-7: Extract table text with [CELL] and [ROW] markers
+            normalized_text = self._extract_table_text_with_markers(element)
 
             # Skip empty tables
             if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
@@ -276,7 +354,7 @@ class IngestionStage:
                 segment_id=f"{filing_id}_tbl_{sequence}",
                 segment_type=SegmentType.TABLE,
                 sequence=sequence,
-                text=normalized_text,  # AC-7 will add [ROW]/[CELL] markers
+                text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
@@ -386,7 +464,6 @@ class IngestionStage:
             logger.info(f"Extracting table segments from filing {context.filing_id}")
             table_segments = self._extract_table_segments(tree, context.filing_id)
 
-            # TODO (AC-7): Add [CELL] and [ROW] markers
             # TODO (AC-8): Port definition/methodology block detection
             # TODO (AC-9): Extract ImageAsset objects with context
             # TODO (AC-10): Create Segment objects (combine all segment types)

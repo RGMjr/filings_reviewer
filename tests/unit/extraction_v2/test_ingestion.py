@@ -838,3 +838,288 @@ class TestTableDetection:
 
         # Wrapper with additional text should not be skipped
         assert stage._should_skip_div_wrapper(wrapper_with_text) is False
+
+
+class TestTableCellRowMarkers:
+    """Test [CELL] and [ROW] marker insertion for tables (AC-7)."""
+
+    def test_single_row_table_has_cell_markers(self, tmp_path: Path) -> None:
+        """Single row table should have [CELL] markers between cells."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td>A</td><td>B</td><td>C</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        assert result == "A [CELL] B [CELL] C"
+        assert result.count("[CELL]") == 2
+        assert "[ROW]" not in result  # Single row, no row markers
+
+    def test_multi_row_table_has_row_markers(self, tmp_path: Path) -> None:
+        """Multi-row table should have [ROW] markers between rows."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td>A</td><td>B</td></tr>
+                <tr><td>C</td><td>D</td></tr>
+                <tr><td>E</td><td>F</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        # Should have [CELL] markers within rows and [ROW] markers between rows
+        assert "[CELL]" in result
+        assert "[ROW]" in result
+        assert result.count("[ROW]") == 2  # 3 rows = 2 separators
+        assert result.count("[CELL]") == 3  # Each row has 1 [CELL] (2 cells per row)
+        assert result == "A [CELL] B [ROW] C [CELL] D [ROW] E [CELL] F"
+
+    def test_mixed_th_td_cells_all_marked(self, tmp_path: Path) -> None:
+        """Both <th> and <td> cells should get markers."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><th>Metric</th><th>2023</th><th>2022</th></tr>
+                <tr><td>Retention Rate</td><td>171%</td><td>152%</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        # Both header and data rows should have markers
+        assert "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == result
+
+    def test_empty_cells_are_skipped(self, tmp_path: Path) -> None:
+        """Empty cells should not create empty markers."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td>A</td><td>  </td><td>C</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        # Should skip empty middle cell
+        assert result == "A [CELL] C"
+        assert result.count("[CELL]") == 1
+
+    def test_empty_row_is_skipped(self, tmp_path: Path) -> None:
+        """Empty rows should not create empty markers."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td>A</td><td>B</td></tr>
+                <tr><td></td><td>  </td></tr>
+                <tr><td>C</td><td>D</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        # Should skip empty middle row
+        assert result == "A [CELL] B [ROW] C [CELL] D"
+        assert result.count("[ROW]") == 1  # Only one separator between 2 non-empty rows
+
+    def test_table_with_only_headers(self, tmp_path: Path) -> None:
+        """Table with only header row should work correctly."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><th>Header 1</th><th>Header 2</th><th>Header 3</th></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        assert result == "Header 1 [CELL] Header 2 [CELL] Header 3"
+
+    def test_table_segments_include_markers(self, tmp_path: Path) -> None:
+        """Integration test: table segments should have markers in their text."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><th>Period</th><th>Customers</th></tr>
+                <tr><td>Q1</td><td>10,000</td></tr>
+                <tr><td>Q2</td><td>15,000</td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        config = PipelineConfig()
+        context = PipelineContext(
+            config=config,
+            html_path=html_file,
+            filing_id=1,
+        )
+
+        result = stage.process(context)
+
+        assert result.success is True
+        # Find table segments
+        table_segments = [s for s in context.segments if s.segment_type.value == "table"]
+        assert len(table_segments) == 1
+
+        table_seg = table_segments[0]
+        # Should have markers in text
+        assert "[ROW]" in table_seg.text
+        assert "[CELL]" in table_seg.text
+        # Check specific content
+        assert "Period [CELL] Customers" in table_seg.text
+        assert "Q1 [CELL] 10,000" in table_seg.text
+        assert "Q2 [CELL] 15,000" in table_seg.text
+
+    def test_nested_table_markers(self, tmp_path: Path) -> None:
+        """Nested tables should still get markers (outer table perspective)."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr>
+                    <td>Outer A</td>
+                    <td>
+                        <table>
+                            <tr><td>Inner 1</td><td>Inner 2</td></tr>
+                        </table>
+                    </td>
+                    <td>Outer B</td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        # Outer table should have markers for its cells
+        assert "Outer A" in result
+        assert "Outer B" in result
+        # Nested table content appears as part of middle cell
+        assert "Inner 1" in result
+        assert "Inner 2" in result
+        # Should have [CELL] markers from outer table
+        assert "[CELL]" in result
+
+    def test_empty_table_returns_empty_string(self, tmp_path: Path) -> None:
+        """Completely empty table should return empty string."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr><td></td><td></td></tr>
+                <tr><td>  </td><td>  </td></tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        table = tree.xpath("//table")[0]
+        result = stage._extract_table_text_with_markers(table)
+
+        assert result == ""
+
+    def test_non_table_element_falls_back_to_normalization(self, tmp_path: Path) -> None:
+        """Non-table element should fall back to standard text normalization."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This is a paragraph, not a table.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        para = tree.xpath("//p")[0]
+        result = stage._extract_table_text_with_markers(para)
+
+        # Should use standard normalization (no markers)
+        assert result == "This is a paragraph, not a table."
+        assert "[CELL]" not in result
+        assert "[ROW]" not in result
