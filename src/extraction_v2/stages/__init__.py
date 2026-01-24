@@ -23,6 +23,8 @@ Usage:
 Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v2/pipeline.py.
 """
 
+from src.extraction_v2.stages.ingestion import IngestionStage
+
 __all__ = [
-    # Will be populated as stages are implemented
+    "IngestionStage",
 ]
