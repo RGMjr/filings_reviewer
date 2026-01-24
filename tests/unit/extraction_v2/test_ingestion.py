@@ -394,3 +394,214 @@ class TestXPathGeneration:
         assert len(found) == 1
         assert found[0] is target
         assert "unique text" in found[0].text_content()
+
+
+class TestParagraphDetection:
+    """Test paragraph detection from V1 (AC-5)."""
+
+    def test_extract_simple_paragraph(self, tmp_path: Path) -> None:
+        """Test extracting a simple paragraph."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This is a test paragraph with enough content to meet the minimum length requirement of 50 characters.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        assert segments[0].segment_type.value == "paragraph"
+        assert "test paragraph" in segments[0].text
+        assert segments[0].sequence == 0
+
+    def test_filter_short_paragraphs(self, tmp_path: Path) -> None:
+        """Test that paragraphs below 50 chars are filtered out."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>Short</p>
+            <p>This is a longer paragraph with enough content to meet the minimum length requirement.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        # Only the long paragraph should be extracted
+        assert len(segments) == 1
+        assert "longer paragraph" in segments[0].text
+        assert "Short" not in segments[0].text
+
+    def test_truncate_long_paragraphs(self, tmp_path: Path) -> None:
+        """Test that paragraphs over 10000 chars are truncated."""
+        # Create a paragraph with 12000 characters
+        long_text = "A" * 12000
+        html_content = f"""
+        <html>
+        <body>
+            <p>{long_text}</p>
+        </body>
+        </html>
+        """.encode()
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        # Should be truncated to 10000 chars
+        assert len(segments[0].text) == 10000
+
+    def test_skip_paragraphs_in_tables(self, tmp_path: Path) -> None:
+        """Test that paragraphs inside tables are skipped."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This paragraph is outside the table and should be extracted because it has enough content.</p>
+            <table>
+                <tr>
+                    <td>
+                        <p>This paragraph is inside a table and should be skipped even though it has enough content.</p>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        # Only the paragraph outside the table should be extracted
+        assert len(segments) == 1
+        assert "outside the table" in segments[0].text
+        assert "inside a table" not in segments[0].text
+
+    def test_extract_multiple_paragraph_types(self, tmp_path: Path) -> None:
+        """Test extracting different paragraph element types (p, div, blockquote, pre, figure)."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This is a regular paragraph with sufficient content for extraction.</p>
+            <div>This is a div element with sufficient content for extraction.</div>
+            <blockquote>This is a blockquote element with sufficient content for extraction.</blockquote>
+            <pre>This is a pre element with sufficient content for extraction.</pre>
+            <figure>This is a figure element with sufficient content for extraction.</figure>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        # Should extract all 5 element types
+        assert len(segments) == 5
+        assert any("regular paragraph" in s.text for s in segments)
+        assert any("div element" in s.text for s in segments)
+        assert any("blockquote element" in s.text for s in segments)
+        assert any("pre element" in s.text for s in segments)
+        assert any("figure element" in s.text for s in segments)
+
+    def test_normalize_whitespace(self, tmp_path: Path) -> None:
+        """Test that whitespace is normalized (multiple spaces/newlines to single space)."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This    has     multiple
+            spaces   and
+            newlines   that should be normalized to single spaces for extraction.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        # Multiple whitespace should be collapsed
+        assert "multiple   spaces" not in segments[0].text
+        assert "multiple spaces" in segments[0].text
+
+    def test_paragraph_has_xpath_locator(self, tmp_path: Path) -> None:
+        """Test that extracted paragraphs have XPath locators."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <p>First paragraph with enough content to meet minimum requirements.</p>
+                <p>Second paragraph with enough content to meet minimum requirements.</p>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 2
+        # Each segment should have an XPath locator
+        assert segments[0].dom_locator == "/html/body[1]/div[1]/p[1]"
+        assert segments[1].dom_locator == "/html/body[1]/div[1]/p[2]"
+
+    def test_paragraph_sequence_numbering(self, tmp_path: Path) -> None:
+        """Test that paragraphs are numbered sequentially."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>First paragraph with enough content to meet minimum requirements.</p>
+            <p>Second paragraph with enough content to meet minimum requirements.</p>
+            <p>Third paragraph with enough content to meet minimum requirements.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 3
+        assert segments[0].sequence == 0
+        assert segments[1].sequence == 1
+        assert segments[2].sequence == 2

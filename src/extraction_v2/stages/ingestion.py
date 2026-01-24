@@ -47,10 +47,13 @@ class IngestionStage:
     - Populate context.document and context.segments
     """
 
+    # V1 compatibility constants
+    MIN_PARAGRAPH_CHARS = 50  # Minimum text length for paragraphs
+    MAX_PARAGRAPH_CHARS = 10000  # Maximum text length for paragraphs
+
     def __init__(self) -> None:
         """Initialize the ingestion stage."""
-        self.min_paragraph_chars = 50  # Port from V1
-        self.max_paragraph_chars = 10000  # Port from V1
+        pass
 
     def _parse_html(self, html_path: Path) -> etree._Element | None:
         """
@@ -138,6 +141,112 @@ class IngestionStage:
         # Prepend / for absolute path
         return "/" + "/".join(path_parts)
 
+    def _normalize_text(self, text: str) -> str:
+        """
+        Normalize text by collapsing whitespace.
+
+        Args:
+            text: Raw text content
+
+        Returns:
+            Normalized text with collapsed whitespace
+        """
+        # Replace multiple whitespace (including newlines) with single space
+        import re
+        normalized = re.sub(r'\s+', ' ', text)
+        return normalized.strip()
+
+    def _is_paragraph_element(self, element: etree._Element) -> bool:
+        """
+        Check if element should be treated as a paragraph.
+
+        Paragraph elements: p, div, blockquote, pre, figure
+        Skip elements nested in tables (handled separately).
+        Skip divs that contain paragraph elements (extract children instead).
+
+        Args:
+            element: lxml Element to check
+
+        Returns:
+            True if element should be extracted as paragraph
+        """
+        # Check tag type
+        if element.tag not in ('p', 'div', 'blockquote', 'pre', 'figure'):
+            return False
+
+        # Skip if nested inside a table
+        parent = element.getparent()
+        while parent is not None:
+            if parent.tag == 'table':
+                return False
+            parent = parent.getparent()
+
+        # Skip divs that contain paragraph elements (we'll extract the <p> tags instead)
+        if element.tag == 'div':
+            # Check if div contains any paragraph-like children
+            for child in element:
+                if child.tag in ('p', 'blockquote', 'pre', 'figure'):
+                    return False
+
+        return True
+
+    def _extract_paragraph_segments(
+        self, tree: etree._Element, filing_id: int
+    ) -> list[Segment]:
+        """
+        Extract paragraph segments from HTML tree.
+
+        Ports paragraph detection logic from V1 html_segmenter.py:
+        - Find text elements (p, div, blockquote, pre, figure)
+        - Extract and normalize text content
+        - Filter by min/max length (50-10000 chars)
+        - Skip elements nested in tables
+
+        Args:
+            tree: Parsed lxml HTML tree
+            filing_id: Filing ID for segment metadata
+
+        Returns:
+            List of paragraph Segment objects
+        """
+        segments: list[Segment] = []
+        sequence = 0
+
+        # Find all potential paragraph elements
+        # Using tree.iter() to traverse all elements in document order
+        for element in tree.iter():
+            if not self._is_paragraph_element(element):
+                continue
+
+            # Extract text content
+            text_content = element.text_content() if hasattr(element, 'text_content') else ''
+            normalized_text = self._normalize_text(text_content)
+
+            # Apply length filters
+            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
+                continue
+            if len(normalized_text) > self.MAX_PARAGRAPH_CHARS:
+                normalized_text = normalized_text[:self.MAX_PARAGRAPH_CHARS]
+
+            # Generate XPath locator
+            xpath = self._generate_xpath(element)
+
+            # Create segment
+            segment = Segment(
+                segment_id=f"{filing_id}_seg_{sequence}",
+                segment_type=SegmentType.PARAGRAPH,
+                sequence=sequence,
+                text=normalized_text,
+                dom_locator=xpath,
+                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+            )
+
+            segments.append(segment)
+            sequence += 1
+
+        logger.info(f"Extracted {len(segments)} paragraph segments from filing {filing_id}")
+        return segments
+
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
         Parse HTML and generate segments with XPath locators.
@@ -167,24 +276,25 @@ class IngestionStage:
             if tree is None:
                 raise ValueError(f"Failed to parse HTML from {context.html_path}")
 
-            # TODO (AC-4): Generate stable XPath locators
-            # TODO (AC-5): Port paragraph detection from V1
+            # AC-5: Port paragraph detection from V1
+            logger.info(f"Extracting paragraph segments from filing {context.filing_id}")
+            paragraph_segments = self._extract_paragraph_segments(tree, context.filing_id)
+
             # TODO (AC-6): Port table detection with div-wrapper deduplication
             # TODO (AC-7): Add [CELL] and [ROW] markers
             # TODO (AC-8): Port definition/methodology block detection
             # TODO (AC-9): Extract ImageAsset objects with context
-            # TODO (AC-10): Create Segment objects
-            # TODO (AC-11): Create Document object
+            # TODO (AC-10): Create Segment objects (combine all segment types)
 
-            # Placeholder implementation
+            # AC-11: Create Document object
             doc = Document(
                 doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
             )
             context.document = doc
 
-            # Placeholder: empty segments list
-            context.segments = []
+            # Populate segments (currently only paragraphs)
+            context.segments = paragraph_segments
 
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 
