@@ -207,3 +207,190 @@ class TestIngestionStageProcess:
         assert result.items_processed == 1  # 1 HTML file
         assert result.duration_ms >= 0  # Can be 0 for very fast operations
         assert "html_path" in result.metadata
+
+
+class TestXPathGeneration:
+    """Test stable XPath locator generation (AC-4)."""
+
+    def test_generate_xpath_root_element(self, tmp_path: Path) -> None:
+        """Test XPath generation for root element."""
+        html_content = b"<html><body><p>Test</p></body></html>"
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Root element should have simple XPath
+        xpath = stage._generate_xpath(tree)
+        assert xpath == "/html"
+
+    def test_generate_xpath_nested_elements(self, tmp_path: Path) -> None:
+        """Test XPath generation for nested elements."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <p>First paragraph</p>
+                <p>Second paragraph</p>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Find the second paragraph
+        paragraphs = tree.xpath("//p")
+        assert len(paragraphs) == 2
+
+        # First paragraph
+        xpath1 = stage._generate_xpath(paragraphs[0])
+        assert xpath1 == "/html/body[1]/div[1]/p[1]"
+
+        # Second paragraph
+        xpath2 = stage._generate_xpath(paragraphs[1])
+        assert xpath2 == "/html/body[1]/div[1]/p[2]"
+
+    def test_generate_xpath_multiple_siblings(self, tmp_path: Path) -> None:
+        """Test XPath generation with multiple sibling types."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>Content 1</div>
+            <p>Paragraph 1</p>
+            <div>Content 2</div>
+            <p>Paragraph 2</p>
+            <div>Content 3</div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Find all divs and ps
+        divs = tree.xpath("//div")
+        ps = tree.xpath("//p")
+
+        # Check each div has correct position
+        assert stage._generate_xpath(divs[0]) == "/html/body[1]/div[1]"
+        assert stage._generate_xpath(divs[1]) == "/html/body[1]/div[2]"
+        assert stage._generate_xpath(divs[2]) == "/html/body[1]/div[3]"
+
+        # Check paragraphs have correct positions
+        assert stage._generate_xpath(ps[0]) == "/html/body[1]/p[1]"
+        assert stage._generate_xpath(ps[1]) == "/html/body[1]/p[2]"
+
+    def test_generate_xpath_table_cells(self, tmp_path: Path) -> None:
+        """Test XPath generation for table cells."""
+        html_content = b"""
+        <html>
+        <body>
+            <table>
+                <tr>
+                    <th>Header 1</th>
+                    <th>Header 2</th>
+                </tr>
+                <tr>
+                    <td>Data 1</td>
+                    <td>Data 2</td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Find table cells
+        ths = tree.xpath("//th")
+        tds = tree.xpath("//td")
+
+        # Check header cells
+        assert stage._generate_xpath(ths[0]) == "/html/body[1]/table[1]/tr[1]/th[1]"
+        assert stage._generate_xpath(ths[1]) == "/html/body[1]/table[1]/tr[1]/th[2]"
+
+        # Check data cells
+        assert stage._generate_xpath(tds[0]) == "/html/body[1]/table[1]/tr[2]/td[1]"
+        assert stage._generate_xpath(tds[1]) == "/html/body[1]/table[1]/tr[2]/td[2]"
+
+    def test_xpath_locator_stability(self, tmp_path: Path) -> None:
+        """Test that XPath locators are stable across re-parsing."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <p>Target paragraph</p>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+
+        # Parse twice
+        tree1 = stage._parse_html(html_file)
+        tree2 = stage._parse_html(html_file)
+
+        assert tree1 is not None
+        assert tree2 is not None
+
+        # Find same element in both trees
+        p1 = tree1.xpath("//p")[0]
+        p2 = tree2.xpath("//p")[0]
+
+        # Generate XPaths
+        xpath1 = stage._generate_xpath(p1)
+        xpath2 = stage._generate_xpath(p2)
+
+        # Should be identical
+        assert xpath1 == xpath2
+        assert xpath1 == "/html/body[1]/div[1]/p[1]"
+
+    def test_xpath_can_locate_element(self, tmp_path: Path) -> None:
+        """Test that generated XPath can locate the original element."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <p>First</p>
+                <p>Second</p>
+                <p>Target paragraph with unique text</p>
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        # Find the target paragraph
+        target = tree.xpath("//p[contains(text(), 'unique text')]")[0]
+
+        # Generate XPath
+        xpath = stage._generate_xpath(target)
+
+        # Use XPath to find element again
+        found = tree.xpath(xpath)
+
+        assert len(found) == 1
+        assert found[0] is target
+        assert "unique text" in found[0].text_content()

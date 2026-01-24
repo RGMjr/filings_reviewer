@@ -19,7 +19,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-1 | Create `src/extraction_v2/stages/__init__.py` module package (module created with docstring, import successful)
 - [x] AC-2 | Create `src/extraction_v2/stages/ingestion.py` with IngestionStage class (class created, imports from pipeline.py, all 45 tests pass)
 - [x] AC-3 | Implement lxml-based HTML parser with `lxml.html.parse()` (implemented _parse_html method with lxml.html.fromstring, handles malformed/empty HTML, 8/8 tests pass)
-- [ ] AC-4 | Generate stable XPath locators for every HTML element
+- [x] AC-4 | Generate stable XPath locators for every HTML element (_generate_xpath method implemented with position-based XPath, 6/6 tests pass, mypy --strict passes)
 - [ ] AC-5 | Port paragraph detection from V1 (min 50 chars, max 10000)
 - [ ] AC-6 | Port table detection with div-wrapper deduplication from V1
 - [ ] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output
@@ -44,6 +44,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 1 | AC-1 | Complete | Created stages/__init__.py with docstring |
 | 2 | AC-2 | Complete | Created IngestionStage class with process method, resolved circular import via TYPE_CHECKING |
 | 3 | AC-3 | Complete | Implemented lxml HTML parser with error handling (empty files, malformed HTML), 53 tests pass |
+| 4 | AC-4 | Complete | Implemented _generate_xpath method with position-based XPath, 6 comprehensive tests, stable across re-parsing, 59 tests pass |
 
 ---
 
