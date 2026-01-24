@@ -16,7 +16,7 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | Create `src/extraction_v2/stages/__init__.py` module package
+- [x] AC-1 | Create `src/extraction_v2/stages/__init__.py` module package (module created with docstring, import successful)
 - [ ] AC-2 | Create `src/extraction_v2/stages/ingestion.py` with IngestionStage class
 - [ ] AC-3 | Implement lxml-based HTML parser with `lxml.html.parse()`
 - [ ] AC-4 | Generate stable XPath locators for every HTML element
@@ -41,7 +41,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | - | - | - |
+| 1 | AC-1 | Complete | Created stages/__init__.py with docstring |
 
 ---
 
