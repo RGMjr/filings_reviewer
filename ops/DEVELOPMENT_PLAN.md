@@ -20,7 +20,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-2 | Create `src/extraction_v2/stages/ingestion.py` with IngestionStage class (class created, imports from pipeline.py, all 45 tests pass)
 - [x] AC-3 | Implement lxml-based HTML parser with `lxml.html.parse()` (implemented _parse_html method with lxml.html.fromstring, handles malformed/empty HTML, 8/8 tests pass)
 - [x] AC-4 | Generate stable XPath locators for every HTML element (_generate_xpath method implemented with position-based XPath, 6/6 tests pass, mypy --strict passes)
-- [ ] AC-5 | Port paragraph detection from V1 (min 50 chars, max 10000)
+- [x] AC-5 | Port paragraph detection from V1 (min 50 chars, max 10000) (_extract_paragraph_segments implemented, filters by length, skips nested tables, 8/8 tests pass)
 - [ ] AC-6 | Port table detection with div-wrapper deduplication from V1
 - [ ] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output
 - [ ] AC-8 | Port definition/methodology block detection from V1
@@ -45,6 +45,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 2 | AC-2 | Complete | Created IngestionStage class with process method, resolved circular import via TYPE_CHECKING |
 | 3 | AC-3 | Complete | Implemented lxml HTML parser with error handling (empty files, malformed HTML), 53 tests pass |
 | 4 | AC-4 | Complete | Implemented _generate_xpath method with position-based XPath, 6 comprehensive tests, stable across re-parsing, 59 tests pass |
+| 5 | AC-5 | Complete | Implemented _extract_paragraph_segments with V1 logic: min/max length filters, skip tables/nested divs, normalize whitespace, 67 tests pass |
 
 ---
 
