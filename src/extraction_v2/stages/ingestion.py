@@ -18,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from lxml import etree, html
+
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
@@ -50,6 +52,46 @@ class IngestionStage:
         self.min_paragraph_chars = 50  # Port from V1
         self.max_paragraph_chars = 10000  # Port from V1
 
+    def _parse_html(self, html_path: Path) -> etree._Element | None:
+        """
+        Parse HTML file using lxml.
+
+        Uses lxml for 10x faster parsing compared to BeautifulSoup.
+        Handles malformed HTML gracefully using the HTML parser.
+
+        Args:
+            html_path: Path to HTML file
+
+        Returns:
+            Parsed lxml Element tree, or None if parsing fails
+        """
+        try:
+            with open(html_path, "rb") as f:
+                content = f.read()
+
+            # Handle empty files
+            if not content or len(content.strip()) == 0:
+                logger.warning(f"Empty HTML file: {html_path}")
+                # Return minimal valid HTML element
+                return html.fromstring(b"<html><body></body></html>")
+
+            # Use lxml.html.parse for better HTML handling (auto-fixes malformed HTML)
+            try:
+                root = html.fromstring(content)
+                logger.debug(f"Successfully parsed HTML from {html_path}")
+                return root
+            except etree.ParseError as e:
+                logger.error(f"lxml parse error for {html_path}: {e}")
+                return None
+
+        except FileNotFoundError:
+            logger.error(f"HTML file not found: {html_path}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Unexpected error parsing HTML {html_path}: {e}")
+            return None
+
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
         Parse HTML and generate segments with XPath locators.
@@ -72,7 +114,13 @@ class IngestionStage:
             if not context.html_path.exists():
                 raise FileNotFoundError(f"HTML file not found: {context.html_path}")
 
-            # TODO (AC-3): Implement lxml-based HTML parser
+            # AC-3: Parse HTML using lxml
+            logger.info(f"Parsing HTML file: {context.html_path}")
+            tree = self._parse_html(context.html_path)
+
+            if tree is None:
+                raise ValueError(f"Failed to parse HTML from {context.html_path}")
+
             # TODO (AC-4): Generate stable XPath locators
             # TODO (AC-5): Port paragraph detection from V1
             # TODO (AC-6): Port table detection with div-wrapper deduplication
