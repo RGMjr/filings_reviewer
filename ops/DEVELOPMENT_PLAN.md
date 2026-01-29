@@ -27,7 +27,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-9 | Extract ImageAsset objects with nearby text context (_extract_image_assets implemented with decorative filtering, caption extraction, relevance scoring, XPath locators, 9/9 tests pass, 102 total tests pass, mypy --strict passes)
 - [x] AC-10 | Create Segment objects with dom_locator (XPath), segment_type, text, sequence (unified sequencing with document order sorting, all segments have XPath locators, 102/102 tests pass, mypy --strict passes)
 - [x] AC-11 | Create Document object with filing metadata (Document created with doc_id and html_path, 102/102 tests pass, mypy --strict passes)
-- [ ] AC-12 | Update pipeline.py to use real IngestionStage (replace stub)
+- [x] AC-12 | Update pipeline.py to use real IngestionStage (replace stub) (already complete: pipeline imports and instantiates real IngestionStage from stages/ingestion.py, 102 tests pass, mypy --strict passes)
 - [ ] AC-13 | Create unit tests in `tests/unit/extraction_v2/test_ingestion.py`
 - [ ] AC-14 | Achieve 80%+ code coverage on new ingestion module
 - [ ] AC-15 | All existing tests pass (pytest -v)
@@ -52,6 +52,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 9 | AC-9 | Complete | Implemented image extraction: _extract_image_assets with decorative filtering, caption extraction from figcaption, nearby text from siblings, relevance scoring based on metric keywords, XPath locators, 9 comprehensive tests, 102 total tests pass, mypy --strict passes |
 | 10 | AC-10 | Complete | Implemented unified segment sequencing: segments from paragraphs and tables are sorted by document order using lxml element position, sequence numbers assigned in order, all segments have dom_locator (XPath), segment_type, text, sequence fields, 102 tests pass, mypy --strict passes |
 | 11 | AC-11 | Complete | Document object already implemented in ingestion.py process() method (lines 856-861): creates Document with doc_id from filing_id and html_path from context, all 102 tests pass, mypy --strict passes |
+| 12 | AC-12 | Complete | Pipeline already imports and instantiates real IngestionStage from stages/ingestion.py (no stub replacement needed), verified via Python import test, 102 tests pass, mypy --strict passes |
 
 ---
 
