@@ -17,7 +17,7 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | Create `TableReconstructor` class in `src/extraction_v2/table_reconstructor.py`
+- [x] AC-1 | Create `TableReconstructor` class in `src/extraction_v2/table_reconstructor.py` (mypy --strict passes)
 - [ ] AC-2 | Implement `resolve_spans()` method that converts HTML table to normalized grid
 - [ ] AC-3 | Handle colspan attribute - cell fills multiple columns
 - [ ] AC-4 | Handle rowspan attribute - cell fills multiple rows
