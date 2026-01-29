@@ -42,11 +42,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit(config/metric_keywords.yaml)",
+        "matcher": "Edit.*metric_keywords",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "REMINDER: metric_keywords.yaml changed. Before committing, run gold standard validation:\npytest -m gold_standard --gold-standard-mode=fresh -v"
+            "type": "command",
+            "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
           }
         ]
       }

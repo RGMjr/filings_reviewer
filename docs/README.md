@@ -79,7 +79,6 @@ Current improvement work in progress.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | **Master task inventory with parallel execution plan** | Everyone |
 | **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
 | **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
