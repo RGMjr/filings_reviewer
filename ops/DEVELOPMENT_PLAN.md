@@ -23,7 +23,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-5 | Port paragraph detection from V1 (min 50 chars, max 10000) (_extract_paragraph_segments implemented, filters by length, skips nested tables, 8/8 tests pass)
 - [x] AC-6 | Port table detection with div-wrapper deduplication from V1 (_extract_table_segments, _should_skip_div_wrapper implemented, 7/7 tests pass, 74 total tests pass)
 - [x] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output (_extract_table_text_with_markers implemented, 10/10 tests pass, 84 total tests pass, mypy --strict passes)
-- [ ] AC-8 | Port definition/methodology block detection from V1
+- [x] AC-8 | Port definition/methodology block detection from V1 (_classify_segment_type detects DEFINITION and METHODOLOGY segment types, 9/9 tests pass, 93 total tests pass, mypy --strict passes)
 - [ ] AC-9 | Extract ImageAsset objects with nearby text context
 - [ ] AC-10 | Create Segment objects with dom_locator (XPath), segment_type, text, sequence
 - [ ] AC-11 | Create Document object with filing metadata
@@ -48,6 +48,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 5 | AC-5 | Complete | Implemented _extract_paragraph_segments with V1 logic: min/max length filters, skip tables/nested divs, normalize whitespace, 67 tests pass |
 | 6 | AC-6 | Complete | Implemented table detection with div-wrapper deduplication: _extract_table_segments, _should_skip_div_wrapper, 7 new tests, 74 total tests pass |
 | 7 | AC-7 | Complete | Implemented _extract_table_text_with_markers with cell/row boundary markers: 10 comprehensive tests, 84 total tests pass, mypy --strict passes |
+| 8 | AC-8 | Complete | Definition/methodology detection already implemented: _classify_segment_type method detects DEFINITION/METHODOLOGY segment types using V1 patterns, 9 tests pass, 93 total tests, mypy --strict passes |
 
 ---
 
