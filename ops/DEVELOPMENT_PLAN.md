@@ -18,7 +18,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
 - [x] AC-1 | Create `TableReconstructor` class in `src/extraction_v2/table_reconstructor.py` (mypy --strict passes)
-- [ ] AC-2 | Implement `resolve_spans()` method that converts HTML table to normalized grid
+- [x] AC-2 | Implement `resolve_spans()` method that converts HTML table to normalized grid (verified with simple/colspan/rowspan tests)
 - [ ] AC-3 | Handle colspan attribute - cell fills multiple columns
 - [ ] AC-4 | Handle rowspan attribute - cell fills multiple rows
 - [ ] AC-5 | Handle combined colspan+rowspan - cell fills rectangular region
