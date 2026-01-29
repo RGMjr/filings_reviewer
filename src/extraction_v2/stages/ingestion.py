@@ -183,6 +183,26 @@ class IngestionStage:
         normalized = re.sub(r'\s+', ' ', text)
         return normalized.strip()
 
+    def _get_element_position(self, tree: etree._Element, element: etree._Element) -> int:
+        """
+        Get position of element in document order.
+
+        Args:
+            tree: Root tree element
+            element: Element to find position for
+
+        Returns:
+            Position index in document order (0-based)
+        """
+        # Build a list of all elements in tree order
+        all_elements = list(tree.iter())
+        try:
+            return all_elements.index(element)
+        except ValueError:
+            # Element not found in tree - should not happen
+            logger.warning(f"Element not found in tree: {element.tag}")
+            return 0
+
     def _matches_patterns(self, text: str, patterns: list[str]) -> bool:
         """
         Check if text matches any of the given regex patterns.
@@ -372,11 +392,11 @@ class IngestionStage:
             logger.warning(f"Error extracting table text with markers: {e}, falling back to standard normalization")
             return self._normalize_text(table_element.text_content() if hasattr(table_element, 'text_content') else '')
 
-    def _extract_table_segments(
+    def _extract_table_segments_with_elements(
         self, tree: etree._Element, filing_id: int
-    ) -> list[Segment]:
+    ) -> list[tuple[Segment, etree._Element]]:
         """
-        Extract table segments from HTML tree.
+        Extract table segments from HTML tree (internal method with elements).
 
         Ports table detection logic from V1 html_segmenter.py:
         - Find <table> elements
@@ -389,10 +409,9 @@ class IngestionStage:
             filing_id: Filing ID for segment metadata
 
         Returns:
-            List of table Segment objects
+            List of (Segment, Element) tuples for document-order sorting
         """
-        segments: list[Segment] = []
-        sequence = 0
+        segments: list[tuple[Segment, etree._Element]] = []
 
         # Find all table elements
         for element in tree.iter():
@@ -423,27 +442,47 @@ class IngestionStage:
             # Generate XPath locator
             xpath = self._generate_xpath(element)
 
-            # Create segment
+            # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_tbl_{sequence}",
+                segment_id=f"{filing_id}_tbl_{len(segments)}",
                 segment_type=SegmentType.TABLE,
-                sequence=sequence,
+                sequence=0,  # Will be updated after sorting
                 text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
 
-            segments.append(segment)
-            sequence += 1
+            segments.append((segment, element))
 
         logger.info(f"Extracted {len(segments)} table segments from filing {filing_id}")
         return segments
 
-    def _extract_paragraph_segments(
+    def _extract_table_segments(
         self, tree: etree._Element, filing_id: int
     ) -> list[Segment]:
         """
-        Extract paragraph segments from HTML tree.
+        Extract table segments from HTML tree.
+
+        Public method for testing. Returns segments with sequential numbering.
+
+        Args:
+            tree: Parsed lxml HTML tree
+            filing_id: Filing ID for segment metadata
+
+        Returns:
+            List of Segment objects
+        """
+        segments_with_elements = self._extract_table_segments_with_elements(tree, filing_id)
+        # Assign sequence numbers and extract just segments
+        for idx, (segment, _) in enumerate(segments_with_elements):
+            segment.sequence = idx
+        return [seg for seg, _ in segments_with_elements]
+
+    def _extract_paragraph_segments_with_elements(
+        self, tree: etree._Element, filing_id: int
+    ) -> list[tuple[Segment, etree._Element]]:
+        """
+        Extract paragraph segments from HTML tree (internal method with elements).
 
         Ports paragraph detection logic from V1 html_segmenter.py:
         - Find text elements (p, div, blockquote, pre, figure)
@@ -457,10 +496,9 @@ class IngestionStage:
             filing_id: Filing ID for segment metadata
 
         Returns:
-            List of paragraph Segment objects
+            List of (Segment, Element) tuples for document-order sorting
         """
-        segments: list[Segment] = []
-        sequence = 0
+        segments: list[tuple[Segment, etree._Element]] = []
 
         # Find all potential paragraph elements
         # Using tree.iter() to traverse all elements in document order
@@ -488,21 +526,41 @@ class IngestionStage:
             # AC-8: Classify segment type (detects definition/methodology blocks)
             segment_type = self._classify_segment_type(normalized_text, element.tag)
 
-            # Create segment
+            # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_seg_{sequence}",
+                segment_id=f"{filing_id}_seg_{len(segments)}",
                 segment_type=segment_type,
-                sequence=sequence,
+                sequence=0,  # Will be updated after sorting
                 text=normalized_text,
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
 
-            segments.append(segment)
-            sequence += 1
+            segments.append((segment, element))
 
         logger.info(f"Extracted {len(segments)} paragraph segments from filing {filing_id}")
         return segments
+
+    def _extract_paragraph_segments(
+        self, tree: etree._Element, filing_id: int
+    ) -> list[Segment]:
+        """
+        Extract paragraph segments from HTML tree.
+
+        Public method for testing. Returns segments with sequential numbering.
+
+        Args:
+            tree: Parsed lxml HTML tree
+            filing_id: Filing ID for segment metadata
+
+        Returns:
+            List of Segment objects
+        """
+        segments_with_elements = self._extract_paragraph_segments_with_elements(tree, filing_id)
+        # Assign sequence numbers and extract just segments
+        for idx, (segment, _) in enumerate(segments_with_elements):
+            segment.sequence = idx
+        return [seg for seg, _ in segments_with_elements]
 
     def _is_decorative_image(self, img_element: etree._Element) -> bool:
         """
@@ -767,18 +825,33 @@ class IngestionStage:
 
             # AC-5: Port paragraph detection from V1
             logger.info(f"Extracting paragraph segments from filing {context.filing_id}")
-            paragraph_segments = self._extract_paragraph_segments(tree, context.filing_id)
+            paragraph_segments_with_elements = self._extract_paragraph_segments_with_elements(tree, context.filing_id)
 
             # AC-6: Port table detection with div-wrapper deduplication
             logger.info(f"Extracting table segments from filing {context.filing_id}")
-            table_segments = self._extract_table_segments(tree, context.filing_id)
+            table_segments_with_elements = self._extract_table_segments_with_elements(tree, context.filing_id)
 
             # AC-8: Definition/methodology detection integrated into paragraph extraction
             # AC-9: Extract ImageAsset objects with context
             logger.info(f"Extracting image assets from filing {context.filing_id}")
             image_assets = self._extract_image_assets(tree, context.filing_id)
 
-            # TODO (AC-10): Create Segment objects (combine all segment types)
+            # AC-10: Combine all segment types and sort by document order
+            all_segments_with_elements = paragraph_segments_with_elements + table_segments_with_elements
+
+            # Sort by tree position to maintain document order
+            # lxml elements can be compared for document order using < operator
+            all_segments_with_elements.sort(key=lambda x: self._get_element_position(tree, x[1]))
+
+            # Assign unified sequence numbers
+            for idx, (segment, _) in enumerate(all_segments_with_elements):
+                segment.sequence = idx
+                segment.doc_id = str(context.filing_id)  # Ensure doc_id is set
+
+            # Extract just the segments
+            all_segments = [seg for seg, _ in all_segments_with_elements]
+
+            context.segments = all_segments
 
             # AC-11: Create Document object
             doc = Document(
@@ -786,12 +859,6 @@ class IngestionStage:
                 html_path=str(context.html_path),
             )
             context.document = doc
-
-            # AC-10: Combine all segment types
-            all_segments = paragraph_segments + table_segments
-            # Sort by sequence to maintain document order
-            # Note: Currently using separate sequences per type; will need unified sequencing
-            context.segments = all_segments
 
             # Store image assets in context
             context.images = image_assets
