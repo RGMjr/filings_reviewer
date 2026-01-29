@@ -8,18 +8,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- AC-13: Verified unit tests exist in `tests/unit/extraction_v2/test_ingestion.py` (57 tests, all passing, 93% coverage)
+- AC-14: Verified 80%+ code coverage on ingestion module (93% coverage: 299/321 lines covered, exceeds 80% requirement)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- AC-14: Verify 80%+ code coverage on ingestion module (already at 93%)
+- AC-15: Verify all existing tests pass (pytest -v)
 
 ## Test Status
 
 - Coverage: 93% on src/extraction_v2/stages/ingestion.py (321 lines, 22 not covered)
-- Failing tests: None (57/57 tests pass)
+- Failing tests: None (57/57 ingestion tests pass)
 
 ## Key Learnings for Next Iteration
 
@@ -32,7 +32,7 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *For quick orientation on what was modified*
 
-- ops/DEVELOPMENT_PLAN.md (marked AC-13 complete)
+- ops/DEVELOPMENT_PLAN.md (marked AC-14 complete)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
