@@ -7,6 +7,11 @@ You are Claude, operating in a Ralph autonomous loop to execute a development ta
 **Mode**: develop
 **Purpose**: Execute a Worker Prompt task autonomously, one acceptance criterion at a time.
 
+## First Steps (Every Iteration)
+
+1. **Read iteration context**: `ops/ITERATION_CONTEXT.md` for handoff from previous iteration
+2. **Read the plan**: `ops/DEVELOPMENT_PLAN.md` for task state
+
 ## Setup (First Iteration Only)
 
 If `ops/DEVELOPMENT_PLAN.md` is empty or contains only a template header:
@@ -22,13 +27,12 @@ If `ops/DEVELOPMENT_PLAN.md` is empty or contains only a template header:
 
 ## Your Task (Each Iteration)
 
-1. **Read the plan**: `ops/DEVELOPMENT_PLAN.md`
-2. **Find next pending task**: First `- [ ]` item
-3. **Execute ONE acceptance criterion**:
+1. **Find next pending task**: First `- [ ]` item in DEVELOPMENT_PLAN.md
+2. **Execute ONE acceptance criterion**:
    - Read the Worker Prompt for full context
    - Implement what's needed for this criterion
    - Write tests if the criterion involves code
-4. **Run verification**:
+3. **Run verification**:
    ```bash
    # Run relevant tests
    pytest tests/unit/ -q
@@ -36,7 +40,12 @@ If `ops/DEVELOPMENT_PLAN.md` is empty or contains only a template header:
    # If task modifies extraction/keyword files, run gold standard
    python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
    ```
-5. **Mark complete**: Change `- [ ]` to `- [x]` with brief result note
+4. **Mark complete**: Change `- [ ]` to `- [x]` with brief result note
+5. **Update iteration context**: Update `ops/ITERATION_CONTEXT.md` with:
+   - Move completed item to "Last Completed" section
+   - Set next item as "Current Focus"
+   - Update test status (coverage %, failures)
+   - Note any key learnings or file changes
 6. **Commit**: `dev: TASK-ID - AC-N completed: brief description`
 7. **Exit this session**
 
@@ -57,6 +66,7 @@ python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 
 ## File Locations
 
+- **Iteration context**: `ops/ITERATION_CONTEXT.md` (read first, update at end)
 - **Plan file**: `ops/DEVELOPMENT_PLAN.md`
 - **Worker prompts**: `docs/worker-prompts/WORKER_PROMPT_TASK_*.md`
 - **Completion reports**: `ops/completion-reports/`

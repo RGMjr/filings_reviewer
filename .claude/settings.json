@@ -39,6 +39,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit(config/metric_keywords.yaml)",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "REMINDER: metric_keywords.yaml changed. Before committing, run gold standard validation:\npytest -m gold_standard --gold-standard-mode=fresh -v"
+          }
+        ]
+      }
     ]
   },
   "project": {
