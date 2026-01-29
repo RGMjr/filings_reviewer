@@ -8,41 +8,41 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- AC-1: Created TableReconstructor class with mypy --strict passing
+- AC-2: Verified _resolve_spans() method works correctly (simple, colspan, rowspan tests pass)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- AC-2: Implement resolve_spans() method that converts HTML table to normalized grid
+- AC-3: Handle colspan attribute - cell fills multiple columns
 
 ## Test Status
 
-- V2-10 Status: No tests yet (will create in AC-9)
+- V2-10 Status: Manual verification tests passed (simple, colspan, rowspan)
+- Formal unit tests: Pending (AC-9)
 - Type Checking: mypy --strict passes on table_reconstructor.py
-- Linting: ruff passes
+- Linting: Not checked this iteration
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- TableReconstructor class created with full implementation of all methods
-- BeautifulSoup Tag.get() returns str | AttributeValueList | None, need str() conversion
-- Cell and Table models already have necessary fields (rowspan, colspan, _grid)
+- _resolve_spans() correctly handles simple tables, colspan, and rowspan
+- Grid positions for spanned cells all point to same Cell object (verified with `is` check)
+- AC-1 already implemented AC-2 through AC-8 functionality - remaining work is tests (AC-9, AC-10)
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- src/extraction_v2/table_reconstructor.py (created - 329 lines)
-- ops/DEVELOPMENT_PLAN.md (marked AC-1 complete)
+- ops/DEVELOPMENT_PLAN.md (marked AC-2 complete)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - AC-1 completed successfully
+- None - AC-2 verified successfully
 
 ---
 
