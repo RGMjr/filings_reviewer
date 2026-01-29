@@ -8,43 +8,45 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- AC-9: Unit tests achieve ≥90% coverage (96% achieved with 24 tests)
+- AC-10: Integration test with real SEC filing table HTML (from test fixtures)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- AC-10: Integration test with real SEC filing table HTML (from test fixtures)
+- Task V2-10 complete - all acceptance criteria met
 
 ## Test Status
 
-- Unit tests: 24 tests pass, 96% coverage on table_reconstructor.py
+- Unit tests: 25 tests pass (including SEC filing integration test), 96% coverage on table_reconstructor.py
 - Type Checking: mypy --strict passes
 - Linting: ruff check passes
-- Coverage details: 119 statements, 5 uncovered (lines 21, 117, 133, 182, 189)
+- Coverage details: 119 statements, 5 uncovered (error handling paths)
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Comprehensive test suite covers: simple tables, colspan, rowspan, combined spans, header/stub detection, path computation, edge cases
-- Test organization: 8 test classes with 24 test methods
-- AC-3 through AC-8 were already implemented in AC-1, just needed formal tests
-- Only AC-10 remains: integration test with real SEC filing HTML
+- Comprehensive test suite now includes real SEC filing table from Slack Technologies S-1
+- Integration test validates colspan+rowspan handling with production-quality HTML
+- SEC tables often have empty/structural rows (width definitions) before content
+- Header detection handles both `<th>` tags and empty rows correctly
+- Task V2-10 complete - all 10 acceptance criteria met
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- tests/unit/extraction_v2/test_table_reconstructor.py (created with 24 tests)
-- ops/DEVELOPMENT_PLAN.md (marked AC-3 through AC-9 complete)
+- tests/fixtures/tables/sec_financial_table.html (created - real SEC table from Slack S-1)
+- tests/unit/extraction_v2/test_table_reconstructor.py (added integration test class)
+- ops/DEVELOPMENT_PLAN.md (marked AC-10 complete)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- AC-10 needs real SEC filing table HTML fixtures - may need to extract from actual filings or create realistic examples
+- None - V2-10 task complete. All acceptance criteria met.
 
 ---
 
