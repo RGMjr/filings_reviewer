@@ -234,12 +234,11 @@ See `docs/development/metric-lifecycle-process.md` for the authoritative guide o
 
    Run: `pytest -m gold_standard --gold-standard-mode=fresh -v`
    See "Gold Standard Validation" section above for full workflow.
-6. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
-7. **User Approval** - STOP and ask user before implementing improvements
-8. **Generate Follow-Ups** - Create task suggestions for deferred improvements
-9. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
-10. **Update Task Inventory** - Mark task complete in `docs/PROJECT_TASK_INVENTORY.md`
-11. **Commit & Push** - With task ID reference
+5. **Critical Evaluation** - Review code quality, tests, architecture (see template v2.5)
+6. **User Approval** - STOP and ask user before implementing improvements
+7. **Generate Follow-Ups** - Create task suggestions for deferred improvements
+8. **Complete Report** - Fill `docs/COMPLETION_REPORT_TEMPLATE.md`
+9. **Commit & Push** - With task ID reference
 
 ### Key Files
 
@@ -259,7 +258,6 @@ Use these slash commands for the task workflow:
 ### Additional Workflow Tools
 
 - **Lightweight Template**: `docs/WORKER_PROMPT_TEMPLATE_LITE.md` - Use for XS/S tasks (<2 hours)
-- **GitHub Sync**: `python scripts/sync_github_issues.py --check` - Compare task inventory with GitHub issues
 - **Doc Maintenance**: `docs/DOCUMENTATION_MAINTENANCE.md` - Quarterly cleanup checklist
 - **Project Settings**: `.claude/settings.json` - Pre-approved tool permissions for this project
 

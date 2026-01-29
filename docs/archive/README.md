@@ -37,11 +37,16 @@ docs/archive/
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| PROJECT_TASK_INVENTORY.md | docs/ | Master task tracking |
 | GOLDMINE_REMEDIATION_PLAN.md | docs/ | GR-series plan (production ready) |
 | HUMAN_REVIEW_VALIDATION_PLAN.md | docs/ | HRV-series plan (in progress) |
 | COMPREHENSIVE_EVALUATION.md | docs/analysis/ | Current system evaluation |
 | GR-FINAL_VALIDATION.md | docs/analysis/ | Final validation results |
+
+### Archived Master Documents
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| PROJECT_TASK_INVENTORY.md | docs/archive/historical/ | Historical task tracking (archived 2026-01-29) |
 
 ### Archived by Series
 
@@ -70,7 +75,7 @@ Documents are moved to archive when:
 
 ### For Current Status
 - See `docs/README.md` for documentation index
-- See `docs/PROJECT_TASK_INVENTORY.md` for task status
+- See `CLAUDE.md` for project standards and task workflow
 
 ### For Historical Context
 - Worker prompts: `worker-prompts/{series}/`

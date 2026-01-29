@@ -525,7 +525,6 @@ Known filings (as of 2025-12-26):
 
 ## Related Documents
 
-- `docs/PROJECT_TASK_INVENTORY.md` - Wave 4 task tracking
 - `docs/GOLDMINE_REMEDIATION_PLAN.md` - Phase 4 reference
 - `docs/HUMAN_REVIEW_SYSTEM_PLAN.md` - Review interface documentation
 - `data/gold_standard/golden_set_251218.csv` - Gold standard metrics

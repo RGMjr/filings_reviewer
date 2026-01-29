@@ -6,6 +6,8 @@ Historical record of design decisions affecting metric extraction, keyword match
 
 ## Decision Timeline
 
+> **Note**: Numbering starts at #6 because decisions #1-5 were foundational architectural choices made before this document was created. They are captured in the core principles section of CLAUDE.md (rule-based first, provenance tracking, idempotent operations, conservative classification, table-aware matching).
+
 ### 6. Tiered Richness Scoring (2025-12-17)
 
 Usage metrics (DAU/MAU/WAU) receive context-aware bonuses:
