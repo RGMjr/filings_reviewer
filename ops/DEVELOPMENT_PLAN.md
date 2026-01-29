@@ -24,7 +24,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-6 | Port table detection with div-wrapper deduplication from V1 (_extract_table_segments, _should_skip_div_wrapper implemented, 7/7 tests pass, 74 total tests pass)
 - [x] AC-7 | Add `[CELL]` and `[ROW]` markers to table text output (_extract_table_text_with_markers implemented, 10/10 tests pass, 84 total tests pass, mypy --strict passes)
 - [x] AC-8 | Port definition/methodology block detection from V1 (_classify_segment_type detects DEFINITION and METHODOLOGY segment types, 9/9 tests pass, 93 total tests pass, mypy --strict passes)
-- [ ] AC-9 | Extract ImageAsset objects with nearby text context
+- [x] AC-9 | Extract ImageAsset objects with nearby text context (_extract_image_assets implemented with decorative filtering, caption extraction, relevance scoring, XPath locators, 9/9 tests pass, 102 total tests pass, mypy --strict passes)
 - [ ] AC-10 | Create Segment objects with dom_locator (XPath), segment_type, text, sequence
 - [ ] AC-11 | Create Document object with filing metadata
 - [ ] AC-12 | Update pipeline.py to use real IngestionStage (replace stub)
@@ -49,6 +49,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 6 | AC-6 | Complete | Implemented table detection with div-wrapper deduplication: _extract_table_segments, _should_skip_div_wrapper, 7 new tests, 74 total tests pass |
 | 7 | AC-7 | Complete | Implemented _extract_table_text_with_markers with cell/row boundary markers: 10 comprehensive tests, 84 total tests pass, mypy --strict passes |
 | 8 | AC-8 | Complete | Definition/methodology detection already implemented: _classify_segment_type method detects DEFINITION/METHODOLOGY segment types using V1 patterns, 9 tests pass, 93 total tests, mypy --strict passes |
+| 9 | AC-9 | Complete | Implemented image extraction: _extract_image_assets with decorative filtering, caption extraction from figcaption, nearby text from siblings, relevance scoring based on metric keywords, XPath locators, 9 comprehensive tests, 102 total tests pass, mypy --strict passes |
 
 ---
 

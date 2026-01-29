@@ -24,6 +24,7 @@ from lxml import etree, html
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
+    ImageClassification,
     Segment,
     SegmentType,
     SectionType,
@@ -52,6 +53,11 @@ class IngestionStage:
     MIN_PARAGRAPH_CHARS = 50  # Minimum text length for paragraphs
     MAX_PARAGRAPH_CHARS = 10000  # Maximum text length for paragraphs
 
+    # Image detection constants (ported from V1)
+    IMAGE_CONTEXT_CHARS = 500  # Characters to extract before/after image
+    MIN_IMAGE_WIDTH = 100  # Minimum width for non-decorative images
+    MIN_IMAGE_HEIGHT = 100  # Minimum height for non-decorative images
+
     # Definition/methodology detection patterns (ported from V1)
     DEFINITION_PATTERNS = [
         r"\b(we\s+define|defined\s+as|definition\s+of|refers\s+to)\b",
@@ -61,6 +67,16 @@ class IngestionStage:
     METHODOLOGY_PATTERNS = [
         r"\b(calculated\s+as|calculated\s+by|calculation|computed\s+as)\b",
         r"\b(determined\s+by|formula|methodology)\b",
+    ]
+
+    # Decorative image patterns (ported from V1)
+    DECORATIVE_IMAGE_PATTERNS = [
+        r'\blogo\b',
+        r'\bicon\b',
+        r'\bbullet\b',
+        r'\bbanner\b',
+        r'\bheader\b',
+        r'\bfooter\b',
     ]
 
     def __init__(self) -> None:
@@ -488,6 +504,238 @@ class IngestionStage:
         logger.info(f"Extracted {len(segments)} paragraph segments from filing {filing_id}")
         return segments
 
+    def _is_decorative_image(self, img_element: etree._Element) -> bool:
+        """
+        Check if image is likely decorative (logo, icon, bullet, etc.).
+
+        Uses size and naming patterns to filter out non-content images.
+
+        Args:
+            img_element: Image element to check
+
+        Returns:
+            True if image is likely decorative
+        """
+        # Check src attribute for decorative patterns
+        src = img_element.get('src', '').lower()
+        for pattern_str in self.DECORATIVE_IMAGE_PATTERNS:
+            pattern = re.compile(pattern_str, re.IGNORECASE)
+            if pattern.search(src):
+                return True
+
+        # Check width/height attributes
+        try:
+            width_str = img_element.get('width', '')
+            height_str = img_element.get('height', '')
+
+            if width_str and width_str.isdigit():
+                width = int(width_str)
+                if width < self.MIN_IMAGE_WIDTH:
+                    return True
+
+            if height_str and height_str.isdigit():
+                height = int(height_str)
+                if height < self.MIN_IMAGE_HEIGHT:
+                    return True
+        except (ValueError, TypeError):
+            pass
+
+        return False
+
+    def _get_nearby_text(self, img_element: etree._Element, tree: etree._Element) -> str:
+        """
+        Extract text near an image element.
+
+        Collects text from:
+        - Caption (figcaption, nearby spans/divs)
+        - Surrounding paragraphs (previous and next siblings)
+
+        Args:
+            img_element: Image element to get context for
+            tree: Full HTML tree
+
+        Returns:
+            Nearby text (caption + context)
+        """
+        nearby_parts: list[str] = []
+
+        # 1. Look for caption in parent figure element
+        parent = img_element.getparent()
+        if parent is not None and parent.tag == 'figure':
+            # Find figcaption
+            captions = parent.xpath('.//figcaption')
+            for caption in captions:
+                text = caption.text_content() if hasattr(caption, 'text_content') else ''
+                text = self._normalize_text(text)
+                if text:
+                    nearby_parts.append(text)
+
+        # 2. Get context from nearby siblings
+        # Get parent element (or use tree root if img is at top level)
+        context_root = parent if parent is not None else tree
+
+        # Get previous siblings (up to 2)
+        if parent is not None:
+            prev_siblings: list[str] = []
+            current = img_element.getprevious()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    text = current.text_content() if hasattr(current, 'text_content') else ''
+                    text = self._normalize_text(text)
+                    if text:
+                        prev_siblings.insert(0, text)
+                        count += 1
+                current = current.getprevious()
+
+            nearby_parts.extend(prev_siblings)
+
+        # 3. Get next siblings (up to 2)
+        if parent is not None:
+            next_siblings: list[str] = []
+            current = img_element.getnext()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    text = current.text_content() if hasattr(current, 'text_content') else ''
+                    text = self._normalize_text(text)
+                    if text:
+                        next_siblings.append(text)
+                        count += 1
+                current = current.getnext()
+
+            nearby_parts.extend(next_siblings)
+
+        # Combine all parts
+        return ' '.join(nearby_parts)
+
+    def _compute_initial_relevance(self, nearby_text: str, filename: str) -> float:
+        """
+        Compute initial relevance score for an image.
+
+        Based on:
+        - Metric keyword proximity (chart, table, cohort, retention, etc.)
+        - Filename indicators
+
+        Args:
+            nearby_text: Text near the image
+            filename: Image filename/src
+
+        Returns:
+            Relevance score (0-1)
+        """
+        score = 0.0
+
+        # Base score for having any content
+        if nearby_text:
+            score = 0.1
+
+        # Check for metric-related keywords in nearby text
+        text_lower = nearby_text.lower()
+        filename_lower = filename.lower()
+
+        # High-value keywords (from V1 cohort detection)
+        high_value_keywords = [
+            'cohort', 'retention', 'churn', 'ltv', 'cac',
+            'arr', 'mrr', 'revenue', 'growth', 'customers'
+        ]
+
+        for keyword in high_value_keywords:
+            if keyword in text_lower:
+                score += 0.15
+            if keyword in filename_lower:
+                score += 0.1
+
+        # Chart/table indicators
+        chart_keywords = ['chart', 'graph', 'figure', 'table', 'exhibit']
+        for keyword in chart_keywords:
+            if keyword in text_lower:
+                score += 0.1
+                break
+
+        # Cap at 1.0
+        return min(1.0, score)
+
+    def _extract_image_assets(
+        self, tree: etree._Element, filing_id: int
+    ) -> list[ImageAsset]:
+        """
+        Extract ImageAsset objects from HTML tree.
+
+        Finds <img> tags and extracts:
+        - Image metadata (src, dimensions)
+        - Nearby text (caption + context)
+        - Initial relevance score
+        - XPath locator
+
+        Filters out decorative images (logos, icons, bullets).
+
+        Args:
+            tree: Parsed lxml HTML tree
+            filing_id: Filing ID for asset metadata
+
+        Returns:
+            List of ImageAsset objects
+        """
+        assets: list[ImageAsset] = []
+        sequence = 0
+
+        # Find all img elements
+        for element in tree.iter():
+            if element.tag != 'img':
+                continue
+
+            # Filter decorative images
+            if self._is_decorative_image(element):
+                continue
+
+            # Get image attributes
+            src = element.get('src', '')
+            if not src:
+                continue
+
+            # Get dimensions (if available)
+            width = 0
+            height = 0
+            try:
+                width_str = element.get('width', '0')
+                height_str = element.get('height', '0')
+                if width_str.isdigit():
+                    width = int(width_str)
+                if height_str.isdigit():
+                    height = int(height_str)
+            except (ValueError, TypeError):
+                pass
+
+            # Generate XPath locator
+            xpath = self._generate_xpath(element)
+
+            # Extract nearby text
+            nearby_text = self._get_nearby_text(element, tree)
+
+            # Compute initial relevance score
+            relevance = self._compute_initial_relevance(nearby_text, src)
+
+            # Create ImageAsset
+            asset = ImageAsset(
+                img_id=f"{filing_id}_img_{sequence}",
+                doc_id=str(filing_id),
+                filename=src,
+                width=width,
+                height=height,
+                dom_locator=xpath,
+                nearby_text=nearby_text,
+                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+                classification=ImageClassification.UNKNOWN,  # Will be classified in Stage 4
+                relevance_score=relevance,
+            )
+
+            assets.append(asset)
+            sequence += 1
+
+        logger.info(f"Extracted {len(assets)} image assets from filing {filing_id}")
+        return assets
+
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
         Parse HTML and generate segments with XPath locators.
@@ -526,7 +774,10 @@ class IngestionStage:
             table_segments = self._extract_table_segments(tree, context.filing_id)
 
             # AC-8: Definition/methodology detection integrated into paragraph extraction
-            # TODO (AC-9): Extract ImageAsset objects with context
+            # AC-9: Extract ImageAsset objects with context
+            logger.info(f"Extracting image assets from filing {context.filing_id}")
+            image_assets = self._extract_image_assets(tree, context.filing_id)
+
             # TODO (AC-10): Create Segment objects (combine all segment types)
 
             # AC-11: Create Document object
@@ -541,6 +792,9 @@ class IngestionStage:
             # Sort by sequence to maintain document order
             # Note: Currently using separate sequences per type; will need unified sequencing
             context.segments = all_segments
+
+            # Store image assets in context
+            context.images = image_assets
 
             duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 

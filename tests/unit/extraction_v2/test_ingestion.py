@@ -1402,3 +1402,231 @@ class TestDefinitionMethodologyDetection:
         assert result.success
         # Empty segments should be filtered by min_length constraint
         assert len(context.segments) == 0
+
+
+class TestImageAssetExtraction:
+    """Test ImageAsset extraction (AC-9)."""
+
+    def test_extract_basic_image(self, tmp_path: Path) -> None:
+        """Test extracting a basic image with nearby text."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This chart shows customer growth over time.</p>
+            <img src="customer_chart.png" width="600" height="400" />
+            <p>As shown above, we have strong retention metrics.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        assert len(assets) == 1
+        asset = assets[0]
+        assert asset.filename == "customer_chart.png"
+        assert asset.width == 600
+        assert asset.height == 400
+        assert "customer" in asset.nearby_text.lower()
+        assert "chart" in asset.nearby_text.lower()
+        assert asset.relevance_score > 0.0
+
+    def test_filter_decorative_images(self, tmp_path: Path) -> None:
+        """Test filtering decorative images (logo, icon, etc.)."""
+        html_content = b"""
+        <html>
+        <body>
+            <img src="logo.png" width="100" height="50" />
+            <img src="icon_bullet.png" width="16" height="16" />
+            <img src="chart_data.png" width="800" height="600" />
+            <img src="header_banner.png" width="1200" height="80" />
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        # Should only extract chart_data.png (others filtered by decorative patterns or size)
+        assert len(assets) == 1
+        assert "chart_data.png" in assets[0].filename
+
+    def test_filter_small_images(self, tmp_path: Path) -> None:
+        """Test filtering images below minimum size threshold."""
+        html_content = b"""
+        <html>
+        <body>
+            <img src="small.png" width="50" height="50" />
+            <img src="large.png" width="800" height="600" />
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        # Should only extract large.png
+        assert len(assets) == 1
+        assert assets[0].filename == "large.png"
+
+    def test_extract_caption_from_figure(self, tmp_path: Path) -> None:
+        """Test extracting caption from figure element."""
+        html_content = b"""
+        <html>
+        <body>
+            <figure>
+                <img src="cohort_analysis.png" width="700" height="500" />
+                <figcaption>Figure 1: Annual cohort retention analysis showing strong performance</figcaption>
+            </figure>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        assert len(assets) == 1
+        asset = assets[0]
+        assert "cohort" in asset.nearby_text.lower()
+        assert "retention" in asset.nearby_text.lower()
+        assert "Figure 1" in asset.nearby_text
+
+    def test_compute_relevance_score_high(self, tmp_path: Path) -> None:
+        """Test high relevance score for images with metric keywords."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>The following chart illustrates our cohort retention rates and customer growth metrics.</p>
+            <img src="retention_chart.png" width="800" height="600" />
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        assert len(assets) == 1
+        asset = assets[0]
+        # Should have high score due to: cohort, retention, chart, customer keywords
+        assert asset.relevance_score >= 0.5
+
+    def test_compute_relevance_score_low(self, tmp_path: Path) -> None:
+        """Test low relevance score for images without metric keywords."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This is a generic company photo.</p>
+            <img src="office_photo.png" width="800" height="600" />
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        assert len(assets) == 1
+        asset = assets[0]
+        # Should have low score (only base score for having text)
+        assert asset.relevance_score < 0.3
+
+    def test_skip_images_without_src(self, tmp_path: Path) -> None:
+        """Test skipping images without src attribute."""
+        html_content = b"""
+        <html>
+        <body>
+            <img width="800" height="600" />
+            <img src="" width="800" height="600" />
+            <img src="valid.png" width="800" height="600" />
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        # Should only extract valid.png
+        assert len(assets) == 1
+        assert assets[0].filename == "valid.png"
+
+    def test_generate_xpath_for_images(self, tmp_path: Path) -> None:
+        """Test XPath generation for image elements."""
+        html_content = b"""
+        <html>
+        <body>
+            <div>
+                <p>First paragraph</p>
+                <img src="chart1.png" width="600" height="400" />
+            </div>
+            <div>
+                <img src="chart2.png" width="700" height="500" />
+            </div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assets = stage._extract_image_assets(tree, 12345)
+
+        assert len(assets) == 2
+        # Both images should have unique XPath locators
+        assert assets[0].dom_locator != assets[1].dom_locator
+        # XPaths should be absolute and contain 'img'
+        for asset in assets:
+            assert asset.dom_locator.startswith("/")
+            assert "img" in asset.dom_locator
+
+    def test_integration_with_process_method(self, tmp_path: Path) -> None:
+        """Test that process() method calls image extraction and stores in context."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>This is a long enough paragraph to meet the minimum character requirement for extraction as a segment.</p>
+            <img src="cohort_chart.png" width="800" height="600" />
+            <p>Another paragraph describing our retention metrics in detail with sufficient length to be extracted.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+
+        assert result.success
+        # Should have extracted paragraphs
+        assert len(context.segments) > 0
+        # Should have extracted image
+        assert len(context.images) == 1
+        assert context.images[0].filename == "cohort_chart.png"
+        # Metadata should reflect image count
+        assert result.metadata["image_count"] == 1
