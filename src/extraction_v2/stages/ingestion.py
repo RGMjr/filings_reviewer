@@ -14,6 +14,7 @@ Key responsibilities:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -50,6 +51,17 @@ class IngestionStage:
     # V1 compatibility constants
     MIN_PARAGRAPH_CHARS = 50  # Minimum text length for paragraphs
     MAX_PARAGRAPH_CHARS = 10000  # Maximum text length for paragraphs
+
+    # Definition/methodology detection patterns (ported from V1)
+    DEFINITION_PATTERNS = [
+        r"\b(we\s+define|defined\s+as|definition\s+of|refers\s+to)\b",
+        r"\b(means|meaning|metric\s+definitions)\b",
+    ]
+
+    METHODOLOGY_PATTERNS = [
+        r"\b(calculated\s+as|calculated\s+by|calculation|computed\s+as)\b",
+        r"\b(determined\s+by|formula|methodology)\b",
+    ]
 
     def __init__(self) -> None:
         """Initialize the ingestion stage."""
@@ -152,9 +164,55 @@ class IngestionStage:
             Normalized text with collapsed whitespace
         """
         # Replace multiple whitespace (including newlines) with single space
-        import re
         normalized = re.sub(r'\s+', ' ', text)
         return normalized.strip()
+
+    def _matches_patterns(self, text: str, patterns: list[str]) -> bool:
+        """
+        Check if text matches any of the given regex patterns.
+
+        Args:
+            text: Text to check
+            patterns: List of regex patterns to match
+
+        Returns:
+            True if text matches any pattern
+        """
+        if not text:
+            return False
+
+        text_lower = text.lower()
+        for pattern in patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                return True
+        return False
+
+    def _classify_segment_type(self, text: str, element_tag: str) -> SegmentType:
+        """
+        Classify segment type based on text content.
+
+        Detects definition blocks and methodology blocks based on V1 patterns.
+
+        Args:
+            text: Normalized text content
+            element_tag: HTML tag name (for context)
+
+        Returns:
+            SegmentType enum value
+        """
+        # Check for definition blocks
+        if self._matches_patterns(text, self.DEFINITION_PATTERNS):
+            return SegmentType.DEFINITION
+
+        # Check for methodology blocks
+        if self._matches_patterns(text, self.METHODOLOGY_PATTERNS):
+            return SegmentType.METHODOLOGY
+
+        # Default based on element tag
+        if element_tag == 'table':
+            return SegmentType.TABLE
+        else:
+            return SegmentType.PARAGRAPH
 
     def _is_paragraph_element(self, element: etree._Element) -> bool:
         """
@@ -411,10 +469,13 @@ class IngestionStage:
             # Generate XPath locator
             xpath = self._generate_xpath(element)
 
+            # AC-8: Classify segment type (detects definition/methodology blocks)
+            segment_type = self._classify_segment_type(normalized_text, element.tag)
+
             # Create segment
             segment = Segment(
                 segment_id=f"{filing_id}_seg_{sequence}",
-                segment_type=SegmentType.PARAGRAPH,
+                segment_type=segment_type,
                 sequence=sequence,
                 text=normalized_text,
                 dom_locator=xpath,
@@ -464,7 +525,7 @@ class IngestionStage:
             logger.info(f"Extracting table segments from filing {context.filing_id}")
             table_segments = self._extract_table_segments(tree, context.filing_id)
 
-            # TODO (AC-8): Port definition/methodology block detection
+            # AC-8: Definition/methodology detection integrated into paragraph extraction
             # TODO (AC-9): Extract ImageAsset objects with context
             # TODO (AC-10): Create Segment objects (combine all segment types)
 

@@ -45,6 +45,8 @@ class SegmentType(str, Enum):
     CAPTION = "caption"
     LIST = "list"
     FOOTNOTE = "footnote"
+    DEFINITION = "definition"
+    METHODOLOGY = "methodology"
     OTHER = "other"
 
 
