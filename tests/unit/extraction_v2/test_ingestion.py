@@ -1123,3 +1123,282 @@ class TestTableCellRowMarkers:
         assert result == "This is a paragraph, not a table."
         assert "[CELL]" not in result
         assert "[ROW]" not in result
+
+
+class TestDefinitionMethodologyDetection:
+    """Test definition and methodology block detection (AC-8)."""
+
+    def test_detect_definition_pattern_we_define(self, tmp_path: Path) -> None:
+        """Test detection of 'we define' pattern."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>We define active customers as customers who have logged in within the last 30 days.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+        assert len(context.segments) > 0
+
+        # Find the segment with definition text
+        definition_segment = next(
+            (s for s in context.segments if "We define active customers" in s.text),
+            None,
+        )
+        assert definition_segment is not None
+        assert definition_segment.segment_type.value == "definition"
+
+    def test_detect_definition_pattern_defined_as(self, tmp_path: Path) -> None:
+        """Test detection of 'defined as' pattern."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>Retention rate is defined as the percentage of customers who continue their subscription.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        definition_segment = next(
+            (s for s in context.segments if "Retention rate" in s.text),
+            None,
+        )
+        assert definition_segment is not None
+        assert definition_segment.segment_type.value == "definition"
+
+    def test_detect_methodology_pattern_calculated_as(self, tmp_path: Path) -> None:
+        """Test detection of 'calculated as' pattern."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>Net retention rate is calculated as the sum of beginning ARR plus expansion ARR minus churn ARR divided by beginning ARR.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        methodology_segment = next(
+            (s for s in context.segments if "calculated as" in s.text),
+            None,
+        )
+        assert methodology_segment is not None
+        assert methodology_segment.segment_type.value == "methodology"
+
+    def test_detect_methodology_pattern_formula(self, tmp_path: Path) -> None:
+        """Test detection of 'formula' pattern."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>The formula for lifetime value is average revenue per user multiplied by customer lifetime in months.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        methodology_segment = next(
+            (s for s in context.segments if "formula" in s.text),
+            None,
+        )
+        assert methodology_segment is not None
+        assert methodology_segment.segment_type.value == "methodology"
+
+    def test_regular_paragraph_not_misclassified(self, tmp_path: Path) -> None:
+        """Test that regular paragraphs remain classified as PARAGRAPH."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>Our business model focuses on providing software as a service to enterprises worldwide.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        paragraph_segment = next(
+            (s for s in context.segments if "business model" in s.text),
+            None,
+        )
+        assert paragraph_segment is not None
+        assert paragraph_segment.segment_type.value == "paragraph"
+
+    def test_multiple_definition_patterns_in_document(self, tmp_path: Path) -> None:
+        """Test document with multiple definition blocks."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>We define active users as users who have logged in within the past 30 days.</p>
+            <p>Our products are sold globally to enterprise customers in the technology sector.</p>
+            <p>Dollar-based net retention rate is calculated as the ending ARR divided by beginning ARR for the same cohort.</p>
+            <p>Paid customers refers to organizations that have an active paid subscription as of the period end.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+        assert len(context.segments) == 4
+
+        # Count segment types
+        definition_count = sum(1 for s in context.segments if s.segment_type.value == "definition")
+        methodology_count = sum(1 for s in context.segments if s.segment_type.value == "methodology")
+        paragraph_count = sum(1 for s in context.segments if s.segment_type.value == "paragraph")
+
+        assert definition_count == 2  # "We define" and "refers to"
+        assert methodology_count == 1  # "calculated as"
+        assert paragraph_count == 1  # Regular business description
+
+    def test_case_insensitive_matching(self, tmp_path: Path) -> None:
+        """Test that pattern matching is case-insensitive."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>WE DEFINE active customers AS customers with recent activity.</p>
+            <p>The metric is CALCULATED AS revenue divided by customer count.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        # Both should be detected despite uppercase
+        definition_segment = next(
+            (s for s in context.segments if "WE DEFINE" in s.text),
+            None,
+        )
+        assert definition_segment is not None
+        assert definition_segment.segment_type.value == "definition"
+
+        methodology_segment = next(
+            (s for s in context.segments if "CALCULATED AS" in s.text),
+            None,
+        )
+        assert methodology_segment is not None
+        assert methodology_segment.segment_type.value == "methodology"
+
+    def test_definition_in_blockquote(self, tmp_path: Path) -> None:
+        """Test definition detection in blockquote element."""
+        html_content = b"""
+        <html>
+        <body>
+            <blockquote>Annual Recurring Revenue means the annualized value of all active subscriptions as of the measurement date.</blockquote>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+
+        definition_segment = next(
+            (s for s in context.segments if "Annual Recurring Revenue" in s.text),
+            None,
+        )
+        assert definition_segment is not None
+        assert definition_segment.segment_type.value == "definition"
+
+    def test_empty_text_does_not_crash(self, tmp_path: Path) -> None:
+        """Test that empty or whitespace-only text is handled gracefully."""
+        html_content = b"""
+        <html>
+        <body>
+            <p></p>
+            <p>   </p>
+            <div></div>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=12345,
+        )
+
+        result = stage.process(context)
+        assert result.success
+        # Empty segments should be filtered by min_length constraint
+        assert len(context.segments) == 0
