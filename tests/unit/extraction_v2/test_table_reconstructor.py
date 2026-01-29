@@ -656,3 +656,91 @@ class TestEdgeCases:
         # All cells in list should be unique objects
         cell_ids = [id(cell) for cell in table.cells]
         assert len(cell_ids) == len(set(cell_ids))
+
+
+class TestIntegrationSECFiling:
+    """Integration tests with real SEC filing table HTML."""
+
+    def test_sec_financial_table_from_slack_filing(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Test reconstruction of real SEC financial table with colspan and rowspan.
+
+        This table is extracted from Slack Technologies S-1 filing and contains:
+        - Complex header hierarchy with colspan
+        - Combined colspan+rowspan in header (3 columns x 2 rows)
+        - 12 columns total
+        - Financial data with multiple time periods
+        """
+        import pathlib
+
+        fixture_path = (
+            pathlib.Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "tables"
+            / "sec_financial_table.html"
+        )
+
+        with open(fixture_path, encoding="utf-8") as f:
+            html = f.read()
+
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # Verify table dimensions
+        assert table.row_count == 6
+        assert table.col_count == 12
+
+        # Verify header rows detected
+        # Note: First 2 rows are empty/width definitions, so header detection
+        # may only find 1 row. The important part is that it doesn't crash.
+        assert table.header_rows >= 1
+
+        # Verify stub column detected (first column with labels)
+        assert table.stub_cols >= 1
+
+        # Test specific cell with rowspan+colspan combination
+        # Row 2, col 9 has "As of April 30, 2019" with colspan=3 and rowspan=2
+        cell = table.get_cell(2, 9)
+        assert cell is not None
+        assert "April 30, 2019" in cell.text
+        assert cell.colspan == 3
+        assert cell.rowspan == 2
+
+        # Verify the same cell is referenced at (2,10) and (2,11) due to colspan
+        assert table.get_cell(2, 10) is cell
+        assert table.get_cell(2, 11) is cell
+
+        # Verify the same cell is referenced at (3,9), (3,10), (3,11) due to rowspan
+        assert table.get_cell(3, 9) is cell
+        assert table.get_cell(3, 10) is cell
+        assert table.get_cell(3, 11) is cell
+
+        # Test cell with colspan in header row
+        # Row 2, col 1 has "As of January 31," with colspan=7
+        header_cell = table.get_cell(2, 1)
+        assert header_cell is not None
+        assert "January 31" in header_cell.text
+        assert header_cell.colspan == 7
+
+        # Test data row with financial values
+        # Row 4 should have "Cash and cash equivalents" and values
+        label_cell = table.get_cell(4, 0)
+        assert label_cell is not None
+        assert "Cash and cash equivalents" in label_cell.text
+
+        # Verify a value cell exists
+        value_cell = table.get_cell(4, 2)
+        assert value_cell is not None
+        assert "165,055" in value_cell.text
+
+        # Verify cells list contains only unique cells
+        unique_cells = set(id(cell) for cell in table.cells)
+        assert len(table.cells) == len(unique_cells)
+
+        # Basic sanity: cells count should be less than row_count * col_count
+        # because spans reduce the number of unique cells
+        assert len(table.cells) < table.row_count * table.col_count

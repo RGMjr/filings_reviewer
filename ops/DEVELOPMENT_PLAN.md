@@ -26,7 +26,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-7 | Detect and mark stub columns (first M columns that contain text labels, not values) (_detect_stub_cols lines 200-240)
 - [x] AC-8 | Populate `Table` and `Cell` models from `src/extraction_v2/models.py` (reconstruct() lines 33-86)
 - [x] AC-9 | Unit tests achieve ≥90% coverage on new code (96% achieved - 24 tests, mypy --strict passes, ruff clean)
-- [ ] AC-10 | Integration test with real SEC filing table HTML (from test fixtures)
+- [x] AC-10 | Integration test with real SEC filing table HTML (from test fixtures) (SEC table from Slack S-1 filing - 25 tests pass, all verifications clean)
 
 ---
 
