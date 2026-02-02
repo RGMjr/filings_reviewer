@@ -8,37 +8,35 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-2 AC-1: Created SectionClassificationStage with full implementation
+- V2-PHASE-2 AC-13: Unit tests with 93% coverage (48 tests, mypy --strict passes)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- AC-2: Implement heading detection (font/bold, all-caps, numbered sections)
+- AC-14: Integration test with real SEC filing (from existing fixtures)
 
 ## Test Status
 
 - Type Checking: mypy --strict passes on section_classification.py
-- Linting: ruff check passes on section_classification.py
-- Unit tests: Not yet written (AC-13)
+- Linting: ruff check passes on section_classification.py and test file
+- Unit tests: 48 tests, 93% coverage on section_classification.py
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Segment model uses `dom_locator` (not `xpath`) and `sequence` (not `sequence_id`)
-- SectionClassificationStage follows pattern from IngestionStage (imports, error handling)
-- Section patterns compiled at __init__ for performance
-- AC-2-9 already implemented in AC-1 (heading detection logic complete)
+- Segment uses `doc_id` field, but PipelineContext uses `filing_id` field
+- Test structure follows pattern from test_ingestion.py (test classes per feature area)
+- Coverage at 93% - only uncovered lines are exception handling paths
+- AC-14 (integration test) can likely reuse fixtures from test_ingestion.py
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- src/extraction_v2/stages/section_classification.py (created - 360 lines, full implementation)
-- src/extraction_v2/stages/__init__.py (added SectionClassificationStage export)
-- src/extraction_v2/pipeline.py (imported SectionClassificationStage, removed stub)
-- ops/DEVELOPMENT_PLAN.md (AC-1 marked complete)
+- tests/unit/extraction_v2/test_section_classification.py (created - 704 lines, 48 tests)
+- ops/DEVELOPMENT_PLAN.md (AC-13 marked complete)
 - ops/ITERATION_CONTEXT.md (this file - updated)
 
 ## Blockers or Warnings
