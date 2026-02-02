@@ -1,8 +1,8 @@
 # Development Plan
 
-**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-2.md
-**Task ID**: V2-PHASE-2
-**Task Name**: Section Classification Stage
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-3.md
+**Task ID**: V2-PHASE-3
+**Task Name**: Table Reconstruction Stage (Wire Existing)
 **Started**: 2026-02-02
 
 ---
@@ -17,20 +17,17 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [x] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class (created with full structure, mypy --strict passes)
-- [x] AC-2 | Implement heading detection (font/bold, all-caps, numbered sections, known patterns) (implemented in _is_section_heading() method)
-- [x] AC-3 | Detect COVER section (first segments before Risk Factors/TOC) (default section in process() method)
-- [x] AC-4 | Detect RISK_FACTORS section (heading pattern + high-value segment flag) (SECTION_PATTERNS lines 45-48)
-- [x] AC-5 | Detect MDA section ("Management's Discussion", "MD&A") (SECTION_PATTERNS lines 50-54)
-- [x] AC-6 | Detect BUSINESS section (company description, products) (SECTION_PATTERNS lines 55-59)
-- [x] AC-7 | Detect FINANCIALS section (financial statements) (SECTION_PATTERNS lines 60-64)
-- [x] AC-8 | Detect NOTES section (footnotes to financial statements) (SECTION_PATTERNS lines 65-68)
-- [x] AC-9 | Detect EXHIBITS and SIGNATURES sections (mark as filterable) (SECTION_PATTERNS lines 69-77)
-- [x] AC-10 | Assign `section_type` enum to each Segment in context.segments (process() line 299)
-- [x] AC-11 | Build hierarchical `section_path` list for each Segment (process() line 300)
-- [x] AC-12 | Wire into pipeline - replace stub in `pipeline.py` (pipeline.py lines 206-208)
-- [x] AC-13 | Unit tests with ≥90% coverage on section_classification.py (93% coverage, 48 tests, mypy --strict passes)
-- [x] AC-14 | Integration test with real SEC filing (fixture created, all 8 section types detected correctly)
+- [ ] AC-1 | Create `src/extraction_v2/stages/table_reconstruction.py` with `TableReconstructionStage` class
+- [ ] AC-2 | Import and use existing `TableReconstructor` from `src/extraction_v2/table_reconstructor.py`
+- [ ] AC-3 | Process each table segment from `context.segments` where `segment_type == SegmentType.TABLE`
+- [ ] AC-4 | Parse segment's `raw_html` with BeautifulSoup to get table element
+- [ ] AC-5 | Call `reconstructor.reconstruct(table_elem)` to get `Table` object
+- [ ] AC-6 | Store reconstructed `Table` objects in `context.tables` list
+- [ ] AC-7 | Link each `Table` back to its source `Segment` (via segment_id or reference)
+- [ ] AC-8 | Wire into pipeline - replace stub in `pipeline.py` with import
+- [ ] AC-9 | Update `src/extraction_v2/stages/__init__.py` to export the new stage
+- [ ] AC-10 | Unit tests with ≥90% coverage on table_reconstruction.py
+- [ ] AC-11 | Integration test verifying tables are reconstructed from ingested segments
 
 ---
 
@@ -40,14 +37,15 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | AC-1 | ✅ Complete | Created section_classification.py with full stage implementation, mypy --strict passes |
-| 2 | AC-2-12 | ✅ Complete | All implemented in AC-1 (heading detection, section patterns, pipeline wiring) |
-| 3 | AC-13 | ✅ Complete | 48 unit tests, 93% coverage, mypy --strict passes |
-| 4 | AC-14 | ✅ Complete | Integration test with full SEC filing fixture - all 8 section types detected |
 
 ---
 
 ## Previous Tasks
+
+### V2-PHASE-2: Section Classification ✅ COMPLETE (2026-02-02)
+- All 14 ACs met
+- 93% coverage, 49 tests
+- Merged to v2-rewrite: commit 614ea5b
 
 ### V2-10: Table Reconstruction ✅ COMPLETE (2026-01-29)
 - All 10 ACs met
@@ -58,3 +56,4 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - Functionality implemented as `_compute_paths()` in table_reconstructor.py:273-318
 - Tests in `TestPathComputation` class
 - Worker prompt archived to `docs/archive/worker-prompts/`
+
