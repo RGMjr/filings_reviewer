@@ -8,45 +8,46 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- Task V2-10: All 10 acceptance criteria complete - completion report generated
+- V2-PHASE-2 AC-1: Created SectionClassificationStage with full implementation
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- TASK COMPLETE - ready for next task assignment
+- AC-2: Implement heading detection (font/bold, all-caps, numbered sections)
 
 ## Test Status
 
-- Unit tests: 25 tests pass (including SEC filing integration test), 96% coverage on table_reconstructor.py
-- Type Checking: mypy --strict passes
-- Linting: ruff check passes
-- Coverage details: 119 statements, 5 uncovered (error handling paths)
+- Type Checking: mypy --strict passes on section_classification.py
+- Linting: ruff check passes on section_classification.py
+- Unit tests: Not yet written (AC-13)
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Comprehensive test suite now includes real SEC filing table from Slack Technologies S-1
-- Integration test validates colspan+rowspan handling with production-quality HTML
-- SEC tables often have empty/structural rows (width definitions) before content
-- Header detection handles both `<th>` tags and empty rows correctly
-- Task V2-10 complete - all 10 acceptance criteria met
+- Segment model uses `dom_locator` (not `xpath`) and `sequence` (not `sequence_id`)
+- SectionClassificationStage follows pattern from IngestionStage (imports, error handling)
+- Section patterns compiled at __init__ for performance
+- AC-2-9 already implemented in AC-1 (heading detection logic complete)
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- ops/completion-reports/V2-10_completion.md (created - comprehensive completion report)
-- ops/DEVELOPMENT_PLAN.md (all criteria marked complete)
-- ops/ITERATION_CONTEXT.md (this file - updated for task completion)
+- src/extraction_v2/stages/section_classification.py (created - 360 lines, full implementation)
+- src/extraction_v2/stages/__init__.py (added SectionClassificationStage export)
+- src/extraction_v2/pipeline.py (imported SectionClassificationStage, removed stub)
+- ops/DEVELOPMENT_PLAN.md (AC-1 marked complete)
+- ops/ITERATION_CONTEXT.md (this file - updated)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - V2-10 fully complete with completion report generated
-- Ready for next task (suggest V2-11: TableReconstructionStage implementation)
+- None - AC-1 complete, heading detection logic already implemented
+- AC-2 through AC-11 are essentially complete (built into process() method)
+- Next focus: AC-12 (pipeline wiring - DONE), AC-13 (unit tests), AC-14 (integration test)
 
 ---
 

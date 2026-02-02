@@ -17,7 +17,7 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class
+- [x] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class (created with full structure, mypy --strict passes)
 - [ ] AC-2 | Implement heading detection (font/bold, all-caps, numbered sections, known patterns)
 - [ ] AC-3 | Detect COVER section (first segments before Risk Factors/TOC)
 - [ ] AC-4 | Detect RISK_FACTORS section (heading pattern + high-value segment flag)
@@ -40,6 +40,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
+| 1 | AC-1 | ✅ Complete | Created section_classification.py with full stage implementation, mypy --strict passes |
 
 ---
 
