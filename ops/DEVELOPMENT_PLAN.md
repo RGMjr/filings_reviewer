@@ -1,9 +1,9 @@
 # Development Plan
 
-**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-10.md
-**Task ID**: V2-10
-**Task Name**: Implement colspan/rowspan grid resolution
-**Started**: 2026-01-29
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-2.md
+**Task ID**: V2-PHASE-2
+**Task Name**: Section Classification Stage
+**Started**: 2026-02-02
 
 ---
 
@@ -17,16 +17,20 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [x] AC-1 | Create `TableReconstructor` class in `src/extraction_v2/table_reconstructor.py` (mypy --strict passes)
-- [x] AC-2 | Implement `resolve_spans()` method that converts HTML table to normalized grid (verified with simple/colspan/rowspan tests)
-- [x] AC-3 | Handle colspan attribute - cell fills multiple columns (implemented in _resolve_spans lines 137, 156-164)
-- [x] AC-4 | Handle rowspan attribute - cell fills multiple rows (implemented in _resolve_spans lines 136, 156-161)
-- [x] AC-5 | Handle combined colspan+rowspan - cell fills rectangular region (nested loops lines 156-161)
-- [x] AC-6 | Detect and mark header rows (first N rows where all cells are `<th>` or bold) (_detect_header_rows lines 168-198)
-- [x] AC-7 | Detect and mark stub columns (first M columns that contain text labels, not values) (_detect_stub_cols lines 200-240)
-- [x] AC-8 | Populate `Table` and `Cell` models from `src/extraction_v2/models.py` (reconstruct() lines 33-86)
-- [x] AC-9 | Unit tests achieve ≥90% coverage on new code (96% achieved - 24 tests, mypy --strict passes, ruff clean)
-- [x] AC-10 | Integration test with real SEC filing table HTML (from test fixtures) (SEC table from Slack S-1 filing - 25 tests pass, all verifications clean)
+- [ ] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class
+- [ ] AC-2 | Implement heading detection (font/bold, all-caps, numbered sections, known patterns)
+- [ ] AC-3 | Detect COVER section (first segments before Risk Factors/TOC)
+- [ ] AC-4 | Detect RISK_FACTORS section (heading pattern + high-value segment flag)
+- [ ] AC-5 | Detect MDA section ("Management's Discussion", "MD&A")
+- [ ] AC-6 | Detect BUSINESS section (company description, products)
+- [ ] AC-7 | Detect FINANCIALS section (financial statements)
+- [ ] AC-8 | Detect NOTES section (footnotes to financial statements)
+- [ ] AC-9 | Detect EXHIBITS and SIGNATURES sections (mark as filterable)
+- [ ] AC-10 | Assign `section_type` enum to each Segment in context.segments
+- [ ] AC-11 | Build hierarchical `section_path` list for each Segment
+- [ ] AC-12 | Wire into pipeline - replace stub in `pipeline.py`
+- [ ] AC-13 | Unit tests with ≥90% coverage on section_classification.py
+- [ ] AC-14 | Integration test with real SEC filing (from existing fixtures)
 
 ---
 
@@ -39,16 +43,14 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 ---
 
-## Results Summary
+## Previous Tasks
 
-**Completed**: 2026-01-29
-**Total Iterations**: 10
-**Files Changed**:
-- src/extraction_v2/table_reconstructor.py (created, 119 statements, 96% coverage)
-- tests/unit/extraction_v2/test_table_reconstructor.py (created, 25 tests)
-- tests/fixtures/tables/sec_financial_table.html (created, real SEC table fixture)
+### V2-10: Table Reconstruction ✅ COMPLETE (2026-01-29)
+- All 10 ACs met
+- 96% coverage, 25 tests
+- Completion report: ops/completion-reports/V2-10_completion.md
 
-**Test Results**: ✅ 25 tests pass, 96% coverage on table_reconstructor.py
-**Type Checking**: ✅ mypy --strict passes
-**Linting**: ✅ ruff check passes
-**Completion Report**: ops/completion-reports/V2-10_completion.md
+### V2-11: Compute header_path ✅ ABSORBED BY V2-10
+- Functionality implemented as `_compute_paths()` in table_reconstructor.py:273-318
+- Tests in `TestPathComputation` class
+- Worker prompt archived to `docs/archive/worker-prompts/`
