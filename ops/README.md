@@ -57,6 +57,7 @@ ops/
 | `implement` | Apply fixes from analysis | IMPLEMENTATION_PLAN.md |
 | `extract` | Bulk filing extraction | EXTRACTION_PLAN.md |
 | `validate` | Bulk validation | VALIDATION_PLAN.md |
+| `review` | Multi-model code review | REVIEW_PLAN.md |
 
 ### Branch Isolation (3rd argument)
 
