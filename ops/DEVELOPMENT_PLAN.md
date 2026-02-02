@@ -30,7 +30,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-11 | Build hierarchical `section_path` list for each Segment (process() line 300)
 - [x] AC-12 | Wire into pipeline - replace stub in `pipeline.py` (pipeline.py lines 206-208)
 - [x] AC-13 | Unit tests with ≥90% coverage on section_classification.py (93% coverage, 48 tests, mypy --strict passes)
-- [ ] AC-14 | Integration test with real SEC filing (from existing fixtures)
+- [x] AC-14 | Integration test with real SEC filing (fixture created, all 8 section types detected correctly)
 
 ---
 
@@ -43,6 +43,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 1 | AC-1 | ✅ Complete | Created section_classification.py with full stage implementation, mypy --strict passes |
 | 2 | AC-2-12 | ✅ Complete | All implemented in AC-1 (heading detection, section patterns, pipeline wiring) |
 | 3 | AC-13 | ✅ Complete | 48 unit tests, 93% coverage, mypy --strict passes |
+| 4 | AC-14 | ✅ Complete | Integration test with full SEC filing fixture - all 8 section types detected |
 
 ---
 
