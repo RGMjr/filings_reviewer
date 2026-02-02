@@ -39,6 +39,7 @@ from src.extraction_v2.models import (
     Table,
 )
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.section_classification import SectionClassificationStage
 
 logger = logging.getLogger(__name__)
 
@@ -349,36 +350,7 @@ class V2Pipeline:
 # ============================================================================
 # Stage Implementations (Stubs - to be implemented in separate modules)
 # ============================================================================
-# Note: IngestionStage is now imported from src.extraction_v2.stages.ingestion
-
-
-class SectionClassificationStage:
-    """
-    Stage 2: Section Classification.
-
-    - Identify: Cover, Risk Factors, MD&A, Financials, Notes
-    - Assign section_path to each Segment
-    - Discard: Exhibits, Signatures, Legal boilerplate
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Classify document sections."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement SEC section detection rules
-        # TODO: Assign SectionType to each segment
-        # TODO: Filter out irrelevant sections
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.SECTION_CLASSIFICATION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.segments),
-            items_output=len(context.segments),
-        )
+# Note: IngestionStage and SectionClassificationStage are now imported from src.extraction_v2.stages
 
 
 class TableReconstructionStage:

@@ -1,0 +1,160 @@
+{
+  "dimension": "D5_PERFORMANCE",
+  "model": "claude",
+  "timestamp": "2026-02-02T00:00:00Z",
+  "files_reviewed": [
+    "src/infra/db.py",
+    "src/infra/pool.py",
+    "src/llm/openai_client.py",
+    "src/extraction/extraction_pipeline.py",
+    "src/extraction/html_segmenter.py",
+    "src/extraction/value_extractor.py"
+  ],
+  "findings": [
+    {
+      "id": "C-D5-001",
+      "severity": "High",
+      "category": "performance",
+      "title": "Heading cache memory leak in HTMLSegmenter",
+      "description": "The HTMLSegmenter._heading_cache is properly cleared after each filing (line 370), but if the segmenter instance is reused across multiple filings in a long-running process, the cache lifecycle is correct. However, the _element_position_map is never explicitly cleared, which could accumulate memory across filings. The cache is built per filing and cleared, but the position map persists.",
+      "file": "src/extraction/html_segmenter.py",
+      "line_range": "246-370",
+      "code_snippet": "# Pre-build heading cache for O(1) lookups (performance optimization)\nself._heading_cache = self._build_heading_cache(main_content)\n\n# ... processing ...\n\n# Clear cache after processing\nself._heading_cache = None",
+      "recommendation": "Verify that _element_position_map is also cleared after each filing. Add explicit cache invalidation method like clear_caches() that is called at the end of segment_filing(). Add memory profiling to detect actual leaks.",
+      "effort": "S"
+    },
+    {
+      "id": "C-D5-002",
+      "severity": "Critical",
+      "category": "performance",
+      "title": "No LLM response caching - significant cost/latency opportunity",
+      "description": "The OpenAIClient makes API calls without any response caching mechanism. Each segment triggers a fresh LLM call even if the same segment appears in multiple filings or if similar segments exist. With projected costs of $500-$1,000 for full corpus extraction and 3-10 seconds of LLM latency per filing, implementing caching could save 10-20% of costs and reduce latency proportionally. The client has cost tracking (CostTracker) but no cache.",
+      "file": "src/llm/openai_client.py",
+      "line_range": "190-299",
+      "code_snippet": "def complete(\n    self,\n    prompt: str,\n    system_message: str | None = None,\n    **kwargs,\n) -> LLMResponse:\n    # Build messages\n    messages = []\n    if system_message:\n        messages.append({\"role\": \"system\", \"content\": system_message})\n    messages.append({\"role\": \"user\", \"content\": prompt})\n    # ... no cache lookup ...\n    response = self.client.chat.completions.create(...)",
+      "recommendation": "Implement LLM response caching with: 1) Hash-based key (segment_text + metric_id + model), 2) TTL-based eviction (7-30 days), 3) Persistent cache (Redis or disk), 4) Cache hit metrics. Estimated impact: 10-20% cost reduction ($50-$200), 1-3s latency improvement per filing.",
+      "effort": "M"
+    },
+    {
+      "id": "C-D5-003",
+      "severity": "Critical",
+      "category": "performance",
+      "title": "LLM calls are sequential - no batching or parallelization",
+      "description": "The extraction pipeline processes LLM calls sequentially, one segment at a time. With 3-10 seconds of LLM latency per filing and LLM calls accounting for 50-70% of total extraction time, this is the primary bottleneck. OpenAI Batch API offers 50% cost reduction but 24-hour latency. The complete_batch() method exists (line 301-335) but implements sequential processing with rate limiting, not true batching.",
+      "file": "src/llm/openai_client.py",
+      "line_range": "301-335",
+      "code_snippet": "def complete_batch(\n    self,\n    prompts: list[str],\n    system_message: str | None = None,\n    delay_between_requests: float = 0.1,\n) -> list[LLMResponse]:\n    responses = []\n    for i, prompt in enumerate(prompts):\n        # Sequential processing with rate limiting\n        response = self.complete(prompt, system_message=system_message)\n        responses.append(response)\n        if i < len(prompts) - 1:\n            time.sleep(delay_between_requests)",
+      "recommendation": "Implement two-tier LLM strategy: 1) Interactive mode: Use concurrent.futures to parallelize LLM calls (5-10 concurrent requests), 2) Batch mode: Integrate OpenAI Batch API for offline processing (50% cost savings, 24hr latency). Add batch_mode flag to ExtractionPipeline. Estimated speedup: 5-10x for LLM stage.",
+      "effort": "L"
+    },
+    {
+      "id": "C-D5-004",
+      "severity": "Medium",
+      "category": "performance",
+      "title": "Complex bulk insert with 42 cyclomatic complexity - performance risk",
+      "description": "The bulk_insert_review_candidates() method has cyclomatic complexity of 42 (critical threshold) and handles complex conflict resolution logic mixed with database operations. This function processes candidate deduplication, runner-up identification, and bulk inserts in a single transaction, making it difficult to optimize and profile. The function is 386 lines long (lines 1421-1807).",
+      "file": "src/infra/db.py",
+      "line_range": "1421-1807",
+      "code_snippet": "def bulk_insert_review_candidates(\n    self,\n    candidates: list[dict[str, Any]],\n    *,\n    log_suppressed: bool = False,\n) -> list[int] | tuple[list[int], list[dict[str, Any]]]:\n    # 386 lines of complex logic with CC=42\n    # Conflict detection, runner-up identification, bulk inserts\n    # All in single transaction",
+      "recommendation": "Refactor into smaller, focused methods: 1) _detect_conflicts(), 2) _resolve_conflicts(), 3) _prepare_bulk_insert(), 4) _execute_bulk_insert(). Profile each stage separately. Consider moving conflict resolution logic to a separate ConflictResolver class. This will improve testability and enable stage-specific optimization.",
+      "effort": "L"
+    },
+    {
+      "id": "C-D5-005",
+      "severity": "Medium",
+      "category": "performance",
+      "title": "No filing-level parallelization - sequential processing",
+      "description": "The extraction pipeline processes filings sequentially in process_filing(). With 7,304 filings in the target corpus and 9-17 seconds per filing, total runtime is 2-5 days. The system has connection pooling infrastructure (pool.py with ThreadPoolExecutor support) but it's not utilized for filing-level parallelism. Database connection pool (default: 2-10 connections) can support multiple concurrent filings.",
+      "file": "src/extraction/extraction_pipeline.py",
+      "line_range": "91-110",
+      "code_snippet": "def process_filing(self, filing_id: int) -> ExtractionResult:\n    logger.info(f\"Processing filing {filing_id}\")\n    # Sequential processing - no parallelization\n    filing = self._get_filing_metadata(filing_id)\n    segments = self.segmenter.segment_filing(...)\n    # ... 6 stages ...",
+      "recommendation": "Implement filing-level parallelization: 1) Add process_batch() method using execute_batch() from pool.py, 2) Process 5-10 filings concurrently (limited by DB pool size), 3) Add rate limiting for SEC EDGAR fetches (100ms minimum), 4) Implement progress tracking and error recovery. Estimated speedup: 5-10x (runtime: 4-12 hours vs 2-5 days). Start with batch scripts, not web UI.",
+      "effort": "M"
+    },
+    {
+      "id": "C-D5-006",
+      "severity": "High",
+      "category": "performance",
+      "title": "Parallel sentence detection limited to 4 workers - suboptimal utilization",
+      "description": "The HTMLSegmenter uses ThreadPoolExecutor with 4 workers for sentence detection (PARALLEL_SENTENCE_DETECTION_WORKERS = 4, line 100). This hardcoded value may be suboptimal for modern CPUs with 8-32 cores. The threshold of 50 segments (PARALLEL_SENTENCE_DETECTION_THRESHOLD = 50, line 101) before parallelization kicks in is reasonable, but the worker count is not configurable.",
+      "file": "src/extraction/html_segmenter.py",
+      "line_range": "100-101",
+      "code_snippet": "# Parallel processing configuration (SEG11)\nPARALLEL_SENTENCE_DETECTION_WORKERS = 4\nPARALLEL_SENTENCE_DETECTION_THRESHOLD = 50",
+      "recommendation": "Make worker count configurable and default to min(cpu_count(), 8) or environment variable. Add profiling to measure actual speedup at different worker counts. Consider extending parallelization to other CPU-bound tasks like keyword matching and classification. Note: ThreadPoolExecutor is used correctly (I/O and CPU-bound tasks benefit from threading in Python due to GIL release in native code).",
+      "effort": "S"
+    },
+    {
+      "id": "C-D5-007",
+      "severity": "Medium",
+      "category": "performance",
+      "title": "Large metric name mapping dictionary (170+ entries) in value_extractor.py",
+      "description": "The METRIC_NAME_MAPPING dictionary in value_extractor.py contains 170+ entries mapping LLM-returned metric names to canonical IDs (lines 36-150+). This is loaded on module import and consulted for every LLM extraction. While dictionary lookups are O(1), the sheer size suggests this might benefit from optimization or alternative approaches (e.g., fuzzy matching library, LLM prompt engineering to return canonical IDs).",
+      "file": "src/extraction/value_extractor.py",
+      "line_range": "36-150",
+      "code_snippet": "METRIC_NAME_MAPPING = {\n    # Core metrics\n    \"new_customers_acquired\": \"cm_new_customers_acquired\",\n    \"new_customers\": \"cm_new_customers_acquired\",\n    # ... 170+ entries ...",
+      "recommendation": "Profile to confirm this is actually a bottleneck (likely not, as dict lookups are fast). If optimization needed: 1) Use rapidfuzz for fuzzy matching instead of exact dict, 2) Engineer LLM prompt to return canonical IDs directly, 3) Add caching layer for LLM responses (see C-D5-002). This is likely not a real performance issue, but maintainability concern (see D3 findings).",
+      "effort": "M"
+    },
+    {
+      "id": "C-D5-008",
+      "severity": "Low",
+      "category": "performance",
+      "title": "Database query patterns not profiled - potential N+1 queries",
+      "description": "The db.py file (4,006 LOC) contains extensive database query logic but lacks query performance profiling or slow query logging. The bulk operations (bulk_insert_segments, bulk_insert_review_candidates, bulk_insert_metric_values) exist and use UNNEST for efficiency, but individual query methods don't log execution time. Potential N+1 query pattern in review candidate retrieval where candidates + metrics may be fetched separately.",
+      "file": "src/infra/db.py",
+      "line_range": "1-4006",
+      "code_snippet": "# No query timing instrumentation visible\ndef get_review_candidates_for_filing(self, filing_id: int):\n    # Fetches candidates\n    # May trigger separate queries for related data\n    pass",
+      "recommendation": "Add query performance instrumentation: 1) Log slow queries (>100ms threshold), 2) Add psycopg query timing via connection callbacks, 3) Profile full extraction run with pg_stat_statements, 4) Identify and fix N+1 patterns. Consider using an ORM like SQLAlchemy with eager loading for complex joins, or add EXPLAIN ANALYZE to development logging.",
+      "effort": "M"
+    },
+    {
+      "id": "C-D5-009",
+      "severity": "Low",
+      "category": "performance",
+      "title": "No memory profiling for large filing processing",
+      "description": "The system processes filings ranging from 500KB to 10MB+ HTML. BeautifulSoup parses entire documents into memory. With average filing size of ~2MB and ~500 segments per filing, memory usage is estimated at 10-50MB per filing. No memory profiling has been performed to verify this or identify memory leaks. The heading cache is now cleared (good), but _element_position_map persistence is unclear.",
+      "file": "src/extraction/html_segmenter.py",
+      "line_range": "168-400",
+      "code_snippet": "def segment_filing(self, filing_id: int, html_path: str | Path):\n    # Loads entire HTML into BeautifulSoup\n    soup = BeautifulSoup(html_content, \"lxml\")\n    # ... processing ...\n    # No memory profiling or monitoring",
+      "recommendation": "Add memory profiling for large filings: 1) Use memory_profiler or tracemalloc to profile HTMLSegmenter, 2) Test on largest filings (>10MB), 3) Consider streaming parser (lxml.etree.iterparse) for very large filings (>20MB), 4) Add memory usage metrics to SegmentationMetrics. Verify _element_position_map is cleared.",
+      "effort": "S"
+    },
+    {
+      "id": "C-D5-010",
+      "severity": "Medium",
+      "category": "performance",
+      "title": "No performance regression testing - risk of slowdowns",
+      "description": "The codebase has 87% test coverage and 3,467 tests, but no performance regression tests exist. Changes to keyword matching, HTML parsing, or extraction logic could introduce performance regressions without detection. The static analysis shows high complexity in performance-critical paths (_process_segment CC=57, find_keywords_near_number CC=46).",
+      "file": "tests/",
+      "line_range": "N/A",
+      "code_snippet": "# No performance tests found in test suite\n# 3,467 tests focus on correctness, not performance",
+      "recommendation": "Add performance regression tests: 1) Benchmark suite for critical paths (HTMLSegmenter, keyword matching, LLM calls), 2) Set baseline thresholds (e.g., <5s per filing for rule-based, <20s with LLM), 3) Run on representative filing samples (small/medium/large), 4) Add to CI pipeline with failure on >20% regression. Use pytest-benchmark for easy integration.",
+      "effort": "M"
+    },
+    {
+      "id": "C-D5-011",
+      "severity": "Low",
+      "category": "performance",
+      "title": "Connection pool configuration not documented or tuned",
+      "description": "The pool.py module provides connection pooling with configurable parameters (DB_POOL_MIN_SIZE, DB_POOL_MAX_SIZE, DB_POOL_TIMEOUT, etc.), but the defaults (min=2, max=10) are not documented as tuned for the extraction workload. With potential filing-level parallelization (C-D5-005), the pool size becomes critical. Current defaults may be too conservative.",
+      "file": "src/infra/pool.py",
+      "line_range": "1-100",
+      "code_snippet": "# Configuration via environment variables:\n#     DB_POOL_MIN_SIZE: Minimum connections to keep open (default: 2)\n#     DB_POOL_MAX_SIZE: Maximum connections in pool (default: 10)",
+      "recommendation": "Document pool sizing strategy: 1) Profile connection usage during extraction, 2) Tune pool size based on parallelization level (if 10 concurrent filings, need >=10 connections), 3) Add pool health monitoring (check_pool_health exists at line 424), 4) Document recommendations in CLAUDE.md (e.g., 'For batch extraction with N workers, set DB_POOL_MAX_SIZE >= N+2').",
+      "effort": "S"
+    },
+    {
+      "id": "C-D5-012",
+      "severity": "Medium",
+      "category": "performance",
+      "title": "No CDN or caching for filing HTML storage",
+      "description": "Filings are cached on disk at data/filings/{cik}_{accession}.html. With full corpus of 7,304 filings at ~2MB average, total cache size is ~15GB. No cache eviction policy exists. For deployed systems, this could consume significant disk space. No CDN or cloud storage integration for serving cached filings.",
+      "file": "src/filing_fetcher/",
+      "line_range": "N/A",
+      "code_snippet": "# Filing HTML cache:\n# - Location: data/filings/{cik}_{accession}.html\n# - Invalidation: Manual or periodic cleanup\n# - Size: ~500KB - 5MB per filing, ~15GB for full corpus",
+      "recommendation": "Implement filing cache management: 1) Add LRU eviction policy (keep 1,000 most recently used filings, ~2GB), 2) Add cache statistics (hit rate, size, eviction count), 3) For production: Integrate S3 or cloud storage with pre-signed URLs, 4) Add cache cleanup script (e.g., weekly cron to remove filings older than 30 days). Document cache management in ops procedures.",
+      "effort": "M"
+    }
+  ],
+  "summary": "Performance analysis reveals several high-impact optimization opportunities. PRIMARY BOTTLENECK: LLM calls account for 50-70% of extraction time (3-10s per filing). Key recommendations: 1) Implement LLM response caching (10-20% cost reduction, easy win), 2) Add filing-level parallelization (5-10x speedup), 3) Integrate OpenAI Batch API for offline processing (50% cost savings). The system has good infrastructure (connection pooling, ThreadPoolExecutor) but underutilizes it. Memory profiling needed for large filings, but heading cache memory leak is likely resolved (cache is cleared). Query profiling required to identify N+1 patterns in the 4,006-LOC db.py. No performance regression tests exist, creating risk of slowdowns. Overall: Solid foundation with significant low-hanging optimization opportunities."
+}

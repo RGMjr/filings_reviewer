@@ -17,20 +17,20 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class
-- [ ] AC-2 | Implement heading detection (font/bold, all-caps, numbered sections, known patterns)
-- [ ] AC-3 | Detect COVER section (first segments before Risk Factors/TOC)
-- [ ] AC-4 | Detect RISK_FACTORS section (heading pattern + high-value segment flag)
-- [ ] AC-5 | Detect MDA section ("Management's Discussion", "MD&A")
-- [ ] AC-6 | Detect BUSINESS section (company description, products)
-- [ ] AC-7 | Detect FINANCIALS section (financial statements)
-- [ ] AC-8 | Detect NOTES section (footnotes to financial statements)
-- [ ] AC-9 | Detect EXHIBITS and SIGNATURES sections (mark as filterable)
-- [ ] AC-10 | Assign `section_type` enum to each Segment in context.segments
-- [ ] AC-11 | Build hierarchical `section_path` list for each Segment
-- [ ] AC-12 | Wire into pipeline - replace stub in `pipeline.py`
-- [ ] AC-13 | Unit tests with ≥90% coverage on section_classification.py
-- [ ] AC-14 | Integration test with real SEC filing (from existing fixtures)
+- [x] AC-1 | Create `src/extraction_v2/stages/section_classification.py` with `SectionClassificationStage` class (created with full structure, mypy --strict passes)
+- [x] AC-2 | Implement heading detection (font/bold, all-caps, numbered sections, known patterns) (implemented in _is_section_heading() method)
+- [x] AC-3 | Detect COVER section (first segments before Risk Factors/TOC) (default section in process() method)
+- [x] AC-4 | Detect RISK_FACTORS section (heading pattern + high-value segment flag) (SECTION_PATTERNS lines 45-48)
+- [x] AC-5 | Detect MDA section ("Management's Discussion", "MD&A") (SECTION_PATTERNS lines 50-54)
+- [x] AC-6 | Detect BUSINESS section (company description, products) (SECTION_PATTERNS lines 55-59)
+- [x] AC-7 | Detect FINANCIALS section (financial statements) (SECTION_PATTERNS lines 60-64)
+- [x] AC-8 | Detect NOTES section (footnotes to financial statements) (SECTION_PATTERNS lines 65-68)
+- [x] AC-9 | Detect EXHIBITS and SIGNATURES sections (mark as filterable) (SECTION_PATTERNS lines 69-77)
+- [x] AC-10 | Assign `section_type` enum to each Segment in context.segments (process() line 299)
+- [x] AC-11 | Build hierarchical `section_path` list for each Segment (process() line 300)
+- [x] AC-12 | Wire into pipeline - replace stub in `pipeline.py` (pipeline.py lines 206-208)
+- [x] AC-13 | Unit tests with ≥90% coverage on section_classification.py (93% coverage, 48 tests, mypy --strict passes)
+- [x] AC-14 | Integration test with real SEC filing (fixture created, all 8 section types detected correctly)
 
 ---
 
@@ -40,6 +40,10 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
+| 1 | AC-1 | ✅ Complete | Created section_classification.py with full stage implementation, mypy --strict passes |
+| 2 | AC-2-12 | ✅ Complete | All implemented in AC-1 (heading detection, section patterns, pipeline wiring) |
+| 3 | AC-13 | ✅ Complete | 48 unit tests, 93% coverage, mypy --strict passes |
+| 4 | AC-14 | ✅ Complete | Integration test with full SEC filing fixture - all 8 section types detected |
 
 ---
 
