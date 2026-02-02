@@ -40,6 +40,7 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
+from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
 
 logger = logging.getLogger(__name__)
 
@@ -350,40 +351,8 @@ class V2Pipeline:
 # ============================================================================
 # Stage Implementations (Stubs - to be implemented in separate modules)
 # ============================================================================
-# Note: IngestionStage and SectionClassificationStage are now imported from src.extraction_v2.stages
-
-
-class TableReconstructionStage:
-    """
-    Stage 3: Table Reconstruction.
-
-    - Resolve rowspan/colspan into full grid
-    - Identify header rows and stub columns
-    - Compute header_path and stub_path for each cell
-
-    Key invariant: After span resolution, every logical cell has
-    exactly one (row, col) coordinate. No gaps. No overlaps.
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Reconstruct tables with full structure."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement colspan/rowspan resolution algorithm
-        # TODO: Compute header_path for each cell
-        # TODO: Compute stub_path for each cell
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.TABLE_RECONSTRUCTION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.segments),
-            items_output=len(context.tables),
-            metadata={"table_count": len(context.tables)},
-        )
+# Note: IngestionStage, SectionClassificationStage, and TableReconstructionStage
+# are now imported from src.extraction_v2.stages
 
 
 class ImageTriageStage:

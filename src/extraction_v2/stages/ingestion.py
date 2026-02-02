@@ -442,12 +442,16 @@ class IngestionStage:
             # Generate XPath locator
             xpath = self._generate_xpath(element)
 
+            # Convert element to HTML string for table reconstruction
+            raw_html = etree.tostring(element, encoding='unicode', method='html')
+
             # Create segment (sequence will be assigned after sorting)
             segment = Segment(
                 segment_id=f"{filing_id}_tbl_{len(segments)}",
                 segment_type=SegmentType.TABLE,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
+                raw_html=raw_html,  # Original HTML for table reconstruction
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
@@ -523,6 +527,9 @@ class IngestionStage:
             # Generate XPath locator
             xpath = self._generate_xpath(element)
 
+            # Convert element to HTML string
+            raw_html = etree.tostring(element, encoding='unicode', method='html')
+
             # AC-8: Classify segment type (detects definition/methodology blocks)
             segment_type = self._classify_segment_type(normalized_text, element.tag)
 
@@ -532,6 +539,7 @@ class IngestionStage:
                 segment_type=segment_type,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,
+                raw_html=raw_html,  # Original HTML
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )

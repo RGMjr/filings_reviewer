@@ -521,6 +521,7 @@ class Segment:
     # Type and content
     segment_type: SegmentType = SegmentType.PARAGRAPH
     text: str = ""  # Raw text content
+    raw_html: str = ""  # Original HTML (for table reconstruction)
 
     # DOM location
     dom_locator: str = ""  # XPath to source element
