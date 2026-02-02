@@ -37,6 +37,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
+| 1 | AC-1 to AC-11 | Complete | All ACs implemented and tested in single iteration |
 
 ---
 
