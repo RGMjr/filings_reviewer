@@ -702,3 +702,116 @@ class TestEdgeCases:
             sequence=0,
         )
         assert stage._is_section_heading(segment) is False
+
+
+class TestIntegrationSECFiling:
+    """Integration tests with real SEC filing structure."""
+
+    def test_full_sec_filing_section_classification(self, tmp_path: Path) -> None:
+        """Test section classification on a realistic SEC filing with all major sections.
+
+        This test verifies:
+        - All major section types are detected (COVER, RISK_FACTORS, MDA, BUSINESS, etc.)
+        - Segments are assigned correct section_type enum values
+        - section_path is populated for hierarchical context
+        - Integration with IngestionStage works correctly
+        """
+        from src.extraction_v2.stages.ingestion import IngestionStage
+
+        # Load realistic SEC filing fixture
+        fixture_path = (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "section_classification"
+            / "sec_filing_sections.html"
+        )
+
+        # Run ingestion stage first
+        ingestion_stage = IngestionStage()
+        context = PipelineContext(
+            filing_id=12345,
+            html_path=fixture_path,
+            config=PipelineConfig(),
+        )
+
+        ingestion_result = ingestion_stage.process(context)
+        assert ingestion_result.success is True
+        assert len(context.segments) > 0
+
+        # Run section classification stage
+        classification_stage = SectionClassificationStage()
+        classification_result = classification_stage.process(context)
+        assert classification_result.success is True
+
+        # Collect sections detected
+        sections_detected = set(seg.section_type for seg in context.segments)
+
+        # Verify all major section types appear
+        assert SectionType.COVER in sections_detected
+        assert SectionType.RISK_FACTORS in sections_detected
+        assert SectionType.MDA in sections_detected
+        assert SectionType.BUSINESS in sections_detected
+        assert SectionType.FINANCIALS in sections_detected
+        assert SectionType.NOTES in sections_detected
+        assert SectionType.EXHIBITS in sections_detected
+        assert SectionType.SIGNATURES in sections_detected
+
+        # Verify section_path is populated for all segments
+        for segment in context.segments:
+            assert segment.section_path is not None
+            assert len(segment.section_path) > 0
+            assert isinstance(segment.section_path, list)
+            assert all(isinstance(s, str) for s in segment.section_path)
+
+        # Verify specific section assignments by finding key phrases
+        risk_factors_segments = [
+            seg
+            for seg in context.segments
+            if "high degree of risk" in seg.text.lower()
+        ]
+        assert len(risk_factors_segments) > 0
+        assert risk_factors_segments[0].section_type == SectionType.RISK_FACTORS
+        assert "Risk Factors" in risk_factors_segments[0].section_path[0]
+
+        mda_segments = [
+            seg
+            for seg in context.segments
+            if "total customers" in seg.text.lower() and "50,000" in seg.text
+        ]
+        assert len(mda_segments) > 0
+        assert mda_segments[0].section_type == SectionType.MDA
+        assert "Mda" in mda_segments[0].section_path[0]
+
+        business_segments = [
+            seg
+            for seg in context.segments
+            if "cloud-based software" in seg.text.lower()
+        ]
+        assert len(business_segments) > 0
+        assert business_segments[0].section_type == SectionType.BUSINESS
+        assert "Business" in business_segments[0].section_path[0]
+
+        financials_segments = [
+            seg
+            for seg in context.segments
+            if seg.section_type == SectionType.FINANCIALS
+        ]
+        assert len(financials_segments) > 0
+        assert any("balance sheets" in seg.text.lower() for seg in financials_segments)
+
+        notes_segments = [
+            seg for seg in context.segments if seg.section_type == SectionType.NOTES
+        ]
+        assert len(notes_segments) > 0
+        assert any("note 1" in seg.text.lower() for seg in notes_segments)
+
+        # Verify cover section appears first
+        first_content_segments = context.segments[:5]
+        assert any(
+            seg.section_type == SectionType.COVER for seg in first_content_segments
+        )
+
+        # Verify exhibits and signatures appear last
+        last_segments = context.segments[-10:]
+        assert any(seg.section_type == SectionType.EXHIBITS for seg in last_segments)
+        assert any(seg.section_type == SectionType.SIGNATURES for seg in last_segments)
