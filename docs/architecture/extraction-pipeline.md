@@ -1103,11 +1103,153 @@ class ExtractedContext:
 
 ---
 
-**Last Updated:** 2025-12-26
-**Version:** 2.4
-**Status:** Production Ready
+## Extraction V2 Pipeline (Experimental)
+
+### Overview
+
+The V2 extraction pipeline (`src/extraction_v2/`) is an **experimental, research-focused** implementation that explores structure-first extraction approaches. It is **NOT** a replacement for V1 and is not used in production.
+
+**Status:** Alpha (experimental research implementation)
+**Production Use:** None (V1 remains the production pipeline)
+**Purpose:** Research and experimentation with advanced extraction techniques
+
+### Key Architectural Differences
+
+| Aspect | V1 (Production) | V2 (Research) |
+|--------|----------------|---------------|
+| **Approach** | Text-first, keyword-based | Structure-first, DOM-native |
+| **Table Handling** | Text extraction with markers | Full reconstruction (colspan/rowspan) |
+| **Image Processing** | Basic detection | OCR + chart extraction via vision models |
+| **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
+| **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
+| **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
+| **Status** | Production ready (87% coverage) | Alpha (not production ready) |
+
+### V2 Pipeline Stages
+
+The V2 pipeline implements an 11-stage extraction workflow:
+
+```
+1. Ingestion & Parsing       → Segments with XPath locators
+2. Section Classification    → MD&A, Risk Factors, Business, etc.
+3. Table Reconstruction      → header_path, stub_path per cell
+4. Image Triage              → chart, table_image, decorative
+5. OCR & Chart Extraction    → labeled values only (never interpolate)
+6. Metric Candidate Generation → YAML taxonomy matching
+7. Value Binding             → structural link required
+8. Period Inference          → from header_path or context
+9. MetricFact Construction   → with complete evidence_pack
+10. Deduplication            → by identity tuple (metric, period, cohort, value)
+11. Validation & Review Routing → confidence-based (auto-accept/review/reject)
+```
+
+### Core Data Models
+
+**MetricFact:** Primary extraction output with full provenance
+- Combines extracted value, metric ID, period, cohort, and evidence
+- Immutable audit trail from detection to acceptance
+- Replaces V1's separate `metric_values` and `metric_definitions` tables
+
+**EvidencePack:** Audit-grade proof for every extracted value
+- Source type (HTML table, OCR table, text, chart)
+- XPath locator for exact DOM position
+- Cell coordinates for table values (header_path, stub_path)
+- Surrounding context with structural markup
+- Raw text quote for verification
+
+**Table:** Reconstructed table with header/stub path binding
+- Full colspan/rowspan resolution
+- header_path: e.g., `"Revenue" > "Q4 2024"`
+- stub_path: e.g., `"Customer Metrics" > "New Customers"`
+- Enables precise value-to-header binding
+
+**ImageAsset:** Extracted image with classification and OCR results
+- Classification: chart, table_image, decorative, logo, signature
+- Chart type: bar, line, pie, stacked_bar, area
+- OCR text extraction for table images
+- Vision model analysis for chart values (labeled values only)
+
+### Key Files
+
+- **`models.py`** - Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
+- **`pipeline.py`** - Pipeline orchestrator with 11-stage workflow and configuration
+- **`table_reconstructor.py`** - Table reconstruction with colspan/rowspan resolution
+- **`stages/ingestion.py`** - HTML parsing with XPath locators and segment extraction
+
+### Design Principles (V2)
+
+1. **Structure-first, LLM-second**: Parse DOM structure before LLM calls (opposite of V1)
+2. **No value without provenance**: Every MetricFact includes complete EvidencePack
+3. **Fail closed**: Ambiguous cases route to review (never guess)
+4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
+5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
+6. **DOM-native**: XPath locators maintain exact source positions
+
+### When to Use V1 vs V2
+
+**Use V1 (Production Pipeline):**
+- All production extraction tasks
+- Bulk filing processing
+- Any task requiring proven, stable extraction
+- When results need to be written to production database
+
+**Use V2 (Research Only):**
+- Exploring structure-first extraction approaches
+- Testing advanced table reconstruction techniques
+- Experimenting with image/chart extraction via OCR/vision models
+- Research on complete provenance tracking
+- When evaluating alternative extraction strategies
+
+**Do NOT use V2 for:**
+- Production data extraction
+- Any task where results must be reliable
+- Bulk processing of filings for analysis
+- Integration with existing review/quality systems
+
+### Configuration
+
+V2 pipeline is configured via `PipelineConfig` dataclass:
+
+```python
+from src.extraction_v2.pipeline import ExtractionPipelineV2, PipelineConfig
+
+config = PipelineConfig(
+    enable_section_classification=True,
+    enable_image_extraction=True,
+    enable_chart_extraction=True,
+    min_confidence_auto_accept=0.90,
+    min_confidence_no_review=0.85,
+    max_confidence_auto_reject=0.15,
+    max_table_rows=1000,
+    max_images_per_document=50,
+    batch_size=10,
+    max_llm_calls_per_document=100,
+    save_evidence_screenshots=True,
+    evidence_screenshot_dir="evidence_v2/"
+)
+
+pipeline = ExtractionPipelineV2(config=config)
+result = pipeline.process_document(document)
+```
+
+### Testing Status
+
+V2 is in alpha status with limited test coverage. The module is not integrated with:
+- Production database schema
+- Human review system
+- Gold standard validation
+- Bulk processing scripts
+
+V2 is maintained separately from V1 and does not replace any V1 functionality.
+
+---
+
+**Last Updated:** 2026-02-03
+**Version:** 2.5
+**Status:** Production Ready (V1), Alpha (V2)
 
 **Changelog:**
+- v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation (experimental research implementation)
 - v2.4 (2025-12-26): Added CandidateDetector (EA-2) - unified candidate detection module
 - v2.3 (2025-12-26): Added StructureParser (EA-1) and ContextExtractor (EA-3) documentation
 - v2.2 (2025-12-17): Added SegmentEnricher configuration system (GR-11)
