@@ -6,6 +6,7 @@ This module provides a robust wrapper around the OpenAI API with:
 - Token counting and cost tracking
 - Rate limiting
 - Comprehensive error handling
+- Response caching to reduce costs and latency
 """
 
 import logging
@@ -13,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 try:
     import tiktoken
@@ -24,6 +25,8 @@ try:
     from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 except ImportError as e:
     raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken") from e
+
+from src.llm.cache import CacheConfig, CachedResponse, LLMCache
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,7 @@ class LLMResponse:
     cost: float
     latency_ms: int
     timestamp: datetime
+    cached: bool = False
 
 
 @dataclass
@@ -109,6 +113,7 @@ class OpenAIClient:
         max_tokens: int = 4096,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        cache_config: Optional[CacheConfig] = None,
     ):
         """
         Initialize OpenAI client.
@@ -120,6 +125,7 @@ class OpenAIClient:
             max_tokens: Maximum tokens in response
             max_retries: Number of retries on failure
             retry_delay: Initial delay between retries (exponential backoff)
+            cache_config: Optional cache configuration. If None, uses defaults.
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -150,6 +156,9 @@ class OpenAIClient:
 
         # Cost tracking
         self.cost_tracker = CostTracker()
+
+        # Response cache
+        self._cache = LLMCache(cache_config)
 
         logger.info(f"OpenAI client initialized with model: {model}")
 
@@ -194,7 +203,7 @@ class OpenAIClient:
         **kwargs,
     ) -> LLMResponse:
         """
-        Send completion request to OpenAI API with retry logic.
+        Send completion request to OpenAI API with retry logic and caching.
 
         Args:
             prompt: User prompt
@@ -207,6 +216,38 @@ class OpenAIClient:
         Raises:
             APIError: If all retries fail
         """
+        # Check cache first
+        cached = self._cache.get(
+            model=self.model,
+            system_message=system_message or "",
+            prompt=prompt,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            **kwargs,
+        )
+
+        if cached:
+            # Calculate cost for tracking (even though we didn't pay)
+            cost = self.calculate_cost(cached.input_tokens, cached.output_tokens)
+
+            llm_response = LLMResponse(
+                content=cached.content,
+                model=self.model,
+                input_tokens=cached.input_tokens,
+                output_tokens=cached.output_tokens,
+                total_tokens=cached.input_tokens + cached.output_tokens,
+                cost=cost,
+                latency_ms=0,
+                timestamp=datetime.now(),
+                cached=True,
+            )
+
+            logger.debug(
+                f"Cache hit: {cached.output_tokens} tokens (saved ${cost:.4f})"
+            )
+
+            return llm_response
+
         # Build messages
         messages = []
         if system_message:
@@ -252,10 +293,24 @@ class OpenAIClient:
                     cost=cost,
                     latency_ms=latency_ms,
                     timestamp=datetime.now(),
+                    cached=False,
                 )
 
                 # Track cost
                 self.cost_tracker.add_request(llm_response)
+
+                # Store in cache
+                self._cache.set(
+                    model=self.model,
+                    system_message=system_message or "",
+                    prompt=prompt,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    response_content=content,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    **kwargs,
+                )
 
                 logger.debug(
                     f"LLM request successful: {output_tokens} tokens, ${cost:.4f}, {latency_ms}ms"
@@ -342,3 +397,21 @@ class OpenAIClient:
         """Reset cost tracking to zero."""
         self.cost_tracker = CostTracker()
         logger.info("Cost tracker reset")
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """
+        Get cache performance statistics.
+
+        Returns:
+            Dictionary with cache statistics including hit rate and savings.
+        """
+        return self._cache.stats()
+
+    def clear_cache(self) -> int:
+        """
+        Clear the LLM response cache.
+
+        Returns:
+            Number of entries deleted.
+        """
+        return self._cache.clear()

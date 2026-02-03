@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.llm.cache import CacheConfig
+
 
 @pytest.fixture
 def mock_openai_response():
@@ -36,6 +38,12 @@ def mock_tiktoken():
         mock_tiktoken_module.encoding_for_model.return_value = mock_tokenizer
         mock_tiktoken_module.get_encoding.return_value = mock_tokenizer
         yield mock_tiktoken_module
+
+
+@pytest.fixture
+def disabled_cache_config():
+    """Create a cache config with caching disabled for testing."""
+    return CacheConfig(enabled=False)
 
 
 @pytest.fixture
