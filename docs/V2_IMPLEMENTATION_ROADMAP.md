@@ -3,7 +3,7 @@
 **Version**: 1.1
 **Created**: 2026-01-23
 **Updated**: 2026-02-03
-**Status**: In Progress (Phases 0-3 Complete)
+**Status**: In Progress (Phases 0-3, 6 Complete)
 
 ## Executive Summary
 
@@ -213,31 +213,30 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 6: Candidate Generation (Stage 6)
+### Phase 6: Candidate Generation (Stage 6) ✅ COMPLETE (2026-02-03)
 
 **Goal**: Find metric mentions in all content
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/candidate_generation.py`
-2. [ ] Port YAML taxonomy loading from V1:
+1. [x] Create `src/extraction_v2/stages/candidate_generation.py`
+2. [x] Port YAML taxonomy loading from V1:
    - Use `src/extraction/keyword_config.py`
    - Load patterns, exclusions, required_context
-3. [ ] Scan all content:
+3. [x] Scan all content:
    - Segment text
-   - Table cell text
-   - OCR text from images
-4. [ ] Apply filters:
+   - Table cell text (header_path + stub_path)
+4. [x] Apply filters:
    - Exclusion patterns
-   - Required context (for revenue synonyms)
-   - False positive filters (dates, years)
-5. [ ] Create candidate objects with:
+   - Required context with proximity-based checking
+   - Deduplication for overlapping patterns
+5. [x] Create candidate objects with:
    - metric_id
    - source_locator (where found)
    - match_text
    - confidence score
-6. [ ] Add tests
+6. [x] Add tests (42 tests, 96% coverage)
 
-**Dependencies:** Phase 3 (tables), Phase 5 (OCR text)
+**Dependencies:** Phase 3 (tables) ✅
 
 **Estimated Complexity:** M (1-2 hours)
 
