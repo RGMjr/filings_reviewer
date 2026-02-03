@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.llm.cache import CacheConfig
 from src.llm.openai_client import CostTracker, LLMResponse, OpenAIClient
+
+
+# Use disabled cache for all tests unless explicitly testing cache
+DISABLED_CACHE_CONFIG = CacheConfig(enabled=False)
 
 
 class TestLLMResponse:
@@ -139,7 +144,7 @@ class TestOpenAIClientInitialization:
     def test_client_initializes_with_api_key(self, mock_tiktoken):
         """Test client initializes with provided API key."""
         with patch("src.llm.openai_client.OpenAI") as mock_openai:
-            client = OpenAIClient(api_key="test-key-12345")
+            client = OpenAIClient(api_key="test-key-12345", cache_config=DISABLED_CACHE_CONFIG)
 
             assert client.api_key == "test-key-12345"
             mock_openai.assert_called_once_with(api_key="test-key-12345")
@@ -148,7 +153,7 @@ class TestOpenAIClientInitialization:
         """Test client initializes with environment variable."""
         with patch("src.llm.openai_client.OpenAI") as _mock_openai:
             with patch.dict("os.environ", {"OPENAI_API_KEY": "env-test-key"}):
-                client = OpenAIClient()
+                client = OpenAIClient(cache_config=DISABLED_CACHE_CONFIG)
 
                 assert client.api_key == "env-test-key"
 
@@ -161,7 +166,7 @@ class TestOpenAIClientInitialization:
     def test_client_sets_default_parameters(self, mock_tiktoken):
         """Test client sets default parameters."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
             assert client.model == "gpt-4o-mini"
             assert client.temperature == 0.1
@@ -179,6 +184,7 @@ class TestOpenAIClientInitialization:
                 max_tokens=2048,
                 max_retries=5,
                 retry_delay=2.0,
+                cache_config=DISABLED_CACHE_CONFIG,
             )
 
             assert client.model == "gpt-4o"
@@ -190,7 +196,7 @@ class TestOpenAIClientInitialization:
     def test_client_initializes_tokenizer(self, mock_tiktoken):
         """Test client initializes tiktoken tokenizer."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
             mock_tiktoken.encoding_for_model.assert_called_once_with("gpt-4o-mini")
             assert client.tokenizer is not None
@@ -202,7 +208,7 @@ class TestOpenAIClientInitialization:
                 mock_tik.encoding_for_model.side_effect = KeyError("Unknown model")
                 mock_tik.get_encoding.return_value = MagicMock()
 
-                OpenAIClient(api_key="test-key", model="unknown-model")
+                OpenAIClient(api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG)
 
                 mock_tik.get_encoding.assert_called_once_with("cl100k_base")
 
@@ -213,7 +219,7 @@ class TestTokenCounting:
     def test_count_tokens_with_tiktoken(self, mock_tiktoken):
         """Test counting tokens with tiktoken."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             # Mock returns [1,2,3,4,5] = 5 tokens
             count = client.count_tokens("Hello world")
 
@@ -223,7 +229,7 @@ class TestTokenCounting:
         """Test fallback token estimation when tiktoken unavailable."""
         with patch("src.llm.openai_client.OpenAI"):
             with patch("src.llm.openai_client.tiktoken", None):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
                 # Fallback is len(text) // 4
                 count = client.count_tokens("Hello world!!")  # 14 chars
@@ -235,7 +241,7 @@ class TestTokenCounting:
         mock_tiktoken.encoding_for_model.return_value.encode.return_value = []
 
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             count = client.count_tokens("")
 
             assert count == 0
@@ -247,7 +253,7 @@ class TestCostCalculation:
     def test_calculate_cost_gpt4o_mini(self, mock_tiktoken):
         """Test cost calculation for gpt-4o-mini."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key", model="gpt-4o-mini")
+            client = OpenAIClient(api_key="test-key", model="gpt-4o-mini", cache_config=DISABLED_CACHE_CONFIG)
 
             # 1000 input tokens, 500 output tokens
             # Input: (1000 / 1_000_000) * 0.15 = 0.00015
@@ -260,7 +266,7 @@ class TestCostCalculation:
     def test_calculate_cost_gpt4o(self, mock_tiktoken):
         """Test cost calculation for gpt-4o."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key", model="gpt-4o")
+            client = OpenAIClient(api_key="test-key", model="gpt-4o", cache_config=DISABLED_CACHE_CONFIG)
 
             # 1000 input tokens, 500 output tokens
             # Input: (1000 / 1_000_000) * 2.50 = 0.0025
@@ -277,7 +283,7 @@ class TestCostCalculation:
                 mock_tik.encoding_for_model.side_effect = KeyError()
                 mock_tik.get_encoding.return_value = MagicMock()
 
-                client = OpenAIClient(api_key="test-key", model="unknown-model")
+                client = OpenAIClient(api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG)
 
                 cost = client.calculate_cost(input_tokens=1000, output_tokens=500)
 
@@ -287,7 +293,7 @@ class TestCostCalculation:
     def test_calculate_cost_zero_tokens(self, mock_tiktoken):
         """Test cost calculation with zero tokens."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
             cost = client.calculate_cost(input_tokens=0, output_tokens=0)
 
@@ -304,13 +310,14 @@ class TestComplete:
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             response = client.complete("Test prompt")
 
             assert response.content == "Test response content"
             assert response.model == "gpt-4o-mini"
             assert response.output_tokens == 50
             assert response.total_tokens == 150
+            assert response.cached is False
 
     def test_complete_includes_system_message(self, mock_tiktoken, mock_openai_response):
         """Test that system message is included in request."""
@@ -319,7 +326,7 @@ class TestComplete:
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             client.complete("Test prompt", system_message="You are a helpful assistant")
 
             call_args = mock_instance.chat.completions.create.call_args
@@ -337,7 +344,7 @@ class TestComplete:
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             client.complete("Test prompt")
 
             summary = client.get_cost_summary()
@@ -368,7 +375,7 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):  # Don't actually sleep
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 response = client.complete("Test prompt")
 
                 assert response.content == "Test response content"
@@ -388,7 +395,7 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key", max_retries=3)
+                client = OpenAIClient(api_key="test-key", max_retries=3, cache_config=DISABLED_CACHE_CONFIG)
 
                 with pytest.raises(RateLimitError):
                     client.complete("Test prompt")
@@ -403,7 +410,7 @@ class TestComplete:
             mock_instance.chat.completions.create.side_effect = ValueError("Bad request")
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
             with pytest.raises(ValueError):
                 client.complete("Test prompt")
@@ -426,7 +433,7 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):  # Don't actually sleep
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 response = client.complete("Test prompt")
 
                 assert response.content == "Test response content"
@@ -448,7 +455,7 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
 
                 with pytest.raises(APIError):
                     client.complete("Test prompt")
@@ -476,7 +483,7 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 response = client.complete("Test prompt")
 
                 assert response.content == "Test response content"
@@ -494,7 +501,7 @@ class TestCompleteBatch:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 responses = client.complete_batch(["Prompt 1", "Prompt 2", "Prompt 3"])
 
                 assert len(responses) == 3
@@ -510,7 +517,7 @@ class TestCompleteBatch:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 client.complete_batch(
                     ["Prompt 1", "Prompt 2"],
                     system_message="You are helpful",
@@ -535,7 +542,7 @@ class TestCompleteBatch:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key")
+                client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
                 responses = client.complete_batch(["Prompt 1", "Prompt 2", "Prompt 3"])
 
                 # Should have 2 successful responses (skipped the failed one)
@@ -544,7 +551,7 @@ class TestCompleteBatch:
     def test_complete_batch_empty_prompts(self, mock_tiktoken):
         """Test batch processing with empty prompt list."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             responses = client.complete_batch([])
 
             assert len(responses) == 0
@@ -560,7 +567,7 @@ class TestCostSummary:
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             client.complete("Test")
 
             summary = client.get_cost_summary()
@@ -581,7 +588,7 @@ class TestCostSummary:
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            client = OpenAIClient(api_key="test-key")
+            client = OpenAIClient(api_key="test-key", cache_config=DISABLED_CACHE_CONFIG)
             client.complete("Test")
 
             # Verify we have tracked data
@@ -593,3 +600,93 @@ class TestCostSummary:
             # Verify reset
             assert client.get_cost_summary()["total_requests"] == 0
             assert client.get_cost_summary()["total_cost_usd"] == 0
+
+
+class TestCacheIntegration:
+    """Tests for cache integration with OpenAI client."""
+
+    def test_cache_hit_returns_cached_response(self, mock_tiktoken, mock_openai_response, tmp_path):
+        """Test that cache hits return cached responses without API call."""
+        import tempfile
+        import os
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            mock_instance.chat.completions.create.return_value = mock_openai_response
+            mock_openai_class.return_value = mock_instance
+
+            # Create cache with temp db
+            cache_config = CacheConfig(
+                enabled=True,
+                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                cache_version="test_v1",
+            )
+
+            client = OpenAIClient(api_key="test-key", cache_config=cache_config)
+
+            # First call - cache miss, should call API
+            response1 = client.complete("Test prompt")
+            assert response1.cached is False
+            assert mock_instance.chat.completions.create.call_count == 1
+
+            # Second call - cache hit, should NOT call API
+            response2 = client.complete("Test prompt")
+            assert response2.cached is True
+            assert response2.content == response1.content
+            assert mock_instance.chat.completions.create.call_count == 1  # Still 1
+
+    def test_different_prompts_not_cached(self, mock_tiktoken, mock_openai_response, tmp_path):
+        """Test that different prompts are not returned from cache."""
+        import os
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            mock_instance.chat.completions.create.return_value = mock_openai_response
+            mock_openai_class.return_value = mock_instance
+
+            cache_config = CacheConfig(
+                enabled=True,
+                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                cache_version="test_v1",
+            )
+
+            client = OpenAIClient(api_key="test-key", cache_config=cache_config)
+
+            # Two different prompts should both call API
+            client.complete("Prompt A")
+            client.complete("Prompt B")
+
+            assert mock_instance.chat.completions.create.call_count == 2
+
+    def test_get_cache_stats(self, mock_tiktoken, mock_openai_response, tmp_path):
+        """Test that cache statistics are correctly reported."""
+        import os
+
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+            mock_instance = MagicMock()
+            mock_instance.chat.completions.create.return_value = mock_openai_response
+            mock_openai_class.return_value = mock_instance
+
+            cache_config = CacheConfig(
+                enabled=True,
+                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                cache_version="test_v1",
+            )
+
+            client = OpenAIClient(api_key="test-key", cache_config=cache_config)
+
+            # Initial stats
+            stats = client.get_cache_stats()
+            assert stats["enabled"] is True
+            assert stats["session_hits"] == 0
+            assert stats["session_misses"] == 0
+
+            # Make some calls
+            client.complete("Test prompt")  # Miss
+            client.complete("Test prompt")  # Hit
+            client.complete("Another prompt")  # Miss
+
+            stats = client.get_cache_stats()
+            assert stats["session_hits"] == 1
+            assert stats["session_misses"] == 2
+            assert stats["total_entries"] == 2
