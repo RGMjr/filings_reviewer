@@ -8,46 +8,48 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-3: Completion artifacts committed (DEVELOPMENT_PLAN.md + completion report)
+- V2-PHASE-6: Candidate Generation complete (42 tests, 96% coverage)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- Task complete - Ready for next phase (V2-PHASE-4 or other remaining stages)
+- V2-PHASE-7: Value Binding Stage - Links metric candidates to numeric values
 
 ## Test Status
 
-- Type Checking: mypy --strict passes on table_reconstruction.py
-- Linting: ruff check passes on table_reconstruction.py
-- Unit tests: 11 new tests (all pass), 87% coverage on table_reconstruction.py
-- Existing tests: 25 table_reconstructor tests pass, 56 ingestion tests pass
+- All V2 extraction tests passing
+- Phase 6: 42 tests, 96% coverage
+- Phase 3: 11 tests, 87% coverage
+- Total V2 tests: ~100+ passing
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Added `raw_html` field to Segment model for table reconstruction (breaking change handled gracefully)
-- Ingestion stage now populates raw_html for both table and paragraph segments via etree.tostring()
-- TYPE_CHECKING pattern with runtime import avoids circular dependency (pipeline imports stage, stage needs pipeline types)
-- Proper pattern: TYPE_CHECKING imports for annotations, runtime import inside method for return values
-- Test segments require segment_id (not id) and text (not text_content)
+- MetricCandidate has source_locator with table_id, cell_row, cell_col for table sources
+- Cell model has header_path and stub_path (list[str]) for structural context
+- Table model has get_header_path() and get_stub_path() methods
+- Candidates with SourceType.HTML_TABLE have table context; SourceType.TEXT have segment context
+- V1 value_extractor.py has number parsing patterns to reference (not import directly)
 
-## Files Changed This Session
+## Files to Create
 
-*For quick orientation on what was modified*
+- src/extraction_v2/stages/value_binding.py (ValueBindingStage implementation)
+- tests/unit/extraction_v2/test_value_binding.py (20+ tests)
 
-- ops/DEVELOPMENT_PLAN.md (marked all ACs complete)
-- ops/completion-reports/V2-PHASE-3_completion.md (created - task completion documentation)
-- ops/ITERATION_CONTEXT.md (this file - final update)
+## Files to Modify
+
+- src/extraction_v2/models.py (add BoundValue dataclass)
+- src/extraction_v2/pipeline.py (replace stub with import)
+- src/extraction_v2/stages/__init__.py (export ValueBindingStage)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - V2-PHASE-3 complete with all artifacts committed
-- Completion report available at ops/completion-reports/V2-PHASE-3_completion.md
-- Ready for next phase: V2-PHASE-4 (Definition Detection), V2-PHASE-5 (Value Binding), or other stages
+- None - V2-PHASE-6 complete, ready to proceed
+- Chart binding should be stubbed (Phase 5 not complete)
 
 ---
 

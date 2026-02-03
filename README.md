@@ -30,7 +30,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
 
-**Overall:** 87% test coverage (1,625+ tests)
+**Overall:** 87% overall test coverage (1,625+ tests)
 
 **Corpus:** 7,304 in-scope S-1/F-1 filings identified (2015-2025)
 
@@ -117,7 +117,7 @@ Comprehensive documentation is available in the `docs/` directory:
 | | [docs/development/quality-model.md](docs/development/quality-model.md) | Quality scoring (0-3 scale) |
 | | [docs/development/testing.md](docs/development/testing.md) | Test strategy and coverage |
 | **Operations** | [docs/operations/setup-guide.md](docs/operations/setup-guide.md) | Environment setup |
-| **Review System** | [docs/HUMAN_REVIEW_SYSTEM_PLAN.md](docs/HUMAN_REVIEW_SYSTEM_PLAN.md) | Human review implementation |
+| **Review System** | [docs/HUMAN_REVIEW_SYSTEM.md](docs/HUMAN_REVIEW_SYSTEM.md) | Human review implementation |
 
 ## Project Structure
 
