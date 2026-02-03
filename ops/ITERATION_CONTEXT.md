@@ -8,13 +8,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- DOC-01 AC-6: Added comprehensive extraction_v2 architecture documentation to extraction-pipeline.md (11-stage pipeline, data models, V1 vs V2 comparison table, configuration, when to use each version)
+- DOC-01 AC-7: Added "Web Routes Structure" section to CLAUDE.md (4 route modules: review.py, api.py, review_images.py, api_images.py with pattern explanation)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- DOC-01 AC-7: Document web routes structure in CLAUDE.md
+- DOC-01 AC-8: Final validation - doc sync check passes
 
 ## Test Status
 
@@ -25,25 +25,24 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- extraction_v2 is experimental/research implementation, NOT a V1 replacement
-- V2 uses structure-first approach (DOM-native) vs V1's text-first approach
-- V2 implements 11-stage pipeline with full table reconstruction (colspan/rowspan)
-- Added comprehensive V2 section to extraction-pipeline.md (v2.5) with comparison table
-- Next up: AC-7 requires documenting web routes structure in CLAUDE.md (routes/api.py, api_images.py, review.py, review_images.py)
+- Web routes follow pattern: HTML rendering (review*.py) + JSON API (api*.py)
+- 4 route modules: review.py (metric UI), api.py (metric JSON), review_images.py (image UI), api_images.py (image JSON)
+- All registered as Flask Blueprints in src/web/app.py
+- Next up: AC-8 final validation - need to run check_docs_sync.py --ci to ensure no stale refs remain
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- docs/architecture/extraction-pipeline.md (added comprehensive V2 section with pipeline stages, data models, comparison table, updated to v2.5)
-- ops/DEVELOPMENT_PLAN.md (marked AC-6 complete, updated progress log and results summary)
+- CLAUDE.md (added "Web Routes Structure" section after API Authentication)
+- ops/DEVELOPMENT_PLAN.md (marked AC-7 complete, updated progress log and results summary)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - AC-6 complete, ready for AC-7 (web routes structure documentation)
+- None - AC-7 complete, ready for AC-8 (final validation with doc sync check)
 
 ---
 

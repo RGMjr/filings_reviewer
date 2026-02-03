@@ -122,6 +122,17 @@ def protected_route():
 
 **Development mode**: Set `API_KEY_REQUIRED=false` in `.env` to bypass authentication for local testing.
 
+## Web Routes Structure
+
+Flask application organized into separate route modules by function:
+
+- `src/web/routes/review.py`: HTML page rendering for text/metric review interface (navigation, pagination, candidate display)
+- `src/web/routes/api.py`: JSON API endpoints for text/metric review decisions (AJAX handlers)
+- `src/web/routes/review_images.py`: HTML page rendering for image review interface (charts, cohort tables)
+- `src/web/routes/api_images.py`: JSON API endpoints for image review decisions (AJAX handlers)
+
+**Pattern**: Page rendering routes (review*.py) serve Jinja2 templates; API routes (api*.py) return JSON for client-side interactions. All registered as Flask Blueprints in `src/web/app.py`.
+
 ## Docker Setup
 
 ```bash
