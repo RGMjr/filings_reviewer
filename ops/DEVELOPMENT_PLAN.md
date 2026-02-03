@@ -24,7 +24,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-5 | Update docs/README.md index - verify all links exist (All 18 links verified, added metric-lifecycle-process.md to Development section)
 - [x] AC-6 | Add extraction_v2 architecture documentation (Added comprehensive V2 section to extraction-pipeline.md with pipeline stages, data models, V1 vs V2 comparison)
 - [x] AC-7 | Document web routes structure in CLAUDE.md (Added "Web Routes Structure" section with 4 route modules, pattern explanation)
-- [ ] AC-8 | Final validation - doc sync check passes
+- [x] AC-8 | Final validation - doc sync check passes (All checks passed, fixed stdlib list + import mappings, uncommented lxml in requirements.txt)
 
 ---
 
@@ -41,14 +41,15 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 5 | AC-5 | ✅ Complete | Verified all 18 markdown links in docs/README.md, added metric-lifecycle-process.md to Development section |
 | 6 | AC-6 | ✅ Complete | Added comprehensive V2 section to extraction-pipeline.md: 11-stage pipeline, data models, V1 vs V2 comparison table, when to use each |
 | 7 | AC-7 | ✅ Complete | Added "Web Routes Structure" section to CLAUDE.md after API Authentication with 4 route modules and pattern explanation |
+| 8 | AC-8 | ✅ Complete | Fixed doc sync checker: added missing stdlib modules, updated import_to_pkg mappings (markupsafe→flask, psycopg_pool→psycopg, yaml→pyyaml), uncommented lxml in requirements.txt |
 
 ---
 
 ## Results Summary
 
-**Completed**: 7/8
-**Total Iterations**: 7
-**Files Changed**: docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md, docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md, CLAUDE.md, docs/README.md, docs/architecture/extraction-pipeline.md
+**Completed**: 8/8
+**Total Iterations**: 8
+**Files Changed**: docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md, docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md, CLAUDE.md, docs/README.md, docs/architecture/extraction-pipeline.md, scripts/check_docs_sync.py, requirements.txt
 
-**Doc Sync Check**: (pending - will run at AC-8)
+**Doc Sync Check**: ✅ All checks passed (0 warnings, 0 errors)
 **Stale References**: 0 (2 clarified as [NOT IMPLEMENTED])
