@@ -12,6 +12,7 @@ src/
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction/     # Metric extraction: html_segmenter, metric_classifier, keyword_config, value_extractor, segment_enricher, cohort_chart_detector, context_extractor, structure_parser, candidate_detector
+├── extraction_v2/  # V2 pipeline (alpha): Structure-first extraction with full table reconstruction, image/chart OCR, complete provenance tracking via MetricFact/EvidencePack. Files: models.py, pipeline.py, table_reconstructor.py, stages/ingestion.py. NOT a replacement for V1 - experimental research implementation.
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration: openai_client.py, prompts.py
@@ -20,7 +21,9 @@ config/
 └── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
 ```
 
-**Pipeline:** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
+**Pipeline (V1 - Production):** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
+
+**Pipeline (V2 - Experimental):** Ingestion & Parsing → Section Classification → Table Reconstruction → Image Triage → OCR & Chart Extraction → Metric Candidate Generation → Value Binding → Period Inference → MetricFact Construction → Deduplication → Validation & Review Routing. V2 implements structure-first extraction (DOM parsing before LLM) with full table reconstruction (colspan/rowspan resolution), image/chart extraction via OCR/vision models, and complete provenance tracking. Currently alpha status, not used in production.
 
 **Review system config:** See `src/review/config.py` for `CandidateGenerationConfig` and presets (`get_high_precision_config()`, etc.)
 
