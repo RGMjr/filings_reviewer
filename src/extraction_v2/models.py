@@ -664,3 +664,41 @@ class Document:
     table_count: int = 0
     image_count: int = 0
     fact_count: int = 0
+
+
+# ============================================================================
+# MetricCandidate (for candidate generation stage)
+# ============================================================================
+
+
+@dataclass
+class MetricCandidate:
+    """
+    Candidate metric mention found in content.
+
+    Created by Stage 6 (Candidate Generation) when a keyword pattern matches.
+    Contains the match location and context for downstream value binding.
+    """
+
+    # Identity
+    candidate_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    # Match details
+    metric_id: str = ""  # e.g., "cm_arr", "cm_net_revenue_retention"
+    match_text: str = ""  # The actual text that matched the pattern
+
+    # Source location
+    source_locator: SourceLocator = field(default_factory=SourceLocator)
+    source_type: SourceType = SourceType.TEXT
+
+    # Confidence (0.0 - 1.0)
+    confidence: float = 0.5
+
+    # Context for review/binding
+    context_text: str = ""  # Surrounding text (100 chars each side)
+
+    # Section context
+    section_type: SectionType = SectionType.UNKNOWN
+
+    # Metadata
+    created_at: datetime = field(default_factory=datetime.utcnow)

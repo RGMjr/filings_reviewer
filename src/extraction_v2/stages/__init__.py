@@ -23,11 +23,13 @@ Usage:
 Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v2/pipeline.py.
 """
 
+from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
 
 __all__ = [
+    "CandidateGenerationStage",
     "IngestionStage",
     "SectionClassificationStage",
     "TableReconstructionStage",

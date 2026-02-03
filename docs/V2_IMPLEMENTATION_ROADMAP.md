@@ -1,8 +1,9 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.0
+**Version**: 1.1
 **Created**: 2026-01-23
-**Status**: In Progress (Phase 0 Complete)
+**Updated**: 2026-02-03
+**Status**: In Progress (Phases 0-3 Complete)
 
 ## Executive Summary
 
@@ -38,29 +39,29 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 1: Ingestion & Parsing (Stage 1)
+### Phase 1: Ingestion & Parsing (Stage 1) ✅ COMPLETE (2026-01-30)
 
 **Goal**: Parse HTML to Segments with stable XPath locators
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/ingestion.py`
-2. [ ] Implement lxml-based HTML parser
+1. [x] Create `src/extraction_v2/stages/ingestion.py`
+2. [x] Implement lxml-based HTML parser
    - Use `lxml.html.parse()` for DOM tree
    - Generate XPath for every element
    - Extract text content with structure markers
-3. [ ] Port segment detection from V1 `html_segmenter.py`
+3. [x] Port segment detection from V1 `html_segmenter.py`
    - Paragraph detection (min 50 chars)
    - Table detection with div-wrapper deduplication
    - Definition/methodology block detection
-4. [ ] Extract `ImageAsset` objects
+4. [x] Extract `ImageAsset` objects
    - Store nearby text (caption + context)
    - Compute initial relevance score
-5. [ ] Create `Segment` objects with:
+5. [x] Create `Segment` objects with:
    - `dom_locator` (XPath)
    - `segment_type` (paragraph, table, etc.)
    - `text` with `[CELL]`/`[ROW]` markers
    - `sequence` (document order)
-6. [ ] Add tests for lxml parsing
+6. [x] Add tests for lxml parsing (56 tests passing)
 
 **Dependencies:** None (first stage)
 
@@ -77,22 +78,22 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 2: Section Classification (Stage 2)
+### Phase 2: Section Classification (Stage 2) ✅ COMPLETE (2026-01-31)
 
 **Goal**: Classify segments into semantic SEC sections
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/section_classification.py`
-2. [ ] Implement section detectors:
+1. [x] Create `src/extraction_v2/stages/section_classification.py`
+2. [x] Implement section detectors:
    - Cover page (first N segments, company info)
    - Risk Factors (heading pattern + risk vocabulary)
    - MD&A ("Management's Discussion", revenue/growth terms)
    - Business (company description, products, customers)
    - Financials (financial statements, numbers-heavy)
    - Notes (footnote patterns, exhibits)
-3. [ ] Assign `section_path` (hierarchical) and `section_type` (enum)
-4. [ ] Filter irrelevant sections (Exhibits, Signatures, Legal)
-5. [ ] Add tests for section classification
+3. [x] Assign `section_path` (hierarchical) and `section_type` (enum)
+4. [x] Filter irrelevant sections (Exhibits, Signatures, Legal)
+5. [x] Add tests for section classification
 
 **Dependencies:** Phase 1 (needs Segments)
 
@@ -104,28 +105,28 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 3: Table Reconstruction (Stage 3)
+### Phase 3: Table Reconstruction (Stage 3) ✅ COMPLETE (2026-02-02)
 
 **Goal**: Full colspan/rowspan resolution with header_path/stub_path
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/table_reconstruction.py`
-2. [ ] Implement span resolution algorithm:
+1. [x] Create `src/extraction_v2/stages/table_reconstruction.py`
+2. [x] Implement span resolution algorithm:
    - Build 2D grid from `<table>` HTML
    - Expand rowspan/colspan to fill logical cells
    - Validate: no gaps, no overlaps
-3. [ ] Identify header rows:
+3. [x] Identify header rows:
    - `<th>` elements
    - First row(s) with non-numeric text
    - Bold/styled rows
-4. [ ] Identify stub columns:
+4. [x] Identify stub columns:
    - First column(s) with labels
    - Semantic patterns ("Total", metric names)
-5. [ ] Compute for each cell:
+5. [x] Compute for each cell:
    - `header_path`: all headers above (column headers)
    - `stub_path`: all stubs to left (row labels)
-6. [ ] Store `Table` objects in context
-7. [ ] Add comprehensive tests (complex spans, nested tables)
+6. [x] Store `Table` objects in context
+7. [x] Add comprehensive tests (11 new tests, 87% coverage)
 
 **Dependencies:** Phase 1 (needs Segments with table HTML)
 
