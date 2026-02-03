@@ -21,7 +21,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-2 | Document extraction_v2 module in CLAUDE.md (Added to Architecture section with V2 pipeline stages, relationship to V1, key files)
 - [x] AC-3 | Document LLM cache in CLAUDE.md (Added cache.py to Architecture, new "LLM Response Caching" section with features, env vars, production notes)
 - [x] AC-4 | Document API authentication in CLAUDE.md (New "API Authentication" section with @require_api_key decorator, env vars, security features)
-- [ ] AC-5 | Update docs/README.md index - verify all links exist
+- [x] AC-5 | Update docs/README.md index - verify all links exist (All 18 links verified, added metric-lifecycle-process.md to Development section)
 - [ ] AC-6 | Add extraction_v2 architecture documentation
 - [ ] AC-7 | Document web routes structure in CLAUDE.md
 - [ ] AC-8 | Final validation - doc sync check passes
@@ -38,14 +38,15 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 | 2 | AC-2 | ✅ Complete | Added extraction_v2 to CLAUDE.md Architecture section with V2 pipeline stages, alpha status noted |
 | 3 | AC-3 | ✅ Complete | Added cache.py to Architecture line, new "LLM Response Caching" section with env vars and production note |
 | 4 | AC-4 | ✅ Complete | New "API Authentication" section after Environment Setup with @require_api_key decorator, security features (constant-time comparison) |
+| 5 | AC-5 | ✅ Complete | Verified all 18 markdown links in docs/README.md, added metric-lifecycle-process.md to Development section |
 
 ---
 
 ## Results Summary
 
-**Completed**: 4/8
-**Total Iterations**: 4
-**Files Changed**: docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md, docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md, CLAUDE.md
+**Completed**: 5/8
+**Total Iterations**: 5
+**Files Changed**: docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md, docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md, CLAUDE.md, docs/README.md
 
 **Doc Sync Check**: (pending - will run at AC-8)
 **Stale References**: 0 (2 clarified as [NOT IMPLEMENTED])

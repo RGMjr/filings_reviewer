@@ -8,13 +8,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- DOC-01 AC-4: Added new "API Authentication" section to CLAUDE.md after Environment Setup, documenting @require_api_key decorator from src/web/auth.py, authentication methods (X-API-Key header and api_key query param), env vars (FILINGS_API_KEY, API_KEY_REQUIRED), constant-time comparison security, and development mode bypass
+- DOC-01 AC-5: Verified all 18 markdown links in docs/README.md (all exist), added metric-lifecycle-process.md to Development section (important workflow doc previously missing from index)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- DOC-01 AC-5: Update docs/README.md index - verify all links exist
+- DOC-01 AC-6: Add extraction_v2 architecture documentation
 
 ## Test Status
 
@@ -25,25 +25,24 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- API authentication via @require_api_key decorator checks X-API-Key header first, then api_key query param
-- Uses hmac.compare_digest for constant-time comparison to prevent timing attacks
-- Configurable via FILINGS_API_KEY and API_KEY_REQUIRED env vars (already in .env.template)
-- Can be disabled for local dev (API_KEY_REQUIRED=false)
-- Next up: docs/README.md index validation - check all links point to existing files
+- All 18 markdown file links in docs/README.md verified as existing
+- Added metric-lifecycle-process.md to Development section - important for developers managing metrics
+- All archive directories exist and are correctly referenced
+- Next up: AC-6 requires creating/updating extraction_v2 architecture docs (either add to extraction-pipeline.md OR create new doc)
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- CLAUDE.md (new "API Authentication" section after Environment Setup)
-- ops/DEVELOPMENT_PLAN.md (marked AC-4 complete, updated progress log and results summary)
+- docs/README.md (added metric-lifecycle-process.md to Development section)
+- ops/DEVELOPMENT_PLAN.md (marked AC-5 complete, updated progress log and results summary)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - AC-4 complete, ready for AC-5 (docs/README.md index validation)
+- None - AC-5 complete, ready for AC-6 (extraction_v2 architecture documentation)
 
 ---
 
