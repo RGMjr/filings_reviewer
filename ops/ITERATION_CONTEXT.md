@@ -8,45 +8,42 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- Task V2-10: All 10 acceptance criteria complete - completion report generated
+- DOC-01 AC-1: Removed stale module references (agreement.py, rule_generator.py) - clarified as [NOT IMPLEMENTED] in archived docs
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- TASK COMPLETE - ready for next task assignment
+- DOC-01 AC-2: Document extraction_v2 module in CLAUDE.md
 
 ## Test Status
 
-- Unit tests: 25 tests pass (including SEC filing integration test), 96% coverage on table_reconstructor.py
-- Type Checking: mypy --strict passes
-- Linting: ruff check passes
-- Coverage details: 119 statements, 5 uncovered (error handling paths)
+- No tests required for documentation-only task
+- Verification: grep commands confirm no unclarified stale references remain
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Comprehensive test suite now includes real SEC filing table from Slack Technologies S-1
-- Integration test validates colspan+rowspan handling with production-quality HTML
-- SEC tables often have empty/structural rows (width definitions) before content
-- Header detection handles both `<th>` tags and empty rows correctly
-- Task V2-10 complete - all 10 acceptance criteria met
+- Stale references found only in archived improvement plans (not active docs)
+- agreement.py and rule_generator.py were planned but never implemented
+- All extraction/ and review/ files mentioned in docs actually exist
+- Template placeholders (src/path/file.py) in WORKER_PROMPT_RALPH.md are not stale refs
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- ops/completion-reports/V2-10_completion.md (created - comprehensive completion report)
-- ops/DEVELOPMENT_PLAN.md (all criteria marked complete)
-- ops/ITERATION_CONTEXT.md (this file - updated for task completion)
+- docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md (clarified agreement.py as [NOT IMPLEMENTED])
+- docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md (clarified rule_generator.py as [NOT IMPLEMENTED] in 3 locations)
+- ops/DEVELOPMENT_PLAN.md (marked AC-1 complete)
+- ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - V2-10 fully complete with completion report generated
-- Ready for next task (suggest V2-11: TableReconstructionStage implementation)
+- None - AC-1 complete, ready for AC-2 (extraction_v2 documentation)
 
 ---
 
