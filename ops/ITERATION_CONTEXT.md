@@ -8,13 +8,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- DOC-01 AC-1: Removed stale module references (agreement.py, rule_generator.py) - clarified as [NOT IMPLEMENTED] in archived docs
+- DOC-01 AC-2: Added extraction_v2 to CLAUDE.md Architecture section with V2 pipeline stages, key files (models.py, pipeline.py, table_reconstructor.py, stages/ingestion.py), relationship to V1 (experimental/alpha, not production), and full pipeline description
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- DOC-01 AC-2: Document extraction_v2 module in CLAUDE.md
+- DOC-01 AC-3: Document LLM cache in CLAUDE.md
 
 ## Test Status
 
@@ -25,25 +25,24 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- Stale references found only in archived improvement plans (not active docs)
-- agreement.py and rule_generator.py were planned but never implemented
-- All extraction/ and review/ files mentioned in docs actually exist
-- Template placeholders (src/path/file.py) in WORKER_PROMPT_RALPH.md are not stale refs
+- extraction_v2 is alpha/experimental, NOT a V1 replacement - important to clarify in docs
+- V2 implements 11-stage pipeline with structure-first approach (DOM → rules → LLM fallback)
+- Key V2 files: models.py (MetricFact, EvidencePack), pipeline.py, table_reconstructor.py, stages/ingestion.py
+- Next up: LLM cache (src/llm/cache.py) - SQLite-backed response caching
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md (clarified agreement.py as [NOT IMPLEMENTED])
-- docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md (clarified rule_generator.py as [NOT IMPLEMENTED] in 3 locations)
-- ops/DEVELOPMENT_PLAN.md (marked AC-1 complete)
+- CLAUDE.md (added extraction_v2 to Architecture section, updated pipeline descriptions)
+- ops/DEVELOPMENT_PLAN.md (marked AC-2 complete, updated progress log)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - AC-1 complete, ready for AC-2 (extraction_v2 documentation)
+- None - AC-2 complete, ready for AC-3 (LLM cache documentation)
 
 ---
 
