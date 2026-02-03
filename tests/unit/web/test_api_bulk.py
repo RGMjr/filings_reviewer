@@ -19,6 +19,7 @@ def app():
     """Create Flask app for testing."""
     app = Flask(__name__)
     app.config["TESTING"] = True
+    app.config["API_KEY_REQUIRED"] = False  # Disable auth for unit tests
     app.register_blueprint(api_bp, url_prefix="/api")
     return app
 

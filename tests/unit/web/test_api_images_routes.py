@@ -48,7 +48,7 @@ class TestCreateImageDecision:
 
     def test_create_relevant_decision_success(self, client, mock_db):
         """Test successful relevant decision with chart_type."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "review_status": "pending",
@@ -88,7 +88,7 @@ class TestCreateImageDecision:
 
     def test_create_not_relevant_decision_success(self, client, mock_db):
         """Test successful not_relevant decision with rejection_reason."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "review_status": "pending",
@@ -257,7 +257,7 @@ class TestCreateImageDecision:
 
     def test_candidate_not_found(self, client, mock_db):
         """Test 404 when image candidate doesn't exist."""
-        mock_db.get_image_candidate.return_value = None
+        mock_db.get_image_review_candidate.return_value = None
 
         with patch("src.web.routes.api_images.get_db", return_value=mock_db):
             response = client.post(
@@ -276,7 +276,7 @@ class TestCreateImageDecision:
 
     def test_candidate_already_has_decision(self, client, mock_db):
         """Test 409 when candidate already has a decision."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "review_status": "reviewed",
@@ -350,7 +350,7 @@ class TestCreateImageDecision:
 
     def test_database_error_returns_500(self, client, mock_db):
         """Test that database errors return 500."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "decision": None,
@@ -376,7 +376,7 @@ class TestCreateImageDecision:
         """Test that ValidationError from db layer returns 400."""
         from src.infra.validation import ValidationError
 
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "decision": None,
@@ -411,7 +411,7 @@ class TestSkipImageCandidate:
 
     def test_skip_success(self, client, mock_db):
         """Test successful skip operation."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "review_status": "pending",
@@ -433,7 +433,7 @@ class TestSkipImageCandidate:
 
     def test_skip_no_next_candidate(self, client, mock_db):
         """Test skip when no more candidates."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "review_status": "pending",
@@ -451,7 +451,7 @@ class TestSkipImageCandidate:
 
     def test_skip_candidate_not_found(self, client, mock_db):
         """Test 404 when candidate doesn't exist."""
-        mock_db.get_image_candidate.return_value = None
+        mock_db.get_image_review_candidate.return_value = None
 
         with patch("src.web.routes.api_images.get_db", return_value=mock_db):
             response = client.post("/api/image-candidates/999/skip")
@@ -463,7 +463,7 @@ class TestSkipImageCandidate:
 
     def test_skip_update_fails(self, client, mock_db):
         """Test 500 when status update fails."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
         }
@@ -572,7 +572,7 @@ class TestValidChartTypes:
     )
     def test_valid_chart_types(self, client, mock_db, chart_type):
         """Test all valid chart types are accepted for relevant decisions."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "decision": None,
@@ -616,7 +616,7 @@ class TestValidRejectionReasons:
     )
     def test_valid_rejection_reasons(self, client, mock_db, rejection_reason):
         """Test all valid rejection reasons are accepted for not_relevant decisions."""
-        mock_db.get_image_candidate.return_value = {
+        mock_db.get_image_review_candidate.return_value = {
             "image_candidate_id": 123,
             "filing_id": 5,
             "decision": None,

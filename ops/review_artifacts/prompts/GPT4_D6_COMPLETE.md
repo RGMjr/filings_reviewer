@@ -1,3 +1,547 @@
+# GPT-4 Code Review: D6 Security
+
+**Copy this entire prompt and paste into GPT-4**
+
+---
+
+You are a security engineer reviewing a Python Flask application that processes SEC filings.
+
+## Application Profile
+
+- **Framework**: Flask (web UI for human review)
+- **Database**: PostgreSQL via psycopg3
+- **External APIs**: SEC EDGAR, OpenAI
+- **Authentication**: None (single-user internal tool)
+- **Deployment**: Local development
+
+## Security-Relevant Files
+
+| File | LOC | Concern |
+|------|-----|---------|
+| `src/web/app.py` | 150 | Flask app config |
+| `src/web/routes/api.py` | 341 | Review API endpoints |
+| `src/web/routes/review.py` | 406 | Review UI routes |
+| `src/infra/db.py` | 4,006 | SQL queries |
+| `src/infra/validation.py` | ~200 | Input validation |
+
+## OWASP Top 10 Checklist
+
+| Risk | Status | Notes |
+|------|--------|-------|
+| A01 Broken Access Control | ⚠️ RISK | No authentication |
+| A02 Cryptographic Failures | ⚠️ RISK | Weak SECRET_KEY default |
+| A03 Injection | ✅ OK | Parameterized queries |
+| A04 Insecure Design | ⚠️ RISK | No auth by design |
+| A05 Security Misconfiguration | ⚠️ RISK | DEBUG=True, no headers |
+| A06 Vulnerable Components | ❓ Unknown | No dependency scanning |
+| A07 Auth Failures | ⚠️ RISK | No auth implemented |
+| A08 Software/Data Integrity | ✅ OK | No deserialization |
+| A09 Logging Failures | ❓ Unknown | Not audited |
+| A10 SSRF | ✅ OK | SEC URLs only |
+
+## Review Questions
+
+1. **Authentication**: Is "no auth" acceptable for internal tool?
+2. **SECRET_KEY**: How bad is the weak default?
+3. **CSRF**: Should state-changing APIs have CSRF protection?
+4. **Security Headers**: What headers are missing?
+5. **Rate Limiting**: Should API endpoints be rate limited?
+6. **Secrets in Logs**: Are credentials ever logged?
+
+## Output Format
+
+```json
+{
+  "dimension": "D6_SECURITY",
+  "model": "gpt4",
+  "findings": [
+    {
+      "id": "G-D6-001",
+      "severity": "Critical|High|Medium|Low",
+      "category": "security",
+      "title": "Short title",
+      "description": "Detailed description",
+      "file": "path/to/file.py",
+      "line_range": "100-150",
+      "owasp_category": "A01-A10",
+      "attack_scenario": "How this could be exploited",
+      "recommendation": "What to do",
+      "effort": "XS|S|M|L|XL"
+    }
+  ],
+  "summary": "Overall security assessment"
+}
+```
+
+Provide 10-15 findings covering web security concerns.
+
+
+
+---
+
+# ACTUAL SOURCE CODE
+
+## src/web/app.py
+
+```python
+"""
+Flask application factory for the human review interface.
+
+Creates and configures the Flask application with:
+- Database connection management
+- Blueprint registration for routes
+- Template and static file configuration
+"""
+
+import atexit
+import logging
+import os
+from typing import Any
+
+from flask import Flask, current_app, g, jsonify, render_template, request
+
+from src.infra.db import DatabaseAdapter
+
+logger = logging.getLogger(__name__)
+
+
+class Config:
+    """Base configuration."""
+
+    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-not-for-production")
+    DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+    # Session configuration
+    SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
+    # Connection pool configuration
+    DB_POOL_ENABLED = os.environ.get("DB_POOL_ENABLED", "true").lower() == "true"
+    DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "2"))
+    DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "10"))
+
+
+class DevelopmentConfig(Config):
+    """Development configuration."""
+
+    DEBUG = True
+    TESTING = False
+
+
+class TestingConfig(Config):
+    """Testing configuration."""
+
+    DEBUG = True
+    TESTING = True
+    SECRET_KEY = "test-secret-key-for-testing-only"
+    DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+
+
+class ProductionConfig(Config):
+    """Production configuration - SECRET_KEY validated at app creation."""
+
+    DEBUG = False
+    TESTING = False
+    SESSION_COOKIE_SECURE = True
+
+
+# Configuration mapping
+config_by_name: dict[str, type] = {
+    "development": DevelopmentConfig,
+    "testing": TestingConfig,
+    "production": ProductionConfig,
+}
+
+
+def get_db() -> DatabaseAdapter:
+    """
+    Get database adapter for the current request.
+
+    Returns cached adapter from Flask g object, creating if needed.
+    If connection pooling is enabled, the adapter uses the app-level pool.
+    Must be called within a Flask request context.
+    """
+    if "db" not in g:
+        database_url = current_app.config.get("DATABASE_URL", "")
+        if not database_url:
+            raise RuntimeError(
+                "DATABASE_URL not configured. "
+                "Set DATABASE_URL in app config or environment."
+            )
+        # Get pool from app config (may be None if pooling disabled)
+        pool = current_app.config.get("_db_pool")
+        g.db = DatabaseAdapter(database_url, pool=pool)
+    return g.db
+
+
+def close_db(e: Exception | None = None) -> None:
+    """
+    Clean up database adapter at end of request.
+
+    Called automatically via teardown_appcontext. Removes the adapter
+    from Flask's g object. When connection pooling is enabled, pooled
+    connections are automatically returned to the pool by the adapter's
+    context manager.
+
+    Args:
+        e: Optional exception that occurred during request handling.
+    """
+    db = g.pop("db", None)
+    if db is not None:
+        logger.debug("Database adapter removed from request context")
+
+
+def init_pool(app: Flask) -> None:
+    """
+    Initialize the connection pool for the Flask application.
+
+    Creates a connection pool and stores it in app.config["_db_pool"].
+    The pool is used by get_db() to provide pooled connections to
+    DatabaseAdapter instances.
+
+    If pool creation fails, logs the error and continues without pooling
+    (graceful degradation to per-request connections).
+
+    Args:
+        app: Flask application instance.
+    """
+    if not app.config.get("DB_POOL_ENABLED", True):
+        logger.info("Connection pooling disabled via DB_POOL_ENABLED=false")
+        return
+
+    database_url = app.config.get("DATABASE_URL", "")
+    if not database_url:
+        logger.warning("DATABASE_URL not configured, skipping pool initialization")
+        return
+
+    from src.infra.pool import create_pool
+
+    try:
+        pool = create_pool(
+            database_url,
+            min_size=app.config.get("DB_POOL_MIN_SIZE", 2),
+            max_size=app.config.get("DB_POOL_MAX_SIZE", 10),
+        )
+        app.config["_db_pool"] = pool
+        logger.info(
+            f"Connection pool initialized: min_size={app.config.get('DB_POOL_MIN_SIZE', 2)}, "
+            f"max_size={app.config.get('DB_POOL_MAX_SIZE', 10)}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize connection pool: {e}. "
+            "Falling back to per-request connections."
+        )
+        app.config["_db_pool"] = None
+
+
+def close_pool(app: Flask) -> None:
+    """
+    Close the connection pool for the Flask application.
+
+    Should be called when the application is shutting down to properly
+    release database connections.
+
+    Args:
+        app: Flask application instance.
+    """
+    pool = app.config.get("_db_pool")
+    if pool is not None:
+        try:
+            pool.close()
+            logger.info("Connection pool closed")
+        except Exception as e:
+            logger.warning(f"Error closing connection pool: {e}")
+        finally:
+            app.config["_db_pool"] = None
+
+
+def create_app(config_name: str | None = None, config_override: dict[str, Any] | None = None) -> Flask:
+    """
+    Create and configure the Flask application.
+
+    Args:
+        config_name: Configuration environment name ('development', 'testing', 'production').
+                    Defaults to APP_ENV environment variable or 'development'.
+        config_override: Optional dictionary of configuration values to override.
+
+    Returns:
+        Configured Flask application instance.
+
+    Example:
+        # Development server
+        app = create_app()
+        app.run(debug=True)
+
+        # Testing
+        app = create_app('testing')
+
+        # Custom configuration
+        app = create_app(config_override={'DATABASE_URL': 'postgresql://...'})
+    """
+    # Determine configuration
+    if config_name is None:
+        config_name = os.environ.get("APP_ENV", "development")
+
+    config_class = config_by_name.get(config_name, DevelopmentConfig)
+
+    # Create Flask app
+    app = Flask(
+        __name__,
+        template_folder="templates",
+        static_folder="static",
+    )
+
+    # Load configuration
+    app.config.from_object(config_class)
+
+    # Apply any overrides
+    if config_override:
+        app.config.update(config_override)
+
+    # Validate production configuration
+    if config_name == "production":
+        # Check environment directly since config class may have been loaded at import time
+        env_secret = os.environ.get("SECRET_KEY", "")
+        if not env_secret:
+            raise ValueError(
+                "SECRET_KEY environment variable is required in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        # Update config with the actual secret key from environment
+        app.config["SECRET_KEY"] = env_secret
+
+    # Register database teardown handler
+    app.teardown_appcontext(close_db)
+
+    # Initialize connection pool
+    init_pool(app)
+
+    # Register pool cleanup on process exit
+    atexit.register(close_pool, app)
+
+    # Register health check endpoint
+    _register_health_check(app)
+
+    # Register blueprints (routes will be added in later tasks)
+    _register_blueprints(app)
+
+    # Register error handlers
+    _register_error_handlers(app)
+
+    # Register template context processors
+    _register_context_processors(app)
+
+    # Register template filters
+    _register_template_filters(app)
+
+    logger.info(f"Flask app created with config: {config_name}")
+
+    return app
+
+
+def _register_health_check(app: Flask) -> None:
+    """
+    Register /health endpoint for load balancers and monitoring.
+
+    Returns 200 OK if app and database are healthy, 503 otherwise.
+    Does not require authentication.
+    """
+    @app.route("/health")
+    def health_check():
+        """
+        Health check endpoint for monitoring and load balancing.
+
+        Returns:
+            JSON response with health status and optional pool stats.
+            - 200 OK: Application and database are healthy
+            - 503 Service Unavailable: Database connection failed
+        """
+        try:
+            pool = current_app.config.get("_db_pool")
+
+            if pool is not None:
+                from src.infra.pool import check_pool_health
+
+                health = check_pool_health(pool)
+                if health.is_healthy:
+                    return jsonify({
+                        "status": "healthy",
+                        "database": "connected",
+                        "pool_stats": {
+                            "total_connections": health.total_connections,
+                            "idle_connections": health.idle_connections,
+                            "active_connections": health.active_connections,
+                            "test_query_elapsed": health.test_query_elapsed,
+                        },
+                    }), 200
+                else:
+                    return jsonify({
+                        "status": "unhealthy",
+                        "database": "error",
+                        "message": health.error,
+                    }), 503
+            else:
+                # No pool, try direct connection
+                db = DatabaseAdapter(current_app.config["DATABASE_URL"])
+                with db.get_connection() as conn:
+                    conn.execute("SELECT 1")
+
+                return jsonify({
+                    "status": "healthy",
+                    "database": "connected",
+                    "pool_stats": None,
+                }), 200
+
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return jsonify({
+                "status": "unhealthy",
+                "database": "error",
+                "message": str(e),
+            }), 503
+
+
+def _register_blueprints(app: Flask) -> None:
+    """
+    Register route blueprints with the application.
+
+    Blueprints are added in tasks D1 (review.py) and D2 (api.py).
+    """
+    # Register review blueprint (D1)
+    from src.web.routes.review import review_bp
+
+    app.register_blueprint(review_bp)
+
+    # API blueprint (D2)
+    from src.web.routes.api import api_bp
+
+    app.register_blueprint(api_bp, url_prefix="/api")
+
+    # Image review API blueprint (IMG-1-5)
+    from src.web.routes.api_images import api_images_bp
+
+    app.register_blueprint(api_images_bp)
+
+    # Image review page routes (IMG-1-4)
+    from src.web.routes.review_images import review_images_bp
+
+    app.register_blueprint(review_images_bp)
+
+
+def _wants_json_response() -> bool:
+    """Check if the client prefers JSON over HTML."""
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    return (
+        best == "application/json"
+        and request.accept_mimetypes[best] > request.accept_mimetypes["text/html"]
+    )
+
+
+def _register_error_handlers(app: Flask) -> None:
+    """Register custom error handlers that return JSON for API requests, HTML otherwise."""
+
+    @app.errorhandler(404)
+    def not_found_error(error):
+        if _wants_json_response():
+            return jsonify(error="Not found"), 404
+        return render_template("errors/404.html"), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        logger.error(f"Internal server error: {error}")
+        if _wants_json_response():
+            return jsonify(error="Internal server error"), 500
+        return render_template("errors/500.html"), 500
+
+
+def _register_context_processors(app: Flask) -> None:
+    """Register template context processors."""
+
+    @app.context_processor
+    def utility_processor():
+        """Add utility functions to template context."""
+        return {
+            "app_name": "Filings Review",
+            "app_version": "0.1.0",
+        }
+
+
+def _register_template_filters(app: Flask) -> None:
+    """Register custom Jinja2 template filters."""
+
+    @app.template_filter("highlight_context")
+    def highlight_context_filter(context_text, raw_number_text, triggering_keyword):
+        """
+        Jinja2 filter to highlight number and keyword in context text.
+
+        Usage in template:
+            {{ candidate.context_text|highlight_context(
+                 candidate.raw_number_text,
+                 candidate.triggering_keyword
+               )|safe }}
+
+        Args:
+            context_text: The surrounding text context
+            raw_number_text: Exact number text to highlight
+            triggering_keyword: Metric keyword to underline
+
+        Returns:
+            Markup: HTML-safe string with highlighted number and keyword
+        """
+        from src.web.routes.review import _highlight_context
+
+        return _highlight_context(context_text, raw_number_text, triggering_keyword)
+
+    @app.template_filter("highlight_html")
+    def highlight_html_filter(html_content, raw_number_text, triggering_keyword):
+        """
+        Jinja2 filter to highlight number and keyword in HTML content (tables).
+
+        Usage in template:
+            {{ candidate.segment_html|highlight_html(
+                 candidate.raw_number_text,
+                 candidate.triggering_keyword
+               )|safe }}
+
+        Args:
+            html_content: HTML content (e.g., table markup)
+            raw_number_text: Exact number text to highlight
+            triggering_keyword: Metric keyword to underline
+
+        Returns:
+            Markup: HTML string with highlighted number and keyword
+        """
+        from src.web.routes.review import _highlight_html
+
+        return _highlight_html(html_content, raw_number_text, triggering_keyword)
+
+
+# Convenience function for running directly
+def run_dev_server(host: str = "127.0.0.1", port: int = 5002) -> None:
+    """
+    Run the development server.
+
+    Args:
+        host: Host to bind to (default: 127.0.0.1)
+        port: Port to bind to (default: 5002)
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    app = create_app("development")
+    app.run(host=host, port=port, debug=True)
+
+
+if __name__ == "__main__":
+    run_dev_server()
+```
+
+## src/web/routes/api.py
+
+```python
 """
 JSON API endpoints for human review system.
 
@@ -5,13 +549,12 @@ Handles AJAX requests from the review interface for recording decisions
 and fetching candidate data. All endpoints return JSON responses.
 """
 
-import hmac
 import logging
 import time
 from typing import Any
 
 import psycopg
-from flask import Blueprint, current_app, g, jsonify, request, session
+from flask import Blueprint, g, jsonify, request, session
 
 from src.infra.validation import ValidationError
 from src.review.models import (
@@ -22,46 +565,6 @@ from src.web.app import get_db
 
 api_bp = Blueprint("api", __name__)
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Authentication
-# =============================================================================
-
-
-@api_bp.before_request
-def _check_api_key():
-    """
-    Verify API key for all requests to this blueprint.
-
-    Checks X-API-Key header or api_key query parameter.
-    Skips authentication if API_KEY_REQUIRED is False (development mode).
-    """
-    if not current_app.config.get("API_KEY_REQUIRED", True):
-        return None  # Auth not required
-
-    api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-    expected_key = current_app.config.get("API_KEY")
-
-    if not expected_key:
-        logger.error("API_KEY_REQUIRED is True but API_KEY is not configured")
-        return jsonify({"status": "error", "message": "Server misconfigured"}), 500
-
-    if not api_key:
-        logger.warning(
-            f"Missing API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
-        )
-        return jsonify({"status": "error", "message": "API key required"}), 401
-
-    if not hmac.compare_digest(api_key, expected_key):
-        logger.warning(
-            f"Invalid API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
-        )
-        return jsonify({"status": "error", "message": "Invalid API key"}), 401
-
-    return None  # Auth passed
 
 
 # =============================================================================
@@ -1434,3 +1937,314 @@ def _get_next_candidate_info(
         "candidate_id": next_candidate_id,
         "url": url,
     }
+```
+
+## src/infra/validation.py
+
+```python
+"""
+Centralized input validation utilities.
+
+Provides reusable validation functions for SEC filing data including
+CIKs, accession numbers, SIC codes, dates, and form types.
+"""
+
+import re
+from collections.abc import Sequence
+from datetime import datetime
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
+class ValidationError(ValueError):
+    """Raised when input validation fails."""
+
+    pass
+
+
+def validate_cik(cik: str) -> str:
+    """
+    Validate and normalize CIK to 10-digit zero-padded format.
+
+    Args:
+        cik: SEC Central Index Key (may be with or without leading zeros)
+
+    Returns:
+        Normalized 10-digit zero-padded CIK
+
+    Raises:
+        ValidationError: If CIK is invalid
+    """
+    if not cik:
+        raise ValidationError("CIK cannot be empty")
+
+    # Security: Check for path traversal characters
+    if ".." in cik or "/" in cik or "\\" in cik:
+        raise ValidationError("Invalid CIK: contains path traversal characters")
+
+    # Must be numeric
+    if not cik.isdigit():
+        raise ValidationError("Invalid CIK: must be numeric")
+
+    # Normalize to 10-digit zero-padded
+    normalized = cik.zfill(10)
+
+    # Validate length (SEC CIKs are max 10 digits)
+    if len(normalized) > 10:
+        raise ValidationError(f"Invalid CIK: too many digits (max 10): {cik}")
+
+    return normalized
+
+
+def validate_accession_number(accession: str) -> str:
+    """
+    Validate accession number format.
+
+    SEC accession numbers are in format: NNNNNNNNNN-NN-NNNNNN
+    (10 digits - 2 digits - 6 digits)
+
+    Args:
+        accession: SEC accession number
+
+    Returns:
+        Validated accession number (unchanged if valid)
+
+    Raises:
+        ValidationError: If accession number is invalid
+    """
+    if not accession:
+        raise ValidationError("Accession number cannot be empty")
+
+    # Security: Check for path traversal characters
+    if ".." in accession or "\\" in accession:
+        raise ValidationError(
+            "Invalid accession number: contains path traversal characters"
+        )
+
+    # Check for slashes (allowing dashes which are part of format)
+    if "/" in accession.replace("-", ""):
+        raise ValidationError(
+            "Invalid accession number: contains path traversal characters"
+        )
+
+    # Remove dashes for alphanumeric check
+    accession_clean = accession.replace("-", "")
+    if not accession_clean.isalnum():
+        raise ValidationError("Invalid accession number: must be alphanumeric")
+
+    # Validate format pattern (NNNNNNNNNN-NN-NNNNNN)
+    pattern = r"^\d{10}-\d{2}-\d{6}$"
+    if not re.match(pattern, accession):
+        raise ValidationError(
+            f"Invalid accession number format: expected NNNNNNNNNN-NN-NNNNNN, got {accession}"
+        )
+
+    return accession
+
+
+def validate_sic_code(sic: str) -> str:
+    """
+    Validate SIC (Standard Industrial Classification) code.
+
+    SIC codes are 4-digit codes ranging from 0100 to 9999.
+
+    Args:
+        sic: SIC code string
+
+    Returns:
+        Validated 4-digit SIC code
+
+    Raises:
+        ValidationError: If SIC code is invalid
+    """
+    if not sic:
+        raise ValidationError("SIC code cannot be empty")
+
+    # Must be numeric
+    if not sic.isdigit():
+        raise ValidationError(f"Invalid SIC code: must be numeric: {sic}")
+
+    # Normalize to 4 digits
+    normalized = sic.zfill(4)
+
+    if len(normalized) != 4:
+        raise ValidationError(f"Invalid SIC code: must be 4 digits: {sic}")
+
+    # Validate range (0100-9999 are valid SIC codes)
+    sic_int = int(normalized)
+    if sic_int < 100 or sic_int > 9999:
+        raise ValidationError(
+            f"Invalid SIC code: must be between 0100 and 9999: {normalized}"
+        )
+
+    return normalized
+
+
+def validate_date(date_str: str, field_name: str = "date") -> datetime:
+    """
+    Validate and parse an ISO format date string.
+
+    Args:
+        date_str: Date string in ISO format (YYYY-MM-DD)
+        field_name: Name of the field for error messages
+
+    Returns:
+        Parsed datetime object
+
+    Raises:
+        ValidationError: If date string is invalid
+    """
+    if not date_str:
+        raise ValidationError(f"{field_name} cannot be empty")
+
+    try:
+        return datetime.fromisoformat(date_str)
+    except ValueError as e:
+        raise ValidationError(
+            f"Invalid {field_name} format: expected YYYY-MM-DD, got '{date_str}': {e}"
+        ) from e
+
+
+def validate_date_range(
+    start_date: str, end_date: str
+) -> tuple[datetime, datetime]:
+    """
+    Validate a date range ensuring start <= end.
+
+    Args:
+        start_date: Start date in ISO format (YYYY-MM-DD)
+        end_date: End date in ISO format (YYYY-MM-DD)
+
+    Returns:
+        Tuple of (start_datetime, end_datetime)
+
+    Raises:
+        ValidationError: If dates are invalid or start > end
+    """
+    start = validate_date(start_date, "start_date")
+    end = validate_date(end_date, "end_date")
+
+    if start > end:
+        raise ValidationError(
+            f"Invalid date range: start_date ({start_date}) is after end_date ({end_date})"
+        )
+
+    return start, end
+
+
+def validate_form_type(form_type: str) -> str:
+    """
+    Validate SEC form type.
+
+    Args:
+        form_type: SEC form type (e.g., "S-1", "S-1/A", "F-1", "F-1/A")
+
+    Returns:
+        Validated form type (uppercase)
+
+    Raises:
+        ValidationError: If form type is invalid
+    """
+    if not form_type:
+        raise ValidationError("Form type cannot be empty")
+
+    # Normalize to uppercase
+    normalized = form_type.upper().strip()
+
+    # Valid S-1/F-1 related form types
+    valid_form_types = {
+        "S-1",
+        "S-1/A",
+        "F-1",
+        "F-1/A",
+        "S-11",
+        "S-11/A",
+        "10-K",
+        "10-K/A",
+        "10-Q",
+        "10-Q/A",
+        "8-K",
+        "8-K/A",
+    }
+
+    if normalized not in valid_form_types:
+        raise ValidationError(
+            f"Invalid form type: '{form_type}'. "
+            f"Expected one of: {', '.join(sorted(valid_form_types))}"
+        )
+
+    return normalized
+
+
+def validate_enum(value: T, valid_values: Sequence[T], field_name: str) -> T:
+    """
+    Validate that a value is in the allowed set.
+
+    Args:
+        value: The value to validate
+        valid_values: Sequence of valid values (tuple, list, etc.)
+        field_name: Name of the field (for error messages)
+
+    Returns:
+        The validated value (unchanged if valid)
+
+    Raises:
+        ValidationError: If value is not in valid_values
+
+    Example:
+        >>> VALID_STATUSES = ("pending", "approved", "rejected")
+        >>> validate_enum("pending", VALID_STATUSES, "status")
+        'pending'
+        >>> validate_enum("invalid", VALID_STATUSES, "status")
+        ValidationError: Invalid status 'invalid'. Must be one of: ('pending', 'approved', 'rejected')
+    """
+    if value not in valid_values:
+        raise ValidationError(
+            f"Invalid {field_name} '{value}'. Must be one of: {tuple(valid_values)}"
+        )
+    return value
+
+
+def validate_score(
+    value: float | None,
+    field_name: str,
+    min_val: float = 0.0,
+    max_val: float = 1.0,
+    context: str | None = None,
+) -> float | None:
+    """
+    Validate that a score/confidence value is within range.
+
+    Args:
+        value: The score to validate (None is allowed and passes through)
+        field_name: Name of the field (for error messages)
+        min_val: Minimum allowed value (default 0.0)
+        max_val: Maximum allowed value (default 1.0)
+        context: Optional context for error messages (e.g., "candidate 0")
+
+    Returns:
+        The validated value (unchanged if valid), or None if input was None
+
+    Raises:
+        ValidationError: If value is outside the allowed range
+
+    Example:
+        >>> validate_score(0.85, "confidence")
+        0.85
+        >>> validate_score(1.5, "confidence")
+        ValidationError: confidence must be between 0.0 and 1.0, got 1.5
+        >>> validate_score(None, "confidence")
+        None
+    """
+    if value is None:
+        return None
+
+    if not (min_val <= value <= max_val):
+        context_suffix = f" ({context})" if context else ""
+        raise ValidationError(
+            f"{field_name} must be between {min_val} and {max_val}, "
+            f"got {value}{context_suffix}"
+        )
+    return value
+```
