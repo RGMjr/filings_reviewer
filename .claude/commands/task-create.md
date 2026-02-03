@@ -28,10 +28,9 @@ If they choose to skip, advise them to use `/task-run` and stop.
 
 1. Read `docs/WORKER_PROMPT_GENERATOR.md` for generation instructions
 2. Read `docs/WORKER_PROMPT_TEMPLATE.md` for format
-3. Check `docs/PROJECT_TASK_INVENTORY.md` for:
+3. Check existing worker prompts in `docs/worker-prompts/` for:
    - Existing task IDs (avoid duplicates)
-   - Dependencies
-   - File conflicts
+   - Patterns to follow
 4. Generate worker prompt following template v2.6
 
 ## Step 4: Critical Prompt Evaluation

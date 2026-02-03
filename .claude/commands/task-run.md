@@ -20,8 +20,7 @@ Task ID: $ARGUMENTS
 
 Before proceeding, read these files to establish full project context:
 1. `CLAUDE.md` - project standards, patterns, and key decisions
-2. `docs/PROJECT_TASK_INVENTORY.md` - task dependencies and status
-3. `docs/WORKER_PROMPT_TEMPLATE.md` - understand prompt structure
+2. `docs/WORKER_PROMPT_TEMPLATE.md` - understand prompt structure
 
 ### 1.3 Locate Worker Prompt
 
@@ -122,18 +121,16 @@ Wait for response before proceeding.
 2. Generate follow-up tasks for deferred improvements
 3. Update documentation if needed
 4. Fill completion report (M/L/XL tasks) - see `docs/COMPLETION_REPORT_TEMPLATE.md`
-5. Update `docs/PROJECT_TASK_INVENTORY.md` status
-6. Move worker prompt to `docs/archive/worker-prompts-completed/`
-7. Commit with task ID reference
-8. Push to remote
+5. Move worker prompt to `docs/archive/worker-prompts-completed/`
+6. Commit with task ID reference
+7. Push to remote
 
 ---
 
 **Key Files:**
 - `docs/WORKER_PROMPT_TEMPLATE.md` (v2.6)
-- `docs/WORKER_PROMPT_GENERATOR.md` (v1.2)
+- `docs/WORKER_PROMPT_GENERATOR.md` (v1.3)
 - `docs/COMPLETION_REPORT_TEMPLATE.md` (v1.0)
-- `docs/PROJECT_TASK_INVENTORY.md`
 
 ---
 

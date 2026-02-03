@@ -1,8 +1,9 @@
 # Development Plan
 
-**Worker Prompt**: [Path to worker prompt file]
-**Task ID**: [TASK-ID]
-**Started**: [Date]
+**Worker Prompt**: ops/review_artifacts/deliverables/worker_prompts/01_FIX_FAILING_TESTS.md
+**Task ID**: REV-01
+**Task Name**: Fix 19 Failing Image Route Tests
+**Started**: 2026-02-02
 
 ---
 
@@ -16,7 +17,11 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] [Acceptance criteria will be populated from Worker Prompt]
+- [ ] AC-1 | All 19 tests in test_api_images_routes.py pass
+- [ ] AC-2 | Tests that expect 400 (validation errors) receive 400, not 409
+- [ ] AC-3 | Tests that expect 201 (success) receive 201, not 409
+- [ ] AC-4 | Each test has assertion that mock_db methods were called
+- [ ] AC-5 | No real database is accessed during unit tests
 
 ---
 
@@ -26,15 +31,15 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | - | - | - |
 
 ---
 
 ## Results Summary
 
-<!-- Populated on DEVELOPMENT_COMPLETE -->
+**Completed**: (pending)
+**Total Iterations**: 0
+**Files Changed**: (pending)
 
-**Completed**: [Date]
-**Total Iterations**: [N]
-**Files Changed**: [List]
-**Test Results**: [Pass/Fail + coverage]
+**Test Results**: 19 failing (pre-start baseline)
+**Type Checking**: (pending)
+**Linting**: (pending)

@@ -5,12 +5,13 @@ Handles AJAX requests from the review interface for recording decisions
 and fetching candidate data. All endpoints return JSON responses.
 """
 
+import hmac
 import logging
 import time
 from typing import Any
 
 import psycopg
-from flask import Blueprint, g, jsonify, request, session
+from flask import Blueprint, current_app, g, jsonify, request, session
 
 from src.infra.validation import ValidationError
 from src.review.models import (
@@ -21,6 +22,46 @@ from src.web.app import get_db
 
 api_bp = Blueprint("api", __name__)
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Authentication
+# =============================================================================
+
+
+@api_bp.before_request
+def _check_api_key():
+    """
+    Verify API key for all requests to this blueprint.
+
+    Checks X-API-Key header or api_key query parameter.
+    Skips authentication if API_KEY_REQUIRED is False (development mode).
+    """
+    if not current_app.config.get("API_KEY_REQUIRED", True):
+        return None  # Auth not required
+
+    api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
+    expected_key = current_app.config.get("API_KEY")
+
+    if not expected_key:
+        logger.error("API_KEY_REQUIRED is True but API_KEY is not configured")
+        return jsonify({"status": "error", "message": "Server misconfigured"}), 500
+
+    if not api_key:
+        logger.warning(
+            f"Missing API key for {request.method} {request.path} "
+            f"from {request.remote_addr}"
+        )
+        return jsonify({"status": "error", "message": "API key required"}), 401
+
+    if not hmac.compare_digest(api_key, expected_key):
+        logger.warning(
+            f"Invalid API key for {request.method} {request.path} "
+            f"from {request.remote_addr}"
+        )
+        return jsonify({"status": "error", "message": "Invalid API key"}), 401
+
+    return None  # Auth passed
 
 
 # =============================================================================

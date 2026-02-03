@@ -28,7 +28,6 @@ You are generating a worker prompt for Task [TASK_ID] following the project's st
 ## Instructions
 
 1. **Read Required Documents**
-   - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/docs/PROJECT_TASK_INVENTORY.md` (task status, dependencies, waves)
    - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/docs/WORKER_PROMPT_TEMPLATE.md` (template format)
    - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/instructions_orchestrator.md` (orchestrator context)
    - Read the plan document: `[PLAN_DOC]` (task details)
@@ -246,24 +245,18 @@ Use dependency fields to enable critical path analysis:
 
 Before generating the prompt, gather this information:
 
-1. **From Project Task Inventory** (`docs/PROJECT_TASK_INVENTORY.md`):
-   - Verify task ID exists and current status
-   - Check wave assignment and execution order
-   - Identify blocked/blocking tasks
-   - Review file modification map for conflicts
-
-2. **From Plan Document**:
+1. **From Plan Document**:
    - Task description and objective
    - Prerequisites and dependencies
    - Time estimate and risk level
    - Expected files to modify
 
-3. **From Codebase** (if files mentioned):
+2. **From Codebase** (if files mentioned):
    - Read mentioned files to understand current state
    - Check for existing tests to understand coverage
    - Identify related modules for "Do NOT" constraints
 
-4. **From Related Tasks**:
+3. **From Related Tasks**:
    - Check DEPENDS ON tasks - what do they provide?
    - Check UNLOCKS tasks - what do they need?
    - Check PARALLEL WITH tasks - any file conflicts?
@@ -333,10 +326,11 @@ wait
 
 ## Version History
 
-- **v1.2** (2026-01-01): Integrated PROJECT_TASK_INVENTORY.md
-  - Added PROJECT_TASK_INVENTORY.md to required documents
-  - Added inventory as first source in Context Gathering Strategy
-  - Ensures task ID verification, wave/dependency checking before prompt generation
+- **v1.3** (2026-01-29): Removed PROJECT_TASK_INVENTORY.md references
+  - Task inventory archived to docs/archive/historical/
+  - Simplified context gathering strategy
+
+- **v1.2** (2026-01-01): Integrated PROJECT_TASK_INVENTORY.md (now deprecated)
 
 - **v1.1** (2025-12-31): Added Critical Evaluation Phase support
   - Added Critical Evaluation Phase to template structure

@@ -1,6 +1,6 @@
 # GitHub Issues Update - 2026-01-13
 
-Based on comparison with `docs/PROJECT_TASK_INVENTORY.md` (last verified 2026-01-07), the following GitHub issues need updating.
+The following GitHub issues need updating based on recent project completion.
 
 ---
 
@@ -46,7 +46,7 @@ python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 pytest -m gold_standard --gold-standard-mode=fresh -v
 ```
 
-See `docs/PROJECT_TASK_INVENTORY.md` (HRV-Series section) for complete implementation history.
+See `docs/archive/historical/PROJECT_TASK_INVENTORY.md` (HRV-Series section) for historical implementation details.
 ```
 
 ---
