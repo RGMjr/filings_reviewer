@@ -10,6 +10,8 @@ Creates and configures the Flask application with:
 import atexit
 import logging
 import os
+import secrets
+import warnings
 from typing import Any
 
 from flask import Flask, current_app, g, jsonify, render_template, request
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Config:
     """Base configuration."""
 
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-not-for-production")
+    SECRET_KEY = os.environ.get("SECRET_KEY")
     DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
     # Session configuration
@@ -41,6 +43,18 @@ class DevelopmentConfig(Config):
 
     DEBUG = True
     TESTING = False
+
+    @classmethod
+    def init_app(cls, app: "Flask") -> None:
+        """Initialize development-specific settings."""
+        if not app.config.get("SECRET_KEY"):
+            app.config["SECRET_KEY"] = secrets.token_hex(32)
+            warnings.warn(
+                "No SECRET_KEY set - generated random key for development. "
+                "Sessions will not persist across restarts.",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
 class TestingConfig(Config):
@@ -214,7 +228,7 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
     if config_override:
         app.config.update(config_override)
 
-    # Validate production configuration
+    # Validate/initialize configuration based on environment
     if config_name == "production":
         # Check environment directly since config class may have been loaded at import time
         env_secret = os.environ.get("SECRET_KEY", "")
@@ -223,8 +237,15 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
                 "SECRET_KEY environment variable is required in production. "
                 "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
             )
+        if len(env_secret) < 32:
+            raise ValueError(
+                "SECRET_KEY should be at least 32 characters for production security."
+            )
         # Update config with the actual secret key from environment
         app.config["SECRET_KEY"] = env_secret
+    elif hasattr(config_class, "init_app"):
+        # Call init_app for configs that need runtime initialization (e.g., DevelopmentConfig)
+        config_class.init_app(app)
 
     # Register database teardown handler
     app.teardown_appcontext(close_db)
