@@ -15,7 +15,7 @@ src/
 ├── extraction_v2/  # V2 pipeline (alpha): Structure-first extraction with full table reconstruction, image/chart OCR, complete provenance tracking via MetricFact/EvidencePack. Files: models.py, pipeline.py, table_reconstructor.py, stages/ingestion.py. NOT a replacement for V1 - experimental research implementation.
 ├── review/         # Human review: candidate_generator, pattern_analyzer, rule_applicator, table_structure
 ├── web/            # Flask app: routes/, templates/, static/
-├── llm/            # OpenAI integration: openai_client.py, prompts.py
+├── llm/            # OpenAI integration: openai_client.py, prompts.py, cache.py (SQLite-backed response caching)
 └── gold_standard/  # Validation: baseline.py, fresh_extractor.py
 config/
 └── metric_keywords.yaml  # Externalized metric keyword patterns (editable without code changes)
@@ -153,6 +153,24 @@ For complete extraction/keyword logic history with implementation details, see `
 **Customer metrics distinction**:
 - `cm_customers_period_end`: Period-end stock count ("total customers", "paid customers")
 - `cm_active_customers_total`: Engagement-based ("active customers", "active users") - NOT aliases
+
+## LLM Response Caching
+
+SQLite-backed cache (`src/llm/cache.py`) reduces API costs and latency for repeated prompts.
+
+**Key features**:
+- **Cache key**: SHA-256 hash of model + system message + prompt + temperature + max_tokens
+- **Versioning**: `LLM_CACHE_VERSION` env var allows safe invalidation when prompts change
+- **Expiration**: 30-day default (configurable via `max_age_days`)
+- **Thread-safe**: Lock-based concurrency for single-process deployments
+- **Statistics**: Hit rate tracking, token savings metrics
+
+**Environment variables**:
+- `LLM_CACHE_ENABLED=true` (default: enabled)
+- `LLM_CACHE_PATH=data/llm_cache.db` (default path)
+- `LLM_CACHE_VERSION=v1` (increment to invalidate all cached responses)
+
+**Production note**: For multi-worker Flask deployments, consider migrating to Redis or PostgreSQL-backed cache to avoid SQLite concurrency limitations.
 
 ## Gold Standard Validation (Required for Keyword/Extraction Changes)
 
