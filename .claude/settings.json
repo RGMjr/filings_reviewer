@@ -1,5 +1,5 @@
 {
-  "$schema": "https://claude.ai/schemas/claude-code-settings.json",
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Skill",
@@ -36,6 +36,17 @@
           {
             "type": "command",
             "command": "~/.claude/stop-hook-git-check.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit.*metric_keywords",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
           }
         ]
       }

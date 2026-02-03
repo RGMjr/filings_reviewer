@@ -23,25 +23,7 @@ find docs/archive -name "*.md" -mtime +90 | head -20
 - [ ] Consolidate completion summaries into CHANGELOG.md entries
 - [ ] Remove superseded/dropped prompts older than 3 months
 
-### 2. Task Inventory Cleanup
-
-**Actions**:
-- [ ] Archive completed workstreams to `docs/archive/workstreams/`
-- [ ] Remove tasks marked "CLOSED" for 30+ days from active inventory
-- [ ] Update executive summary counts
-
-### 3. Sync GitHub Issues
-
-```bash
-python scripts/sync_github_issues.py --check
-```
-
-**Actions**:
-- [ ] Close GitHub issues for completed workstreams
-- [ ] Update labels on stale issues
-- [ ] Create issues for new high-priority tasks
-
-### 4. CLAUDE.md Review
+### 2. CLAUDE.md Review
 
 **Actions**:
 - [ ] Remove design decisions for deprecated features
@@ -102,9 +84,6 @@ find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*"
 ### Monthly
 
 ```bash
-# Sync GitHub issues
-python scripts/sync_github_issues.py --check
-
 # Archive old worker prompts
 ./scripts/archive_old_prompts.sh  # Create this if needed
 ```
