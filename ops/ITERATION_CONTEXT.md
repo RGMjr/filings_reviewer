@@ -8,13 +8,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- DOC-01 AC-3: Added cache.py to CLAUDE.md Architecture section, created new "LLM Response Caching" section documenting SQLite-backed caching, cache key computation (SHA-256 of model/system/prompt/temp/max_tokens), versioning via env vars, 30-day expiration, thread-safety, and production note about Redis/PostgreSQL for multi-worker deployments
+- DOC-01 AC-4: Added new "API Authentication" section to CLAUDE.md after Environment Setup, documenting @require_api_key decorator from src/web/auth.py, authentication methods (X-API-Key header and api_key query param), env vars (FILINGS_API_KEY, API_KEY_REQUIRED), constant-time comparison security, and development mode bypass
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- DOC-01 AC-4: Document API authentication in CLAUDE.md
+- DOC-01 AC-5: Update docs/README.md index - verify all links exist
 
 ## Test Status
 
@@ -25,25 +25,25 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- LLM cache uses SHA-256 hash of normalized inputs for deterministic cache keys
-- Cache versioning via LLM_CACHE_VERSION env var enables safe invalidation when prompts evolve
-- Thread-safe via lock, but SQLite not ideal for multi-worker production (Redis/PostgreSQL recommended)
-- 30-day TTL with automatic cleanup, tracks hit rate and token savings
-- Next up: API authentication (src/web/auth.py) - API key mechanism
+- API authentication via @require_api_key decorator checks X-API-Key header first, then api_key query param
+- Uses hmac.compare_digest for constant-time comparison to prevent timing attacks
+- Configurable via FILINGS_API_KEY and API_KEY_REQUIRED env vars (already in .env.template)
+- Can be disabled for local dev (API_KEY_REQUIRED=false)
+- Next up: docs/README.md index validation - check all links point to existing files
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- CLAUDE.md (added cache.py to Architecture line, new "LLM Response Caching" section with env vars and features)
-- ops/DEVELOPMENT_PLAN.md (marked AC-3 complete, updated progress log and results summary)
+- CLAUDE.md (new "API Authentication" section after Environment Setup)
+- ops/DEVELOPMENT_PLAN.md (marked AC-4 complete, updated progress log and results summary)
 - ops/ITERATION_CONTEXT.md (this file)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - AC-3 complete, ready for AC-4 (API authentication documentation)
+- None - AC-4 complete, ready for AC-5 (docs/README.md index validation)
 
 ---
 

@@ -96,6 +96,32 @@ DATABASE_URL=postgresql://user:password@localhost/filings_analysis
 SEC_USER_AGENT="YourName contact@example.com"
 ```
 
+## API Authentication
+
+Flask API routes can be protected using `@require_api_key` decorator from `src/web/auth.py`.
+
+**Authentication methods** (checked in order):
+1. `X-API-Key` HTTP header (preferred)
+2. `api_key` query parameter (fallback)
+
+**Configuration**:
+- `FILINGS_API_KEY`: API key value (generate with `python -c "import secrets; print(secrets.token_hex(32))"`)
+- `API_KEY_REQUIRED`: Set to `true` to enforce authentication (default: `false` in development, `true` in production)
+
+**Security**: Uses constant-time comparison (`hmac.compare_digest`) to prevent timing attacks.
+
+**Usage**:
+```python
+from src.web.auth import require_api_key
+
+@bp.route("/api/protected")
+@require_api_key
+def protected_route():
+    # Route implementation
+```
+
+**Development mode**: Set `API_KEY_REQUIRED=false` in `.env` to bypass authentication for local testing.
+
 ## Docker Setup
 
 ```bash
