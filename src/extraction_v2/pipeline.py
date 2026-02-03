@@ -38,6 +38,7 @@ from src.extraction_v2.models import (
     Segment,
     Table,
 )
+from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
@@ -419,33 +420,7 @@ class OCRChartExtractionStage:
         )
 
 
-class CandidateGenerationStage:
-    """
-    Stage 6: Metric Candidate Generation.
-
-    - Scan all content for metric aliases (from YAML taxonomy)
-    - Apply required_signals and negative_signals filters
-    - Output: Candidate list with source pointers
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Generate metric candidates."""
-        start_time = datetime.utcnow()
-
-        # TODO: Load YAML taxonomy
-        # TODO: Scan segments for metric aliases
-        # TODO: Apply signal filters
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.CANDIDATE_GENERATION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.segments) + len(context.tables),
-            items_output=len(context.candidates),
-        )
+# CandidateGenerationStage is now imported from src.extraction_v2.stages.candidate_generation
 
 
 class ValueBindingStage:
