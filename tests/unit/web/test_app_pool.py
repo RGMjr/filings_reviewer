@@ -4,7 +4,6 @@ Unit tests for Flask app pool initialization and cleanup.
 Tests the init_pool() and close_pool() functions in app.py.
 """
 
-import os
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -160,9 +159,9 @@ class TestCreateAppPoolIntegration:
             mock_pool = MagicMock()
             mock_create_pool.return_value = mock_pool
 
-            with patch.dict(
-                os.environ,
-                {"DATABASE_URL": "postgresql://localhost/test"},
+            with patch(
+                "src.web.app.TestingConfig.DATABASE_URL",
+                "postgresql://localhost/test",
             ):
                 from src.web.app import create_app
 
@@ -177,9 +176,9 @@ class TestCreateAppPoolIntegration:
             mock_create_pool.return_value = mock_pool
 
             with patch("src.web.app.atexit.register") as mock_atexit:
-                with patch.dict(
-                    os.environ,
-                    {"DATABASE_URL": "postgresql://localhost/test"},
+                with patch(
+                    "src.web.app.TestingConfig.DATABASE_URL",
+                    "postgresql://localhost/test",
                 ):
                     from src.web.app import create_app
 
@@ -205,9 +204,9 @@ class TestHealthEndpoint:
             mock_pool = MagicMock()
             mock_create_pool.return_value = mock_pool
 
-            with patch.dict(
-                os.environ,
-                {"DATABASE_URL": "postgresql://localhost/test"},
+            with patch(
+                "src.web.app.TestingConfig.DATABASE_URL",
+                "postgresql://localhost/test",
             ):
                 from src.web.app import create_app
 
@@ -244,9 +243,9 @@ class TestHealthEndpoint:
             mock_pool = MagicMock()
             mock_create_pool.return_value = mock_pool
 
-            with patch.dict(
-                os.environ,
-                {"DATABASE_URL": "postgresql://localhost/test"},
+            with patch(
+                "src.web.app.TestingConfig.DATABASE_URL",
+                "postgresql://localhost/test",
             ):
                 from src.web.app import create_app
 
