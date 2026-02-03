@@ -1,9 +1,9 @@
 # Development Plan
 
-**Worker Prompt**: ops/review_artifacts/deliverables/worker_prompts/01_FIX_FAILING_TESTS.md
-**Task ID**: REV-01
-**Task Name**: Fix 19 Failing Image Route Tests
-**Started**: 2026-02-02
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_DOC-01.md
+**Task ID**: DOC-01
+**Task Name**: Full Documentation Audit
+**Started**: 2026-02-03
 
 ---
 
@@ -17,11 +17,14 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | All 19 tests in test_api_images_routes.py pass
-- [ ] AC-2 | Tests that expect 400 (validation errors) receive 400, not 409
-- [ ] AC-3 | Tests that expect 201 (success) receive 201, not 409
-- [ ] AC-4 | Each test has assertion that mock_db methods were called
-- [ ] AC-5 | No real database is accessed during unit tests
+- [ ] AC-1 | Remove stale module references (agreement.py, rule_generator.py, etc.)
+- [ ] AC-2 | Document extraction_v2 module in CLAUDE.md
+- [ ] AC-3 | Document LLM cache in CLAUDE.md
+- [ ] AC-4 | Document API authentication in CLAUDE.md
+- [ ] AC-5 | Update docs/README.md index - verify all links exist
+- [ ] AC-6 | Add extraction_v2 architecture documentation
+- [ ] AC-7 | Document web routes structure in CLAUDE.md
+- [ ] AC-8 | Final validation - doc sync check passes
 
 ---
 
@@ -40,6 +43,5 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 **Total Iterations**: 0
 **Files Changed**: (pending)
 
-**Test Results**: 19 failing (pre-start baseline)
-**Type Checking**: (pending)
-**Linting**: (pending)
+**Doc Sync Check**: (pending)
+**Stale References**: 4+ (pre-start baseline)
