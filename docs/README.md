@@ -52,6 +52,7 @@ Guidance for developers implementing or extending the system.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[metrics-taxonomy.md](development/metrics-taxonomy.md)** | Canonical metric definitions and taxonomy | Developers, Analysts |
+| **[metric-lifecycle-process.md](development/metric-lifecycle-process.md)** | Adding, deprecating, and removing metrics | Developers |
 | **[quality-model.md](development/quality-model.md)** | Quality scoring framework (0-3 scale) | Developers, QA |
 | **[testing.md](development/testing.md)** | Test strategy, coverage requirements | Developers, QA |
 
