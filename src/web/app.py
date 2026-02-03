@@ -27,6 +27,10 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY")
     DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+    # API authentication
+    API_KEY = os.environ.get("FILINGS_API_KEY")
+    API_KEY_REQUIRED = os.environ.get("API_KEY_REQUIRED", "true").lower() == "true"
+
     # Session configuration
     SESSION_COOKIE_SECURE = False  # Set True in production with HTTPS
     SESSION_COOKIE_HTTPONLY = True
@@ -43,6 +47,7 @@ class DevelopmentConfig(Config):
 
     DEBUG = True
     TESTING = False
+    API_KEY_REQUIRED = False  # Allow unauthenticated access in development
 
     @classmethod
     def init_app(cls, app: "Flask") -> None:
@@ -63,15 +68,18 @@ class TestingConfig(Config):
     DEBUG = True
     TESTING = True
     SECRET_KEY = "test-secret-key-for-testing-only"
+    API_KEY = "test-api-key-for-testing-only"
+    API_KEY_REQUIRED = False  # Tests handle auth explicitly when needed
     DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 
 class ProductionConfig(Config):
-    """Production configuration - SECRET_KEY validated at app creation."""
+    """Production configuration - SECRET_KEY and API_KEY validated at app creation."""
 
     DEBUG = False
     TESTING = False
     SESSION_COOKIE_SECURE = True
+    API_KEY_REQUIRED = True  # Always require auth in production
 
 
 # Configuration mapping
@@ -243,6 +251,15 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
             )
         # Update config with the actual secret key from environment
         app.config["SECRET_KEY"] = env_secret
+
+        # Validate API key is set for production
+        env_api_key = os.environ.get("FILINGS_API_KEY", "")
+        if not env_api_key:
+            raise ValueError(
+                "FILINGS_API_KEY environment variable is required in production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        app.config["API_KEY"] = env_api_key
     elif hasattr(config_class, "init_app"):
         # Call init_app for configs that need runtime initialization (e.g., DevelopmentConfig)
         config_class.init_app(app)
