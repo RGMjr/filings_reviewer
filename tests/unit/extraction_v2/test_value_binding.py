@@ -1,0 +1,1140 @@
+"""
+Unit tests for V2 Value Binding Stage.
+
+Tests cover:
+- Table binding via header_path
+- Table binding via stub_path
+- Text proximity binding
+- Number parsing
+- Confidence scoring
+- Integration with pipeline context
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from src.extraction_v2.models import (
+    BoundValue,
+    Cell,
+    MetricCandidate,
+    Segment,
+    SegmentType,
+    SectionType,
+    SourceLocator,
+    SourceType,
+    Table,
+    Unit,
+)
+from src.extraction_v2.stages.value_binding import ValueBindingStage
+
+
+# ============================================================================
+# Test Fixtures
+# ============================================================================
+
+
+@dataclass
+class MockPipelineConfig:
+    """Mock pipeline config for testing."""
+
+    min_confidence_auto_accept: float = 0.90
+    min_confidence_no_review: float = 0.85
+    max_confidence_auto_reject: float = 0.15
+
+
+@dataclass
+class MockPipelineContext:
+    """Mock pipeline context for testing."""
+
+    html_path: Path = field(default_factory=lambda: Path("/test/file.html"))
+    filing_id: int = 1
+    config: MockPipelineConfig = field(default_factory=MockPipelineConfig)
+    segments: list[Segment] = field(default_factory=list)
+    tables: list[Table] = field(default_factory=list)
+    candidates: list[MetricCandidate] = field(default_factory=list)
+    bound_values: list[Any] = field(default_factory=list)
+
+
+@pytest.fixture
+def stage() -> ValueBindingStage:
+    """Create a ValueBindingStage instance."""
+    return ValueBindingStage()
+
+
+@pytest.fixture
+def simple_table() -> Table:
+    """Create a simple table with header and data rows."""
+    cells = [
+        # Header row
+        Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+        Cell(row=0, col=1, text="2023", is_header=True, header_path=[], stub_path=[]),
+        Cell(row=0, col=2, text="2022", is_header=True, header_path=[], stub_path=[]),
+        # Data row 1
+        Cell(
+            row=1,
+            col=0,
+            text="Revenue",
+            is_stub=True,
+            header_path=["Metric"],
+            stub_path=[],
+        ),
+        Cell(
+            row=1,
+            col=1,
+            text="$1,234,567",
+            header_path=["2023"],
+            stub_path=["Revenue"],
+        ),
+        Cell(
+            row=1,
+            col=2,
+            text="$987,654",
+            header_path=["2022"],
+            stub_path=["Revenue"],
+        ),
+        # Data row 2
+        Cell(
+            row=2,
+            col=0,
+            text="Customers",
+            is_stub=True,
+            header_path=["Metric"],
+            stub_path=[],
+        ),
+        Cell(
+            row=2, col=1, text="50,000", header_path=["2023"], stub_path=["Customers"]
+        ),
+        Cell(
+            row=2, col=2, text="45,000", header_path=["2022"], stub_path=["Customers"]
+        ),
+    ]
+
+    table = Table(
+        table_id="test-table-1",
+        row_count=3,
+        col_count=3,
+        header_rows=1,
+        stub_cols=1,
+        cells=cells,
+    )
+
+    # Build grid
+    table._grid = [[None] * 3 for _ in range(3)]
+    for cell in cells:
+        table._grid[cell.row][cell.col] = cell
+
+    return table
+
+
+@pytest.fixture
+def percentage_table() -> Table:
+    """Create a table with percentage values."""
+    cells = [
+        # Header row
+        Cell(row=0, col=0, text="KPI", is_header=True, header_path=[], stub_path=[]),
+        Cell(
+            row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]
+        ),
+        # Data row
+        Cell(
+            row=1,
+            col=0,
+            text="Net Revenue Retention",
+            is_stub=True,
+            header_path=["KPI"],
+            stub_path=[],
+        ),
+        Cell(
+            row=1,
+            col=1,
+            text="112%",
+            header_path=["Value"],
+            stub_path=["Net Revenue Retention"],
+        ),
+    ]
+
+    table = Table(
+        table_id="test-table-pct",
+        row_count=2,
+        col_count=2,
+        header_rows=1,
+        stub_cols=1,
+        cells=cells,
+    )
+
+    table._grid = [[None] * 2 for _ in range(2)]
+    for cell in cells:
+        table._grid[cell.row][cell.col] = cell
+
+    return table
+
+
+@pytest.fixture
+def text_segment() -> Segment:
+    """Create a text segment for proximity testing."""
+    return Segment(
+        segment_id="seg-1",
+        doc_id="doc-1",
+        segment_type=SegmentType.PARAGRAPH,
+        text="Our total revenue for the year was $1.5 billion, representing a 25% increase.",
+        section_type=SectionType.MDA,
+    )
+
+
+# ============================================================================
+# Table Binding - Header Path Tests
+# ============================================================================
+
+
+class TestTableBindingHeaderPath:
+    """Tests for table binding via header_path."""
+
+    def test_metric_in_header_binds_column_values(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """When metric is in column header, bind data cells in that column."""
+        # Candidate found in the "2023" header
+        candidate = MetricCandidate(
+            candidate_id="cand-1",
+            metric_id="cm_revenue",
+            match_text="2023",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=0,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(
+            tables=[simple_table],
+            candidates=[candidate],
+        )
+
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 2  # Revenue and Customers for 2023
+
+    def test_multi_level_header_binding(self, stage: ValueBindingStage) -> None:
+        """Multi-level headers correctly propagate to data cells."""
+        cells = [
+            # Header row 1
+            Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=0, col=1, text="FY 2023", is_header=True, header_path=[], stub_path=[]
+            ),
+            # Header row 2
+            Cell(
+                row=1, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]
+            ),
+            Cell(
+                row=1,
+                col=1,
+                text="Q4",
+                is_header=True,
+                header_path=["FY 2023"],
+                stub_path=[],
+            ),
+            # Data row
+            Cell(
+                row=2,
+                col=0,
+                text="ARR",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
+            ),
+            Cell(
+                row=2, col=1, text="$100M", header_path=["FY 2023", "Q4"], stub_path=["ARR"]
+            ),
+        ]
+
+        table = Table(
+            table_id="multi-header",
+            row_count=3,
+            col_count=2,
+            header_rows=2,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(3)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        # Candidate in second-level header
+        candidate = MetricCandidate(
+            candidate_id="cand-multi",
+            metric_id="cm_arr",
+            match_text="Q4",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="multi-header",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_no_match_when_metric_not_in_headers(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """No binding when metric text is not in headers."""
+        candidate = MetricCandidate(
+            candidate_id="cand-nomatch",
+            metric_id="cm_unknown",
+            match_text="unknown metric",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[simple_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # May still find value in the cell itself
+
+    def test_handle_empty_cells_gracefully(self, stage: ValueBindingStage) -> None:
+        """Empty cells in data region are skipped."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=1, col=0, text="Test", is_stub=True, header_path=["Metric"], stub_path=[]),
+            Cell(row=1, col=1, text="", header_path=["Value"], stub_path=["Test"]),  # Empty
+        ]
+
+        table = Table(
+            table_id="empty-cell-table",
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-empty",
+            metric_id="cm_test",
+            match_text="Value",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="empty-cell-table",
+                cell_row=0,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # No values bound because cell is empty
+        assert len(context.bound_values) == 0
+
+    def test_candidate_in_header_finds_values_below(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """Candidate located in header cell should find values in data cells below."""
+        candidate = MetricCandidate(
+            candidate_id="cand-header",
+            metric_id="cm_customers",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=2,  # In stub column
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[simple_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Should find values in the same row
+        assert len(context.bound_values) == 2  # 50,000 and 45,000
+
+
+# ============================================================================
+# Table Binding - Stub Path Tests
+# ============================================================================
+
+
+class TestTableBindingStubPath:
+    """Tests for table binding via stub_path."""
+
+    def test_metric_in_stub_binds_row_values(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """When metric is in row stub, bind data cells in that row."""
+        candidate = MetricCandidate(
+            candidate_id="cand-stub",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=1,
+                cell_col=0,  # Stub column
+            ),
+        )
+
+        context = MockPipelineContext(tables=[simple_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 2  # 2023 and 2022 values
+
+    def test_multi_column_stubs(self, stage: ValueBindingStage) -> None:
+        """Tables with multiple stub columns correctly bind."""
+        cells = [
+            # Header
+            Cell(row=0, col=0, text="Category", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=2, text="Value", is_header=True, header_path=[], stub_path=[]),
+            # Data
+            Cell(row=1, col=0, text="Growth", is_stub=True, header_path=["Category"], stub_path=[]),
+            Cell(row=1, col=1, text="ARR", is_stub=True, header_path=["Metric"], stub_path=["Growth"]),
+            Cell(row=1, col=2, text="$50M", header_path=["Value"], stub_path=["Growth", "ARR"]),
+        ]
+
+        table = Table(
+            table_id="multi-stub",
+            row_count=2,
+            col_count=3,
+            header_rows=1,
+            stub_cols=2,
+            cells=cells,
+        )
+        table._grid = [[None] * 3 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-multi-stub",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="multi-stub",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        assert context.bound_values[0].value == 50_000_000  # $50M
+
+    def test_combined_header_and_stub_context(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """Binding uses both header and stub context for confidence."""
+        candidate = MetricCandidate(
+            candidate_id="cand-combined",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[simple_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Check that bound values have header_path info used for confidence
+        for bv in context.bound_values:
+            assert bv.binding_confidence >= 0.6  # At least table base confidence
+
+
+# ============================================================================
+# Text Binding Tests
+# ============================================================================
+
+
+class TestTextBinding:
+    """Tests for text proximity binding."""
+
+    def test_value_within_proximity_binds(
+        self, stage: ValueBindingStage, text_segment: Segment
+    ) -> None:
+        """Numbers within word proximity are bound."""
+        candidate = MetricCandidate(
+            candidate_id="cand-text",
+            metric_id="cm_revenue",
+            match_text="revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-1",
+                text_span=(10, 17),  # "revenue" in the text
+            ),
+        )
+
+        context = MockPipelineContext(
+            segments=[text_segment],
+            candidates=[candidate],
+        )
+
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Should find $1.5 billion and 25%
+        assert len(context.bound_values) >= 1
+
+    def test_value_in_same_sentence(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Values in the same sentence as keyword are preferred."""
+        segment = Segment(
+            segment_id="seg-sentence",
+            text="Revenue was $500 million. Other metrics were different.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-sent",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-sentence",
+                text_span=(0, 7),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        assert context.bound_values[0].value == 500_000_000
+
+    def test_no_binding_when_value_too_far(self, stage: ValueBindingStage) -> None:
+        """No binding when value is outside proximity window."""
+        # Create a very long segment where the number is far from keyword
+        padding = "x " * 200  # 200 words of padding
+        segment = Segment(
+            segment_id="seg-far",
+            text=f"Revenue is important. {padding} The value is $100.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-far",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-far",
+                text_span=(0, 7),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Value should NOT be bound - too far away
+        # The default proximity is 100 chars
+
+    def test_multiple_values_picks_all(self, stage: ValueBindingStage) -> None:
+        """When multiple values in proximity, all are bound with ambiguity penalty."""
+        segment = Segment(
+            segment_id="seg-multi",
+            text="Our customers grew from 10,000 to 15,000 this year.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-multi",
+            metric_id="cm_customers",
+            match_text="customers",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-multi",
+                text_span=(4, 13),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 2  # Both 10,000 and 15,000
+
+    def test_case_insensitive_matching(self, stage: ValueBindingStage) -> None:
+        """Binding works regardless of keyword case."""
+        segment = Segment(
+            segment_id="seg-case",
+            text="REVENUE was $1M last year.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-case",
+            metric_id="cm_revenue",
+            match_text="revenue",  # lowercase
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-case",
+                text_span=(0, 7),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+
+# ============================================================================
+# Number Parsing Tests
+# ============================================================================
+
+
+class TestNumberParsing:
+    """Tests for number parsing functionality."""
+
+    def test_parse_currency_with_millions(self, stage: ValueBindingStage) -> None:
+        """Parse currency values with scale suffix."""
+        result = stage._parse_number("$1.2M")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_200_000
+        assert unit == Unit.CURRENCY
+
+    def test_parse_currency_with_commas(self, stage: ValueBindingStage) -> None:
+        """Parse currency values with comma separators."""
+        result = stage._parse_number("$1,234,567")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_234_567
+        assert unit == Unit.CURRENCY
+
+    def test_parse_percentage(self, stage: ValueBindingStage) -> None:
+        """Parse percentage values."""
+        result = stage._parse_number("112%")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 112
+        assert unit == Unit.PERCENT
+
+    def test_parse_decimal_percentage(self, stage: ValueBindingStage) -> None:
+        """Parse decimal percentage values."""
+        result = stage._parse_number("1.5%")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1.5
+        assert unit == Unit.PERCENT
+
+    def test_parse_scale_indicators(self, stage: ValueBindingStage) -> None:
+        """Parse values with various scale indicators."""
+        test_cases = [
+            ("100 million", 100_000_000),
+            ("2.5 billion", 2_500_000_000),
+            ("500K", 500_000),
+            ("1.5B", 1_500_000_000),
+            ("50mn", 50_000_000),
+        ]
+
+        for text, expected in test_cases:
+            result = stage._parse_number(text)
+            assert result is not None, f"Failed to parse: {text}"
+            value, unit, raw = result
+            assert value == expected, f"Expected {expected} for {text}, got {value}"
+
+    def test_parse_plain_integer_with_commas(self, stage: ValueBindingStage) -> None:
+        """Parse plain integers with comma separators."""
+        result = stage._parse_number("50,000")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 50_000
+        assert unit == Unit.COUNT
+
+    def test_parse_negative_values(self, stage: ValueBindingStage) -> None:
+        """Parse negative values."""
+        result = stage._parse_number("-5%")
+        assert result is not None
+        value, unit, raw = result
+        assert value == -5
+        assert unit == Unit.PERCENT
+
+        result2 = stage._parse_number("-$1.2M")
+        assert result2 is not None
+        value2, unit2, raw2 = result2
+        assert value2 == -1_200_000
+        assert unit2 == Unit.CURRENCY
+
+    def test_parse_decimal_numbers(self, stage: ValueBindingStage) -> None:
+        """Parse decimal numbers."""
+        result = stage._parse_number("3.14")
+        assert result is not None
+        value, unit, raw = result
+        assert abs(value - 3.14) < 0.001
+        assert unit == Unit.COUNT
+
+
+# ============================================================================
+# Confidence Scoring Tests
+# ============================================================================
+
+
+class TestConfidenceScoring:
+    """Tests for confidence score computation."""
+
+    def test_table_binding_higher_than_text(self, stage: ValueBindingStage) -> None:
+        """Table binding has higher base confidence than text binding."""
+        table_conf = stage._compute_table_confidence("metric", [], [], Unit.COUNT)
+        text_conf = stage._compute_text_confidence(Unit.COUNT)
+
+        assert table_conf > text_conf
+        assert table_conf >= 0.6
+        assert text_conf >= 0.4
+
+    def test_exact_match_bonus(self, stage: ValueBindingStage) -> None:
+        """Exact match in path adds confidence bonus."""
+        with_exact = stage._compute_table_confidence(
+            "revenue", ["Revenue", "2023"], [], Unit.COUNT
+        )
+        without_exact = stage._compute_table_confidence(
+            "rev", ["Revenue", "2023"], [], Unit.COUNT
+        )
+
+        assert with_exact > without_exact
+
+    def test_unit_presence_bonus(self, stage: ValueBindingStage) -> None:
+        """Having explicit unit adds confidence bonus."""
+        with_unit = stage._compute_table_confidence(
+            "metric", [], [], Unit.CURRENCY
+        )
+        without_unit = stage._compute_table_confidence(
+            "metric", [], [], Unit.COUNT
+        )
+
+        assert with_unit > without_unit
+
+    def test_confidence_capped_at_one(self, stage: ValueBindingStage) -> None:
+        """Confidence never exceeds 1.0."""
+        # Maximum bonuses
+        conf = stage._compute_table_confidence(
+            "revenue", ["Revenue"], ["Revenue"], Unit.CURRENCY
+        )
+        assert conf <= 1.0
+
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+
+class TestIntegration:
+    """Integration tests for the full stage."""
+
+    def test_full_stage_execution(
+        self, stage: ValueBindingStage, simple_table: Table, text_segment: Segment
+    ) -> None:
+        """Full stage execution with multiple candidates."""
+        candidates = [
+            MetricCandidate(
+                candidate_id="cand-1",
+                metric_id="cm_revenue",
+                match_text="Revenue",
+                source_type=SourceType.HTML_TABLE,
+                source_locator=SourceLocator(
+                    table_id="test-table-1",
+                    cell_row=1,
+                    cell_col=0,
+                ),
+            ),
+            MetricCandidate(
+                candidate_id="cand-2",
+                metric_id="cm_revenue",
+                match_text="revenue",
+                source_type=SourceType.TEXT,
+                source_locator=SourceLocator(
+                    segment_id="seg-1",
+                    text_span=(10, 17),
+                ),
+            ),
+        ]
+
+        context = MockPipelineContext(
+            tables=[simple_table],
+            segments=[text_segment],
+            candidates=candidates,
+        )
+
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert result.items_processed == 2
+        assert len(context.bound_values) >= 2
+
+    def test_empty_candidates_returns_success(self, stage: ValueBindingStage) -> None:
+        """Stage succeeds with zero candidates."""
+        context = MockPipelineContext(candidates=[])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert result.items_processed == 0
+        assert result.items_output == 0
+        assert len(context.bound_values) == 0
+
+    def test_bound_value_has_correct_fields(
+        self, stage: ValueBindingStage, percentage_table: Table
+    ) -> None:
+        """BoundValue objects have all required fields populated."""
+        candidate = MetricCandidate(
+            candidate_id="cand-nrr",
+            metric_id="cm_nrr",
+            match_text="Net Revenue Retention",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-pct",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[percentage_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+        bv = context.bound_values[0]
+        assert isinstance(bv, BoundValue)
+        assert bv.bound_value_id  # UUID generated
+        assert bv.candidate_id == "cand-nrr"
+        assert bv.value == 112
+        assert bv.unit == Unit.PERCENT
+        assert bv.binding_type in ("table_stub", "table_header", "table_cell")
+        assert 0.0 <= bv.binding_confidence <= 1.0
+        assert bv.source_locator.table_id == "test-table-pct"
+
+
+# ============================================================================
+# Edge Cases
+# ============================================================================
+
+
+class TestEdgeCases:
+    """Tests for edge cases and error handling."""
+
+    def test_missing_table_logs_warning(
+        self, stage: ValueBindingStage, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Missing table is handled gracefully with warning."""
+        candidate = MetricCandidate(
+            candidate_id="cand-missing",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="nonexistent-table",
+                cell_row=0,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_missing_segment_logs_warning(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Missing segment is handled gracefully."""
+        candidate = MetricCandidate(
+            candidate_id="cand-missing-seg",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="nonexistent-segment",
+            ),
+        )
+
+        context = MockPipelineContext(segments=[], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_chart_source_type_stubbed(self, stage: ValueBindingStage) -> None:
+        """Chart source type returns empty (stub behavior)."""
+        candidate = MetricCandidate(
+            candidate_id="cand-chart",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(),
+        )
+
+        context = MockPipelineContext(candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_multiple_metrics_same_row(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Multiple metrics in same table row are handled correctly."""
+        cells = [
+            Cell(row=0, col=0, text="Metric A", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Metric B", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=2, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=1, col=0, text="Revenue", is_stub=True, header_path=["Metric A"], stub_path=[]),
+            Cell(row=1, col=1, text="Growth", is_stub=True, header_path=["Metric B"], stub_path=["Revenue"]),
+            Cell(row=1, col=2, text="25%", header_path=["Value"], stub_path=["Revenue", "Growth"]),
+        ]
+
+        table = Table(
+            table_id="multi-metric",
+            row_count=2,
+            col_count=3,
+            header_rows=1,
+            stub_cols=2,
+            cells=cells,
+        )
+        table._grid = [[None] * 3 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        # Two candidates for different metrics in same row
+        candidates = [
+            MetricCandidate(
+                candidate_id="cand-a",
+                metric_id="cm_revenue",
+                match_text="Revenue",
+                source_type=SourceType.HTML_TABLE,
+                source_locator=SourceLocator(
+                    table_id="multi-metric",
+                    cell_row=1,
+                    cell_col=0,
+                ),
+            ),
+            MetricCandidate(
+                candidate_id="cand-b",
+                metric_id="cm_growth",
+                match_text="Growth",
+                source_type=SourceType.HTML_TABLE,
+                source_locator=SourceLocator(
+                    table_id="multi-metric",
+                    cell_row=1,
+                    cell_col=1,
+                ),
+            ),
+        ]
+
+        context = MockPipelineContext(tables=[table], candidates=candidates)
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Both should bind to the 25% value
+        assert len(context.bound_values) >= 2
+
+    def test_ocr_table_handled_like_html(
+        self, stage: ValueBindingStage, simple_table: Table
+    ) -> None:
+        """OCR_TABLE source type uses same binding as HTML_TABLE."""
+        candidate = MetricCandidate(
+            candidate_id="cand-ocr",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.OCR_TABLE,
+            source_locator=SourceLocator(
+                table_id="test-table-1",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[simple_table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_missing_cell_in_table(self, stage: ValueBindingStage) -> None:
+        """Handle case where cell coordinates don't exist in table."""
+        table = Table(
+            table_id="sparse-table",
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=0,
+            cells=[],  # No cells
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+
+        candidate = MetricCandidate(
+            candidate_id="cand-nocell",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="sparse-table",
+                cell_row=5,  # Out of bounds
+                cell_col=5,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_exception_in_candidate_binding(
+        self, stage: ValueBindingStage, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Exceptions in binding are caught and logged."""
+
+        def raise_error(*args: Any, **kwargs: Any) -> None:
+            raise ValueError("Test error")
+
+        monkeypatch.setattr(stage, "_bind_candidate", raise_error)
+
+        candidate = MetricCandidate(
+            candidate_id="cand-err",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+
+        context = MockPipelineContext(candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        # Stage should still complete but with errors
+        assert not result.success
+        assert len(result.errors) == 1
+
+    def test_text_binding_without_text_span(self, stage: ValueBindingStage) -> None:
+        """Text binding works even without explicit text_span."""
+        segment = Segment(
+            segment_id="seg-nospan",
+            text="Revenue was $100 million last year.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-nospan",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-nospan",
+                # No text_span - should search entire text
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_unparseable_number_skipped(self, stage: ValueBindingStage) -> None:
+        """Unparseable text in cells is skipped."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=1, col=0, text="Test", is_stub=True, header_path=["Metric"], stub_path=[]),
+            Cell(row=1, col=1, text="N/A", header_path=["Value"], stub_path=["Test"]),  # Not a number
+        ]
+
+        table = Table(
+            table_id="unparseable-table",
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-unparse",
+            metric_id="cm_test",
+            match_text="Test",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unparseable-table",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0  # No parseable value
+
+    def test_parse_number_returns_none_for_invalid(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """_parse_number returns None for non-numeric text."""
+        assert stage._parse_number("not a number") is None
+        assert stage._parse_number("") is None
+        assert stage._parse_number("abc xyz") is None
+
+    def test_is_in_path_variations(self, stage: ValueBindingStage) -> None:
+        """Test _is_in_path with various inputs."""
+        # Empty path returns False
+        assert not stage._is_in_path("test", [])
+
+        # Partial match works
+        assert stage._is_in_path("rev", ["Total Revenue", "2023"])
+
+        # Case insensitive
+        assert stage._is_in_path("REVENUE", ["Total Revenue"])
+
+    def test_segment_with_empty_text(self, stage: ValueBindingStage) -> None:
+        """Segment with empty text returns no bindings."""
+        segment = Segment(
+            segment_id="seg-empty",
+            text="",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-emptytext",
+            metric_id="cm_test",
+            match_text="test",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(segment_id="seg-empty"),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0

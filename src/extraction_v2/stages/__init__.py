@@ -27,10 +27,12 @@ from src.extraction_v2.stages.candidate_generation import CandidateGenerationSta
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
+from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 __all__ = [
     "CandidateGenerationStage",
     "IngestionStage",
     "SectionClassificationStage",
     "TableReconstructionStage",
+    "ValueBindingStage",
 ]

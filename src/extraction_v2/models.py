@@ -702,3 +702,40 @@ class MetricCandidate:
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+# ============================================================================
+# BoundValue (for value binding stage)
+# ============================================================================
+
+
+@dataclass
+class BoundValue:
+    """
+    Value bound to a metric candidate.
+
+    Created by Stage 7 (Value Binding) when a numeric value is linked
+    to a metric keyword candidate via structural rules (table headers,
+    row stubs, or text proximity).
+    """
+
+    # Identity
+    bound_value_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    # Link to candidate
+    candidate_id: str = ""
+
+    # Parsed value
+    value: float | None = None
+    value_raw: str = ""  # Original text, e.g., "$1.2M", "112%"
+    unit: Unit = Unit.OTHER
+
+    # Binding metadata
+    binding_type: str = ""  # "table_header", "table_stub", "text_proximity", "chart_label"
+    binding_confidence: float = 0.5
+
+    # Source location (may differ from candidate location)
+    source_locator: SourceLocator = field(default_factory=SourceLocator)
+
+    # Metadata
+    created_at: datetime = field(default_factory=datetime.utcnow)
