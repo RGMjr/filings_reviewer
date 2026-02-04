@@ -24,7 +24,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - [x] AC-5 | `EvidencePack` generated with context_before/after for text sources (verified in tests)
 - [x] AC-6 | `source_type` correctly set (HTML_TABLE, TEXT, CHART) (verified in tests)
 - [x] AC-7 | `source_locator` populated from bound value (verified in tests)
-- [ ] AC-8 | Pipeline integration: stage exported in `__init__.py`
+- [x] AC-8 | Pipeline integration: stage exported in `__init__.py` (exported, all 3777 tests pass)
 - [x] AC-9 | Tests in `tests/unit/extraction_v2/test_fact_construction.py` (22 tests)
 - [x] AC-10 | Coverage ≥80% for new module (94% achieved)
 - [x] AC-11 | `mypy --strict` passes on new module (verified)
