@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import (
     Cell,
@@ -70,7 +70,7 @@ class OCRExtractionStage:
         self._chart_call_count = 0
 
     @property
-    def vision_client(self) -> object:
+    def vision_client(self) -> Any:
         """Lazy-load vision client to avoid import errors in tests."""
         if self._vision_client is None:
             # Import here to avoid circular dependency
@@ -134,8 +134,6 @@ class OCRExtractionStage:
         import json
         from pathlib import Path
 
-        from src.llm.vision_client import VisionClient
-
         # Validate file path
         if not asset.file_path:
             raise ValueError(f"Image {asset.img_id} has no file_path")
@@ -148,13 +146,8 @@ class OCRExtractionStage:
         image_bytes = image_path.read_bytes()
 
         # Call Vision API with table extraction prompt
-        vision_client = self.vision_client
-        if not isinstance(vision_client, VisionClient):
-            # Create VisionClient if mock was provided
-            vision_client = VisionClient()
-
         try:
-            response = vision_client.analyze_image(
+            response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
                 prompt=self._get_table_extraction_prompt(),
                 detail="high",  # High detail for accurate OCR
@@ -447,7 +440,6 @@ Example JSON:
         from pathlib import Path
 
         from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
-        from src.llm.vision_client import VisionClient
 
         # Validate file path
         if not asset.file_path:
@@ -461,13 +453,8 @@ Example JSON:
         image_bytes = image_path.read_bytes()
 
         # Call Vision API with chart extraction prompt
-        vision_client = self.vision_client
-        if not isinstance(vision_client, VisionClient):
-            # Create VisionClient if mock was provided
-            vision_client = VisionClient()
-
         try:
-            response = vision_client.analyze_image(
+            response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
                 prompt=self._get_chart_extraction_prompt(),
                 detail="high",  # High detail for accurate label extraction

@@ -34,7 +34,7 @@ python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 pytest -m gold_standard --gold-standard-mode=fresh -v
 ```
 
-See `docs/development/gold-standard-validation.md` for full workflow.
+See `docs/development/testing.md` (Regression Testing section) for full workflow.
 
 ## Architecture
 
