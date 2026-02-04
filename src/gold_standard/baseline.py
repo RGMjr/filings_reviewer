@@ -49,6 +49,7 @@ class BaselineMetrics:
     description: str | None
     overall: MetricScores
     by_company: dict[str, MetricScores]
+    pipeline_version: str = "v1"  # "v1" or "v2" to distinguish baseline source
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
@@ -59,6 +60,7 @@ class BaselineMetrics:
             "by_company": {
                 company: asdict(scores) for company, scores in self.by_company.items()
             },
+            "pipeline_version": self.pipeline_version,
         }
 
     @classmethod
@@ -109,6 +111,7 @@ class BaselineMetrics:
             description=data.get("description"),
             overall=overall,
             by_company=by_company,
+            pipeline_version=data.get("pipeline_version", "v1"),
         )
 
 
@@ -258,6 +261,7 @@ def compare_to_baseline(
 def create_baseline_from_results(
     results: list[dict[str, Any]],
     description: str | None = None,
+    pipeline_version: str = "v1",
 ) -> BaselineMetrics:
     """
     Create a baseline from validation results.
@@ -265,6 +269,7 @@ def create_baseline_from_results(
     Args:
         results: List of validation result dicts (from validate_against_gold_standard)
         description: Optional description for this baseline
+        pipeline_version: Pipeline version ("v1" or "v2")
 
     Returns:
         BaselineMetrics ready to save
@@ -309,4 +314,5 @@ def create_baseline_from_results(
         description=description,
         overall=overall,
         by_company=by_company,
+        pipeline_version=pipeline_version,
     )
