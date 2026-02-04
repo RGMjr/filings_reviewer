@@ -1,8 +1,8 @@
 # Development Plan
 
-**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-11.md
-**Task ID**: V2-PHASE-11
-**Task Name**: Validation & Review Routing Stage
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-12.md
+**Task ID**: V2-PHASE-12
+**Task Name**: Database Persistence for V2 Extraction Pipeline
 **Started**: 2026-02-04
 
 ---
@@ -17,17 +17,18 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [x] AC-1 | `src/extraction_v2/stages/validation.py` exists (174 lines)
-- [x] AC-2 | `ValidationStage.process()` routes facts by confidence thresholds (auto-accept ≥0.90, auto-reject <0.15)
-- [x] AC-3 | Schema validation checks required fields (canonical_metric_id, value/value_raw, source_locator, snippet_html)
-- [x] AC-4 | `review_reason` populated with specific details for flagged facts (concatenated with "; ")
-- [x] AC-5 | `review_status` enum correctly set (AUTO_ACCEPTED vs PENDING_REVIEW)
-- [x] AC-6 | Pipeline integration: stage exported in `__init__.py`
-- [x] AC-7 | Pipeline integration: `ValidationStage` imported from stages module in pipeline.py, stub removed
-- [x] AC-8 | Tests in `tests/unit/extraction_v2/test_validation.py` (31 tests)
-- [x] AC-9 | Coverage 98% for new module
-- [x] AC-10 | `mypy --strict` passes on new module
-- [x] AC-11 | `ruff check` passes
+- [x] AC-1 | `src/extraction_v2/persistence.py` exists with `V2PersistenceAdapter` class
+- [x] AC-2 | `persist_document()` upserts to v2_documents with computed stats
+- [x] AC-3 | `persist_segments()` batch upserts to v2_segments
+- [x] AC-4 | `persist_tables()` upserts tables and cells with array fields
+- [x] AC-5 | `persist_images()` upserts to v2_image_assets with JSONB chart_data
+- [x] AC-6 | `persist_facts()` upserts to v2_metric_facts with JSONB fields
+- [x] AC-7 | `persist_pipeline_result()` persists full result in single transaction
+- [x] AC-8 | All operations are idempotent (re-runs safe via ON CONFLICT DO UPDATE)
+- [x] AC-9 | Integration tests in `tests/integration/extraction_v2/test_persistence.py` (18 tests)
+- [x] AC-10 | Coverage ≥ 85% for persistence module (93% achieved)
+- [x] AC-11 | `mypy --strict` passes on persistence module
+- [x] AC-12 | `ruff check` passes
 
 ---
 
@@ -37,11 +38,16 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | AC-1-11 | ✅ COMPLETE | All ACs completed in single iteration, 31 tests, 98% coverage, 2983 extraction/review tests pass |
+| 1 | AC-1-12 | ✅ COMPLETE | persistence.py 750 lines, 18 tests pass, 93% coverage, mypy/ruff pass |
 
 ---
 
 ## Previous Tasks
+
+### V2-PHASE-11: Validation & Review Routing Stage ✅ COMPLETE (2026-02-04)
+- All 11 ACs met
+- 31 tests, 98% coverage
+- Committed as 243f518
 
 ### V2-PHASE-10: Deduplication Stage ✅ COMPLETE (2026-02-04)
 - All 10 ACs met
