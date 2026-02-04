@@ -8,22 +8,24 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-8: Period Inference Stage - All ACs complete (commit 4e68bf4)
-  - Implemented pattern matching for quarters, fiscal years, trailing periods
-  - Header path and text context parsing with confidence scoring
-  - Filing fallback for when no period detected
+- V2-PHASE-9 AC-1: fact_construction.py created and verified
+  - Complete stage implementation with confidence scoring
+  - Evidence pack generation for table/text/chart sources
+  - Type safe (mypy --strict), ruff clean
+  - All V2 tests pass (342 tests)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-9: Fact Construction Stage
-- Worker Prompt: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-9.md
-- Goal: Transform BoundValue → MetricFact with confidence scores and EvidencePack
+- V2-PHASE-9 AC-2: FactConstructionStage.process() transforms BoundValue → MetricFact
+- Next: Verify core transformation logic with unit tests
+- Implementation complete, need to validate behavior
 
 ## Test Status
 
-- All V2 extraction tests passing
+- All V2 extraction tests passing (342 tests in 0.36s)
+- Phase 9 (Fact Construction): AC-1 complete, needs tests
 - Phase 8 (Period Inference): implemented and tested
 - Phase 7 (Value Binding): 44 tests, 93% coverage
 - Phase 6 (Candidate Generation): 42 tests, 96% coverage
@@ -33,15 +35,15 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- BoundValue has all period fields populated by Stage 8
-- Candidate lookup needed for metric_id and section_type
-- Segment/Table lookups needed for evidence generation
-- Source type determination: table_id + img_id combinations
+- FactConstructionStage follows existing stage patterns (duration_ms, metadata)
+- PipelineStage import causes ruff error when in TYPE_CHECKING but used in function body
+- confidence scoring formula: binding*0.8 + period*0.2 with bonuses/penalties
+- Evidence pack generation differs for table vs text sources
+- All bound_values must be processed even if candidate lookup fails
 
 ## Files to Create
 
-- src/extraction_v2/stages/fact_construction.py
-- tests/unit/extraction_v2/test_fact_construction.py
+- tests/unit/extraction_v2/test_fact_construction.py (next iteration)
 
 ## Files to Modify
 
