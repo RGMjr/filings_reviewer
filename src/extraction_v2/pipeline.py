@@ -42,6 +42,7 @@ from src.extraction_v2.stages.candidate_generation import CandidateGenerationSta
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
+from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 logger = logging.getLogger(__name__)
 
@@ -421,36 +422,7 @@ class OCRChartExtractionStage:
 
 
 # CandidateGenerationStage is now imported from src.extraction_v2.stages.candidate_generation
-
-
-class ValueBindingStage:
-    """
-    Stage 7: Value Binding.
-
-    - Tables: bind value via header_path + stub_path
-    - Text: bind via sentence proximity
-    - Charts: bind via axis labels
-    - RULE: No binding without structural link
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Bind values to metrics."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement table binding via header_path/stub_path
-        # TODO: Implement text binding via proximity
-        # TODO: Implement chart binding via axis labels
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.VALUE_BINDING,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.candidates),
-            items_output=len(context.bound_values),
-        )
+# ValueBindingStage is now imported from src.extraction_v2.stages.value_binding
 
 
 class PeriodInferenceStage:
