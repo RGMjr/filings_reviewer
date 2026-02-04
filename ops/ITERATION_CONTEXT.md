@@ -8,48 +8,45 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-7-IMPROVEMENTS: All 10 acceptance criteria met (44 tests, 93% coverage)
-  - Billion scale support already existed, added test verification
-  - Added configurable proximity_window parameter (default: 100)
-  - Implemented _find_sentence_bounds() with regex
-  - Added SAME_SENTENCE_BONUS (+0.1 confidence)
+- V2-PHASE-8: Period Inference Stage - All ACs complete (commit 4e68bf4)
+  - Implemented pattern matching for quarters, fiscal years, trailing periods
+  - Header path and text context parsing with confidence scoring
+  - Filing fallback for when no period detected
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-7-IMPROVEMENTS: COMPLETE ✅
-- Next task: TBD (awaiting user input)
+- V2-PHASE-9: Fact Construction Stage
+- Worker Prompt: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-9.md
+- Goal: Transform BoundValue → MetricFact with confidence scores and EvidencePack
 
 ## Test Status
 
-- All V2 extraction tests passing (44 tests)
-- Phase 7 improvements: 93% coverage, 44 tests
-- Phase 6: 42 tests, 96% coverage
-- Phase 3: 11 tests, 87% coverage
+- All V2 extraction tests passing
+- Phase 8 (Period Inference): implemented and tested
+- Phase 7 (Value Binding): 44 tests, 93% coverage
+- Phase 6 (Candidate Generation): 42 tests, 96% coverage
+- Phase 3 (Table Reconstruction): 11 tests, 87% coverage
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Billion scale support was already in SCALE_MULTIPLIERS dict (lines 85-94)
-- Sentence boundary detection uses regex: `[.!?]\s+[A-Z]` for sentence endings
-- Match positions from _find_numbers_in_proximity are relative to window_start
-- Same-sentence bonus requires calculating absolute text positions from window offsets
+- BoundValue has all period fields populated by Stage 8
+- Candidate lookup needed for metric_id and section_type
+- Segment/Table lookups needed for evidence generation
+- Source type determination: table_id + img_id combinations
 
-## Files Modified
+## Files to Create
 
-- src/extraction_v2/stages/value_binding.py
-  - Added proximity_window parameter to __init__
-  - Added SAME_SENTENCE_BONUS constant
-  - Implemented _find_sentence_bounds() method
-  - Updated _bind_text_candidate() to use sentence bounds
-  - Updated _compute_text_confidence() to accept same_sentence parameter
-- tests/unit/extraction_v2/test_value_binding.py
-  - Added test_parse_billion_variants
-  - Added test_configurable_proximity_window
-  - Added test_same_sentence_bonus
-  - Added test_sentence_boundary_detection
+- src/extraction_v2/stages/fact_construction.py
+- tests/unit/extraction_v2/test_fact_construction.py
+
+## Files to Modify
+
+- src/extraction_v2/stages/__init__.py (add export)
+- src/extraction_v2/pipeline.py (replace stub with import)
 
 ## Blockers or Warnings
 
