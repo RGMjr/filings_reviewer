@@ -8,18 +8,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-04 AC-1 to AC-10: Created ImageTriageStage with full implementation (47 tests, 94% coverage)
+- V2-04: Image Triage Stage complete (47 tests, 94% coverage, AC-1 to AC-10)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-04 AC-11: Integration test with real SEC filing images (optional - may skip if no fixtures)
+- V2-05 AC-1: Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class
 
 ## Test Status
 
-- 47/47 image triage tests passing
-- 94% coverage on image_triage.py
+- All V2 tests passing
+- V2-04 image_triage.py at 94% coverage
 - mypy --strict passes
 - ruff lint passes
 
@@ -27,26 +27,24 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- Filename normalization needed (replace _ and - with spaces) for pattern matching
-- Chart detection priority: STACKED_BAR must be checked before BAR
-- Logo detection should exclude very small images (< 50px) which are decorative bullets
-- Signature detection needs both regex patterns AND simple string matching
+- ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
+- ChartData/ChartSeries/DataPoint models exist in models.py
+- TableReconstructor exists in table_reconstructor.py
+- OpenAI client pattern exists in src/llm/openai_client.py
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- src/extraction_v2/stages/image_triage.py (created - 500+ lines)
-- src/extraction_v2/stages/__init__.py (updated - export ImageTriageStage)
-- tests/unit/extraction_v2/test_image_triage.py (created - 47 tests)
-- docs/worker-prompts/WORKER_PROMPT_TASK_V2-04.md (created)
-- ops/DEVELOPMENT_PLAN.md (updated)
+- docs/worker-prompts/WORKER_PROMPT_TASK_V2-05.md (created)
+- ops/DEVELOPMENT_PLAN.md (updated for V2-05)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- AC-11 (integration test with real images) not yet done - may skip if no image fixtures
+- Need OPENAI_API_KEY in .env for vision API calls
+- Tests should mock vision API responses to avoid API costs
 
 ---
 
