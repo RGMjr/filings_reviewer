@@ -8,13 +8,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-04: Image Triage Stage complete (47 tests, 94% coverage, AC-1 to AC-10)
+- V2-05 AC-1: Created OCRExtractionStage class with pipeline interface (mypy --strict passes, ruff passes)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-05 AC-1: Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class
+- V2-05 AC-2: Implement `process_table_image()` method (OCR API + table reconstruction)
 
 ## Test Status
 
@@ -36,8 +36,8 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *For quick orientation on what was modified*
 
-- docs/worker-prompts/WORKER_PROMPT_TASK_V2-05.md (created)
-- ops/DEVELOPMENT_PLAN.md (updated for V2-05)
+- src/extraction_v2/stages/ocr_extraction.py (created)
+- src/extraction_v2/stages/__init__.py (added OCRExtractionStage export)
 
 ## Blockers or Warnings
 
