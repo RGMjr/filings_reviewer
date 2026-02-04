@@ -19,7 +19,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 - [x] AC-1 | Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class (Complete: mypy --strict passes, ruff passes, imports work)
 - [x] AC-2 | Implement `process_table_image()` method (OCR API + table reconstruction) (Complete: Vision API integration, table reconstruction from OCR cells, confidence scoring, mypy passes, ruff passes, all 174 V2 tests pass)
-- [ ] AC-3 | Implement `process_chart()` method (vision model, labeled values only)
+- [x] AC-3 | Implement `process_chart()` method (vision model, labeled values only) (Complete: Vision API integration, ChartData/ChartSeries/DataPoint objects built, labeled-values-only logic, confidence scoring, manual capture flag for unlabeled charts, mypy passes, ruff passes, all 174 V2 tests pass)
 - [ ] AC-4 | Implement `process()` method conforming to pipeline stage interface
 - [ ] AC-5 | Set `ImageAsset.processed = True` and confidence after extraction
 - [ ] AC-6 | Set `requires_manual_capture=True` for low confidence/ambiguous results
