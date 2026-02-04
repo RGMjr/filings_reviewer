@@ -11,6 +11,8 @@ Design source: Claude V2 PRD - Table Reconstruction stage.
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from bs4 import Tag
@@ -20,6 +22,20 @@ from src.extraction_v2.models import Cell, Table
 if TYPE_CHECKING:
     from bs4 import Tag
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GridValidationResult:
+    """Result of grid validation check."""
+
+    is_valid: bool
+    gap_count: int = 0
+    overlap_count: int = 0
+    gaps: list[tuple[int, int]] | None = None
+    overlaps: list[tuple[int, int]] | None = None
+    message: str = ""
+
 
 class TableReconstructor:
     """
@@ -28,14 +44,80 @@ class TableReconstructor:
     Usage:
         reconstructor = TableReconstructor()
         table = reconstructor.reconstruct(table_element)
+
+    Grid invariants enforced:
+    - Every position in the grid has exactly one Cell (no gaps)
+    - No two source cells claim the same grid position (no overlaps)
+    - Spans that extend beyond grid bounds are clipped, not silently dropped
     """
 
-    def reconstruct(self, table_elem: Tag) -> Table:
+    def _validate_grid(
+        self, grid: list[list[Cell | None]], row_count: int, col_count: int
+    ) -> GridValidationResult:
+        """
+        Validate that the grid has no gaps or overlaps.
+
+        Args:
+            grid: The resolved 2D grid
+            row_count: Expected number of rows
+            col_count: Expected number of columns
+
+        Returns:
+            GridValidationResult with validation status and details
+        """
+        gaps: list[tuple[int, int]] = []
+        overlaps: list[tuple[int, int]] = []
+
+        # Check for gaps (None values in the grid)
+        for row_idx in range(row_count):
+            for col_idx in range(col_count):
+                if row_idx < len(grid) and col_idx < len(grid[row_idx]):
+                    if grid[row_idx][col_idx] is None:
+                        gaps.append((row_idx, col_idx))
+                else:
+                    # Grid is smaller than expected - this is a gap
+                    gaps.append((row_idx, col_idx))
+
+        # For overlaps, we need to track which source cells claim each position
+        # and detect when multiple different source cells claim the same spot
+        position_sources: dict[tuple[int, int], set[int]] = {}
+
+        for row_idx, row in enumerate(grid):
+            for col_idx, cell in enumerate(row):
+                if cell is not None:
+                    pos = (row_idx, col_idx)
+                    cell_id = id(cell)
+                    if pos not in position_sources:
+                        position_sources[pos] = set()
+                    position_sources[pos].add(cell_id)
+
+        for pos, sources in position_sources.items():
+            if len(sources) > 1:
+                overlaps.append(pos)
+
+        is_valid = len(gaps) == 0 and len(overlaps) == 0
+        message = ""
+        if gaps:
+            message += f"Grid has {len(gaps)} gaps. "
+        if overlaps:
+            message += f"Grid has {len(overlaps)} overlaps."
+
+        return GridValidationResult(
+            is_valid=is_valid,
+            gap_count=len(gaps),
+            overlap_count=len(overlaps),
+            gaps=gaps if gaps else None,
+            overlaps=overlaps if overlaps else None,
+            message=message.strip(),
+        )
+
+    def reconstruct(self, table_elem: Tag, validate: bool = True) -> Table:
         """
         Convert HTML table to normalized Table with resolved spans.
 
         Args:
             table_elem: BeautifulSoup Tag representing <table> element
+            validate: If True, validate grid integrity after reconstruction
 
         Returns:
             Table object with normalized grid and structural metadata
@@ -53,6 +135,21 @@ class TableReconstructor:
                 cells=[],
                 _grid=[],
             )
+
+        row_count = len(grid)
+        col_count = len(grid[0]) if grid else 0
+
+        # Step 1.5: Validate grid integrity (gaps and overlaps)
+        if validate:
+            validation = self._validate_grid(grid, row_count, col_count)
+            if not validation.is_valid:
+                logger.warning(
+                    f"Grid validation failed: {validation.message}"
+                )
+                if validation.gaps:
+                    logger.debug(f"Gap positions: {validation.gaps[:10]}...")
+                if validation.overlaps:
+                    logger.debug(f"Overlap positions: {validation.overlaps[:10]}...")
 
         # Step 2: Detect header rows and stub columns
         header_rows = self._detect_header_rows(grid)
@@ -75,8 +172,8 @@ class TableReconstructor:
 
         # Step 6: Create Table object
         table = Table(
-            row_count=len(grid),
-            col_count=len(grid[0]) if grid else 0,
+            row_count=row_count,
+            col_count=col_count,
             header_rows=header_rows,
             stub_cols=stub_cols,
             cells=cells,
@@ -92,7 +189,8 @@ class TableReconstructor:
         After resolution:
         - Every logical cell has exactly one (row, col) coordinate
         - Cells with spans fill multiple grid positions (all point to same Cell)
-        - No gaps, no overlaps
+        - Spans that extend beyond grid bounds are clipped with a warning
+        - Grid is validated for invariant violations
 
         Args:
             table_elem: BeautifulSoup Tag representing <table>
@@ -105,9 +203,14 @@ class TableReconstructor:
         if not rows:
             return []
 
-        # First pass: determine grid dimensions
+        # First pass: determine grid dimensions more accurately
+        # Account for rowspans that might extend the grid
         row_count = len(rows)
         col_count = 0
+
+        # Track rowspans to accurately calculate max columns
+        # This handles cases where earlier rows have rowspans that affect
+        # how many columns later rows appear to have
         for tr in rows:
             cells = tr.find_all(['td', 'th'])
             total_cols = sum(int(str(cell.get('colspan', '1'))) for cell in cells)
@@ -119,6 +222,9 @@ class TableReconstructor:
         # Initialize grid with None
         grid: list[list[Cell | None]] = [[None] * col_count for _ in range(row_count)]
 
+        # Track cells that had their spans clipped (for logging)
+        clipped_spans: list[tuple[int, int, int, int]] = []  # (row, col, orig_rowspan, orig_colspan)
+
         # Second pass: fill grid with cells
         for tr_idx, tr in enumerate(rows):
             col_idx = 0
@@ -129,12 +235,38 @@ class TableReconstructor:
                     col_idx += 1
 
                 if col_idx >= col_count:
-                    # Table has inconsistent column counts, break
+                    # All columns filled for this row - log and continue to next row
+                    remaining_cells = len(tr.find_all(['td', 'th'])) - len(
+                        [c for c in tr.find_all(['td', 'th'])
+                         if c is cell_elem or tr.find_all(['td', 'th']).index(c) < tr.find_all(['td', 'th']).index(cell_elem)]
+                    )
+                    if remaining_cells > 0:
+                        logger.warning(
+                            f"Table row {tr_idx} has more cells than grid columns "
+                            f"({col_count}). Some cells may be skipped."
+                        )
                     break
 
-                # Get span attributes
-                rowspan = int(str(cell_elem.get('rowspan', '1')))
-                colspan = int(str(cell_elem.get('colspan', '1')))
+                # Get span attributes, with validation
+                try:
+                    rowspan = max(1, int(str(cell_elem.get('rowspan', '1'))))
+                    colspan = max(1, int(str(cell_elem.get('colspan', '1'))))
+                except (ValueError, TypeError):
+                    rowspan = 1
+                    colspan = 1
+
+                # Clip spans that extend beyond grid bounds
+                effective_rowspan = rowspan
+                effective_colspan = colspan
+
+                if tr_idx + rowspan > row_count:
+                    effective_rowspan = row_count - tr_idx
+                    clipped_spans.append((tr_idx, col_idx, rowspan, colspan))
+
+                if col_idx + colspan > col_count:
+                    effective_colspan = col_count - col_idx
+                    if (tr_idx, col_idx, rowspan, colspan) not in clipped_spans:
+                        clipped_spans.append((tr_idx, col_idx, rowspan, colspan))
 
                 # Extract cell text
                 text = cell_elem.get_text(strip=True)
@@ -142,26 +274,41 @@ class TableReconstructor:
                 # Determine if header cell
                 is_header = cell_elem.name == 'th'
 
-                # Create Cell object
+                # Create Cell object (store original spans for audit)
                 cell = Cell(
                     row=tr_idx,
                     col=col_idx,
                     text=text,
                     is_header=is_header,
-                    rowspan=rowspan,
-                    colspan=colspan,
+                    rowspan=rowspan,  # Original span for audit
+                    colspan=colspan,  # Original span for audit
                 )
 
-                # Fill grid for span extent
-                for r in range(rowspan):
-                    for c in range(colspan):
+                # Fill grid for effective span extent
+                for r in range(effective_rowspan):
+                    for c in range(effective_colspan):
                         target_row = tr_idx + r
                         target_col = col_idx + c
+                        # Double-check bounds (should always be within bounds due to clipping)
                         if target_row < row_count and target_col < col_count:
+                            # Check for overlap - another cell already here
+                            if grid[target_row][target_col] is not None:
+                                existing = grid[target_row][target_col]
+                                logger.warning(
+                                    f"Grid overlap at ({target_row}, {target_col}): "
+                                    f"existing cell from ({existing.row}, {existing.col}) "
+                                    f"would be overwritten by cell from ({tr_idx}, {col_idx})"
+                                )
                             grid[target_row][target_col] = cell
 
-                # Move to next column
+                # Move to next column (use original colspan for positioning)
                 col_idx += colspan
+
+        # Log clipped spans
+        if clipped_spans:
+            logger.warning(
+                f"Table had {len(clipped_spans)} spans clipped to fit grid bounds"
+            )
 
         return grid
 

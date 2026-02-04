@@ -137,6 +137,34 @@ class PipelineResult:
         """Number of facts auto-accepted."""
         return sum(1 for f in self.facts if not f.requires_review)
 
+    @property
+    def has_stub_warnings(self) -> bool:
+        """
+        Check if any stages produced stub/not-implemented warnings.
+
+        Returns True if the pipeline ran through stub stages that
+        don't actually do any processing.
+        """
+        return any(
+            any("not yet implemented" in w.lower() for w in result.warnings)
+            for result in self.stage_results
+        )
+
+    @property
+    def stub_stage_warnings(self) -> list[str]:
+        """
+        Get list of stub/not-implemented warnings from all stages.
+
+        Useful for logging and debugging when the pipeline reports
+        success but stages were actually stubs.
+        """
+        warnings = []
+        for result in self.stage_results:
+            for w in result.warnings:
+                if "not yet implemented" in w.lower():
+                    warnings.append(f"{result.stage.value}: {w}")
+        return warnings
+
 
 class StageProcessor(Protocol):
     """Protocol for pipeline stage processors."""
@@ -359,12 +387,15 @@ class SectionClassificationStage:
     - Identify: Cover, Risk Factors, MD&A, Financials, Notes
     - Assign section_path to each Segment
     - Discard: Exhibits, Signatures, Legal boilerplate
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Classify document sections."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement SEC section detection rules
         # TODO: Assign SectionType to each segment
         # TODO: Filter out irrelevant sections
@@ -374,10 +405,11 @@ class SectionClassificationStage:
 
         return StageResult(
             stage=PipelineStage.SECTION_CLASSIFICATION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.segments),
             items_output=len(context.segments),
+            warnings=["Section classification not yet implemented - all segments marked UNKNOWN"],
         )
 
 
@@ -391,12 +423,15 @@ class TableReconstructionStage:
 
     Key invariant: After span resolution, every logical cell has
     exactly one (row, col) coordinate. No gaps. No overlaps.
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Reconstruct tables with full structure."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement colspan/rowspan resolution algorithm
         # TODO: Compute header_path for each cell
         # TODO: Compute stub_path for each cell
@@ -406,11 +441,12 @@ class TableReconstructionStage:
 
         return StageResult(
             stage=PipelineStage.TABLE_RECONSTRUCTION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.segments),
             items_output=len(context.tables),
             metadata={"table_count": len(context.tables)},
+            warnings=["Table reconstruction not yet implemented - tables not processed"],
         )
 
 
@@ -421,12 +457,15 @@ class ImageTriageStage:
     - Classify: chart, table_image, decorative
     - Score relevance by proximity to metric keywords
     - Queue high-relevance images for OCR/vision
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Classify and score images."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement image classification
         # TODO: Score by keyword proximity
         # TODO: Filter decorative images
@@ -436,10 +475,11 @@ class ImageTriageStage:
 
         return StageResult(
             stage=PipelineStage.IMAGE_TRIAGE,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.images),
             items_output=len([i for i in context.images if i.is_relevant()]),
+            warnings=["Image triage not yet implemented - images not classified"],
         )
 
 
@@ -452,12 +492,15 @@ class OCRChartExtractionStage:
     - Low-confidence → flag for manual capture
 
     Constraint: NEVER fabricate chart values by reading axis pixels.
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Extract values from images."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement PaddleOCR integration for table images
         # TODO: Implement Claude Vision for chart extraction
         # TODO: Apply constrained extraction (labeled values only)
@@ -467,7 +510,7 @@ class OCRChartExtractionStage:
 
         return StageResult(
             stage=PipelineStage.OCR_CHART_EXTRACTION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len([i for i in context.images if i.is_relevant()]),
             items_output=0,  # Number of values extracted
@@ -475,6 +518,7 @@ class OCRChartExtractionStage:
                 "ocr_calls": context.ocr_calls,
                 "vision_calls": context.vision_calls,
             },
+            warnings=["OCR/Chart extraction not yet implemented - no values extracted from images"],
         )
 
 
@@ -485,12 +529,15 @@ class CandidateGenerationStage:
     - Scan all content for metric aliases (from YAML taxonomy)
     - Apply required_signals and negative_signals filters
     - Output: Candidate list with source pointers
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Generate metric candidates."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Load YAML taxonomy
         # TODO: Scan segments for metric aliases
         # TODO: Apply signal filters
@@ -500,10 +547,11 @@ class CandidateGenerationStage:
 
         return StageResult(
             stage=PipelineStage.CANDIDATE_GENERATION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.segments) + len(context.tables),
             items_output=len(context.candidates),
+            warnings=["Candidate generation not yet implemented - no metric candidates generated"],
         )
 
 
@@ -515,12 +563,15 @@ class ValueBindingStage:
     - Text: bind via sentence proximity
     - Charts: bind via axis labels
     - RULE: No binding without structural link
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Bind values to metrics."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement table binding via header_path/stub_path
         # TODO: Implement text binding via proximity
         # TODO: Implement chart binding via axis labels
@@ -530,10 +581,11 @@ class ValueBindingStage:
 
         return StageResult(
             stage=PipelineStage.VALUE_BINDING,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.candidates),
             items_output=len(context.bound_values),
+            warnings=["Value binding not yet implemented - no values bound to metrics"],
         )
 
 
@@ -544,12 +596,15 @@ class PeriodInferenceStage:
     - Extract period from: header_path, stub_path, context
     - Validate against filing fiscal period
     - Flag ambiguous periods for review
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Infer time periods for bound values."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Implement period extraction from header_path
         # TODO: Implement period extraction from context
         # TODO: Validate against filing fiscal period
@@ -559,10 +614,11 @@ class PeriodInferenceStage:
 
         return StageResult(
             stage=PipelineStage.PERIOD_INFERENCE,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.bound_values),
             items_output=len(context.bound_values),
+            warnings=["Period inference not yet implemented - no periods assigned"],
         )
 
 
@@ -573,12 +629,15 @@ class FactConstructionStage:
     - Assemble full MetricFact record
     - Compute confidence score
     - Generate evidence_pack
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
         """Construct MetricFact objects."""
         start_time = datetime.utcnow()
 
+        # STUB: Not yet implemented
         # TODO: Create MetricFact from bound values
         # TODO: Compute confidence scores
         # TODO: Generate evidence packs
@@ -588,10 +647,11 @@ class FactConstructionStage:
 
         return StageResult(
             stage=PipelineStage.FACT_CONSTRUCTION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=len(context.bound_values),
             items_output=len(context.facts),
+            warnings=["Fact construction not yet implemented - no MetricFacts created"],
         )
 
 
@@ -602,6 +662,8 @@ class DeduplicationStage:
     - Group by identity tuple (metric_id, period, value±2%, scope)
     - Select primary by source quality ranking: HTML > OCR > chart
     - Link alternates via alternate_evidence
+
+    NOTE: This stage is a stub - not yet implemented.
     """
 
     def process(self, context: PipelineContext) -> StageResult:
@@ -609,6 +671,7 @@ class DeduplicationStage:
         start_time = datetime.utcnow()
         initial_count = len(context.facts)
 
+        # STUB: Not yet implemented
         # TODO: Group facts by identity tuple
         # TODO: Select primary by source quality
         # TODO: Link alternates
@@ -618,11 +681,12 @@ class DeduplicationStage:
 
         return StageResult(
             stage=PipelineStage.DEDUPLICATION,
-            success=True,
+            success=True,  # Pass-through stage - doesn't block pipeline
             duration_ms=duration_ms,
             items_processed=initial_count,
             items_output=len(context.facts),
             metadata={"duplicates_removed": initial_count - len(context.facts)},
+            warnings=["Deduplication not yet implemented - all facts retained"],
         )
 
 

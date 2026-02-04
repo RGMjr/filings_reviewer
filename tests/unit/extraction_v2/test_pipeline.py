@@ -120,6 +120,100 @@ class TestPipelineResult:
         assert result.pending_review_count == 2
         assert result.auto_accepted_count == 1
 
+    def test_has_stub_warnings_false_when_no_stubs(self) -> None:
+        """Test has_stub_warnings is False when no stub warnings."""
+        from src.extraction_v2.models import Document
+
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[
+                StageResult(
+                    stage=PipelineStage.INGESTION,
+                    success=True,
+                    duration_ms=100,
+                    items_processed=1,
+                    items_output=10,
+                    warnings=[],  # No warnings
+                ),
+            ],
+            total_duration_ms=100,
+            success=True,
+        )
+        assert result.has_stub_warnings is False
+        assert result.stub_stage_warnings == []
+
+    def test_has_stub_warnings_true_when_stub_present(self) -> None:
+        """Test has_stub_warnings is True when stub warnings present."""
+        from src.extraction_v2.models import Document
+
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[
+                StageResult(
+                    stage=PipelineStage.INGESTION,
+                    success=True,
+                    duration_ms=100,
+                    items_processed=1,
+                    items_output=10,
+                ),
+                StageResult(
+                    stage=PipelineStage.CANDIDATE_GENERATION,
+                    success=True,
+                    duration_ms=50,
+                    items_processed=10,
+                    items_output=0,
+                    warnings=["Candidate generation not yet implemented - no metric candidates generated"],
+                ),
+            ],
+            total_duration_ms=150,
+            success=True,
+        )
+        assert result.has_stub_warnings is True
+        assert len(result.stub_stage_warnings) == 1
+        assert "candidate_generation" in result.stub_stage_warnings[0]
+
+    def test_stub_stage_warnings_collects_all(self) -> None:
+        """Test stub_stage_warnings collects warnings from all stages."""
+        from src.extraction_v2.models import Document
+
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[
+                StageResult(
+                    stage=PipelineStage.SECTION_CLASSIFICATION,
+                    success=True,
+                    duration_ms=10,
+                    items_processed=10,
+                    items_output=10,
+                    warnings=["Section classification not yet implemented - all segments marked UNKNOWN"],
+                ),
+                StageResult(
+                    stage=PipelineStage.VALUE_BINDING,
+                    success=True,
+                    duration_ms=10,
+                    items_processed=0,
+                    items_output=0,
+                    warnings=["Value binding not yet implemented - no values bound to metrics"],
+                ),
+            ],
+            total_duration_ms=20,
+            success=True,
+        )
+        assert result.has_stub_warnings is True
+        assert len(result.stub_stage_warnings) == 2
+
 
 class TestV2Pipeline:
     """Tests for V2Pipeline orchestrator."""
@@ -168,6 +262,53 @@ class TestV2Pipeline:
 
         for stage_result in result.stage_results:
             assert stage_result.duration_ms >= 0
+
+    def test_pipeline_stub_stages_produce_warnings(self, tmp_path: Path) -> None:
+        """Test that stub stages produce 'not yet implemented' warnings."""
+        html_file = tmp_path / "test_filing.html"
+        html_file.write_text("<html><body><p>Test content for extraction.</p></body></html>")
+
+        pipeline = V2Pipeline()
+        result = pipeline.process(html_file, filing_id=1)
+
+        # Pipeline should succeed but have stub warnings
+        assert result.success is True
+        assert result.has_stub_warnings is True
+
+        # Should have multiple stub stage warnings
+        stub_warnings = result.stub_stage_warnings
+        assert len(stub_warnings) > 0
+
+        # Check specific stub stages produce warnings
+        warning_stages = [w.split(":")[0] for w in stub_warnings]
+        assert "section_classification" in warning_stages
+        assert "table_reconstruction" in warning_stages
+        assert "candidate_generation" in warning_stages
+        assert "value_binding" in warning_stages
+        assert "period_inference" in warning_stages
+        assert "fact_construction" in warning_stages
+        assert "deduplication" in warning_stages
+
+    def test_pipeline_stub_warnings_detectable_before_production(self, tmp_path: Path) -> None:
+        """Test that has_stub_warnings can be used to detect unimplemented stages.
+
+        This is critical for ensuring the pipeline isn't accidentally
+        used in production when stages are still stubs.
+        """
+        html_file = tmp_path / "test_filing.html"
+        html_file.write_text("<html><body></body></html>")
+
+        pipeline = V2Pipeline()
+        result = pipeline.process(html_file, filing_id=1)
+
+        # A production check would look like this:
+        if result.has_stub_warnings:
+            # In production, you'd raise an error or log a warning
+            # For now, just verify this check works
+            assert True, "Stub warnings detected - pipeline not production-ready"
+        else:
+            # This should NOT happen until all stages are implemented
+            pytest.fail("Expected stub warnings but none found")
 
 
 class TestValidationStage:
