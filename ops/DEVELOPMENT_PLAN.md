@@ -18,7 +18,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
 - [x] AC-1 | Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class (Complete: mypy --strict passes, ruff passes, imports work)
-- [ ] AC-2 | Implement `process_table_image()` method (OCR API + table reconstruction)
+- [x] AC-2 | Implement `process_table_image()` method (OCR API + table reconstruction) (Complete: Vision API integration, table reconstruction from OCR cells, confidence scoring, mypy passes, ruff passes, all 174 V2 tests pass)
 - [ ] AC-3 | Implement `process_chart()` method (vision model, labeled values only)
 - [ ] AC-4 | Implement `process()` method conforming to pipeline stage interface
 - [ ] AC-5 | Set `ImageAsset.processed = True` and confidence after extraction
