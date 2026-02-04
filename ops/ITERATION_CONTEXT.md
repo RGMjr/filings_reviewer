@@ -8,43 +8,45 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- DOC-01 AC-8: Final validation - doc sync check passes (All checks passed after fixing stdlib list, import mappings, and uncommenting lxml)
+- V2-04 AC-1 to AC-10: Created ImageTriageStage with full implementation (47 tests, 94% coverage)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- All acceptance criteria complete - ready for completion report
+- V2-04 AC-11: Integration test with real SEC filing images (optional - may skip if no fixtures)
 
 ## Test Status
 
-- No tests required for documentation-only task
-- Verification: scripts/check_docs_sync.py --ci passes (0 warnings, 0 errors)
+- 47/47 image triage tests passing
+- 94% coverage on image_triage.py
+- mypy --strict passes
+- ruff lint passes
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Doc sync checker improvements:
-  - Added missing stdlib modules: __future__, atexit, bisect, concurrent, difflib, hmac, secrets, statistics
-  - Fixed import_to_pkg mappings: markupsafe→flask (transitive), psycopg_pool→psycopg, yaml→pyyaml
-  - Uncommented lxml in requirements.txt (required by extraction_v2/stages/ingestion.py)
-- CI mode now passes cleanly (exit code 0)
+- Filename normalization needed (replace _ and - with spaces) for pattern matching
+- Chart detection priority: STACKED_BAR must be checked before BAR
+- Logo detection should exclude very small images (< 50px) which are decorative bullets
+- Signature detection needs both regex patterns AND simple string matching
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- scripts/check_docs_sync.py (added stdlib modules, fixed import_to_pkg mappings)
-- requirements.txt (uncommented lxml>=4.9.0)
-- ops/DEVELOPMENT_PLAN.md (marked AC-8 complete, updated progress log and results summary)
-- ops/ITERATION_CONTEXT.md (this file)
+- src/extraction_v2/stages/image_triage.py (created - 500+ lines)
+- src/extraction_v2/stages/__init__.py (updated - export ImageTriageStage)
+- tests/unit/extraction_v2/test_image_triage.py (created - 47 tests)
+- docs/worker-prompts/WORKER_PROMPT_TASK_V2-04.md (created)
+- ops/DEVELOPMENT_PLAN.md (updated)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - All 8/8 acceptance criteria complete, ready for completion report generation
+- AC-11 (integration test with real images) not yet done - may skip if no image fixtures
 
 ---
 

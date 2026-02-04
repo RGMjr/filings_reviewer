@@ -1,9 +1,9 @@
 # Development Plan
 
-**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_DOC-01.md
-**Task ID**: DOC-01
-**Task Name**: Full Documentation Audit
-**Started**: 2026-02-03
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-04.md
+**Task ID**: V2-04
+**Task Name**: Implement Image Triage Stage (Phase 4)
+**Started**: 2026-02-04
 
 ---
 
@@ -17,14 +17,17 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [x] AC-1 | Remove stale module references (agreement.py, rule_generator.py, etc.) (2 files clarified as [NOT IMPLEMENTED])
-- [x] AC-2 | Document extraction_v2 module in CLAUDE.md (Added to Architecture section with V2 pipeline stages, relationship to V1, key files)
-- [x] AC-3 | Document LLM cache in CLAUDE.md (Added cache.py to Architecture, new "LLM Response Caching" section with features, env vars, production notes)
-- [x] AC-4 | Document API authentication in CLAUDE.md (New "API Authentication" section with @require_api_key decorator, env vars, security features)
-- [x] AC-5 | Update docs/README.md index - verify all links exist (All 18 links verified, added metric-lifecycle-process.md to Development section)
-- [x] AC-6 | Add extraction_v2 architecture documentation (Added comprehensive V2 section to extraction-pipeline.md with pipeline stages, data models, V1 vs V2 comparison)
-- [x] AC-7 | Document web routes structure in CLAUDE.md (Added "Web Routes Structure" section with 4 route modules, pattern explanation)
-- [x] AC-8 | Final validation - doc sync check passes (All checks passed, fixed stdlib list + import mappings, uncommented lxml in requirements.txt)
+- [x] AC-1 | Create `src/extraction_v2/stages/image_triage.py` with `ImageTriageStage` class
+- [x] AC-2 | Implement `classify_image()` method using filename patterns, nearby text, and dimensions
+- [x] AC-3 | Classify images into: CHART, TABLE_IMAGE, DECORATIVE, LOGO, SIGNATURE, UNKNOWN
+- [x] AC-4 | For CHART images, detect chart type (BAR, LINE, PIE, STACKED_BAR, AREA)
+- [x] AC-5 | Implement `score_relevance()` with section-aware scoring (MD&A +0.2, Risk Factors +0.1)
+- [x] AC-6 | Implement `triage_images()` batch method that processes all images in context
+- [x] AC-7 | Filter decorative images more aggressively (aspect ratio, repeated patterns)
+- [x] AC-8 | Set `requires_manual_capture=True` for ambiguous images
+- [x] AC-9 | Implement `process()` method conforming to pipeline stage interface
+- [x] AC-10 | Unit tests achieve ≥85% coverage on new code (achieved 94%)
+- [ ] AC-11 | Integration test with real SEC filing images (from test fixtures)
 
 ---
 
@@ -34,22 +37,21 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | AC-1 | ✅ Complete | Clarified 2 stale refs (agreement.py, rule_generator.py) as [NOT IMPLEMENTED] in archived docs |
-| 2 | AC-2 | ✅ Complete | Added extraction_v2 to CLAUDE.md Architecture section with V2 pipeline stages, alpha status noted |
-| 3 | AC-3 | ✅ Complete | Added cache.py to Architecture line, new "LLM Response Caching" section with env vars and production note |
-| 4 | AC-4 | ✅ Complete | New "API Authentication" section after Environment Setup with @require_api_key decorator, security features (constant-time comparison) |
-| 5 | AC-5 | ✅ Complete | Verified all 18 markdown links in docs/README.md, added metric-lifecycle-process.md to Development section |
-| 6 | AC-6 | ✅ Complete | Added comprehensive V2 section to extraction-pipeline.md: 11-stage pipeline, data models, V1 vs V2 comparison table, when to use each |
-| 7 | AC-7 | ✅ Complete | Added "Web Routes Structure" section to CLAUDE.md after API Authentication with 4 route modules and pattern explanation |
-| 8 | AC-8 | ✅ Complete | Fixed doc sync checker: added missing stdlib modules, updated import_to_pkg mappings (markupsafe→flask, psycopg_pool→psycopg, yaml→pyyaml), uncommented lxml in requirements.txt |
+| 1 | AC-1 to AC-10 | ✅ Complete | Created ImageTriageStage with classify_image(), detect_chart_type(), score_relevance(), triage_images(), process() methods |
 
 ---
 
 ## Results Summary
 
-**Completed**: 8/8
-**Total Iterations**: 8
-**Files Changed**: docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_TASKS.md, docs/archive/improvement-plans-completed/HUMAN_REVIEW_SYSTEM_PLAN.md, CLAUDE.md, docs/README.md, docs/architecture/extraction-pipeline.md, scripts/check_docs_sync.py, requirements.txt
+**Completed**: 10/11
+**Total Iterations**: 1
+**Files Changed**:
+- src/extraction_v2/stages/image_triage.py (created - 500+ lines)
+- src/extraction_v2/stages/__init__.py (updated - export ImageTriageStage)
+- tests/unit/extraction_v2/test_image_triage.py (created - 47 tests)
 
-**Doc Sync Check**: ✅ All checks passed (0 warnings, 0 errors)
-**Stale References**: 0 (2 clarified as [NOT IMPLEMENTED])
+**Verification**:
+- 47/47 tests passing
+- 94% coverage on image_triage.py (exceeds 85% target)
+- mypy --strict passes
+- ruff lint passes
