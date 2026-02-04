@@ -603,7 +603,7 @@ Before finalizing a worker prompt, verify:
   - Validation commands for quick check and formal validation
   - Regression handling guidance
   - 2 new checklist items for gold standard validation
-  - Aligned with CLAUDE.md Task Execution Workflow step 4
+  - Aligned with `/task-run` workflow (formerly CLAUDE.md Task Execution Workflow)
 
 - **v2.5** (2025-12-31): Added Critical Evaluation Phase
   - New mandatory section after verification, before commit
