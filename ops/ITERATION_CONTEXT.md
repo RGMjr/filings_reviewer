@@ -8,21 +8,23 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-7: Value Binding Stage complete (40 tests, 92% coverage)
+- V2-PHASE-7-IMPROVEMENTS: All 10 acceptance criteria met (44 tests, 93% coverage)
+  - Billion scale support already existed, added test verification
+  - Added configurable proximity_window parameter (default: 100)
+  - Implemented _find_sentence_bounds() with regex
+  - Added SAME_SENTENCE_BONUS (+0.1 confidence)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-7-IMPROVEMENTS: Three enhancements to Value Binding Stage
-  1. Add billion scale support to number parsing
-  2. Make proximity window configurable
-  3. Better sentence boundary detection
+- V2-PHASE-7-IMPROVEMENTS: COMPLETE ✅
+- Next task: TBD (awaiting user input)
 
 ## Test Status
 
-- All V2 extraction tests passing
-- Phase 7: 40 tests, 92% coverage
+- All V2 extraction tests passing (44 tests)
+- Phase 7 improvements: 93% coverage, 44 tests
 - Phase 6: 42 tests, 96% coverage
 - Phase 3: 11 tests, 87% coverage
 
@@ -30,22 +32,30 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- ValueBindingStage uses `_parse_number()` method for currency/percentage/scale parsing
-- `_find_nearby_numbers()` uses hardcoded 100-char window - now configurable
-- Text binding uses regex proximity, not sentence boundaries - being improved
-- SCALE_MAP dict in value_binding.py handles "million", "m" - add "billion", "b"
+- Billion scale support was already in SCALE_MULTIPLIERS dict (lines 85-94)
+- Sentence boundary detection uses regex: `[.!?]\s+[A-Z]` for sentence endings
+- Match positions from _find_numbers_in_proximity are relative to window_start
+- Same-sentence bonus requires calculating absolute text positions from window offsets
 
-## Files to Modify
+## Files Modified
 
-- src/extraction_v2/stages/value_binding.py (all three improvements)
-- tests/unit/extraction_v2/test_value_binding.py (new tests)
+- src/extraction_v2/stages/value_binding.py
+  - Added proximity_window parameter to __init__
+  - Added SAME_SENTENCE_BONUS constant
+  - Implemented _find_sentence_bounds() method
+  - Updated _bind_text_candidate() to use sentence bounds
+  - Updated _compute_text_confidence() to accept same_sentence parameter
+- tests/unit/extraction_v2/test_value_binding.py
+  - Added test_parse_billion_variants
+  - Added test_configurable_proximity_window
+  - Added test_same_sentence_bonus
+  - Added test_sentence_boundary_detection
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - ready to proceed
-- Do NOT add external NLP dependencies (use regex only for sentence detection)
+- None
 
 ---
 

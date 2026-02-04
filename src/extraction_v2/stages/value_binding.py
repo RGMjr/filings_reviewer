@@ -55,6 +55,7 @@ class ValueBindingStage:
     EXACT_MATCH_BONUS: float = 0.2
     UNIT_PRESENCE_BONUS: float = 0.1
     AMBIGUITY_PENALTY: float = 0.1
+    SAME_SENTENCE_BONUS: float = 0.1
 
     # Text proximity settings
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
@@ -93,9 +94,14 @@ class ValueBindingStage:
         "b": 1_000_000_000,
     }
 
-    def __init__(self) -> None:
-        """Initialize the value binding stage."""
-        pass
+    def __init__(self, proximity_window: int = 100) -> None:
+        """
+        Initialize the value binding stage.
+
+        Args:
+            proximity_window: Max characters to search for values near text keywords (default: 100)
+        """
+        self.proximity_window = proximity_window
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -443,9 +449,12 @@ class ValueBindingStage:
             match_start = 0
             match_end = len(text)
 
+        # Calculate window bounds
+        window_start = max(0, match_start - self.proximity_window)
+
         # Find numbers in proximity
         numbers = self._find_numbers_in_proximity(
-            text, match_start, match_end, self.DEFAULT_CHAR_PROXIMITY
+            text, match_start, match_end, self.proximity_window
         )
 
         if not numbers:
@@ -454,9 +463,18 @@ class ValueBindingStage:
         # Apply ambiguity penalty if multiple values found
         ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
 
+        # Get sentence bounds for the keyword match
+        sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
+
         # Create bound values
         for num_match, value, unit, raw in numbers:
-            confidence = self._compute_text_confidence(unit, ambiguity_penalty)
+            # Check if value is in the same sentence as the keyword
+            # num_match positions are relative to window_text, need to adjust to full text
+            num_start_in_text = window_start + num_match.start()
+
+            same_sentence = sentence_start <= num_start_in_text < sentence_end
+
+            confidence = self._compute_text_confidence(unit, ambiguity_penalty, same_sentence)
 
             bound_values.append(
                 BoundValue(
@@ -510,6 +528,44 @@ class ValueBindingStage:
                 results.append((match, value, unit, raw))
 
         return results
+
+    def _find_sentence_bounds(self, text: str, position: int) -> tuple[int, int]:
+        """
+        Find sentence boundaries around a given position.
+
+        Uses regex to detect sentence endings: [.!?] followed by whitespace and capital letter,
+        or start/end of text.
+
+        Args:
+            text: Full text to search
+            position: Character position to find sentence bounds around
+
+        Returns:
+            Tuple of (sentence_start, sentence_end) positions
+        """
+        # Find sentence start (look backwards for sentence boundary)
+        sentence_start = 0
+        # Pattern for sentence boundary: period/exclamation/question followed by space and capital
+        boundary_pattern = re.compile(r'[.!?]\s+[A-Z]')
+
+        # Search backwards from position
+        text_before = text[:position]
+        boundaries_before = list(boundary_pattern.finditer(text_before))
+        if boundaries_before:
+            # Start after the last sentence boundary found
+            last_boundary = boundaries_before[-1]
+            # Start position is after the punctuation and whitespace
+            sentence_start = last_boundary.end() - 1  # -1 to include the capital letter
+
+        # Find sentence end (look forwards for sentence boundary)
+        sentence_end = len(text)
+        text_after = text[position:]
+        boundary_match = boundary_pattern.search(text_after)
+        if boundary_match:
+            # End at the punctuation mark
+            sentence_end = position + boundary_match.start() + 1  # +1 to include punctuation
+
+        return (sentence_start, sentence_end)
 
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
         """
@@ -601,6 +657,7 @@ class ValueBindingStage:
         self,
         unit: Unit,
         ambiguity_penalty: float = 0.0,
+        same_sentence: bool = False,
     ) -> float:
         """
         Compute confidence for a text binding.
@@ -608,6 +665,7 @@ class ValueBindingStage:
         Args:
             unit: Detected unit
             ambiguity_penalty: Penalty for multiple values
+            same_sentence: Whether value is in same sentence as keyword
 
         Returns:
             Confidence score 0.0-1.0
@@ -617,6 +675,10 @@ class ValueBindingStage:
         # Unit presence bonus
         if unit in (Unit.CURRENCY, Unit.PERCENT):
             confidence += self.UNIT_PRESENCE_BONUS
+
+        # Same sentence bonus
+        if same_sentence:
+            confidence += self.SAME_SENTENCE_BONUS
 
         # Apply ambiguity penalty
         confidence -= ambiguity_penalty
