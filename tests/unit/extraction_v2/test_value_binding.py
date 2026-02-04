@@ -608,6 +608,98 @@ class TestTextBinding:
         assert result.success
         assert len(context.bound_values) >= 1
 
+    def test_configurable_proximity_window(self) -> None:
+        """Custom proximity window works correctly."""
+        # Create stage with default proximity window (100 chars)
+        default_stage = ValueBindingStage(proximity_window=100)
+
+        # Text where value is far from keyword
+        segment = Segment(
+            segment_id="seg-proximity",
+            text="Revenue increased significantly to $500 million.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-prox",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-proximity",
+                text_span=(0, 7),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = default_stage.process(context)  # type: ignore
+
+        # Should find the value with default window
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+        # Now test with very narrow window (20 chars) where value is outside
+        # "$500 million" starts at position 39, which is 32 chars away from "Revenue" (pos 7)
+        narrow_stage = ValueBindingStage(proximity_window=20)
+        context2 = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result2 = narrow_stage.process(context2)  # type: ignore
+
+        # Should not find the value (too far away)
+        assert result2.success
+        assert len(context2.bound_values) == 0
+
+    def test_same_sentence_bonus(self) -> None:
+        """Values in same sentence get confidence bonus."""
+        stage = ValueBindingStage()
+
+        # Value in same sentence
+        segment_same = Segment(
+            segment_id="seg-same",
+            text="Revenue was $500 million. Other metrics were different.",
+        )
+
+        candidate_same = MetricCandidate(
+            candidate_id="cand-same-sent",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-same",
+                text_span=(0, 7),
+            ),
+        )
+
+        context_same = MockPipelineContext(segments=[segment_same], candidates=[candidate_same])
+        result_same = stage.process(context_same)  # type: ignore
+
+        assert result_same.success
+        assert len(context_same.bound_values) >= 1
+
+        # Should have higher confidence due to same sentence bonus
+        bv_same = context_same.bound_values[0]
+        # Base (0.4) + Unit presence (0.1) + Same sentence (0.1) = 0.6
+        assert bv_same.binding_confidence >= 0.59  # Allow for floating point tolerance
+
+    def test_sentence_boundary_detection(self) -> None:
+        """Sentence boundary detection works correctly."""
+        stage = ValueBindingStage()
+
+        text = "First sentence here. Second sentence has content. Third one too!"
+
+        # Test position in middle of second sentence
+        start, end = stage._find_sentence_bounds(text, 30)
+        sentence = text[start:end]
+        assert "Second sentence has content" in sentence
+        assert "First sentence" not in sentence
+        assert "Third one" not in sentence
+
+        # Test position at start of text
+        start, end = stage._find_sentence_bounds(text, 5)
+        assert start == 0
+
+        # Test position at end of text
+        start, end = stage._find_sentence_bounds(text, len(text) - 5)
+        assert end == len(text)
+
 
 # ============================================================================
 # Number Parsing Tests
@@ -1106,6 +1198,23 @@ class TestEdgeCases:
         assert stage._parse_number("not a number") is None
         assert stage._parse_number("") is None
         assert stage._parse_number("abc xyz") is None
+
+    def test_parse_billion_variants(self, stage: ValueBindingStage) -> None:
+        """Parse billion values with various formats."""
+        test_cases = [
+            ("$1.2B", 1_200_000_000, Unit.CURRENCY),
+            ("1.5 billion", 1_500_000_000, Unit.COUNT),
+            ("$2.3 billion", 2_300_000_000, Unit.CURRENCY),
+            ("3bn", 3_000_000_000, Unit.COUNT),
+            ("$4.5 bn", 4_500_000_000, Unit.CURRENCY),
+        ]
+
+        for text, expected_value, expected_unit in test_cases:
+            result = stage._parse_number(text)
+            assert result is not None, f"Failed to parse: {text}"
+            value, unit, raw = result
+            assert value == expected_value, f"Expected {expected_value} for {text}, got {value}"
+            assert unit == expected_unit, f"Expected {expected_unit} for {text}, got {unit}"
 
     def test_is_in_path_variations(self, stage: ValueBindingStage) -> None:
         """Test _is_in_path with various inputs."""

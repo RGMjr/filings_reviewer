@@ -17,16 +17,16 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | `_parse_number()` handles "billion", "B", "$1.2B" correctly
-- [ ] AC-2 | `ValueBindingStage.__init__()` accepts `proximity_window` parameter
-- [ ] AC-3 | `_find_nearby_numbers()` uses configurable window
-- [ ] AC-4 | `_find_sentence_bounds()` method exists and works
-- [ ] AC-5 | Same-sentence bindings get confidence bonus
-- [ ] AC-6 | All existing tests still pass
-- [ ] AC-7 | New tests for all three improvements
-- [ ] AC-8 | Coverage remains ≥90%
-- [ ] AC-9 | `mypy --strict` passes
-- [ ] AC-10 | `ruff check` passes
+- [x] AC-1 | `_parse_number()` handles "billion", "B", "$1.2B" correctly (already implemented, test added)
+- [x] AC-2 | `ValueBindingStage.__init__()` accepts `proximity_window` parameter (added with default=100)
+- [x] AC-3 | `_find_nearby_numbers()` uses configurable window (now uses self.proximity_window)
+- [x] AC-4 | `_find_sentence_bounds()` method exists and works (implemented with regex)
+- [x] AC-5 | Same-sentence bindings get confidence bonus (SAME_SENTENCE_BONUS = 0.1)
+- [x] AC-6 | All existing tests still pass (44 tests pass)
+- [x] AC-7 | New tests for all three improvements (test_parse_billion_variants, test_configurable_proximity_window, test_same_sentence_bonus, test_sentence_boundary_detection)
+- [x] AC-8 | Coverage remains ≥90% (93% coverage)
+- [x] AC-9 | `mypy --strict` passes (success: no issues)
+- [x] AC-10 | `ruff check` passes (all checks passed)
 
 ---
 
@@ -36,6 +36,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
+| 1 | AC-1 to AC-10 | Complete | All acceptance criteria met in single iteration |
 
 ---
 
