@@ -30,6 +30,7 @@ from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
+from src.extraction_v2.stages.validation import ValidationStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 __all__ = [
@@ -40,5 +41,6 @@ __all__ = [
     "PeriodInferenceStage",
     "SectionClassificationStage",
     "TableReconstructionStage",
+    "ValidationStage",
     "ValueBindingStage",
 ]

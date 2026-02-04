@@ -5,7 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.extraction_v2.models import MetricFact, ReviewStatus
+from src.extraction_v2.models import (
+    EvidencePack,
+    MetricFact,
+    ReviewStatus,
+    SourceLocator,
+    Unit,
+)
 from src.extraction_v2.pipeline import (
     PipelineConfig,
     PipelineContext,
@@ -15,6 +21,20 @@ from src.extraction_v2.pipeline import (
     V2Pipeline,
     process_filing,
 )
+
+
+def _create_valid_fact(confidence: float, requires_review: bool = True) -> MetricFact:
+    """Create a valid MetricFact for testing with all required fields."""
+    return MetricFact(
+        canonical_metric_id="cm_test_metric",
+        value=100.0,
+        value_raw="100",
+        unit=Unit.COUNT,
+        confidence=confidence,
+        requires_review=requires_review,
+        source_locator=SourceLocator(segment_id="test-segment"),
+        evidence_pack=EvidencePack(snippet_html="<span>test</span>"),
+    )
 
 
 class TestPipelineConfig:
@@ -182,8 +202,8 @@ class TestValidationStage:
             config=config,
         )
 
-        # Add a high-confidence fact
-        fact = MetricFact(confidence=0.95, requires_review=True)
+        # Add a high-confidence valid fact
+        fact = _create_valid_fact(confidence=0.95, requires_review=True)
         context.facts = [fact]
 
         # Run validation stage
@@ -207,8 +227,8 @@ class TestValidationStage:
             config=config,
         )
 
-        # Add a medium-confidence fact
-        fact = MetricFact(confidence=0.50, requires_review=False)
+        # Add a medium-confidence valid fact
+        fact = _create_valid_fact(confidence=0.50, requires_review=False)
         context.facts = [fact]
 
         # Run validation stage
@@ -229,8 +249,8 @@ class TestValidationStage:
             config=config,
         )
 
-        # Add a very low-confidence fact
-        fact = MetricFact(confidence=0.10, requires_review=False)
+        # Add a very low-confidence valid fact
+        fact = _create_valid_fact(confidence=0.10, requires_review=False)
         context.facts = [fact]
 
         # Run validation stage
