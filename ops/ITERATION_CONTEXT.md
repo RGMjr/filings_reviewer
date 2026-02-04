@@ -8,43 +8,51 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-9 AC-8: Pipeline integration completed
-  - Exported FactConstructionStage from src/extraction_v2/stages/__init__.py
-  - All 3777 tests pass (281.12s runtime)
-  - All acceptance criteria for V2-PHASE-9 complete
+- V2-PHASE-10: Deduplication Stage completed
+  - Created `src/extraction_v2/stages/deduplication.py` (175 lines)
+  - Added `deduplicated_facts` field to `PipelineContext`
+  - Exported `DeduplicationStage` from `stages/__init__.py`
+  - Replaced stub in `pipeline.py` with import from stages
+  - 35 tests, 96% coverage
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-9: All acceptance criteria completed
+- V2-PHASE-10: All acceptance criteria completed
 - Task ready for final commit and completion report
 
 ## Test Status
 
-- All V2 extraction tests passing (364 tests in 0.36s)
+- All V2 extraction tests passing (399 tests in 2.5s)
+- Phase 10 (Deduplication): 35 tests, 96% coverage
 - Phase 9 (Fact Construction): 22 tests, 94% coverage
 - Phase 8 (Period Inference): implemented and tested
 - Phase 7 (Value Binding): 44 tests, 93% coverage
 - Phase 6 (Candidate Generation): 42 tests, 96% coverage
 - Phase 3 (Table Reconstruction): 11 tests, 87% coverage
+- Full unit test suite: 3812 passed, 14 skipped
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- PeriodType enum uses QUARTERLY not QUARTER
-- Test execution can be too fast, causing duration_ms == 0 (use >= 0 not > 0)
-- All tests verify end-to-end transformation with confidence scoring
-- Evidence pack generation correctly handles missing segments/tables
+- Use `duplicates_removed` not `duplicates_merged` in metadata (matches existing test)
+- `MetricFact.is_duplicate_of()` handles None values and value tolerance correctly
+- SOURCE_QUALITY_RANK defines: HTML_TABLE=4 > TEXT=3 > OCR_TABLE=2 > CHART=1
+- `deduplicated_facts` field added to PipelineContext (keep `facts` for audit trail)
 
-## Files to Create
+## Files Created
 
-- None (tests already created)
+- `src/extraction_v2/stages/deduplication.py`
+- `tests/unit/extraction_v2/test_deduplication.py`
+- `docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-10.md`
 
-## Files to Modify
+## Files Modified
 
-- src/extraction_v2/stages/__init__.py (✓ COMPLETED - added FactConstructionStage export)
+- `src/extraction_v2/stages/__init__.py` - Added DeduplicationStage export
+- `src/extraction_v2/pipeline.py` - Added import, removed stub, added deduplicated_facts field
+- `ops/DEVELOPMENT_PLAN.md` - Updated with V2-PHASE-10 progress
 
 ## Blockers or Warnings
 

@@ -1,0 +1,591 @@
+"""
+Tests for V2 Deduplication Stage.
+
+Tests the grouping of duplicate facts, primary selection based on source quality,
+and alternate evidence linking.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from src.extraction_v2.models import (
+    EvidencePack,
+    MetricFact,
+    PeriodType,
+    Scope,
+    SourceLocator,
+    SourceType,
+    Unit,
+)
+from src.extraction_v2.stages.deduplication import (
+    SOURCE_QUALITY_RANK,
+    DeduplicationStage,
+)
+
+
+# ============================================================================
+# Test Fixtures
+# ============================================================================
+
+
+@dataclass
+class MockPipelineConfig:
+    """Mock pipeline config for testing."""
+
+    value_tolerance: float = 0.02
+
+
+@dataclass
+class MockPipelineContext:
+    """Mock pipeline context for testing."""
+
+    html_path: Path = field(default_factory=lambda: Path("/test/file.html"))
+    filing_id: int = 1
+    config: MockPipelineConfig = field(default_factory=MockPipelineConfig)
+    facts: list[MetricFact] = field(default_factory=list)
+    deduplicated_facts: list[MetricFact] = field(default_factory=list)
+
+
+def make_fact(
+    fact_id: str = "fact-1",
+    metric_id: str = "cm_arr",
+    value: float | None = 100.0,
+    unit: Unit = Unit.CURRENCY,
+    source_type: SourceType = SourceType.HTML_TABLE,
+    confidence: float = 0.8,
+    period_start: date | None = date(2024, 1, 1),
+    period_end: date | None = date(2024, 12, 31),
+    scope: Scope = Scope.COMPANY,
+    cohort_def: str | None = None,
+    customer_type: str | None = None,
+) -> MetricFact:
+    """Create a MetricFact for testing."""
+    return MetricFact(
+        fact_id=fact_id,
+        doc_id="doc-1",
+        canonical_metric_id=metric_id,
+        value=value,
+        value_raw=str(value) if value else "",
+        unit=unit,
+        source_type=source_type,
+        source_locator=SourceLocator(),
+        evidence_pack=EvidencePack(snippet_html="<mark>test</mark>"),
+        confidence=confidence,
+        period_type=PeriodType.ANNUAL,
+        period_start=period_start,
+        period_end=period_end,
+        scope=scope,
+        cohort_def=cohort_def,
+        customer_type=customer_type,
+    )
+
+
+# ============================================================================
+# Source Quality Ranking Tests
+# ============================================================================
+
+
+class TestSourceQualityRank:
+    """Tests for source quality ranking constants."""
+
+    def test_html_table_highest_quality(self) -> None:
+        """HTML_TABLE should be highest quality."""
+        assert SOURCE_QUALITY_RANK[SourceType.HTML_TABLE] == 4
+
+    def test_text_second_quality(self) -> None:
+        """TEXT should be second highest quality."""
+        assert SOURCE_QUALITY_RANK[SourceType.TEXT] == 3
+
+    def test_ocr_table_third_quality(self) -> None:
+        """OCR_TABLE should be third quality."""
+        assert SOURCE_QUALITY_RANK[SourceType.OCR_TABLE] == 2
+
+    def test_chart_lowest_quality(self) -> None:
+        """CHART should be lowest quality."""
+        assert SOURCE_QUALITY_RANK[SourceType.CHART] == 1
+
+    def test_ranking_order(self) -> None:
+        """Verify complete ranking order."""
+        assert (
+            SOURCE_QUALITY_RANK[SourceType.HTML_TABLE]
+            > SOURCE_QUALITY_RANK[SourceType.TEXT]
+            > SOURCE_QUALITY_RANK[SourceType.OCR_TABLE]
+            > SOURCE_QUALITY_RANK[SourceType.CHART]
+        )
+
+
+# ============================================================================
+# Grouping Logic Tests
+# ============================================================================
+
+
+class TestGroupingLogic:
+    """Tests for duplicate grouping logic."""
+
+    def test_two_identical_facts_grouped(self) -> None:
+        """Two facts with same identity should be grouped together."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", value=100.0),
+            make_fact(fact_id="fact-2", value=100.0),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 1
+        assert len(groups[0]) == 2
+
+    def test_different_metric_id_not_grouped(self) -> None:
+        """Facts with different metric_id should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", metric_id="cm_arr", value=100.0),
+            make_fact(fact_id="fact-2", metric_id="cm_mrr", value=100.0),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+        assert len(groups[0]) == 1
+        assert len(groups[1]) == 1
+
+    def test_values_within_tolerance_grouped(self) -> None:
+        """Facts with values within 2% tolerance should be grouped."""
+        stage = DeduplicationStage()
+        # 100 and 101 are within 2% (1% difference)
+        facts = [
+            make_fact(fact_id="fact-1", value=100.0),
+            make_fact(fact_id="fact-2", value=101.0),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 1
+        assert len(groups[0]) == 2
+
+    def test_values_outside_tolerance_not_grouped(self) -> None:
+        """Facts with values outside 2% tolerance should not be grouped."""
+        stage = DeduplicationStage()
+        # 100 and 105 are outside 2% (5% difference)
+        facts = [
+            make_fact(fact_id="fact-1", value=100.0),
+            make_fact(fact_id="fact-2", value=105.0),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+    def test_different_periods_not_grouped(self) -> None:
+        """Facts with different periods should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-1",
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-2",
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+    def test_different_units_not_grouped(self) -> None:
+        """Facts with different units should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", value=100.0, unit=Unit.CURRENCY),
+            make_fact(fact_id="fact-2", value=100.0, unit=Unit.PERCENT),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+    def test_different_scope_not_grouped(self) -> None:
+        """Facts with different scope should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", scope=Scope.COMPANY),
+            make_fact(fact_id="fact-2", scope=Scope.SEGMENT),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+    def test_different_cohort_def_not_grouped(self) -> None:
+        """Facts with different cohort_def should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", cohort_def="2022 cohort"),
+            make_fact(fact_id="fact-2", cohort_def="2023 cohort"),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+    def test_different_customer_type_not_grouped(self) -> None:
+        """Facts with different customer_type should be in separate groups."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="fact-1", customer_type="Enterprise"),
+            make_fact(fact_id="fact-2", customer_type="SMB"),
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        assert len(groups) == 2
+
+
+# ============================================================================
+# Primary Selection Tests
+# ============================================================================
+
+
+class TestPrimarySelection:
+    """Tests for primary fact selection based on source quality."""
+
+    def test_html_table_beats_text(self) -> None:
+        """HTML_TABLE should be selected over TEXT."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="text", source_type=SourceType.TEXT, confidence=0.9),
+            make_fact(
+                fact_id="table", source_type=SourceType.HTML_TABLE, confidence=0.7
+            ),
+        ]
+
+        primary = stage._select_primary(facts)
+
+        assert primary.fact_id == "table"
+
+    def test_text_beats_ocr_table(self) -> None:
+        """TEXT should be selected over OCR_TABLE."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="ocr", source_type=SourceType.OCR_TABLE, confidence=0.9),
+            make_fact(fact_id="text", source_type=SourceType.TEXT, confidence=0.7),
+        ]
+
+        primary = stage._select_primary(facts)
+
+        assert primary.fact_id == "text"
+
+    def test_ocr_table_beats_chart(self) -> None:
+        """OCR_TABLE should be selected over CHART."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(fact_id="chart", source_type=SourceType.CHART, confidence=0.9),
+            make_fact(fact_id="ocr", source_type=SourceType.OCR_TABLE, confidence=0.7),
+        ]
+
+        primary = stage._select_primary(facts)
+
+        assert primary.fact_id == "ocr"
+
+    def test_same_source_type_higher_confidence_wins(self) -> None:
+        """When source type is same, higher confidence should win."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="low", source_type=SourceType.HTML_TABLE, confidence=0.6
+            ),
+            make_fact(
+                fact_id="high", source_type=SourceType.HTML_TABLE, confidence=0.9
+            ),
+        ]
+
+        primary = stage._select_primary(facts)
+
+        assert primary.fact_id == "high"
+
+    def test_single_fact_returns_itself(self) -> None:
+        """Single fact should return itself as primary."""
+        stage = DeduplicationStage()
+        fact = make_fact(fact_id="only")
+
+        primary = stage._select_primary([fact])
+
+        assert primary.fact_id == "only"
+
+
+# ============================================================================
+# Alternate Evidence Linking Tests
+# ============================================================================
+
+
+class TestAlternateEvidenceLinking:
+    """Tests for alternate evidence linking."""
+
+    def test_primary_has_alternate_fact_ids(self) -> None:
+        """Primary fact should have alternate fact_ids populated."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
+                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        primary = context.deduplicated_facts[0]
+        assert primary.fact_id == "fact-1"
+        assert "fact-2" in primary.alternate_evidence
+
+    def test_alternates_not_in_output(self) -> None:
+        """Alternate facts should not be in output list."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
+                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
+                make_fact(fact_id="fact-3", source_type=SourceType.CHART),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        output_ids = {f.fact_id for f in context.deduplicated_facts}
+        assert "fact-1" in output_ids
+        assert "fact-2" not in output_ids
+        assert "fact-3" not in output_ids
+
+    def test_single_fact_no_alternates(self) -> None:
+        """Single fact (no duplicates) should have no alternates."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[make_fact(fact_id="fact-1")]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        assert context.deduplicated_facts[0].alternate_evidence == []
+
+
+# ============================================================================
+# Edge Cases Tests
+# ============================================================================
+
+
+class TestEdgeCases:
+    """Tests for edge cases."""
+
+    def test_empty_facts_list(self) -> None:
+        """Empty facts list should return empty output."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(facts=[])
+
+        result = stage.process(context)
+
+        assert result.success
+        assert len(context.deduplicated_facts) == 0
+        assert result.items_processed == 0
+        assert result.items_output == 0
+
+    def test_all_unique_facts_preserved(self) -> None:
+        """All unique facts should be preserved in output."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", metric_id="cm_arr"),
+                make_fact(fact_id="fact-2", metric_id="cm_mrr"),
+                make_fact(fact_id="fact-3", metric_id="cm_nrr"),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert len(context.deduplicated_facts) == 3
+        assert result.metadata["duplicates_removed"] == 0
+
+    def test_three_way_duplicate(self) -> None:
+        """Three duplicates should produce one primary with two alternates."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
+                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
+                make_fact(fact_id="fact-3", source_type=SourceType.CHART),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        primary = context.deduplicated_facts[0]
+        assert primary.fact_id == "fact-1"
+        assert len(primary.alternate_evidence) == 2
+        assert "fact-2" in primary.alternate_evidence
+        assert "fact-3" in primary.alternate_evidence
+
+    def test_facts_with_none_value(self) -> None:
+        """Facts with None value should be handled correctly."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", value=None),
+                make_fact(fact_id="fact-2", value=None),
+            ]
+        )
+
+        result = stage.process(context)
+
+        # Two facts with None values are duplicates (same identity)
+        assert len(context.deduplicated_facts) == 1
+
+    def test_facts_with_none_period(self) -> None:
+        """Facts with None period should be handled correctly."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1", period_start=None, period_end=None),
+                make_fact(fact_id="fact-2", period_start=None, period_end=None),
+            ]
+        )
+
+        result = stage.process(context)
+
+        # Two facts with None periods are duplicates
+        assert len(context.deduplicated_facts) == 1
+
+
+# ============================================================================
+# Stage Result Tests
+# ============================================================================
+
+
+class TestStageResult:
+    """Tests for stage result metadata."""
+
+    def test_result_success(self) -> None:
+        """Stage should return success=True."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[make_fact(fact_id="fact-1")]
+        )
+
+        result = stage.process(context)
+
+        assert result.success is True
+
+    def test_result_items_processed(self) -> None:
+        """items_processed should be initial fact count."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1"),
+                make_fact(fact_id="fact-2"),
+                make_fact(fact_id="fact-3"),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert result.items_processed == 3
+
+    def test_result_items_output(self) -> None:
+        """items_output should be deduplicated count."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1"),  # Duplicate
+                make_fact(fact_id="fact-2"),  # Duplicate
+                make_fact(fact_id="fact-3", metric_id="cm_mrr"),  # Unique
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert result.items_output == 2  # One merged + one unique
+
+    def test_result_duplicates_removed(self) -> None:
+        """metadata should contain duplicates_removed count."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1"),
+                make_fact(fact_id="fact-2"),
+                make_fact(fact_id="fact-3"),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert result.metadata["duplicates_removed"] == 2  # 3 -> 1
+
+    def test_result_groups_with_alternates(self) -> None:
+        """metadata should contain groups_with_alternates count."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(fact_id="fact-1"),  # Duplicate group
+                make_fact(fact_id="fact-2"),  # Duplicate group
+                make_fact(fact_id="fact-3", metric_id="cm_mrr"),  # Unique
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert result.metadata["groups_with_alternates"] == 1
+
+    def test_result_duration_ms(self) -> None:
+        """duration_ms should be populated."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[make_fact(fact_id="fact-1")]
+        )
+
+        result = stage.process(context)
+
+        assert result.duration_ms >= 0
+
+
+# ============================================================================
+# Config Integration Tests
+# ============================================================================
+
+
+class TestConfigIntegration:
+    """Tests for config integration."""
+
+    def test_uses_config_tolerance(self) -> None:
+        """Stage should use tolerance from config."""
+        stage = DeduplicationStage()
+        # 100 and 110 are outside default 2% but within 15%
+        config = MockPipelineConfig(value_tolerance=0.15)
+        context = MockPipelineContext(
+            config=config,
+            facts=[
+                make_fact(fact_id="fact-1", value=100.0),
+                make_fact(fact_id="fact-2", value=110.0),
+            ],
+        )
+
+        result = stage.process(context)
+
+        # With 15% tolerance, these should be grouped
+        assert len(context.deduplicated_facts) == 1
+
+    def test_init_with_custom_tolerance(self) -> None:
+        """Stage can be initialized with custom tolerance."""
+        stage = DeduplicationStage(value_tolerance=0.05)
+
+        assert stage.value_tolerance == 0.05

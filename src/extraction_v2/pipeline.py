@@ -39,6 +39,8 @@ from src.extraction_v2.models import (
     Table,
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
+from src.extraction_v2.stages.deduplication import DeduplicationStage
+from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
@@ -176,6 +178,7 @@ class PipelineContext:
     candidates: list[Any] = field(default_factory=list)  # MetricCandidate
     bound_values: list[Any] = field(default_factory=list)  # BoundValue
     facts: list[MetricFact] = field(default_factory=list)
+    deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
 
     # Tracking
     stage_results: list[StageResult] = field(default_factory=list)
@@ -425,66 +428,8 @@ class OCRChartExtractionStage:
 # CandidateGenerationStage is now imported from src.extraction_v2.stages.candidate_generation
 # ValueBindingStage is now imported from src.extraction_v2.stages.value_binding
 # PeriodInferenceStage is now imported from src.extraction_v2.stages.period_inference
-
-
-class FactConstructionStage:
-    """
-    Stage 9: MetricFact Construction.
-
-    - Assemble full MetricFact record
-    - Compute confidence score
-    - Generate evidence_pack
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Construct MetricFact objects."""
-        start_time = datetime.utcnow()
-
-        # TODO: Create MetricFact from bound values
-        # TODO: Compute confidence scores
-        # TODO: Generate evidence packs
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.FACT_CONSTRUCTION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.bound_values),
-            items_output=len(context.facts),
-        )
-
-
-class DeduplicationStage:
-    """
-    Stage 10: Deduplication.
-
-    - Group by identity tuple (metric_id, period, value±2%, scope)
-    - Select primary by source quality ranking: HTML > OCR > chart
-    - Link alternates via alternate_evidence
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Deduplicate extracted facts."""
-        start_time = datetime.utcnow()
-        initial_count = len(context.facts)
-
-        # TODO: Group facts by identity tuple
-        # TODO: Select primary by source quality
-        # TODO: Link alternates
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.DEDUPLICATION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=initial_count,
-            items_output=len(context.facts),
-            metadata={"duplicates_removed": initial_count - len(context.facts)},
-        )
+# FactConstructionStage is now imported from src.extraction_v2.stages.fact_construction
+# DeduplicationStage is now imported from src.extraction_v2.stages.deduplication
 
 
 class ValidationStage:
