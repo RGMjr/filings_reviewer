@@ -320,6 +320,52 @@ When updating documentation:
 
 ---
 
+## Claude Code Context System
+
+The project uses a structured `.claude/` directory for AI-assisted development. This system provides context-specific rules, slash commands, and reusable skills.
+
+### Context-Specific Rules (`.claude/rules/`)
+
+Rules that auto-load when working with specific file paths:
+
+| Rule File | Path Pattern | Purpose |
+|-----------|--------------|---------|
+| `extraction.md` | `src/extraction/**`, `config/metric_keywords.yaml` | Core principles, gold standard validation requirements |
+| `testing.md` | `tests/**` | Test conventions, coverage requirements |
+| `gold-standard.md` | Gold standard files | Validation workflow and thresholds |
+
+Rules are applied automatically based on which files are being edited.
+
+### Slash Commands (`.claude/commands/`)
+
+Workflow commands for common tasks:
+
+| Command | Purpose |
+|---------|---------|
+| `/task-create [ID]` | Generate a worker prompt for a task (does NOT execute) |
+| `/task-run [ID]` | Execute an existing worker prompt with approval gates |
+| `/ralph [mode]` | Start Ralph Loop for autonomous execution |
+| `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+
+### Skills (`.claude/skills/`)
+
+Internal prompt templates for consistent, efficient task execution. Skills reduce context usage and ensure consistency.
+
+| Skill | Purpose |
+|-------|---------|
+| `implementation-planner.md` | Generate structured plans with A/B/C streams |
+| `flask-api-builder.md` | Generate Flask routes, validation, tests |
+| `code-module-grader.md` | Evaluate modules A+ to F with improvements |
+| `test-coverage-analyzer.md` | Find gaps, generate tests |
+| `database-migration-helper.md` | Generate SQL migrations + db.py methods |
+| `refactor-evaluator.md` | Evaluate refactoring safety and impact |
+| `completion-report-generator.md` | Generate task completion reports |
+| `documentation-sync-validator.md` | Check documentation accuracy |
+
+See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usage.
+
+---
+
 ## Version History
 
 ### Version 2.2 (Current - 2025-12-29)

@@ -22,10 +22,12 @@ cm_new_metric:
 ```
 
 ### 2. Add Database Definition
-Insert into `metric_definitions` table:
+Insert into `metrics` table (the canonical metric taxonomy):
 ```sql
-INSERT INTO metric_definitions (metric_id, display_name, category, description)
-VALUES ('cm_new_metric', 'New Metric Name', 'Category', 'Description of what this measures');
+INSERT INTO metrics (metric_id, display_name, metric_class, description, primary_concept, status)
+VALUES ('cm_new_metric', 'New Metric Name', 'core', 'Description of what this measures', 'concept_name', 'active');
+-- metric_class: 'core', 'extended', or 'future'
+-- status: 'active', 'deprecated', or 'experimental'
 ```
 
 ### 3. Update UI Mapping
@@ -41,7 +43,7 @@ pytest -m gold_standard --gold-standard-mode=fresh -v
 When a metric should no longer be extracted but historical data must be preserved:
 
 1. Remove from `config/metric_keywords.yaml`
-2. Keep database definition with `deprecated=true`
+2. Update database definition: `UPDATE metrics SET status = 'deprecated' WHERE metric_id = 'cm_metric_name';`
 3. Remove from UI dropdowns
 4. Document in commit message
 

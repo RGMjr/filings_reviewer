@@ -8,19 +8,19 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-05 AC-3: Implemented `process_chart()` method with Vision API integration, ChartData/ChartSeries/DataPoint objects, labeled-values-only logic, confidence scoring, manual capture flag for unlabeled charts (mypy passes, ruff passes, all 174 V2 tests pass)
+- V2-05 AC-9 & AC-10: Created comprehensive test suite (22 tests), achieved 85% coverage on ocr_extraction.py, all 196 V2 tests pass, mypy and ruff pass
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-05 AC-4: Implement `process()` method conforming to pipeline stage interface
+- Task V2-05 complete: All 10 acceptance criteria met
 
 ## Test Status
 
-- All 174 V2 tests passing
+- All 196 V2 tests passing (174 existing + 22 new OCR extraction tests)
 - V2-04 image_triage.py at 94% coverage
-- V2-05 ocr_extraction.py at 7% coverage (AC-1, AC-2, AC-3 implemented, tests pending)
+- V2-05 ocr_extraction.py at 85% coverage
 - mypy passes (no errors in ocr_extraction.py)
 - ruff passes
 
@@ -39,8 +39,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *For quick orientation on what was modified*
 
-- src/extraction_v2/stages/ocr_extraction.py (AC-3: implemented process_chart() method, added _get_chart_extraction_prompt() method)
-- ops/DEVELOPMENT_PLAN.md (marked AC-3 complete)
+- src/extraction_v2/stages/ocr_extraction.py (AC-9: removed incorrect isinstance() checks in process_table_image() and process_chart(), fixed to use self.vision_client directly, added Any type hint)
+- tests/unit/extraction_v2/test_ocr_extraction.py (AC-9 & AC-10: created 22 comprehensive tests covering all functionality, MockVisionClient for API mocking)
+- ops/DEVELOPMENT_PLAN.md (marked AC-4 through AC-10 complete)
 - ops/ITERATION_CONTEXT.md (updated progress)
 
 ## Blockers or Warnings
