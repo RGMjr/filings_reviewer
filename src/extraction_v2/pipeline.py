@@ -40,6 +40,7 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
@@ -423,35 +424,7 @@ class OCRChartExtractionStage:
 
 # CandidateGenerationStage is now imported from src.extraction_v2.stages.candidate_generation
 # ValueBindingStage is now imported from src.extraction_v2.stages.value_binding
-
-
-class PeriodInferenceStage:
-    """
-    Stage 8: Period Inference.
-
-    - Extract period from: header_path, stub_path, context
-    - Validate against filing fiscal period
-    - Flag ambiguous periods for review
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Infer time periods for bound values."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement period extraction from header_path
-        # TODO: Implement period extraction from context
-        # TODO: Validate against filing fiscal period
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.PERIOD_INFERENCE,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.bound_values),
-            items_output=len(context.bound_values),
-        )
+# PeriodInferenceStage is now imported from src.extraction_v2.stages.period_inference
 
 
 class FactConstructionStage:
