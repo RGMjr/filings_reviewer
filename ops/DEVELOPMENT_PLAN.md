@@ -17,7 +17,7 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | `src/extraction_v2/stages/fact_construction.py` exists
+- [x] AC-1 | `src/extraction_v2/stages/fact_construction.py` exists (11KB, mypy strict passes, ruff clean)
 - [ ] AC-2 | `FactConstructionStage.process()` transforms `BoundValue` → `MetricFact`
 - [ ] AC-3 | Confidence scoring: base from binding + section bonus + penalties
 - [ ] AC-4 | `EvidencePack` generated with snippet_html for table sources
@@ -38,7 +38,7 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| - | - | - | Awaiting first iteration |
+| 1 | AC-1 | ✅ COMPLETE | fact_construction.py created (11KB), mypy strict + ruff clean, 342 V2 tests pass |
 
 ---
 
