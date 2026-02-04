@@ -1172,7 +1172,7 @@ PARALLEL WITH: None (blocked)
 3. User management routes exist
 
 **Files to Create:**
-1. `src/review/agreement.py` - Cohen's Kappa calculation
+1. `src/review/agreement.py` - Cohen's Kappa calculation [NOT IMPLEMENTED - planned only]
 
 **Files to Modify:**
 1. `src/infra/db.py` - Multi-reviewer queries

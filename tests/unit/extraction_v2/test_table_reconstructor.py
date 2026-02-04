@@ -3,13 +3,88 @@
 import pytest
 from bs4 import BeautifulSoup
 
-from src.extraction_v2.table_reconstructor import TableReconstructor
+from src.extraction_v2.table_reconstructor import GridValidationResult, TableReconstructor
 
 
 @pytest.fixture
 def reconstructor() -> TableReconstructor:
     """Create TableReconstructor instance for testing."""
     return TableReconstructor()
+
+
+class TestGridValidation:
+    """Test cases for grid validation functionality."""
+
+    def test_valid_grid_passes_validation(self, reconstructor: TableReconstructor) -> None:
+        """Test that a properly formed grid passes validation."""
+        html = """
+        <table>
+            <tr><th>A</th><th>B</th></tr>
+            <tr><td>1</td><td>2</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem, validate=True)
+
+        # Table should be successfully reconstructed
+        assert table.row_count == 2
+        assert table.col_count == 2
+        # No gaps or overlaps expected
+        validation = reconstructor._validate_grid(table._grid, table.row_count, table.col_count)
+        assert validation.is_valid
+        assert validation.gap_count == 0
+        assert validation.overlap_count == 0
+
+    def test_grid_validation_result_dataclass(self) -> None:
+        """Test GridValidationResult dataclass."""
+        result = GridValidationResult(
+            is_valid=False,
+            gap_count=2,
+            overlap_count=1,
+            gaps=[(0, 1), (1, 2)],
+            overlaps=[(2, 3)],
+            message="Grid has 2 gaps. Grid has 1 overlaps.",
+        )
+        assert not result.is_valid
+        assert result.gap_count == 2
+        assert result.overlap_count == 1
+        assert len(result.gaps or []) == 2
+        assert len(result.overlaps or []) == 1
+
+    def test_span_clipping_logs_warning(
+        self, reconstructor: TableReconstructor, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that spans extending beyond grid bounds are clipped with warning."""
+        # Rowspan extends beyond table (rowspan=5 but only 3 rows)
+        html = """
+        <table>
+            <tr><th>A</th><th>B</th></tr>
+            <tr><td rowspan="5">Long</td><td>1</td></tr>
+            <tr><td>2</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            table = reconstructor.reconstruct(table_elem, validate=True)
+
+        # Should complete without error
+        assert table.row_count == 3
+        assert table.col_count == 2
+
+        # Cell should still store original rowspan for audit
+        cell_10 = table.get_cell(1, 0)
+        assert cell_10 is not None
+        assert cell_10.rowspan == 5  # Original value preserved
+
+        # Warning should have been logged about clipping
+        assert any("clipped" in record.message.lower() for record in caplog.records)
 
 
 class TestSimpleTables:

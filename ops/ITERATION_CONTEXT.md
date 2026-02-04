@@ -19,7 +19,7 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 *Set by previous iteration or worker prompt*
 
 - V2-PHASE-12: All acceptance criteria completed
-- Task ready for user approval and commit
+- Merged main into v2-rewrite to consolidate Phases 4-5 (Image Triage, OCR Extraction)
 
 ## Test Status
 
@@ -38,25 +38,29 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - v2_metric_facts has FK to metrics table - use valid metric IDs
 - v2_documents has UNIQUE on filing_id (not doc_id)
 - valid_currency constraint requires currency when unit='currency'
+- ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
+- ChartData/ChartSeries/DataPoint models exist in models.py
+- VisionClient in src/llm/vision_client.py provides analyze_image() API
 
 ## Files Created
 
 - `src/extraction_v2/persistence.py` - V2PersistenceAdapter class
+- `src/extraction_v2/stages/image_triage.py` - ImageTriageStage (from main)
+- `src/extraction_v2/stages/ocr_extraction.py` - OCRExtractionStage (from main)
 - `tests/integration/extraction_v2/__init__.py`
 - `tests/integration/extraction_v2/test_persistence.py` - 18 integration tests
-- `docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-12.md`
 
 ## Files Modified
 
 - `src/extraction_v2/__init__.py` - Export persistence functions
-- `sql/06_cmasb_analysis_queries.sql` - Added missing business_classifications table
-- `docs/V2_IMPLEMENTATION_ROADMAP.md` - Marked Phase 12 complete
+- `src/extraction_v2/pipeline.py` - Import all 11 stages from modules
+- `src/extraction_v2/stages/__init__.py` - Export ImageTriageStage, OCRExtractionStage
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - Phase 12 complete, ready for commit
+- None - Merge complete, all phases (0-12) now on v2-rewrite
 
 ---
 

@@ -1,7 +1,8 @@
 # Documentation Sync Validator Skill
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Created:** 2025-12-12
+**Updated:** 2026-02-04
 **Purpose:** Validate that documentation stays in sync with code as the project evolves
 
 ---
@@ -64,7 +65,7 @@ output_format: "report" | "fixes"  # Report issues OR generate fixes
 **Examples of issues:**
 ```markdown
 # STALE REFERENCE DETECTED
-Doc: CLAUDE.md:385
+Doc: CLAUDE.md "Architecture" section
 Reference: "src/review/candidate_generator.py (970 lines)"
 Issue: File now 450 lines (refactored), doc says 970
 Severity: Medium
@@ -73,7 +74,7 @@ Fix: Update to "src/review/candidate_generator.py (~450 lines)"
 
 ```markdown
 # MISSING FILE DETECTED
-Doc: docs/architecture/extraction-pipeline.md:45
+Doc: docs/architecture/extraction-pipeline.md
 Reference: "src/extraction/metric_parser.py"
 Issue: File does not exist (maybe renamed or deleted?)
 Severity: High
@@ -92,14 +93,14 @@ Fix: Update reference or remove section
 **Examples of issues:**
 ```markdown
 # OUTDATED COVERAGE METRIC
-Doc: CLAUDE.md:20
+Doc: CLAUDE.md "Testing Standards" section
 Claim: "Review modules: 56-97% coverage"
 Actual: Review modules now 95-98% coverage
 Severity: Medium
 Fix: Update to current range
 
 # INCORRECT TEST COUNT
-Doc: DEVELOPMENT_PLAN.md:25
+Doc: DEVELOPMENT_PLAN.md
 Claim: "386 tests passing"
 Actual: 475 tests passing (89 more tests added)
 Severity: Medium
@@ -115,14 +116,19 @@ Fix: Update test count and celebrate improvement
 - Code at referenced lines matches doc description
 - Ranges (e.g., "lines 123-135") are still accurate
 
+**BEST PRACTICE:** Avoid hardcoded line number references in documentation. Instead use:
+- Section names (e.g., "CLAUDE.md 'Architecture' section")
+- Function/class names (e.g., "the `extract_metrics()` function")
+- Code search patterns (e.g., "lines containing `@require_api_key`")
+
 **Examples of issues:**
 ```markdown
 # STALE LINE REFERENCE
-Doc: docs/D1_IMPROVEMENTS_EVALUATION.md:84
+Doc: docs/D1_IMPROVEMENTS_EVALUATION.md
 Reference: "Line 247: flash() followed by abort(404)"
 Issue: Code moved to line 198 after refactoring
 Severity: Low (informational - may be historical)
-Action: Add note "(historical reference, now line 198)"
+Action: Replace with section reference or add note "(historical reference)"
 ```
 
 ---
@@ -137,14 +143,14 @@ Action: Add note "(historical reference, now line 198)"
 **Examples of issues:**
 ```markdown
 # COMPLETION STATUS MISMATCH
-Doc: CLAUDE.md:21
+Doc: DEVELOPMENT_PLAN.md
 Claim: "Review routes (D1) - COMPLETE"
 Issue: No D1_IMPROVEMENTS_FINAL.md completion report found
 Severity: High
 Fix: Create completion report OR update status to "In Progress"
 
 # OUTDATED PROGRESS
-Doc: DEVELOPMENT_PLAN.md:30
+Doc: DEVELOPMENT_PLAN.md
 Claim: "E1 Pattern Analyzer - IN PROGRESS"
 Issue: E1 marked complete in E1_IMPROVEMENTS_TRACKING.md
 Severity: Medium
@@ -163,7 +169,7 @@ Fix: Update status to "COMPLETE"
 **Examples of issues:**
 ```markdown
 # ARCHITECTURE MISMATCH
-Doc: CLAUDE.md:42-49
+Doc: CLAUDE.md "Architecture" section (lines 9-22)
 Claim: "src/review/candidate_generator.py # Generate review candidates"
 Issue: Module now delegates to 5 helper modules (refactored)
 Severity: High
@@ -214,7 +220,7 @@ Fix: Update to show modular architecture:
 
 #### Issue #1: {Title}
 
-**Location:** `{doc_file}:{line_number}`
+**Location:** `{doc_file}` - "{section_name}" section
 **Type:** {File Reference | Coverage Metric | Status Marker | etc.}
 **Problem:** {What's wrong}
 **Impact:** {How this misleads developers}
@@ -255,11 +261,10 @@ Fix: Update to show modular architecture:
 
 ### CLAUDE.md ({N} issues)
 
-| Line | Type | Severity | Issue Summary | Fix Effort |
-|------|------|----------|---------------|------------|
-| 20 | Coverage | Medium | Coverage outdated (68% → 71%) | 2 min |
-| 385 | File Ref | Medium | LOC outdated (970 → 450) | 2 min |
-| 42-49 | Structure | High | Architecture diagram outdated | 15 min |
+| Section | Type | Severity | Issue Summary | Fix Effort |
+|---------|------|----------|---------------|------------|
+| Testing Standards | Coverage | Medium | Coverage outdated (68% -> 71%) | 2 min |
+| Architecture | Structure | High | Architecture diagram outdated | 15 min |
 
 **Total Fix Time:** {X} minutes
 
@@ -275,16 +280,16 @@ Fix: Update to show modular architecture:
 
 These issues can be fixed very quickly:
 
-1. **Update coverage percentage** in CLAUDE.md:20
-   - Change: "68%" → "71%"
+1. **Update coverage percentage** in CLAUDE.md "Testing Standards" section
+   - Change: "68%" -> "71%"
    - Time: 1 minute
 
-2. **Update test count** in DEVELOPMENT_PLAN.md:25
-   - Change: "386 tests" → "475 tests"
+2. **Update test count** in DEVELOPMENT_PLAN.md
+   - Change: "386 tests" -> "475 tests"
    - Time: 1 minute
 
-3. **Fix file reference** in docs/architecture/extraction-pipeline.md:67
-   - Change: "metric_parser.py" → "value_extractor.py"
+3. **Fix file reference** in docs/architecture/extraction-pipeline.md
+   - Change: "metric_parser.py" -> "value_extractor.py"
    - Time: 2 minutes
 
 **Total Quick Win Time:** {X} minutes for {N} fixes
@@ -311,7 +316,7 @@ The following fixes can be automated:
 ```bash
 # Run coverage, extract percentage, update CLAUDE.md
 pytest --cov=src --cov-report=term | grep "TOTAL" | awk '{print $4}' | sed 's/%//'
-# Update CLAUDE.md line 20 with new percentage
+# Update CLAUDE.md "Testing Standards" section with new percentage
 ```
 
 **Files affected:** 3
@@ -337,7 +342,7 @@ The following issues require human judgment:
 
 ### Issue #1: Architecture Diagram Outdated
 
-**Location:** CLAUDE.md:42-49
+**Location:** CLAUDE.md "Architecture" section
 **Problem:** Doesn't reflect refactored candidate_generator.py structure
 **Why Manual:** Need to decide level of detail to show
 **Estimated Time:** 15 minutes
@@ -376,7 +381,7 @@ Use this to validate docs manually:
 ### Status Markers
 - [ ] "Complete" phases have completion reports
 - [ ] "In Progress" phases have recent commits
-- [ ] Phase numbering sequential (no gaps like A1→A3)
+- [ ] Phase numbering sequential (no gaps like A1->A3)
 
 ### Architecture
 - [ ] Directory structure matches diagrams
@@ -384,9 +389,9 @@ Use this to validate docs manually:
 - [ ] Dependency diagrams match imports
 
 ### Line Numbers
-- [ ] Line number references point to correct code (±10 lines acceptable)
+- [ ] Avoid hardcoded line references (prefer section names)
 - [ ] Historical references noted as historical
-- [ ] Ranges still accurate
+- [ ] Ranges still accurate (if used)
 
 ---
 
@@ -412,6 +417,11 @@ Use this to validate docs manually:
    - When completing phase, validate related docs
    - Include "Updated documentation" in completion checklist
 
+5. **Avoid hardcoded line numbers:**
+   - Use section names instead: `CLAUDE.md "Architecture" section`
+   - Use function/class names: `the extract_metrics() function`
+   - Use search patterns: `grep -n "pattern" file.py`
+
 ---
 
 ## Skill Instructions
@@ -428,6 +438,7 @@ When this skill is invoked:
 2. **Identify files to check:**
    - CLAUDE.md (always check)
    - DEVELOPMENT_PLAN.md (always check)
+   - .claude/rules/*.md (context-specific rules)
    - docs/ directory files (if scope="all")
    - User-specified files (if provided)
 
@@ -448,11 +459,12 @@ For each doc file:
 3. **Extract line numbers:**
    - Format: `file.py:123`
    - Format: `lines 123-135`
+   - **Flag these for conversion to section references**
 
 4. **Extract status markers:**
-   - "✅ Complete"
-   - "🔄 In Progress"
-   - "⬜ Not Started"
+   - "Complete"
+   - "In Progress"
+   - "Not Started"
 
 ### Step 3: Validate Against Codebase
 
@@ -468,7 +480,7 @@ For each reference:
    pytest --cov=src --cov-report=term
    ```
 
-3. **Check line numbers:**
+3. **Check line numbers (if still used):**
    ```bash
    sed -n '123p' src/path/to/file.py
    ```
@@ -609,6 +621,19 @@ Use documentation-sync-validator skill for:
    - Test counts: automate
    - File existence: automate
 
+### For Robust Documentation
+
+1. **Use section names, not line numbers:**
+   - Bad: `CLAUDE.md:42-49`
+   - Good: `CLAUDE.md "Architecture" section`
+
+2. **Reference functions/classes by name:**
+   - Bad: `See line 150 of candidate_generator.py`
+   - Good: `See the generate_candidates() function`
+
+3. **Use grep patterns for dynamic lookups:**
+   - `grep -n "def extract_metrics" src/extraction/*.py`
+
 ---
 
 ## Integration with Other Skills
@@ -654,6 +679,13 @@ jobs:
 
 ## Version History
 
+**1.1.0** (2026-02-04)
+- Removed hardcoded line number references to CLAUDE.md
+- Updated to use section names instead of line numbers
+- Added best practices for avoiding line number references
+- Added references to `.claude/rules/*.md` context-specific rules
+- Updated examples to reflect current CLAUDE.md structure (109 lines)
+
 **1.0.0** (2025-12-12)
 - Initial skill creation
 - Validates file references, coverage metrics, line numbers, status markers, architecture
@@ -679,3 +711,4 @@ jobs:
 - Automate coverage and test count updates
 - Historical references should be labeled as "(historical)" to avoid confusion
 - Major refactorings should include documentation update in same PR
+- **Avoid hardcoded line number references** - use section names or function names instead

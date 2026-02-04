@@ -31,9 +31,9 @@ charset-normalizer>=3.3.0
 # YAML parsing - Loads metric keyword configuration from config/metric_keywords.yaml
 PyYAML>=6.0
 
-# Optional: Faster HTML/XML parser for BeautifulSoup (fallback: html.parser)
-# Uncomment if processing speed becomes a bottleneck
-# lxml>=4.9.0
+# Faster HTML/XML parser for BeautifulSoup and extraction_v2
+# Required by extraction_v2/stages/ingestion.py for 10x faster parsing
+lxml>=4.9.0
 
 # -----------------------------------------------------------------------------
 # Machine Learning Utilities
