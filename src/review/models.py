@@ -7,11 +7,17 @@ and learned patterns before they're written to the database.
 Schema alignment: sql/07_create_review_schema.sql
 """
 
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+
+if TYPE_CHECKING:
+    from src.review.keyword_matching import KeywordMatch
+    from src.review.number_parsing import NumberMatch
 
 logger = logging.getLogger(__name__)
 
@@ -764,3 +770,89 @@ class ProcessingStats:
             logger.debug(
                 f"Filing {filing_id}: {self.duplicates_removed} duplicate candidates removed"
             )
+
+
+# =============================================================================
+# SegmentProcessingContext (REV-07 refactoring support)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class SegmentProcessingContext:
+    """
+    Immutable context passed through all processing phases of _process_segment.
+
+    This dataclass captures all pre-computed data structures needed during
+    segment processing, enabling the decomposition of _process_segment into
+    smaller, focused helper methods.
+
+    All fields are computed once during the preparation phase and remain
+    constant throughout processing. The frozen=True ensures immutability.
+    """
+
+    # Core segment data
+    text: str
+    source_segment_id: int | None
+    filing_id: int
+    company_id: int
+    segment: SegmentDict
+
+    # Pre-computed structures (computed once, used many times)
+    numbers: tuple[NumberMatch, ...]  # Immutable tuple for frozen dataclass
+    all_keywords: tuple[KeywordMatch, ...]  # Pre-computed keyword matches
+    word_positions: tuple[tuple[int, int, str], ...] | None  # For context extraction
+
+    # Boundary detection results
+    boundaries: tuple[tuple[int, int], ...] | None  # Semantic boundaries
+    sentence_boundaries: tuple[tuple[int, int], ...] | None  # Sentence boundaries
+
+    # Table parsing (optional, only for table segments)
+    # Note: Can't be frozen since parsers are mutable, stored as Any
+    table_row_parser: Any | None
+
+    # Metadata
+    context_prefix: str  # From previous segment (Phase 7)
+    segment_type: str | None  # 'paragraph', 'table', etc.
+
+
+# =============================================================================
+# SegmentStats (REV-07 refactoring support)
+# =============================================================================
+
+
+@dataclass
+class SegmentStats:
+    """
+    Mutable statistics tracker for segment processing.
+
+    Tracks counts during _process_segment execution. Unlike ProcessingStats
+    (which tracks filing-level stats), this tracks per-segment statistics
+    that get rolled up into ProcessingStats.
+    """
+
+    numbers_found: int = 0
+    numbers_processed: int = 0
+    numbers_failed: int = 0
+    false_positives_filtered: int = 0
+    candidates_generated: int = 0
+    filtered_by_learned_rules: int = 0
+    filtered_by_type_validation: int = 0
+    excluded_by_number_context: int = 0
+
+    def inc(self, field_name: str, amount: int = 1) -> None:
+        """Increment a stat field by amount."""
+        current = getattr(self, field_name, 0)
+        setattr(self, field_name, current + amount)
+
+    def to_dict(self) -> dict[str, int]:
+        """Convert to dict for backward compatibility with existing code."""
+        return {
+            "numbers_found": self.numbers_found,
+            "numbers_processed": self.numbers_processed,
+            "numbers_failed": self.numbers_failed,
+            "false_positives_filtered": self.false_positives_filtered,
+            "candidates_generated": self.candidates_generated,
+            "filtered_by_learned_rules": self.filtered_by_learned_rules,
+            "filtered_by_type_validation": self.filtered_by_type_validation,
+            "excluded_by_number_context": self.excluded_by_number_context,
+        }
