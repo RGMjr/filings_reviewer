@@ -17,7 +17,7 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class
+- [x] AC-1 | Create `src/extraction_v2/stages/ocr_extraction.py` with `OCRExtractionStage` class (Complete: mypy --strict passes, ruff passes, imports work)
 - [ ] AC-2 | Implement `process_table_image()` method (OCR API + table reconstruction)
 - [ ] AC-3 | Implement `process_chart()` method (vision model, labeled values only)
 - [ ] AC-4 | Implement `process()` method conforming to pipeline stage interface
