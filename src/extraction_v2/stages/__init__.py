@@ -24,6 +24,7 @@ Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v
 """
 
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
+from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
@@ -33,6 +34,7 @@ from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 __all__ = [
     "CandidateGenerationStage",
+    "DeduplicationStage",
     "FactConstructionStage",
     "IngestionStage",
     "PeriodInferenceStage",
