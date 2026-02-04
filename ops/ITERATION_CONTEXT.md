@@ -8,48 +8,44 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-6: Candidate Generation complete (42 tests, 96% coverage)
+- V2-PHASE-7: Value Binding Stage complete (40 tests, 92% coverage)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-7: Value Binding Stage - Links metric candidates to numeric values
+- V2-PHASE-7-IMPROVEMENTS: Three enhancements to Value Binding Stage
+  1. Add billion scale support to number parsing
+  2. Make proximity window configurable
+  3. Better sentence boundary detection
 
 ## Test Status
 
 - All V2 extraction tests passing
+- Phase 7: 40 tests, 92% coverage
 - Phase 6: 42 tests, 96% coverage
 - Phase 3: 11 tests, 87% coverage
-- Total V2 tests: ~100+ passing
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- MetricCandidate has source_locator with table_id, cell_row, cell_col for table sources
-- Cell model has header_path and stub_path (list[str]) for structural context
-- Table model has get_header_path() and get_stub_path() methods
-- Candidates with SourceType.HTML_TABLE have table context; SourceType.TEXT have segment context
-- V1 value_extractor.py has number parsing patterns to reference (not import directly)
-
-## Files to Create
-
-- src/extraction_v2/stages/value_binding.py (ValueBindingStage implementation)
-- tests/unit/extraction_v2/test_value_binding.py (20+ tests)
+- ValueBindingStage uses `_parse_number()` method for currency/percentage/scale parsing
+- `_find_nearby_numbers()` uses hardcoded 100-char window - now configurable
+- Text binding uses regex proximity, not sentence boundaries - being improved
+- SCALE_MAP dict in value_binding.py handles "million", "m" - add "billion", "b"
 
 ## Files to Modify
 
-- src/extraction_v2/models.py (add BoundValue dataclass)
-- src/extraction_v2/pipeline.py (replace stub with import)
-- src/extraction_v2/stages/__init__.py (export ValueBindingStage)
+- src/extraction_v2/stages/value_binding.py (all three improvements)
+- tests/unit/extraction_v2/test_value_binding.py (new tests)
 
 ## Blockers or Warnings
 
 *Issues the next iteration should be aware of*
 
-- None - V2-PHASE-6 complete, ready to proceed
-- Chart binding should be stubbed (Phase 5 not complete)
+- None - ready to proceed
+- Do NOT add external NLP dependencies (use regex only for sentence detection)
 
 ---
 
