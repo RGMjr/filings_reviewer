@@ -24,7 +24,9 @@ Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v
 """
 
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.image_triage import ImageTriageStage
 
 __all__ = [
     "IngestionStage",
+    "ImageTriageStage",
 ]
