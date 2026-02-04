@@ -185,14 +185,22 @@ Rationale:
 
 ---
 
-## Awaiting User Decision
+## Decision
 
-- [ ] **Option A**: Full V2 Independence (recommended)
-- [ ] **Option B**: Dual-Key Approach
-- [ ] **Option C**: Fix Models to Use BIGINT
-- [ ] Other approach
+- [x] **Option A**: Full V2 Independence (recommended) - **APPROVED by user**
+- [ ] ~~Option B: Dual-Key Approach~~
+- [ ] ~~Option C: Fix Models to Use BIGINT~~
 
-**No code changes will be made until user approves a direction.**
+## Implementation
+
+**Changes made**:
+1. `sql/09_v2_schema.sql` line 90: `v2_tables.segment_id` changed from `BIGINT REFERENCES source_segments` to `UUID REFERENCES v2_segments`
+2. `sql/09_v2_schema.sql` line 161: `v2_image_assets.segment_id` changed from `BIGINT REFERENCES source_segments` to `UUID REFERENCES v2_segments`
+
+**Verification**:
+- Persistence layer already handles UUID segment_id correctly (passes `str | None`)
+- Models tests pass (35/35)
+- No Python code changes required
 
 ---
 
