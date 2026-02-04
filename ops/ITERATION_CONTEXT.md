@@ -8,24 +8,23 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-9 AC-1: fact_construction.py created and verified
-  - Complete stage implementation with confidence scoring
-  - Evidence pack generation for table/text/chart sources
-  - Type safe (mypy --strict), ruff clean
-  - All V2 tests pass (342 tests)
+- V2-PHASE-9 AC-2-7, 9-12: Complete test suite for fact construction
+  - Created 22 comprehensive tests covering transformation, confidence, evidence, source types
+  - 94% coverage achieved (exceeds 80% requirement)
+  - All 364 V2 tests pass in 0.36s
+  - Verified mypy --strict and ruff clean
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-9 AC-2: FactConstructionStage.process() transforms BoundValue → MetricFact
-- Next: Verify core transformation logic with unit tests
-- Implementation complete, need to validate behavior
+- V2-PHASE-9 AC-8: Pipeline integration (export stage in __init__.py)
+- Only remaining task: export FactConstructionStage from stages module
 
 ## Test Status
 
-- All V2 extraction tests passing (342 tests in 0.36s)
-- Phase 9 (Fact Construction): AC-1 complete, needs tests
+- All V2 extraction tests passing (364 tests in 0.36s)
+- Phase 9 (Fact Construction): 22 tests, 94% coverage
 - Phase 8 (Period Inference): implemented and tested
 - Phase 7 (Value Binding): 44 tests, 93% coverage
 - Phase 6 (Candidate Generation): 42 tests, 96% coverage
@@ -35,20 +34,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Technical discoveries that affect subsequent work*
 
-- FactConstructionStage follows existing stage patterns (duration_ms, metadata)
-- PipelineStage import causes ruff error when in TYPE_CHECKING but used in function body
-- confidence scoring formula: binding*0.8 + period*0.2 with bonuses/penalties
-- Evidence pack generation differs for table vs text sources
-- All bound_values must be processed even if candidate lookup fails
+- PeriodType enum uses QUARTERLY not QUARTER
+- Test execution can be too fast, causing duration_ms == 0 (use >= 0 not > 0)
+- All tests verify end-to-end transformation with confidence scoring
+- Evidence pack generation correctly handles missing segments/tables
 
 ## Files to Create
 
-- tests/unit/extraction_v2/test_fact_construction.py (next iteration)
+- None (tests already created)
 
 ## Files to Modify
 
-- src/extraction_v2/stages/__init__.py (add export)
-- src/extraction_v2/pipeline.py (replace stub with import)
+- src/extraction_v2/stages/__init__.py (add export - NEXT TASK)
 
 ## Blockers or Warnings
 
