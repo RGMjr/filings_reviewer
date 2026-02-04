@@ -835,6 +835,16 @@ class TestConfidenceScoring:
         )
         assert conf <= 1.0
 
+    def test_confidence_capped_at_zero(self, stage: ValueBindingStage) -> None:
+        """Confidence never goes below 0.0."""
+        # Text binding with maximum ambiguity penalty
+        # Even with penalties, confidence should not go below 0
+        conf = stage._compute_text_confidence(
+            Unit.COUNT, ambiguity_penalty=1.0, same_sentence=False
+        )
+        assert conf >= 0.0
+        assert conf <= 1.0
+
 
 # ============================================================================
 # Integration Tests

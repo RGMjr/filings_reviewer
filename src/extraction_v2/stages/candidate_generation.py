@@ -508,7 +508,7 @@ class CandidateGenerationStage:
         if section_type in self.HIGH_VALUE_SECTIONS:
             confidence += self.SECTION_BONUS
 
-        return min(confidence, 1.0)
+        return max(0.0, min(1.0, confidence))
 
     def _make_result(
         self,
