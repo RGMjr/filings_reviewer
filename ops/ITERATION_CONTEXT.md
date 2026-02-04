@@ -8,19 +8,19 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-05 AC-2: Implemented `process_table_image()` method with full Vision API integration, table reconstruction from OCR cells, confidence scoring, error handling (mypy passes, ruff passes, all 174 V2 tests pass)
+- V2-05 AC-3: Implemented `process_chart()` method with Vision API integration, ChartData/ChartSeries/DataPoint objects, labeled-values-only logic, confidence scoring, manual capture flag for unlabeled charts (mypy passes, ruff passes, all 174 V2 tests pass)
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-05 AC-3: Implement `process_chart()` method (vision model, labeled values only)
+- V2-05 AC-4: Implement `process()` method conforming to pipeline stage interface
 
 ## Test Status
 
 - All 174 V2 tests passing
 - V2-04 image_triage.py at 94% coverage
-- V2-05 ocr_extraction.py at 10% coverage (AC-2 implemented, tests pending)
+- V2-05 ocr_extraction.py at 7% coverage (AC-1, AC-2, AC-3 implemented, tests pending)
 - mypy passes (no errors in ocr_extraction.py)
 - ruff passes
 
@@ -31,14 +31,16 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
 - ChartData/ChartSeries/DataPoint models exist in models.py
 - TableReconstructor exists in table_reconstructor.py
-- OpenAI client pattern exists in src/llm/openai_client.py
+- VisionClient in src/llm/vision_client.py provides analyze_image() API
+- Chart extraction prompt must emphasize "labeled values only" to prevent interpolation
+- process() method already implemented in AC-2, conforming to pipeline stage interface
 
 ## Files Changed This Session
 
 *For quick orientation on what was modified*
 
-- src/extraction_v2/stages/ocr_extraction.py (AC-2: added process_table_image() method, table reconstruction logic)
-- ops/DEVELOPMENT_PLAN.md (marked AC-2 complete)
+- src/extraction_v2/stages/ocr_extraction.py (AC-3: implemented process_chart() method, added _get_chart_extraction_prompt() method)
+- ops/DEVELOPMENT_PLAN.md (marked AC-3 complete)
 - ops/ITERATION_CONTEXT.md (updated progress)
 
 ## Blockers or Warnings

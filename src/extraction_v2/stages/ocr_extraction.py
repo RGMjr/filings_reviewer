@@ -252,6 +252,56 @@ Example JSON:
 }
 """
 
+    def _get_chart_extraction_prompt(self) -> str:
+        """
+        Get the prompt for chart extraction via Vision API.
+
+        Returns:
+            Prompt string for Vision API
+        """
+        return """Analyze this chart and extract ONLY explicitly labeled data values.
+
+CRITICAL RULES:
+1. ONLY extract values that are explicitly shown as data labels on the chart
+2. Do NOT interpolate or estimate values from axis positions
+3. If a bar/line/point has no label, do NOT include it
+4. Include the exact text of labels as shown
+5. For unlabeled charts, return empty series array
+
+Return a JSON object with:
+- chart_type: One of "bar", "line", "pie", "stacked_bar", "area", "unknown" (string)
+- title: Chart title if visible (string, empty if not visible)
+- x_axis_label: X-axis label if visible (string, empty if not visible)
+- y_axis_label: Y-axis label if visible (string, empty if not visible)
+- confidence: Extraction confidence 0.0-1.0 (float)
+- series: Array of series objects, each with:
+  - name: Series name from legend (string)
+  - points: Array of data point objects, each with:
+    - x: Category or date label (string)
+    - y: Numeric value (number)
+    - label: The explicit label text shown on chart (string or null)
+
+If NO labeled values are found, return empty series array.
+
+Example JSON:
+{
+  "chart_type": "bar",
+  "title": "Annual Revenue",
+  "x_axis_label": "Year",
+  "y_axis_label": "Revenue ($M)",
+  "confidence": 0.95,
+  "series": [
+    {
+      "name": "Revenue",
+      "points": [
+        {"x": "2021", "y": 1200.0, "label": "$1,200M"},
+        {"x": "2022", "y": 1500.0, "label": "$1,500M"}
+      ]
+    }
+  ]
+}
+"""
+
     def _reconstruct_table_from_ocr(self, cells_data: list[dict[str, object]]) -> Table:
         """
         Reconstruct Table object from OCR cell data.
@@ -379,16 +429,170 @@ Example JSON:
         CRITICAL: Only extract values that are EXPLICITLY labeled on the chart.
         Never interpolate values from axis positions.
 
-        Placeholder for AC-3 implementation.
+        Steps:
+        1. Load image file as bytes
+        2. Call Vision API with chart extraction prompt
+        3. Parse response into ChartData/ChartSeries/DataPoint
+        4. Set requires_manual_capture if no labeled values found
+        5. Compute confidence from extraction quality
 
         Args:
             asset: Image asset to process (modified in place)
+
+        Raises:
+            FileNotFoundError: If image file doesn't exist
+            ValueError: If API returns invalid response
         """
-        # TODO: AC-3 - Implement chart extraction
-        logger.info(f"Processing chart {asset.img_id} (not implemented)")
-        asset.processed = True
-        asset.confidence = 0.0
-        asset.requires_manual_capture = True
+        import json
+        from pathlib import Path
+
+        from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
+        from src.llm.vision_client import VisionClient
+
+        # Validate file path
+        if not asset.file_path:
+            raise ValueError(f"Image {asset.img_id} has no file_path")
+
+        image_path = Path(asset.file_path)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file not found: {asset.file_path}")
+
+        # Load image bytes
+        image_bytes = image_path.read_bytes()
+
+        # Call Vision API with chart extraction prompt
+        vision_client = self.vision_client
+        if not isinstance(vision_client, VisionClient):
+            # Create VisionClient if mock was provided
+            vision_client = VisionClient()
+
+        try:
+            response = vision_client.analyze_image(
+                image_bytes=image_bytes,
+                prompt=self._get_chart_extraction_prompt(),
+                detail="high",  # High detail for accurate label extraction
+                max_tokens=2000,
+            )
+
+            # Parse JSON response
+            try:
+                chart_response = json.loads(response.content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse chart response as JSON: {e}")
+                logger.debug(f"Response content: {response.content[:500]}")
+                # Mark for manual capture - couldn't parse response
+                asset.processed = True
+                asset.confidence = 0.0
+                asset.requires_manual_capture = True
+                return
+
+            # Extract chart metadata
+            chart_type_str = chart_response.get("chart_type", "unknown")
+            try:
+                chart_type = ChartType(chart_type_str)
+            except ValueError:
+                logger.warning(f"Unknown chart type: {chart_type_str}")
+                chart_type = ChartType.UNKNOWN
+
+            title = chart_response.get("title", "")
+            x_axis_label = chart_response.get("x_axis_label", "")
+            y_axis_label = chart_response.get("y_axis_label", "")
+
+            # Extract series data
+            series_data = chart_response.get("series", [])
+            if not series_data:
+                # No labeled values found - mark for manual capture
+                logger.info(
+                    f"Chart {asset.img_id} has no labeled values, marking for manual capture"
+                )
+                asset.processed = True
+                asset.confidence = 0.0
+                asset.requires_manual_capture = True
+                return
+
+            # Build ChartSeries and DataPoint objects
+            chart_series_list: list[ChartSeries] = []
+            total_points = 0
+
+            for series_item in series_data:
+                series_name = series_item.get("name", "")
+                points_data = series_item.get("points", [])
+
+                data_points: list[DataPoint] = []
+                for point_item in points_data:
+                    # Extract x, y, label
+                    x_val = str(point_item.get("x", ""))
+                    y_val = point_item.get("y", 0.0)
+                    label_val = point_item.get("label")
+
+                    # Convert y to float if it's not already
+                    try:
+                        if isinstance(y_val, str):
+                            # Strip common non-numeric chars (%, $, commas)
+                            y_cleaned = (
+                                y_val.replace("$", "")
+                                .replace("%", "")
+                                .replace(",", "")
+                                .strip()
+                            )
+                            y_val = float(y_cleaned)
+                        else:
+                            y_val = float(y_val)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Failed to parse y value: {point_item.get('y')}, skipping point"
+                        )
+                        continue
+
+                    data_point = DataPoint(x=x_val, y=y_val, label=label_val)
+                    data_points.append(data_point)
+                    total_points += 1
+
+                if data_points:
+                    chart_series = ChartSeries(name=series_name, points=data_points)
+                    chart_series_list.append(chart_series)
+
+            # If we still have no points after parsing, mark for manual
+            if total_points == 0:
+                logger.info(
+                    f"Chart {asset.img_id} has no valid data points after parsing, marking for manual capture"
+                )
+                asset.processed = True
+                asset.confidence = 0.0
+                asset.requires_manual_capture = True
+                return
+
+            # Build ChartData object
+            chart_data = ChartData(
+                chart_type=chart_type,
+                title=title,
+                x_axis_label=x_axis_label,
+                y_axis_label=y_axis_label,
+                series=chart_series_list,
+            )
+            asset.chart_data = chart_data
+
+            # Compute confidence from extraction quality
+            # Use confidence from response if provided, otherwise compute based on data completeness
+            confidence = chart_response.get("confidence", 0.8)  # Default to 0.8 for successful extraction
+            asset.confidence = float(confidence)
+
+            # Don't mark for manual capture if we successfully extracted labeled values
+            asset.requires_manual_capture = False
+            asset.processed = True
+
+            logger.info(
+                f"Processed chart {asset.img_id}: type={chart_type.value}, "
+                f"series={len(chart_series_list)}, points={total_points}, "
+                f"confidence={asset.confidence:.2f}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during chart extraction for {asset.img_id}: {e}", exc_info=True)
+            asset.processed = True
+            asset.confidence = 0.0
+            asset.requires_manual_capture = True
+            raise
 
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
