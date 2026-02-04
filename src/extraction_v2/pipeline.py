@@ -41,7 +41,9 @@ from src.extraction_v2.models import (
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
+from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
@@ -145,6 +147,34 @@ class PipelineResult:
         """Number of facts auto-accepted."""
         return sum(1 for f in self.facts if not f.requires_review)
 
+    @property
+    def has_stub_warnings(self) -> bool:
+        """
+        Check if any stages produced stub/not-implemented warnings.
+
+        Returns True if the pipeline ran through stub stages that
+        don't actually do any processing.
+        """
+        return any(
+            any("not yet implemented" in w.lower() for w in result.warnings)
+            for result in self.stage_results
+        )
+
+    @property
+    def stub_stage_warnings(self) -> list[str]:
+        """
+        Get list of stub/not-implemented warnings from all stages.
+
+        Useful for logging and debugging when the pipeline reports
+        success but stages were actually stubs.
+        """
+        warnings = []
+        for result in self.stage_results:
+            for w in result.warnings:
+                if "not yet implemented" in w.lower():
+                    warnings.append(f"{result.stage.value}: {w}")
+        return warnings
+
 
 class StageProcessor(Protocol):
     """Protocol for pipeline stage processors."""
@@ -227,7 +257,7 @@ class V2Pipeline:
         # Stage 5: OCR & Chart Extraction
         if self.config.enable_chart_extraction:
             self._stages.append(
-                (PipelineStage.OCR_CHART_EXTRACTION, OCRChartExtractionStage())
+                (PipelineStage.OCR_CHART_EXTRACTION, OCRExtractionStage())
             )
 
         # Stage 6: Metric Candidate Generation
@@ -353,85 +383,6 @@ class V2Pipeline:
             success=False,
             error_message=error_message,
         )
-
-
-# ============================================================================
-# Stage Implementations (Stubs - to be implemented in separate modules)
-# ============================================================================
-# Note: IngestionStage, SectionClassificationStage, and TableReconstructionStage
-# are now imported from src.extraction_v2.stages
-
-
-class ImageTriageStage:
-    """
-    Stage 4: Image Triage.
-
-    - Classify: chart, table_image, decorative
-    - Score relevance by proximity to metric keywords
-    - Queue high-relevance images for OCR/vision
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Classify and score images."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement image classification
-        # TODO: Score by keyword proximity
-        # TODO: Filter decorative images
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.IMAGE_TRIAGE,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.images),
-            items_output=len([i for i in context.images if i.is_relevant()]),
-        )
-
-
-class OCRChartExtractionStage:
-    """
-    Stage 5: OCR & Chart Extraction.
-
-    - Table images → OCR → Table reconstruction
-    - Charts → Title/axis OCR → Extract labeled values only
-    - Low-confidence → flag for manual capture
-
-    Constraint: NEVER fabricate chart values by reading axis pixels.
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Extract values from images."""
-        start_time = datetime.utcnow()
-
-        # TODO: Implement PaddleOCR integration for table images
-        # TODO: Implement Claude Vision for chart extraction
-        # TODO: Apply constrained extraction (labeled values only)
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        return StageResult(
-            stage=PipelineStage.OCR_CHART_EXTRACTION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len([i for i in context.images if i.is_relevant()]),
-            items_output=0,  # Number of values extracted
-            metadata={
-                "ocr_calls": context.ocr_calls,
-                "vision_calls": context.vision_calls,
-            },
-        )
-
-
-# CandidateGenerationStage is now imported from src.extraction_v2.stages.candidate_generation
-# ValueBindingStage is now imported from src.extraction_v2.stages.value_binding
-# PeriodInferenceStage is now imported from src.extraction_v2.stages.period_inference
-# FactConstructionStage is now imported from src.extraction_v2.stages.fact_construction
-# DeduplicationStage is now imported from src.extraction_v2.stages.deduplication
-# ValidationStage is now imported from src.extraction_v2.stages.validation
 
 
 # ============================================================================

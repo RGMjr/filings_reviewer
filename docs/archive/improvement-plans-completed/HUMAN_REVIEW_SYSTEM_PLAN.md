@@ -165,7 +165,7 @@ After reviewing 5-10 filings:
 3. Find rejection patterns: "Numbers in risk factors with 'customers' → 85% rejected"
 4. Find acceptance patterns: "Within 30 chars of 'active customers' + definition → 90% correct"
 
-**Create:** `src/review/rule_generator.py`
+**Create:** `src/review/rule_generator.py` [NOT IMPLEMENTED - planned only]
 
 Generate Python code for improved extraction rules with precision/recall metrics.
 
@@ -189,7 +189,7 @@ Generate Python code for improved extraction rules with precision/recall metrics
 | `src/review/candidate_generator.py` | High-recall candidate detection |
 | `src/review/feature_extractor.py` | Compute ML features |
 | `src/review/pattern_analyzer.py` | Analyze accepted vs rejected |
-| `src/review/rule_generator.py` | Generate improved rules |
+| `src/review/rule_generator.py` | Generate improved rules [NOT IMPLEMENTED] |
 | `src/web/app.py` | Flask application |
 | `src/web/routes/review.py` | Review routes |
 | `src/web/routes/api.py` | API endpoints |
@@ -248,7 +248,7 @@ D6. scripts/run_review_server.py
 ### Stream E: Analysis (Depends on A3)
 ```
 E1. src/review/pattern_analyzer.py
-E2. src/review/rule_generator.py
+E2. src/review/rule_generator.py [NOT IMPLEMENTED]
 ```
 
 ### Dependency Graph

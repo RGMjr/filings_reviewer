@@ -362,6 +362,13 @@ class MetricFact:
         Check if this fact is a duplicate of another.
 
         Values within tolerance are considered duplicates.
+
+        Args:
+            other: The MetricFact to compare against
+            value_tolerance: Relative tolerance for value comparison (default 2%)
+
+        Returns:
+            True if facts are duplicates (same identity, values within tolerance)
         """
         if self.canonical_metric_id != other.canonical_metric_id:
             return False
@@ -383,8 +390,19 @@ class MetricFact:
             return True
         if self.value is None or other.value is None:
             return False
-        if other.value == 0:
-            return self.value == 0
+
+        # Handle zero values specially to avoid division by zero
+        if self.value == 0 and other.value == 0:
+            return True
+        if self.value == 0 or other.value == 0:
+            # One is zero and the other is not - not duplicates
+            # unless the non-zero value is within tolerance of zero
+            non_zero = abs(self.value) if other.value == 0 else abs(other.value)
+            # For near-zero comparison, use absolute tolerance
+            # (2% of 0 is 0, so we need a different approach)
+            return non_zero <= value_tolerance
+
+        # Standard relative tolerance comparison
         return abs(self.value - other.value) / abs(other.value) <= value_tolerance
 
 
@@ -430,11 +448,43 @@ class Cell:
         return any(alias.lower() in text_lower for alias in metric_aliases)
 
     def contains_numeric_value(self) -> bool:
-        """Check if cell contains a parseable numeric value."""
+        """
+        Check if cell contains a parseable numeric value.
+
+        Detects:
+        - Plain numbers: 123, 1,234, 1,234.56
+        - Currency amounts: $1,234, €100, £50.00
+        - Percentages: 12%, 3.5%
+        - Negative values: -5, (100), ($50)
+
+        Does NOT match:
+        - Partial numbers within identifiers: SKU-001, FY2024
+        - Numbers without proper word boundaries
+        """
         import re
-        # Match numbers with optional currency/percent symbols
-        pattern = r'[\$\€\£]?\s*[\d,]+\.?\d*\s*[%]?'
-        return bool(re.search(pattern, self.text))
+
+        # More robust pattern that requires:
+        # 1. Number must be at word boundary or start of string
+        # 2. Optional currency symbol, negative sign, or opening paren
+        # 3. At least one digit
+        # 4. Optional thousands separators and decimal
+        # 5. Optional percent sign
+        # 6. Number must end at word boundary or end of string
+        #
+        # This avoids matching partial numbers in identifiers like "SKU-001"
+        pattern = r'''
+            (?:^|(?<=\s)|(?<=[\(\[]))  # Start of string, after whitespace, or after opening bracket
+            [\$\€\£]?                   # Optional currency symbol
+            \(?                         # Optional opening paren (for negative)
+            -?                          # Optional negative sign
+            \d{1,3}                     # 1-3 digits (first group)
+            (?:,\d{3})*                 # Optional thousands groups (,XXX)
+            (?:\.\d+)?                  # Optional decimal part
+            \)?                         # Optional closing paren
+            \s*%?                       # Optional percent symbol with optional space
+            (?=$|[\s,\.\)\]\;])         # End of string, whitespace, or punctuation
+        '''
+        return bool(re.search(pattern, self.text.strip(), re.VERBOSE))
 
 
 @dataclass

@@ -26,7 +26,9 @@ Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
+from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
@@ -37,7 +39,9 @@ __all__ = [
     "CandidateGenerationStage",
     "DeduplicationStage",
     "FactConstructionStage",
+    "ImageTriageStage",
     "IngestionStage",
+    "OCRExtractionStage",
     "PeriodInferenceStage",
     "SectionClassificationStage",
     "TableReconstructionStage",

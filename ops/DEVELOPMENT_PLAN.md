@@ -76,6 +76,16 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 - All ACs met
 - 96% coverage, 42 tests
 
+### V2-05: OCR & Chart Extraction ✅ COMPLETE (2026-02-03)
+- All 10 ACs met
+- 85% coverage, 22 tests
+- Committed to main
+
+### V2-04: Image Triage ✅ COMPLETE (2026-02-03)
+- All ACs met
+- 94% coverage
+- Committed to main
+
 ### V2-PHASE-3: Table Reconstruction ✅ COMPLETE (2026-02-02)
 - All 11 ACs met
 - 87% coverage, 11 tests

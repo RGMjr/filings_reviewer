@@ -260,6 +260,94 @@ class TestMetricFact:
         )
         assert not fact1.is_duplicate_of(fact2)
 
+    def test_is_duplicate_of_zero_values(self) -> None:
+        """Test duplicate detection when both values are zero (no division by zero)."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=0.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=0.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        # Both zero - should be duplicates, no division by zero error
+        assert fact1.is_duplicate_of(fact2)
+
+    def test_is_duplicate_of_one_zero_one_nonzero(self) -> None:
+        """Test duplicate detection when one value is zero and other is not."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=0.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        # One zero, one non-zero - not duplicates
+        assert not fact1.is_duplicate_of(fact2)
+        assert not fact2.is_duplicate_of(fact1)
+
+    def test_is_duplicate_of_zero_and_tiny_value(self) -> None:
+        """Test duplicate detection when one is zero and other is tiny (within tolerance)."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=0.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=0.01,  # Very small, within default 2% tolerance
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+        )
+        # 0.01 is within 2% tolerance of zero
+        assert fact1.is_duplicate_of(fact2, value_tolerance=0.02)
+        assert fact2.is_duplicate_of(fact1, value_tolerance=0.02)
+
+    def test_is_duplicate_of_none_values(self) -> None:
+        """Test duplicate detection when both values are None."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=None,
+            unit=Unit.PERCENT,
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=None,
+            unit=Unit.PERCENT,
+        )
+        assert fact1.is_duplicate_of(fact2)
+
+    def test_is_duplicate_of_one_none(self) -> None:
+        """Test duplicate detection when one value is None and other is not."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=None,
+            unit=Unit.PERCENT,
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+        )
+        assert not fact1.is_duplicate_of(fact2)
+        assert not fact2.is_duplicate_of(fact1)
+
 
 class TestCell:
     """Tests for Cell dataclass."""
@@ -293,6 +381,51 @@ class TestCell:
         assert Cell(row=0, col=0, text="$1,234.56").contains_numeric_value()
         assert Cell(row=0, col=0, text="10,000").contains_numeric_value()
         assert not Cell(row=0, col=0, text="Net Revenue").contains_numeric_value()
+
+    def test_contains_numeric_value_edge_cases(self) -> None:
+        """Test numeric value detection with edge cases - improved regex."""
+        # Basic numbers
+        assert Cell(row=0, col=0, text="123").contains_numeric_value()
+        assert Cell(row=0, col=0, text="1,234").contains_numeric_value()
+        assert Cell(row=0, col=0, text="1,234,567").contains_numeric_value()
+        assert Cell(row=0, col=0, text="12.34").contains_numeric_value()
+
+        # Currency formats
+        assert Cell(row=0, col=0, text="$100").contains_numeric_value()
+        assert Cell(row=0, col=0, text="€1,234").contains_numeric_value()
+        assert Cell(row=0, col=0, text="£50.00").contains_numeric_value()
+
+        # Percentages
+        assert Cell(row=0, col=0, text="12%").contains_numeric_value()
+        assert Cell(row=0, col=0, text="3.5%").contains_numeric_value()
+        assert Cell(row=0, col=0, text="100 %").contains_numeric_value()
+
+        # Negative values
+        assert Cell(row=0, col=0, text="-5").contains_numeric_value()
+        assert Cell(row=0, col=0, text="(100)").contains_numeric_value()
+        assert Cell(row=0, col=0, text="($50)").contains_numeric_value()
+
+        # Values in context
+        assert Cell(row=0, col=0, text="Total: 100").contains_numeric_value()
+        assert Cell(row=0, col=0, text="[1,234]").contains_numeric_value()
+
+    def test_contains_numeric_value_false_positives_prevented(self) -> None:
+        """Test that improved regex doesn't match partial numbers in identifiers."""
+        # These should NOT match - numbers embedded in identifiers
+        # Note: Some of these may still match if they contain standalone numbers
+        assert not Cell(row=0, col=0, text="SKU-A").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="Revenue Growth").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="Q1").contains_numeric_value()  # Quarter labels
+        assert not Cell(row=0, col=0, text="Category A").contains_numeric_value()
+
+    def test_contains_numeric_value_text_only(self) -> None:
+        """Test that pure text cells don't match."""
+        assert not Cell(row=0, col=0, text="Net Revenue Retention").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="   ").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="N/A").contains_numeric_value()
+        assert not Cell(row=0, col=0, text="—").contains_numeric_value()  # em-dash
+        assert not Cell(row=0, col=0, text="-").contains_numeric_value()  # just a dash
 
 
 class TestTable:

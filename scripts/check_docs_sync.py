@@ -75,6 +75,9 @@ class DocsChecker:
             "bs4": "beautifulsoup4",
             "dotenv": "python_dotenv",
             "psycopg": "psycopg",
+            "psycopg_pool": "psycopg",  # psycopg[pool] extra
+            "yaml": "pyyaml",
+            "markupsafe": "flask",  # Flask transitive dependency
         }
 
         # Find all imports in src/
@@ -127,11 +130,12 @@ class DocsChecker:
     def _get_stdlib_modules(self) -> set:
         """Get standard library module names."""
         return {
-            "abc", "argparse", "ast", "asyncio", "base64", "collections",
-            "contextlib", "copy", "csv", "dataclasses", "datetime", "decimal",
-            "enum", "functools", "hashlib", "html", "http", "io", "itertools",
-            "json", "logging", "math", "os", "pathlib", "pickle", "random",
-            "re", "shutil", "socket", "sqlite3", "string", "subprocess", "sys",
+            "__future__", "abc", "argparse", "ast", "asyncio", "atexit", "base64",
+            "bisect", "collections", "concurrent", "contextlib", "copy", "csv",
+            "dataclasses", "datetime", "decimal", "difflib", "enum", "functools",
+            "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
+            "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
+            "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
             "tempfile", "textwrap", "threading", "time", "traceback", "typing",
             "unittest", "urllib", "uuid", "warnings", "xml", "zipfile",
         }

@@ -167,6 +167,8 @@ from src.review.models import (
     ProcessingStats,
     ReviewCandidate,
     SegmentDict,
+    SegmentProcessingContext,
+    SegmentStats,
 )
 from src.review.number_parsing import NumberMatch, NumberParser
 
@@ -478,34 +480,23 @@ class CandidateGenerator:
             prefer_same_sentence=self.config.prefer_same_sentence_in_dedup,
         )
 
-    def _process_segment(
-        self,
-        filing_id: int,
-        company_id: int,
-        segment: SegmentDict,
-        db: Any | None = None,
-    ) -> tuple[list[ReviewCandidate], dict[str, int]]:
+    # =========================================================================
+    # _process_segment helper methods (REV-07 refactoring)
+    # =========================================================================
+
+    def _validate_segment(self, segment: SegmentDict) -> str | None:
         """
-        Process a single segment to find candidates.
+        Validate segment and return text, or None if invalid/skippable.
 
         Args:
-            filing_id: The filing ID
-            company_id: The company ID
             segment: Segment dict from database
-            db: Optional DatabaseAdapter for learned rules filtering (E2)
 
         Returns:
-            Tuple of (candidates, segment_stats)
-            segment_stats contains counts for numbers_found, numbers_failed,
-            false_positives_filtered, filtered_by_learned_rules
-        """
-        segment_stats = {
-            "numbers_found": 0,
-            "numbers_failed": 0,
-            "false_positives_filtered": 0,
-            "filtered_by_learned_rules": 0,
-        }
+            The segment's raw_text if valid and processable, None otherwise.
 
+        Raises:
+            SegmentProcessingError: If segment structure is invalid
+        """
         # Validate segment dict
         if not isinstance(segment, dict):
             raise SegmentProcessingError(
@@ -514,7 +505,7 @@ class CandidateGenerator:
 
         text = segment.get("raw_text", "")
         if not text:
-            return [], segment_stats
+            return None
 
         # Validate text is a string
         if not isinstance(text, str):
@@ -523,38 +514,54 @@ class CandidateGenerator:
                 segment_id=segment.get("source_segment_id"),
             )
 
-        source_segment_id = segment.get("source_segment_id")
-
         # Skip definition segments - they explain metrics but don't contain values (EI-1)
         if segment.get("contains_definition_flag"):
+            source_segment_id = segment.get("source_segment_id")
             logger.debug(
                 f"Skipping definition segment {source_segment_id}: "
                 "contains_definition_flag is True"
             )
-            return [], segment_stats
+            return None
 
-        candidates = []
+        return text
+
+    def _prepare_context(
+        self,
+        text: str,
+        segment: SegmentDict,
+        filing_id: int,
+        company_id: int,
+    ) -> SegmentProcessingContext | None:
+        """
+        Pre-compute all segment-level data structures for processing.
+
+        Args:
+            text: The segment's raw text (already validated)
+            segment: Segment dict from database
+            filing_id: The filing ID
+            company_id: The company ID
+
+        Returns:
+            SegmentProcessingContext with pre-computed data, or None if no numbers found
+        """
+        # Import boundary detector here to avoid circular import at module level
+        from src.review.boundary_detection import BoundaryDetector
+
+        source_segment_id = segment.get("source_segment_id")
 
         # Find all numbers in the segment
         numbers = self._find_numbers(text)
         if not numbers:
-            return [], segment_stats
-
-        segment_stats["numbers_found"] = len(numbers)
+            return None
 
         # Pre-compute all keyword matches once for efficiency (P1.1 optimization)
-        # This avoids re-searching the text for every number
         all_keywords = self._find_all_keywords(text)
 
         # Pre-compute word positions once for efficiency (P1.2 optimization)
-        # This avoids re-parsing text for context extraction for every number
-        self._current_segment_words = self._context_extractor.parse_text_into_words(text)
+        word_positions = self._context_extractor.parse_text_into_words(text)
 
         # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
-        # This enables boundary-aware keyword matching to avoid cross-boundary false positives
-        from src.review.boundary_detection import BoundaryDetector
-
-        boundaries = None
+        boundaries: list[tuple[int, int]] | None = None
         detector: BoundaryDetector | None = None
         if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
@@ -562,16 +569,14 @@ class CandidateGenerator:
             logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
 
         # Pre-compute sentence boundaries for P1.5 sentence-aware filtering
-        # This enables sentence-aware keyword matching to avoid cross-sentence false positives
-        sentence_boundaries = None
+        sentence_boundaries: list[tuple[int, int]] | None = None
         if self.config.detect_sentences:
-            if detector is None:  # Reuse detector if already created
+            if detector is None:
                 detector = BoundaryDetector()
             segment_type = segment.get("segment_type")
             # Disable sentence detection for tables (configurable)
             if segment_type == "table" and not self.config.sentence_detection_for_tables:
-                # Table segments get single boundary to prevent false negatives
-                pass  # sentence_boundaries stays None, fallback to no sentence filtering
+                pass  # sentence_boundaries stays None
             else:
                 sentence_boundaries = detector.find_sentence_boundaries(text, segment_type)
                 if sentence_boundaries:
@@ -580,7 +585,6 @@ class CandidateGenerator:
                     )
 
         # Pre-compute table row structure for table row filtering
-        # This prevents keywords in one row from matching with numbers in another row
         table_row_parser: MarkerRowParser | TableRowParser | None = None
         raw_html = segment.get("raw_html", "")
 
@@ -597,188 +601,283 @@ class CandidateGenerator:
                 f"Parsed {len(table_row_parser.get_rows())} table rows for row-aware matching"
             )
 
-        # Track (number_position, metric_id) pairs to avoid duplicates
-        seen: set[tuple[int, str]] = set()
+        # Get context prefix (Phase 7)
+        context_prefix_raw = segment.get("context_prefix", "")
+        context_prefix = str(context_prefix_raw) if context_prefix_raw else ""
 
-        # For each number, find nearby keywords
-        for num in numbers:
+        # Store word positions for context extraction (P1.2 optimization)
+        self._current_segment_words = word_positions
+
+        return SegmentProcessingContext(
+            text=text,
+            source_segment_id=source_segment_id,
+            filing_id=filing_id,
+            company_id=company_id,
+            segment=segment,
+            numbers=tuple(numbers),
+            all_keywords=tuple(all_keywords),
+            word_positions=tuple(word_positions) if word_positions else None,
+            boundaries=tuple(boundaries) if boundaries else None,
+            sentence_boundaries=tuple(sentence_boundaries) if sentence_boundaries else None,
+            table_row_parser=table_row_parser,
+            context_prefix=context_prefix,
+            segment_type=segment.get("segment_type"),
+        )
+
+    def _process_numbers(
+        self,
+        ctx: SegmentProcessingContext,
+        stats: SegmentStats,
+    ) -> list[ReviewCandidate]:
+        """
+        Main loop: process each number to generate candidates.
+
+        Args:
+            ctx: Pre-computed processing context
+            stats: Mutable stats tracker
+
+        Returns:
+            List of candidates generated from all numbers
+        """
+        candidates: list[ReviewCandidate] = []
+        seen: set[tuple[int, str]] = set()  # Track (number_position, metric_id)
+
+        for num in ctx.numbers:
             try:
-                # Filter out likely false positives
-                is_fp, fp_reason = self._is_likely_false_positive(text, num)
-                if is_fp:
-                    logger.debug(
-                        f"Filtered false positive: {num.raw_text!r} ({fp_reason})"
-                    )
-                    segment_stats["false_positives_filtered"] += 1
-                    continue
-
-                keyword_matches = self._find_keywords_near_number(
-                    num, all_keywords, boundaries, sentence_boundaries, segment, table_row_parser
-                )
-
-                # Phase 7: If no nearby keywords found, check context_prefix
-                # Context prefix contains the last sentence from the previous segment,
-                # which may provide relevant keyword context for list items, etc.
-                context_prefix_raw = segment.get("context_prefix", "")
-                context_prefix = str(context_prefix_raw) if context_prefix_raw else ""
-                from_context_prefix = False
-                if not keyword_matches and context_prefix:
-                    # Search context_prefix for keywords
-                    context_keywords = self._find_all_keywords(context_prefix)
-                    if context_keywords:
-                        # Use context keywords (they won't have "nearby" relationship to number)
-                        # Take first keyword per metric for simplicity
-                        seen_metrics: set[str] = set()
-                        for ck in context_keywords:
-                            if ck.metric_id not in seen_metrics:
-                                keyword_matches.append(ck)
-                                seen_metrics.add(ck.metric_id)
-                        from_context_prefix = True
-                        logger.debug(
-                            f"Found {len(keyword_matches)} keywords in context_prefix "
-                            f"for number {num.raw_text!r}"
-                        )
-
-                for kw in keyword_matches:
-                    # Deduplicate by (number_position, metric_id)
-                    key = (num.start, kw.metric_id)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-
-                    # Early exclusion check around NUMBER position
-                    # This catches FPs where number is near exclusion context
-                    # (e.g., contribution margin values matched to take rate)
-                    # EXT-FN-1: Pass table_row_parser to limit exclusion context to same row
-                    should_exclude, reason = self._keyword_matcher.should_exclude_for_number_context(
-                        metric_id=kw.metric_id,
-                        text=text,
-                        number_position=num.start,
-                        table_row_parser=table_row_parser,
-                    )
-                    if should_exclude:
-                        segment_stats["excluded_by_number_context"] = (
-                            segment_stats.get("excluded_by_number_context", 0) + 1
-                        )
-                        logger.debug(f"Excluded candidate: {reason}")
-                        continue
-
-                    # Calculate distance and position
-                    # For context_prefix matches, use a special "large" distance
-                    if from_context_prefix:
-                        distance = 500  # Indicates "from context, not nearby"
-                        keyword_position = "before"  # Context is from previous segment
-                    else:
-                        distance = self._calculate_distance(num, kw)
-                        # L3: Use direction from KeywordMatch (handle "at" edge case by mapping to "before")
-                        # Rationale: When keyword and number are at same position, treat as "before" (no penalty)
-                        # since there's no temporal "after" relationship in reading order
-                        keyword_position = "after" if kw.direction == "after" else "before"
-
-                    # Extract context
-                    context = self._extract_context(text, num.start)
-
-                    # Compute ML features
-                    features = self._compute_features(
-                        number=num,
-                        keyword_distance=distance,
-                        keyword_position=keyword_position,
-                        context_text=context,
-                        segment=segment,
-                        all_numbers=numbers,
-                    )
-
-                    # L4/E1: Compute context type for multiplier optimization
-                    context_type = self._keyword_matcher.get_context_type(
-                        text=text,
-                        number_position=num.start,
-                        keyword_position=kw.start,
-                        keyword_direction=kw.direction if kw.direction else keyword_position,
-                        boundaries=boundaries,
-                        segment_type=segment.get("segment_type"),
-                    )
-                    features.context_type = context_type
-
-                    # P1.6: Track if keyword and number are in the same sentence
-                    if sentence_boundaries and not from_context_prefix:
-                        number_sentence = self._keyword_matcher._get_boundary_at_position(
-                            num.start, sentence_boundaries
-                        )
-                        keyword_sentence = self._keyword_matcher._get_boundary_at_position(
-                            kw.start, sentence_boundaries
-                        )
-                        features.is_same_sentence = (
-                            number_sentence is not None
-                            and keyword_sentence is not None
-                            and number_sentence == keyword_sentence
-                        )
-                    elif from_context_prefix:
-                        # Context prefix matches are never "same sentence" (different segments)
-                        features.is_same_sentence = False
-                    else:
-                        # Without sentence detection, assume same sentence (conservative)
-                        features.is_same_sentence = True
-
-                    # Phase 7: Track if keyword came from context_prefix
-                    features.from_context_prefix = from_context_prefix
-
-                    # Compute confidence score
-                    confidence = None
-                    if self.compute_confidence:
-                        confidence = self._confidence_scorer.compute_confidence(
-                            keyword_distance=distance,
-                            keyword_position=keyword_position,
-                            keyword=kw.keyword,
-                            metric_id=kw.metric_id,
-                            features=features,
-                        )
-
-                        # Phase 7: Apply 0.8x confidence penalty for context_prefix matches
-                        # These matches are less certain since keyword is in a different segment
-                        if from_context_prefix and confidence is not None:
-                            confidence = confidence * 0.8
-                            logger.debug(
-                                f"Applied 0.8x confidence penalty for context_prefix match: "
-                                f"{confidence:.3f}"
-                            )
-
-                    candidate = ReviewCandidate(
-                        filing_id=filing_id,
-                        company_id=company_id,
-                        source_segment_id=source_segment_id,
-                        char_position=num.start,
-                        context_text=context,
-                        raw_number_text=num.raw_text,
-                        parsed_value=num.value,
-                        parsed_unit=num.unit,
-                        triggering_keyword=kw.keyword,
-                        keyword_distance=distance,
-                        keyword_position=keyword_position,
-                        suggested_metric_id=kw.metric_id,
-                        suggestion_confidence=confidence,
-                        features=features,
-                    )
-                    candidates.append(candidate)
-
+                num_candidates = self._process_one_number(num, ctx, seen, stats)
+                candidates.extend(num_candidates)
             except NumberProcessingError as e:
-                # Known number-level error (already defined but not yet raised internally)
-                segment_stats["numbers_failed"] += 1
+                stats.inc("numbers_failed")
                 logger.warning(
                     f"Number processing error for {num.raw_text!r} at position {num.start}: {e}"
                 )
-                # Continue processing other numbers
             except (ValueError, TypeError, AttributeError, KeyError) as e:
-                # Unexpected but recoverable error in number processing
-                segment_stats["numbers_failed"] += 1
+                stats.inc("numbers_failed")
                 logger.warning(
                     f"Unexpected error processing number {num.raw_text!r} at position {num.start}: "
                     f"{type(e).__name__}: {e}"
                 )
-                # Continue processing other numbers
 
-        # Clear cached word positions (P1.2 optimization cleanup)
-        self._current_segment_words = None
+        return candidates
 
+    def _process_one_number(
+        self,
+        number: NumberMatch,
+        ctx: SegmentProcessingContext,
+        seen: set[tuple[int, str]],
+        stats: SegmentStats,
+    ) -> list[ReviewCandidate]:
+        """
+        Process single number: filter, match keywords, create candidates.
+
+        Args:
+            number: The number match to process
+            ctx: Pre-computed processing context
+            seen: Set of (position, metric_id) pairs already processed (mutated)
+            stats: Mutable stats tracker (mutated)
+
+        Returns:
+            List of candidates generated for this number
+        """
+        candidates: list[ReviewCandidate] = []
+
+        # Filter out likely false positives
+        is_fp, fp_reason = self._is_likely_false_positive(ctx.text, number)
+        if is_fp:
+            logger.debug(f"Filtered false positive: {number.raw_text!r} ({fp_reason})")
+            stats.inc("false_positives_filtered")
+            return candidates
+
+        # Find nearby keywords
+        keyword_matches = self._find_keywords_near_number(
+            number,
+            list(ctx.all_keywords),
+            list(ctx.boundaries) if ctx.boundaries else None,
+            list(ctx.sentence_boundaries) if ctx.sentence_boundaries else None,
+            ctx.segment,
+            ctx.table_row_parser,
+        )
+
+        # Phase 7: If no nearby keywords found, check context_prefix
+        from_context_prefix = False
+        if not keyword_matches and ctx.context_prefix:
+            context_keywords = self._find_all_keywords(ctx.context_prefix)
+            if context_keywords:
+                seen_metrics: set[str] = set()
+                for ck in context_keywords:
+                    if ck.metric_id not in seen_metrics:
+                        keyword_matches.append(ck)
+                        seen_metrics.add(ck.metric_id)
+                from_context_prefix = True
+                logger.debug(
+                    f"Found {len(keyword_matches)} keywords in context_prefix "
+                    f"for number {number.raw_text!r}"
+                )
+
+        # Create candidates for each keyword match
+        for kw in keyword_matches:
+            candidate = self._create_candidate(
+                number=number,
+                keyword=kw,
+                ctx=ctx,
+                seen=seen,
+                stats=stats,
+                from_context_prefix=from_context_prefix,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+
+        return candidates
+
+    def _create_candidate(
+        self,
+        number: NumberMatch,
+        keyword: KeywordMatch,
+        ctx: SegmentProcessingContext,
+        seen: set[tuple[int, str]],
+        stats: SegmentStats,
+        from_context_prefix: bool,
+    ) -> ReviewCandidate | None:
+        """
+        Create single candidate from number-keyword pair.
+
+        Args:
+            number: The number match
+            keyword: The keyword match
+            ctx: Pre-computed processing context
+            seen: Set of (position, metric_id) pairs already processed (mutated)
+            stats: Mutable stats tracker (mutated)
+            from_context_prefix: Whether keyword came from context_prefix
+
+        Returns:
+            ReviewCandidate if created, None if filtered/deduplicated
+        """
+        # Deduplicate by (number_position, metric_id)
+        key = (number.start, keyword.metric_id)
+        if key in seen:
+            return None
+        seen.add(key)
+
+        # Early exclusion check around NUMBER position
+        should_exclude, reason = self._keyword_matcher.should_exclude_for_number_context(
+            metric_id=keyword.metric_id,
+            text=ctx.text,
+            number_position=number.start,
+            table_row_parser=ctx.table_row_parser,
+        )
+        if should_exclude:
+            stats.inc("excluded_by_number_context")
+            logger.debug(f"Excluded candidate: {reason}")
+            return None
+
+        # Calculate distance and position
+        if from_context_prefix:
+            distance = 500  # Indicates "from context, not nearby"
+            keyword_position = "before"  # Context is from previous segment
+        else:
+            distance = self._calculate_distance(number, keyword)
+            keyword_position = "after" if keyword.direction == "after" else "before"
+
+        # Extract context
+        context = self._extract_context(ctx.text, number.start)
+
+        # Compute ML features
+        features = self._compute_features(
+            number=number,
+            keyword_distance=distance,
+            keyword_position=keyword_position,
+            context_text=context,
+            segment=ctx.segment,
+            all_numbers=list(ctx.numbers),
+        )
+
+        # L4/E1: Compute context type for multiplier optimization
+        context_type = self._keyword_matcher.get_context_type(
+            text=ctx.text,
+            number_position=number.start,
+            keyword_position=keyword.start,
+            keyword_direction=keyword.direction if keyword.direction else keyword_position,
+            boundaries=list(ctx.boundaries) if ctx.boundaries else None,
+            segment_type=ctx.segment_type,
+        )
+        features.context_type = context_type
+
+        # P1.6: Track if keyword and number are in the same sentence
+        if ctx.sentence_boundaries and not from_context_prefix:
+            number_sentence = self._keyword_matcher._get_boundary_at_position(
+                number.start, list(ctx.sentence_boundaries)
+            )
+            keyword_sentence = self._keyword_matcher._get_boundary_at_position(
+                keyword.start, list(ctx.sentence_boundaries)
+            )
+            features.is_same_sentence = (
+                number_sentence is not None
+                and keyword_sentence is not None
+                and number_sentence == keyword_sentence
+            )
+        elif from_context_prefix:
+            features.is_same_sentence = False
+        else:
+            features.is_same_sentence = True
+
+        # Phase 7: Track if keyword came from context_prefix
+        features.from_context_prefix = from_context_prefix
+
+        # Compute confidence score
+        confidence = None
+        if self.compute_confidence:
+            confidence = self._confidence_scorer.compute_confidence(
+                keyword_distance=distance,
+                keyword_position=keyword_position,
+                keyword=keyword.keyword,
+                metric_id=keyword.metric_id,
+                features=features,
+            )
+
+            # Phase 7: Apply 0.8x confidence penalty for context_prefix matches
+            if from_context_prefix and confidence is not None:
+                confidence = confidence * 0.8
+                logger.debug(
+                    f"Applied 0.8x confidence penalty for context_prefix match: "
+                    f"{confidence:.3f}"
+                )
+
+        return ReviewCandidate(
+            filing_id=ctx.filing_id,
+            company_id=ctx.company_id,
+            source_segment_id=ctx.source_segment_id,
+            char_position=number.start,
+            context_text=context,
+            raw_number_text=number.raw_text,
+            parsed_value=number.value,
+            parsed_unit=number.unit,
+            triggering_keyword=keyword.keyword,
+            keyword_distance=distance,
+            keyword_position=keyword_position,
+            suggested_metric_id=keyword.metric_id,
+            suggestion_confidence=confidence,
+            features=features,
+        )
+
+    def _post_process_candidates(
+        self,
+        candidates: list[ReviewCandidate],
+        text: str,
+        db: Any | None,
+        stats: SegmentStats,
+    ) -> list[ReviewCandidate]:
+        """
+        Apply post-generation filters to candidates.
+
+        Args:
+            candidates: List of candidates to post-process
+            text: Segment text (for respectively patterns)
+            db: Optional DatabaseAdapter for learned rules filtering
+            stats: Mutable stats tracker (mutated)
+
+        Returns:
+            Filtered list of candidates
+        """
         # L1: Enrich with respectively patterns (before learned rules filtering)
         candidates = self._enrich_with_respectively_patterns(
             candidates=candidates,
@@ -795,7 +894,7 @@ class CandidateGenerator:
                         candidate, candidate.features
                     )
                     if should_filter:
-                        segment_stats["filtered_by_learned_rules"] += 1
+                        stats.inc("filtered_by_learned_rules")
                         logger.debug(
                             f"Filtered candidate by learned rule: {reason} "
                             f"(value={candidate.parsed_value}, metric={candidate.suggested_metric_id})"
@@ -805,20 +904,19 @@ class CandidateGenerator:
                 candidates = filtered_candidates
 
         # HRV Type Validation: Filter candidates with wrong format for metric type
-        if self.config.filter_false_positives:  # Reuse FP filter flag
+        if self.config.filter_false_positives:
             filtered_candidates = []
             for candidate in candidates:
                 metric_id = candidate.suggested_metric_id
                 raw_text = candidate.raw_number_text
                 unit = candidate.parsed_unit or "count"
-                context_text = candidate.context_text  # FIX-A: Get context for context-aware checks
+                context_text = candidate.context_text
 
                 # Check if metric has type constraints
                 type_mismatch = False
                 mismatch_reason = None
 
                 if metric_id in PERCENTAGE_ONLY_METRICS:
-                    # FIX-A: Use context-aware percentage detection for retention metrics
                     if not should_treat_as_percentage(metric_id, raw_text, unit, context_text):
                         type_mismatch = True
                         mismatch_reason = f"{metric_id} expects percentage, got {unit}"
@@ -834,7 +932,7 @@ class CandidateGenerator:
                         mismatch_reason = f"{metric_id} expects count, got {unit}"
 
                 if type_mismatch:
-                    segment_stats["filtered_by_type_validation"] = segment_stats.get("filtered_by_type_validation", 0) + 1
+                    stats.inc("filtered_by_type_validation")
                     logger.debug(
                         f"Filtered by type validation: {mismatch_reason} "
                         f"(value={candidate.parsed_value}, raw={raw_text})"
@@ -844,7 +942,56 @@ class CandidateGenerator:
 
             candidates = filtered_candidates
 
-        return candidates, segment_stats
+        return candidates
+
+    def _process_segment(
+        self,
+        filing_id: int,
+        company_id: int,
+        segment: SegmentDict,
+        db: Any | None = None,
+    ) -> tuple[list[ReviewCandidate], dict[str, int]]:
+        """
+        Process a single segment to find candidates.
+
+        Orchestrates the segment processing pipeline:
+        1. Validate segment structure
+        2. Prepare processing context (pre-compute data structures)
+        3. Process each number to find keyword matches
+        4. Post-process candidates (enrich, filter)
+
+        Args:
+            filing_id: The filing ID
+            company_id: The company ID
+            segment: Segment dict from database
+            db: Optional DatabaseAdapter for learned rules filtering (E2)
+
+        Returns:
+            Tuple of (candidates, segment_stats dict for backward compatibility)
+        """
+        stats = SegmentStats()
+
+        # Phase 1: Validate segment
+        text = self._validate_segment(segment)
+        if text is None:
+            return [], stats.to_dict()
+
+        # Phase 2: Prepare context (pre-compute all data structures)
+        ctx = self._prepare_context(text, segment, filing_id, company_id)
+        if ctx is None:
+            return [], stats.to_dict()
+        stats.numbers_found = len(ctx.numbers)
+
+        # Phase 3: Process numbers to generate candidates
+        candidates = self._process_numbers(ctx, stats)
+
+        # Phase 4: Post-process candidates (enrich, filter)
+        candidates = self._post_process_candidates(candidates, text, db, stats)
+
+        # Cleanup cached word positions (P1.2 optimization)
+        self._current_segment_words = None
+
+        return candidates, stats.to_dict()
 
     def _find_numbers(self, text: str) -> list[NumberMatch]:
         """
