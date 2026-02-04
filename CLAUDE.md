@@ -107,3 +107,36 @@ Use these slash commands for workflows:
 pytest -m gold_standard --gold-standard-mode=fresh -v
 ```
 See `.claude/rules/gold-standard.md` for full workflow (auto-loaded when relevant).
+
+## V2 Extraction Pipeline
+
+The V2 pipeline (`src/extraction_v2/`) is a ground-up redesign with key improvements:
+- **10x faster parsing** via lxml (vs BeautifulSoup)
+- **Stable XPath locators** for every source element
+- **Full table reconstruction** with header_path/stub_path binding
+- **Image/OCR integration** for chart extraction
+- **EvidencePack** with highlighted HTML and context
+
+**Usage:**
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
+
+config = PipelineConfig(
+    enable_image_extraction=True,
+    min_confidence_auto_accept=0.90,
+)
+pipeline = V2Pipeline(config=config)
+result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
+
+print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+for fact in result.facts:
+    print(f"  {fact.canonical_metric_id}: {fact.value} ({fact.confidence:.1%})")
+```
+
+**V2 vs V1 Comparison:**
+```bash
+python scripts/benchmark_v1_v2.py --filings slack samsara
+```
+
+See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation.

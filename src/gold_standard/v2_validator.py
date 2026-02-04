@@ -1,0 +1,698 @@
+"""
+V2 Gold Standard Validator.
+
+Validates V2 extraction pipeline output against gold standard expected values.
+Computes precision, recall, and F1 metrics for quality assessment.
+
+Usage:
+    from src.gold_standard.v2_validator import V2GoldStandardValidator
+
+    validator = V2GoldStandardValidator()
+    results = validator.validate_all()
+    metrics = validator.compute_metrics(results)
+    print(f"Precision: {metrics.precision:.1%}, Recall: {metrics.recall:.1%}")
+"""
+
+from __future__ import annotations
+
+import csv
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import InvalidOperation
+from pathlib import Path
+from typing import Any
+
+from src.extraction_v2.models import MetricFact
+from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
+from src.gold_standard.baseline import (
+    BaselineMetrics,
+    MetricScores,
+    compare_to_baseline,
+    load_baseline,
+    save_baseline,
+)
+from src.gold_standard.baseline import (
+    ComparisonResult as BaselineComparisonResult,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# Default paths
+GOLD_STANDARD_DIR = Path(__file__).parent.parent.parent / "data" / "gold_standard"
+GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_251218.csv"
+V2_BASELINE_PATH = GOLD_STANDARD_DIR / "v2_baseline.json"
+
+
+@dataclass
+class GoldStandardEntry:
+    """A single expected value from the gold standard dataset."""
+
+    document_url: str
+    company_name: str
+    metric_id: str
+    name_in_text: str
+    raw_value: str
+    scaled_value: str
+    scale_unit: str
+    period: str
+    definition: str
+    quote_context: str
+    segment_type: str
+    is_definition_only: bool
+    value_context: str
+    detection_difficulty: str
+    period_start: date | None
+    period_end: date | None
+
+    @property
+    def has_numeric_value(self) -> bool:
+        """Check if entry has a numeric value (not definition-only)."""
+        if self.is_definition_only:
+            return False
+        if not self.raw_value or self.raw_value.lower() in ("", "chart", "n/a", "-"):
+            return False
+        return True
+
+    @property
+    def normalized_value(self) -> float | None:
+        """Get normalized numeric value for comparison."""
+        if not self.has_numeric_value:
+            return None
+
+        try:
+            return normalize_value(self.raw_value, self.scaled_value, self.scale_unit)
+        except (ValueError, InvalidOperation):
+            return None
+
+
+@dataclass
+class MatchResult:
+    """Result of matching a gold standard entry against extraction."""
+
+    entry: GoldStandardEntry
+    matched_fact: MetricFact | None
+    match_type: str  # "true_positive", "false_negative", "skipped"
+    reason: str = ""
+
+
+@dataclass
+class ValidationResult:
+    """Result of validating extraction against gold standard for one filing."""
+
+    company_name: str
+    filing_path: str
+    total_expected: int
+    matched: int
+    missed: int
+    extra: int  # V2 facts not in gold standard
+    match_results: list[MatchResult] = field(default_factory=list)
+
+    # Confusion matrix
+    true_positives: int = 0
+    false_positives: int = 0
+    false_negatives: int = 0
+
+    @property
+    def precision(self) -> float:
+        """Precision = TP / (TP + FP)."""
+        total = self.true_positives + self.false_positives
+        if total == 0:
+            return 0.0
+        return self.true_positives / total
+
+    @property
+    def recall(self) -> float:
+        """Recall = TP / (TP + FN)."""
+        total = self.true_positives + self.false_negatives
+        if total == 0:
+            return 0.0
+        return self.true_positives / total
+
+    @property
+    def f1_score(self) -> float:
+        """F1 = 2 * (precision * recall) / (precision + recall)."""
+        if self.precision + self.recall == 0:
+            return 0.0
+        return 2 * (self.precision * self.recall) / (self.precision + self.recall)
+
+
+@dataclass
+class AggregateMetrics:
+    """Aggregate validation metrics across all filings."""
+
+    precision: float
+    recall: float
+    f1: float
+    total_true_positives: int
+    total_false_positives: int
+    total_false_negatives: int
+    by_company: dict[str, MetricScores] = field(default_factory=dict)
+
+    def to_baseline_metrics(
+        self,
+        description: str | None = None,
+    ) -> BaselineMetrics:
+        """Convert to BaselineMetrics for saving."""
+        from datetime import UTC, datetime
+
+        return BaselineMetrics(
+            baseline_date=datetime.now(UTC).isoformat(),
+            description=description or "V2 pipeline validation",
+            overall=MetricScores(
+                precision=self.precision,
+                recall=self.recall,
+                f1=self.f1,
+            ),
+            by_company=self.by_company,
+            # V2 baseline marker (via description)
+        )
+
+
+class V2GoldStandardValidator:
+    """
+    Validate V2 extraction pipeline against gold standard dataset.
+
+    The gold standard dataset contains expected metric values for
+    specific filings, manually verified for accuracy.
+    """
+
+    def __init__(
+        self,
+        gold_standard_path: Path | str = GOLD_STANDARD_CSV,
+        v2_config: PipelineConfig | None = None,
+        value_tolerance: float = 0.02,
+    ):
+        """
+        Initialize validator.
+
+        Args:
+            gold_standard_path: Path to gold standard CSV file
+            v2_config: Configuration for V2 pipeline
+            value_tolerance: Tolerance for numeric value matching (default 2%)
+        """
+        self.gold_standard_path = Path(gold_standard_path)
+        self.v2_config = v2_config or PipelineConfig()
+        self.value_tolerance = value_tolerance
+
+        self.v2_pipeline = V2Pipeline(config=self.v2_config)
+
+        # Cache for gold standard entries
+        self._entries_by_company: dict[str, list[GoldStandardEntry]] | None = None
+
+    def load_gold_standard(self) -> dict[str, list[GoldStandardEntry]]:
+        """
+        Load gold standard entries grouped by company.
+
+        Returns:
+            Dictionary mapping company name to list of expected entries
+        """
+        if self._entries_by_company is not None:
+            return self._entries_by_company
+
+        entries_by_company: dict[str, list[GoldStandardEntry]] = {}
+
+        with open(self.gold_standard_path, encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    entry = self._parse_gold_standard_row(row)
+                    if entry.company_name not in entries_by_company:
+                        entries_by_company[entry.company_name] = []
+                    entries_by_company[entry.company_name].append(entry)
+                except Exception as e:
+                    logger.warning(f"Failed to parse gold standard row: {e}")
+                    continue
+
+        self._entries_by_company = entries_by_company
+        return entries_by_company
+
+    def _parse_gold_standard_row(self, row: dict[str, Any]) -> GoldStandardEntry:
+        """Parse a single row from gold standard CSV."""
+        # Parse dates
+        period_start = None
+        period_end = None
+        if row.get("period_start"):
+            try:
+                period_start = date.fromisoformat(row["period_start"])
+            except ValueError:
+                pass
+        if row.get("period_end"):
+            try:
+                period_end = date.fromisoformat(row["period_end"])
+            except ValueError:
+                pass
+
+        # Parse is_definition_only flag
+        is_def_only = str(row.get("is_definition_only", "")).lower() in (
+            "true",
+            "x",
+            "yes",
+            "1",
+        )
+
+        return GoldStandardEntry(
+            document_url=row.get("Document URL", ""),
+            company_name=row.get("Company", ""),
+            metric_id=normalize_metric_id(row.get("Standard Metric Name", "")),
+            name_in_text=row.get("Name in the text", ""),
+            raw_value=row.get("Raw value", ""),
+            scaled_value=row.get("Scaled value", ""),
+            scale_unit=row.get("Scale/unit", ""),
+            period=row.get("Period", ""),
+            definition=row.get("Definition", ""),
+            quote_context=row.get("Quote/context", ""),
+            segment_type=row.get("segment_type", ""),
+            is_definition_only=is_def_only,
+            value_context=row.get("value_context", ""),
+            detection_difficulty=row.get("detection_difficulty", ""),
+            period_start=period_start,
+            period_end=period_end,
+        )
+
+    def validate_filing(
+        self,
+        company_name: str,
+        filing_path: Path,
+        expected_entries: list[GoldStandardEntry],
+    ) -> ValidationResult:
+        """
+        Validate V2 extraction against expected entries for a single filing.
+
+        Args:
+            company_name: Company name for reporting
+            filing_path: Path to HTML filing
+            expected_entries: Expected gold standard entries
+
+        Returns:
+            ValidationResult with precision/recall metrics
+        """
+        result = ValidationResult(
+            company_name=company_name,
+            filing_path=str(filing_path),
+            total_expected=len([e for e in expected_entries if e.has_numeric_value]),
+            matched=0,
+            missed=0,
+            extra=0,
+        )
+
+        # Run V2 pipeline
+        try:
+            v2_result = self.v2_pipeline.process(
+                html_path=filing_path,
+                filing_id=0,  # Placeholder, not persisting
+            )
+            if not v2_result.success:
+                logger.error(
+                    f"V2 pipeline failed for {company_name}: {v2_result.error_message}"
+                )
+                result.false_negatives = result.total_expected
+                result.missed = result.total_expected
+                return result
+
+            v2_facts = v2_result.facts
+        except Exception as e:
+            logger.error(f"V2 pipeline exception for {company_name}: {e}")
+            result.false_negatives = result.total_expected
+            result.missed = result.total_expected
+            return result
+
+        # Match expected entries against extracted facts
+        matched_fact_ids: set[str] = set()
+
+        for entry in expected_entries:
+            # Skip definition-only entries
+            if not entry.has_numeric_value:
+                result.match_results.append(
+                    MatchResult(
+                        entry=entry,
+                        matched_fact=None,
+                        match_type="skipped",
+                        reason="Definition-only entry",
+                    )
+                )
+                continue
+
+            # Try to find a matching fact
+            matched_fact = self._find_matching_fact(entry, v2_facts, matched_fact_ids)
+
+            if matched_fact:
+                matched_fact_ids.add(matched_fact.fact_id)
+                result.matched += 1
+                result.true_positives += 1
+                result.match_results.append(
+                    MatchResult(
+                        entry=entry,
+                        matched_fact=matched_fact,
+                        match_type="true_positive",
+                    )
+                )
+            else:
+                result.missed += 1
+                result.false_negatives += 1
+                result.match_results.append(
+                    MatchResult(
+                        entry=entry,
+                        matched_fact=None,
+                        match_type="false_negative",
+                        reason="No matching fact found",
+                    )
+                )
+
+        # Count extra facts (false positives)
+        # Note: We're conservative - only count facts with matching metric_ids as FP
+        # Facts for metrics not in gold standard aren't counted as FP
+        gold_metric_ids = {
+            normalize_metric_id(e.metric_id) for e in expected_entries
+        }
+        for fact in v2_facts:
+            if fact.fact_id not in matched_fact_ids:
+                if normalize_metric_id(fact.canonical_metric_id) in gold_metric_ids:
+                    result.extra += 1
+                    result.false_positives += 1
+
+        return result
+
+    def _find_matching_fact(
+        self,
+        entry: GoldStandardEntry,
+        facts: list[MetricFact],
+        already_matched: set[str],
+    ) -> MetricFact | None:
+        """
+        Find a fact that matches the gold standard entry.
+
+        Matching criteria:
+        - Same metric_id (normalized)
+        - Value within tolerance
+        - Period overlap (if both have periods)
+        """
+        expected_value = entry.normalized_value
+        if expected_value is None:
+            return None
+
+        entry_metric_id = normalize_metric_id(entry.metric_id)
+
+        for fact in facts:
+            if fact.fact_id in already_matched:
+                continue
+
+            # Metric ID must match
+            fact_metric_id = normalize_metric_id(fact.canonical_metric_id)
+            if fact_metric_id != entry_metric_id:
+                continue
+
+            # Value must be present and within tolerance
+            if fact.value is None:
+                continue
+
+            if not self._values_match(expected_value, fact.value):
+                continue
+
+            # Period check (optional)
+            if entry.period_start and entry.period_end:
+                if fact.period_start and fact.period_end:
+                    # Periods should overlap
+                    if (
+                        entry.period_end < fact.period_start
+                        or fact.period_end < entry.period_start
+                    ):
+                        continue
+
+            return fact
+
+        return None
+
+    def _values_match(self, expected: float, actual: float) -> bool:
+        """Check if values match within tolerance."""
+        if abs(expected) > 0.001:
+            delta = abs(actual - expected) / abs(expected)
+            return delta <= self.value_tolerance
+        elif abs(actual) > 0.001:
+            delta = abs(actual - expected) / abs(actual)
+            return delta <= self.value_tolerance
+        else:
+            # Both near zero
+            return abs(actual - expected) <= 0.01
+
+    def validate_all(self) -> list[ValidationResult]:
+        """
+        Validate all filings in gold standard dataset.
+
+        Returns:
+            List of ValidationResult for each filing
+        """
+        entries_by_company = self.load_gold_standard()
+        results: list[ValidationResult] = []
+
+        for company_name, entries in entries_by_company.items():
+            filing_path = self._find_filing_path(company_name)
+            if filing_path is None:
+                logger.warning(
+                    f"No filing found for {company_name}, skipping validation"
+                )
+                continue
+
+            logger.info(f"Validating {company_name}...")
+            result = self.validate_filing(company_name, filing_path, entries)
+            results.append(result)
+            logger.info(
+                f"  {company_name}: P={result.precision:.1%}, "
+                f"R={result.recall:.1%}, F1={result.f1_score:.1%}"
+            )
+
+        return results
+
+    def _find_filing_path(self, company_name: str) -> Path | None:
+        """Find the HTML filing path for a company."""
+        # Normalize company name for directory lookup
+        safe_name = company_name.replace(" ", "_").replace(",", "")
+
+        # Check known locations
+        candidates = [
+            GOLD_STANDARD_DIR / safe_name / "filing.html",
+            GOLD_STANDARD_DIR / company_name / "filing.html",
+            GOLD_STANDARD_DIR / company_name.replace(" ", "_") / "filing.html",
+        ]
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        # Try to find any matching directory
+        for subdir in GOLD_STANDARD_DIR.iterdir():
+            if subdir.is_dir() and company_name.lower() in subdir.name.lower():
+                filing = subdir / "filing.html"
+                if filing.exists():
+                    return filing
+
+        return None
+
+    def compute_metrics(self, results: list[ValidationResult]) -> AggregateMetrics:
+        """
+        Compute aggregate metrics from validation results.
+
+        Args:
+            results: List of ValidationResult from validate_all()
+
+        Returns:
+            AggregateMetrics with precision/recall/F1
+        """
+        total_tp = sum(r.true_positives for r in results)
+        total_fp = sum(r.false_positives for r in results)
+        total_fn = sum(r.false_negatives for r in results)
+
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+
+        by_company: dict[str, MetricScores] = {}
+        for r in results:
+            by_company[r.company_name] = MetricScores(
+                precision=r.precision,
+                recall=r.recall,
+                f1=r.f1_score,
+            )
+
+        return AggregateMetrics(
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            total_true_positives=total_tp,
+            total_false_positives=total_fp,
+            total_false_negatives=total_fn,
+            by_company=by_company,
+        )
+
+    def compare_to_baseline(
+        self,
+        current_metrics: AggregateMetrics,
+        baseline_path: Path | str = V2_BASELINE_PATH,
+        tolerance: float = 0.0,
+    ) -> BaselineComparisonResult:
+        """
+        Compare current metrics against saved baseline.
+
+        Args:
+            current_metrics: Current validation metrics
+            baseline_path: Path to baseline JSON file
+            tolerance: Regression tolerance (default 0 = no tolerance)
+
+        Returns:
+            ComparisonResult with deltas and regression flags
+
+        Raises:
+            FileNotFoundError: If baseline file doesn't exist
+        """
+        baseline = load_baseline(baseline_path)
+        current_baseline = current_metrics.to_baseline_metrics()
+        return compare_to_baseline(current_baseline, baseline, tolerance)
+
+    def save_baseline(
+        self,
+        metrics: AggregateMetrics,
+        baseline_path: Path | str = V2_BASELINE_PATH,
+        description: str | None = None,
+    ) -> None:
+        """
+        Save current metrics as the new baseline.
+
+        Args:
+            metrics: Current validation metrics to save
+            baseline_path: Path to save baseline JSON
+            description: Optional description for this baseline
+        """
+        baseline = metrics.to_baseline_metrics(description)
+        save_baseline(baseline, baseline_path)
+        logger.info(f"Saved V2 baseline to {baseline_path}")
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def normalize_metric_id(metric_id: str) -> str:
+    """
+    Normalize metric ID for comparison.
+
+    - Lowercase
+    - Replace spaces with underscores
+    - Remove leading/trailing whitespace
+    - Add 'cm_' prefix if missing
+    """
+    if not metric_id:
+        return ""
+
+    normalized = metric_id.strip().lower().replace(" ", "_").replace("-", "_")
+
+    # Remove double underscores
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+
+    # Add cm_ prefix if missing
+    if not normalized.startswith("cm_"):
+        normalized = f"cm_{normalized}"
+
+    return normalized
+
+
+def normalize_value(
+    raw_value: str,
+    scaled_value: str | None = None,
+    scale_unit: str | None = None,
+) -> float:
+    """
+    Normalize a value string to a float.
+
+    Handles common formats:
+    - "1,000" -> 1000.0
+    - "$1.5M" -> 1500000.0
+    - "45%" -> 45.0
+    - "1.2B" -> 1200000000.0
+    """
+    # Use scaled_value if available, otherwise raw_value
+    value_str = scaled_value if scaled_value and scaled_value.strip() else raw_value
+    if not value_str:
+        raise ValueError("No value to normalize")
+
+    # Clean the string
+    value_str = value_str.strip()
+
+    # Handle special cases
+    if value_str.lower() in ("chart", "n/a", "-", ""):
+        raise ValueError(f"Non-numeric value: {value_str}")
+
+    # Remove currency symbols and commas
+    value_str = re.sub(r"[$€£¥,]", "", value_str)
+
+    # Extract numeric part and multiplier
+    match = re.match(
+        r"([+-]?\d+\.?\d*)\s*([%KMBTkmbt]?)",
+        value_str,
+        re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError(f"Could not parse value: {value_str}")
+
+    number = float(match.group(1))
+    multiplier_char = match.group(2).upper() if match.group(2) else ""
+
+    # Apply multiplier
+    multipliers = {
+        "K": 1_000,
+        "M": 1_000_000,
+        "B": 1_000_000_000,
+        "T": 1_000_000_000_000,
+        "%": 1,  # Percentages stay as-is
+    }
+    multiplier = multipliers.get(multiplier_char, 1)
+    number *= multiplier
+
+    # Apply scale_unit if provided and different from multiplier
+    if scale_unit and scale_unit.strip():
+        unit_upper = scale_unit.strip().upper()
+        if unit_upper in ("MILLIONS", "MM", "M") and multiplier_char != "M":
+            number *= 1_000_000
+        elif unit_upper in ("BILLIONS", "BB", "B") and multiplier_char != "B":
+            number *= 1_000_000_000
+        elif unit_upper in ("THOUSANDS", "K") and multiplier_char != "K":
+            number *= 1_000
+
+    return number
+
+
+def run_validation(
+    update_baseline: bool = False,
+    baseline_description: str | None = None,
+) -> AggregateMetrics:
+    """
+    Run full validation and optionally update baseline.
+
+    Args:
+        update_baseline: If True, save current metrics as new baseline
+        baseline_description: Description for new baseline
+
+    Returns:
+        AggregateMetrics with validation results
+    """
+    validator = V2GoldStandardValidator()
+    results = validator.validate_all()
+    metrics = validator.compute_metrics(results)
+
+    print("\nV2 Gold Standard Validation Results:")
+    print(f"  Precision: {metrics.precision:.1%}")
+    print(f"  Recall: {metrics.recall:.1%}")
+    print(f"  F1 Score: {metrics.f1:.1%}")
+    print(f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}")
+
+    if update_baseline:
+        validator.save_baseline(metrics, description=baseline_description)
+
+    return metrics
