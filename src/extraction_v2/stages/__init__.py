@@ -25,6 +25,7 @@ Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v
 
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
@@ -32,6 +33,7 @@ from src.extraction_v2.stages.value_binding import ValueBindingStage
 __all__ = [
     "CandidateGenerationStage",
     "IngestionStage",
+    "PeriodInferenceStage",
     "SectionClassificationStage",
     "TableReconstructionStage",
     "ValueBindingStage",

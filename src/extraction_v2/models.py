@@ -737,5 +737,13 @@ class BoundValue:
     # Source location (may differ from candidate location)
     source_locator: SourceLocator = field(default_factory=SourceLocator)
 
+    # Period information (populated by Stage 8: Period Inference)
+    period_type: PeriodType = PeriodType.OTHER
+    period_start: date | None = None
+    period_end: date | None = None
+    period_confidence: float = 0.0  # Confidence in the period inference
+    period_source: str = ""  # "header_path", "text_context", "filing_fallback"
+    period_ambiguous: bool = False  # True if multiple conflicting periods detected
+
     # Metadata
     created_at: datetime = field(default_factory=datetime.utcnow)
