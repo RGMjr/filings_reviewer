@@ -3,7 +3,7 @@
 **Version**: 1.1
 **Created**: 2026-01-23
 **Updated**: 2026-02-04
-**Status**: In Progress (Phases 0-3, 6-11 Complete)
+**Status**: In Progress (Phases 0-3, 6-12 Complete)
 
 ## Executive Summary
 
@@ -400,30 +400,30 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 12: Database Persistence
+### Phase 12: Database Persistence ✅ COMPLETE (2026-02-04)
 
 **Goal**: Store V2 facts in PostgreSQL
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/persistence.py`
-2. [ ] Implement upsert for all V2 tables:
+1. [x] Create `src/extraction_v2/persistence.py` - 750 lines, V2PersistenceAdapter class
+2. [x] Implement upsert for all V2 tables:
    - v2_documents
    - v2_segments
    - v2_tables, v2_table_cells
    - v2_image_assets
    - v2_metric_facts
-3. [ ] Use JSONB for:
+3. [x] Use JSONB for:
    - source_locator
    - evidence_pack
-   - extra_metadata
-4. [ ] Ensure idempotent (re-runs safe)
-5. [ ] Add integration tests
+   - chart_data
+4. [x] Ensure idempotent (re-runs safe via ON CONFLICT DO UPDATE)
+5. [x] Add integration tests - 18 tests, 93% coverage
 
 **Dependencies:** All stages, database schema
 
 **Estimated Complexity:** M (1-2 hours)
 
-**Files to Create:**
+**Files Created:**
 - `src/extraction_v2/persistence.py`
 - `tests/integration/extraction_v2/test_persistence.py`
 

@@ -42,3 +42,14 @@ See: /Users/rgmarkey/.claude/plans/deep-conjuring-treehouse.md for full architec
 """
 
 __version__ = "2.0.0-alpha"
+
+# Persistence layer
+from src.extraction_v2.persistence import (
+    PersistenceResult,
+    V2PersistenceAdapter,
+)
+
+__all__ = [
+    "PersistenceResult",
+    "V2PersistenceAdapter",
+]
