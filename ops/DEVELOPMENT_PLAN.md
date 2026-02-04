@@ -1,9 +1,9 @@
 # Development Plan
 
-**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-7.md
-**Task ID**: V2-PHASE-7
-**Task Name**: Value Binding Stage
-**Started**: 2026-02-03
+**Worker Prompt**: docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-7-IMPROVEMENTS.md
+**Task ID**: V2-PHASE-7-IMPROVEMENTS
+**Task Name**: Value Binding Stage Improvements
+**Started**: 2026-02-04
 
 ---
 
@@ -17,22 +17,16 @@ Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
 Mark error: - [ERROR: description] AC-N | Criterion text
 -->
 
-- [ ] AC-1 | `BoundValue` dataclass defined with required fields in models.py
-- [ ] AC-2 | `ValueBindingStage` class with `process()` method following stage protocol
-- [ ] AC-3 | Table binding via header_path implemented
-- [ ] AC-4 | Table binding via stub_path implemented
-- [ ] AC-5 | Text proximity binding implemented
-- [ ] AC-6 | Chart binding stubbed (returns empty, logged as "not implemented")
-- [ ] AC-7 | Number parsing handles currency, percentages, scale indicators
-- [ ] AC-8 | Confidence scoring implemented per specification
-- [ ] AC-9 | `bound_values` list populated in `context.bound_values`
-- [ ] AC-10 | Stub in `pipeline.py` replaced with real import
-- [ ] AC-11 | `stages/__init__.py` exports ValueBindingStage
-- [ ] AC-12 | 20+ unit tests covering all binding types
-- [ ] AC-13 | Test coverage ≥90% for value_binding.py
-- [ ] AC-14 | All new tests pass
-- [ ] AC-15 | All existing tests still pass
-- [ ] AC-16 | `mypy src/extraction_v2/stages/value_binding.py --strict` passes
+- [ ] AC-1 | `_parse_number()` handles "billion", "B", "$1.2B" correctly
+- [ ] AC-2 | `ValueBindingStage.__init__()` accepts `proximity_window` parameter
+- [ ] AC-3 | `_find_nearby_numbers()` uses configurable window
+- [ ] AC-4 | `_find_sentence_bounds()` method exists and works
+- [ ] AC-5 | Same-sentence bindings get confidence bonus
+- [ ] AC-6 | All existing tests still pass
+- [ ] AC-7 | New tests for all three improvements
+- [ ] AC-8 | Coverage remains ≥90%
+- [ ] AC-9 | `mypy --strict` passes
+- [ ] AC-10 | `ruff check` passes
 
 ---
 
@@ -46,6 +40,11 @@ Mark error: - [ERROR: description] AC-N | Criterion text
 ---
 
 ## Previous Tasks
+
+### V2-PHASE-7: Value Binding Stage ✅ COMPLETE (2026-02-04)
+- All 16 ACs met
+- 92% coverage, 40 tests
+- Core implementation done, improvements identified
 
 ### V2-PHASE-6: Candidate Generation ✅ COMPLETE (2026-02-03)
 - All ACs met
