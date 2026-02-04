@@ -8,51 +8,53 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 *Updated automatically at iteration end*
 
-- V2-PHASE-10: Deduplication Stage completed
-  - Created `src/extraction_v2/stages/deduplication.py` (175 lines)
-  - Added `deduplicated_facts` field to `PipelineContext`
-  - Exported `DeduplicationStage` from `stages/__init__.py`
-  - Replaced stub in `pipeline.py` with import from stages
-  - 35 tests, 96% coverage
+- V2-PHASE-11: Validation & Review Routing Stage completed (2026-02-04)
+  - Created `src/extraction_v2/stages/validation.py` (174 lines)
+  - Implements schema validation + confidence-based routing
+  - Removed stub from pipeline.py, imported from stages module
+  - 31 tests, 98% coverage
 
 ## Current Focus
 
 *Set by previous iteration or worker prompt*
 
-- V2-PHASE-10: All acceptance criteria completed
-- Task ready for final commit and completion report
+- V2-PHASE-11: All acceptance criteria completed
+- Task ready for user approval and commit
 
 ## Test Status
 
-- All V2 extraction tests passing (399 tests in 2.5s)
+- All V2 extraction tests passing (430 tests)
+- Phase 11 (Validation): 31 tests, 98% coverage
 - Phase 10 (Deduplication): 35 tests, 96% coverage
 - Phase 9 (Fact Construction): 22 tests, 94% coverage
 - Phase 8 (Period Inference): implemented and tested
 - Phase 7 (Value Binding): 44 tests, 93% coverage
 - Phase 6 (Candidate Generation): 42 tests, 96% coverage
 - Phase 3 (Table Reconstruction): 11 tests, 87% coverage
-- Full unit test suite: 3812 passed, 14 skipped
+- Full extraction/review test suite: 2983 passed, 14 skipped
 
 ## Key Learnings for Next Iteration
 
 *Technical discoveries that affect subsequent work*
 
-- Use `duplicates_removed` not `duplicates_merged` in metadata (matches existing test)
-- `MetricFact.is_duplicate_of()` handles None values and value tolerance correctly
-- SOURCE_QUALITY_RANK defines: HTML_TABLE=4 > TEXT=3 > OCR_TABLE=2 > CHART=1
-- `deduplicated_facts` field added to PipelineContext (keep `facts` for audit trail)
+- ValidationStage operates on `deduplicated_facts` (falls back to `facts` if empty)
+- Schema validation checks: canonical_metric_id, value/value_raw, source_locator, snippet_html
+- OCR_TABLE and CHART sources always flagged regardless of confidence
+- Existing review reasons from prior stages are preserved and concatenated
+- Config thresholds override __init__ defaults via getattr fallback pattern
 
 ## Files Created
 
-- `src/extraction_v2/stages/deduplication.py`
-- `tests/unit/extraction_v2/test_deduplication.py`
-- `docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-10.md`
+- `src/extraction_v2/stages/validation.py`
+- `tests/unit/extraction_v2/test_validation.py`
+- `docs/worker-prompts/WORKER_PROMPT_TASK_V2-PHASE-11.md`
 
 ## Files Modified
 
-- `src/extraction_v2/stages/__init__.py` - Added DeduplicationStage export
-- `src/extraction_v2/pipeline.py` - Added import, removed stub, added deduplicated_facts field
-- `ops/DEVELOPMENT_PLAN.md` - Updated with V2-PHASE-10 progress
+- `src/extraction_v2/stages/__init__.py` - Added ValidationStage export
+- `src/extraction_v2/pipeline.py` - Added import, removed stub
+- `tests/unit/extraction_v2/test_pipeline.py` - Fixed ValidationStage tests to use valid facts
+- `ops/DEVELOPMENT_PLAN.md` - Updated with V2-PHASE-11 progress
 
 ## Blockers or Warnings
 

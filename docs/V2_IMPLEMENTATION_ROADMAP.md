@@ -2,8 +2,8 @@
 
 **Version**: 1.1
 **Created**: 2026-01-23
-**Updated**: 2026-02-03
-**Status**: In Progress (Phases 0-3, 6 Complete)
+**Updated**: 2026-02-04
+**Status**: In Progress (Phases 0-3, 6-11 Complete)
 
 ## Executive Summary
 
@@ -374,29 +374,29 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 11: Validation & Review Routing (Stage 11)
+### Phase 11: Validation & Review Routing (Stage 11) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Route facts by confidence
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/validation.py`
-2. [ ] Implement routing rules:
+1. [x] Create `src/extraction_v2/stages/validation.py` - 174 lines
+2. [x] Implement routing rules:
    - confidence >= 0.90: auto_accept
    - confidence < 0.15: auto_reject candidate
    - else: pending_review
-3. [ ] Set review_reason for flagged facts
-4. [ ] Validate schema completeness
-5. [ ] Add tests
+3. [x] Set review_reason for flagged facts
+4. [x] Validate schema completeness
+5. [x] Add tests - 31 tests, 98% coverage
 
 **Dependencies:** Phase 9, Phase 10
 
 **Estimated Complexity:** S (30-60 min)
 
-**Files to Create:**
+**Files Created:**
 - `src/extraction_v2/stages/validation.py`
 - `tests/unit/extraction_v2/test_validation.py`
 
-**Note:** Stage 11 stub already exists in `pipeline.py`
+**Note:** Stub removed from `pipeline.py`, now imports from stages module
 
 ---
 

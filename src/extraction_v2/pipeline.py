@@ -45,6 +45,7 @@ from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
+from src.extraction_v2.stages.validation import ValidationStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 logger = logging.getLogger(__name__)
@@ -430,51 +431,7 @@ class OCRChartExtractionStage:
 # PeriodInferenceStage is now imported from src.extraction_v2.stages.period_inference
 # FactConstructionStage is now imported from src.extraction_v2.stages.fact_construction
 # DeduplicationStage is now imported from src.extraction_v2.stages.deduplication
-
-
-class ValidationStage:
-    """
-    Stage 11: Validation & Review Routing.
-
-    - Schema validation
-    - Route low-confidence to human review
-    - Export accepted facts to production dataset
-    """
-
-    def process(self, context: PipelineContext) -> StageResult:
-        """Validate and route facts."""
-        start_time = datetime.utcnow()
-
-        # Apply review routing based on confidence
-        for fact in context.facts:
-            if fact.confidence >= context.config.min_confidence_auto_accept:
-                fact.requires_review = False
-                fact.review_reason = None
-            elif fact.confidence < context.config.max_confidence_auto_reject:
-                fact.requires_review = True
-                fact.review_reason = "Low confidence (auto-reject candidate)"
-            else:
-                fact.requires_review = True
-                if not fact.review_reason:
-                    fact.review_reason = "Confidence below auto-accept threshold"
-
-        end_time = datetime.utcnow()
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
-
-        pending_review = sum(1 for f in context.facts if f.requires_review)
-        auto_accepted = len(context.facts) - pending_review
-
-        return StageResult(
-            stage=PipelineStage.VALIDATION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=len(context.facts),
-            items_output=len(context.facts),
-            metadata={
-                "pending_review": pending_review,
-                "auto_accepted": auto_accepted,
-            },
-        )
+# ValidationStage is now imported from src.extraction_v2.stages.validation
 
 
 # ============================================================================
