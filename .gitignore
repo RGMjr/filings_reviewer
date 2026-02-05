@@ -54,6 +54,18 @@ htmlcov/
 # But keep project-specific Claude settings
 !.claude/settings.json
 
+# Python tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data
+data/llm_cache.db
+logs/*.jsonl
+
+# Generated analysis artifacts
+ops/review_artifacts/
+
 # Build artifacts
 *.egg-info/
 .playwright-mcp/

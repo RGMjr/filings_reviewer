@@ -82,7 +82,7 @@ docs: docs-check
 # -----------------------------------------------------------------------------
 
 clean:
-	rm -rf __pycache__ .pytest_cache htmlcov .coverage
+	rm -rf __pycache__ .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage
 	rm -rf src/__pycache__ tests/__pycache__
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
