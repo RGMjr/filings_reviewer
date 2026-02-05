@@ -131,7 +131,7 @@ class DocsChecker:
         """Get standard library module names."""
         return {
             "__future__", "abc", "argparse", "ast", "asyncio", "atexit", "base64",
-            "bisect", "collections", "concurrent", "contextlib", "copy", "csv",
+            "bisect", "calendar", "collections", "concurrent", "contextlib", "copy", "csv",
             "dataclasses", "datetime", "decimal", "difflib", "enum", "functools",
             "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
             "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
