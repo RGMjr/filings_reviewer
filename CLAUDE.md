@@ -12,7 +12,7 @@ src/
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction/     # Metric extraction (V1 - production)
-├── extraction_v2/  # V2 pipeline (alpha, experimental)
+├── extraction_v2/  # V2 pipeline (production-ready)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with SQLite-backed caching
@@ -31,7 +31,7 @@ pytest -v                          # Run all tests
 pytest --cov=src --cov-report=html # Run with coverage
 black src/ tests/                  # Format code
 ruff check src/ tests/             # Lint
-mypy src/review/ --strict          # Type checking
+mypy src/review/ src/extraction/segment_enricher.py --strict  # Type checking
 ```
 
 ## Environment Setup
@@ -52,7 +52,7 @@ docker compose down    # Stop
 
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-08).
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-09). V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`.
 
 ## Testing Standards
 
@@ -139,4 +139,4 @@ for fact in result.facts:
 python scripts/benchmark_v1_v2.py --filings slack samsara
 ```
 
-See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation.
+See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap (all 13 phases complete).
