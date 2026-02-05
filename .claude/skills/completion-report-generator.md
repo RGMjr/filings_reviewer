@@ -485,7 +485,43 @@ When this skill is invoked, follow these steps:
    - Production-readiness
 4. **Create stakeholder summary** (non-technical TL;DR)
 
-### Step 6: Validation
+### Step 6: Pre-Completion Verification Checklist
+
+**Before finalizing the completion report**, run through this checklist to catch issues that often surface as "quick fixes" after completion:
+
+#### Code Quality Verification
+- [ ] **Tests passing**: All unit and integration tests pass (`pytest -v`)
+- [ ] **Coverage maintained**: Coverage hasn't dropped below threshold (`pytest --cov=src`)
+- [ ] **Type checking**: No new mypy errors in modified files
+- [ ] **Linting clean**: No ruff/black issues (`ruff check src/`)
+
+#### Integration Verification
+- [ ] **Imports work**: All new modules can be imported without errors
+- [ ] **No circular dependencies**: New code doesn't create import cycles
+- [ ] **Database migrations applied**: Any new schema changes are applied and tested
+- [ ] **Configuration updated**: Any new config values are documented
+
+#### Documentation Verification
+- [ ] **CLAUDE.md current**: Main project doc reflects significant changes
+- [ ] **Docstrings present**: New public functions have docstrings
+- [ ] **Decision log updated**: If extraction logic changed, entry in `extraction-decisions.md`
+
+#### Runtime Verification
+- [ ] **Manual smoke test**: Core workflow still works end-to-end
+- [ ] **No hardcoded paths**: Test data/paths aren't hardcoded to dev environment
+- [ ] **Error handling tested**: Error conditions don't crash silently
+
+#### Common Post-Completion Issues to Check
+Based on historical patterns, these issues often surface within 1-2 hours of completion:
+
+1. **Stale documentation references**: Check that code references in docs still point to valid locations
+2. **Incomplete refactors**: Search for TODO comments added during the work
+3. **Edge cases in new code**: Run the gold standard validation if extraction was modified
+4. **Missing test coverage**: Check that error handling paths have test coverage
+
+**If any check fails**, address it before generating the completion report. This prevents the pattern of needing multiple "quick fix" commits immediately after marking work complete.
+
+### Step 7: Report Validation
 
 Before presenting the report, validate:
 
