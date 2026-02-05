@@ -1,206 +1,78 @@
-# Analysis Plan: V2 Schema Mismatch Issue
+# Analysis Plan: End-to-End Testing Audit
 
-**Created**: 2026-02-04
-**Purpose**: Investigate and resolve v2_tables/v2_image_assets segment_id foreign key mismatch
+**Created**: 2026-02-05
+**Purpose**: Comprehensive audit of E2E testing infrastructure for V2 merge readiness
 **Mode**: Ralph analyze (isolated branch)
-**Branch**: `ralph/analyze-schema-mismatch-20260204`
+**Branch**: `ralph/analyze-e2e-testing-20260205`
 
 ---
 
 ## Problem Statement
 
-The V2 schema has a type mismatch between the database schema and Python models for the `segment_id` column in `v2_tables` and `v2_image_assets`.
+The V2 extraction pipeline is approaching merge readiness. We need to audit the current E2E testing infrastructure against the documented strategy (`docs/V2_E2E_TESTING_STRATEGY.md`) to identify gaps, assess coverage, and verify that pre-merge blockers are addressed.
 
 ---
 
-## Findings
+## Tasks
 
-### 1. V1 Schema (source_segments)
-**File**: `sql/03_create_analysis_schema.sql:60-96`
+### TASK-1: Audit Pipeline E2E Coverage
+- [x] Compare `tests/integration/extraction_v2/test_e2e_pipeline.py` against the 11-stage pipeline
+- [x] Verify each stage has explicit test assertions
+- [x] Check gold standard filing coverage (Slack, Samsara, Shopify, Datadog)
+- [x] Identify missing stages or weak assertions
 
-```sql
-CREATE TABLE source_segments (
-    source_segment_id BIGSERIAL PRIMARY KEY,  -- BIGINT auto-increment
-    ...
-);
-```
+### TASK-2: Assess Persistence E2E Tests
+- [x] Review `TestE2EPersistence` for complete roundtrip coverage
+- [x] Verify all V2 tables are tested: v2_documents, v2_segments, v2_metric_facts, v2_tables, v2_image_assets
+- [x] Check evidence_pack retrieval tests exist
+- [x] Identify any schema columns not covered by tests
 
-### 2. V2 Schema (v2_segments)
-**File**: `sql/09_v2_schema.sql:207-237`
+### TASK-3: Evaluate V1/V2 Comparison Tests
+- [x] Check if formal V1/V2 comparison tests exist (per strategy doc)
+- [x] Verify the "≥95% of V1 metrics" criterion is testable
+- [x] Review `scripts/benchmark_v1_v2.py` for integration into test suite
+- [x] Document gap if no automated comparison exists
 
-```sql
-CREATE TABLE v2_segments (
-    segment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- UUID
-    ...
-);
-```
+### TASK-4: Review API Endpoint E2E Status
+- [x] Check `tests/integration/web/` for V2-specific API tests
+- [x] Review routes in `src/web/routes/` for V2 endpoints
+- [x] Identify which V2 API endpoints lack E2E tests
+- [x] Assess priority based on user-facing impact
 
-### 3. V2 Schema - THE MISMATCH
-**File**: `sql/09_v2_schema.sql:87-110`
+### TASK-5: Audit Browser E2E Tests
+- [x] Review `tests/e2e/test_metric_dropdown_search.py` completeness
+- [x] Check if tests are runnable with current Playwright setup
+- [x] Identify UI features that lack browser E2E coverage
+- [x] Document infrastructure requirements (Flask server, database)
 
-```sql
-CREATE TABLE v2_tables (
-    ...
-    segment_id BIGINT REFERENCES source_segments(source_segment_id),  -- References V1!
-    ...
-);
-```
+### TASK-6: Verify Pre-Merge Success Criteria
+- [x] Cross-reference strategy's "Success Criteria for Merge" against actual tests
+- [x] Create a checklist of criteria with pass/fail status
+- [x] Identify blocking gaps that must be addressed before merge
 
-**File**: `sql/09_v2_schema.sql:158-201`
+### TASK-7: Edge Case Coverage Analysis
+- [x] Review test fixtures for edge cases (empty filing, malformed tables, etc.)
+- [x] Check if synthetic test fixtures from strategy exist
+- [x] Identify missing edge case scenarios
+- [x] Document impact on merge readiness
 
-```sql
-CREATE TABLE v2_image_assets (
-    ...
-    segment_id BIGINT REFERENCES source_segments(source_segment_id),  -- References V1!
-    ...
-);
-```
-
-### 4. V2 Python Models
-**File**: `src/extraction_v2/models.py:490-552`
-
-```python
-@dataclass
-class Table:
-    segment_id: str = ""  # Expects UUID string
-    ...
-
-@dataclass
-class ImageAsset:
-    segment_id: str | None = None  # Expects UUID string
-    ...
-```
+### TASK-8: Idempotency and Performance Tests
+- [x] Review `TestE2EIdempotency` implementation
+- [x] Check `TestE2EPerformance` against 30-second gate
+- [x] Verify performance regression detection mechanism
+- [x] Document any timing variability concerns
 
 ---
 
-## Impact Analysis
+## Analysis Output
 
-| Component | Current State | Problem |
-|-----------|--------------|---------|
-| `v2_tables.segment_id` | `BIGINT REFERENCES source_segments` | Type mismatch with Python model (`str`) |
-| `v2_image_assets.segment_id` | `BIGINT REFERENCES source_segments` | Type mismatch with Python model (`str`) |
-| `Table.segment_id` | `str = ""` | Cannot be inserted into BIGINT column |
-| `ImageAsset.segment_id` | `str \| None` | Cannot be inserted into BIGINT column |
-| Persistence layer | Passes model values directly | Will fail at runtime with UUID → BIGINT cast error |
+Results will be written to: `ops/ANALYSIS_RESULTS.md`
 
-### Severity: **HIGH**
-
-At runtime, attempting to persist a V2 Table or ImageAsset with a segment_id will fail:
-```
-psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type bigint: "550e8400-e29b-41d4-a716-446655440000"
-```
-
-### Current Workaround in Persistence
-
-The persistence code passes `table.segment_id or None`:
-- If `segment_id = ""` (empty string), it becomes `None` (works)
-- If `segment_id` is a UUID string, it will fail on insert
-
-This means the bug is **latent** - it only triggers if tables/images are actually linked to segments.
-
----
-
-## Fix Options
-
-### Option A: Full V2 Independence (RECOMMENDED)
-
-Change `v2_tables` and `v2_image_assets` to reference `v2_segments` instead of `source_segments`.
-
-**Schema Change**:
-```sql
--- v2_tables
-segment_id UUID REFERENCES v2_segments(segment_id) ON DELETE SET NULL
-
--- v2_image_assets
-segment_id UUID REFERENCES v2_segments(segment_id) ON DELETE SET NULL
-```
-
-**Pros**:
-- Clean separation between V1 and V2 pipelines
-- Type consistency (UUID throughout V2)
-- No cross-pipeline data dependencies
-- Matches Python model types
-
-**Cons**:
-- Cannot cross-reference V1 segments from V2 tables/images
-- Requires migration if any data exists (unlikely in alpha)
-
-### Option B: Dual-Key Approach
-
-Keep both V1 and V2 references:
-
-```sql
-v1_segment_id BIGINT REFERENCES source_segments(source_segment_id),
-v2_segment_id UUID REFERENCES v2_segments(segment_id)
-```
-
-**Pros**:
-- Supports migration scenarios
-- Can link to both V1 and V2 segments
-
-**Cons**:
-- More complex schema
-- Ambiguity about which to use
-- Model changes needed
-
-### Option C: Fix Models to Use BIGINT
-
-Keep DB schema, change Python models to use `int | None`:
-
-```python
-segment_id: int | None = None  # Reference V1 source_segments
-```
-
-**Pros**:
-- Minimal schema change
-- Preserves V1 linkage
-
-**Cons**:
-- Tight coupling between V1 and V2
-- V2 segments exist but aren't used for tables/images
-- Inconsistent ID types within V2 (some UUID, some int)
-
----
-
-## Recommendation
-
-**Option A: Full V2 Independence**
-
-Rationale:
-1. V2 is designed as a ground-up rewrite with its own segment model
-2. `v2_segments` already exists and uses UUID - the FK should reference it
-3. This appears to be an oversight where the V1 reference was copy-pasted
-4. V2 pipeline is alpha/experimental - no production data to migrate
-5. Type consistency prevents runtime errors
-
----
-
-## Files to Modify (pending approval)
-
-| File | Change |
-|------|--------|
-| `sql/09_v2_schema.sql` | Update FK references to v2_segments |
-| `src/extraction_v2/persistence.py` | Verify segment_id handling is correct |
-| Tests | Add test for segment_id round-trip |
-
----
-
-## Decision
-
-- [x] **Option A**: Full V2 Independence (recommended) - **APPROVED by user**
-- [ ] ~~Option B: Dual-Key Approach~~
-- [ ] ~~Option C: Fix Models to Use BIGINT~~
-
-## Implementation
-
-**Changes made**:
-1. `sql/09_v2_schema.sql` line 90: `v2_tables.segment_id` changed from `BIGINT REFERENCES source_segments` to `UUID REFERENCES v2_segments`
-2. `sql/09_v2_schema.sql` line 161: `v2_image_assets.segment_id` changed from `BIGINT REFERENCES source_segments` to `UUID REFERENCES v2_segments`
-
-**Verification**:
-- Persistence layer already handles UUID segment_id correctly (passes `str | None`)
-- Models tests pass (35/35)
-- No Python code changes required
+Final deliverable: Gap analysis report with:
+1. Coverage matrix (what's tested vs. not tested)
+2. Pre-merge blockers identified
+3. Recommendations prioritized by merge impact
+4. Specific action items for each gap
 
 ---
 
@@ -208,7 +80,8 @@ Rationale:
 
 | Metric | Count |
 |--------|-------|
-| Files Analyzed | 4 |
-| Issues Found | 1 (type mismatch) |
-| Options Presented | 3 |
-| Awaiting Decision | Yes |
+| Tasks Defined | 8 |
+| Tasks Complete | 8 |
+| Files Analyzed | 12 |
+| Gaps Identified | 8 |
+| Pre-Merge Blockers | 1-2 |
