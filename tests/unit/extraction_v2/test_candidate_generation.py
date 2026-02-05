@@ -460,6 +460,20 @@ class TestConfidenceScoring:
             # Base (0.5) + section bonus (0.1) = 0.6
             assert candidate.confidence >= 0.6
 
+    def test_confidence_bounded(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """Confidence is always bounded between 0.0 and 1.0."""
+        # Create a candidate with maximum bonuses
+        cell = make_cell(0, 0, "Net Revenue Retention", header_path=["Metric"])
+        table = make_table([cell], section_type=SectionType.MDA)
+        mock_context.tables.append(table)
+
+        stage.process(mock_context)
+
+        for candidate in mock_context.candidates:
+            assert 0.0 <= candidate.confidence <= 1.0
+
 
 # =============================================================================
 # Integration Tests

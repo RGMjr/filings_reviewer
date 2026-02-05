@@ -651,7 +651,7 @@ class ValueBindingStage:
         if unit in (Unit.CURRENCY, Unit.PERCENT):
             confidence += self.UNIT_PRESENCE_BONUS
 
-        return min(confidence, 1.0)
+        return max(0.0, min(1.0, confidence))
 
     def _compute_text_confidence(
         self,
