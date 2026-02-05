@@ -397,26 +397,129 @@ Add to `docs/CLAUDE_SKILLS_QUICKSTART.md` and `CLAUDE.md`
 
 ## Advanced: Skill Composition
 
-Skills can reference other skills:
+Skills can be chained together to handle complex workflows. This section documents **proven composition patterns** used in this project.
 
-**Example:**
-```markdown
-# Code Module Grader Skill
+---
 
-## Step 3: Generate Improvement Plan
+### Pattern 1: Feature Development Lifecycle
 
-If P1/P2/P3 improvements identified:
-- Invoke implementation-planner skill
-- Pass improvements as input
-- Generate improvement tracking document
+**Chain:** `implementation-planner` → `flask-api-builder` → `test-coverage-analyzer` → `code-module-grader`
+
+**When to use:** Building new features from scratch
+
+**Workflow:**
+```
+1. implementation-planner   → Generate phased plan (A/B/C/D/E streams)
+2. flask-api-builder        → Create routes/endpoints from plan
+3. test-coverage-analyzer   → Generate tests for new code
+4. code-module-grader       → Validate quality meets standards
 ```
 
-This creates a workflow:
+**Example invocation:**
 ```
-code-module-grader → Identifies improvements
-                  → Calls implementation-planner
-                  → Generates improvement tracking doc
+"Use implementation-planner skill to plan user export feature"
+[Review and approve plan]
+"Use flask-api-builder skill to create the /api/export routes from the plan"
+"Use test-coverage-analyzer skill to reach 85% coverage on export routes"
+"Use code-module-grader skill to evaluate src/web/routes/export.py"
 ```
+
+---
+
+### Pattern 2: Improvement Initiative
+
+**Chain:** `code-module-grader` → `implementation-planner` → `completion-report-generator`
+
+**When to use:** Improving existing modules systematically
+
+**Workflow:**
+```
+1. code-module-grader          → Grade module, identify P1/P2/P3 improvements
+2. implementation-planner      → Create tracking doc for improvements
+3. [implement improvements]
+4. completion-report-generator → Document what was achieved
+```
+
+**Example invocation:**
+```
+"Use code-module-grader skill to evaluate src/review/pattern_analyzer.py"
+[Module grades B-, identifies 8 improvements]
+"Use implementation-planner skill to create tracking doc for the E1 improvements"
+[Implement P1 improvements]
+"Use completion-report-generator skill to document E1 P1 completion"
+```
+
+---
+
+### Pattern 3: Quality Gate
+
+**Chain:** `test-coverage-analyzer` → `code-module-grader` → `documentation-sync-validator`
+
+**When to use:** Before code review or PR submission
+
+**Workflow:**
+```
+1. test-coverage-analyzer         → Verify coverage meets thresholds
+2. code-module-grader             → Confirm module grades B or better
+3. documentation-sync-validator   → Check docs are up to date
+```
+
+**Example invocation:**
+```
+"Use test-coverage-analyzer skill - quick wins only for src/web/routes/"
+"Use code-module-grader skill on src/web/routes/review.py - does it meet B grade?"
+"Use documentation-sync-validator skill to check if docs need updating"
+```
+
+---
+
+### Pattern 4: Database Change Lifecycle
+
+**Chain:** `database-migration-helper` → `test-coverage-analyzer` → `documentation-sync-validator`
+
+**When to use:** Adding new tables or schema changes
+
+**Workflow:**
+```
+1. database-migration-helper      → Generate SQL + db.py methods + tests
+2. test-coverage-analyzer         → Verify new methods have coverage
+3. documentation-sync-validator   → Update architecture docs if needed
+```
+
+**Example invocation:**
+```
+"Use database-migration-helper skill to add learned_rules table"
+[Run generated migration]
+"Use test-coverage-analyzer skill to verify db.py coverage"
+"Use documentation-sync-validator skill to check system-overview.md"
+```
+
+---
+
+### Composition Best Practices
+
+**Do:**
+- Complete each skill's output before invoking the next
+- Review generated artifacts between skill invocations
+- Use skill outputs as inputs to subsequent skills (e.g., grader findings → planner input)
+- Document which composition pattern you're following in commit messages
+
+**Don't:**
+- Skip intermediate skills hoping to save time (quality suffers)
+- Invoke multiple skills simultaneously without reviewing outputs
+- Force compositions when a single skill suffices
+
+---
+
+### When NOT to Compose Skills
+
+Single skills are sufficient for:
+- Quick module evaluations → `code-module-grader` alone
+- Generating one test file → `test-coverage-analyzer` alone
+- Simple schema additions → `database-migration-helper` alone
+- Planning without implementation → `implementation-planner` alone
+
+**Rule of thumb:** If the task has one clear deliverable, use one skill. Compose only when the workflow spans planning → implementation → validation.
 
 ---
 
