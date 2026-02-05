@@ -47,7 +47,7 @@ Suppression Logging (DUP-3):
     removes duplicates before DB insert, but its 'cross_sentence' suppression reason is
     NOT captured separately. This was a deliberate simplification - the DB layer provides
     ~90% of suppression tracking value without the architectural complexity of coordinating
-    two deduplication layers. See DUP-3 completion notes in PROJECT_TASK_INVENTORY.md.
+    two deduplication layers. See DUP-3 completion notes in docs/archive/historical/PROJECT_TASK_INVENTORY.md.
 
 Using Custom Generator Configuration:
     >>> from src.review import CandidateGenerator
