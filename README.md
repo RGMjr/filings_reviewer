@@ -21,7 +21,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 |-----------|--------|---------------|
 | Universe Builder | ✅ Complete | 93% |
 | Filing Fetcher | ✅ Complete | 94% |
-| HTML Segmenter | ✅ Complete | 85% |
+| HTML Segmenter | ✅ Complete | 80% |
 | Metric Classifier | ✅ Complete | 98% |
 | Value Extractor | ✅ Complete | 66% |
 | Definition Extractor | ✅ Complete | 89% |
@@ -30,7 +30,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
 
-**Overall:** 87% overall test coverage (1,625+ tests)
+**Overall:** 87% overall test coverage (3,150+ tests)
 
 **Corpus:** 7,304 in-scope S-1/F-1 filings identified (2015-2025)
 
@@ -62,6 +62,13 @@ docker compose up -d
 # Connection string
 DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis
 TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
+```
+
+### Database Setup
+
+```bash
+# Apply database migrations (creates required tables)
+python scripts/apply_migrations.py
 ```
 
 ### Running Tests
@@ -141,7 +148,7 @@ filings_reviewer/
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (01-07)
+├── sql/                    # Database schema (00-09)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration
