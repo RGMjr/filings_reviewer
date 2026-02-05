@@ -1,6 +1,6 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.2
+**Version**: 1.3
 **Created**: 2026-01-23
 **Updated**: 2026-02-04
 **Status**: Complete (All 13 Phases)
@@ -142,34 +142,34 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 4: Image Triage (Stage 4)
+### Phase 4: Image Triage (Stage 4) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Classify and prioritize images for extraction
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/image_triage.py`
-2. [ ] Classify images:
+1. [x] Create `src/extraction_v2/stages/image_triage.py`
+2. [x] Classify images:
    - Chart (bar, line, pie patterns)
    - Table image (gridded, OCR needed)
    - Decorative (logos, icons, bullets)
    - Signature/legal
-3. [ ] Score relevance:
+3. [x] Score relevance:
    - Keyword proximity (1500 chars)
    - Section context (MD&A > Cover)
    - Caption analysis
-4. [ ] Filter decorative images:
+4. [x] Filter decorative images:
    - Size filters (min 100x100)
    - Naming patterns (logo, icon, bullet)
-5. [ ] Queue relevant images for OCR/Vision
-6. [ ] Add tests
+5. [x] Queue relevant images for OCR/Vision
+6. [x] Add tests (23 tests passing)
 
 **Dependencies:** Phase 1 (needs ImageAsset objects)
 
 **Estimated Complexity:** M (1-2 hours)
 
-**Files to Create:**
-- `src/extraction_v2/stages/image_triage.py`
-- `tests/unit/extraction_v2/test_image_triage.py`
+**Files Created:**
+- `src/extraction_v2/stages/image_triage.py` (535 lines)
+- `tests/unit/extraction_v2/test_image_triage.py` (23 tests passing)
 
 **V1 Code to Reference:**
 - `src/extraction/cohort_chart_detector.py`
@@ -177,35 +177,35 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 5: OCR & Chart Extraction (Stage 5)
+### Phase 5: OCR & Chart Extraction (Stage 5) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Extract values from relevant images
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/ocr_chart_extraction.py`
-2. [ ] Implement PaddleOCR integration for table images:
+1. [x] Create `src/extraction_v2/stages/ocr_extraction.py`
+2. [x] Implement PaddleOCR integration for table images:
    - OCR text extraction
    - Table structure reconstruction
    - Create `Table` objects from OCR results
-3. [ ] Implement Claude Vision integration for charts:
+3. [x] Implement Claude Vision integration for charts:
    - Extract title, axis labels
    - Extract ONLY explicitly labeled values
    - NEVER interpolate from axis readings
-4. [ ] Handle extraction failures:
+4. [x] Handle extraction failures:
    - Set `requires_manual_capture = True`
    - Store partial results with low confidence
-5. [ ] Add cost controls:
+5. [x] Add cost controls:
    - Max images per document
    - Max LLM/OCR calls
-6. [ ] Add tests (mock OCR/Vision responses)
+6. [x] Add tests (mock OCR/Vision responses) - 46 tests passing
 
 **Dependencies:** Phase 4 (needs prioritized images)
 
 **Estimated Complexity:** XL (4+ hours - external API integration)
 
-**Files to Create:**
-- `src/extraction_v2/stages/ocr_chart_extraction.py`
-- `tests/unit/extraction_v2/test_ocr_chart.py`
+**Files Created:**
+- `src/extraction_v2/stages/ocr_extraction.py` (728 lines)
+- `tests/unit/extraction_v2/test_ocr_extraction.py` (46 tests passing)
 
 **External Dependencies:**
 - PaddleOCR library
@@ -250,36 +250,36 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 7: Value Binding (Stage 7)
+### Phase 7: Value Binding (Stage 7) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Link metric keywords to numeric values
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/value_binding.py`
-2. [ ] Implement table binding:
+1. [x] Create `src/extraction_v2/stages/value_binding.py`
+2. [x] Implement table binding:
    - Find metric in header_path or stub_path
    - Bind value from data cell
    - Store header_path/stub_path in evidence
-3. [ ] Implement text binding:
+3. [x] Implement text binding:
    - Find number within N words of keyword
    - Validate same sentence/paragraph
-4. [ ] Implement chart binding:
+4. [x] Implement chart binding:
    - Use axis labels from ChartData
    - Only labeled values (no interpolation)
-5. [ ] **RULE: No binding without structural link**
-6. [ ] Output `BoundValue` objects:
+5. [x] **RULE: No binding without structural link**
+6. [x] Output `BoundValue` objects:
    - candidate reference
    - value (numeric)
    - unit (%, $, count)
    - binding confidence
-7. [ ] Add tests
+7. [x] Add tests
 
 **Dependencies:** Phase 3 (header_path), Phase 6 (candidates)
 
 **Estimated Complexity:** L (2-4 hours)
 
-**Files to Create:**
-- `src/extraction_v2/stages/value_binding.py`
+**Files Created:**
+- `src/extraction_v2/stages/value_binding.py` (745 lines)
 - `tests/unit/extraction_v2/test_value_binding.py`
 
 **V1 Code to Reference:**
@@ -288,29 +288,29 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 8: Period Inference (Stage 8)
+### Phase 8: Period Inference (Stage 8) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Determine time period for each value
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/period_inference.py`
-2. [ ] Extract from table headers:
+1. [x] Create `src/extraction_v2/stages/period_inference.py`
+2. [x] Extract from table headers:
    - "FY 2024", "Q3 2025"
    - "Year Ended December 31"
    - Column date patterns
-3. [ ] Extract from text context:
+3. [x] Extract from text context:
    - "For the year ended..."
    - "As of March 31, 2025"
-4. [ ] Validate against filing fiscal period
-5. [ ] Flag ambiguous periods for review
-6. [ ] Add tests
+4. [x] Validate against filing fiscal period
+5. [x] Flag ambiguous periods for review
+6. [x] Add tests
 
 **Dependencies:** Phase 7 (bound values with source context)
 
 **Estimated Complexity:** M (1-2 hours)
 
-**Files to Create:**
-- `src/extraction_v2/stages/period_inference.py`
+**Files Created:**
+- `src/extraction_v2/stages/period_inference.py` (890 lines)
 - `tests/unit/extraction_v2/test_period_inference.py`
 
 **V1 Code to Reference:**
@@ -318,58 +318,58 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 ---
 
-### Phase 9: Fact Construction (Stage 9)
+### Phase 9: Fact Construction (Stage 9) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Build MetricFact with full provenance
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/fact_construction.py`
-2. [ ] Assemble MetricFact:
+1. [x] Create `src/extraction_v2/stages/fact_construction.py`
+2. [x] Assemble MetricFact:
    - All fields from BoundValue
    - source_locator from binding
    - source_type (HTML_TABLE, TEXT, CHART)
-3. [ ] Compute confidence score:
+3. [x] Compute confidence score:
    - Base from binding confidence
    - Bonuses: high-value section, specific_pattern match
    - Penalties: OCR source, ambiguous period
-4. [ ] Generate EvidencePack:
+4. [x] Generate EvidencePack:
    - snippet_html (highlighted value)
    - header_path, stub_path (if table)
    - context_before, context_after (if text)
    - screenshot_path (if chart)
-5. [ ] Add tests
+5. [x] Add tests
 
 **Dependencies:** Phase 7, Phase 8
 
 **Estimated Complexity:** M (1-2 hours)
 
-**Files to Create:**
-- `src/extraction_v2/stages/fact_construction.py`
+**Files Created:**
+- `src/extraction_v2/stages/fact_construction.py` (340 lines)
 - `tests/unit/extraction_v2/test_fact_construction.py`
 
 ---
 
-### Phase 10: Deduplication (Stage 10)
+### Phase 10: Deduplication (Stage 10) ✅ COMPLETE (2026-02-04)
 
 **Goal**: Merge duplicate facts, link alternates
 
 **Tasks:**
-1. [ ] Create `src/extraction_v2/stages/deduplication.py`
-2. [ ] Group by identity tuple:
+1. [x] Create `src/extraction_v2/stages/deduplication.py`
+2. [x] Group by identity tuple:
    - (metric_id, period_start, period_end, unit, value±2%, scope, cohort, customer_type)
-3. [ ] Select primary by source quality:
+3. [x] Select primary by source quality:
    - HTML_TABLE > TEXT > OCR_TABLE > CHART
-4. [ ] Link alternates:
+4. [x] Link alternates:
    - Store in `alternate_evidence` list
    - Preserve all source_locators
-5. [ ] Add tests
+5. [x] Add tests
 
 **Dependencies:** Phase 9
 
 **Estimated Complexity:** S (30-60 min)
 
-**Files to Create:**
-- `src/extraction_v2/stages/deduplication.py`
+**Files Created:**
+- `src/extraction_v2/stages/deduplication.py` (184 lines)
 - `tests/unit/extraction_v2/test_deduplication.py`
 
 ---
@@ -539,3 +539,4 @@ These V1 modules are stable and should be imported into V2:
 |------|---------|---------|
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
+| 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
