@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}V2 Filings - {{ super() }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+  <a class="nav-link" href="{{ url_for('review.filing_list') }}">V1 Filings</a>
+</li>
+<li class="nav-item">
+  <a class="nav-link active" href="{{ url_for('review_v2.filing_list') }}">V2 Filings</a>
+</li>
+<li class="nav-item">
+  <a class="nav-link" href="{{ url_for('review.stats') }}">Statistics</a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-12">
+    <h1>V2 Extraction Review</h1>
+    <p class="text-muted">Review metric facts extracted by the V2 pipeline</p>
+  </div>
+</div>
+
+{% if filings %}
+<div class="row">
+  <div class="col-12">
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr>
+            <th>Company</th>
+            <th>Form</th>
+            <th>Filing Date</th>
+            <th>Facts</th>
+            <th>Pending</th>
+            <th>Accepted</th>
+            <th>Rejected</th>
+            <th>Auto</th>
+            <th>Status</th>
+            <th>Extracted</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filings %}
+          <tr>
+            <td>
+              <strong>{{ f.company_name }}</strong>
+              <br><small class="text-muted">{{ f.accession_number }}</small>
+            </td>
+            <td>{{ f.form_type or 'N/A' }}</td>
+            <td>{{ f.filing_date.strftime('%Y-%m-%d') if f.filing_date else 'N/A' }}</td>
+            <td><span class="badge bg-primary">{{ f.fact_count or 0 }}</span></td>
+            <td>
+              {% if f.pending_count > 0 %}
+              <span class="badge bg-warning text-dark">{{ f.pending_count }}</span>
+              {% else %}
+              <span class="text-muted">0</span>
+              {% endif %}
+            </td>
+            <td><span class="text-success">{{ f.accepted_count or 0 }}</span></td>
+            <td><span class="text-danger">{{ f.rejected_count or 0 }}</span></td>
+            <td><span class="text-secondary">{{ f.auto_accepted_count or 0 }}</span></td>
+            <td>
+              {% if f.extraction_status == 'complete' %}
+              <span class="badge bg-success">Complete</span>
+              {% elif f.extraction_status == 'failed' %}
+              <span class="badge bg-danger">Failed</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ f.extraction_status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if f.extract_completed_at %}
+              <small>{{ f.extract_completed_at.strftime('%Y-%m-%d %H:%M') }}</small>
+              {% else %}
+              <small class="text-muted">-</small>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('review_v2.review_filing', filing_id=f.filing_id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                Review
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
