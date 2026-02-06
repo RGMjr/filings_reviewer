@@ -50,23 +50,8 @@ KNOWN_FILINGS = {
 }
 
 
-def run_benchmark(
-    filing_names: list[str],
-    output_path: Path | None = None,
-    verbose: bool = False,
-) -> BatchComparisonResult:
-    """
-    Run benchmark comparison on specified filings.
-
-    Args:
-        filing_names: List of filing names (e.g., ["slack", "samsara"])
-        output_path: Optional path to save markdown report
-        verbose: Enable verbose logging
-
-    Returns:
-        BatchComparisonResult with all comparison data
-    """
-    # Resolve filing paths
+def _resolve_filings(filing_names: list[str]) -> list[tuple[int, Path, int]]:
+    """Resolve filing names to (filing_id, path, company_id) tuples."""
     filings = []
     for name in filing_names:
         name_lower = name.lower()
@@ -78,6 +63,28 @@ def run_benchmark(
             filings.append((filing_id, path, company_id))
         else:
             logger.warning(f"Unknown filing: {name}. Known filings: {list(KNOWN_FILINGS.keys())}")
+    return filings
+
+
+def run_benchmark(
+    filing_names: list[str],
+    output_path: Path | None = None,
+    verbose: bool = False,
+    persist_v2: bool = False,
+) -> BatchComparisonResult:
+    """
+    Run benchmark comparison on specified filings.
+
+    Args:
+        filing_names: List of filing names (e.g., ["slack", "samsara"])
+        output_path: Optional path to save markdown report
+        verbose: Enable verbose logging
+        persist_v2: If True, persist V2 results to database after comparison
+
+    Returns:
+        BatchComparisonResult with all comparison data
+    """
+    filings = _resolve_filings(filing_names)
 
     if not filings:
         logger.error("No valid filings to benchmark")
@@ -108,7 +115,57 @@ def run_benchmark(
         output_path.write_text(report)
         logger.info(f"Report saved to {output_path}")
 
+    # Persist V2 results if requested
+    if persist_v2:
+        _persist_v2_results(filings, config)
+
     return batch_result
+
+
+def _persist_v2_results(
+    filings: list[tuple[int, Path, int]],
+    config: PipelineConfig,
+) -> None:
+    """
+    Re-run V2 pipeline and persist results to database.
+
+    This is separate from the comparison run because V1V2Comparator
+    doesn't expose the raw PipelineResult needed for persistence.
+    The V2 pipeline is deterministic, so re-running produces identical facts.
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    from src.extraction_v2.persistence import V2PersistenceAdapter
+    from src.extraction_v2.pipeline import V2Pipeline
+    from src.infra.db import DatabaseAdapter
+
+    load_dotenv()
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        logger.error("DATABASE_URL not set — cannot persist V2 results")
+        return
+
+    db = DatabaseAdapter(database_url)
+    adapter = V2PersistenceAdapter(db)
+    pipeline = V2Pipeline(config=config)
+
+    for filing_id, html_path, _company_id in filings:
+        logger.info(f"Persisting V2 results for filing_id={filing_id}...")
+        try:
+            result = pipeline.process(html_path=html_path, filing_id=filing_id)
+            if result.success:
+                persist_result = adapter.persist_pipeline_result(result, filing_id)
+                logger.info(
+                    f"  Persisted: {persist_result.facts_upserted} facts, "
+                    f"{persist_result.segments_upserted} segments, "
+                    f"{persist_result.tables_upserted} tables"
+                )
+            else:
+                logger.error(f"  V2 pipeline failed: {result.error_message}")
+        except Exception as e:
+            logger.error(f"  Error persisting filing {filing_id}: {e}")
 
 
 def generate_markdown_report(
@@ -264,6 +321,11 @@ Examples:
         help="Enable verbose logging",
     )
     parser.add_argument(
+        "--persist-v2",
+        action="store_true",
+        help="Persist V2 extraction results to database (requires DATABASE_URL)",
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="List available filings and exit",
@@ -285,6 +347,7 @@ Examples:
         filing_names=args.filings,
         output_path=args.output,
         verbose=args.verbose,
+        persist_v2=args.persist_v2,
     )
 
     # Exit with error if coverage is below threshold

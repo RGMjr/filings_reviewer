@@ -3961,6 +3961,253 @@ class DatabaseAdapter:
         )
         return len(result) > 0
 
+    # =============================================================================
+    # V2 Extraction Review Methods
+    # =============================================================================
+
+    def get_v2_filings_with_facts(self) -> list[dict]:
+        """
+        Get filings that have V2 extraction results, with fact counts and review progress.
+
+        Returns:
+            List of dicts with filing metadata and V2 extraction stats.
+        """
+        sql = """
+            SELECT
+                f.filing_id,
+                c.company_name,
+                c.cik,
+                f.accession_number,
+                f.form_type,
+                f.filing_date,
+                d.doc_id,
+                d.status AS extraction_status,
+                d.fact_count,
+                d.segment_count,
+                d.table_count,
+                d.image_count,
+                d.extract_completed_at,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END) AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END) AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END) AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END) AS auto_accepted_count
+            FROM v2_documents d
+            JOIN filings f ON d.filing_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            GROUP BY f.filing_id, c.company_name, c.cik, f.accession_number,
+                     f.form_type, f.filing_date, d.doc_id, d.status,
+                     d.fact_count, d.segment_count, d.table_count, d.image_count,
+                     d.extract_completed_at
+            ORDER BY d.extract_completed_at DESC NULLS LAST
+        """
+        return self.query(sql)
+
+    def get_v2_facts_for_filing(
+        self,
+        filing_id: int,
+        status: str | None = None,
+        metric_id: str | None = None,
+        sort_by: str = "confidence_desc",
+    ) -> list[dict]:
+        """
+        Get V2 metric facts for a filing with optional review decisions.
+
+        Args:
+            filing_id: Filing ID
+            status: Optional review_status filter ('pending_review', 'accepted', 'rejected', 'corrected', 'auto_accepted')
+            metric_id: Optional canonical_metric_id filter
+            sort_by: Sort order ('confidence_desc', 'confidence_asc', 'metric', 'period')
+
+        Returns:
+            List of fact dicts with LEFT JOINed review decision data.
+        """
+        conditions = ["mf.doc_id = %(filing_id)s"]
+        params: dict[str, Any] = {"filing_id": filing_id}
+
+        if status:
+            conditions.append("mf.review_status = %(status)s")
+            params["status"] = status
+
+        if metric_id:
+            conditions.append("mf.canonical_metric_id = %(metric_id)s")
+            params["metric_id"] = metric_id
+
+        where_clause = " AND ".join(conditions)
+
+        # Sort options (safe - no user input in SQL)
+        sort_map = {
+            "confidence_desc": "mf.confidence DESC, mf.canonical_metric_id",
+            "confidence_asc": "mf.confidence ASC, mf.canonical_metric_id",
+            "metric": "mf.canonical_metric_id, mf.confidence DESC",
+            "period": "mf.period_end DESC NULLS LAST, mf.canonical_metric_id",
+        }
+        order_clause = sort_map.get(sort_by, sort_map["confidence_desc"])
+
+        sql = f"""
+            SELECT
+                mf.fact_id,
+                mf.doc_id,
+                mf.canonical_metric_id,
+                mf.value,
+                mf.value_raw,
+                mf.unit,
+                mf.currency,
+                mf.period_type,
+                mf.period_start,
+                mf.period_end,
+                mf.scope,
+                mf.scope_detail,
+                mf.cohort_def,
+                mf.customer_type,
+                mf.source_type,
+                mf.source_locator,
+                mf.evidence_pack,
+                mf.confidence,
+                mf.extraction_method,
+                mf.requires_review,
+                mf.review_reason,
+                mf.review_status,
+                mf.pipeline_version,
+                mf.created_at,
+                mf.updated_at,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id AS decision_metric_id,
+                rd.corrected_value,
+                rd.rejection_reason,
+                rd.rejection_category,
+                rd.reviewer_id,
+                rd.reviewer_notes,
+                rd.review_time_seconds,
+                rd.created_at AS decision_created_at
+            FROM v2_metric_facts mf
+            LEFT JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
+            WHERE {where_clause}
+            ORDER BY {order_clause}
+        """
+        return self.query(sql, params)
+
+    def get_v2_fact_by_id(self, fact_id: str) -> dict | None:
+        """Get a single V2 fact by its UUID."""
+        rows = self.query(
+            """
+            SELECT mf.*, rd.decision_id, rd.decision, rd.reviewer_id, rd.created_at AS decision_created_at
+            FROM v2_metric_facts mf
+            LEFT JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
+            WHERE mf.fact_id = %(fact_id)s
+            """,
+            {"fact_id": fact_id},
+        )
+        return rows[0] if rows else None
+
+    def insert_v2_review_decision(
+        self,
+        fact_id: str,
+        decision: str,
+        reviewer_id: str = "web_reviewer",
+        assigned_metric_id: str | None = None,
+        corrected_value: float | None = None,
+        rejection_reason: str | None = None,
+        rejection_category: str | None = None,
+        reviewer_notes: str | None = None,
+        review_time_seconds: int | None = None,
+    ) -> str:
+        """
+        Insert a V2 review decision. The DB trigger auto-updates review_status on v2_metric_facts.
+
+        Args:
+            fact_id: UUID of the metric fact being reviewed
+            decision: 'accept', 'reject', or 'correct'
+            reviewer_id: Identifier for the reviewer
+            assigned_metric_id: If corrected to a different metric
+            corrected_value: If value was corrected
+            rejection_reason: Free-text reason for rejection
+            rejection_category: Category of rejection
+            reviewer_notes: Additional notes
+            review_time_seconds: Time spent reviewing
+
+        Returns:
+            decision_id (UUID) of the inserted decision
+        """
+        sql = """
+            INSERT INTO v2_review_decisions (
+                fact_id, decision, assigned_metric_id, corrected_value,
+                rejection_reason, rejection_category,
+                reviewer_id, reviewer_notes, review_time_seconds
+            )
+            VALUES (
+                %(fact_id)s, %(decision)s, %(assigned_metric_id)s, %(corrected_value)s,
+                %(rejection_reason)s, %(rejection_category)s,
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+            )
+            RETURNING decision_id
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {
+                    "fact_id": fact_id,
+                    "decision": decision,
+                    "assigned_metric_id": assigned_metric_id,
+                    "corrected_value": corrected_value,
+                    "rejection_reason": rejection_reason,
+                    "rejection_category": rejection_category,
+                    "reviewer_id": reviewer_id,
+                    "reviewer_notes": reviewer_notes,
+                    "review_time_seconds": review_time_seconds,
+                })
+                result = cur.fetchone()
+                return str(result["decision_id"])
+
+    def delete_v2_review_decision(self, decision_id: str) -> dict | None:
+        """
+        Delete a V2 review decision (undo). Resets fact review_status to pending_review.
+
+        Args:
+            decision_id: UUID of the decision to delete
+
+        Returns:
+            Dict with fact_id and filing_id if deleted, None if not found
+        """
+        # Get fact_id before deleting
+        decision = self.query(
+            """
+            SELECT rd.decision_id, rd.fact_id, mf.doc_id AS filing_id
+            FROM v2_review_decisions rd
+            JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+            WHERE rd.decision_id = %(decision_id)s
+            """,
+            {"decision_id": decision_id},
+        )
+        if not decision:
+            return None
+
+        fact_id = decision[0]["fact_id"]
+        filing_id = decision[0]["filing_id"]
+
+        # Delete decision
+        self.execute(
+            "DELETE FROM v2_review_decisions WHERE decision_id = %(decision_id)s",
+            {"decision_id": decision_id},
+        )
+
+        # Reset fact status (trigger only fires on INSERT, not DELETE)
+        self.execute(
+            """
+            UPDATE v2_metric_facts
+            SET review_status = CASE
+                WHEN requires_review THEN 'pending_review'
+                ELSE 'auto_accepted'
+            END,
+            updated_at = NOW()
+            WHERE fact_id = %(fact_id)s
+            """,
+            {"fact_id": fact_id},
+        )
+
+        return {"fact_id": str(fact_id), "filing_id": filing_id}
+
 
 # =============================================================================
 # Convenience Functions
