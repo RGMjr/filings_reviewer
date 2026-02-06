@@ -225,6 +225,9 @@ Target metrics for production use:
 
 ## Related Documentation
 
+- `docs/V2_HUMAN_REVIEW_GUIDE.md` - V2 human review guide (fact-by-fact review with evidence packs)
 - `docs/architecture/extraction-pipeline.md` - Full extraction pipeline
 - `docs/development/metrics-taxonomy.md` - Metric definitions
 - `CLAUDE.md` - Quick reference for Claude Code
+
+> **Note:** This document covers the V1 candidate-based review system. For the V2 fact-based review system, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.

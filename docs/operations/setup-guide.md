@@ -202,7 +202,7 @@ Batch download filing HTML documents:
 python scripts/batch_download_filings.py --limit 10
 ```
 
-### Run Extraction Pipeline
+### Run Extraction Pipeline (V1)
 
 Extract customer metrics from filings using the V1 pipeline:
 
@@ -224,6 +224,39 @@ This executes the full V1 pipeline:
 5. `QualityScorer`: Score extraction confidence
 6. Store results in `source_segments` and `metric_values` tables
 
+### Run V2 Extraction Pipeline
+
+The V2 pipeline is a ground-up redesign with 10x faster lxml parsing, stable XPath locators, full table reconstruction, and image/OCR integration. Extract metrics from a single filing:
+
+```bash
+# By filing ID
+python scripts/run_v2_extraction.py --filing-id 1
+
+# By accession number
+python scripts/run_v2_extraction.py --accession 0001193125-21-186026
+```
+
+Options:
+- `--filing-id ID`: Filing ID from database (mutually exclusive with `--accession`)
+- `--accession NUM`: SEC accession number (mutually exclusive with `--filing-id`)
+- `--dry-run`: Run pipeline without persisting results to database
+- `--min-confidence FLOAT`: Minimum confidence for auto-accept (default: 0.90)
+- `--no-images`: Disable image extraction
+- `--verbose` / `-v`: Enable debug logging
+
+The V2 pipeline executes these stages:
+1. **lxml Parse**: Parse filing HTML into a DOM tree
+2. **Segment**: Split document into typed content blocks (paragraphs, tables, headings, images)
+3. **Table Reconstruct**: Resolve colspan/rowspan and compute header_path/stub_path bindings
+4. **Image Extract**: Classify images (chart, table image, decorative) and run OCR where applicable
+5. **Keyword Match**: Match metric keywords against segments and table cells
+6. **Confidence Score**: Score each extracted fact; auto-accept facts above the confidence threshold
+7. **Persist**: Store results in `v2_documents`, `v2_segments`, `v2_metric_facts`, and related tables
+
+The script prints a summary including fact counts, confidence distribution, and metrics breakdown.
+
+For detailed V2 vs V1 comparison and migration guidance, see `docs/V2_MIGRATION_GUIDE.md`.
+
 ### Start Web Review Interface
 
 Launch the Flask web application for human review:
@@ -234,11 +267,29 @@ python scripts/run_review_server.py
 
 Access at: http://localhost:5000
 
-The review interface allows you to:
+#### V1 Review Interface
+
+The V1 review interface allows you to:
 - Review extracted text segments and metrics
 - Approve, reject, or flag uncertain extractions
 - Review image-based metrics (charts, graphs)
 - Track review progress and decisions
+
+See `docs/HUMAN_REVIEW_SYSTEM.md` for the V1 review workflow.
+
+#### V2 Review Interface
+
+After running V2 extraction, review facts at: http://localhost:5000/v2/review/filings
+
+The V2 review interface provides:
+- **Fact-by-fact review** with evidence packs (highlighted HTML, header/stub paths, context)
+- **Three decision types**: Accept, Reject (with category), Correct (metric or value override)
+- **Keyboard shortcuts**: `A` Accept, `R` Reject, `C` Correct, `N`/Arrow Right Next, `P`/Arrow Left Previous
+- **Filtering** by review status, metric type, and sort order (confidence, metric, period)
+- **Undo** capability for any decision
+- **Auto-advance** to next pending fact after each decision
+
+See `docs/V2_HUMAN_REVIEW_GUIDE.md` for the complete V2 review workflow and API reference.
 
 ---
 
@@ -445,11 +496,15 @@ After completing setup:
 
 1. **Build universe**: `python scripts/build_universe_real.py`
 2. **Download filings**: `python scripts/batch_download_filings.py --limit 10`
-3. **Extract metrics**: `python scripts/run_extraction_pipeline.py --limit 10`
-4. **Review results**: `python scripts/run_review_server.py`
-5. **Explore documentation**: See `docs/README.md` for architecture, design decisions, and advanced workflows
+3. **Extract metrics (V1)**: `python scripts/run_extraction_pipeline.py --limit 10`
+4. **Extract metrics (V2)**: `python scripts/run_v2_extraction.py --filing-id <ID>`
+5. **Start review server**: `python scripts/run_review_server.py`
+6. **Review V1 results**: http://localhost:5000/filings
+7. **Review V2 results**: http://localhost:5000/v2/review/filings
+8. **Explore documentation**: See `docs/README.md` for architecture, design decisions, and advanced workflows
 
 For V2 pipeline usage and migration, see `docs/V2_MIGRATION_GUIDE.md`.
+For V2 human review workflow and API, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.
 
 For contributing, see `CLAUDE.md` for context-specific rules and available commands.
 
@@ -459,8 +514,9 @@ For contributing, see `CLAUDE.md` for context-specific rules and available comma
 
 - **Architecture documentation**: `docs/architecture/system-overview.md`
 - **Extraction logic history**: `docs/architecture/extraction-decisions.md`
-- **Human review system**: `docs/HUMAN_REVIEW_SYSTEM.md`
+- **V1 human review system**: `docs/HUMAN_REVIEW_SYSTEM.md`
+- **V2 human review guide**: `docs/V2_HUMAN_REVIEW_GUIDE.md`
 - **Gold standard validation**: `.claude/rules/gold-standard.md`
-- **V2 pipeline guide**: `docs/V2_MIGRATION_GUIDE.md`
+- **V2 pipeline migration**: `docs/V2_MIGRATION_GUIDE.md`
 
 For issues or questions, see the project's GitHub issues or contact the maintainers.
