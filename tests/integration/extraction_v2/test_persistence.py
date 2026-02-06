@@ -818,3 +818,132 @@ class TestPipelineResultPersistence:
                     (segment.segment_id,)
                 )
                 assert cur.fetchone()["cnt"] == 0
+
+
+class TestConcurrentExtraction:
+    """Tests for concurrent extraction safety."""
+
+    def test_concurrent_pipeline_persist(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """Test that two concurrent persist operations on different filings don't conflict."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # Create two separate test filings
+        filing_ids = []
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                for i in range(2):
+                    cur.execute("""
+                        INSERT INTO companies (cik, company_name, ticker)
+                        VALUES (%(cik)s, %(name)s, %(ticker)s)
+                        ON CONFLICT (cik) DO UPDATE SET company_name = EXCLUDED.company_name
+                        RETURNING company_id
+                    """, {
+                        "cik": f"777777777{i}",
+                        "name": f"Concurrent Test Co {i}",
+                        "ticker": f"CT{i}",
+                    })
+                    company_id = cur.fetchone()["company_id"]
+
+                    cur.execute("""
+                        INSERT INTO filings (
+                            company_id, cik, accession_number, form_type,
+                            filing_date, sec_html_url
+                        ) VALUES (
+                            %(company_id)s, %(cik)s, %(accession)s, 'S-1',
+                            '2026-01-01', %(url)s
+                        )
+                        ON CONFLICT (company_id, accession_number) DO UPDATE SET
+                            form_type = EXCLUDED.form_type
+                        RETURNING filing_id
+                    """, {
+                        "company_id": company_id,
+                        "cik": f"777777777{i}",
+                        "accession": f"777777777{i}-99-99999{i}",
+                        "url": f"https://www.sec.gov/test/concurrent_{i}.htm",
+                    })
+                    filing_ids.append(cur.fetchone()["filing_id"])
+
+        def persist_for_filing(fid: int, idx: int) -> PersistenceResult:
+            """Build and persist a pipeline result for a filing."""
+            doc = Document(doc_id=str(uuid.uuid4()), parse_version="2.0.0")
+            segments = [
+                Segment(
+                    segment_id=str(uuid.uuid4()),
+                    segment_type=SegmentType.PARAGRAPH,
+                    text=f"Concurrent test segment {idx}-{j}",
+                    sequence=j,
+                )
+                for j in range(3)
+            ]
+            fact = MetricFact(
+                fact_id=str(uuid.uuid4()),
+                canonical_metric_id="cm_new_customers_acquired",
+                value=float(100 + idx),
+                value_raw=f"{100 + idx}",
+                unit=Unit.COUNT,
+                source_type=SourceType.TEXT,
+                source_locator=SourceLocator(dom_locator=f"/p[{idx}]"),
+                evidence_pack=EvidencePack(snippet_html=f"<p>{100 + idx}</p>"),
+            )
+            result = PipelineResult(
+                document=doc,
+                facts=[fact],
+                tables=[],
+                images=[],
+                segments=segments,
+                stage_results=[
+                    StageResult(
+                        stage=PipelineStage.INGESTION,
+                        success=True,
+                        duration_ms=50,
+                        items_processed=1,
+                        items_output=1,
+                    ),
+                ],
+                total_duration_ms=100,
+                success=True,
+            )
+            return persistence_adapter.persist_pipeline_result(result, fid)
+
+        # Run two concurrent persists
+        results = []
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(persist_for_filing, fid, idx): fid
+                for idx, fid in enumerate(filing_ids)
+            }
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        # Both should succeed
+        for i, pr in enumerate(results):
+            assert pr.success, f"Concurrent persist {i} failed: {pr.errors}"
+
+        # Verify correct counts in database
+        for fid in filing_ids:
+            with db_adapter.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
+                        (fid,),
+                    )
+                    assert cur.fetchone()["cnt"] == 1
+
+                    cur.execute(
+                        "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s",
+                        (fid,),
+                    )
+                    assert cur.fetchone()["cnt"] == 3
+
+        # Cleanup
+        for fid in filing_ids:
+            with db_adapter.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (fid,))
+                    cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (fid,))
+                    cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (fid,))

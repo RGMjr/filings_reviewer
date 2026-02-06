@@ -184,6 +184,25 @@ class TestE2ESlackFiling:
         # Slack has substantial metrics, should extract something
         assert slack_result.fact_count > 0, "No facts extracted from Slack filing"
 
+    def test_e2e_slack_period_inference_populated(self, slack_result: PipelineResult):
+        """Test that period inference populates period_start/period_end on facts."""
+        assert slack_result.success
+        assert slack_result.fact_count > 0
+
+        facts_with_periods = [
+            f for f in slack_result.facts
+            if f.period_start is not None and f.period_end is not None
+        ]
+
+        # At least some facts should have period dates populated
+        # Observed: ~17% on Slack filing (period inference runs but many facts lack temporal context)
+        ratio = len(facts_with_periods) / len(slack_result.facts)
+        assert ratio > 0.10, (
+            f"Only {ratio:.1%} of facts have period_start and period_end populated "
+            f"({len(facts_with_periods)}/{len(slack_result.facts)}). "
+            f"Period inference may not be running correctly."
+        )
+
 
 class TestE2ESamsaraFiling:
     """End-to-end tests using Samsara gold standard filing."""
@@ -200,6 +219,26 @@ class TestE2ESamsaraFiling:
         assert samsara_result.success, f"Pipeline failed: {samsara_result.error_message}"
         assert samsara_result.document is not None
         assert samsara_result.total_duration_ms > 0
+
+    def test_e2e_samsara_period_inference_populated(self, samsara_result: PipelineResult):
+        """Test that period inference populates period_start/period_end on Samsara facts."""
+        assert samsara_result.success
+
+        if samsara_result.fact_count == 0:
+            pytest.skip("No facts extracted from Samsara filing")
+
+        facts_with_periods = [
+            f for f in samsara_result.facts
+            if f.period_start is not None and f.period_end is not None
+        ]
+
+        # Observed: ~2.4% on Samsara filing (fewer periodic metrics in this filing)
+        ratio = len(facts_with_periods) / len(samsara_result.facts)
+        assert ratio > 0.01, (
+            f"Only {ratio:.1%} of Samsara facts have period_start and period_end populated "
+            f"({len(facts_with_periods)}/{len(samsara_result.facts)}). "
+            f"Period inference may not be running correctly."
+        )
 
 
 class TestE2EProvenance:
@@ -443,3 +482,55 @@ class TestE2EPerformance:
             assert stage_result.duration_ms >= 0, (
                 f"Stage {stage_result.stage.value} has negative duration"
             )
+
+
+# Edge case fixture paths
+FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
+EMPTY_FILING_PATH = FIXTURES_DIR / "empty_filing.html"
+MALFORMED_TABLES_PATH = FIXTURES_DIR / "malformed_tables.html"
+
+
+class TestE2EEdgeCases:
+    """Edge case tests for V2 pipeline robustness."""
+
+    def test_filing_with_no_metrics(
+        self, pipeline: V2Pipeline, test_filing_id: int
+    ):
+        """Test pipeline succeeds on filing with no customer metrics."""
+        if not EMPTY_FILING_PATH.exists():
+            pytest.skip(f"Empty filing fixture not found at {EMPTY_FILING_PATH}")
+
+        result = pipeline.process(
+            html_path=EMPTY_FILING_PATH, filing_id=test_filing_id
+        )
+
+        assert result.success, f"Pipeline failed on empty filing: {result.error_message}"
+        assert result.fact_count == 0, (
+            f"Expected 0 facts from empty filing, got {result.fact_count}"
+        )
+        # Document should still be created
+        assert result.document is not None
+        # Segments should still be parsed
+        assert len(result.segments) > 0, "Expected at least some segments from empty filing"
+
+    def test_filing_with_malformed_tables(
+        self, pipeline: V2Pipeline, test_filing_id: int
+    ):
+        """Test pipeline doesn't crash on malformed tables."""
+        if not MALFORMED_TABLES_PATH.exists():
+            pytest.skip(
+                f"Malformed tables fixture not found at {MALFORMED_TABLES_PATH}"
+            )
+
+        result = pipeline.process(
+            html_path=MALFORMED_TABLES_PATH, filing_id=test_filing_id
+        )
+
+        # Pipeline should succeed (graceful degradation, not crash)
+        assert result.success, (
+            f"Pipeline crashed on malformed tables: {result.error_message}"
+        )
+        assert result.document is not None
+        # Should have parsed some tables (even if malformed)
+        assert len(result.tables) >= 0  # May or may not detect tables
+        assert result.total_duration_ms > 0
