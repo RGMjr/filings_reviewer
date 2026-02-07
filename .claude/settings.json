@@ -19,7 +19,8 @@
       "Bash(black*)",
       "Bash(ruff*)",
       "Bash(python scripts/validate_against_gold_standard.py*)",
-      "Bash(python scripts/sync_github_issues.py*)"
+      "Bash(python scripts/sync_github_issues.py*)",
+      "Bash(bash scripts/extraction-change-workflow.sh*)"
     ],
     "deny": [
       "Bash(rm -rf /)*",
@@ -51,6 +52,9 @@
         ]
       }
     ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "project": {
     "testCommand": "pytest",
