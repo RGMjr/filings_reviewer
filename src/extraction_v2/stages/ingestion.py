@@ -447,7 +447,6 @@ class IngestionStage:
 
             # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_tbl_{len(segments)}",
                 segment_type=SegmentType.TABLE,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
@@ -535,7 +534,6 @@ class IngestionStage:
 
             # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_seg_{len(segments)}",
                 segment_type=segment_type,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,
@@ -784,7 +782,6 @@ class IngestionStage:
 
             # Create ImageAsset
             asset = ImageAsset(
-                img_id=f"{filing_id}_img_{sequence}",
                 doc_id=str(filing_id),
                 filename=src,
                 width=width,
@@ -861,9 +858,8 @@ class IngestionStage:
 
             context.segments = all_segments
 
-            # AC-11: Create Document object
+            # AC-11: Create Document object (doc_id auto-generated as UUID)
             doc = Document(
-                doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
             )
             context.document = doc
