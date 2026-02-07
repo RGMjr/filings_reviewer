@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS v2_segments (
     doc_id              BIGINT NOT NULL REFERENCES filings(filing_id) ON DELETE CASCADE,
 
     -- Type and content
-    segment_type        TEXT NOT NULL CHECK (segment_type IN ('heading', 'paragraph', 'table', 'image_ref', 'caption', 'list', 'footnote', 'other')),
+    segment_type        TEXT NOT NULL CHECK (segment_type IN ('heading', 'paragraph', 'table', 'image_ref', 'caption', 'list', 'footnote', 'definition', 'methodology', 'other')),
     segment_text        TEXT NOT NULL,
 
     -- DOM location

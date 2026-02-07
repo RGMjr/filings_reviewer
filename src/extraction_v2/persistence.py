@@ -795,7 +795,7 @@ class V2PersistenceAdapter:
             table_params = {
                 "table_id": table.table_id,
                 "doc_id": filing_id,
-                "segment_id": table.segment_id or None,
+                "segment_id": None,  # v2_tables.segment_id FKs to V1 source_segments; not used in V2
                 "dom_locator": table.dom_locator,
                 "section_path": table.section_path or [],
                 "section_type": table.section_type.value if table.section_type else None,
@@ -868,7 +868,7 @@ class V2PersistenceAdapter:
             params = {
                 "img_id": image.img_id,
                 "doc_id": filing_id,
-                "segment_id": image.segment_id,
+                "segment_id": None,  # v2_image_assets.segment_id FKs to V1 source_segments; not used in V2
                 "filename": image.filename,
                 "file_path": image.file_path,
                 "width": image.width,
@@ -958,7 +958,7 @@ class V2PersistenceAdapter:
                 "value": fact.value,
                 "value_raw": fact.value_raw,
                 "unit": fact.unit.value,
-                "currency": fact.currency,
+                "currency": fact.currency or ("USD" if fact.unit.value == "currency" else None),
                 "period_type": fact.period_type.value if fact.period_type else None,
                 "period_start": fact.period_start,
                 "period_end": fact.period_end,
