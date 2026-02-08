@@ -82,42 +82,60 @@ def _get_source_text(
     return ""
 
 
-def _bound_value_to_number_match(bv: BoundValue) -> NumberMatch:
-    """
-    Convert a V2 BoundValue to a V1 NumberMatch for filter compatibility.
+_UNIT_MAP = {
+    Unit.PERCENT: "percentage",
+    Unit.CURRENCY: "currency",
+    Unit.COUNT: "count",
+    Unit.RATIO: "count",
+    Unit.BASIS_POINTS: "percentage",
+    Unit.OTHER: "count",
+}
 
-    Maps V2 Unit enum to V1 unit strings:
-    - Unit.PERCENT -> "percentage"
-    - Unit.CURRENCY -> "currency"
-    - Unit.COUNT/other -> "count"
-    """
-    # Map V2 unit to V1 unit string
-    unit_map = {
-        Unit.PERCENT: "percentage",
-        Unit.CURRENCY: "currency",
-        Unit.COUNT: "count",
-        Unit.RATIO: "count",
-        Unit.BASIS_POINTS: "percentage",
-        Unit.OTHER: "count",
-    }
-    v1_unit = unit_map.get(bv.unit, "count")
 
-    # Convert value to Decimal
+def _make_number_matches(
+    bv: BoundValue, source_text: str
+) -> list[NumberMatch]:
+    """
+    Create V1 NumberMatch(es) for every occurrence of the raw value in source_text.
+
+    The V1 filter relies on the number's position in the text to check for
+    overlap with date/reference patterns. V2 BoundValue text_span positions
+    are relative to the proximity window, not the full segment text, so we
+    find all occurrences of the raw value text and return a NumberMatch for
+    each one.
+
+    The caller should treat the value as FP only if ALL occurrences are FP.
+    """
+    v1_unit = _UNIT_MAP.get(bv.unit, "count")
     value_decimal = Decimal(str(bv.value)) if bv.value is not None else None
+    raw = bv.value_raw or ""
 
-    # Use text_span for position if available, otherwise default to 0
-    start = 0
-    end = len(bv.value_raw) if bv.value_raw else 0
-    if bv.source_locator.text_span:
-        start, end = bv.source_locator.text_span
+    if not raw:
+        return [NumberMatch(start=0, end=0, raw_text=raw, value=value_decimal, unit=v1_unit)]
 
-    return NumberMatch(
-        start=start,
-        end=end,
-        raw_text=bv.value_raw,
-        value=value_decimal,
-        unit=v1_unit,
-    )
+    matches: list[NumberMatch] = []
+    search_start = 0
+    while True:
+        pos = source_text.find(raw, search_start)
+        if pos < 0:
+            break
+        matches.append(NumberMatch(
+            start=pos,
+            end=pos + len(raw),
+            raw_text=raw,
+            value=value_decimal,
+            unit=v1_unit,
+        ))
+        search_start = pos + len(raw)
+
+    if not matches:
+        # Fallback: position-independent (filter still checks year/min-value)
+        matches.append(NumberMatch(
+            start=0, end=len(raw), raw_text=raw,
+            value=value_decimal, unit=v1_unit,
+        ))
+
+    return matches
 
 
 class FalsePositiveFilterStage:
@@ -170,13 +188,21 @@ class FalsePositiveFilterStage:
                     kept.append(bv)
                     continue
 
-                # Convert to V1 NumberMatch
-                number_match = _bound_value_to_number_match(bv)
+                # Build NumberMatches for all occurrences of the raw
+                # value in the source text. The value is FP only if ALL
+                # occurrences are flagged (conservative: if any occurrence
+                # is in a legitimate context, keep the value).
+                number_matches = _make_number_matches(bv, source_text)
 
-                # Run V1 filter
-                is_fp, reason = self._filter.is_false_positive(
-                    source_text, number_match
-                )
+                is_fp = True
+                reason: str | None = None
+                for nm in number_matches:
+                    fp, r = self._filter.is_false_positive(source_text, nm)
+                    if not fp:
+                        is_fp = False
+                        reason = None
+                        break
+                    reason = r
 
                 if is_fp:
                     filter_reasons[reason or "unknown"] = (
