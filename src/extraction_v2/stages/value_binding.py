@@ -26,6 +26,7 @@ from src.extraction_v2.models import (
     Unit,
 )
 from src.extraction_v2.unit_compatibility import is_unit_compatible
+from src.review.false_positive_filter import should_treat_as_percentage
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
@@ -104,6 +105,39 @@ class ValueBindingStage:
         """
         self.proximity_window = proximity_window
         self._unit_filtered_count = 0
+
+    def _check_percentage_context(
+        self, metric_id: str, unit: Unit, raw_text: str, context_text: str
+    ) -> Unit:
+        """
+        Check if a count value should be treated as a percentage.
+
+        For percentage-only metrics (e.g., cm_net_revenue_retention), values
+        like "138" that appear in retention context should be Unit.PERCENT
+        rather than Unit.COUNT. Uses V1's should_treat_as_percentage().
+
+        Args:
+            metric_id: Canonical metric ID
+            unit: Currently detected unit
+            raw_text: Raw value text (e.g., "138")
+            context_text: Surrounding text for context
+
+        Returns:
+            Updated unit (PERCENT if context indicates percentage, else original)
+        """
+        if unit != Unit.COUNT:
+            return unit
+
+        # Map V2 unit to V1 string for the function call
+        v1_unit = "count"
+        if should_treat_as_percentage(metric_id, raw_text, v1_unit, context_text):
+            logger.debug(
+                "Percentage context detected for %s: treating %r as percent",
+                metric_id,
+                raw_text,
+            )
+            return Unit.PERCENT
+        return unit
 
     def _should_filter_unit(self, metric_id: str, unit: Unit) -> bool:
         """
@@ -277,6 +311,13 @@ class ValueBindingStage:
             parsed = self._parse_number(candidate_cell.text)
             if parsed:
                 value, unit, raw = parsed
+                # Check percentage context from table headers/stubs
+                context_text = " ".join(
+                    candidate_cell.header_path + candidate_cell.stub_path
+                )
+                unit = self._check_percentage_context(
+                    candidate.metric_id, unit, raw, context_text
+                )
                 if not self._should_filter_unit(candidate.metric_id, unit):
                     confidence = self._compute_table_confidence(
                         match_text_lower,
@@ -344,6 +385,11 @@ class ValueBindingStage:
                 continue
 
             value, unit, raw = parsed
+            # Check percentage context from table headers/stubs
+            context_text = " ".join(header_path + cell.stub_path)
+            unit = self._check_percentage_context(
+                candidate.metric_id, unit, raw, context_text
+            )
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
@@ -411,6 +457,11 @@ class ValueBindingStage:
                 continue
 
             value, unit, raw = parsed
+            # Check percentage context from table headers/stubs
+            context_text = " ".join(cell.header_path + stub_path)
+            unit = self._check_percentage_context(
+                candidate.metric_id, unit, raw, context_text
+            )
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
@@ -500,6 +551,11 @@ class ValueBindingStage:
 
         # Create bound values
         for num_match, value, unit, raw in numbers:
+            # Check if count value should be treated as percentage (FIX-A)
+            unit = self._check_percentage_context(
+                candidate.metric_id, unit, raw, text
+            )
+
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
