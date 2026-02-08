@@ -25,6 +25,7 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
+from src.extraction_v2.unit_compatibility import is_unit_compatible
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
@@ -102,6 +103,28 @@ class ValueBindingStage:
             proximity_window: Max characters to search for values near text keywords (default: 100)
         """
         self.proximity_window = proximity_window
+        self._unit_filtered_count = 0
+
+    def _should_filter_unit(self, metric_id: str, unit: Unit) -> bool:
+        """
+        Check if a value should be filtered due to unit incompatibility.
+
+        Args:
+            metric_id: Canonical metric ID from the candidate
+            unit: Detected unit from value parsing
+
+        Returns:
+            True if the value should be filtered out (incompatible unit).
+        """
+        if is_unit_compatible(metric_id, unit):
+            return False
+        logger.debug(
+            "Filtering incompatible unit %s for metric %s",
+            unit.value,
+            metric_id,
+        )
+        self._unit_filtered_count += 1
+        return True
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -117,6 +140,7 @@ class ValueBindingStage:
         bindings_found = 0
         errors: list[str] = []
         warnings: list[str] = []
+        self._unit_filtered_count = 0
 
         # Process each candidate
         for candidate in context.candidates:
@@ -132,7 +156,8 @@ class ValueBindingStage:
 
         logger.info(
             f"Value binding complete: {bindings_found} bindings "
-            f"from {len(context.candidates)} candidates"
+            f"from {len(context.candidates)} candidates "
+            f"({self._unit_filtered_count} unit-filtered)"
         )
 
         return self._make_result(
@@ -252,28 +277,29 @@ class ValueBindingStage:
             parsed = self._parse_number(candidate_cell.text)
             if parsed:
                 value, unit, raw = parsed
-                confidence = self._compute_table_confidence(
-                    match_text_lower,
-                    candidate_cell.header_path,
-                    candidate_cell.stub_path,
-                    unit,
-                )
-                bound_values.append(
-                    BoundValue(
-                        candidate_id=candidate.candidate_id,
-                        value=value,
-                        value_raw=raw,
-                        unit=unit,
-                        binding_type="table_cell",
-                        binding_confidence=confidence,
-                        source_locator=SourceLocator(
-                            table_id=table.table_id,
-                            cell_row=candidate_cell.row,
-                            cell_col=candidate_cell.col,
-                            dom_locator=candidate_cell.dom_locator,
-                        ),
+                if not self._should_filter_unit(candidate.metric_id, unit):
+                    confidence = self._compute_table_confidence(
+                        match_text_lower,
+                        candidate_cell.header_path,
+                        candidate_cell.stub_path,
+                        unit,
                     )
-                )
+                    bound_values.append(
+                        BoundValue(
+                            candidate_id=candidate.candidate_id,
+                            value=value,
+                            value_raw=raw,
+                            unit=unit,
+                            binding_type="table_cell",
+                            binding_confidence=confidence,
+                            source_locator=SourceLocator(
+                                table_id=table.table_id,
+                                cell_row=candidate_cell.row,
+                                cell_col=candidate_cell.col,
+                                dom_locator=candidate_cell.dom_locator,
+                            ),
+                        )
+                    )
 
         return bound_values
 
@@ -318,6 +344,9 @@ class ValueBindingStage:
                 continue
 
             value, unit, raw = parsed
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+
             confidence = self._compute_table_confidence(
                 match_text_lower, header_path, cell.stub_path, unit
             )
@@ -382,6 +411,9 @@ class ValueBindingStage:
                 continue
 
             value, unit, raw = parsed
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+
             confidence = self._compute_table_confidence(
                 match_text_lower, cell.header_path, stub_path, unit
             )
@@ -468,6 +500,9 @@ class ValueBindingStage:
 
         # Create bound values
         for num_match, value, unit, raw in numbers:
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+
             # Check if value is in the same sentence as the keyword
             # num_match positions are relative to window_text, need to adjust to full text
             num_start_in_text = window_start + num_match.start()
@@ -741,5 +776,6 @@ class ValueBindingStage:
             warnings=warnings,
             metadata={
                 "binding_types": {},  # Could track counts per binding type
+                "unit_filtered_count": self._unit_filtered_count,
             },
         )

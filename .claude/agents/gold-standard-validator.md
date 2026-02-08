@@ -15,7 +15,7 @@ You validate extraction quality by running gold standard comparisons and diagnos
 
 1. **Run validation**: Execute the gold standard validation script with baseline comparison:
    ```bash
-   python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+   python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
    ```
 
 2. **Report results**: Summarize precision, recall, and F1 scores. Highlight any deltas from the baseline.

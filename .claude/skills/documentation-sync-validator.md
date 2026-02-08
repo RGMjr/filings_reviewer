@@ -667,9 +667,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate file references
-        run: python scripts/validate_doc_references.py
+        run: python3 scripts/validate_doc_references.py
       - name: Check coverage metrics
-        run: python scripts/check_coverage_in_docs.py
+        run: python3 scripts/check_coverage_in_docs.py
       - name: Report issues
         if: failure()
         run: echo "Documentation out of sync!"

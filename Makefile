@@ -62,7 +62,7 @@ format:
 # -----------------------------------------------------------------------------
 
 docs-check:
-	@python scripts/check_docs_sync.py
+	@python3 scripts/check_docs_sync.py
 
 docs-update:
 	@echo "Updating coverage in README.md..."

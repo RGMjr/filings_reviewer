@@ -1257,3 +1257,347 @@ class TestEdgeCases:
 
         assert result.success
         assert len(context.bound_values) == 0
+
+
+# ============================================================================
+# Unit Filtering Integration Tests
+# ============================================================================
+
+
+class TestUnitFiltering:
+    """Tests for unit-compatibility filtering in value binding."""
+
+    def test_count_metric_rejects_currency_in_table(self, stage: ValueBindingStage) -> None:
+        """Count-only metric rejects $14.8M in table binding."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="Paid Customers",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="$14.8M",
+                header_path=["Value"], stub_path=["Paid Customers"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-table",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-1",
+            metric_id="cm_customers_period_end",
+            match_text="Paid Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-table", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0  # Currency rejected for count metric
+
+    def test_count_metric_rejects_percent_in_table(self, stage: ValueBindingStage) -> None:
+        """Count-only metric rejects 152% in table binding."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Growth", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="Customers",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="152%",
+                header_path=["Growth"], stub_path=["Customers"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-pct",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-2",
+            metric_id="cm_customers_period_end",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-pct", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_count_metric_accepts_bare_count(self, stage: ValueBindingStage) -> None:
+        """Count-only metric accepts 50,000."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Total", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="Customers",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="50,000",
+                header_path=["Total"], stub_path=["Customers"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-count",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-3",
+            metric_id="cm_customers_period_end",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-count", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        assert context.bound_values[0].value == 50_000
+        assert context.bound_values[0].unit == Unit.COUNT
+
+    def test_count_metric_rejects_currency_in_text(self, stage: ValueBindingStage) -> None:
+        """Count-only metric rejects $14.8M in text proximity binding."""
+        segment = Segment(
+            segment_id="seg-uf-text",
+            text="We had $14.8M in paid customers spending.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-text",
+            metric_id="cm_customers_period_end",
+            match_text="paid customers",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-uf-text",
+                text_span=(18, 32),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # $14.8M should be filtered (currency incompatible with count metric)
+        for bv in context.bound_values:
+            assert bv.unit != Unit.CURRENCY
+
+    def test_currency_metric_rejects_bare_count(self, stage: ValueBindingStage) -> None:
+        """Currency-only metric rejects bare count value."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="ARR",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="500",
+                header_path=["Value"], stub_path=["ARR"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-curr",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-curr",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-curr", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0  # Bare count rejected for currency metric
+
+    def test_currency_metric_accepts_dollar_value(self, stage: ValueBindingStage) -> None:
+        """Currency-only metric accepts $500M."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="ARR",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="$500M",
+                header_path=["Value"], stub_path=["ARR"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-curr-ok",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-curr-ok",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-curr-ok", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        assert context.bound_values[0].value == 500_000_000
+        assert context.bound_values[0].unit == Unit.CURRENCY
+
+    def test_unconstrained_metric_accepts_all_units(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Unconstrained metric (cm_revenue_by_cohort) accepts any unit."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="Revenue by Cohort",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="$500M",
+                header_path=["Value"], stub_path=["Revenue by Cohort"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-uncons",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-uncons",
+            metric_id="cm_revenue_by_cohort",
+            match_text="Revenue by Cohort",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-uncons", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+
+    def test_unit_filtered_count_in_metadata(self, stage: ValueBindingStage) -> None:
+        """Filtered count is tracked in result metadata."""
+        cells = [
+            Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="2023", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=2, text="2022", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1, col=0, text="Customers",
+                is_stub=True, header_path=["Metric"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="$14.8M",
+                header_path=["2023"], stub_path=["Customers"],
+            ),
+            Cell(
+                row=1, col=2, text="152%",
+                header_path=["2022"], stub_path=["Customers"],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-meta",
+            row_count=2, col_count=3, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 3 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-meta",
+            metric_id="cm_customers_period_end",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-meta", cell_row=1, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0  # Both filtered
+        assert result.metadata["unit_filtered_count"] == 2
+
+    def test_strategy5_cell_value_filtered(self, stage: ValueBindingStage) -> None:
+        """Strategy 5 (value in candidate cell) also applies unit filtering."""
+        cells = [
+            Cell(
+                row=0, col=0,
+                text="Customers: $14.8M",
+                header_path=[], stub_path=[],
+            ),
+        ]
+        table = Table(
+            table_id="unit-filter-s5",
+            row_count=1, col_count=1, header_rows=0, stub_cols=0, cells=cells,
+        )
+        table._grid = [[cells[0]]]
+
+        candidate = MetricCandidate(
+            candidate_id="cand-uf-s5",
+            metric_id="cm_customers_period_end",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="unit-filter-s5", cell_row=0, cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0  # $14.8M filtered in Strategy 5

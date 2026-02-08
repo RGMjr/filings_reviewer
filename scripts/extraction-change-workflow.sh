@@ -27,7 +27,7 @@ echo ""
 echo "[Step 1/3] Running gold standard validation..."
 echo ""
 
-if python scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
+if python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
     echo ""
     echo "[Step 1/3] PASSED — no regressions detected."
     echo ""
@@ -61,7 +61,7 @@ else
     if command -v claude &> /dev/null; then
         claude -p "A gold standard regression was detected after extraction changes. Diagnose the root cause: 1) Read the validation output above, 2) Check git diff for recent extraction/keyword changes, 3) Hypothesize which change caused the regression and suggest a fix. Be concise." \
             --model sonnet \
-            --allowedTools "Bash(python scripts/validate_against_gold_standard.py*),Bash(git diff*),Bash(git log*),Read,Grep,Glob"
+            --allowedTools "Bash(python3 scripts/validate_against_gold_standard.py*),Bash(git diff*),Bash(git log*),Read,Grep,Glob"
     else
         echo "Claude CLI not available — skipping automated diagnosis."
         echo "Review the validation output above and check recent changes manually."

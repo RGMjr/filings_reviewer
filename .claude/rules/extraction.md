@@ -28,7 +28,7 @@ All patterns live in `config/metric_keywords.yaml` (authoritative source, no har
 
 ```bash
 # Quick check (during development)
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 
 # Formal validation (before commit)
 pytest -m gold_standard --gold-standard-mode=fresh -v
