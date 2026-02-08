@@ -18,8 +18,8 @@
       "Bash(mypy*)",
       "Bash(black*)",
       "Bash(ruff*)",
-      "Bash(python scripts/validate_against_gold_standard.py*)",
-      "Bash(python scripts/sync_github_issues.py*)",
+      "Bash(python3 scripts/validate_against_gold_standard.py*)",
+      "Bash(python3 scripts/sync_github_issues.py*)",
       "Bash(bash scripts/extraction-change-workflow.sh*)"
     ],
     "deny": [

@@ -47,7 +47,7 @@ done
 echo ""
 
 # Run gold standard validation with regression check
-if python scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
+if python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
     echo ""
     echo "Gold standard validation PASSED — commit allowed."
     echo ""
@@ -61,7 +61,7 @@ else
     echo "Options:"
     echo "  1. Fix the regression and try again"
     echo "  2. If intentional, update the baseline:"
-    echo "     python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline"
+    echo "     python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline"
     echo "  3. Skip this check (not recommended):"
     echo "     git commit --no-verify"
     echo ""
