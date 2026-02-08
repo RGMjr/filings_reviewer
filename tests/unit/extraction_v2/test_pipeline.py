@@ -241,8 +241,8 @@ class TestV2Pipeline:
     def test_pipeline_initialization(self) -> None:
         """Test pipeline initializes with all stages."""
         pipeline = V2Pipeline()
-        # Should have 11 stages by default
-        assert len(pipeline._stages) == 11
+        # Should have 12 stages by default (including false positive filter)
+        assert len(pipeline._stages) == 12
 
     def test_pipeline_with_disabled_features(self) -> None:
         """Test pipeline with disabled optional features."""
@@ -270,7 +270,7 @@ class TestV2Pipeline:
         # Should complete without error (even if no facts extracted)
         assert result.success is True
         assert result.document is not None
-        assert len(result.stage_results) == 11  # All stages executed
+        assert len(result.stage_results) == 12  # All stages executed
 
     def test_pipeline_tracks_stage_durations(self, tmp_path: Path) -> None:
         """Test that stage durations are tracked."""

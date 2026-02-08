@@ -1,18 +1,19 @@
 """
 V2 Extraction Pipeline Orchestrator.
 
-This module orchestrates the 11-stage extraction pipeline:
+This module orchestrates the 12-stage extraction pipeline:
 
-1. Ingestion & Parsing       → Segments with XPath locators
-2. Section Classification    → MD&A, Risk Factors, etc.
-3. Table Reconstruction      → header_path, stub_path per cell
-4. Image Triage              → chart, table_image, decorative
-5. OCR & Chart Extraction    → labeled values only
+1. Ingestion & Parsing         → Segments with XPath locators
+2. Section Classification      → MD&A, Risk Factors, etc.
+3. Table Reconstruction        → header_path, stub_path per cell
+4. Image Triage                → chart, table_image, decorative
+5. OCR & Chart Extraction      → labeled values only
 6. Metric Candidate Generation → YAML taxonomy matching
-7. Value Binding             → structural link required
-8. Period Inference          → from header_path or context
-9. MetricFact Construction   → with evidence_pack
-10. Deduplication            → by identity tuple
+7. Value Binding               → structural link required
+7.5. False Positive Filter     → V1 FP filter on bound values
+8. Period Inference            → from header_path or context
+9. MetricFact Construction     → with evidence_pack
+10. Deduplication              → by identity tuple
 11. Validation & Review Routing → confidence-based
 
 Design principles:
@@ -41,6 +42,7 @@ from src.extraction_v2.models import (
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
+from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
@@ -63,6 +65,7 @@ class PipelineStage(str, Enum):
     OCR_CHART_EXTRACTION = "ocr_chart_extraction"
     CANDIDATE_GENERATION = "candidate_generation"
     VALUE_BINDING = "value_binding"
+    FALSE_POSITIVE_FILTER = "false_positive_filter"
     PERIOD_INFERENCE = "period_inference"
     FACT_CONSTRUCTION = "fact_construction"
     DEDUPLICATION = "deduplication"
@@ -225,7 +228,7 @@ class V2Pipeline:
     """
     V2 Extraction Pipeline Orchestrator.
 
-    Coordinates the 11-stage extraction process for a single filing.
+    Coordinates the 12-stage extraction process for a single filing.
     """
 
     def __init__(self, config: PipelineConfig | None = None) -> None:
@@ -267,6 +270,11 @@ class V2Pipeline:
 
         # Stage 7: Value Binding
         self._stages.append((PipelineStage.VALUE_BINDING, ValueBindingStage()))
+
+        # Stage 7.5: False Positive Filter
+        self._stages.append(
+            (PipelineStage.FALSE_POSITIVE_FILTER, FalsePositiveFilterStage())
+        )
 
         # Stage 8: Period Inference
         self._stages.append((PipelineStage.PERIOD_INFERENCE, PeriodInferenceStage()))
