@@ -33,7 +33,7 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.stages.false_positive_filter import (
     FalsePositiveFilterStage,
-    _bound_value_to_number_match,
+    _make_number_matches,
     _get_source_text,
 )
 
@@ -117,41 +117,49 @@ def _make_bound_value(
 
 
 # ============================================================================
-# Test: _bound_value_to_number_match conversion
+# Test: _make_number_matches conversion
 # ============================================================================
 
 
-class TestBoundValueToNumberMatch:
+class TestMakeNumberMatches:
     """Tests for BoundValue to NumberMatch conversion."""
 
     def test_count_unit_maps_to_count(self):
         bv = _make_bound_value("c1", 100.0, "100", Unit.COUNT)
-        nm = _bound_value_to_number_match(bv)
-        assert nm.unit == "count"
-        assert nm.raw_text == "100"
-        assert float(nm.value) == 100.0
+        nms = _make_number_matches(bv, "We had 100 customers")
+        assert len(nms) == 1
+        assert nms[0].unit == "count"
+        assert nms[0].raw_text == "100"
+        assert float(nms[0].value) == 100.0
 
     def test_percent_unit_maps_to_percentage(self):
         bv = _make_bound_value("c1", 95.0, "95%", Unit.PERCENT)
-        nm = _bound_value_to_number_match(bv)
-        assert nm.unit == "percentage"
+        nms = _make_number_matches(bv, "Retention was 95% last year")
+        assert nms[0].unit == "percentage"
 
     def test_currency_unit_maps_to_currency(self):
         bv = _make_bound_value("c1", 1000.0, "$1,000", Unit.CURRENCY)
-        nm = _bound_value_to_number_match(bv)
-        assert nm.unit == "currency"
+        nms = _make_number_matches(bv, "Revenue of $1,000")
+        assert nms[0].unit == "currency"
 
-    def test_text_span_preserved(self):
-        bv = _make_bound_value("c1", 42.0, "42", Unit.COUNT, text_span=(10, 12))
-        nm = _bound_value_to_number_match(bv)
-        assert nm.start == 10
-        assert nm.end == 12
-
-    def test_no_text_span_defaults_to_zero(self):
+    def test_position_found_in_source_text(self):
         bv = _make_bound_value("c1", 42.0, "42", Unit.COUNT)
-        nm = _bound_value_to_number_match(bv)
-        assert nm.start == 0
-        assert nm.end == 2  # len("42")
+        nms = _make_number_matches(bv, "We had 42 customers")
+        assert nms[0].start == 7  # position of "42" in the text
+        assert nms[0].end == 9
+
+    def test_position_fallback_when_not_found(self):
+        bv = _make_bound_value("c1", 42.0, "42", Unit.COUNT)
+        nms = _make_number_matches(bv, "No match here")
+        assert nms[0].start == 0
+        assert nms[0].end == 2  # len("42")
+
+    def test_multiple_occurrences_found(self):
+        bv = _make_bound_value("c1", 42.0, "42", Unit.COUNT)
+        nms = _make_number_matches(bv, "We had 42 and then 42 more")
+        assert len(nms) == 2
+        assert nms[0].start == 7
+        assert nms[1].start == 19
 
 
 # ============================================================================
