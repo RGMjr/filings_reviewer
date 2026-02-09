@@ -24,7 +24,8 @@ COMPANY_MAP = {
     "Samsara": "Samsara_Inc_",
     "Samsara Inc.": "Samsara_Inc_",
     "SAMSARA VISION INC.": "Samsara_Vision_Inc_",
-    "Farfetch": "Farfetch_Ltd",
+    "Farfetch": "Farfetch_Limited",
+    "Farfetch Limited": "Farfetch_Limited",
     "Slack": "Slack_Technologies",
     "Slack Technologies": "Slack_Technologies",
 }

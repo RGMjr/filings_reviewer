@@ -623,6 +623,10 @@ class TestNormalizeCompanyForPath:
         # Note: comma is preserved as in actual directory naming
         assert _normalize_company_for_path("Farfetch, Ltd") == "Farfetch,_Ltd"
 
+    def test_company_farfetch_limited(self) -> None:
+        """Company name as it appears in gold standard CSV."""
+        assert _normalize_company_for_path("Farfetch Limited") == "Farfetch_Limited"
+
     def test_company_with_comma_and_inc(self) -> None:
         """Company name with comma and Inc. suffix."""
         assert _normalize_company_for_path("PlayAGS, Inc.") == "PlayAGS,_Inc_"

@@ -44,8 +44,8 @@ def main():
     from src.llm.openai_client import OpenAIClient
 
     # Load Farfetch filing
-    filing_path = PROJECT_ROOT / "data/filings/0001740915/000119312518252315/primary.htm"
-    gold_path = PROJECT_ROOT / "data/gold_standard/Farfetch_Ltd/extracted_values.csv"
+    filing_path = PROJECT_ROOT / "data/gold_standard/Farfetch_Limited/filing.html"
+    gold_path = PROJECT_ROOT / "data/gold_standard/Farfetch_Limited/extracted_values.csv"
 
     print(f"Loading filing: {filing_path}")
     print(f"Gold standard: {gold_path}")
