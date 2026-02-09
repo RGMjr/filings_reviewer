@@ -2,21 +2,19 @@
 V2 False Positive Filter Stage
 
 Stage 7.5 of the V2 extraction pipeline. Runs between value binding (Stage 7)
-and period inference (Stage 8) to remove false positive BoundValues using V1's
-proven FalsePositiveFilter.
+and period inference (Stage 8) to remove false positive BoundValues.
 
-This reuses V1's filter rather than duplicating logic:
-- Date context patterns (8 patterns)
-- Label-embedded value detection
-- Reference number filtering (page, note, section, etc.)
-- Year filtering (1990-2100)
-- Min value threshold
-- TOC proximity / dot leader detection
-- Financial statement context detection
-- Measurement unit patterns
+Two-layer filtering:
+1. V1 FalsePositiveFilter (positional date/reference/year/label overlap)
+2. V2-native rules that exploit richer pipeline context:
+   - Year values for ALL unit types (V1 only filters unit=count)
+   - Linearized table text detection ([CELL]/[ROW] markers)
+   - Financial table annotations ("In thousands", "stock-based compensation")
+   - Company ranking names ("Fortune 100", "Forbes 500")
 
 Design principles:
-- Reuse V1 filters (single source of truth)
+- Reuse V1 filters (single source of truth for shared logic)
+- V2-native rules address gaps the V1 positional filter can't catch
 - Log filter statistics per reason for diagnostics
 - Non-destructive: only removes BoundValues from context.bound_values
 """
@@ -24,6 +22,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -37,6 +36,86 @@ if TYPE_CHECKING:
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# V2-native False Positive Patterns
+# =============================================================================
+
+_YEAR_MIN = 1990
+_YEAR_MAX = 2100
+
+# Financial table annotation — "(In thousands)", "(In millions)", etc.
+_FINANCIAL_ANNOTATION_RE = re.compile(
+    r"\(\s*in\s+(?:thousands|millions|billions|hundreds)\s*\)",
+    re.IGNORECASE,
+)
+
+# Stock-based compensation footnote — strong financial context signal
+_SBC_RE = re.compile(r"stock[- ]based\s+compensation", re.IGNORECASE)
+
+# Linearized table markers injected by the ingestion stage
+_TABLE_MARKER_RE = re.compile(r"\[(?:CELL|ROW)\]")
+
+# Company ranking names — "Fortune 100", "Forbes 500", "Global 2000", etc.
+_RANKING_NAME_RE = re.compile(
+    r"\b(?:Fortune|Forbes|Inc\.?|Global)\s+(\d[\d,]*)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_v2_false_positive(
+    bv: BoundValue,
+    source_text: str,
+) -> tuple[bool, str | None]:
+    """
+    V2-native false positive checks that go beyond V1's positional filter.
+
+    These rules exploit V2 pipeline context that V1 doesn't have:
+    - Year values across all unit types (V1 only checks unit=count)
+    - Linearized table markers that indicate duplicate text extraction
+    - Financial table annotations that mark non-metric financial data
+    - Ranking names where a number is part of a name, not a value
+
+    Returns:
+        Tuple of (is_false_positive, reason) — reason is None if not FP.
+    """
+    raw = (bv.value_raw or "").strip()
+
+    # Rule 1: Year value for ALL units (V1 only filters unit=count).
+    # Catches e.g. "2019" extracted as cm_net_revenue_retention with unit=PERCENT.
+    if bv.value is not None and _YEAR_MIN <= bv.value <= _YEAR_MAX:
+        stripped = raw.replace(",", "")
+        if stripped.isdigit() and len(stripped) == 4:
+            return True, "v2_year_value"
+
+    if not source_text:
+        return False, None
+
+    # Rule 2: Linearized table text ([CELL]/[ROW] markers).
+    # The ingestion stage injects these markers when linearizing HTML tables
+    # into text segments.  The same table data is also processed by the
+    # table-reconstruction path, so these text-sourced extractions are noisy
+    # duplicates that bypass the structured header/stub binding.
+    if _TABLE_MARKER_RE.search(source_text):
+        return True, "v2_linearized_table"
+
+    # Rule 3: Financial table annotation text.
+    # Segments containing "(In thousands)" or "stock-based compensation" are
+    # financial statement text, not customer metric narrative.
+    if _FINANCIAL_ANNOTATION_RE.search(source_text):
+        return True, "v2_financial_annotation"
+    if _SBC_RE.search(source_text):
+        return True, "v2_financial_sbc"
+
+    # Rule 4: Company ranking name.
+    # "Fortune 100", "Forbes 500" — the number is part of the ranking name.
+    if raw:
+        for m in _RANKING_NAME_RE.finditer(source_text):
+            if m.group(1) == raw:
+                return True, "v2_ranking_name"
+
+    return False, None
 
 
 def _get_source_text(
@@ -142,11 +221,19 @@ class FalsePositiveFilterStage:
     """
     Stage 7.5: False Positive Filtering.
 
-    Removes false positive BoundValues using V1's FalsePositiveFilter:
+    Two-layer filtering:
+
+    V2-native rules (run first):
+    - Year values for ALL unit types (V1 only handles unit=count)
+    - Linearized table text ([CELL]/[ROW] marker detection)
+    - Financial table annotations ("In thousands", "stock-based compensation")
+    - Company ranking names ("Fortune 100", "Forbes 500")
+
+    V1 FalsePositiveFilter (positional overlap):
     - Date components (numbers inside dates like "January 31, 2019")
     - Label-embedded values (">$100,000" threshold definitions)
     - Reference numbers (page, note, section, exhibit, figure, etc.)
-    - Year values (standalone 4-digit years 1990-2100)
+    - Year values (standalone 4-digit years 1990-2100, count unit only)
     - Measurement units ("24-hour", "30-day")
     - TOC proximity and dot leader page references
     - Financial statement line items
@@ -188,6 +275,22 @@ class FalsePositiveFilterStage:
                     kept.append(bv)
                     continue
 
+                # --- V2-native checks (run first, cheaper than V1) ---
+                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text)
+                if v2_fp:
+                    filter_reasons[v2_reason or "v2_unknown"] = (
+                        filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
+                    )
+                    logger.debug(
+                        "V2 FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
+                        bv.bound_value_id,
+                        v2_reason,
+                        bv.value,
+                        bv.value_raw,
+                    )
+                    continue
+
+                # --- V1 positional filter ---
                 # Build NumberMatches for all occurrences of the raw
                 # value in the source text. The value is FP only if ALL
                 # occurrences are flagged (conservative: if any occurrence
