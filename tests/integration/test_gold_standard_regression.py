@@ -187,7 +187,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         assert baseline_metrics is not None, "Baseline should be loaded"
@@ -205,7 +205,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.precision - baseline_metrics.overall.precision
@@ -234,7 +234,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.recall - baseline_metrics.overall.recall
@@ -263,7 +263,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.f1 - baseline_metrics.overall.f1
@@ -292,7 +292,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         regressed_companies = []
@@ -335,7 +335,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         if comparison_result is None:

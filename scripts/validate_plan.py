@@ -261,10 +261,10 @@ def validate_plan(plan_path: Path) -> list[ValidationIssue]:
 def main() -> int:
     """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python scripts/validate_plan.py <plan_file.md> [plan_file2.md ...]")
+        print("Usage: python3 scripts/validate_plan.py <plan_file.md> [plan_file2.md ...]")
         print("\nExample:")
-        print("  python scripts/validate_plan.py docs/EXTRACTION_IMPROVEMENT_PLAN.md")
-        print("  python scripts/validate_plan.py docs/*.md")
+        print("  python3 scripts/validate_plan.py docs/EXTRACTION_IMPROVEMENT_PLAN.md")
+        print("  python3 scripts/validate_plan.py docs/*.md")
         return 1
 
     all_issues: dict[str, list[ValidationIssue]] = {}

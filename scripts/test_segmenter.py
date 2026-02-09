@@ -117,9 +117,9 @@ def insert_segments(db: DatabaseAdapter, segments: list):
 def main():
     """Main entry point."""
     if len(sys.argv) != 3:
-        print("Usage: python test_segmenter.py <CIK> <ACCESSION_NUMBER>")
+        print("Usage: python3 test_segmenter.py <CIK> <ACCESSION_NUMBER>")
         print("")
-        print("Example: python test_segmenter.py 0001561550 0001193125-16-550418")
+        print("Example: python3 test_segmenter.py 0001561550 0001193125-16-550418")
         sys.exit(1)
 
     cik = sys.argv[1]

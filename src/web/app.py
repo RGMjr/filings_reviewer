@@ -243,7 +243,7 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
         if not env_secret:
             raise ValueError(
                 "SECRET_KEY environment variable is required in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
             )
         if len(env_secret) < 32:
             raise ValueError(
@@ -257,7 +257,7 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
         if not env_api_key:
             raise ValueError(
                 "FILINGS_API_KEY environment variable is required in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                "Generate one with: python3 -c \"import secrets; print(secrets.token_hex(32))\""
             )
         app.config["API_KEY"] = env_api_key
     elif hasattr(config_class, "init_app"):
