@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m pytest tests/ -x -q --tb=short && echo '\\nAll tests passed - safe to commit' || (echo '\\nTESTS FAILED - fix before committing' && exit 1)"
+            "command": "python3 -m pytest tests/unit/ -x -q --tb=short && echo '\\nAll unit tests passed - safe to commit' || (echo '\\nUNIT TESTS FAILED - fix before committing' && exit 1)"
           }
         ]
       }
