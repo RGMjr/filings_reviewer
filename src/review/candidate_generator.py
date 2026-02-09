@@ -545,7 +545,7 @@ class CandidateGenerator:
             SegmentProcessingContext with pre-computed data, or None if no numbers found
         """
         # Import boundary detector here to avoid circular import at module level
-        from src.review.boundary_detection import BoundaryDetector
+        from src.review.boundary_detection import BoundaryDetector, TextBoundary
 
         source_segment_id = segment.get("source_segment_id")
 
@@ -561,7 +561,7 @@ class CandidateGenerator:
         word_positions = self._context_extractor.parse_text_into_words(text)
 
         # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
-        boundaries: list[tuple[int, int]] | None = None
+        boundaries: list[TextBoundary] | None = None
         detector: BoundaryDetector | None = None
         if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
@@ -569,7 +569,7 @@ class CandidateGenerator:
             logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
 
         # Pre-compute sentence boundaries for P1.5 sentence-aware filtering
-        sentence_boundaries: list[tuple[int, int]] | None = None
+        sentence_boundaries: list[TextBoundary] | None = None
         if self.config.detect_sentences:
             if detector is None:
                 detector = BoundaryDetector()
