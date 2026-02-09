@@ -407,9 +407,9 @@ class TestKeywordPatterns:
 
     def test_active_consumers_keyword_exists(self) -> None:
         """Verify 'active consumers' keyword is in metric patterns."""
-        from src.extraction.metric_classifier import MetricClassifier
+        from src.extraction.keyword_config import get_metric_keywords
 
-        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_active_customers_total", [])
+        keywords = get_metric_keywords().get("cm_active_customers_total", [])
 
         # Check for consumer patterns
         consumer_patterns = [k for k in keywords if "consumer" in k.lower()]
@@ -420,9 +420,9 @@ class TestKeywordPatterns:
 
     def test_number_of_orders_keyword_exists(self) -> None:
         """Verify 'number of orders' keyword is in metric patterns."""
-        from src.extraction.metric_classifier import MetricClassifier
+        from src.extraction.keyword_config import get_metric_keywords
 
-        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_transactions_by_cohort", [])
+        keywords = get_metric_keywords().get("cm_transactions_by_cohort", [])
 
         # Check for orders patterns
         orders_patterns = [k for k in keywords if "order" in k.lower()]
@@ -433,9 +433,9 @@ class TestKeywordPatterns:
 
     def test_customer_abc_keyword_exists(self) -> None:
         """Verify 'Customer A/B/C' keyword is in revenue concentration patterns."""
-        from src.extraction.metric_classifier import MetricClassifier
+        from src.extraction.keyword_config import get_metric_keywords
 
-        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_revenue_concentration", [])
+        keywords = get_metric_keywords().get("cm_revenue_concentration", [])
 
         # Check for Customer A/B/C pattern
         customer_patterns = [
