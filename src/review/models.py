@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 if TYPE_CHECKING:
+    from src.review.boundary_detection import TextBoundary
     from src.review.keyword_matching import KeywordMatch
     from src.review.number_parsing import NumberMatch
 
@@ -803,8 +804,8 @@ class SegmentProcessingContext:
     word_positions: tuple[tuple[int, int, str], ...] | None  # For context extraction
 
     # Boundary detection results
-    boundaries: tuple[tuple[int, int], ...] | None  # Semantic boundaries
-    sentence_boundaries: tuple[tuple[int, int], ...] | None  # Sentence boundaries
+    boundaries: tuple[TextBoundary, ...] | None  # Semantic boundaries
+    sentence_boundaries: tuple[TextBoundary, ...] | None  # Sentence boundaries
 
     # Table parsing (optional, only for table segments)
     # Note: Can't be frozen since parsers are mutable, stored as Any
