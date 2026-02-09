@@ -41,6 +41,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -m pytest tests/ -x -q --tb=short && echo '\\nAll tests passed - safe to commit' || (echo '\\nTESTS FAILED - fix before committing' && exit 1)"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit.*metric_keywords",
