@@ -2,13 +2,17 @@
 Unit tests for V2 False Positive Filter Stage.
 
 Tests cover:
-- Date component filtering (numbers inside dates)
-- Label-embedded filtering (">$100,000" values)
-- Reference number filtering (page/note/section refs)
-- Year filtering (standalone 4-digit years)
-- Measurement unit filtering ("24-hour" numbers)
-- Financial statement context filtering
-- TOC proximity filtering
+- V2-native: Year filtering for ALL unit types (not just count)
+- V2-native: Linearized table text ([CELL]/[ROW] markers)
+- V2-native: Financial table annotations ("In thousands", SBC)
+- V2-native: Company ranking names ("Fortune 100")
+- V1 delegate: Date component filtering (numbers inside dates)
+- V1 delegate: Label-embedded filtering (">$100,000" values)
+- V1 delegate: Reference number filtering (page/note/section refs)
+- V1 delegate: Year filtering (standalone 4-digit years, count unit)
+- V1 delegate: Measurement unit filtering ("24-hour" numbers)
+- V1 delegate: Financial statement context filtering
+- V1 delegate: TOC proximity filtering
 - Percentage context detection for retention metrics
 - Integration: stage correctly reduces FP count on mock data
 """
@@ -33,6 +37,7 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.stages.false_positive_filter import (
     FalsePositiveFilterStage,
+    _is_v2_false_positive,
     _make_number_matches,
     _get_source_text,
 )
@@ -754,3 +759,205 @@ class TestIntegration:
         assert 2019.0 not in values, "Year should be filtered"
         assert 150000.0 in values, "Real customer count should be kept"
         assert 143.0 in values, "Real percentage should be kept"
+
+
+# ============================================================================
+# Test: V2-native — Year filtering for all unit types
+# ============================================================================
+
+
+class TestV2YearFilterAllUnits:
+    """V2 extends year filtering to non-count units (V1 only filters count)."""
+
+    def test_year_as_percent_filtered(self):
+        """'2019' with unit=PERCENT should be filtered (NRR context)."""
+        bv = _make_bound_value("c1", 2019.0, "2019", Unit.PERCENT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, "revenue was $400 million in fiscal year 2019")
+        assert is_fp is True
+        assert reason == "v2_year_value"
+
+    def test_year_as_currency_filtered(self):
+        """'2019' with unit=CURRENCY should also be filtered."""
+        bv = _make_bound_value("c1", 2019.0, "2019", Unit.CURRENCY, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, "In 2019 we grew revenue.")
+        assert is_fp is True
+        assert reason == "v2_year_value"
+
+    def test_non_year_percent_kept(self):
+        """'143' with unit=PERCENT should NOT be filtered."""
+        bv = _make_bound_value("c1", 143.0, "143%", Unit.PERCENT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, "Net revenue retention was 143%.")
+        assert is_fp is False
+
+    def test_year_via_stage(self, stage):
+        """Year values with PERCENT unit filtered by the full stage pipeline."""
+        text = "Revenue grew 110% and 82% in fiscal year 2019."
+        segment = _make_text_segment("seg-1", text)
+        candidate = _make_candidate("c1", "cm_net_revenue_retention", "seg-1")
+
+        bv_year = _make_bound_value(
+            "c1", 2019.0, "2019", Unit.PERCENT, "seg-1",
+        )
+        bv_real = _make_bound_value(
+            "c1", 110.0, "110%", Unit.PERCENT, "seg-1",
+        )
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv_year, bv_real],
+        )
+        stage.process(ctx)
+
+        values = [bv.value for bv in ctx.bound_values]
+        assert 2019.0 not in values, "Year as PERCENT should be filtered"
+        assert 110.0 in values, "Real percentage should be kept"
+
+
+# ============================================================================
+# Test: V2-native — Linearized table markers
+# ============================================================================
+
+
+class TestV2LinearizedTableMarkers:
+    """Text segments with [CELL]/[ROW] markers are linearized tables."""
+
+    def test_cell_marker_filtered(self):
+        """Values from text with [CELL] markers should be filtered."""
+        source = (
+            "As of January 31, [CELL] As of April 30, [ROW] 2017 [CELL] 2018 "
+            "[CELL] 2019 [ROW] Paid Customers [CELL] 37,000 [CELL] 59,000"
+        )
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_linearized_table"
+
+    def test_row_marker_filtered(self):
+        """Values from text with [ROW] markers should be filtered."""
+        source = "[ROW] Net Dollar Retention Rate [CELL] 171 [CELL] 152 [CELL] 143"
+        bv = _make_bound_value("c1", 171.0, "171", Unit.PERCENT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_linearized_table"
+
+    def test_narrative_text_kept(self):
+        """Values from normal narrative text should NOT be filtered."""
+        source = "We had over 500,000 customers at the end of the period."
+        bv = _make_bound_value("c1", 500000.0, "500,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_linearized_table_via_stage(self, stage):
+        """Full stage pipeline filters linearized table text."""
+        text = (
+            "[ROW] 2017 [CELL] 2018 [CELL] 2019 "
+            "[ROW] Paid Customers [CELL] 37,000 [CELL] 59,000 [CELL] 88,000"
+        )
+        segment = _make_text_segment("seg-1", text)
+        candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
+
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+
+        assert len(ctx.bound_values) == 0, "Linearized table values should be filtered"
+
+
+# ============================================================================
+# Test: V2-native — Financial table annotations
+# ============================================================================
+
+
+class TestV2FinancialAnnotations:
+    """Text with financial annotations like '(In thousands)' is FP."""
+
+    def test_in_thousands_filtered(self):
+        """Values from text with '(In thousands)' should be filtered."""
+        source = (
+            "Year Ended January 31, 2017 2018 2019 (In thousands) "
+            "Cost of revenue 37,000 59,000 88,000"
+        )
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_in_millions_filtered(self):
+        """Values from text with '(In millions)' should be filtered."""
+        source = "(In millions) Revenue 400.5 500.2"
+        bv = _make_bound_value("c1", 400.5, "400.5", Unit.CURRENCY, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_stock_based_comp_filtered(self):
+        """Values from text with 'stock-based compensation' should be filtered."""
+        source = (
+            "Includes stock-based compensation as follows: "
+            "Year Ended January 31, 2017 2018 2019 67,000 95,000"
+        )
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"
+
+    def test_customer_narrative_kept(self):
+        """Customer metric narrative without financial annotations kept."""
+        source = "As of January 31, 2019 we had 95,000 Paid Customers."
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+
+# ============================================================================
+# Test: V2-native — Ranking names
+# ============================================================================
+
+
+class TestV2RankingNames:
+    """Numbers that are part of ranking names like 'Fortune 100'."""
+
+    def test_fortune_100_filtered(self):
+        """'100' in 'Fortune 100' should be filtered."""
+        source = "including more than 65 companies in the Fortune 100."
+        bv = _make_bound_value("c1", 100.0, "100", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_ranking_name"
+
+    def test_fortune_500_filtered(self):
+        """'500' in 'Fortune 500' should be filtered."""
+        source = "Many Fortune 500 companies use our platform."
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_ranking_name"
+
+    def test_inc_5000_filtered(self):
+        """'5000' in 'Inc. 5000' should be filtered."""
+        source = "Named to the Inc. 5000 fastest growing companies."
+        bv = _make_bound_value("c1", 5000.0, "5000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_ranking_name"
+
+    def test_non_ranking_number_kept(self):
+        """'500' not in a ranking context should be kept."""
+        source = "We had more than 500 enterprise customers."
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_nearby_but_different_number_kept(self):
+        """'65' in 'more than 65 companies in the Fortune 100' should be kept."""
+        source = "including more than 65 companies in the Fortune 100."
+        bv = _make_bound_value("c1", 65.0, "65", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        # 65 is NOT the ranking number (100 is), so it should pass this rule
+        assert is_fp is False
