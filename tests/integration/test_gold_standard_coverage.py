@@ -59,12 +59,12 @@ FARFETCH_EXPECTED_VALUES = {
     # Number of Orders values
     "1305297": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_transactions_by_cohort",
+        "expected_metric": "cm_purchase_transactions_overall",
         "description": "Number of Orders (Dec 31, 2017)",
     },
     "853195": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_transactions_by_cohort",
+        "expected_metric": "cm_purchase_transactions_overall",
         "description": "Number of Orders (June 30, 2017)",
     },
 }
@@ -98,7 +98,7 @@ def gold_standard_dir() -> Path:
 @pytest.fixture
 def farfetch_filing_path(gold_standard_dir: Path) -> str | None:
     """Return path to Farfetch filing."""
-    path = Path("data/filings/0001740915/000119312518252315/primary.htm")
+    path = gold_standard_dir / "Farfetch_Limited" / "filing.html"
     if path.exists():
         return str(path)
     return None
@@ -194,7 +194,7 @@ class TestFarfetchGoldStandard:
     """Tests for Farfetch filing gold standard coverage."""
 
     @pytest.mark.skipif(
-        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
         reason="Farfetch filing not available"
     )
     def test_segmentation_captures_active_consumers(
@@ -219,7 +219,7 @@ class TestFarfetchGoldStandard:
         )
 
     @pytest.mark.skipif(
-        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
         reason="Farfetch filing not available"
     )
     def test_candidate_generation_finds_active_consumers(
@@ -246,7 +246,7 @@ class TestFarfetchGoldStandard:
         )
 
     @pytest.mark.skipif(
-        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
         reason="Farfetch filing not available"
     )
     def test_candidate_generation_finds_number_of_orders(
@@ -263,14 +263,14 @@ class TestFarfetchGoldStandard:
             "Keywords may need updating."
         )
 
-        # Verify it's matched to transaction metric
-        assert candidate.suggested_metric_id == "cm_transactions_by_cohort", (
-            f"Expected cm_transactions_by_cohort but got {candidate.suggested_metric_id}. "
+        # Verify it's matched to overall transaction metric
+        assert candidate.suggested_metric_id == "cm_purchase_transactions_overall", (
+            f"Expected cm_purchase_transactions_overall but got {candidate.suggested_metric_id}. "
             "Check keyword patterns."
         )
 
     @pytest.mark.skipif(
-        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
         reason="Farfetch filing not available"
     )
     def test_farfetch_gold_standard_coverage(
@@ -457,7 +457,7 @@ class TestSegmentationRegression:
     """Tests to prevent segmentation regression (stale segment issue)."""
 
     @pytest.mark.skipif(
-        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
         reason="Farfetch filing not available"
     )
     def test_farfetch_segment_count_reasonable(

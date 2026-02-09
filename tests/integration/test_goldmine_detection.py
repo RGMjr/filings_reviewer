@@ -89,7 +89,7 @@ def metric_rich_filing_path(data_dir: Path) -> str | None:
 @pytest.fixture
 def farfetch_filing_path(data_dir: Path) -> str | None:
     """Return path to Farfetch filing (gold standard) as string."""
-    path = data_dir / "0001740915" / "000119312518252315" / "primary.htm"
+    path = Path("data/gold_standard") / "Farfetch_Limited" / "filing.html"
     if not path.exists():
         return None
     return str(path)

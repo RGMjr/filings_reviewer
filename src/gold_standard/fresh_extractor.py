@@ -97,7 +97,7 @@ def _normalize_company_for_path(company_name: str) -> str:
 
     Examples:
         "Slack Technologies" -> "Slack_Technologies"
-        "Farfetch, Ltd" -> "Farfetch_Ltd"
+        "Farfetch Limited" -> "Farfetch_Limited"
         "Samsara Vision Inc." -> "Samsara_Vision_Inc_"
         "PlayAGS, Inc." -> "PlayAGS,_Inc_"
 
