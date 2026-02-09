@@ -71,7 +71,7 @@ class ValueBindingStage:
         (?P<currency>[\$\€\£])?             # Optional currency symbol
         \s*
         (?P<number>
-            \d{1,3}(?:,\d{3})*              # Comma-separated integer
+            \d{1,3}(?:,\d{3})+              # Comma-separated integer (requires at least one comma group)
             (?:\.\d+)?                       # Optional decimal
             |
             \d+(?:\.\d+)?                    # Plain number
