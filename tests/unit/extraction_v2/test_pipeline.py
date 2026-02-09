@@ -286,7 +286,7 @@ class TestV2Pipeline:
     def test_pipeline_no_stub_warnings_all_stages_implemented(self, tmp_path: Path) -> None:
         """Test that all pipeline stages are now fully implemented (no stub warnings).
 
-        All 11 stages are now implemented:
+        All 12 stages are now implemented:
         1. IngestionStage
         2. SectionClassificationStage
         3. TableReconstructionStage
@@ -294,10 +294,11 @@ class TestV2Pipeline:
         5. OCRExtractionStage
         6. CandidateGenerationStage
         7. ValueBindingStage
-        8. PeriodInferenceStage
-        9. FactConstructionStage
-        10. DeduplicationStage
-        11. ValidationStage
+        8. FalsePositiveFilterStage
+        9. PeriodInferenceStage
+        10. FactConstructionStage
+        11. DeduplicationStage
+        12. ValidationStage
         """
         html_file = tmp_path / "test_filing.html"
         html_file.write_text("<html><body><p>Test content for extraction.</p></body></html>")
