@@ -96,7 +96,7 @@ Comprehensively audit and update project documentation to reflect current codeba
 - [ ] Verify: CLAUDE.md describes web routes structure
 
 ### AC-8: Final validation
-- [ ] Run: `python scripts/check_docs_sync.py --ci` passes (or only has stdlib false positives)
+- [ ] Run: `python3 scripts/check_docs_sync.py --ci` passes (or only has stdlib false positives)
 - [ ] All doc links verified manually or via script
 - [ ] No references to non-existent source files
 
@@ -121,7 +121,7 @@ grep -q "cache" CLAUDE.md && echo "OK: cache documented"
 grep -q "auth" CLAUDE.md && echo "OK: auth documented"
 
 # Run doc sync check
-python scripts/check_docs_sync.py --ci
+python3 scripts/check_docs_sync.py --ci
 
 # Verify doc links (manual spot check)
 ls docs/HUMAN_REVIEW_SYSTEM.md  # Should exist

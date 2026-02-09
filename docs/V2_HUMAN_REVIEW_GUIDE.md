@@ -19,10 +19,10 @@ V1 review operates on **candidates** — high-recall number/keyword matches that
 
 ```bash
 # 1. Extract metrics with V2 pipeline
-python scripts/run_v2_extraction.py --filing-id 1
+python3 scripts/run_v2_extraction.py --filing-id 1
 
 # 2. Start the review server
-python scripts/run_review_server.py
+python3 scripts/run_review_server.py
 
 # 3. Open the V2 review interface
 open http://localhost:5000/v2/review/filings
@@ -112,22 +112,22 @@ Extract metrics for one or more filings:
 
 ```bash
 # Single filing by ID
-python scripts/run_v2_extraction.py --filing-id 1
+python3 scripts/run_v2_extraction.py --filing-id 1
 
 # Single filing by accession number
-python scripts/run_v2_extraction.py --accession 0001193125-21-186026
+python3 scripts/run_v2_extraction.py --accession 0001193125-21-186026
 
 # Dry run (preview without database persistence)
-python scripts/run_v2_extraction.py --filing-id 1 --dry-run
+python3 scripts/run_v2_extraction.py --filing-id 1 --dry-run
 
 # Custom confidence threshold for auto-accept
-python scripts/run_v2_extraction.py --filing-id 1 --min-confidence 0.85
+python3 scripts/run_v2_extraction.py --filing-id 1 --min-confidence 0.85
 
 # Disable image extraction
-python scripts/run_v2_extraction.py --filing-id 1 --no-images
+python3 scripts/run_v2_extraction.py --filing-id 1 --no-images
 
 # Verbose logging
-python scripts/run_v2_extraction.py --filing-id 1 --verbose
+python3 scripts/run_v2_extraction.py --filing-id 1 --verbose
 ```
 
 The script prints a summary with fact counts, confidence distribution, and metrics breakdown.

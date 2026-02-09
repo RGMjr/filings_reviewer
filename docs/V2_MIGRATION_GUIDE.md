@@ -202,7 +202,7 @@ Before migrating, validate V2 produces acceptable results:
 
 ```bash
 # Run comparison benchmark
-python scripts/benchmark_v1_v2.py --filings slack samsara
+python3 scripts/benchmark_v1_v2.py --filings slack samsara
 
 # Expected output:
 # - Coverage >= 70% (V2 finds most of what V1 found)

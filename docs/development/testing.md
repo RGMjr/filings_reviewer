@@ -566,10 +566,10 @@ When you make improvements to extraction logic, update the baseline:
 
 ```bash
 # Run validation script to see current metrics
-python scripts/validate_against_gold_standard.py --all
+python3 scripts/validate_against_gold_standard.py --all
 
 # If metrics improved, update baseline
-python scripts/validate_against_gold_standard.py --all --update-baseline
+python3 scripts/validate_against_gold_standard.py --all --update-baseline
 
 # Verify tests pass with new baseline
 pytest -m gold_standard -v
@@ -1076,14 +1076,14 @@ python -c "from src.extraction.html_segmenter import HTMLSegmenter; print('OK')"
 **Issue:** Gold standard tests fail with "baseline not found"
 ```bash
 # Solution: Create baseline
-python scripts/validate_against_gold_standard.py --all --update-baseline
+python3 scripts/validate_against_gold_standard.py --all --update-baseline
 ```
 
 ---
 
 ## Next Steps
 
-- **Production Deployment:** See `docs/deployment/` for production setup
+- **Production Deployment:** See `docs/operations/deployment-guide.md` for production setup
 - **Adding New Tests:** Follow existing patterns in `tests/unit/` or `tests/integration/`
 - **Improving Coverage:** Run `pytest --cov=src --cov-report=html` and check `htmlcov/index.html`
 - **Gold Standard Validation:** See `.claude/rules/gold-standard.md` for detailed workflow

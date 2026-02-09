@@ -97,7 +97,7 @@ Add alias support so gold standard validation correctly matches "customer_count"
 
 ```bash
 pytest tests/unit/extraction/test_keyword_config.py -v
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 ```
 
 ## Do NOT

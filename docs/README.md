@@ -1,7 +1,7 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.2
+**Version:** 2.3
 **Status:** Production Ready
 **Last Updated:** 2026-02-05
 
@@ -114,7 +114,7 @@ Historical documents for reference only. Not part of current operations.
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (75%+ coverage, 3,129 tests)
+- **Testing:** pytest (75%+ coverage, 3,150+ tests)
 
 ### Cost Profile
 
@@ -193,7 +193,7 @@ Historical documents for reference only. Not part of current operations.
 
 ```bash
 # See setup-guide.md for detailed instructions
-python scripts/run_extraction_sample.py
+python3 scripts/run_extraction_pipeline.py --limit 10
 ```
 
 ### Running Tests
@@ -213,7 +213,7 @@ pytest --cov=src --cov-report=html
 
 ```bash
 # See setup-guide.md for database setup first
-python scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
+python3 scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
 ```
 
 ### Querying Results
@@ -368,7 +368,14 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.2 (Current - 2025-12-29)
+### Version 2.3 (Current - 2026-02-05)
+- ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
+- ✅ V2 human review interface with fact-by-fact review and evidence packs
+- ✅ V2 false positive filter stage and percentage context detection
+- ✅ Gold standard validator for V2
+- ✅ 3,150+ tests, 87% coverage
+
+### Version 2.2 (2025-12-29)
 - ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
 - ✅ HRV-1 through HRV-5 validation complete
 - ✅ Performance optimizations (+33% throughput)
