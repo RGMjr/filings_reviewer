@@ -13,7 +13,7 @@ This guide walks you through setting up the SEC Filings Reviewer development env
 
 ## Prerequisites
 
-- **Python 3.11 or higher** (check with `python --version`)
+- **Python 3.11 or higher** (check with `python3 --version`)
 - **Git** for cloning the repository
 - **Docker Desktop** (recommended) or PostgreSQL 15+ installed locally
 - **OpenAI API key** for LLM-based metric extraction
@@ -141,7 +141,7 @@ TEST_DATABASE_URL=postgresql://localhost:5432/filings_analysis_test
 Apply the SQL schema migrations (00-09 in `sql/` directory):
 
 ```bash
-python scripts/apply_migrations.py
+python3 scripts/apply_migrations.py
 ```
 
 This creates all required tables:
@@ -185,7 +185,7 @@ pytest -v
 Discover S-1/F-1 filings from SEC EDGAR and populate the `filings` table:
 
 ```bash
-python scripts/build_universe_real.py
+python3 scripts/build_universe_real.py
 ```
 
 This will:
@@ -199,7 +199,7 @@ This will:
 Batch download filing HTML documents:
 
 ```bash
-python scripts/batch_download_filings.py --limit 10
+python3 scripts/batch_download_filings.py --limit 10
 ```
 
 ### Run Extraction Pipeline (V1)
@@ -207,7 +207,7 @@ python scripts/batch_download_filings.py --limit 10
 Extract customer metrics from filings using the V1 pipeline:
 
 ```bash
-python scripts/run_extraction_pipeline.py --limit 10
+python3 scripts/run_extraction_pipeline.py --limit 10
 ```
 
 Options:
@@ -230,10 +230,10 @@ The V2 pipeline is a ground-up redesign with 10x faster lxml parsing, stable XPa
 
 ```bash
 # By filing ID
-python scripts/run_v2_extraction.py --filing-id 1
+python3 scripts/run_v2_extraction.py --filing-id 1
 
 # By accession number
-python scripts/run_v2_extraction.py --accession 0001193125-21-186026
+python3 scripts/run_v2_extraction.py --accession 0001193125-21-186026
 ```
 
 Options:
@@ -262,7 +262,7 @@ For detailed V2 vs V1 comparison and migration guidance, see `docs/V2_MIGRATION_
 Launch the Flask web application for human review:
 
 ```bash
-python scripts/run_review_server.py
+python3 scripts/run_review_server.py
 ```
 
 Access at: http://localhost:5000
@@ -366,19 +366,20 @@ Useful queries:
 
 ```sql
 -- Count filings by type
-SELECT filing_type, COUNT(*) FROM filings GROUP BY filing_type;
+SELECT form_type, COUNT(*) FROM filings GROUP BY form_type;
 
 -- Recent extractions
-SELECT f.company_name, mv.metric_name, mv.value, mv.confidence_score
+SELECT c.company_name, mv.metric_id, mv.value_numeric, mv.unit
 FROM metric_values mv
-JOIN filings f ON mv.filing_id = f.id
+JOIN filings f ON mv.filing_id = f.filing_id
+JOIN companies c ON f.company_id = c.company_id
 ORDER BY mv.created_at DESC
 LIMIT 20;
 
 -- Review decisions
-SELECT metric_name, decision_type, COUNT(*)
+SELECT assigned_metric_id, decision, COUNT(*)
 FROM review_decisions
-GROUP BY metric_name, decision_type;
+GROUP BY assigned_metric_id, decision;
 ```
 
 ### Reset Database
@@ -391,7 +392,7 @@ docker compose down -v
 
 # Restart and reapply migrations
 docker compose up -d
-python scripts/apply_migrations.py
+python3 scripts/apply_migrations.py
 ```
 
 ### Update Dependencies
@@ -486,7 +487,7 @@ filings_reviewer_v2/
 **Solutions:**
 1. Activate virtual environment: `source venv/bin/activate`
 2. Install dependencies: `pip install -r requirements.txt`
-3. Verify Python version: `python --version` (should be 3.11+)
+3. Verify Python version: `python3 --version` (should be 3.11+)
 
 ---
 
@@ -494,11 +495,11 @@ filings_reviewer_v2/
 
 After completing setup:
 
-1. **Build universe**: `python scripts/build_universe_real.py`
-2. **Download filings**: `python scripts/batch_download_filings.py --limit 10`
-3. **Extract metrics (V1)**: `python scripts/run_extraction_pipeline.py --limit 10`
-4. **Extract metrics (V2)**: `python scripts/run_v2_extraction.py --filing-id <ID>`
-5. **Start review server**: `python scripts/run_review_server.py`
+1. **Build universe**: `python3 scripts/build_universe_real.py`
+2. **Download filings**: `python3 scripts/batch_download_filings.py --limit 10`
+3. **Extract metrics (V1)**: `python3 scripts/run_extraction_pipeline.py --limit 10`
+4. **Extract metrics (V2)**: `python3 scripts/run_v2_extraction.py --filing-id <ID>`
+5. **Start review server**: `python3 scripts/run_review_server.py`
 6. **Review V1 results**: http://localhost:5000/filings
 7. **Review V2 results**: http://localhost:5000/v2/review/filings
 8. **Explore documentation**: See `docs/README.md` for architecture, design decisions, and advanced workflows

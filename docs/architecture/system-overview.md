@@ -111,7 +111,7 @@ The system is organized into six logical layers:
                             │
                 ┌───────────▼───────────┐
                 │   CLI Interface       │
-                │   (main.py)          │
+                │   (scripts/)         │
                 └───────────┬───────────┘
                             │
         ┌───────────────────┼───────────────────┐
@@ -543,6 +543,20 @@ Re-running any stage is safe (upserts, not inserts)
 
 ---
 
+## V2 Extraction Pipeline
+
+A ground-up redesign of the extraction pipeline is available in `src/extraction_v2/`. The V2 pipeline is production-ready (all 13 phases complete as of 2026-02-04) and offers key improvements over V1:
+
+- **10x faster parsing** via lxml (vs BeautifulSoup)
+- **Stable XPath locators** for every source element
+- **Full table reconstruction** with header_path/stub_path binding
+- **Image/OCR integration** for chart extraction
+- **EvidencePack** with highlighted HTML and context
+
+See `docs/V2_MIGRATION_GUIDE.md` for migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap.
+
+---
+
 ## Related Documentation
 
 - **Data Model:** `docs/architecture/data-model.md` - Database schemas, relationships
@@ -551,6 +565,8 @@ Re-running any stage is safe (upserts, not inserts)
 - **Requirements:** `docs/requirements/analytic-requirements.md` - Business requirements
 - **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
 - **Testing:** `docs/development/testing.md` - Test strategy
+- **V2 Migration:** `docs/V2_MIGRATION_GUIDE.md` - V2 pipeline migration guide
+- **V2 Roadmap:** `docs/V2_IMPLEMENTATION_ROADMAP.md` - V2 implementation phases
 
 ---
 

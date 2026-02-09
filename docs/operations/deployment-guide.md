@@ -39,7 +39,7 @@ This guide covers deploying the system for production-scale processing of 20,500
 ### ✅ Database Infrastructure
 - [ ] Docker Compose installed
 - [ ] PostgreSQL running (`docker compose up -d`)
-- [ ] Database initialized (`python scripts/apply_migrations.py`)
+- [ ] Database initialized (`python3 scripts/apply_migrations.py`)
 - [ ] Connection verified (`psql $DATABASE_URL`)
 - [ ] Sufficient disk space (recommend 20GB+)
 
@@ -71,7 +71,7 @@ Validate the system on a small sample before full deployment.
 2. **Build Universe Sample**
    ```bash
    # Build universe for January 2024 (test sample)
-   python scripts/build_universe_real.py \
+   python3 scripts/build_universe_real.py \
        --start-date 2024-01-01 \
        --end-date 2024-01-31
 
@@ -86,7 +86,7 @@ Validate the system on a small sample before full deployment.
 3. **Download Filings**
    ```bash
    # Download first 100 pending filings
-   python scripts/batch_download_filings.py --limit 100
+   python3 scripts/batch_download_filings.py --limit 100
 
    # Monitor progress
    psql $DATABASE_URL -c "
@@ -98,7 +98,7 @@ Validate the system on a small sample before full deployment.
 4. **Run Extraction Pipeline**
    ```bash
    # Extract metrics from first 100 filings
-   python scripts/run_extraction_pipeline.py --limit 100
+   python3 scripts/run_extraction_pipeline.py --limit 100
 
    # Check extraction results
    psql $DATABASE_URL -c "
@@ -110,7 +110,7 @@ Validate the system on a small sample before full deployment.
 5. **Review Results**
    ```bash
    # Export to CSV for manual review
-   python scripts/export_review_decisions.py \
+   python3 scripts/export_review_decisions.py \
        --status all \
        --output data/exports/pilot_metrics.csv
 
@@ -125,9 +125,9 @@ Validate the system on a small sample before full deployment.
 
 6. **Manual QA Sample**
    - Select 10 random filings
-   - Use web review interface: `python scripts/run_review_server.py`
+   - Use web review interface: `python3 scripts/run_review_server.py`
    - Manually verify metrics against actual SEC filings
-   - Compare against gold standard: `python scripts/validate_against_gold_standard.py --all`
+   - Compare against gold standard: `python3 scripts/validate_against_gold_standard.py --all`
 
 7. **Go/No-Go Decision**
    - ✅ Success rate > 95%
@@ -149,7 +149,7 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 
 1. **Build 2024 Universe**
    ```bash
-   python scripts/build_universe_real.py \
+   python3 scripts/build_universe_real.py \
        --start-date 2024-01-01 \
        --end-date 2024-12-31
 
@@ -158,7 +158,7 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 
 2. **Download All 2024 Filings**
    ```bash
-   python scripts/batch_download_filings.py \
+   python3 scripts/batch_download_filings.py \
        --year 2024 \
        --limit 500 \
        2>&1 | tee logs/2024_download.log
@@ -167,7 +167,7 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 3. **Run Extraction**
    ```bash
    # Extract from all fetched 2024 filings
-   python scripts/run_extraction_pipeline.py \
+   python3 scripts/run_extraction_pipeline.py \
        --limit 500 \
        2>&1 | tee logs/2024_extraction.log
    ```
@@ -202,12 +202,12 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 6. **Retry Failed Extractions**
    ```bash
    # Get failed filing IDs and retry
-   python scripts/reextract_all_filings.py \
+   python3 scripts/reextract_all_filings.py \
        --limit 50 \
        --dry-run  # Preview first
 
    # Then execute
-   python scripts/reextract_all_filings.py --limit 50
+   python3 scripts/reextract_all_filings.py --limit 50
    ```
 
 7. **Export Results**
@@ -216,13 +216,13 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
    mkdir -p data/exports/2024_s1/
 
    # Export all accepted metrics
-   python scripts/export_review_decisions.py \
+   python3 scripts/export_review_decisions.py \
        --status accepted \
        --format csv \
        --output data/exports/2024_s1/metrics.csv
 
    # Export as JSON for analysis
-   python scripts/export_review_decisions.py \
+   python3 scripts/export_review_decisions.py \
        --status all \
        --format json \
        --output data/exports/2024_s1/all_decisions.json
@@ -243,7 +243,7 @@ Process year by year to enable checkpointing and monitoring.
 1. **Build Full Universe**
    ```bash
    # Build universe for 10 years (2015-2024)
-   python scripts/build_universe_real.py \
+   python3 scripts/build_universe_real.py \
        --start-date 2015-01-01 \
        --end-date 2024-12-31 \
        2>&1 | tee logs/universe_full.log
@@ -265,7 +265,7 @@ Process year by year to enable checkpointing and monitoring.
    for year in {2015..2024}; do
        echo "Downloading filings for $year"
 
-       python scripts/batch_download_filings.py \
+       python3 scripts/batch_download_filings.py \
            --year $year \
            --limit 500 \
            2>&1 | tee logs/download_${year}.log
@@ -290,7 +290,7 @@ Process year by year to enable checkpointing and monitoring.
    for batch in {1..10}; do
        echo "Processing batch $batch"
 
-       python scripts/run_extraction_pipeline.py \
+       python3 scripts/run_extraction_pipeline.py \
            --limit 250 \
            2>&1 | tee logs/extract_batch_${batch}.log
 
@@ -331,18 +331,18 @@ Process year by year to enable checkpointing and monitoring.
 
    # Resume extraction from where it stopped
    # Script automatically skips already-processed filings
-   python scripts/run_extraction_pipeline.py --limit 2500
+   python3 scripts/run_extraction_pipeline.py --limit 2500
    ```
 
 7. **Validate Against Gold Standard**
    ```bash
    # Run validation for all companies with gold standard data
-   python scripts/validate_against_gold_standard.py \
+   python3 scripts/validate_against_gold_standard.py \
        --all \
        --output data/validation/full_validation.json
 
    # Review precision/recall metrics
-   python scripts/validate_against_gold_standard.py \
+   python3 scripts/validate_against_gold_standard.py \
        --all \
        --verbose
    ```
@@ -367,15 +367,15 @@ Process all 10-K filings from 2022-2024
 2. **Test on Sample**
    ```bash
    # Build small universe for testing
-   python scripts/build_universe_real.py \
+   python3 scripts/build_universe_real.py \
        --start-date 2024-01-01 \
        --end-date 2024-03-31
 
    # Download 10-Ks only (modify query if needed)
-   python scripts/batch_download_filings.py --limit 50
+   python3 scripts/batch_download_filings.py --limit 50
 
    # Extract and review
-   python scripts/run_extraction_pipeline.py --limit 50
+   python3 scripts/run_extraction_pipeline.py --limit 50
    ```
 
 3. **Review and Adjust**
@@ -532,7 +532,7 @@ Use the web review interface for real-time monitoring:
 
 ```bash
 # Start review server
-python scripts/run_review_server.py
+python3 scripts/run_review_server.py
 
 # Access at http://localhost:5000
 # Review interface shows:
@@ -704,7 +704,7 @@ psql $DATABASE_URL -c "VACUUM FULL;"
 
 ```bash
 # Run gold standard validation
-python scripts/validate_against_gold_standard.py \
+python3 scripts/validate_against_gold_standard.py \
     --all \
     --output data/validation/final_validation.json \
     --verbose
@@ -725,19 +725,19 @@ cat data/validation/final_validation.json | jq '.summary'
 mkdir -p data/final_export/
 
 # Export all accepted decisions
-python scripts/export_review_decisions.py \
+python3 scripts/export_review_decisions.py \
     --status accepted \
     --format csv \
     --output data/final_export/customer_metrics.csv
 
 # Export all decisions (including rejected) for analysis
-python scripts/export_review_decisions.py \
+python3 scripts/export_review_decisions.py \
     --status all \
     --format csv \
     --output data/final_export/all_decisions.csv
 
 # Export as JSON for programmatic access
-python scripts/export_review_decisions.py \
+python3 scripts/export_review_decisions.py \
     --status accepted \
     --format json \
     --output data/final_export/customer_metrics.json
@@ -841,19 +841,19 @@ echo "Archive created at: $ARCHIVE_DIR"
 
 ```bash
 # Build universe for new quarter
-python scripts/build_universe_real.py \
+python3 scripts/build_universe_real.py \
     --start-date 2026-01-01 \
     --end-date 2026-03-31
 
 # Download new filings
-python scripts/batch_download_filings.py --limit 200
+python3 scripts/batch_download_filings.py --limit 200
 
 # Extract metrics
-python scripts/run_extraction_pipeline.py --limit 200
+python3 scripts/run_extraction_pipeline.py --limit 200
 
 # Validate and export
-python scripts/validate_against_gold_standard.py --all
-python scripts/export_review_decisions.py \
+python3 scripts/validate_against_gold_standard.py --all
+python3 scripts/export_review_decisions.py \
     --status accepted \
     --output data/exports/Q1_2026_metrics.csv
 ```
@@ -865,14 +865,14 @@ python scripts/export_review_decisions.py \
 vim config/metric_keywords.yaml
 
 # Test changes on sample
-python scripts/run_extraction_pipeline.py --limit 10 --csv-only
+python3 scripts/run_extraction_pipeline.py --limit 10 --csv-only
 
 # Validate changes
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
 # If validation passes, re-extract all filings
-python scripts/reextract_all_filings.py --dry-run
-python scripts/reextract_all_filings.py
+python3 scripts/reextract_all_filings.py --dry-run
+python3 scripts/reextract_all_filings.py
 ```
 
 ### Database Optimization
@@ -941,8 +941,9 @@ pg_dump $DATABASE_URL | gzip > \
 - `companies` - Company master data
 - `filings` - Filing metadata with processing status
 - `source_segments` - HTML segments from filings
+- `metrics` - Canonical metric taxonomy (dimension table)
 - `metric_values` - Extracted metric facts
-- `metric_definitions` - Metric taxonomy
+- `metric_definitions` - Per-filing metric definitions and methodology
 - `review_candidates` - Candidate metrics for human review
 - `review_decisions` - Human review decisions
 
@@ -959,7 +960,7 @@ pg_dump $DATABASE_URL | gzip > \
 For questions or issues, refer to:
 - Architecture docs: `docs/architecture/`
 - CLAUDE.md: Project overview and commands
-- Testing guide: `docs/TESTING_STRATEGY.md`
+- Testing guide: `docs/development/testing.md`
 - Review system: `docs/HUMAN_REVIEW_SYSTEM.md`
 
 Or create an issue in the project repository.
