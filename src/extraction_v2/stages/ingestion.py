@@ -858,8 +858,9 @@ class IngestionStage:
 
             context.segments = all_segments
 
-            # AC-11: Create Document object (doc_id auto-generated as UUID)
+            # AC-11: Create Document object with filing_id as doc_id
             doc = Document(
+                doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
             )
             context.document = doc
