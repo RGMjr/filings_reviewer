@@ -1,5 +1,19 @@
 # CLAUDE.md
 
+## Environment
+
+Always use `python3` instead of `python` in all scripts, hooks, and subprocess calls. This project only has `python3` available.
+
+## Git Workflow
+
+Before creating a new PR, always check if one already exists for the current branch using `gh pr list --head <branch-name>`. Update existing PRs instead of creating duplicates.
+
+When committing changes, use `git status` first and only stage the specific files related to the current task. Never use `git add .` or `git add -A` without reviewing what's staged. Use `git add <specific-files>` instead.
+
+Always work in the correct worktree for the branch you're targeting. Run `git worktree list` if unsure which directory to use.
+
+Never delete branches that are checked out in worktrees. Run `git worktree list` first to verify a branch isn't in use before deleting it.
+
 ## Project Overview
 
 Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclosures. Supports the Customer Metrics Accounting Standards Board (CMASB) initiative.
@@ -59,6 +73,8 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 - **Coverage**: 75% minimum (enforced), currently 87%
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
+- **Database integration tests**: 1) Use correct ID types (UUID vs bigint) matching schema, 2) Include all required fields (sec_html_url, currency, metric IDs), 3) Use Decimal type for financial comparisons
+- **Pre-commit requirement**: After implementing code changes, always run the full test suite (`pytest`) before committing. All tests must pass before push.
 
 ## Core Design Principles
 
@@ -109,6 +125,8 @@ pytest -m gold_standard --gold-standard-mode=fresh -v
 See `.claude/rules/gold-standard.md` for full workflow (auto-loaded when relevant).
 
 ## V2 Extraction Pipeline
+
+When working on the V2 pipeline, always operate in the v2-rewrite worktree directory, not the main working directory. Check `git worktree list` if unsure.
 
 The V2 pipeline (`src/extraction_v2/`) is a ground-up redesign with key improvements:
 - **10x faster parsing** via lxml (vs BeautifulSoup)
