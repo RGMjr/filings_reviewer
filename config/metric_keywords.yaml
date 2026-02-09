@@ -101,7 +101,6 @@ cm_customers_period_end:
     - '\bcustomers?\s+\(?period\s*end\)?\b'
     - '\bend[- ]of[- ]period\s+customers?\b'
     - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
-    - '\bactive\s+consumers?\b'
     # Total customer count patterns (moved from cm_active_customers_total 2026-01-07)
     # "Total customers" represents a stock count, not engagement-based "active" customers
     - '\btotal\s+customers?\b'
@@ -205,6 +204,9 @@ cm_active_customers_total:
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
+    # FIX-FP: DAU/MAU context belongs to dedicated metrics, not generic "active"
+    - '\bdaily\s+active\b'
+    - '\bmonthly\s+active\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
