@@ -554,3 +554,31 @@ def baseline_metrics(baseline_path):
 
     return load_baseline(baseline_path)
 
+
+# =============================================================================
+# V2 Gold Standard Regression Test Fixtures
+# =============================================================================
+
+V2_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "v2_baseline.json"
+
+
+@pytest.fixture(scope="module")
+def v2_baseline_path():
+    """Return the path to the V2 baseline metrics file."""
+    return V2_BASELINE_PATH
+
+
+@pytest.fixture(scope="module")
+def v2_baseline_metrics(v2_baseline_path):
+    """
+    Load V2 baseline metrics from file.
+
+    Returns None if baseline file doesn't exist (allows tests to skip gracefully).
+    """
+    from src.gold_standard.baseline import load_baseline
+
+    if not v2_baseline_path.exists():
+        return None
+
+    return load_baseline(v2_baseline_path)
+
