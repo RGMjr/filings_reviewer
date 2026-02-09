@@ -2,6 +2,17 @@
 
 You are starting the Ralph Loop for autonomous task execution.
 
+## Execution Rules
+
+**CRITICAL: Execute, don't plan.** When a plan file exists, immediately begin implementation. Do NOT stay in planning mode or re-analyze — transition directly to writing code.
+
+- After each file change, run relevant tests
+- Fix any test failures before proceeding to the next step
+- When all acceptance criteria are met, run the full test suite
+- Stage ONLY the files changed for this task (`git add <specific-files>`) — never `git add .` or `git add -A`
+- Commit with a descriptive message and push
+- Report: tests passed, coverage %, files changed
+
 ## Usage
 
 ```
