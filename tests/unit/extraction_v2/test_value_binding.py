@@ -787,6 +787,27 @@ class TestNumberParsing:
         assert abs(value - 3.14) < 0.001
         assert unit == Unit.COUNT
 
+    def test_parse_year_not_split(self, stage: ValueBindingStage) -> None:
+        """_parse_number matches full 4-digit year, not '201' from '2019'."""
+        result = stage._parse_number("2019")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 2019
+        assert raw == "2019"
+
+    def test_find_numbers_year_not_fragmented(self, stage: ValueBindingStage) -> None:
+        """_find_numbers_in_proximity extracts '2019' not '201'+'9' from year text."""
+        text = "January 31, 2019"
+        results = stage._find_numbers_in_proximity(text, 0, 7, 100)
+        raw_values = [raw for _, _, _, raw in results]
+        assert "201" not in raw_values, (
+            f"Year '2019' was split into fragments: {raw_values}"
+        )
+        # Should find "31" and "2019" as whole numbers
+        values = [v for _, v, _, _ in results]
+        assert 2019 in values
+        assert 31 in values
+
 
 # ============================================================================
 # Confidence Scoring Tests
