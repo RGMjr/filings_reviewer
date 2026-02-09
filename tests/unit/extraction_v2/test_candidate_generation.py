@@ -26,6 +26,7 @@ from src.extraction_v2.models import (
     SectionType,
     Segment,
     SegmentType,
+    SourceLocator,
     SourceType,
     Table,
 )
@@ -991,3 +992,134 @@ class TestCandidateDeduplication:
         assert len(candidates) == 1
         # Should keep higher confidence (specific pattern match)
         assert candidates[0].confidence >= stage.BASE_CONFIDENCE + stage.SPECIFIC_PATTERN_BONUS
+
+    def test_cross_metric_dedup_suppresses_contained_span(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """'daily active users' suppresses shorter 'active users' match."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_daily_active_users": [
+                re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
+            ],
+            "cm_active_customers_total": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        text = "We had 1 million daily active users"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        assert len(candidates) == 1
+        assert candidates[0].metric_id == "cm_daily_active_users"
+
+    def test_cross_metric_dedup_keeps_overlapping_non_contained(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Overlapping but non-contained spans both survive."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        # "customer retention" overlaps with "retention rate was 95%"
+        # but neither strictly contains the other
+        stage._compiled_patterns = {
+            "cm_customer_retention_rate": [
+                re.compile(r"\bcustomer\s+retention\b", re.IGNORECASE),
+            ],
+            "cm_nrr": [
+                re.compile(r"\bretention\s+rate[^.;]{0,50}\d+%", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        text = "Our customer retention rate was 95% in Q4"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        assert len(candidates) == 2
+        metric_ids = {c.metric_id for c in candidates}
+        assert "cm_customer_retention_rate" in metric_ids
+        assert "cm_nrr" in metric_ids
+
+    def test_cross_metric_dedup_keeps_non_overlapping(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Candidates at separate positions both survive."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_customers_period_end": [
+                re.compile(r"\bpaid\s+customers?\b", re.IGNORECASE),
+            ],
+            "cm_active_customers_total": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        text = "We had 5000 paid customers and 3000 active users"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        assert len(candidates) == 2
+
+    def test_cross_metric_dedup_identical_spans_kept(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Identical spans for different metrics are both kept (no regression)."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        # Both match exactly "active users" at the same position
+        stage._compiled_patterns = {
+            "cm_active_customers_total": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+            "cm_active_users_other": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        text = "We had 3000 active users"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        assert len(candidates) == 2
+        metric_ids = {c.metric_id for c in candidates}
+        assert "cm_active_customers_total" in metric_ids
+        assert "cm_active_users_other" in metric_ids
+
+    def test_cross_metric_dedup_table_cells(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Table cell substring suppression works."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_daily_active_users": [
+                re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
+            ],
+            "cm_active_customers_total": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        cell = make_cell(0, 0, "Daily Active Users")
+        table = make_table([cell])
+        candidates = stage._scan_table(table)
+
+        assert len(candidates) == 1
+        assert candidates[0].metric_id == "cm_daily_active_users"

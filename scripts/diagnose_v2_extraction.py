@@ -188,11 +188,15 @@ _FINANCIAL_HEADER_RE = re.compile(
 )
 
 
-def classify_false_positive(fact: MetricFact) -> str:
+def classify_false_positive(
+    fact: MetricFact,
+    false_negatives: list[GoldStandardEntry] | None = None,
+) -> str:
     """
     Classify a false positive fact into a category.
 
     Categories:
+        wrong_metric     — value matches an FN expectation under a different metric
         year_value       — value is an integer in 1990-2100
         date_component   — value_raw or context contains a date expression
         reference_number — near page/note/section/item/exhibit patterns
@@ -201,6 +205,17 @@ def classify_false_positive(fact: MetricFact) -> str:
         financial_line_item — context contains financial statement keywords
         other            — uncategorized
     """
+    # 0. Wrong-metric binding: FP value matches an FN expectation under a different metric
+    if false_negatives and fact.value is not None:
+        fact_metric = normalize_metric_id(fact.canonical_metric_id)
+        for fn_entry in false_negatives:
+            if not fn_entry.has_numeric_value or fn_entry.normalized_value is None:
+                continue
+            fn_metric = normalize_metric_id(fn_entry.metric_id)
+            if fn_metric == fact_metric:
+                continue
+            if _values_match(fn_entry.normalized_value, fact.value):
+                return "wrong_metric"
     raw = fact.value_raw or ""
     context = fact.evidence_pack.context_before + " " + fact.evidence_pack.context_after
     snippet = fact.evidence_pack.snippet_html or ""
@@ -471,7 +486,7 @@ def diagnose_company(
     fp_samples: dict[str, list[dict]] = defaultdict(list)
 
     for fp_fact in partition.false_positives:
-        cat = classify_false_positive(fp_fact)
+        cat = classify_false_positive(fp_fact, partition.false_negatives)
         fp_cats[cat] += 1
         # Keep up to 3 samples per category
         if len(fp_samples[cat]) < 3:

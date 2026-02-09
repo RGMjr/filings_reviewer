@@ -269,7 +269,8 @@ class CandidateGenerationStage:
                     )
                     candidates.append(candidate)
 
-        return self._deduplicate_candidates(candidates)
+        candidates = self._deduplicate_candidates(candidates)
+        return self._cross_metric_dedup(candidates)
 
     def _scan_table(self, table: Table) -> list[MetricCandidate]:
         """
@@ -340,7 +341,98 @@ class CandidateGenerationStage:
                         )
                         candidates.append(candidate)
 
-        return self._deduplicate_candidates(candidates)
+        candidates = self._deduplicate_candidates(candidates)
+        return self._cross_metric_dedup(candidates)
+
+    def _cross_metric_dedup(
+        self, candidates: list[MetricCandidate]
+    ) -> list[MetricCandidate]:
+        """
+        Suppress candidates whose match span is strictly contained by another
+        candidate's span within the same segment or table cell.
+
+        This handles wrong-metric bindings where e.g. "daily active users"
+        creates candidates for both cm_daily_active_users (longer match) and
+        cm_active_customers_total (shorter "active users" match).
+
+        Rules:
+        - Text candidates: group by segment_id; suppress when one span
+          strictly contains another (inner.start >= outer.start AND
+          inner.end <= outer.end, with at least one strict inequality).
+        - Table candidates: group by (table_id, cell_row, cell_col);
+          suppress when one match_text is a strict substring of another.
+        - Identical spans are NOT suppressed (different metrics, same span).
+        """
+        if len(candidates) <= 1:
+            return candidates
+
+        # Separate text vs table candidates
+        text_candidates: dict[str, list[MetricCandidate]] = {}
+        table_candidates: dict[tuple, list[MetricCandidate]] = {}
+        other: list[MetricCandidate] = []
+
+        for c in candidates:
+            loc = c.source_locator
+            if loc.text_span:
+                key = loc.segment_id or ""
+                text_candidates.setdefault(key, []).append(c)
+            elif loc.cell_row is not None and loc.cell_col is not None:
+                key = (loc.table_id, loc.cell_row, loc.cell_col)
+                table_candidates.setdefault(key, []).append(c)
+            else:
+                other.append(c)
+
+        suppressed: set[int] = set()
+
+        # Text span containment
+        for group in text_candidates.values():
+            for i, a in enumerate(group):
+                if id(a) in suppressed:
+                    continue
+                a_start, a_end = a.source_locator.text_span  # type: ignore[misc]
+                for j, b in enumerate(group):
+                    if i == j or id(b) in suppressed:
+                        continue
+                    b_start, b_end = b.source_locator.text_span  # type: ignore[misc]
+                    # Check if b is strictly contained in a
+                    if (
+                        b_start >= a_start
+                        and b_end <= a_end
+                        and (b_start > a_start or b_end < a_end)
+                    ):
+                        suppressed.add(id(b))
+                        logger.debug(
+                            f"Cross-metric dedup: suppressed {b.metric_id} "
+                            f"({b.match_text!r}) contained in {a.metric_id} "
+                            f"({a.match_text!r})"
+                        )
+
+        # Table cell substring containment
+        for group in table_candidates.values():
+            for i, a in enumerate(group):
+                if id(a) in suppressed:
+                    continue
+                for j, b in enumerate(group):
+                    if i == j or id(b) in suppressed:
+                        continue
+                    a_text = a.match_text.lower()
+                    b_text = b.match_text.lower()
+                    # Check if b's match_text is a strict substring of a's
+                    if b_text in a_text and len(b_text) < len(a_text):
+                        suppressed.add(id(b))
+                        logger.debug(
+                            f"Cross-metric dedup (table): suppressed {b.metric_id} "
+                            f"({b.match_text!r}) substring of {a.metric_id} "
+                            f"({a.match_text!r})"
+                        )
+
+        result = [c for c in candidates if id(c) not in suppressed]
+        if suppressed:
+            logger.info(
+                f"Cross-metric dedup: suppressed {len(suppressed)} of "
+                f"{len(candidates)} candidates"
+            )
+        return result
 
     def _deduplicate_candidates(
         self, candidates: list[MetricCandidate]
