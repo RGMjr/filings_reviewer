@@ -249,7 +249,7 @@ def main():
 
     if args.dry_run and missing_html:
         print("\n💡 To fix these issues, run:")
-        print("   python scripts/fix_database_sync.py")
+        print("   python3 scripts/fix_database_sync.py")
 
     print("\n" + "="*100)
 
