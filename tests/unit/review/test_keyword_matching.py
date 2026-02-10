@@ -1684,16 +1684,24 @@ class TestRequiredContext:
         assert METRIC_REQUIRED_CONTEXT is not None
         assert isinstance(METRIC_REQUIRED_CONTEXT, dict)
 
-    def test_revenue_synonyms_have_required_context(self):
-        """All active revenue synonym metrics should have required context."""
+    def test_all_revenue_synonyms_deprecated(self):
+        """All revenue synonym metrics should be deprecated."""
         for metric_id in self.REVENUE_SYNONYM_METRICS:
-            # Skip deprecated metrics (FIX-A: cm_billings was deprecated)
-            if is_metric_deprecated(metric_id):
-                continue
-            assert metric_id in METRIC_REQUIRED_CONTEXT, \
-                f"{metric_id} should have required_context defined"
-            assert "patterns" in METRIC_REQUIRED_CONTEXT[metric_id]
-            assert "proximity_chars" in METRIC_REQUIRED_CONTEXT[metric_id]
+            assert is_metric_deprecated(metric_id), \
+                f"{metric_id} should be deprecated"
+
+    def test_revenue_synonyms_have_required_context(self):
+        """All revenue synonym metrics should have required_context in YAML config."""
+        from src.extraction.keyword_config import get_required_context
+
+        # Use raw config (unfiltered) since all synonyms are now deprecated
+        # and METRIC_REQUIRED_CONTEXT filters deprecated metrics out
+        raw_context = get_required_context()
+        for metric_id in self.REVENUE_SYNONYM_METRICS:
+            assert metric_id in raw_context, \
+                f"{metric_id} should have required_context defined in YAML"
+            assert "patterns" in raw_context[metric_id]
+            assert "proximity_chars" in raw_context[metric_id]
 
     def test_arr_mrr_not_context_gated(self):
         """ARR and MRR should NOT have required context (inherently customer-related)."""
@@ -1816,60 +1824,17 @@ class TestRequiredContext:
         assert len(metric_matches) >= 1, \
             f"{metric_id} should match when per-customer context is present"
 
-    def test_context_check_disabled_always_matches(self, matcher):
-        """When check_required_context=False, revenue synonyms should always match."""
-        # GMV without cohort/per-customer context
-        text = "Our GMV reached $1 billion in the quarter"
+    def test_deprecated_revenue_synonyms_not_in_keywords(self, matcher):
+        """Deprecated revenue synonyms should not appear in find_all_keywords results."""
+        # All revenue synonyms are deprecated, so none should be found
+        text = "Our GMV reached $1 billion and bookings were $500 million"
 
         all_keywords = matcher.find_all_keywords(text)
 
-        import re
-        num_match = re.search(r'\$[\d,]+', text)
-        number = NumberMatch(
-            start=num_match.start(),
-            end=num_match.end(),
-            raw_text=num_match.group(),
-            value=Decimal("1000000000"),
-            unit="currency",
-        )
-
-        # With required context check DISABLED
-        keywords = matcher.find_keywords_near_number(
-            number, all_keywords, check_required_context=False, text=text
-        )
-
-        # Should find GMV even without context
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "GMV should match when check_required_context=False"
-
-    def test_context_too_far_no_match(self, matcher):
-        """Context beyond proximity_chars should not satisfy requirement."""
-        # GMV with cohort context, but very far apart (more than 1500 chars)
-        padding = "x" * 2000  # 2000 chars of padding
-        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
-
-        all_keywords = matcher.find_all_keywords(text)
-
-        import re
-        num_match = re.search(r'\$[\d,]+', text)
-        number = NumberMatch(
-            start=num_match.start(),
-            end=num_match.end(),
-            raw_text=num_match.group(),
-            value=Decimal("1000000000"),
-            unit="currency",
-        )
-
-        # Context is too far away
-        keywords = matcher.find_keywords_near_number(
-            number, all_keywords, check_required_context=True, text=text
-        )
-
-        # Should NOT find GMV because cohort context is too far
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) == 0, \
-            "GMV should not match when context is beyond proximity_chars"
+        for metric_id in self.REVENUE_SYNONYM_METRICS:
+            matches = [kw for kw in all_keywords if kw.metric_id == metric_id]
+            assert len(matches) == 0, \
+                f"Deprecated metric {metric_id} should not appear in keyword matches"
 
     def test_arr_matches_without_context(self, matcher):
         """ARR should match even without cohort/per-customer context."""
@@ -1947,18 +1912,6 @@ class TestRequiredContext:
         assert len(customer_matches) >= 1, \
             "Non-revenue metrics should match without context requirement"
 
-    def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
-        """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
-        # GMV without cohort context
-        text = "Our GMV reached $1 billion in the quarter"
-
-        # find_all_keywords should still find GMV
-        all_keywords = matcher.find_all_keywords(text)
-
-        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "find_all_keywords should find GMV (for classification/enrichment purposes)"
-
     def test_has_required_context_method_exists(self, matcher):
         """KeywordMatcher should have _has_required_context method."""
         assert hasattr(matcher, "_has_required_context")
@@ -1970,16 +1923,12 @@ class TestRequiredContext:
         result = matcher._has_required_context("cm_active_customers_total", 10, text)
         assert result is True
 
-    def test_has_required_context_false_without_context(self, matcher):
-        """_has_required_context returns False for GMV without context."""
+    def test_has_required_context_true_for_deprecated_metrics(self, matcher):
+        """_has_required_context returns True for deprecated metrics (not in context dict)."""
         text = "Our GMV reached $1 billion"
+        # Deprecated metrics are filtered from METRIC_REQUIRED_CONTEXT,
+        # so _has_required_context returns True (no gate)
         result = matcher._has_required_context("cm_gmv", 4, text)
-        assert result is False
-
-    def test_has_required_context_true_with_cohort(self, matcher):
-        """_has_required_context returns True for GMV with cohort context."""
-        text = "Our cohort GMV reached $1 billion"
-        result = matcher._has_required_context("cm_gmv", 11, text)
         assert result is True
 
 

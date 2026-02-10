@@ -121,6 +121,8 @@ cm_customers_period_end:
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
     # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
+    # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
+    - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -318,10 +320,14 @@ cm_gross_margin_by_cohort:
   # Only patterns that explicitly require "cohort" or "vintage" context
   # REMOVED (2026-01-02): '\border\s+contribution\s+margin\b' and
   # '\bplatform\s+order\s+contribution(?:\s+margin)?\b' - not cohort-specific
+  # ADDED BACK (2026-02-09): Order Contribution Margin with cohort context qualifier
   patterns:
     - '\bgross\s+margin\s+by\s+cohort\b'
     - '\bcohort\s+(?:gross\s+)?margin\b'
     - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+    # Order Contribution Margin only when cohort context (new/existing consumers) is nearby
+    - '\border\s+contribution\s+margin[^.;]{0,80}\b(?:new|existing|cohort|consumer|customer)\b'
+    - '\b(?:new|existing)\s+(?:consumer|customer)[^.;]{0,80}\border\s+contribution\s+margin\b'
 
 cm_arr:
   patterns:
@@ -361,6 +367,11 @@ cm_revenue_concentration:
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
     - '\bcustomer\s+[A-D]\b'
+  exclusions:
+    # FIX-FP: Exclude business segment revenue share (not customer concentration)
+    - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform|product)\s+revenue\b'
+    - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
+    - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
 
 # =============================================================================
 # Revenue Predictability Metrics (DEPRECATED 2026-01-07)
@@ -370,6 +381,8 @@ cm_revenue_concentration:
 # in the database and excluded from UI dropdowns.
 
 cm_bookings:
+  status: deprecated
+  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
@@ -448,6 +461,8 @@ cm_repeat_purchase_rate:
 # Patterns retained for historical data interpretation but metric is deprecated.
 
 cm_gmv:
+  status: deprecated
+  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
@@ -472,6 +487,8 @@ cm_gmv:
 # Patterns retained for historical data interpretation but metrics are deprecated.
 
 cm_acv:
+  status: deprecated
+  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
@@ -483,6 +500,8 @@ cm_acv:
     - '\bcontract\s+value\s+per\s+customer\b'
 
 cm_tcv:
+  status: deprecated
+  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   <<: *revenue_synonym_context
   patterns:
@@ -522,15 +541,22 @@ cm_ltv_to_cac_ratio:
 
 cm_ltv_to_cac_ratio_by_cohort:
   # LTV/CAC ratio analyzed by acquisition cohort (added 2026-01-07)
+  # Updated 2026-02-09: Added temporal cohort patterns and widened proximity window
   patterns:
     - '\bltv\s*[:/]\s*cac\s+by\s+cohort\b'
     - '\bltv\s+to\s+cac\s+(?:ratio\s+)?by\s+cohort\b'
     - '\bcohort\s+ltv\s*[:/]\s*cac\b'
-    - '\bltv[:/]cac[^.;]{0,50}\bcohort\b'
-    - '\bcohort[^.;]{0,50}\bltv[:/]cac\b'
+    # Widened from 50 to 80 chars to capture "LTV/CAC ratio for the years ended...cohorts"
+    - '\bltv[:/]cac[^.;]{0,80}\bcohort\b'
+    - '\bcohort[^.;]{0,80}\bltv[:/]cac\b'
+    # Temporal prefix: "Six month LTV/CAC ratio", "12 month LTV/CAC ratio"
+    - '\b(?:\d+|six|twelve|twenty[- ]?four)\s+months?\s+ltv\s*[:/]\s*cac\b'
+    # Temporal suffix: "LTV/CAC after 6 months"
+    - '\bltv\s*[:/]\s*cac\s+after\s+\d+\s+months?\b'
   specific_patterns:
     - 'ltv\s*[:/]\s*cac\s+by\s+cohort'
     - 'cohort\s+ltv\s*[:/]\s*cac'
+    - 'ltv\s*[:/]\s*cac\s+after\s+\d+\s+months?'
 
 # =============================================================================
 # Growth Metrics - INTENTIONALLY NOT DETECTED

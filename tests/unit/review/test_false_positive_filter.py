@@ -1658,6 +1658,7 @@ class TestMetricTypeValidation:
         assert "cm_arr" in DOLLAR_ONLY_METRICS
         assert "cm_ltv" in DOLLAR_ONLY_METRICS
         assert "cm_cac" in DOLLAR_ONLY_METRICS
+        assert "cm_average_order_value" in DOLLAR_ONLY_METRICS
 
     def test_count_only_metrics_set(self):
         """COUNT_ONLY_METRICS should contain expected metrics."""
@@ -1666,6 +1667,7 @@ class TestMetricTypeValidation:
         assert "cm_customer" in COUNT_ONLY_METRICS
         assert "cm_daily_active_users" in COUNT_ONLY_METRICS
         assert "cm_monthly_active_users" in COUNT_ONLY_METRICS
+        assert "cm_purchase_transactions_overall" in COUNT_ONLY_METRICS
 
 
 # =============================================================================
@@ -1764,44 +1766,56 @@ class TestIsSpelledOutNumber:
         assert is_spelled_out_number("$5.2 million") is False
 
 
-class TestSpelledOutNumberFilterExemption:
-    """Tests that spelled-out numbers are exempt from certain filters."""
+class TestSpelledOutNumberFiltering:
+    """Tests that spelled-out small numbers are filtered like numeric ones.
+
+    Bare spelled-out words like "three", "one", "six" with values below min_value
+    are almost always narrative noise (e.g., "three main factors"). Meaningful
+    spelled-out numbers like "six million" have values far above min_value after
+    magnitude parsing, so they are unaffected.
+    """
 
     @pytest.fixture
     def filter(self):
         """Create a FalsePositiveFilter instance."""
         return FalsePositiveFilter()
 
-    def test_spelled_out_exempt_from_min_value(self, filter):
-        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
+    def test_spelled_out_below_min_value_filtered(self, filter):
+        """Bare spelled-out numbers below min_value should be filtered."""
         # "six" has value 6, which is below default min_value (10)
-        # But spelled-out numbers should be exempt
         number = NumberMatch(
             start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive("six months payback", number)
-        # Should NOT be filtered - spelled-out numbers are intentionally written
-        assert is_fp is False
-        assert reason is None
+        assert is_fp is True
+        assert reason == "below_min_value"
 
-    def test_spelled_out_exempt_from_toc_proximity(self, filter):
-        """Spelled-out numbers near TOC should NOT be filtered."""
+    def test_spelled_out_with_magnitude_not_filtered(self, filter):
+        """Spelled-out numbers with magnitude words should NOT be filtered."""
+        # "six million" has value 6000000, way above min_value
+        number = NumberMatch(
+            start=0, end=11, raw_text="six million", value=Decimal("6000000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("six million customers worldwide", number)
+        assert is_fp is False
+
+    def test_spelled_out_near_toc_filtered(self, filter):
+        """Spelled-out numbers near TOC should now be filtered."""
         text = "Table of Contents ... payback is six months"
         number = NumberMatch(
             start=text.find("six"), end=text.find("six") + 3,
             raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive(text, number)
-        # Should NOT be filtered - spelled numbers are not page numbers
-        assert is_fp is False
+        # Filtered by min_value (checked before TOC proximity)
+        assert is_fp is True
 
     def test_numeric_small_value_still_filtered(self, filter):
-        """Numeric small values should still be filtered (not exempt)."""
+        """Numeric small values should still be filtered."""
         number = NumberMatch(
             start=0, end=1, raw_text="6", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive("6 months payback", number)
-        # Should be filtered - numeric small value
         assert is_fp is True
         assert reason == "below_min_value"
 
