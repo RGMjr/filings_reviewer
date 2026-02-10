@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Pre-commit hook: Block commits that regress gold standard metrics
-# when extraction files or keyword config are staged.
+# Pre-commit hook: Two guards
+#   1. Extraction guard — blocks commits that regress gold standard metrics
+#   2. Docs structure guard — blocks commits that create unapproved docs folders
 #
 # Install:
 #   ln -sf ../../scripts/pre-commit-extraction-guard.sh .git/hooks/pre-commit
@@ -10,7 +11,59 @@
 
 set -euo pipefail
 
-# Patterns that indicate extraction-related changes
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# ─── Guard 1: Docs structure ───────────────────────────────────────────────────
+# Allowed top-level dirs under docs/ (plus root-level files)
+DOCS_ALLOWED_DIRS="analysis|architecture|archive|development|operations|requirements|worker-prompts"
+# Allowed subdirs under docs/archive/
+ARCHIVE_ALLOWED_DIRS="extraction-validation"
+
+docs_files=$(echo "$staged_files" | grep '^docs/' || true)
+if [ -n "$docs_files" ]; then
+    bad_docs=""
+
+    # Check for unapproved top-level dirs under docs/
+    bad_top=$(echo "$docs_files" \
+        | grep '^docs/[^/]\+/' \
+        | sed 's|^docs/\([^/]*\)/.*|\1|' \
+        | sort -u \
+        | grep -Evx "$DOCS_ALLOWED_DIRS" || true)
+
+    # Check for unapproved subdirs under docs/archive/
+    bad_archive=$(echo "$docs_files" \
+        | grep '^docs/archive/[^/]\+/' \
+        | sed 's|^docs/archive/\([^/]*\)/.*|\1|' \
+        | sort -u \
+        | grep -Evx "$ARCHIVE_ALLOWED_DIRS" || true)
+
+    if [ -n "$bad_top" ]; then
+        bad_docs="$bad_top"
+    fi
+    if [ -n "$bad_archive" ]; then
+        bad_docs="${bad_docs:+$bad_docs\n}archive/$bad_archive"
+    fi
+
+    if [ -n "$bad_docs" ]; then
+        echo ""
+        echo "================================================"
+        echo "  COMMIT BLOCKED: Unapproved docs folder(s)"
+        echo "================================================"
+        echo ""
+        echo "These folders are not on the allowlist:"
+        echo -e "$bad_docs" | sed 's/^/  docs\//'
+        echo ""
+        echo "Allowed top-level:  $DOCS_ALLOWED_DIRS"
+        echo "Allowed under archive/:  $ARCHIVE_ALLOWED_DIRS"
+        echo ""
+        echo "To proceed, move files into an allowed folder or"
+        echo "update the allowlist in scripts/pre-commit-extraction-guard.sh"
+        echo ""
+        exit 1
+    fi
+fi
+
+# ─── Guard 2: Extraction gold standard ────────────────────────────────────────
 EXTRACTION_PATTERNS=(
     "src/extraction/"
     "src/extraction_v2/"
@@ -19,10 +72,7 @@ EXTRACTION_PATTERNS=(
     "src/review/pattern_analyzer"
 )
 
-# Check if any staged files match extraction patterns
-staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 extraction_changed=false
-
 for pattern in "${EXTRACTION_PATTERNS[@]}"; do
     if echo "$staged_files" | grep -q "$pattern"; then
         extraction_changed=true
@@ -30,40 +80,36 @@ for pattern in "${EXTRACTION_PATTERNS[@]}"; do
     fi
 done
 
-if [ "$extraction_changed" = false ]; then
-    # No extraction files staged — allow commit
-    exit 0
-fi
-
-echo ""
-echo "================================================"
-echo "  Extraction files changed — running gold standard validation"
-echo "================================================"
-echo ""
-echo "Staged extraction files:"
-for pattern in "${EXTRACTION_PATTERNS[@]}"; do
-    echo "$staged_files" | grep "$pattern" | sed 's/^/  /' || true
-done
-echo ""
-
-# Run gold standard validation with regression check
-if python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
-    echo ""
-    echo "Gold standard validation PASSED — commit allowed."
-    echo ""
-else
-    exit_code=$?
+if [ "$extraction_changed" = true ]; then
     echo ""
     echo "================================================"
-    echo "  COMMIT BLOCKED: Gold standard regression detected"
+    echo "  Extraction files changed — running gold standard validation"
     echo "================================================"
     echo ""
-    echo "Options:"
-    echo "  1. Fix the regression and try again"
-    echo "  2. If intentional, update the baseline:"
-    echo "     python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline"
-    echo "  3. Skip this check (not recommended):"
-    echo "     git commit --no-verify"
+    echo "Staged extraction files:"
+    for pattern in "${EXTRACTION_PATTERNS[@]}"; do
+        echo "$staged_files" | grep "$pattern" | sed 's/^/  /' || true
+    done
     echo ""
-    exit $exit_code
+
+    if python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
+        echo ""
+        echo "Gold standard validation PASSED — commit allowed."
+        echo ""
+    else
+        exit_code=$?
+        echo ""
+        echo "================================================"
+        echo "  COMMIT BLOCKED: Gold standard regression detected"
+        echo "================================================"
+        echo ""
+        echo "Options:"
+        echo "  1. Fix the regression and try again"
+        echo "  2. If intentional, update the baseline:"
+        echo "     python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline"
+        echo "  3. Skip this check (not recommended):"
+        echo "     git commit --no-verify"
+        echo ""
+        exit $exit_code
+    fi
 fi

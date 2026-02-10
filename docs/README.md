@@ -66,6 +66,16 @@ Instructions for setting up, running, and maintaining the system.
 | **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 
+### Analysis (Task Outputs & Reports)
+
+Results, audits, investigations, research findings, and completion summaries.
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| **[analysis/](analysis/)** | All task output documents (evaluations, validations, research) | Everyone |
+
+See [analysis/README.md](analysis/README.md) for full file listing.
+
 ### Human Review System (✅ COMPLETE - Production Ready)
 
 Human-in-the-loop system for validating and improving extraction quality.
@@ -85,17 +95,13 @@ Current improvement work in progress.
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 
-### Archive (Historical Reference)
+### Archive (Extraction Validation Only)
 
-Historical documents for reference only. Not part of current operations.
+Reference data for improving extraction quality. Everything else was deleted (preserved in git history).
 
 | Category | Contents |
 |----------|----------|
-| **[archive/2025-12-extraction/](archive/2025-12-extraction/)** | EI-1 to EI-6 extraction improvement completions |
-| **[archive/2025-12-goldmine-analysis/](archive/2025-12-goldmine-analysis/)** | GI-1 to GI-8 goldmine analysis artifacts |
-| **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
-| **[archive/worker-prompts/](archive/worker-prompts/)** | Completed task worker prompts |
-| **[archive/workstreams/](archive/workstreams/)** | Historical workstream documentation |
+| **[archive/extraction-validation/](archive/extraction-validation/)** | Evaluation reports, goldmine validation, extraction improvement summaries (18 files) |
 
 ---
 
@@ -422,4 +428,4 @@ For questions about this system or the CMASB initiative:
 ---
 
 **Quick Navigation:**
-[Architecture](architecture/) | [Requirements](requirements/) | [Development](development/) | [Operations](operations/) | [Archive](archive/)
+[Architecture](architecture/) | [Requirements](requirements/) | [Development](development/) | [Operations](operations/) | [Analysis](analysis/) | [Archive](archive/)

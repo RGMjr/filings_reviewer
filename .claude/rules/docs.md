@@ -28,7 +28,7 @@ docs/
 | Audits, investigations, research findings | `analysis/` |
 | Task completion summaries | `analysis/` |
 | System design, data model, pipeline specs | `architecture/` |
-| Completed/superseded documents | `archive/` |
+| Extraction validation results only | `archive/extraction-validation/` |
 | Testing, coding practices, metric taxonomy | `development/` |
 | Setup, deployment, runbooks | `operations/` |
 | Business requirements, metric definitions | `requirements/` |
@@ -36,28 +36,15 @@ docs/
 
 ## Archive subfolder structure
 
-Only these subfolders are allowed under `docs/archive/`. Do not create new subfolders without explicit user approval.
+The archive contains only extraction validation results. Everything else was deleted (preserved in git history).
 
 ```
 docs/archive/
-├── worker-prompts/              # Completed worker prompts (all series)
-├── worker-prompts-unused/       # Superseded, dropped, consolidated, or closed prompts
-├── goldmine/                    # G-series and GI-series documentation
-├── completion-summaries/        # Task/workstream completion summaries
-├── improvement-plans-completed/ # Completed improvement plans + audits
-├── evaluation-reports/          # Superseded evaluation reports
-└── historical/                  # Historical project tracking + process docs
+└── extraction-validation/   # Extraction accuracy reports, validation baselines, quality analysis
 ```
 
-| Archive content type | Destination |
-|---------------------|-------------|
-| Completed worker prompts | `archive/worker-prompts/` |
-| Unused/superseded/dropped worker prompts | `archive/worker-prompts-unused/` |
-| Goldmine detection docs | `archive/goldmine/` |
-| Task completion reports | `archive/completion-summaries/` |
-| Finished improvement plans | `archive/improvement-plans-completed/` |
-| Old evaluation reports | `archive/evaluation-reports/` |
-| Early project tracking | `archive/historical/` |
+Do not create new subfolders under `docs/archive/` without explicit user approval.
+New documents should go into `docs/analysis/` — only validated extraction reports belong in the archive.
 
 ## Rules
 
