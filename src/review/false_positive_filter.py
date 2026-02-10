@@ -211,6 +211,14 @@ LABEL_EMBEDDED_VALUE_PATTERN: Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# Ambiguous magnitude suffix pattern
+# Detects "375 b", "610 b" etc. where a space precedes a single-letter suffix.
+# Real magnitude suffixes are typically attached ("375B", "$610M") or spelled out
+# ("375 billion"). A space + single letter usually means a column label or footnote.
+AMBIGUOUS_MAGNITUDE_SUFFIX: Pattern[str] = re.compile(
+    r"^\d[\d,]*\s+[bmkBMK]$"
+)
+
 # Year range - numbers in this range are likely years, not metrics
 # (imported from config.py for centralized configuration)
 YEAR_MIN = YEAR_MIN
@@ -331,6 +339,7 @@ DOLLAR_ONLY_METRICS: set[str] = {
     'cm_ltv',  # Lifetime value
     'cm_cac',  # Customer acquisition cost
     'cm_arpu',  # Average revenue per user
+    'cm_average_order_value',  # AOV should be $X, not percentages
 }
 
 # Metrics that should ONLY be counts (not percentages or dollars)
@@ -346,6 +355,7 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_active_customers_total',
     'cm_large_customers_period_end',
     'cm_new_customers_acquired',
+    'cm_purchase_transactions_overall',  # Order count, not percentages
 }
 
 
@@ -749,13 +759,21 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, decimals, and spelled-out)
+        # Check minimum value threshold (skip for percentages, currency, and decimals)
         # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
-        # Spelled-out numbers like "six" are intentionally written - likely meaningful
+        # Note: Spelled-out numbers ("three", "one") are no longer exempted because
+        # bare spelled-out words below min_value are almost always narrative noise
+        # (e.g., "three main factors"), while meaningful ones ("six million") have
+        # values far above min_value after magnitude parsing.
         if number.unit == "count" and value is not None:
             is_decimal = "." in number.raw_text
-            if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
+            if not is_decimal and abs(float(value)) < self.min_value:
                 return True, "below_min_value"
+
+        # Check for ambiguous magnitude suffix (e.g., "375 b", "610 b")
+        # A space before a single-letter suffix usually means a column label, not "billion"
+        if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
+            return True, "ambiguous_magnitude_suffix"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":
@@ -772,7 +790,7 @@ class FalsePositiveFilter:
         is_integer_format = "." not in number.raw_text
         is_small_value = value is not None and abs(float(value)) < 1000
 
-        if is_plain_count and is_integer_format and is_small_value and not is_spelled_out_number(number.raw_text):
+        if is_plain_count and is_integer_format and is_small_value:
             if is_near_table_of_contents(text, start, self.toc_proximity_chars):
                 logger.debug(
                     f"TOC proximity filter: number={number.raw_text} "
