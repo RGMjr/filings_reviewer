@@ -2,7 +2,7 @@
 
 This directory contains historical documentation that has been superseded by current active documents.
 
-**Last Updated**: 2025-12-27
+**Last Updated**: 2026-02-09
 
 ---
 
@@ -10,23 +10,20 @@ This directory contains historical documentation that has been superseded by cur
 
 ```
 docs/archive/
-├── worker-prompts/              # Completed worker task prompts by series
-│   ├── EA-series/              # Extraction Architecture (EA-1 to EA-3)
-│   ├── EI-series/              # Extraction Improvements (EI-1 to EI-7)
-│   ├── GR-series/              # Goldmine Remediation (GR-1 to GR-18)
-│   ├── HRI-series/             # Human Review Interface (HRI-6 to HRI-11)
-│   └── HRV-series/             # Human Review Validation (HRV-1 to HRV-5)
-├── analysis/
-│   └── evaluation-reports/     # Superseded evaluation reports
-├── goldmine/                   # G-series and GI-series documentation
-│   ├── G-series/              # Original implementation
-│   └── GI-series/             # First improvements
-├── 2025-12-extraction/         # EI completion summaries
-├── 2025-12-goldmine-analysis/  # GI analysis artifacts
-├── improvement-plans-completed/# Completed improvement plans
-├── historical/
-│   └── process/               # Historical process documentation
-└── workstreams/               # Legacy workstream folders (completion summaries)
+├── 7 root files (README.md, CANDIDATE_GENERATION_SUMMARY.md, etc.)
+├── worker-prompts/              # Completed worker task prompts (all series)
+│   ├── CRM-series/  EA-series/  EI-series/  GR-series/
+│   ├── GS-series/   GSX-series/ HRI-series/ HRV-series/
+│   └── (loose files: DUP-*, EXT-*, IMG-*, INV-*, MET-*, etc.)
+├── worker-prompts-unused/       # Superseded, dropped, consolidated, or closed prompts
+├── goldmine/                    # G-series and GI-series documentation
+│   ├── G-series/               # Original implementation
+│   └── GI-series/              # Improvements + analysis artifacts
+├── completion-summaries/        # Task/workstream completion summaries
+├── improvement-plans-completed/ # Completed improvement plans + audits
+├── evaluation-reports/          # Superseded evaluation reports
+└── historical/                  # Historical project tracking
+    └── process/                # Historical process documentation
 ```
 
 ---
@@ -46,19 +43,33 @@ docs/archive/
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| PROJECT_TASK_INVENTORY.md | docs/archive/historical/ | Historical task tracking (archived 2026-01-29) |
+| PROJECT_TASK_INVENTORY.md | historical/ | Historical task tracking (archived 2026-01-29) |
 
 ### Archived by Series
 
 | Series | Tasks | Status | Location |
 |--------|-------|--------|----------|
-| **G-series** | G1-G12 | ✅ Complete | goldmine/G-series/ |
-| **GI-series** | GI-1 to GI-10 | ✅ Complete | goldmine/GI-series/ |
-| **GR-series** | GR-1 to GR-18 | ✅ Production Ready | worker-prompts/GR-series/ |
-| **EI-series** | EI-1 to EI-7 | ✅ Complete | worker-prompts/EI-series/ |
-| **EA-series** | EA-1 to EA-3 | ✅ Complete | worker-prompts/EA-series/ |
-| **HRI-series** | HRI-1 to HRI-12 | ✅ Complete (11/12) | worker-prompts/HRI-series/ |
-| **HRV-series** | HRV-1 to HRV-5 | ✅ Archived | worker-prompts/HRV-series/ |
+| **G-series** | G1-G12 | Complete | goldmine/G-series/ |
+| **GI-series** | GI-1 to GI-10 | Complete | goldmine/GI-series/ |
+| **GR-series** | GR-1 to GR-18 | Production Ready | worker-prompts/GR-series/ |
+| **EI-series** | EI-1 to EI-7 | Complete | worker-prompts/EI-series/ |
+| **EA-series** | EA-1 to EA-3 | Complete | worker-prompts/EA-series/ |
+| **HRI-series** | HRI-1 to HRI-12 | Complete (11/12) | worker-prompts/HRI-series/ |
+| **HRV-series** | HRV-1 to HRV-5 | Archived | worker-prompts/HRV-series/ |
+
+---
+
+## Subfolder Guide
+
+| Folder | Contents |
+|--------|----------|
+| `worker-prompts/` | All **completed** worker prompts, organized by series subdirs or loose files |
+| `worker-prompts-unused/` | Prompts that were **superseded**, **dropped**, **consolidated**, or **closed** without completion |
+| `goldmine/` | Goldmine detection implementation docs (G-series) and improvement/analysis docs (GI-series) |
+| `completion-summaries/` | Final completion reports for extraction tasks and workstreams |
+| `improvement-plans-completed/` | Finished improvement plans, audits, and performance analysis |
+| `evaluation-reports/` | Superseded system evaluation reports |
+| `historical/` | Early project tracking and process docs |
 
 ---
 
@@ -79,13 +90,9 @@ Documents are moved to archive when:
 
 ### For Historical Context
 - Worker prompts: `worker-prompts/{series}/`
-- Evaluation history: `analysis/evaluation-reports/`
+- Evaluation history: `evaluation-reports/`
 - Improvement plans: `improvement-plans-completed/`
 
 ### For Understanding Evolution
 - Goldmine detection: `goldmine/README.md`
-- Extraction improvements: `2025-12-extraction/`
-
----
-
-**Maintained By**: Claude Code
+- Extraction improvements: `completion-summaries/`
