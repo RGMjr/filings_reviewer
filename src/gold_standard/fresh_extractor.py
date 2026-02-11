@@ -123,6 +123,35 @@ def _normalize_company_for_path(company_name: str) -> str:
     return normalized
 
 
+def _find_gold_standard_filing(company_name: str) -> Path | None:
+    """
+    Find a gold standard filing using case-insensitive directory matching.
+
+    Scans data/gold_standard/ directories and matches against the normalized
+    company name, avoiding case-sensitivity issues across operating systems.
+
+    Args:
+        company_name: Company name from gold standard CSV
+
+    Returns:
+        Path to filing.html if found, None otherwise
+    """
+    gold_dir = Path("data/gold_standard")
+    if not gold_dir.exists():
+        return None
+
+    normalized = _normalize_company_for_path(company_name).lower()
+
+    for subdir in gold_dir.iterdir():
+        if subdir.is_dir() and subdir.name.lower() == normalized:
+            filing_path = subdir / "filing.html"
+            if filing_path.exists():
+                logger.debug(f"Found filing in gold_standard: {filing_path}")
+                return filing_path
+
+    return None
+
+
 def find_local_filing(
     parsed_url: ParsedSecUrl,
     base_dir: str | Path = "data/filings",
@@ -132,7 +161,7 @@ def find_local_filing(
     Find a cached filing in the local filesystem.
 
     Checks multiple path patterns (in order):
-    1. data/gold_standard/{normalized_company}/filing.html (if company_name provided)
+    1. data/gold_standard/{company}/ (case-insensitive scan, if company_name provided)
     2. {base_dir}/{CIK}/{accession}/{filename}
     3. {base_dir}/{CIK}/{accession}/primary.htm (common alternative)
     4. {base_dir}/{CIK_unpadded}/{accession}/{filename}
@@ -148,11 +177,9 @@ def find_local_filing(
     """
     # Try gold_standard path first if company_name provided
     if company_name:
-        normalized = _normalize_company_for_path(company_name)
-        gold_standard_path = Path("data/gold_standard") / normalized / "filing.html"
-        if gold_standard_path.exists():
-            logger.debug(f"Found filing in gold_standard: {gold_standard_path}")
-            return gold_standard_path
+        gs_path = _find_gold_standard_filing(company_name)
+        if gs_path is not None:
+            return gs_path
 
     base_path = Path(base_dir)
 
@@ -320,9 +347,8 @@ def extract_fresh(
     if parsed is None:
         # URL doesn't match sec.gov pattern — try gold_standard directory as fallback
         if company_name:
-            normalized = _normalize_company_for_path(company_name)
-            gold_standard_path = Path("data/gold_standard") / normalized / "filing.html"
-            if gold_standard_path.exists():
+            gold_standard_path = _find_gold_standard_filing(company_name)
+            if gold_standard_path is not None:
                 logger.info(
                     f"Non-standard URL, using gold_standard filing: {gold_standard_path}"
                 )
