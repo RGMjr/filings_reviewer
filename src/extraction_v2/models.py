@@ -612,6 +612,17 @@ class ChartSeries:
 
 
 @dataclass
+class ChartAnnotation:
+    """Text annotation/callout visible on a chart (not a data-point label)."""
+
+    text: str  # Full annotation text: "44.4% New Consumers in 2017"
+    value: float | None = None  # Parsed numeric: 44.4
+    unit: str = ""  # "percent", "currency", etc.
+    category: str = ""  # "New Consumers"
+    period: str = ""  # "2017"
+
+
+@dataclass
 class ChartData:
     """Structured data extracted from a chart."""
 
@@ -620,6 +631,7 @@ class ChartData:
     x_axis_label: str = ""
     y_axis_label: str = ""
     series: list[ChartSeries] = field(default_factory=list)
+    annotations: list[ChartAnnotation] = field(default_factory=list)
 
 
 @dataclass

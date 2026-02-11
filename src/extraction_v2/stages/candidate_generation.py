@@ -388,45 +388,89 @@ class CandidateGenerationStage:
         # Build searchable text from chart metadata
         searchable_parts = [chart.title, chart.y_axis_label, chart.x_axis_label]
         searchable_parts.extend(s.name for s in chart.series)
+        # Include annotation text in searchable metadata
+        searchable_parts.extend(a.text for a in chart.annotations if a.text)
         combined_text = " ".join(p for p in searchable_parts if p)
 
-        if not combined_text.strip():
+        # Also prepare nearby_text for secondary search
+        nearby_text = (asset.nearby_text or "").strip()
+
+        if not combined_text.strip() and not nearby_text:
             return candidates
 
-        for metric_id, patterns in self._compiled_patterns.items():
-            for pattern in patterns:
-                for match in pattern.finditer(combined_text):
-                    # Check exclusions
-                    if self._is_excluded(metric_id, combined_text, match):
-                        continue
+        # Track which metric_ids were found in chart metadata vs only in nearby_text
+        found_in_metadata: set[str] = set()
 
-                    # Check required context
-                    if not self._has_required_context(
-                        metric_id, combined_text, match.start()
-                    ):
-                        continue
+        # First pass: search chart metadata (title, axes, series, annotations)
+        if combined_text.strip():
+            for metric_id, patterns in self._compiled_patterns.items():
+                for pattern in patterns:
+                    for match in pattern.finditer(combined_text):
+                        if self._is_excluded(metric_id, combined_text, match):
+                            continue
+                        if not self._has_required_context(
+                            metric_id, combined_text, match.start()
+                        ):
+                            continue
 
-                    # Compute confidence
-                    confidence = self._compute_confidence(
-                        metric_id=metric_id,
-                        match_text=match.group(),
-                        source_type=SourceType.CHART,
-                        section_type=asset.section_type,
-                    )
+                        confidence = self._compute_confidence(
+                            metric_id=metric_id,
+                            match_text=match.group(),
+                            source_type=SourceType.CHART,
+                            section_type=asset.section_type,
+                        )
 
-                    candidate = MetricCandidate(
-                        metric_id=metric_id,
-                        match_text=match.group(),
-                        source_locator=SourceLocator(
-                            img_id=asset.img_id,
-                            dom_locator=asset.dom_locator,
-                        ),
-                        source_type=SourceType.CHART,
-                        confidence=confidence,
-                        context_text=combined_text[:200],
-                        section_type=asset.section_type,
-                    )
-                    candidates.append(candidate)
+                        candidate = MetricCandidate(
+                            metric_id=metric_id,
+                            match_text=match.group(),
+                            source_locator=SourceLocator(
+                                img_id=asset.img_id,
+                                dom_locator=asset.dom_locator,
+                            ),
+                            source_type=SourceType.CHART,
+                            confidence=confidence,
+                            context_text=combined_text[:200],
+                            section_type=asset.section_type,
+                        )
+                        candidates.append(candidate)
+                        found_in_metadata.add(metric_id)
+
+        # Second pass: search nearby_text for metrics NOT already found in metadata
+        if nearby_text:
+            for metric_id, patterns in self._compiled_patterns.items():
+                if metric_id in found_in_metadata:
+                    continue  # Already found from chart metadata
+                for pattern in patterns:
+                    for match in pattern.finditer(nearby_text):
+                        if self._is_excluded(metric_id, nearby_text, match):
+                            continue
+                        if not self._has_required_context(
+                            metric_id, nearby_text, match.start()
+                        ):
+                            continue
+
+                        confidence = self._compute_confidence(
+                            metric_id=metric_id,
+                            match_text=match.group(),
+                            source_type=SourceType.CHART,
+                            section_type=asset.section_type,
+                        )
+                        # Penalty for nearby_text-only match (indirect link)
+                        confidence = max(0.0, confidence - 0.05)
+
+                        candidate = MetricCandidate(
+                            metric_id=metric_id,
+                            match_text=match.group(),
+                            source_locator=SourceLocator(
+                                img_id=asset.img_id,
+                                dom_locator=asset.dom_locator,
+                            ),
+                            source_type=SourceType.CHART,
+                            confidence=confidence,
+                            context_text=nearby_text[:200],
+                            section_type=asset.section_type,
+                        )
+                        candidates.append(candidate)
 
         return self._deduplicate_chart_candidates(candidates)
 

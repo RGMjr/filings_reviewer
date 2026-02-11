@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import (
     Cell,
+    ChartAnnotation,
     ImageAsset,
     ImageClassification,
     Table,
@@ -329,14 +330,21 @@ Example JSON:
 }
 """
 
-    def _get_chart_extraction_prompt(self) -> str:
+    def _get_chart_extraction_prompt(self, nearby_text: str = "") -> str:
         """
         Get the prompt for chart extraction via Vision API.
+
+        Args:
+            nearby_text: Surrounding HTML paragraph text for context
 
         Returns:
             Prompt string for Vision API
         """
-        return """Analyze this chart and extract ONLY explicitly labeled data values.
+        prompt = """Analyze this chart and extract ONLY explicitly labeled data values.
+
+DEFINITIONS:
+- "data labels" = numeric values printed directly on data points (bars, lines, pie slices)
+- "annotations" = floating text overlays, callouts, or percentage breakdowns visible on the chart but NOT attached to specific data points
 
 CRITICAL RULES:
 1. ONLY extract values that are explicitly shown as data labels on the chart
@@ -344,6 +352,7 @@ CRITICAL RULES:
 3. If a bar/line/point has no label, do NOT include it
 4. Include the exact text of labels as shown
 5. For unlabeled charts, return empty series array
+6. Always capture annotations — floating text overlays with numbers, even if series is empty
 
 Return a JSON object with:
 - chart_type: One of "bar", "line", "pie", "stacked_bar", "area", "unknown" (string)
@@ -357,27 +366,40 @@ Return a JSON object with:
     - x: Category or date label (string)
     - y: Numeric value (number)
     - label: The explicit label text shown on chart (string or null)
+- annotations: Array of text annotations/callouts visible on the chart, each with:
+  - text: Full annotation text as shown (string, e.g. "44.4% New Consumers in 2017")
+  - value: Parsed numeric value if present (number or null, e.g. 44.4)
+  - unit: Unit type — "percent", "currency", "count", or "" if unknown (string)
+  - category: Category/segment the annotation refers to (string, e.g. "New Consumers")
+  - period: Time period if mentioned (string, e.g. "2017")
 
-If NO labeled values are found, return empty series array.
+If NO labeled values are found, return empty series array (but still populate annotations if any text overlays are visible).
 
 Example JSON:
 {
-  "chart_type": "bar",
-  "title": "Annual Revenue",
+  "chart_type": "area",
+  "title": "Marketplace GMV (USDm) by Consumer Cohort",
   "x_axis_label": "Year",
-  "y_axis_label": "Revenue ($M)",
-  "confidence": 0.95,
-  "series": [
-    {
-      "name": "Revenue",
-      "points": [
-        {"x": "2021", "y": 1200.0, "label": "$1,200M"},
-        {"x": "2022", "y": 1500.0, "label": "$1,500M"}
-      ]
-    }
+  "y_axis_label": "GMV (USDm)",
+  "confidence": 0.85,
+  "series": [],
+  "annotations": [
+    {"text": "44.4% New Consumers in 2017", "value": 44.4, "unit": "percent", "category": "New Consumers", "period": "2017"},
+    {"text": "55.6% Existing Consumers in 2017", "value": 55.6, "unit": "percent", "category": "Existing Consumers", "period": "2017"}
   ]
 }
 """
+        # Append bounded surrounding context if available
+        if nearby_text:
+            truncated = nearby_text[:1500]
+            prompt += f"""
+SURROUNDING CONTEXT (from the HTML near this chart):
+\"\"\"{truncated}\"\"\"
+
+Use this context to understand what the chart represents. It may contain metric names,
+time periods, or definitions that help interpret the chart's data.
+"""
+        return prompt
 
     def _reconstruct_table_from_ocr(self, cells_data: list[dict[str, object]]) -> Table:
         """
@@ -536,11 +558,11 @@ Example JSON:
         # Load image bytes
         image_bytes = image_path.read_bytes()
 
-        # Call Vision API with chart extraction prompt
+        # Call Vision API with chart extraction prompt (include nearby context)
         try:
             response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
-                prompt=self._get_chart_extraction_prompt(),
+                prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
                 detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
             )
@@ -569,12 +591,35 @@ Example JSON:
             x_axis_label = chart_response.get("x_axis_label", "")
             y_axis_label = chart_response.get("y_axis_label", "")
 
+            # Parse annotations
+            annotations_data = chart_response.get("annotations", [])
+            chart_annotations: list[ChartAnnotation] = []
+            for ann_item in annotations_data:
+                ann_text = str(ann_item.get("text", ""))
+                if not ann_text:
+                    continue
+                ann_value = ann_item.get("value")
+                if ann_value is not None:
+                    try:
+                        ann_value = float(ann_value)
+                    except (ValueError, TypeError):
+                        ann_value = None
+                chart_annotations.append(
+                    ChartAnnotation(
+                        text=ann_text,
+                        value=ann_value,
+                        unit=str(ann_item.get("unit", "")),
+                        category=str(ann_item.get("category", "")),
+                        period=str(ann_item.get("period", "")),
+                    )
+                )
+
             # Extract series data
             series_data = chart_response.get("series", [])
-            if not series_data:
-                # No labeled values found - mark for manual capture
+            if not series_data and not chart_annotations:
+                # No labeled values AND no annotations - mark for manual capture
                 logger.info(
-                    f"Chart {asset.img_id} has no labeled values, marking for manual capture"
+                    f"Chart {asset.img_id} has no labeled values or annotations, marking for manual capture"
                 )
                 asset.processed = True
                 asset.confidence = 0.0
@@ -623,10 +668,10 @@ Example JSON:
                     chart_series = ChartSeries(name=series_name, points=data_points)
                     chart_series_list.append(chart_series)
 
-            # If we still have no points after parsing, mark for manual
-            if total_points == 0:
+            # If we still have no points AND no annotations after parsing, mark for manual
+            if total_points == 0 and not chart_annotations:
                 logger.info(
-                    f"Chart {asset.img_id} has no valid data points after parsing, marking for manual capture"
+                    f"Chart {asset.img_id} has no valid data points or annotations after parsing, marking for manual capture"
                 )
                 asset.processed = True
                 asset.confidence = 0.0
@@ -640,6 +685,7 @@ Example JSON:
                 x_axis_label=x_axis_label,
                 y_axis_label=y_axis_label,
                 series=chart_series_list,
+                annotations=chart_annotations,
             )
             asset.chart_data = chart_data
 
