@@ -410,6 +410,52 @@ class TestOCRTableFeeding:
         assert len(context.tables) == 0
 
 
+    def test_code_fenced_json_response_parsed_correctly(self, tmp_path: Path) -> None:
+        """GPT-4o often wraps JSON in markdown code fences — pipeline should handle it."""
+        fenced_content = '```json\n' + json.dumps(
+            {
+                "raw_text": "Year Revenue\n2023 $50M",
+                "confidence": 0.85,
+                "cells": [
+                    {"row": 0, "col": 0, "text": "Year", "is_header": True},
+                    {"row": 0, "col": 1, "text": "Revenue", "is_header": True},
+                    {"row": 1, "col": 0, "text": "2023", "is_header": False},
+                    {"row": 1, "col": 1, "text": "$50M", "is_header": False},
+                ],
+            }
+        ) + '\n```'
+        response = VisionResponse(
+            content=fenced_content,
+            model="gpt-4o-mock",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=0.01,
+            latency_ms=500,
+        )
+        mock_vision = MockVisionClient([response])
+        stage = OCRExtractionStage(vision_client=mock_vision)
+
+        image_path = tmp_path / "fenced_table.png"
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\nfake_image")
+
+        context = MockPipelineContext()
+        asset = ImageAsset(
+            img_id="img-fenced-1",
+            filename="fenced_table.png",
+            file_path=str(image_path),
+            classification=ImageClassification.TABLE_IMAGE,
+            relevance_score=0.8,
+            processed=False,
+        )
+        context.images = [asset]
+
+        result = stage.process(context)
+
+        assert result.success
+        assert len(context.tables) == 1
+        assert context.tables[0].row_count == 2
+
+
 # =============================================================================
 # C1: Chart Scanning in Candidate Generation Tests
 # =============================================================================

@@ -19,6 +19,7 @@ Key responsibilities:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -85,6 +86,11 @@ class OCRExtractionStage:
 
             self._vision_client = VisionClient()
         return self._vision_client
+
+    @staticmethod
+    def _strip_code_fences(text: str) -> str:
+        """Strip markdown code fences from LLM response."""
+        return re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE).rstrip("`").strip()
 
     def _should_process(self, asset: ImageAsset) -> bool:
         """
@@ -234,7 +240,7 @@ class OCRExtractionStage:
 
             # Parse JSON response
             try:
-                ocr_data = json.loads(response.content)
+                ocr_data = json.loads(self._strip_code_fences(response.content))
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse OCR response as JSON: {e}")
                 logger.debug(f"Response content: {response.content[:500]}")
@@ -541,7 +547,7 @@ Example JSON:
 
             # Parse JSON response
             try:
-                chart_response = json.loads(response.content)
+                chart_response = json.loads(self._strip_code_fences(response.content))
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse chart response as JSON: {e}")
                 logger.debug(f"Response content: {response.content[:500]}")
