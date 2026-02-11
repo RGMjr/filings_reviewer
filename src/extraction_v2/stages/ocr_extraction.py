@@ -74,9 +74,9 @@ class OCRExtractionStage:
         """Lazy-load vision client to avoid import errors in tests."""
         if self._vision_client is None:
             # Import here to avoid circular dependency
-            from src.extraction_v2.vision_client import OpenAIVisionClient
+            from src.llm.vision_client import VisionClient
 
-            self._vision_client = OpenAIVisionClient()
+            self._vision_client = VisionClient()
         return self._vision_client
 
     def _should_process(self, asset: ImageAsset) -> bool:
