@@ -28,6 +28,8 @@ COMPANY_MAP = {
     "Farfetch Limited": "Farfetch_Limited",
     "Slack": "Slack_Technologies",
     "Slack Technologies": "Slack_Technologies",
+    "Snowflake": "Snowflake_Inc",
+    "Snowflake Inc": "Snowflake_Inc",
 }
 
 # Target columns for extracted_values.csv
