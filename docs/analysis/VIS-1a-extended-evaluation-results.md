@@ -3,7 +3,7 @@
 ## Test Setup
 
 - **Date**: 2026-01-12
-- **Reference**: VIS-1 baseline results (`docs/research/VIS-1-chart-extraction-results.md`)
+- **Reference**: VIS-1 baseline results (`docs/analysis/VIS-1-chart-extraction-results.md`)
 - **Test Images**:
   - Slack ARR cohort chart: `/tmp/slack_arr_cohort.jpg` (2848x1792, ~507KB)
   - Farfetch GMV cohort chart: `/tmp/farfetch_gmv_cohort.jpg` (419x290, ~60KB)
