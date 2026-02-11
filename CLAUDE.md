@@ -116,11 +116,14 @@ Use these slash commands for workflows:
 - `/ralph [mode]` - Start Ralph Loop for autonomous execution
 - `/metric-lifecycle` - Guide for adding/removing metrics
 
-## Session Approach
+## Session Approach (MANDATORY)
 
-Choose the right workflow for the task at hand:
+BEFORE planning or implementing ANY task, you MUST:
+1. Classify the task against the table below
+2. State which execution approach you will use and why
+3. Use the matched workflow — do NOT default to interactive when a structured workflow applies
 
-| Task characteristics | Recommended approach |
+| Task characteristics | Required approach |
 |---|---|
 | Single file, <3 changes | Interactive session |
 | Multi-file, defined acceptance criteria | `/ralph develop --isolated` |
@@ -129,8 +132,10 @@ Choose the right workflow for the task at hand:
 | Large refactor (>10 files) | Team: implementer + test-runner + reviewer |
 | Bulk extraction or validation | `/ralph extract` or `/ralph validate` |
 
-- **Escalation rule**: If an interactive session reaches 5+ commits, pause and switch to Ralph
-- **Freshness rule**: After any session with 3+ commits, update `ops/ITERATION_CONTEXT.md`
+- **Escalation rule (ENFORCED)**: If an interactive session reaches 5+ commits, STOP and switch to Ralph.
+- **Freshness rule (ENFORCED)**: After any session with 3+ commits, update `ops/ITERATION_CONTEXT.md`.
+
+Skipping methodology selection is a blocking error. State your choice before proceeding.
 
 ## Extraction Team Workflow
 
