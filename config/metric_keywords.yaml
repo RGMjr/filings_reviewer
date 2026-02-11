@@ -163,6 +163,9 @@ cm_revenue_by_cohort:
     - '\bcohort\s+revenue\b'
     - '\brevenue[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\brevenue\b'
+    - '\bgmv[^.;]{0,100}\bcohort\b'
+    - '\bcohort[^.;]{0,100}\bgmv\b'
+    - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
 
 cm_transactions_by_cohort:
   patterns:

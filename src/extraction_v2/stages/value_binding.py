@@ -639,6 +639,35 @@ class ValueBindingStage:
                 )
                 bound_values.append(bound_value)
 
+        # Bind annotation values (less structured than data labels)
+        for annotation in chart.annotations:
+            if annotation.value is None:
+                continue
+
+            # Infer unit from annotation's unit string, fall back to axis-inferred unit
+            ann_unit = self._annotation_unit_to_enum(annotation.unit) or unit
+
+            # Check unit compatibility
+            if self._should_filter_unit(candidate.metric_id, ann_unit):
+                continue
+
+            # Lower confidence multiplier for annotations (0.85x vs 0.9x for labels)
+            binding_confidence = asset.confidence * 0.85
+
+            bound_value = BoundValue(
+                candidate_id=candidate.candidate_id,
+                value=annotation.value,
+                value_raw=annotation.text,
+                unit=ann_unit,
+                binding_type="chart_annotation",
+                binding_confidence=binding_confidence,
+                source_locator=SourceLocator(
+                    img_id=asset.img_id,
+                    dom_locator=asset.dom_locator,
+                ),
+            )
+            bound_values.append(bound_value)
+
         return bound_values
 
     def _infer_unit_from_axis(self, axis_label: str) -> Unit:
@@ -662,6 +691,24 @@ class ValueBindingStage:
         ):
             return Unit.COUNT
         return Unit.OTHER
+
+    @staticmethod
+    def _annotation_unit_to_enum(unit_str: str) -> Unit | None:
+        """
+        Map annotation unit string to Unit enum.
+
+        Args:
+            unit_str: Unit string from ChartAnnotation (e.g., "percent", "currency")
+
+        Returns:
+            Unit enum value, or None if unknown/empty (caller should use fallback)
+        """
+        mapping = {
+            "percent": Unit.PERCENT,
+            "currency": Unit.CURRENCY,
+            "count": Unit.COUNT,
+        }
+        return mapping.get(unit_str.lower().strip()) if unit_str else None
 
     def _find_numbers_in_proximity(
         self,

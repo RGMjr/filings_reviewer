@@ -847,3 +847,478 @@ class TestV2PipelineSecClient:
         assert len(ocr_stages) == 1
         _, ocr_stage = ocr_stages[0]
         assert ocr_stage._sec_client is mock_client
+
+
+# =============================================================================
+# Step 0: _get_nearby_text() parent-sibling fallback
+# =============================================================================
+
+
+class TestGetNearbyTextParentSiblings:
+    """Tests for IngestionStage._get_nearby_text parent-sibling fallback."""
+
+    @pytest.fixture
+    def stage(self) -> Any:
+        from src.extraction_v2.stages.ingestion import IngestionStage
+
+        return IngestionStage()
+
+    def test_sec_style_img_in_p_captures_parent_siblings(self, stage: Any) -> None:
+        """When <IMG> is only child of <P>, nearby_text comes from parent's siblings."""
+        from lxml import html
+
+        markup = """<div>
+            <p>GMV from our Marketplace by consumer cohort</p>
+            <p><img src="chart.jpg"/></p>
+            <p>The chart above shows GMV growth from 2010 to 2017</p>
+        </div>"""
+        tree = html.fromstring(markup)
+        img = tree.xpath("//img")[0]
+
+        text = stage._get_nearby_text(img, tree)
+
+        assert "GMV" in text
+        assert "Marketplace" in text
+        assert "consumer cohort" in text
+        assert "chart above" in text
+
+    def test_img_with_direct_siblings_uses_direct(self, stage: Any) -> None:
+        """When <IMG> has direct siblings, they are used (not parent's siblings)."""
+        from lxml import html
+
+        markup = """<div>
+            <div>
+                <p>Before paragraph</p>
+                <img src="chart.jpg"/>
+                <p>After paragraph</p>
+            </div>
+        </div>"""
+        tree = html.fromstring(markup)
+        img = tree.xpath("//img")[0]
+
+        text = stage._get_nearby_text(img, tree)
+
+        assert "Before paragraph" in text
+        assert "After paragraph" in text
+
+    def test_no_context_returns_empty(self, stage: Any) -> None:
+        """Isolated image with no context returns empty string."""
+        from lxml import html
+
+        markup = """<div><p><img src="chart.jpg"/></p></div>"""
+        tree = html.fromstring(markup)
+        img = tree.xpath("//img")[0]
+
+        text = stage._get_nearby_text(img, tree)
+
+        assert text == ""
+
+
+# =============================================================================
+# Step 1: ChartAnnotation model
+# =============================================================================
+
+
+class TestChartAnnotationModel:
+    """Tests for ChartAnnotation dataclass."""
+
+    def test_chart_annotation_basic(self) -> None:
+        from src.extraction_v2.models import ChartAnnotation
+
+        ann = ChartAnnotation(
+            text="44.4% New Consumers in 2017",
+            value=44.4,
+            unit="percent",
+            category="New Consumers",
+            period="2017",
+        )
+        assert ann.text == "44.4% New Consumers in 2017"
+        assert ann.value == 44.4
+        assert ann.unit == "percent"
+
+    def test_chart_data_annotations_default_empty(self) -> None:
+        chart = ChartData()
+        assert chart.annotations == []
+
+    def test_chart_data_with_annotations(self) -> None:
+        from src.extraction_v2.models import ChartAnnotation
+
+        ann = ChartAnnotation(text="55.6% Existing", value=55.6, unit="percent")
+        chart = ChartData(annotations=[ann])
+        assert len(chart.annotations) == 1
+        assert chart.annotations[0].value == 55.6
+
+
+# =============================================================================
+# Step 2: Chart extraction with annotations
+# =============================================================================
+
+
+class TestChartAnnotationExtraction:
+    """Tests for OCRExtractionStage annotation parsing."""
+
+    def test_annotations_parsed_from_response(self, tmp_path: Path) -> None:
+        """GPT-4o response with annotations field populates chart_data.annotations."""
+        chart_response = json.dumps({
+            "chart_type": "area",
+            "title": "Marketplace GMV (USDm) by Consumer Cohort",
+            "x_axis_label": "Year",
+            "y_axis_label": "GMV (USDm)",
+            "confidence": 0.85,
+            "series": [],
+            "annotations": [
+                {
+                    "text": "44.4% New Consumers in 2017",
+                    "value": 44.4,
+                    "unit": "percent",
+                    "category": "New Consumers",
+                    "period": "2017",
+                },
+                {
+                    "text": "55.6% Existing Consumers in 2017",
+                    "value": 55.6,
+                    "unit": "percent",
+                    "category": "Existing Consumers",
+                    "period": "2017",
+                },
+            ],
+        })
+        response = VisionResponse(
+            content=chart_response,
+            model="gpt-4o-mock",
+            prompt_tokens=200,
+            completion_tokens=100,
+            cost_usd=0.02,
+            latency_ms=800,
+        )
+        mock_vision = MockVisionClient([response])
+        stage = OCRExtractionStage(vision_client=mock_vision)
+
+        image_path = tmp_path / "chart.jpg"
+        image_path.write_bytes(b"\xff\xd8\xff\xe0fake_jpeg")
+
+        asset = ImageAsset(
+            img_id="img-ann-1",
+            filename="chart.jpg",
+            file_path=str(image_path),
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            nearby_text="GMV from Marketplace by consumer cohort",
+        )
+
+        stage.process_chart(asset)
+
+        assert asset.processed
+        assert asset.chart_data is not None
+        assert len(asset.chart_data.annotations) == 2
+        assert asset.chart_data.annotations[0].value == 44.4
+        assert asset.chart_data.annotations[0].unit == "percent"
+        assert asset.chart_data.annotations[1].value == 55.6
+        # Should NOT be marked for manual capture since annotations exist
+        assert not asset.requires_manual_capture
+
+    def test_empty_series_and_annotations_marks_manual(self, tmp_path: Path) -> None:
+        """Chart with no series AND no annotations still marks for manual capture."""
+        chart_response = json.dumps({
+            "chart_type": "area",
+            "title": "Some Chart",
+            "x_axis_label": "",
+            "y_axis_label": "",
+            "confidence": 0.5,
+            "series": [],
+            "annotations": [],
+        })
+        response = VisionResponse(
+            content=chart_response,
+            model="gpt-4o-mock",
+            prompt_tokens=200,
+            completion_tokens=50,
+            cost_usd=0.01,
+            latency_ms=500,
+        )
+        mock_vision = MockVisionClient([response])
+        stage = OCRExtractionStage(vision_client=mock_vision)
+
+        image_path = tmp_path / "empty_chart.jpg"
+        image_path.write_bytes(b"\xff\xd8\xff\xe0fake_jpeg")
+
+        asset = ImageAsset(
+            img_id="img-empty-1",
+            filename="empty_chart.jpg",
+            file_path=str(image_path),
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+        )
+
+        stage.process_chart(asset)
+
+        assert asset.processed
+        assert asset.requires_manual_capture
+        assert asset.confidence == 0.0
+
+    def test_prompt_includes_nearby_text(self) -> None:
+        """Chart extraction prompt includes nearby_text when provided."""
+        stage = OCRExtractionStage()
+        prompt = stage._get_chart_extraction_prompt(
+            nearby_text="GMV by consumer cohort for 2017"
+        )
+
+        assert "SURROUNDING CONTEXT" in prompt
+        assert "GMV by consumer cohort" in prompt
+
+    def test_prompt_without_nearby_text(self) -> None:
+        """Chart extraction prompt has no context section when nearby_text is empty."""
+        stage = OCRExtractionStage()
+        prompt = stage._get_chart_extraction_prompt()
+
+        assert "SURROUNDING CONTEXT" not in prompt
+
+    def test_prompt_includes_annotations_schema(self) -> None:
+        """Chart extraction prompt includes annotations array schema."""
+        stage = OCRExtractionStage()
+        prompt = stage._get_chart_extraction_prompt()
+
+        assert "annotations" in prompt
+        assert "category" in prompt
+        assert "period" in prompt
+
+
+# =============================================================================
+# Step 3: Candidate generation from annotations + nearby_text
+# =============================================================================
+
+
+class TestChartCandidateFromNearbyText:
+    """Tests for _scan_chart with nearby_text and annotations."""
+
+    @pytest.fixture
+    def stage(self) -> CandidateGenerationStage:
+        s = CandidateGenerationStage()
+        s._ensure_initialized()
+        return s
+
+    def test_nearby_text_produces_candidate(
+        self, stage: CandidateGenerationStage
+    ) -> None:
+        """nearby_text with metric keyword produces chart candidate."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(
+            title="(USDm)",  # No metric keyword in title
+            y_axis_label="USDm",
+        )
+        asset.nearby_text = "GMV from our Marketplace by consumer cohort"
+        asset.chart_data.annotations = [
+            ChartAnnotation(text="44.4% New Consumers in 2017", value=44.4, unit="percent"),
+        ]
+
+        candidates = stage._scan_chart(asset)
+
+        metric_ids = {c.metric_id for c in candidates}
+        assert "cm_revenue_by_cohort" in metric_ids
+
+    def test_nearby_text_only_match_has_penalty(
+        self, stage: CandidateGenerationStage
+    ) -> None:
+        """Candidate from nearby_text only gets -0.05 confidence penalty."""
+        asset = _make_chart_asset(
+            title="Growth",  # No metric keyword
+            y_axis_label="Value",
+        )
+        asset.nearby_text = "Annual Recurring Revenue over time"
+
+        candidates = stage._scan_chart(asset)
+
+        # Find ARR candidate
+        arr_candidates = [c for c in candidates if "arr" in c.metric_id.lower()]
+        if arr_candidates:
+            # Should be lower than a direct metadata match
+            metadata_asset = _make_chart_asset(
+                title="Annual Recurring Revenue",
+                y_axis_label="Revenue",
+            )
+            metadata_candidates = stage._scan_chart(metadata_asset)
+            meta_arr = [c for c in metadata_candidates if "arr" in c.metric_id.lower()]
+            if meta_arr:
+                assert arr_candidates[0].confidence < meta_arr[0].confidence
+
+    def test_annotation_text_produces_candidate(
+        self, stage: CandidateGenerationStage
+    ) -> None:
+        """Annotation text with metric keyword produces candidate without penalty."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(
+            title="Customer Metrics",
+            y_axis_label="",
+        )
+        asset.chart_data.annotations = [
+            ChartAnnotation(
+                text="Net Revenue Retention 120%",
+                value=120.0,
+                unit="percent",
+            ),
+        ]
+
+        candidates = stage._scan_chart(asset)
+
+        metric_ids = {c.metric_id for c in candidates}
+        assert any("retention" in mid.lower() or "nrr" in mid.lower() for mid in metric_ids)
+
+
+# =============================================================================
+# Step 4: Annotation value binding
+# =============================================================================
+
+
+class TestAnnotationValueBinding:
+    """Tests for _bind_chart_candidate with annotations."""
+
+    @pytest.fixture
+    def stage(self) -> ValueBindingStage:
+        return ValueBindingStage()
+
+    def test_annotation_produces_bound_value(self, stage: ValueBindingStage) -> None:
+        """Annotation with value produces BoundValue with binding_type='chart_annotation'."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(
+            series_data=[],  # No data point series
+        )
+        asset.chart_data.annotations = [
+            ChartAnnotation(text="44.4% New Consumers", value=44.4, unit="percent"),
+            ChartAnnotation(text="55.6% Existing Consumers", value=55.6, unit="percent"),
+        ]
+
+        candidate = MetricCandidate(
+            metric_id="cm_revenue_by_cohort",
+            match_text="cohort",
+            source_locator=SourceLocator(img_id=asset.img_id),
+            source_type=SourceType.CHART,
+            confidence=0.7,
+        )
+
+        bound_values = stage._bind_chart_candidate(candidate, [asset])
+
+        annotation_bvs = [bv for bv in bound_values if bv.binding_type == "chart_annotation"]
+        assert len(annotation_bvs) == 2
+        values = sorted(bv.value for bv in annotation_bvs)
+        assert values == [44.4, 55.6]
+
+    def test_annotation_unit_mapped_correctly(self, stage: ValueBindingStage) -> None:
+        """Annotation unit string is mapped to Unit enum."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(series_data=[])
+        asset.chart_data.annotations = [
+            ChartAnnotation(text="44.4%", value=44.4, unit="percent"),
+        ]
+
+        candidate = MetricCandidate(
+            metric_id="cm_revenue_by_cohort",
+            match_text="cohort",
+            source_locator=SourceLocator(img_id=asset.img_id),
+            source_type=SourceType.CHART,
+        )
+
+        bound_values = stage._bind_chart_candidate(candidate, [asset])
+
+        ann_bvs = [bv for bv in bound_values if bv.binding_type == "chart_annotation"]
+        assert len(ann_bvs) == 1
+        assert ann_bvs[0].unit == Unit.PERCENT
+
+    def test_annotation_confidence_lower_than_label(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Annotation binding uses 0.85x multiplier (vs 0.9x for data labels)."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(
+            confidence=0.85,
+            series_data=[("Series", [("2017", 100.0, "100")])],
+        )
+        asset.chart_data.annotations = [
+            ChartAnnotation(text="44.4%", value=44.4, unit="percent"),
+        ]
+
+        candidate = MetricCandidate(
+            metric_id="cm_revenue_by_cohort",
+            match_text="cohort",
+            source_locator=SourceLocator(img_id=asset.img_id),
+            source_type=SourceType.CHART,
+        )
+
+        bound_values = stage._bind_chart_candidate(candidate, [asset])
+
+        label_bvs = [bv for bv in bound_values if bv.binding_type == "chart_label"]
+        ann_bvs = [bv for bv in bound_values if bv.binding_type == "chart_annotation"]
+
+        assert len(label_bvs) >= 1
+        assert len(ann_bvs) >= 1
+        # 0.85 * 0.9 = 0.765 for labels, 0.85 * 0.85 = 0.7225 for annotations
+        assert ann_bvs[0].binding_confidence < label_bvs[0].binding_confidence
+
+    def test_annotation_without_value_skipped(self, stage: ValueBindingStage) -> None:
+        """Annotations with value=None produce no BoundValue."""
+        from src.extraction_v2.models import ChartAnnotation
+
+        asset = _make_chart_asset(series_data=[])
+        asset.chart_data.annotations = [
+            ChartAnnotation(text="Some text without a number", value=None),
+        ]
+
+        candidate = MetricCandidate(
+            metric_id="cm_revenue_by_cohort",
+            match_text="cohort",
+            source_locator=SourceLocator(img_id=asset.img_id),
+            source_type=SourceType.CHART,
+        )
+
+        bound_values = stage._bind_chart_candidate(candidate, [asset])
+
+        assert len(bound_values) == 0
+
+    def test_annotation_unit_to_enum(self, stage: ValueBindingStage) -> None:
+        """_annotation_unit_to_enum maps strings correctly."""
+        assert stage._annotation_unit_to_enum("percent") == Unit.PERCENT
+        assert stage._annotation_unit_to_enum("currency") == Unit.CURRENCY
+        assert stage._annotation_unit_to_enum("count") == Unit.COUNT
+        assert stage._annotation_unit_to_enum("") is None
+        assert stage._annotation_unit_to_enum("unknown") is None
+
+
+# =============================================================================
+# Step 5: GMV-by-cohort keyword patterns
+# =============================================================================
+
+
+class TestGMVCohortKeywords:
+    """Tests for GMV-by-cohort keyword patterns in cm_revenue_by_cohort."""
+
+    @pytest.fixture
+    def stage(self) -> CandidateGenerationStage:
+        s = CandidateGenerationStage()
+        s._ensure_initialized()
+        return s
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "GMV from our Marketplace by consumer cohort",
+            "Marketplace GMV (USDm) by consumer cohort",
+            "cohort analysis of GMV growth",
+            "gross merchandise value by consumer cohort",
+            "gross merchandise volume by cohort",
+        ],
+    )
+    def test_gmv_cohort_patterns_match(
+        self, stage: CandidateGenerationStage, text: str
+    ) -> None:
+        """GMV-cohort patterns match in cm_revenue_by_cohort."""
+        patterns = stage._compiled_patterns.get("cm_revenue_by_cohort", [])
+        assert patterns, "cm_revenue_by_cohort patterns not found"
+
+        matched = any(p.search(text.lower()) for p in patterns)
+        assert matched, f"No pattern matched: {text!r}"

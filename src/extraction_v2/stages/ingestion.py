@@ -670,6 +670,39 @@ class IngestionStage:
 
             nearby_parts.extend(next_siblings)
 
+        # 4. Fallback: if no text found and img is only child of parent (e.g. <P><IMG/></P>),
+        # walk up to parent and check parent's siblings for context
+        if not nearby_parts and parent is not None:
+            _block_tags = ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6')
+
+            # Check parent's previous siblings (up to 2)
+            parent_prev: list[str] = []
+            current = parent.getprevious()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
+                    text = current.text_content() if hasattr(current, 'text_content') else ''
+                    text = self._normalize_text(text)
+                    if text:
+                        parent_prev.insert(0, text)
+                        count += 1
+                current = current.getprevious()
+            nearby_parts.extend(parent_prev)
+
+            # Check parent's next siblings (up to 2)
+            parent_next: list[str] = []
+            current = parent.getnext()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
+                    text = current.text_content() if hasattr(current, 'text_content') else ''
+                    text = self._normalize_text(text)
+                    if text:
+                        parent_next.append(text)
+                        count += 1
+                current = current.getnext()
+            nearby_parts.extend(parent_next)
+
         # Combine all parts
         return ' '.join(nearby_parts)
 
