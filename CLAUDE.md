@@ -116,6 +116,35 @@ Use these slash commands for workflows:
 - `/ralph [mode]` - Start Ralph Loop for autonomous execution
 - `/metric-lifecycle` - Guide for adding/removing metrics
 
+## Session Approach
+
+Choose the right workflow for the task at hand:
+
+| Task characteristics | Recommended approach |
+|---|---|
+| Single file, <3 changes | Interactive session |
+| Multi-file, defined acceptance criteria | `/ralph develop --isolated` |
+| Investigation/debugging | `/ralph analyze`, then `/ralph implement` |
+| Extraction code + keyword changes | `/ralph develop` + gold-standard-validator agent |
+| Large refactor (>10 files) | Team: implementer + test-runner + reviewer |
+| Bulk extraction or validation | `/ralph extract` or `/ralph validate` |
+
+- **Escalation rule**: If an interactive session reaches 5+ commits, pause and switch to Ralph
+- **Freshness rule**: After any session with 3+ commits, update `ops/ITERATION_CONTEXT.md`
+
+## Extraction Team Workflow
+
+For changes to extraction code, keyword config, or FP rules, use the 2-agent pattern:
+
+1. **Create team**: `TeamCreate` with `extraction-implementer` + `gold-standard-validator`
+2. **Structure tasks**: Alternate implement → validate tasks with `blockedBy` dependencies
+3. **Implementer** makes changes, self-tests, marks task complete
+4. **Validator** runs gold standard, reports regressions, blocks merge if scores drop
+
+Use this pattern for: keyword changes, classifier logic, FP filter rules, new gold standard filings.
+
+Agent definitions: `.claude/agents/extraction-implementer.md`, `.claude/agents/gold-standard-validator.md`
+
 ## Gold Standard Validation
 
 **Required** when modifying extraction code or keyword config:
