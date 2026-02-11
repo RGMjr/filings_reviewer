@@ -36,15 +36,16 @@ docs/
 
 ## Archive subfolder structure
 
-The archive contains only extraction validation results. Everything else was deleted (preserved in git history).
+The archive contains extraction validation results and completed worker prompts. Everything else was deleted (preserved in git history).
 
 ```
 docs/archive/
-└── extraction-validation/   # Extraction accuracy reports, validation baselines, quality analysis
+├── extraction-validation/   # Extraction accuracy reports, validation baselines, quality analysis
+└── worker-prompts/          # Completed worker prompts (moved from docs/worker-prompts/ when done)
 ```
 
 Do not create new subfolders under `docs/archive/` without explicit user approval.
-New documents should go into `docs/analysis/` — only validated extraction reports belong in the archive.
+New documents should go into `docs/analysis/` — only validated extraction reports and completed worker prompts belong in the archive.
 
 ## Rules
 
