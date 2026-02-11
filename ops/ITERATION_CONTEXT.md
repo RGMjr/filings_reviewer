@@ -6,61 +6,34 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-*Updated automatically at iteration end*
-
-- V2-PHASE-12: Database Persistence completed (2026-02-04)
-  - Created `src/extraction_v2/persistence.py` (750 lines)
-  - Created `tests/integration/extraction_v2/test_persistence.py` (18 tests)
-  - 93% coverage, mypy --strict passes, ruff passes
-  - All 12 acceptance criteria complete
+- Farfetch gold standard: P=83%, R=70%, F1=76% (d42c54e)
+- docs/archive purge: 166→19 files, pre-commit folder guard (5682a3c)
+- V2 FP filter rules: V2-native false positive filter stage (f75f8b8)
+- Cross-metric dedup: Span-containment dedup for wrong-metric FPs (6003400)
+- NUMBER_PATTERN fix: Prevented year-splitting into fragments (879f752)
 
 ## Current Focus
 
-*Set by previous iteration or worker prompt*
-
-- V2-PHASE-12: All acceptance criteria completed
-- Merged main into v2-rewrite to consolidate Phases 4-5 (Image Triage, OCR Extraction)
+- Context rot prevention: session-scoping rules, MEMORY enrichment, worker prompt archival
 
 ## Test Status
 
-- All V2 extraction unit tests passing (430 tests)
-- 18 integration tests passing (with database)
-- Persistence module: 93% coverage
-- Full extraction/review test suite: 2983 passed, 14 skipped
+- 4,765 tests collected, 87% coverage
+- Farfetch gold standard: P=83%, R=70%, F1=76%
+- Pre-commit scoped to unit tests only
 
 ## Key Learnings for Next Iteration
 
-*Technical discoveries that affect subsequent work*
-
-- V2 schema uses UUID primary keys (gen_random_uuid())
-- JSONB columns need json.dumps() for psycopg3
-- TEXT[] columns accept Python lists directly
-- v2_metric_facts has FK to metrics table - use valid metric IDs
-- v2_documents has UNIQUE on filing_id (not doc_id)
-- valid_currency constraint requires currency when unit='currency'
-- ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
-- ChartData/ChartSeries/DataPoint models exist in models.py
-- VisionClient in src/llm/vision_client.py provides analyze_image() API
-
-## Files Created
-
-- `src/extraction_v2/persistence.py` - V2PersistenceAdapter class
-- `src/extraction_v2/stages/image_triage.py` - ImageTriageStage (from main)
-- `src/extraction_v2/stages/ocr_extraction.py` - OCRExtractionStage (from main)
-- `tests/integration/extraction_v2/__init__.py`
-- `tests/integration/extraction_v2/test_persistence.py` - 18 integration tests
-
-## Files Modified
-
-- `src/extraction_v2/__init__.py` - Export persistence functions
-- `src/extraction_v2/pipeline.py` - Import all 11 stages from modules
-- `src/extraction_v2/stages/__init__.py` - Export ImageTriageStage, OCRExtractionStage
+- V2 schema: UUID PKs, JSONB needs json.dumps(), TEXT[] takes lists directly
+- v2_documents UNIQUE on filing_id; valid_currency constraint requires currency when unit='currency'
+- NUMBER_PATTERN greedy regex was splitting years — fixed with boundary anchoring
+- Pre-commit scoped to unit tests (integration too slow for hook)
+- docs/archive policy: only extraction-validation/ and worker-prompts/ subfolders
+- Session approach matrix added to CLAUDE.md — use Ralph after 5+ commits
 
 ## Blockers or Warnings
 
-*Issues the next iteration should be aware of*
-
-- None - Merge complete, all phases (0-12) now on v2-rewrite
+- 13 worker prompts pending archival to docs/archive/worker-prompts/
 
 ---
 
