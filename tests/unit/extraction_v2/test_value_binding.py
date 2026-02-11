@@ -57,6 +57,7 @@ class MockPipelineContext:
     config: MockPipelineConfig = field(default_factory=MockPipelineConfig)
     segments: list[Segment] = field(default_factory=list)
     tables: list[Table] = field(default_factory=list)
+    images: list[Any] = field(default_factory=list)
     candidates: list[MetricCandidate] = field(default_factory=list)
     bound_values: list[Any] = field(default_factory=list)
 
@@ -1008,14 +1009,14 @@ class TestEdgeCases:
         assert result.success
         assert len(context.bound_values) == 0
 
-    def test_chart_source_type_stubbed(self, stage: ValueBindingStage) -> None:
-        """Chart source type returns empty (stub behavior)."""
+    def test_chart_source_type_no_matching_image(self, stage: ValueBindingStage) -> None:
+        """Chart candidate with no matching image produces no bindings."""
         candidate = MetricCandidate(
             candidate_id="cand-chart",
             metric_id="cm_test",
             match_text="test",
             source_type=SourceType.CHART,
-            source_locator=SourceLocator(),
+            source_locator=SourceLocator(img_id="nonexistent"),
         )
 
         context = MockPipelineContext(candidates=[candidate])

@@ -214,6 +214,10 @@ class PipelineContext:
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
 
+    # SEC filing info (for image downloading)
+    cik: str = ""
+    accession_number: str = ""
+
     # Tracking
     stage_results: list[StageResult] = field(default_factory=list)
     start_time: datetime = field(default_factory=datetime.utcnow)
@@ -231,9 +235,19 @@ class V2Pipeline:
     Coordinates the 12-stage extraction process for a single filing.
     """
 
-    def __init__(self, config: PipelineConfig | None = None) -> None:
-        """Initialize pipeline with configuration."""
+    def __init__(
+        self,
+        config: PipelineConfig | None = None,
+        sec_client: Any | None = None,
+    ) -> None:
+        """Initialize pipeline with configuration.
+
+        Args:
+            config: Pipeline configuration
+            sec_client: Optional SECClient instance for image downloading
+        """
         self.config = config or PipelineConfig()
+        self._sec_client = sec_client
         self._stages: list[tuple[PipelineStage, StageProcessor]] = []
         self._setup_stages()
 
@@ -260,7 +274,10 @@ class V2Pipeline:
         # Stage 5: OCR & Chart Extraction
         if self.config.enable_chart_extraction:
             self._stages.append(
-                (PipelineStage.OCR_CHART_EXTRACTION, OCRExtractionStage())
+                (
+                    PipelineStage.OCR_CHART_EXTRACTION,
+                    OCRExtractionStage(sec_client=self._sec_client),
+                )
             )
 
         # Stage 6: Metric Candidate Generation
@@ -290,13 +307,21 @@ class V2Pipeline:
         # Stage 11: Validation & Review Routing
         self._stages.append((PipelineStage.VALIDATION, ValidationStage()))
 
-    def process(self, html_path: Path | str, filing_id: int) -> PipelineResult:
+    def process(
+        self,
+        html_path: Path | str,
+        filing_id: int,
+        cik: str = "",
+        accession_number: str = "",
+    ) -> PipelineResult:
         """
         Execute the full extraction pipeline on a filing.
 
         Args:
             html_path: Path to the HTML filing
             filing_id: Database ID of the filing
+            cik: SEC Central Index Key (for image downloading)
+            accession_number: SEC accession number (for image downloading)
 
         Returns:
             PipelineResult with extracted facts and metadata
@@ -309,6 +334,8 @@ class V2Pipeline:
             html_path=html_path,
             filing_id=filing_id,
             config=self.config,
+            cik=cik,
+            accession_number=accession_number,
         )
 
         logger.info(
@@ -402,6 +429,8 @@ def process_filing(
     html_path: Path | str,
     filing_id: int,
     config: PipelineConfig | None = None,
+    cik: str = "",
+    accession_number: str = "",
 ) -> PipelineResult:
     """
     Process a single filing through the V2 pipeline.
@@ -412,9 +441,11 @@ def process_filing(
         html_path: Path to the HTML filing
         filing_id: Database ID of the filing
         config: Optional pipeline configuration
+        cik: SEC Central Index Key (for image downloading)
+        accession_number: SEC accession number (for image downloading)
 
     Returns:
         PipelineResult with extracted facts and metadata
     """
     pipeline = V2Pipeline(config=config)
-    return pipeline.process(html_path, filing_id)
+    return pipeline.process(html_path, filing_id, cik=cik, accession_number=accession_number)

@@ -206,7 +206,12 @@ def main():
 
     # Run pipeline
     pipeline = V2Pipeline(config=config)
-    result = pipeline.process(html_path=html_path, filing_id=filing["filing_id"])
+    result = pipeline.process(
+        html_path=html_path,
+        filing_id=filing["filing_id"],
+        cik=str(filing.get("cik", "")),
+        accession_number=filing.get("accession_number", ""),
+    )
 
     # Print summary
     print_summary(result, filing)

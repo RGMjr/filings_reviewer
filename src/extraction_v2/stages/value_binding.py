@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import (
     BoundValue,
+    ImageAsset,
     MetricCandidate,
     SourceLocator,
     SourceType,
@@ -224,11 +225,7 @@ class ValueBindingStage:
         elif candidate.source_type == SourceType.TEXT:
             return self._bind_text_candidate(candidate, context.segments)
         elif candidate.source_type == SourceType.CHART:
-            # Chart binding is stubbed (Phase 5 dependency)
-            logger.debug(
-                f"Chart binding not implemented for candidate {candidate.candidate_id}"
-            )
-            return []
+            return self._bind_chart_candidate(candidate, context.images)
         # All SourceType values handled above
         return []
 
@@ -584,6 +581,87 @@ class ValueBindingStage:
             )
 
         return bound_values
+
+    def _bind_chart_candidate(
+        self,
+        candidate: MetricCandidate,
+        images: list[ImageAsset],
+    ) -> list[BoundValue]:
+        """
+        Bind chart candidate to data points from the chart.
+
+        Each DataPoint in each series produces a BoundValue. The unit is
+        inferred from the chart's y-axis label.
+
+        Args:
+            candidate: Chart-sourced metric candidate
+            images: List of image assets
+
+        Returns:
+            List of BoundValue objects
+        """
+        bound_values: list[BoundValue] = []
+        loc = candidate.source_locator
+
+        # Find the image asset
+        asset = next(
+            (img for img in images if img.img_id == loc.img_id), None
+        )
+        if not asset or not asset.chart_data:
+            return bound_values
+
+        chart = asset.chart_data
+        unit = self._infer_unit_from_axis(chart.y_axis_label)
+
+        # Check unit compatibility
+        if self._should_filter_unit(candidate.metric_id, unit):
+            return bound_values
+
+        for series in chart.series:
+            for point in series.points:
+                if point.y is None:
+                    continue
+
+                # Slight discount on confidence for chart extraction
+                binding_confidence = asset.confidence * 0.9
+
+                bound_value = BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=point.y,
+                    value_raw=point.label or str(point.y),
+                    unit=unit,
+                    binding_type="chart_label",
+                    binding_confidence=binding_confidence,
+                    source_locator=SourceLocator(
+                        img_id=asset.img_id,
+                        dom_locator=asset.dom_locator,
+                    ),
+                )
+                bound_values.append(bound_value)
+
+        return bound_values
+
+    def _infer_unit_from_axis(self, axis_label: str) -> Unit:
+        """
+        Infer unit type from chart axis label.
+
+        Args:
+            axis_label: Y-axis label text (e.g., "Revenue ($M)", "Users")
+
+        Returns:
+            Inferred Unit enum value
+        """
+        label_lower = (axis_label or "").lower()
+        if any(s in label_lower for s in ("$", "usd", "revenue", "gmv")):
+            return Unit.CURRENCY
+        if "%" in label_lower or "percent" in label_lower or "rate" in label_lower:
+            return Unit.PERCENT
+        if any(
+            s in label_lower
+            for s in ("count", "number", "users", "customers", "subscribers")
+        ):
+            return Unit.COUNT
+        return Unit.OTHER
 
     def _find_numbers_in_proximity(
         self,
