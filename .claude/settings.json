@@ -62,6 +62,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"additionalContext\": \"WORKFLOW GATE: Before planning or implementing, classify this task per the Session Approach table in CLAUDE.md and state your chosen execution mode (interactive / ralph / team). This is mandatory.\"}'"
+          }
+        ]
+      }
     ]
   },
   "env": {
