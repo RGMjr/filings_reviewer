@@ -56,15 +56,22 @@ class OCRExtractionStage:
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
     MAX_CHART_CALLS_PER_DOCUMENT: int = 10
 
-    def __init__(self, vision_client: object | None = None) -> None:
+    def __init__(
+        self,
+        vision_client: object | None = None,
+        sec_client: object | None = None,
+    ) -> None:
         """
         Initialize the OCR extraction stage.
 
         Args:
             vision_client: Optional vision API client (OpenAI Vision).
                           If None, will be created on first use.
+            sec_client: Optional SECClient instance for image downloading.
+                       If None, will be created on first use when needed.
         """
         self._vision_client = vision_client
+        self._sec_client = sec_client
         self._api_call_count = 0
         self._ocr_call_count = 0
         self._chart_call_count = 0
@@ -111,6 +118,77 @@ class OCRExtractionStage:
             return False
 
         return True
+
+    def _download_missing_images(self, context: pipeline.PipelineContext) -> int:
+        """
+        Download image files for triaged images that lack file_path.
+
+        Uses SECClient.fetch_image() with caching, rate limiting, and
+        content validation.
+
+        Args:
+            context: Pipeline context with images list, cik, accession_number
+
+        Returns:
+            Number of images successfully downloaded
+        """
+        from pathlib import Path
+        import tempfile
+
+        if not context.cik or not context.accession_number:
+            return 0
+
+        # Lazy-load SECClient
+        if self._sec_client is None:
+            from src.infra.sec_client import SECClient
+
+            self._sec_client = SECClient(
+                image_cache_dir=Path(tempfile.gettempdir()) / "filings_image_cache"
+            )
+
+        downloaded = 0
+        cache_dir = Path(tempfile.gettempdir()) / "filings_image_cache" / "pipeline"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        for asset in context.images:
+            # Only download for images that would be processed but lack file_path
+            if asset.processed:
+                continue
+            if asset.relevance_score < self.MIN_RELEVANCE_FOR_PROCESSING:
+                continue
+            if asset.classification in {
+                ImageClassification.DECORATIVE,
+                ImageClassification.LOGO,
+                ImageClassification.SIGNATURE,
+            }:
+                continue
+            if asset.file_path:
+                continue  # Already have file
+            if not asset.filename:
+                continue
+
+            try:
+                image_bytes = self._sec_client.fetch_image(
+                    cik=context.cik,
+                    accession_number=context.accession_number,
+                    filename=asset.filename,
+                )
+                if image_bytes:
+                    image_path = cache_dir / asset.filename
+                    image_path.write_bytes(image_bytes)
+                    asset.file_path = str(image_path)
+                    downloaded += 1
+                    logger.info(
+                        f"Downloaded image {asset.filename}: {len(image_bytes)} bytes"
+                    )
+                else:
+                    logger.warning(f"Failed to download image {asset.filename}")
+            except Exception as e:
+                logger.warning(f"Error downloading image {asset.filename}: {e}")
+
+        if downloaded:
+            logger.info(f"Downloaded {downloaded} images for pipeline processing")
+        return downloaded
 
     def process_table_image(self, asset: ImageAsset) -> None:
         """
@@ -615,6 +693,12 @@ Example JSON:
         manual_capture_count = 0
 
         try:
+            # Download missing images before processing
+            if context.cik and context.accession_number:
+                downloaded = self._download_missing_images(context)
+                if downloaded:
+                    warnings.append(f"Downloaded {downloaded} images from SEC EDGAR")
+
             # Handle empty images list
             if not context.images:
                 logger.info("No images to process")
@@ -656,6 +740,9 @@ Example JSON:
                     if asset.classification == ImageClassification.TABLE_IMAGE:
                         self.process_table_image(asset)
                         self._ocr_call_count += 1
+                        # Feed OCR table into pipeline for candidate generation
+                        if asset.ocr_table is not None:
+                            context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
                         self.process_chart(asset)
                         self._chart_call_count += 1

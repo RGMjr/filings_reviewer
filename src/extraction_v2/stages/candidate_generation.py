@@ -24,8 +24,10 @@ from src.extraction.keyword_config import (
     get_metric_keywords,
     get_required_context,
     get_specific_patterns,
+    is_metric_deprecated,
 )
 from src.extraction_v2.models import (
+    ImageAsset,
     MetricCandidate,
     SectionType,
     SourceLocator,
@@ -98,14 +100,19 @@ class CandidateGenerationStage:
             return True
 
         try:
-            self._keywords = get_metric_keywords()
-            self._exclusions = get_exclusion_patterns()
-            self._required_context = get_required_context()
+            all_keywords = get_metric_keywords()
+            self._keywords = {mid: p for mid, p in all_keywords.items() if not is_metric_deprecated(mid)}
+            all_exclusions = get_exclusion_patterns()
+            self._exclusions = {mid: p for mid, p in all_exclusions.items() if not is_metric_deprecated(mid)}
+            all_context = get_required_context()
+            self._required_context = {mid: c for mid, c in all_context.items() if not is_metric_deprecated(mid)}
             self._specific_patterns = get_specific_patterns()
             self._compile_patterns()
             self._initialized = True
+            deprecated_count = len(all_keywords) - len(self._keywords)
             logger.info(
-                f"Candidate generation initialized: {len(self._keywords)} metrics"
+                f"Candidate generation initialized: {len(self._keywords)} metrics "
+                f"({deprecated_count} deprecated excluded)"
             )
             return True
         except KeywordConfigError as e:
@@ -204,11 +211,27 @@ class CandidateGenerationStage:
                 logger.error(error_msg)
                 errors.append(error_msg)
 
-        items_processed = len(context.segments) + len(context.tables)
+        # Scan chart data from processed images
+        charts_scanned = 0
+        for asset in context.images:
+            if asset.chart_data is not None:
+                try:
+                    chart_candidates = self._scan_chart(asset)
+                    for candidate in chart_candidates:
+                        context.candidates.append(candidate)
+                        candidates_found += 1
+                    charts_scanned += 1
+                except Exception as e:
+                    error_msg = f"Error scanning chart {asset.img_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+
+        items_processed = len(context.segments) + len(context.tables) + charts_scanned
 
         logger.info(
             f"Candidate generation complete: {candidates_found} candidates "
-            f"from {len(context.segments)} segments, {len(context.tables)} tables"
+            f"from {len(context.segments)} segments, {len(context.tables)} tables, "
+            f"{charts_scanned} charts"
         )
 
         return self._make_result(
@@ -343,6 +366,94 @@ class CandidateGenerationStage:
 
         candidates = self._deduplicate_candidates(candidates)
         return self._cross_metric_dedup(candidates)
+
+    def _scan_chart(self, asset: ImageAsset) -> list[MetricCandidate]:
+        """
+        Scan chart metadata for metric keyword matches.
+
+        Searches chart title, axis labels, and series names for metric
+        keywords using the same compiled patterns as text/table scanning.
+
+        Args:
+            asset: Image asset with chart_data populated
+
+        Returns:
+            List of MetricCandidate objects found
+        """
+        candidates: list[MetricCandidate] = []
+        chart = asset.chart_data
+        if chart is None:
+            return candidates
+
+        # Build searchable text from chart metadata
+        searchable_parts = [chart.title, chart.y_axis_label, chart.x_axis_label]
+        searchable_parts.extend(s.name for s in chart.series)
+        combined_text = " ".join(p for p in searchable_parts if p)
+
+        if not combined_text.strip():
+            return candidates
+
+        for metric_id, patterns in self._compiled_patterns.items():
+            for pattern in patterns:
+                for match in pattern.finditer(combined_text):
+                    # Check exclusions
+                    if self._is_excluded(metric_id, combined_text, match):
+                        continue
+
+                    # Check required context
+                    if not self._has_required_context(
+                        metric_id, combined_text, match.start()
+                    ):
+                        continue
+
+                    # Compute confidence
+                    confidence = self._compute_confidence(
+                        metric_id=metric_id,
+                        match_text=match.group(),
+                        source_type=SourceType.CHART,
+                        section_type=asset.section_type,
+                    )
+
+                    candidate = MetricCandidate(
+                        metric_id=metric_id,
+                        match_text=match.group(),
+                        source_locator=SourceLocator(
+                            img_id=asset.img_id,
+                            dom_locator=asset.dom_locator,
+                        ),
+                        source_type=SourceType.CHART,
+                        confidence=confidence,
+                        context_text=combined_text[:200],
+                        section_type=asset.section_type,
+                    )
+                    candidates.append(candidate)
+
+        return self._deduplicate_chart_candidates(candidates)
+
+    def _deduplicate_chart_candidates(
+        self, candidates: list[MetricCandidate]
+    ) -> list[MetricCandidate]:
+        """
+        Deduplicate chart candidates by (metric_id, img_id).
+
+        Charts produce at most one candidate per metric per image since
+        the entire chart metadata is treated as one searchable unit.
+
+        Args:
+            candidates: Chart candidates to deduplicate
+
+        Returns:
+            Deduplicated list, keeping highest confidence per (metric_id, img_id)
+        """
+        if not candidates:
+            return candidates
+
+        seen: dict[tuple[str, str | None], MetricCandidate] = {}
+        for candidate in candidates:
+            key = (candidate.metric_id, candidate.source_locator.img_id)
+            if key not in seen or candidate.confidence > seen[key].confidence:
+                seen[key] = candidate
+        return list(seen.values())
 
     def _cross_metric_dedup(
         self, candidates: list[MetricCandidate]
@@ -592,8 +703,8 @@ class CandidateGenerationStage:
                 confidence += self.SPECIFIC_PATTERN_BONUS
                 break
 
-        # Bonus for table source (more structured)
-        if source_type == SourceType.HTML_TABLE:
+        # Bonus for structured source (table or chart)
+        if source_type in (SourceType.HTML_TABLE, SourceType.OCR_TABLE, SourceType.CHART):
             confidence += self.TABLE_SOURCE_BONUS
 
         # Bonus for high-value sections (MD&A, Business)
