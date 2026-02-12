@@ -184,6 +184,7 @@ class V2GoldStandardValidator:
         gold_standard_path: Path | str = GOLD_STANDARD_CSV,
         v2_config: PipelineConfig | None = None,
         value_tolerance: float = 0.02,
+        min_confidence: float = 0.50,
     ):
         """
         Initialize validator.
@@ -192,10 +193,12 @@ class V2GoldStandardValidator:
             gold_standard_path: Path to gold standard CSV file
             v2_config: Configuration for V2 pipeline
             value_tolerance: Tolerance for numeric value matching (default 2%)
+            min_confidence: Minimum confidence to count a fact (default 0.90)
         """
         self.gold_standard_path = Path(gold_standard_path)
         self.v2_config = v2_config or PipelineConfig()
         self.value_tolerance = value_tolerance
+        self.min_confidence = min_confidence
 
         self.v2_pipeline = V2Pipeline(config=self.v2_config)
 
@@ -312,7 +315,13 @@ class V2GoldStandardValidator:
                 result.missed = result.total_expected
                 return result
 
-            v2_facts = v2_result.facts
+            v2_facts = [
+                f for f in v2_result.facts if f.confidence >= self.min_confidence
+            ]
+            logger.debug(
+                f"{company_name}: {len(v2_result.facts)} total facts, "
+                f"{len(v2_facts)} above confidence threshold {self.min_confidence}"
+            )
         except Exception as e:
             logger.error(f"V2 pipeline exception for {company_name}: {e}")
             result.false_negatives = result.total_expected
@@ -468,7 +477,11 @@ class V2GoldStandardValidator:
     def _find_filing_path(self, company_name: str) -> Path | None:
         """Find the HTML filing path for a company."""
         # Normalize company name for directory lookup
-        safe_name = company_name.replace(" ", "_").replace(",", "")
+        safe_name = company_name.replace(" ", "_").replace(",", "").replace(".", "_")
+        # Clean up double underscores and trailing underscores
+        while "__" in safe_name:
+            safe_name = safe_name.replace("__", "_")
+        safe_name = safe_name.rstrip("_")
 
         # Check known locations
         candidates = [
@@ -481,9 +494,30 @@ class V2GoldStandardValidator:
             if candidate.exists():
                 return candidate
 
-        # Try to find any matching directory
+        # Try to find any matching directory (normalize both sides)
+        normalized_company = (
+            company_name.lower()
+            .replace(" ", "_")
+            .replace(".", "_")
+            .replace(",", "")
+        )
+        while "__" in normalized_company:
+            normalized_company = normalized_company.replace("__", "_")
+        normalized_company = normalized_company.rstrip("_")
+
         for subdir in GOLD_STANDARD_DIR.iterdir():
-            if subdir.is_dir() and company_name.lower() in subdir.name.lower():
+            if not subdir.is_dir():
+                continue
+            normalized_dir = (
+                subdir.name.lower()
+                .replace(" ", "_")
+                .replace(".", "_")
+                .replace(",", "")
+            )
+            while "__" in normalized_dir:
+                normalized_dir = normalized_dir.replace("__", "_")
+            normalized_dir = normalized_dir.rstrip("_")
+            if normalized_company in normalized_dir or normalized_dir in normalized_company:
                 filing = subdir / "filing.html"
                 if filing.exists():
                     return filing
@@ -671,6 +705,7 @@ def normalize_value(
 def run_validation(
     update_baseline: bool = False,
     baseline_description: str | None = None,
+    min_confidence: float = 0.50,
 ) -> AggregateMetrics:
     """
     Run full validation and optionally update baseline.
@@ -678,19 +713,30 @@ def run_validation(
     Args:
         update_baseline: If True, save current metrics as new baseline
         baseline_description: Description for new baseline
+        min_confidence: Minimum confidence threshold for counting facts
 
     Returns:
         AggregateMetrics with validation results
     """
-    validator = V2GoldStandardValidator()
+    # Run at the requested confidence threshold (default: high-confidence only)
+    validator = V2GoldStandardValidator(min_confidence=min_confidence)
     results = validator.validate_all()
     metrics = validator.compute_metrics(results)
 
-    print("\nV2 Gold Standard Validation Results:")
+    print(f"\nV2 Gold Standard Validation Results (confidence >= {min_confidence}):")
     print(f"  Precision: {metrics.precision:.1%}")
     print(f"  Recall: {metrics.recall:.1%}")
     print(f"  F1 Score: {metrics.f1:.1%}")
     print(f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}")
+
+    # Also report unfiltered facts for comparison
+    review_threshold = 0.0
+    if min_confidence > review_threshold:
+        review_validator = V2GoldStandardValidator(min_confidence=review_threshold)
+        review_results = review_validator.validate_all()
+        review_metrics = review_validator.compute_metrics(review_results)
+        print(f"\n  Review-worthy facts (confidence >= {review_threshold}):")
+        print(f"    TP: {review_metrics.total_true_positives}, FP: {review_metrics.total_false_positives}, FN: {review_metrics.total_false_negatives}")
 
     if update_baseline:
         validator.save_baseline(metrics, description=baseline_description)

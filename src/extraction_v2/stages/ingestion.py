@@ -874,6 +874,13 @@ class IngestionStage:
             logger.info(f"Extracting image assets from filing {context.filing_id}")
             image_assets = self._extract_image_assets(tree, context.filing_id)
 
+            # Resolve local image paths relative to the HTML file's directory
+            for asset in image_assets:
+                if not asset.file_path:
+                    local_path = context.html_path.parent / asset.filename
+                    if local_path.exists():
+                        asset.file_path = str(local_path)
+
             # AC-10: Combine all segment types and sort by document order
             all_segments_with_elements = paragraph_segments_with_elements + table_segments_with_elements
 

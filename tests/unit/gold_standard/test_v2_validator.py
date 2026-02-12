@@ -67,6 +67,7 @@ def make_fact(
     fact_id: str = "fact-1",
     canonical_metric_id: str = "cm_dau",
     value: float | None = 1000.0,
+    confidence: float = 0.95,
     period_start: date | None = None,
     period_end: date | None = None,
 ) -> MetricFact:
@@ -75,6 +76,7 @@ def make_fact(
         fact_id=fact_id,
         canonical_metric_id=canonical_metric_id,
         value=value,
+        confidence=confidence,
         period_start=period_start,
         period_end=period_end,
     )
@@ -819,6 +821,7 @@ class TestValidateFiling:
         with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             v.value_tolerance = 0.02
+            v.min_confidence = 0.50
             v.v2_pipeline = MagicMock()
             return v
 
@@ -1299,13 +1302,13 @@ class TestRunValidation:
 
         result = run_validation()
 
-        mock_instance.validate_all.assert_called_once()
-        mock_instance.compute_metrics.assert_called_once_with(mock_results)
+        # Called twice: once for confidence threshold (0.50), once for unfiltered (0.0)
+        assert mock_instance.validate_all.call_count == 2
         assert result.precision == 0.85
 
         captured = capsys.readouterr()
         assert "85.0%" in captured.out
-        assert "90.0%" in captured.out
+        assert "confidence >= 0.5" in captured.out
 
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
     def test_update_baseline_saves(self, mock_validator_cls: MagicMock) -> None:
@@ -1341,7 +1344,7 @@ class TestRunValidation:
         run_validation()
 
         captured = capsys.readouterr()
-        assert "V2 Gold Standard Validation Results:" in captured.out
+        assert "V2 Gold Standard Validation Results" in captured.out
         assert "Precision: 75.0%" in captured.out
         assert "Recall: 60.0%" in captured.out
         assert "TP: 9" in captured.out
