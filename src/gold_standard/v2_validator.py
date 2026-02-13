@@ -344,6 +344,21 @@ class V2GoldStandardValidator:
                 )
                 continue
 
+            # Skip "not a customer metric" entries — these are definitionally
+            # not customer metrics and inflate FN count
+            if normalize_metric_id(entry.metric_id) == "cm_not_a_customer_metric":
+                result.match_results.append(
+                    MatchResult(
+                        entry=entry,
+                        matched_fact=None,
+                        match_type="skipped",
+                        reason="Not a customer metric",
+                    )
+                )
+                # Adjust total_expected since this entry shouldn't count
+                result.total_expected -= 1
+                continue
+
             # Try to find a matching fact
             matched_fact = self._find_matching_fact(entry, v2_facts, matched_fact_ids)
 

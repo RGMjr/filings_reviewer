@@ -139,6 +139,10 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
+    # Snowflake-style patterns: "customers that contributed more than $X"
+    - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
+    # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"
+    - '\bcustomers?\s+with\s+[\w\s]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
