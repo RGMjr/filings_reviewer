@@ -67,10 +67,10 @@ for _m in _COUNT_ONLY_METRICS:
     METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.COUNT, Unit.OTHER})
 
 for _m in _CURRENCY_ONLY_METRICS:
-    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.CURRENCY})
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.CURRENCY, Unit.OTHER})
 
 for _m in _PERCENT_ONLY_METRICS:
-    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO})
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO, Unit.OTHER})
 
 
 def get_allowed_units(metric_id: str) -> frozenset[Unit] | None:

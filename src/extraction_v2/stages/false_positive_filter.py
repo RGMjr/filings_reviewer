@@ -101,12 +101,20 @@ def _is_v2_false_positive(
         return True, "v2_linearized_table"
 
     # Rule 3: Financial table annotation text.
-    # Segments containing "(In thousands)" or "stock-based compensation" are
-    # financial statement text, not customer metric narrative.
-    if _FINANCIAL_ANNOTATION_RE.search(source_text):
-        return True, "v2_financial_annotation"
-    if _SBC_RE.search(source_text):
-        return True, "v2_financial_sbc"
+    # Only flag as FP if annotation is within 300 chars of the bound value.
+    # Exempt table-sourced values: structural header/stub binding is more
+    # reliable than text proximity, and "(In thousands)" is a scale indicator,
+    # not evidence of non-metric financial data in table context.
+    if bv.source_locator.table_id is None:
+        value_pos = source_text.find(raw) if raw else -1
+        ann_match = _FINANCIAL_ANNOTATION_RE.search(source_text)
+        if ann_match:
+            if value_pos < 0 or abs(ann_match.start() - value_pos) <= 300:
+                return True, "v2_financial_annotation"
+        sbc_match = _SBC_RE.search(source_text)
+        if sbc_match:
+            if value_pos < 0 or abs(sbc_match.start() - value_pos) <= 300:
+                return True, "v2_financial_sbc"
 
     # Rule 4: Company ranking name.
     # "Fortune 100", "Forbes 500" — the number is part of the ranking name.
