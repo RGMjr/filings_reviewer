@@ -589,3 +589,73 @@ class TestConfigIntegration:
         stage = DeduplicationStage(value_tolerance=0.05)
 
         assert stage.value_tolerance == 0.05
+
+
+# ============================================================================
+# Performance Tests (Phase 4)
+# ============================================================================
+
+
+class TestGroupingPerformance:
+    """Tests for optimized pre-grouping performance."""
+
+    def test_large_fact_set_completes_quickly(self) -> None:
+        """1000 facts with 50 unique identity tuples completes quickly."""
+        import time
+
+        stage = DeduplicationStage()
+
+        # Create 1000 facts across 50 metric IDs (20 duplicates each)
+        facts = []
+        for metric_idx in range(50):
+            for dup_idx in range(20):
+                facts.append(
+                    make_fact(
+                        fact_id=f"fact-{metric_idx}-{dup_idx}",
+                        metric_id=f"cm_metric_{metric_idx}",
+                        value=100.0 + (dup_idx * 0.001),  # Within 2% tolerance
+                    )
+                )
+
+        start = time.time()
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+        elapsed = time.time() - start
+
+        # Should complete in under 2 seconds (O(n) pre-grouping makes this fast)
+        assert elapsed < 2.0
+        # Should produce 50 groups (one per metric)
+        assert len(groups) == 50
+
+    def test_pre_grouping_preserves_correctness(self) -> None:
+        """Pre-grouping produces same results as naive O(n²) approach."""
+        stage = DeduplicationStage()
+
+        facts = [
+            make_fact(fact_id="f1", metric_id="cm_arr", value=100.0),
+            make_fact(fact_id="f2", metric_id="cm_arr", value=101.0),  # Within tolerance
+            make_fact(fact_id="f3", metric_id="cm_arr", value=200.0),  # Different value
+            make_fact(fact_id="f4", metric_id="cm_mrr", value=100.0),  # Different metric
+            make_fact(fact_id="f5", metric_id="cm_mrr", value=100.0),  # Duplicate of f4
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        # Should produce 3 groups: (f1,f2), (f3), (f4,f5)
+        assert len(groups) == 3
+        group_sizes = sorted(len(g) for g in groups)
+        assert group_sizes == [1, 2, 2]
+
+    def test_single_identity_bucket_many_values(self) -> None:
+        """All facts same identity but different values: separate groups."""
+        stage = DeduplicationStage()
+
+        # Same metric, but widely different values
+        facts = [
+            make_fact(fact_id=f"f{i}", value=float(i * 100))
+            for i in range(1, 11)
+        ]
+
+        groups = stage._group_duplicates(facts, tolerance=0.02)
+
+        # Each value is far from others, so 10 groups
+        assert len(groups) == 10

@@ -381,14 +381,22 @@ class V2Pipeline:
         end_time = datetime.utcnow()
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
+        # Use deduplicated facts if available (Stage 10 output), else raw facts
+        output_facts = (
+            context.deduplicated_facts
+            if context.deduplicated_facts
+            else context.facts
+        )
+
         logger.info(
             f"V2 pipeline complete for filing {filing_id}: "
-            f"{len(context.facts)} facts extracted in {total_ms}ms"
+            f"{len(output_facts)} facts ({len(context.facts)} pre-dedup) "
+            f"extracted in {total_ms}ms"
         )
 
         return PipelineResult(
             document=context.document or Document(),
-            facts=context.facts,
+            facts=output_facts,
             tables=context.tables,
             images=context.images,
             segments=context.segments,
