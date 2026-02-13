@@ -142,7 +142,7 @@ cm_large_customers_period_end:
     # Snowflake-style patterns: "customers that contributed more than $X"
     - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
     # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"
-    - '\bcustomers?\s+with\s+[\w\s]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
+    - '\bcustomers?\s+with\s+[\w\s-]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -374,9 +374,17 @@ cm_revenue_concentration:
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
     - '\bcustomer\s+[A-D]\b'
+    # Snowflake-style: "contributed approximately X% of our revenue"
+    - '\bcontributed\s+(?:approximately\s+)?\d+%'
+    # Snowflake-style: "representing approximately X% of our [product] revenue"
+    - '\brepresenting\s+(?:approximately\s+)?\d+%[^.;]{0,30}\brevenue\b'
+    # Snowflake-style: "represented X% or more of revenue"
+    - '\brepresented\s+\d+%\s+or\s+more\s+of\s+revenue\b'
+    # Snowflake-style: "generated X% of our revenue"
+    - '\bgenerated\s+\d+%\s+of\s+(?:our\s+)?revenue\b'
   exclusions:
     # FIX-FP: Exclude business segment revenue share (not customer concentration)
-    - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform|product)\s+revenue\b'
+    - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform)\s+revenue\b'
     - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
     - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
 

@@ -1350,6 +1350,181 @@ class TestRunValidation:
         assert "TP: 9" in captured.out
 
 
+class TestDeduplicateEntries:
+    """Tests for V2GoldStandardValidator._deduplicate_entries()."""
+
+    def test_removes_duplicate_metric_value_pairs(self) -> None:
+        """3 entries with same (metric, value) → 1 entry."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 1
+        assert result[0].metric_id == "cm_dau"
+
+    def test_preserves_different_values(self) -> None:
+        """Entries with same metric but different values are kept."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="2000"),
+            make_entry(metric_id="cm_dau", raw_value="3000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 3
+
+    def test_preserves_different_metrics(self) -> None:
+        """Entries with different metrics but same value are kept."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_mau", raw_value="1000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_definition_only_never_deduped(self) -> None:
+        """Definition-only entries are always preserved, even if duplicated."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000", is_definition_only=True),
+            make_entry(metric_id="cm_dau", raw_value="1000", is_definition_only=True),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_none_normalized_value_preserved(self) -> None:
+        """Entries with unparseable values (normalized_value=None) are preserved."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="some text"),
+            make_entry(metric_id="cm_dau", raw_value="some text"),
+        ]
+        # Both have normalized_value=None, so both should be preserved
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_mixed_dedup_and_unique(self) -> None:
+        """Mix of duplicates, uniques, and definition-only entries."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),  # dup
+            make_entry(metric_id="cm_dau", raw_value="2000"),  # diff value
+            make_entry(metric_id="cm_mau", raw_value="5000"),  # diff metric
+            make_entry(metric_id="cm_dau", raw_value="100", is_definition_only=True),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        # 1 (dau 1000) + 1 (dau 2000) + 1 (mau 5000) + 1 (definition) = 4
+        assert len(result) == 4
+
+    def test_empty_input(self) -> None:
+        result = V2GoldStandardValidator._deduplicate_entries([])
+        assert result == []
+
+    def test_keeps_first_occurrence(self) -> None:
+        """Verifies the first occurrence is the one kept."""
+        e1 = make_entry(metric_id="cm_dau", raw_value="1000", period="Q1")
+        e2 = make_entry(metric_id="cm_dau", raw_value="1000", period="Q2")
+        result = V2GoldStandardValidator._deduplicate_entries([e1, e2])
+        assert len(result) == 1
+        assert result[0].period == "Q1"
+
+
+class TestDuplicateEntrySkip:
+    """Tests for implicit duplicate-skip logic in validate_filing().
+
+    When a gold standard entry can't find an unmatched fact but a matching
+    fact was already claimed by a prior entry with the same metric+value,
+    the entry is skipped (not counted as FN) and total_expected is reduced.
+    """
+
+    @pytest.fixture()
+    def validator(self) -> V2GoldStandardValidator:
+        with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
+            v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
+            v.value_tolerance = 0.02
+            v.min_confidence = 0.50
+            v.v2_pipeline = MagicMock()
+            return v
+
+    def test_duplicate_entries_skipped_not_fn(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        """3 identical entries, 1 fact → 1 TP, 2 skipped, 0 FN."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 1
+        assert result.false_negatives == 0
+        assert result.total_expected == 1  # 3 - 2 skipped
+        assert result.recall == 1.0
+        skipped = [m for m in result.match_results if m.match_type == "skipped"]
+        assert len(skipped) == 2
+
+    def test_different_values_not_skipped(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        """Entries with different values are not treated as duplicates."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="2000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 1
+        assert result.false_negatives == 1  # 2000 not found
+        assert result.total_expected == 2
+
+    def test_entries_matching_different_facts_both_tp(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        """2 identical entries, 2 identical facts → 2 TP, 0 skipped."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+            make_fact(fact_id="f2", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 2
+        assert result.false_negatives == 0
+        assert result.total_expected == 2
+
+    def test_no_matching_fact_at_all_is_fn(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        """Entry with no matching fact (even ignoring matched set) is FN."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_mau", value=5000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 0
+        assert result.false_negatives == 1
+
+
 class TestMatchResult:
     """Tests for MatchResult dataclass."""
 
