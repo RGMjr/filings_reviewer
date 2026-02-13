@@ -15,7 +15,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import MetricFact, SourceType
@@ -120,8 +120,9 @@ class DeduplicationStage:
         """
         Group facts that are duplicates of each other.
 
-        Uses MetricFact.is_duplicate_of() for comparison which handles
-        value tolerance and None comparisons.
+        Pre-groups facts by non-value identity fields (O(n)), then runs
+        pairwise value-tolerance comparison only within each pre-group (O(k²)
+        where k is group size, typically small).
 
         Args:
             facts: List of facts to group
@@ -133,27 +134,56 @@ class DeduplicationStage:
         if not facts:
             return []
 
-        groups: list[list[MetricFact]] = []
-        used: set[str] = set()
+        # Pre-group by identity fields (excluding value) for O(n) bucketing
+        identity_buckets: dict[
+            tuple[str, date | None, date | None, str, str, str | None, str | None],
+            list[MetricFact],
+        ] = {}
+        for fact in facts:
+            bucket_key = (
+                fact.canonical_metric_id,
+                fact.period_start,
+                fact.period_end,
+                fact.unit.value,
+                fact.scope.value,
+                fact.cohort_def,
+                fact.customer_type,
+            )
+            identity_buckets.setdefault(bucket_key, []).append(fact)
 
-        for i, fact in enumerate(facts):
-            if fact.fact_id in used:
+        groups: list[list[MetricFact]] = []
+
+        for bucket_key, bucket_facts in identity_buckets.items():
+            if len(bucket_facts) == 1:
+                groups.append(bucket_facts)
                 continue
 
-            # Start a new group with this fact
-            group = [fact]
-            used.add(fact.fact_id)
-
-            # Find all duplicates
-            for other in facts[i + 1 :]:
-                if other.fact_id in used:
+            # Within each bucket, group by value tolerance (O(k²) but k is small)
+            used: set[str] = set()
+            for i, fact in enumerate(bucket_facts):
+                if fact.fact_id in used:
                     continue
 
-                if fact.is_duplicate_of(other, tolerance):
-                    group.append(other)
-                    used.add(other.fact_id)
+                group = [fact]
+                used.add(fact.fact_id)
 
-            groups.append(group)
+                for other in bucket_facts[i + 1 :]:
+                    if other.fact_id in used:
+                        continue
+
+                    if fact.is_duplicate_of(other, tolerance):
+                        group.append(other)
+                        used.add(other.fact_id)
+
+                groups.append(group)
+
+        if len(facts) > 100:
+            bucket_sizes = [len(b) for b in identity_buckets.values()]
+            logger.info(
+                f"Dedup pre-grouping: {len(facts)} facts → "
+                f"{len(identity_buckets)} identity buckets "
+                f"(max bucket size: {max(bucket_sizes)})"
+            )
 
         return groups
 

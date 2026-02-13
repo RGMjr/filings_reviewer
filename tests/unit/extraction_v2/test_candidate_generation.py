@@ -993,10 +993,10 @@ class TestCandidateDeduplication:
         # Should keep higher confidence (specific pattern match)
         assert candidates[0].confidence >= stage.BASE_CONFIDENCE + stage.SPECIFIC_PATTERN_BONUS
 
-    def test_cross_metric_dedup_suppresses_contained_span(
+    def test_cross_metric_dedup_preserves_different_metrics_contained_span(
         self, mock_context: MockPipelineContext
     ) -> None:
-        """'daily active users' suppresses shorter 'active users' match."""
+        """'daily active users' no longer suppresses 'active users' when metrics differ."""
         stage = CandidateGenerationStage()
         stage._initialized = True
         stage._compiled_patterns = {
@@ -1004,6 +1004,32 @@ class TestCandidateDeduplication:
                 re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
             ],
             "cm_active_customers_total": [
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        text = "We had 1 million daily active users"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        # Both preserved because they have different metric_ids
+        assert len(candidates) == 2
+        metric_ids = {c.metric_id for c in candidates}
+        assert "cm_daily_active_users" in metric_ids
+        assert "cm_active_customers_total" in metric_ids
+
+    def test_same_metric_dedup_suppresses_contained_span(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Contained span IS suppressed when both candidates are for the same metric."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_daily_active_users": [
+                re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
                 re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
             ],
         }
@@ -1099,10 +1125,10 @@ class TestCandidateDeduplication:
         assert "cm_active_customers_total" in metric_ids
         assert "cm_active_users_other" in metric_ids
 
-    def test_cross_metric_dedup_table_cells(
+    def test_cross_metric_dedup_table_cells_preserves_different_metrics(
         self, mock_context: MockPipelineContext
     ) -> None:
-        """Table cell substring suppression works."""
+        """Table cell substring suppression preserves different metric IDs."""
         stage = CandidateGenerationStage()
         stage._initialized = True
         stage._compiled_patterns = {
@@ -1121,5 +1147,330 @@ class TestCandidateDeduplication:
         table = make_table([cell])
         candidates = stage._scan_table(table)
 
+        # Both preserved because they have different metric_ids
+        assert len(candidates) == 2
+        metric_ids = {c.metric_id for c in candidates}
+        assert "cm_daily_active_users" in metric_ids
+        assert "cm_active_customers_total" in metric_ids
+
+    def test_same_metric_dedup_table_cells_suppresses(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Table cell substring suppression still works for same metric."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_daily_active_users": [
+                re.compile(r"\bdaily\s+active\s+users?\b", re.IGNORECASE),
+                re.compile(r"\bactive\s+users?\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        cell = make_cell(0, 0, "Daily Active Users")
+        table = make_table([cell])
+        candidates = stage._scan_table(table)
+
         assert len(candidates) == 1
         assert candidates[0].metric_id == "cm_daily_active_users"
+
+
+# =============================================================================
+# Phase 1: TABLE Segment Skipping Tests
+# =============================================================================
+
+
+class TestTableSegmentSkipping:
+    """Tests that TABLE segments are skipped in text scanning."""
+
+    def test_table_segment_skipped_in_text_scan(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """TABLE segment with metric keywords produces 0 text-scanned candidates."""
+        # A TABLE segment would normally match keywords, but should be skipped
+        table_segment = make_segment(
+            "New Customers [ROW] 500 [CELL] 600 [CELL] 700",
+            segment_id="seg-table-1",
+            segment_type=SegmentType.TABLE,
+        )
+        mock_context.segments.append(table_segment)
+
+        result = stage.process(mock_context)
+
+        assert result.success
+        # No candidates from text scanning the TABLE segment
+        text_candidates = [
+            c for c in mock_context.candidates
+            if c.source_type == SourceType.TEXT
+        ]
+        assert len(text_candidates) == 0
+
+    def test_paragraph_segment_still_scanned(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """PARAGRAPH segments are still scanned normally."""
+        para_segment = make_segment(
+            "We acquired 500 new customers this quarter.",
+            segment_id="seg-para-1",
+            segment_type=SegmentType.PARAGRAPH,
+        )
+        mock_context.segments.append(para_segment)
+
+        result = stage.process(mock_context)
+
+        assert result.success
+        assert len(mock_context.candidates) >= 1
+        metric_ids = [c.metric_id for c in mock_context.candidates]
+        assert "cm_new_customers_acquired" in metric_ids
+
+    def test_table_path_extraction_still_works(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """Table-path extraction via _scan_table() still works."""
+        cell = make_cell(0, 0, "New Customers Acquired")
+        table = make_table([cell])
+        mock_context.tables.append(table)
+
+        result = stage.process(mock_context)
+
+        assert result.success
+        assert len(mock_context.candidates) >= 1
+        # Candidates should come from table source type
+        assert all(
+            c.source_type == SourceType.HTML_TABLE
+            for c in mock_context.candidates
+        )
+
+    def test_mixed_segment_types_only_non_table_scanned(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """Mix of TABLE and PARAGRAPH segments: only PARAGRAPH is text-scanned."""
+        table_segment = make_segment(
+            "ARR was $100M",
+            segment_id="seg-table",
+            segment_type=SegmentType.TABLE,
+        )
+        para_segment = make_segment(
+            "Our ARR exceeded $50 million.",
+            segment_id="seg-para",
+            segment_type=SegmentType.PARAGRAPH,
+        )
+        mock_context.segments.extend([table_segment, para_segment])
+
+        result = stage.process(mock_context)
+
+        assert result.success
+        # Only candidates from the paragraph segment
+        for c in mock_context.candidates:
+            if c.source_type == SourceType.TEXT:
+                assert c.source_locator.segment_id == "seg-para"
+
+
+# =============================================================================
+# Phase 2: Exact-Span Cross-Metric Dedup Tests
+# =============================================================================
+
+
+class TestExactSpanDedup:
+    """Tests for exact-span cross-metric deduplication."""
+
+    def test_same_span_shorter_match_text_suppressed(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """When two metrics match the exact same span, shorter match_text is suppressed."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        # Both patterns match the same text but one produces a shorter match_text
+        stage._compiled_patterns = {
+            "cm_specific_metric": [
+                re.compile(r"\bnew customers acquired\b", re.IGNORECASE),
+            ],
+            "cm_generic_metric": [
+                re.compile(r"\bnew customers acquired\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        # Both have same match text length, so both should be kept
+        text = "We had new customers acquired this quarter"
+        segment = make_segment(text)
+        candidates = stage._scan_segment(segment)
+
+        # Same match_text length → both kept (genuinely ambiguous)
+        assert len(candidates) == 2
+
+    def test_same_span_different_length_match_text(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Exact same span, different match_text lengths: shorter suppressed."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+
+        # Create candidates manually to control spans precisely
+        candidates = [
+            MetricCandidate(
+                metric_id="cm_long",
+                match_text="active users total",
+                source_locator=SourceLocator(
+                    segment_id="seg-1",
+                    text_span=(10, 28),
+                ),
+                source_type=SourceType.TEXT,
+                confidence=0.5,
+            ),
+            MetricCandidate(
+                metric_id="cm_short",
+                match_text="active users",
+                source_locator=SourceLocator(
+                    segment_id="seg-1",
+                    text_span=(10, 28),  # Same span
+                ),
+                source_type=SourceType.TEXT,
+                confidence=0.5,
+            ),
+        ]
+
+        result = stage._cross_metric_dedup(candidates)
+
+        assert len(result) == 1
+        assert result[0].metric_id == "cm_long"  # Longer match_text kept
+
+    def test_same_span_same_length_both_kept(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Exact same span, same match_text length: both kept."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+
+        candidates = [
+            MetricCandidate(
+                metric_id="cm_metric_a",
+                match_text="active users",
+                source_locator=SourceLocator(
+                    segment_id="seg-1",
+                    text_span=(10, 22),
+                ),
+                source_type=SourceType.TEXT,
+                confidence=0.5,
+            ),
+            MetricCandidate(
+                metric_id="cm_metric_b",
+                match_text="active users",  # Same length
+                source_locator=SourceLocator(
+                    segment_id="seg-1",
+                    text_span=(10, 22),  # Same span
+                ),
+                source_type=SourceType.TEXT,
+                confidence=0.5,
+            ),
+        ]
+
+        result = stage._cross_metric_dedup(candidates)
+
+        assert len(result) == 2  # Both kept
+
+
+# =============================================================================
+# Phase 3: Header Column Broadcast Dedup Tests
+# =============================================================================
+
+
+class TestHeaderColumnBroadcastDedup:
+    """Tests for deduplicating header-only matches across table columns."""
+
+    def test_header_only_match_emits_one_candidate_per_column(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Metric in header only + 5 data cells → 1 candidate (not 5)."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_customers_period_end": [
+                re.compile(r"\bcustomers\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        # 5 cells in column 1, all with "Customers" in header_path but not in cell text
+        cells = [
+            make_cell(row=i, col=1, text=str(i * 100), header_path=["Customers"])
+            for i in range(5)
+        ]
+        table = make_table(cells)
+        candidates = stage._scan_table(table)
+
+        # Should emit only 1 candidate for the column, not 5
+        customer_candidates = [
+            c for c in candidates if c.metric_id == "cm_customers_period_end"
+        ]
+        assert len(customer_candidates) == 1
+
+    def test_metric_in_cell_text_emits_per_cell(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Metric in both header AND cell text → candidate per cell."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_customers_period_end": [
+                re.compile(r"\bcustomers\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        # Cells where "customers" appears in cell text too
+        cells = [
+            make_cell(
+                row=i, col=1,
+                text=f"{i * 100} customers",
+                header_path=["Total Customers"],
+            )
+            for i in range(3)
+        ]
+        table = make_table(cells)
+        candidates = stage._scan_table(table)
+
+        # Each cell has "customers" in its own text, so each gets a candidate
+        customer_candidates = [
+            c for c in candidates if c.metric_id == "cm_customers_period_end"
+        ]
+        assert len(customer_candidates) == 3
+
+    def test_header_dedup_across_different_columns(
+        self, mock_context: MockPipelineContext
+    ) -> None:
+        """Header-only matches in different columns emit one each."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            "cm_customers_period_end": [
+                re.compile(r"\bcustomers\b", re.IGNORECASE),
+            ],
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+
+        # Two columns, each with "Customers" in header but not cell text
+        cells = [
+            make_cell(row=0, col=0, text="100", header_path=["Customers Q1"]),
+            make_cell(row=0, col=1, text="200", header_path=["Customers Q2"]),
+            make_cell(row=1, col=0, text="300", header_path=["Customers Q1"]),
+            make_cell(row=1, col=1, text="400", header_path=["Customers Q2"]),
+        ]
+        table = make_table(cells)
+        candidates = stage._scan_table(table)
+
+        # Should emit 1 per column = 2 total
+        customer_candidates = [
+            c for c in candidates if c.metric_id == "cm_customers_period_end"
+        ]
+        assert len(customer_candidates) == 2

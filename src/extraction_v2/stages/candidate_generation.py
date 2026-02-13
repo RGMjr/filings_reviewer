@@ -30,6 +30,7 @@ from src.extraction_v2.models import (
     ImageAsset,
     MetricCandidate,
     SectionType,
+    SegmentType,
     SourceLocator,
     SourceType,
 )
@@ -187,8 +188,10 @@ class CandidateGenerationStage:
                 start_time, 0, candidates_found, errors, warnings
             )
 
-        # Scan segments
+        # Scan segments (skip TABLE segments — they are processed via _scan_table)
         for segment in context.segments:
+            if segment.segment_type == SegmentType.TABLE:
+                continue
             try:
                 segment_candidates = self._scan_segment(segment)
                 for candidate in segment_candidates:
@@ -300,7 +303,9 @@ class CandidateGenerationStage:
         Scan table cells for metric keyword matches.
 
         Scans both cell text and header_path/stub_path to catch metrics
-        mentioned in table headers.
+        mentioned in table headers. When a metric matches only in header/stub
+        (not in cell text), emits only one candidate per column to avoid
+        broadcasting the same header match to every cell in the column.
 
         Args:
             table: The table to scan
@@ -309,6 +314,8 @@ class CandidateGenerationStage:
             List of MetricCandidate objects found
         """
         candidates: list[MetricCandidate] = []
+        # Track header-only matches: (metric_id, col) → already emitted
+        header_only_emitted: set[tuple[str, int]] = set()
 
         for cell in table.cells:
             # Build combined text: cell text + headers + stubs
@@ -319,6 +326,8 @@ class CandidateGenerationStage:
 
             if not combined_text.strip():
                 continue
+
+            cell_text_lower = cell.text.lower().strip()
 
             for metric_id, patterns in self._compiled_patterns.items():
                 for pattern in patterns:
@@ -332,6 +341,18 @@ class CandidateGenerationStage:
                             metric_id, combined_text, match.start()
                         ):
                             continue
+
+                        # Determine if match is in cell text or only in header/stub
+                        match_in_cell_text = bool(
+                            pattern.search(cell.text)
+                        ) if cell_text_lower else False
+
+                        if not match_in_cell_text:
+                            # Header/stub-only match: emit only once per (metric, col)
+                            dedup_key = (metric_id, cell.col)
+                            if dedup_key in header_only_emitted:
+                                continue
+                            header_only_emitted.add(dedup_key)
 
                         # Extract context (use combined text)
                         context_text = self._extract_context(
@@ -539,7 +560,7 @@ class CandidateGenerationStage:
 
         suppressed: set[int] = set()
 
-        # Text span containment
+        # Text span containment (including exact-span dedup for different metrics)
         for group in text_candidates.values():
             for i, a in enumerate(group):
                 if id(a) in suppressed:
@@ -549,9 +570,31 @@ class CandidateGenerationStage:
                     if i == j or id(b) in suppressed:
                         continue
                     b_start, b_end = b.source_locator.text_span  # type: ignore[misc]
-                    # Check if b is strictly contained in a
+
+                    # Exact same span: suppress the shorter match_text (less specific)
+                    if b_start == a_start and b_end == a_end:
+                        if len(b.match_text) < len(a.match_text):
+                            suppressed.add(id(b))
+                            logger.debug(
+                                f"Cross-metric dedup: suppressed {b.metric_id} "
+                                f"({b.match_text!r}, shorter) at same span as "
+                                f"{a.metric_id} ({a.match_text!r})"
+                            )
+                        elif len(a.match_text) < len(b.match_text):
+                            suppressed.add(id(a))
+                            logger.debug(
+                                f"Cross-metric dedup: suppressed {a.metric_id} "
+                                f"({a.match_text!r}, shorter) at same span as "
+                                f"{b.metric_id} ({b.match_text!r})"
+                            )
+                            break  # a is suppressed, move to next a
+                        # Same length: both kept (genuinely ambiguous)
+                        continue
+
+                    # Check if b is strictly contained in a (same metric only)
                     if (
-                        b_start >= a_start
+                        a.metric_id == b.metric_id
+                        and b_start >= a_start
                         and b_end <= a_end
                         and (b_start > a_start or b_end < a_end)
                     ):
@@ -572,8 +615,8 @@ class CandidateGenerationStage:
                         continue
                     a_text = a.match_text.lower()
                     b_text = b.match_text.lower()
-                    # Check if b's match_text is a strict substring of a's
-                    if b_text in a_text and len(b_text) < len(a_text):
+                    # Check if b's match_text is a strict substring of a's (same metric only)
+                    if a.metric_id == b.metric_id and b_text in a_text and len(b_text) < len(a_text):
                         suppressed.add(id(b))
                         logger.debug(
                             f"Cross-metric dedup (table): suppressed {b.metric_id} "

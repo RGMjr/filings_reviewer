@@ -460,7 +460,11 @@ class V2PersistenceAdapter:
         filing_id: int,
     ) -> int:
         """
-        Upsert V2 metric facts.
+        Upsert V2 metric facts using identity-based conflict resolution.
+
+        Uses the identity tuple (doc_id, canonical_metric_id, period, unit,
+        scope, cohort_def, customer_type) for cross-run deduplication.
+        Falls back to fact_id-based conflict for backwards compatibility.
 
         Args:
             facts: List of MetricFact models from pipeline
@@ -472,6 +476,8 @@ class V2PersistenceAdapter:
         if not facts:
             return 0
 
+        # Identity-based upsert: ON CONFLICT on the unique identity index
+        # Uses COALESCE sentinels matching idx_v2_metric_facts_identity_unique
         sql = """
             INSERT INTO v2_metric_facts (
                 fact_id, doc_id, canonical_metric_id,
@@ -480,7 +486,7 @@ class V2PersistenceAdapter:
                 scope, scope_detail, cohort_def, customer_type,
                 source_type, source_locator, evidence_pack,
                 confidence, extraction_method, requires_review, review_reason, review_status,
-                alternate_evidence, pipeline_version, created_at
+                alternate_evidence, primary_fact_id, pipeline_version, created_at
             )
             VALUES (
                 %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
@@ -489,21 +495,20 @@ class V2PersistenceAdapter:
                 %(scope)s, %(scope_detail)s, %(cohort_def)s, %(customer_type)s,
                 %(source_type)s, %(source_locator)s, %(evidence_pack)s,
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
-                %(alternate_evidence)s, %(pipeline_version)s, NOW()
+                %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
             )
-            ON CONFLICT (fact_id) DO UPDATE SET
-                canonical_metric_id = EXCLUDED.canonical_metric_id,
+            ON CONFLICT (
+                doc_id, canonical_metric_id,
+                COALESCE(period_start, '1900-01-01'::date),
+                COALESCE(period_end, '1900-01-01'::date),
+                unit, scope,
+                COALESCE(cohort_def, ''),
+                COALESCE(customer_type, '')
+            ) DO UPDATE SET
                 value = EXCLUDED.value,
                 value_raw = EXCLUDED.value_raw,
-                unit = EXCLUDED.unit,
                 currency = EXCLUDED.currency,
                 period_type = EXCLUDED.period_type,
-                period_start = EXCLUDED.period_start,
-                period_end = EXCLUDED.period_end,
-                scope = EXCLUDED.scope,
-                scope_detail = EXCLUDED.scope_detail,
-                cohort_def = EXCLUDED.cohort_def,
-                customer_type = EXCLUDED.customer_type,
                 source_type = EXCLUDED.source_type,
                 source_locator = EXCLUDED.source_locator,
                 evidence_pack = EXCLUDED.evidence_pack,
@@ -511,8 +516,8 @@ class V2PersistenceAdapter:
                 extraction_method = EXCLUDED.extraction_method,
                 requires_review = EXCLUDED.requires_review,
                 review_reason = EXCLUDED.review_reason,
-                review_status = EXCLUDED.review_status,
                 alternate_evidence = EXCLUDED.alternate_evidence,
+                primary_fact_id = EXCLUDED.primary_fact_id,
                 pipeline_version = EXCLUDED.pipeline_version,
                 updated_at = NOW()
         """
@@ -521,34 +526,7 @@ class V2PersistenceAdapter:
         with self._db.get_connection() as conn:
             with conn.cursor() as cur:
                 for fact in facts:
-                    params = {
-                        "fact_id": fact.fact_id,
-                        "doc_id": filing_id,
-                        "canonical_metric_id": fact.canonical_metric_id,
-                        "value": fact.value,
-                        "value_raw": fact.value_raw,
-                        "unit": fact.unit.value,
-                        "currency": fact.currency,
-                        "period_type": fact.period_type.value
-                        if fact.period_type
-                        else None,
-                        "period_start": fact.period_start,
-                        "period_end": fact.period_end,
-                        "scope": fact.scope.value,
-                        "scope_detail": fact.scope_detail,
-                        "cohort_def": fact.cohort_def,
-                        "customer_type": fact.customer_type,
-                        "source_type": fact.source_type.value,
-                        "source_locator": json.dumps(fact.source_locator.to_dict()),
-                        "evidence_pack": json.dumps(fact.evidence_pack.to_dict()),
-                        "confidence": fact.confidence,
-                        "extraction_method": fact.extraction_method.value,
-                        "requires_review": fact.requires_review,
-                        "review_reason": fact.review_reason,
-                        "review_status": fact.review_status.value,
-                        "alternate_evidence": fact.alternate_evidence or [],
-                        "pipeline_version": fact.pipeline_version,
-                    }
+                    params = self._fact_to_params(fact, filing_id)
                     cur.execute(sql, params)
                     count += 1
 
@@ -894,13 +872,43 @@ class V2PersistenceAdapter:
 
         return count
 
+    def _fact_to_params(self, fact: MetricFact, filing_id: int) -> dict[str, Any]:
+        """Convert MetricFact to database parameters."""
+        return {
+            "fact_id": fact.fact_id,
+            "doc_id": filing_id,
+            "canonical_metric_id": fact.canonical_metric_id,
+            "value": fact.value,
+            "value_raw": fact.value_raw,
+            "unit": fact.unit.value,
+            "currency": fact.currency or ("USD" if fact.unit.value == "currency" else None),
+            "period_type": fact.period_type.value if fact.period_type else None,
+            "period_start": fact.period_start,
+            "period_end": fact.period_end,
+            "scope": fact.scope.value,
+            "scope_detail": fact.scope_detail,
+            "cohort_def": fact.cohort_def,
+            "customer_type": fact.customer_type,
+            "source_type": fact.source_type.value,
+            "source_locator": json.dumps(fact.source_locator.to_dict()),
+            "evidence_pack": json.dumps(fact.evidence_pack.to_dict()),
+            "confidence": fact.confidence,
+            "extraction_method": fact.extraction_method.value,
+            "requires_review": fact.requires_review,
+            "review_reason": fact.review_reason,
+            "review_status": fact.review_status.value,
+            "alternate_evidence": fact.alternate_evidence or [],
+            "primary_fact_id": None,  # Populated for alternate facts
+            "pipeline_version": fact.pipeline_version,
+        }
+
     def _persist_facts_in_tx(
         self,
         cur: Any,
         facts: list[MetricFact],
         filing_id: int,
     ) -> int:
-        """Persist facts within an existing transaction."""
+        """Persist facts within an existing transaction using identity-based upsert."""
         if not facts:
             return 0
 
@@ -912,7 +920,7 @@ class V2PersistenceAdapter:
                 scope, scope_detail, cohort_def, customer_type,
                 source_type, source_locator, evidence_pack,
                 confidence, extraction_method, requires_review, review_reason, review_status,
-                alternate_evidence, pipeline_version, created_at
+                alternate_evidence, primary_fact_id, pipeline_version, created_at
             )
             VALUES (
                 %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
@@ -921,21 +929,20 @@ class V2PersistenceAdapter:
                 %(scope)s, %(scope_detail)s, %(cohort_def)s, %(customer_type)s,
                 %(source_type)s, %(source_locator)s, %(evidence_pack)s,
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
-                %(alternate_evidence)s, %(pipeline_version)s, NOW()
+                %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
             )
-            ON CONFLICT (fact_id) DO UPDATE SET
-                canonical_metric_id = EXCLUDED.canonical_metric_id,
+            ON CONFLICT (
+                doc_id, canonical_metric_id,
+                COALESCE(period_start, '1900-01-01'::date),
+                COALESCE(period_end, '1900-01-01'::date),
+                unit, scope,
+                COALESCE(cohort_def, ''),
+                COALESCE(customer_type, '')
+            ) DO UPDATE SET
                 value = EXCLUDED.value,
                 value_raw = EXCLUDED.value_raw,
-                unit = EXCLUDED.unit,
                 currency = EXCLUDED.currency,
                 period_type = EXCLUDED.period_type,
-                period_start = EXCLUDED.period_start,
-                period_end = EXCLUDED.period_end,
-                scope = EXCLUDED.scope,
-                scope_detail = EXCLUDED.scope_detail,
-                cohort_def = EXCLUDED.cohort_def,
-                customer_type = EXCLUDED.customer_type,
                 source_type = EXCLUDED.source_type,
                 source_locator = EXCLUDED.source_locator,
                 evidence_pack = EXCLUDED.evidence_pack,
@@ -943,40 +950,15 @@ class V2PersistenceAdapter:
                 extraction_method = EXCLUDED.extraction_method,
                 requires_review = EXCLUDED.requires_review,
                 review_reason = EXCLUDED.review_reason,
-                review_status = EXCLUDED.review_status,
                 alternate_evidence = EXCLUDED.alternate_evidence,
+                primary_fact_id = EXCLUDED.primary_fact_id,
                 pipeline_version = EXCLUDED.pipeline_version,
                 updated_at = NOW()
         """
 
         count = 0
         for fact in facts:
-            params = {
-                "fact_id": fact.fact_id,
-                "doc_id": filing_id,
-                "canonical_metric_id": fact.canonical_metric_id,
-                "value": fact.value,
-                "value_raw": fact.value_raw,
-                "unit": fact.unit.value,
-                "currency": fact.currency or ("USD" if fact.unit.value == "currency" else None),
-                "period_type": fact.period_type.value if fact.period_type else None,
-                "period_start": fact.period_start,
-                "period_end": fact.period_end,
-                "scope": fact.scope.value,
-                "scope_detail": fact.scope_detail,
-                "cohort_def": fact.cohort_def,
-                "customer_type": fact.customer_type,
-                "source_type": fact.source_type.value,
-                "source_locator": json.dumps(fact.source_locator.to_dict()),
-                "evidence_pack": json.dumps(fact.evidence_pack.to_dict()),
-                "confidence": fact.confidence,
-                "extraction_method": fact.extraction_method.value,
-                "requires_review": fact.requires_review,
-                "review_reason": fact.review_reason,
-                "review_status": fact.review_status.value,
-                "alternate_evidence": fact.alternate_evidence or [],
-                "pipeline_version": fact.pipeline_version,
-            }
+            params = self._fact_to_params(fact, filing_id)
             cur.execute(sql, params)
             count += 1
 
