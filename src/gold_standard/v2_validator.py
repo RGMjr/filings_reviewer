@@ -275,6 +275,56 @@ class V2GoldStandardValidator:
             period_end=period_end,
         )
 
+    @staticmethod
+    def _deduplicate_entries(
+        entries: list[GoldStandardEntry],
+        company_name: str = "",
+    ) -> list[GoldStandardEntry]:
+        """
+        Deduplicate gold standard entries sharing the same (metric_id, value).
+
+        The gold standard CSV often contains the same (metric, value) pair
+        repeated across multiple contexts (e.g. same number in a table row
+        and in prose). The V2 pipeline correctly deduplicates extracted facts,
+        so counting each repeated gold standard entry as a separate expected
+        value inflates false negatives. This method collapses such duplicates.
+
+        Only deduplicates entries with numeric values; definition-only entries
+        are always preserved as-is.
+        """
+        seen: set[tuple[str, float]] = set()
+        deduped: list[GoldStandardEntry] = []
+        removed = 0
+
+        for entry in entries:
+            if not entry.has_numeric_value:
+                deduped.append(entry)
+                continue
+
+            norm_value = entry.normalized_value
+            if norm_value is None:
+                deduped.append(entry)
+                continue
+
+            key = (normalize_metric_id(entry.metric_id), norm_value)
+            if key in seen:
+                removed += 1
+                continue
+
+            seen.add(key)
+            deduped.append(entry)
+
+        if removed > 0:
+            logger.debug(
+                "%s: deduplicated %d/%d gold standard entries (%d unique)",
+                company_name,
+                removed,
+                len(entries),
+                len(deduped),
+            )
+
+        return deduped
+
     def validate_filing(
         self,
         company_name: str,
@@ -374,16 +424,36 @@ class V2GoldStandardValidator:
                     )
                 )
             else:
-                result.missed += 1
-                result.false_negatives += 1
-                result.match_results.append(
-                    MatchResult(
-                        entry=entry,
-                        matched_fact=None,
-                        match_type="false_negative",
-                        reason="No matching fact found",
-                    )
+                # Check if this entry is a duplicate — same (metric, value) as
+                # an already-matched entry.  The gold standard often repeats
+                # the same metric+value across multiple contexts; counting each
+                # unmatched duplicate as a FN would penalise the pipeline's
+                # own deduplication.
+                duplicate_fact = self._find_matching_fact(
+                    entry, v2_facts, set()
                 )
+                if duplicate_fact and duplicate_fact.fact_id in matched_fact_ids:
+                    # Already covered by a previous entry — skip
+                    result.total_expected -= 1
+                    result.match_results.append(
+                        MatchResult(
+                            entry=entry,
+                            matched_fact=None,
+                            match_type="skipped",
+                            reason="Duplicate of already-matched entry",
+                        )
+                    )
+                else:
+                    result.missed += 1
+                    result.false_negatives += 1
+                    result.match_results.append(
+                        MatchResult(
+                            entry=entry,
+                            matched_fact=None,
+                            match_type="false_negative",
+                            reason="No matching fact found",
+                        )
+                    )
 
         # Count extra facts (false positives)
         # Note: We're conservative - only count facts with matching metric_ids as FP
