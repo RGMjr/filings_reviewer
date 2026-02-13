@@ -537,7 +537,7 @@ class TestTextBinding:
     def test_no_binding_when_value_too_far(self, stage: ValueBindingStage) -> None:
         """No binding when value is outside proximity window."""
         # Create a very long segment where the number is far from keyword
-        padding = "x " * 200  # 200 words of padding
+        padding = "x " * 200  # 400 chars of padding — beyond 250-char default window
         segment = Segment(
             segment_id="seg-far",
             text=f"Revenue is important. {padding} The value is $100.",
@@ -558,8 +558,7 @@ class TestTextBinding:
         result = stage.process(context)  # type: ignore
 
         assert result.success
-        # Value should NOT be bound - too far away
-        # The default proximity is 100 chars
+        # Value should NOT be bound - too far away (beyond 250-char default window)
 
     def test_multiple_values_picks_all(self, stage: ValueBindingStage) -> None:
         """When multiple values in proximity, all are bound with ambiguity penalty."""
@@ -611,8 +610,8 @@ class TestTextBinding:
 
     def test_configurable_proximity_window(self) -> None:
         """Custom proximity window works correctly."""
-        # Create stage with default proximity window (100 chars)
-        default_stage = ValueBindingStage(proximity_window=100)
+        # Create stage with explicit 250-char proximity window
+        default_stage = ValueBindingStage(proximity_window=250)
 
         # Text where value is far from keyword
         segment = Segment(
@@ -647,6 +646,92 @@ class TestTextBinding:
         # Should not find the value (too far away)
         assert result2.success
         assert len(context2.bound_values) == 0
+
+    def test_250_char_window_finds_distant_values(self) -> None:
+        """Default 250-char window finds values that 100-char window would miss."""
+        # Place value ~150 chars from keyword (beyond old 100-char window)
+        filler = "a " * 70  # 140 chars of filler
+        segment = Segment(
+            segment_id="seg-distant",
+            text=f"Revenue is growing. {filler}The total was $800 million.",
+        )
+
+        candidate = MetricCandidate(
+            candidate_id="cand-distant",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-distant",
+                text_span=(0, 7),
+            ),
+        )
+
+        # Default 250-char stage should find it
+        stage_250 = ValueBindingStage(proximity_window=250)
+        context_250 = MockPipelineContext(segments=[segment], candidates=[candidate])
+        stage_250.process(context_250)  # type: ignore
+        assert len(context_250.bound_values) >= 1
+
+        # 100-char stage should miss it
+        stage_100 = ValueBindingStage(proximity_window=100)
+        context_100 = MockPipelineContext(segments=[segment], candidates=[candidate])
+        stage_100.process(context_100)  # type: ignore
+        assert len(context_100.bound_values) == 0
+
+    def test_distance_decay_near_values_higher_confidence(self) -> None:
+        """Values within 100 chars get higher confidence than values 100-250 chars away."""
+        # Create two separate segments: one with near value, one with far value
+        near_segment = Segment(
+            segment_id="seg-near",
+            text="Revenue was $500 million last year.",
+        )
+        filler = "a " * 55  # 110 chars of filler
+        far_segment = Segment(
+            segment_id="seg-far-decay",
+            text=f"Revenue is reported. {filler}The total was $500 million.",
+        )
+
+        near_candidate = MetricCandidate(
+            candidate_id="cand-near",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-near",
+                text_span=(0, 7),
+            ),
+        )
+
+        far_candidate = MetricCandidate(
+            candidate_id="cand-far-decay",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-far-decay",
+                text_span=(0, 7),
+            ),
+        )
+
+        stage = ValueBindingStage()
+
+        # Near binding
+        ctx_near = MockPipelineContext(segments=[near_segment], candidates=[near_candidate])
+        stage.process(ctx_near)  # type: ignore
+        assert len(ctx_near.bound_values) >= 1
+        near_conf = ctx_near.bound_values[0].binding_confidence
+
+        # Far binding
+        ctx_far = MockPipelineContext(segments=[far_segment], candidates=[far_candidate])
+        stage.process(ctx_far)  # type: ignore
+        assert len(ctx_far.bound_values) >= 1
+        far_conf = ctx_far.bound_values[0].binding_confidence
+
+        # Near value should have higher confidence due to no distance penalty
+        assert near_conf > far_conf, (
+            f"Near confidence ({near_conf}) should exceed far confidence ({far_conf})"
+        )
 
     def test_same_sentence_bonus(self) -> None:
         """Values in same sentence get confidence bonus."""
@@ -764,7 +849,7 @@ class TestNumberParsing:
         assert result is not None
         value, unit, raw = result
         assert value == 50_000
-        assert unit == Unit.COUNT
+        assert unit == Unit.OTHER
 
     def test_parse_negative_values(self, stage: ValueBindingStage) -> None:
         """Parse negative values."""
@@ -786,7 +871,7 @@ class TestNumberParsing:
         assert result is not None
         value, unit, raw = result
         assert abs(value - 3.14) < 0.001
-        assert unit == Unit.COUNT
+        assert unit == Unit.OTHER
 
     def test_parse_year_not_split(self, stage: ValueBindingStage) -> None:
         """_parse_number matches full 4-digit year, not '201' from '2019'."""
@@ -1235,9 +1320,9 @@ class TestEdgeCases:
         """Parse billion values with various formats."""
         test_cases = [
             ("$1.2B", 1_200_000_000, Unit.CURRENCY),
-            ("1.5 billion", 1_500_000_000, Unit.COUNT),
+            ("1.5 billion", 1_500_000_000, Unit.OTHER),
             ("$2.3 billion", 2_300_000_000, Unit.CURRENCY),
-            ("3bn", 3_000_000_000, Unit.COUNT),
+            ("3bn", 3_000_000_000, Unit.OTHER),
             ("$4.5 bn", 4_500_000_000, Unit.CURRENCY),
         ]
 
@@ -1403,7 +1488,7 @@ class TestUnitFiltering:
         assert result.success
         assert len(context.bound_values) == 1
         assert context.bound_values[0].value == 50_000
-        assert context.bound_values[0].unit == Unit.COUNT
+        assert context.bound_values[0].unit == Unit.OTHER
 
     def test_count_metric_rejects_currency_in_text(self, stage: ValueBindingStage) -> None:
         """Count-only metric rejects $14.8M in text proximity binding."""
@@ -1431,8 +1516,8 @@ class TestUnitFiltering:
         for bv in context.bound_values:
             assert bv.unit != Unit.CURRENCY
 
-    def test_currency_metric_rejects_bare_count(self, stage: ValueBindingStage) -> None:
-        """Currency-only metric rejects bare count value."""
+    def test_currency_metric_accepts_bare_number(self, stage: ValueBindingStage) -> None:
+        """Currency-only metric accepts bare number (Unit.OTHER) since tables often omit $."""
         cells = [
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
@@ -1467,7 +1552,8 @@ class TestUnitFiltering:
         result = stage.process(context)  # type: ignore
 
         assert result.success
-        assert len(context.bound_values) == 0  # Bare count rejected for currency metric
+        assert len(context.bound_values) == 1  # Bare number accepted as Unit.OTHER
+        assert context.bound_values[0].unit == Unit.OTHER
 
     def test_currency_metric_accepts_dollar_value(self, stage: ValueBindingStage) -> None:
         """Currency-only metric accepts $500M."""

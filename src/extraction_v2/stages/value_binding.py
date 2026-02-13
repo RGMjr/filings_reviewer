@@ -59,10 +59,12 @@ class ValueBindingStage:
     UNIT_PRESENCE_BONUS: float = 0.1
     AMBIGUITY_PENALTY: float = 0.1
     SAME_SENTENCE_BONUS: float = 0.1
+    DISTANCE_DECAY_THRESHOLD: int = 100  # Chars before decay starts
+    MAX_DISTANCE_PENALTY: float = 0.1  # Max penalty at edge of window
 
     # Text proximity settings
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
-    DEFAULT_CHAR_PROXIMITY: int = 100  # Max chars for proximity search
+    DEFAULT_CHAR_PROXIMITY: int = 250  # Max chars for proximity search
 
     # Number parsing pattern
     # Matches: $1,234.56, 1,234, 45%, 1.5M, -$100, etc.
@@ -97,12 +99,12 @@ class ValueBindingStage:
         "b": 1_000_000_000,
     }
 
-    def __init__(self, proximity_window: int = 100) -> None:
+    def __init__(self, proximity_window: int = 250) -> None:
         """
         Initialize the value binding stage.
 
         Args:
-            proximity_window: Max characters to search for values near text keywords (default: 100)
+            proximity_window: Max characters to search for values near text keywords (default: 250)
         """
         self.proximity_window = proximity_window
         self._unit_filtered_count = 0
@@ -126,7 +128,7 @@ class ValueBindingStage:
         Returns:
             Updated unit (PERCENT if context indicates percentage, else original)
         """
-        if unit != Unit.COUNT:
+        if unit not in (Unit.COUNT, Unit.OTHER):
             return unit
 
         # Map V2 unit to V1 string for the function call
@@ -546,6 +548,9 @@ class ValueBindingStage:
         # Get sentence bounds for the keyword match
         sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
 
+        # Compute keyword center for distance decay
+        keyword_center = (match_start + match_end) / 2.0
+
         # Create bound values
         for num_match, value, unit, raw in numbers:
             # Check if count value should be treated as percentage (FIX-A)
@@ -562,7 +567,25 @@ class ValueBindingStage:
 
             same_sentence = sentence_start <= num_start_in_text < sentence_end
 
-            confidence = self._compute_text_confidence(unit, ambiguity_penalty, same_sentence)
+            # Compute distance decay penalty
+            num_center = num_start_in_text + (num_match.end() - num_match.start()) / 2.0
+            char_distance = abs(num_center - keyword_center)
+            if char_distance > self.DISTANCE_DECAY_THRESHOLD:
+                decay_range = self.proximity_window - self.DISTANCE_DECAY_THRESHOLD
+                if decay_range > 0:
+                    fraction = min(
+                        (char_distance - self.DISTANCE_DECAY_THRESHOLD) / decay_range,
+                        1.0,
+                    )
+                    distance_penalty = fraction * self.MAX_DISTANCE_PENALTY
+                else:
+                    distance_penalty = 0.0
+            else:
+                distance_penalty = 0.0
+
+            confidence = self._compute_text_confidence(
+                unit, ambiguity_penalty, same_sentence, distance_penalty
+            )
 
             bound_values.append(
                 BoundValue(
@@ -826,7 +849,7 @@ class ValueBindingStage:
             elif currency:
                 unit = Unit.CURRENCY
             else:
-                unit = Unit.COUNT
+                unit = Unit.OTHER
 
             # Raw text
             raw = match.group().strip()
@@ -874,6 +897,7 @@ class ValueBindingStage:
         unit: Unit,
         ambiguity_penalty: float = 0.0,
         same_sentence: bool = False,
+        distance_penalty: float = 0.0,
     ) -> float:
         """
         Compute confidence for a text binding.
@@ -882,6 +906,7 @@ class ValueBindingStage:
             unit: Detected unit
             ambiguity_penalty: Penalty for multiple values
             same_sentence: Whether value is in same sentence as keyword
+            distance_penalty: Penalty for distance from keyword (0.0-0.1)
 
         Returns:
             Confidence score 0.0-1.0
@@ -898,6 +923,9 @@ class ValueBindingStage:
 
         # Apply ambiguity penalty
         confidence -= ambiguity_penalty
+
+        # Apply distance decay penalty
+        confidence -= distance_penalty
 
         return max(min(confidence, 1.0), 0.0)
 

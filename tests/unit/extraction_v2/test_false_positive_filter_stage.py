@@ -711,6 +711,32 @@ class TestPercentageContextDetection:
         )
         assert result == Unit.PERCENT
 
+    def test_other_unit_retention_treated_as_percentage(self):
+        """A Unit.OTHER value in retention context should become PERCENT."""
+        from src.extraction_v2.stages.value_binding import ValueBindingStage
+
+        vbs = ValueBindingStage()
+        result = vbs._check_percentage_context(
+            "cm_net_revenue_retention",
+            Unit.OTHER,
+            "158",
+            "Our net dollar retention rate was 158 for the period.",
+        )
+        assert result == Unit.PERCENT
+
+    def test_other_unit_non_retention_stays_other(self):
+        """A Unit.OTHER value without retention context should stay OTHER."""
+        from src.extraction_v2.stages.value_binding import ValueBindingStage
+
+        vbs = ValueBindingStage()
+        result = vbs._check_percentage_context(
+            "cm_customers_period_end",
+            Unit.OTHER,
+            "500",
+            "We had 500 customers.",
+        )
+        assert result == Unit.OTHER
+
 
 # ============================================================================
 # Test: Integration - mixed FP and real values
@@ -914,6 +940,38 @@ class TestV2FinancialAnnotations:
         is_fp, _ = _is_v2_false_positive(bv, source)
         assert is_fp is False
 
+    def test_value_far_from_annotation_not_filtered(self):
+        """Value far (>300 chars) from '(In thousands)' should NOT be filtered."""
+        filler = "x " * 200  # 400 chars of filler between annotation and value
+        source = f"(In thousands) Revenue 100 200 {filler} We had 95,000 paid customers."
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_value_near_annotation_still_filtered(self):
+        """Value near (<300 chars) '(In thousands)' should still be filtered."""
+        source = "(In thousands) Cost of revenue 37,000 59,000"
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_sbc_far_from_value_not_filtered(self):
+        """Value far (>300 chars) from 'stock-based compensation' should NOT be filtered."""
+        filler = "x " * 200
+        source = f"Includes stock-based compensation as follows: 100 200 {filler} We had 95,000 customers."
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_sbc_near_value_still_filtered(self):
+        """Value near (<300 chars) 'stock-based compensation' should still be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"
+
 
 # ============================================================================
 # Test: V2-native — Ranking names
@@ -961,3 +1019,66 @@ class TestV2RankingNames:
         is_fp, _ = _is_v2_false_positive(bv, source)
         # 65 is NOT the ranking number (100 is), so it should pass this rule
         assert is_fp is False
+
+
+# ============================================================================
+# Test: V2-native — Table-sourced exemption from financial annotation rules
+# ============================================================================
+
+
+class TestV2TableSourcedExemption:
+    """Table-sourced values should be exempt from financial annotation FP rules."""
+
+    def test_table_sourced_exempt_from_financial_annotation(self):
+        """Table-sourced value near '(In thousands)' should NOT be filtered."""
+        source = "(In thousands) Paid Customers 37,000 59,000"
+        bv = BoundValue(
+            candidate_id="c1",
+            value=37000.0,
+            value_raw="37,000",
+            unit=Unit.COUNT,
+            binding_type="table_stub",
+            binding_confidence=0.6,
+            source_locator=SourceLocator(
+                table_id="table-1",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is False, "Table-sourced values should be exempt from financial annotation rule"
+
+    def test_text_sourced_still_filtered_by_financial_annotation(self):
+        """Text-sourced value near '(In thousands)' should still be filtered."""
+        source = "(In thousands) Cost of revenue 37,000 59,000"
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_table_sourced_exempt_from_sbc(self):
+        """Table-sourced value near 'stock-based compensation' should NOT be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = BoundValue(
+            candidate_id="c1",
+            value=67000.0,
+            value_raw="67,000",
+            unit=Unit.COUNT,
+            binding_type="table_stub",
+            binding_confidence=0.6,
+            source_locator=SourceLocator(
+                table_id="table-1",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is False, "Table-sourced values should be exempt from SBC rule"
+
+    def test_text_sourced_still_filtered_by_sbc(self):
+        """Text-sourced value near 'stock-based compensation' should still be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"

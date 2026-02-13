@@ -80,6 +80,10 @@ class TestCurrencyOnlyMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is True
 
     @pytest.mark.parametrize("metric_id", CURRENCY_METRICS)
+    def test_accepts_other(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.OTHER) is True
+
+    @pytest.mark.parametrize("metric_id", CURRENCY_METRICS)
     def test_rejects_count(self, metric_id: str) -> None:
         assert is_unit_compatible(metric_id, Unit.COUNT) is False
 
@@ -121,6 +125,10 @@ class TestPercentOnlyMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is False
 
     @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
+    def test_accepts_other(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.OTHER) is True
+
+    @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
     def test_rejects_count(self, metric_id: str) -> None:
         assert is_unit_compatible(metric_id, Unit.COUNT) is False
 
@@ -157,18 +165,20 @@ class TestGetAllowedUnits:
         assert Unit.OTHER in allowed
         assert Unit.CURRENCY not in allowed
 
-    def test_currency_metric_returns_currency(self) -> None:
+    def test_currency_metric_returns_currency_and_other(self) -> None:
         allowed = get_allowed_units("cm_arr")
         assert allowed is not None
         assert Unit.CURRENCY in allowed
-        assert len(allowed) == 1
+        assert Unit.OTHER in allowed
+        assert len(allowed) == 2
 
-    def test_percent_metric_returns_percent_and_ratio(self) -> None:
+    def test_percent_metric_returns_percent_ratio_and_other(self) -> None:
         allowed = get_allowed_units("cm_net_revenue_retention")
         assert allowed is not None
         assert Unit.PERCENT in allowed
         assert Unit.RATIO in allowed
-        assert len(allowed) == 2
+        assert Unit.OTHER in allowed
+        assert len(allowed) == 3
 
     def test_unknown_metric_returns_none(self) -> None:
         assert get_allowed_units("cm_unknown_metric") is None
