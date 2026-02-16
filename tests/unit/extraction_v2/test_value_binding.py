@@ -680,12 +680,15 @@ class TestTextBinding:
         assert len(context_100.bound_values) == 0
 
     def test_distance_decay_near_values_higher_confidence(self) -> None:
-        """Values within 100 chars get higher confidence than values 100-250 chars away."""
+        """Values very near keyword get higher confidence than values near edge of window."""
         # Create two separate segments: one with near value, one with far value
         near_segment = Segment(
             segment_id="seg-near",
             text="Revenue was $500 million last year.",
         )
+        # Use explicit 250-char window for the far segment so the value is found
+        # but with distance decay. 110 chars of filler puts value beyond
+        # DISTANCE_DECAY_THRESHOLD (100) to trigger penalty.
         filler = "a " * 55  # 110 chars of filler
         far_segment = Segment(
             segment_id="seg-far-decay",
@@ -714,7 +717,8 @@ class TestTextBinding:
             ),
         )
 
-        stage = ValueBindingStage()
+        # Use 250-char window for both so the far segment's value is found
+        stage = ValueBindingStage(proximity_window=250)
 
         # Near binding
         ctx_near = MockPipelineContext(segments=[near_segment], candidates=[near_candidate])
