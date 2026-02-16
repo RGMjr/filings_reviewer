@@ -1,317 +1,215 @@
-# E2E Testing Analysis Results
+# Analysis Results: Chart Extraction Live Validation & V2 Gold Standard Integration
 
-**Date**: 2026-02-05
-**Purpose**: Audit E2E testing infrastructure for V2 merge readiness
-**Analyst**: Claude (Ralph analyze mode)
-**Branch**: ralph/analyze-e2e-testing-20260205
+**Date**: 2026-02-11
+**Branch**: v2-rewrite
 
 ---
 
-## Executive Summary
+## TASK-1: Live Farfetch Chart Extraction — SUCCESS
 
-The V2 extraction pipeline has **mature E2E testing infrastructure** with comprehensive coverage of the core extraction pipeline (11 stages), persistence layer, and V1/V2 comparison. Key findings:
+### nearby_text fix verified
 
-| Category | Status | Coverage |
-|----------|--------|----------|
-| Pipeline E2E | ✅ Mature | 11/11 stages verified |
-| Persistence E2E | ✅ Mature | All 6 V2 tables tested |
-| V1/V2 Comparison | ✅ Mature | Automated with 70%+ threshold |
-| Idempotency | ✅ Mature | Full roundtrip verified |
-| Performance | ✅ Mature | 30s gate enforced |
-| API Endpoint E2E | ⚠️ Gap | V1 API tested, V2 API not tested |
-| Browser E2E | ⚠️ Partial | UXI-2 dropdown only, V2 review UI missing |
-| Edge Case Filings | ❌ Gap | No synthetic test fixtures |
+The `_get_nearby_text()` parent-sibling fallback works correctly on the Farfetch filing. For the chart image `g607688g12o45.jpg` (embedded as `<P><IMG/></P>`), it captures **958 characters** of context from sibling `<P>` elements, including:
 
-**Merge Readiness**: 5/7 success criteria are verifiable. **2 gaps identified** require attention before merge.
+- "GMV from our Marketplace by consumer cohort"
+- "Existing consumers generated 55.6%"
+- "new consumers as those who placed their first order"
 
----
+### GPT-4o annotation extraction verified
 
-## Task Results
+Live GPT-4o call on the Farfetch stacked area chart returned:
 
-### TASK-1: Pipeline E2E Coverage Audit
-*Status: ✅ Complete*
+| Field | Value |
+|---|---|
+| chart_type | `area` |
+| title | (empty) |
+| y_axis_label | `Marketplace GMV (USDm)` |
+| series | 0 (no data-point labels — correct) |
+| annotations | **2** |
+| confidence | 0.90 |
 
-**File**: `tests/integration/extraction_v2/test_e2e_pipeline.py`
+**Annotations extracted:**
 
-**Coverage Matrix**:
+| text | value | unit | category | period |
+|---|---|---|---|---|
+| "44.4% New Consumers in 2017" | 44.4 | percent | New Consumers | 2017 |
+| "55.6% Existing Consumers in 2017" | 55.6 | percent | Existing Consumers | 2017 |
 
-| Stage | Test Class | Assertions | Status |
-|-------|------------|------------|--------|
-| 1. Ingestion | `TestE2ESlackFiling` | `result.success`, `document is not None` | ✅ |
-| 2. Section Classification | `test_e2e_slack_all_11_stages_executed` | Stage in executed set | ✅ |
-| 3. Table Reconstruction | `TestE2ETableReconstruction` | `header_path` on >50% cells | ✅ |
-| 4. Image Triage | `test_e2e_slack_all_11_stages_executed` | Stage in executed set | ✅ |
-| 5. OCR/Chart Extraction | `test_e2e_slack_all_11_stages_executed` | Stage in executed set | ✅ |
-| 6. Candidate Generation | Implicit via facts | `fact_count > 0` | ✅ |
-| 7. Value Binding | `TestE2EProvenance` | `source_locator.dom_locator` | ✅ |
-| 8. Period Inference | Implicit | Not explicitly tested | ⚠️ |
-| 9. Fact Construction | `TestE2EProvenance` | `evidence_pack.snippet_html` | ✅ |
-| 10. Deduplication | `test_e2e_slack_all_11_stages_executed` | Stage in executed set | ✅ |
-| 11. Validation | `test_e2e_slack_all_11_stages_executed` | Stage in executed set | ✅ |
+### Candidate generation verified
 
-**Gold Standard Filing Coverage**:
-- Slack S-1: ✅ Tested (`SLACK_FILING_PATH`)
-- Samsara S-1: ✅ Tested (`SAMSARA_FILING_PATH`)
-- Shopify S-1: ❌ Not in test fixtures
-- Datadog F-1: ❌ Not in test fixtures
+| metric_id | match_text | confidence | source |
+|---|---|---|---|
+| `cm_new_customers_acquired` | "New Consumers" | 0.700 | annotation text |
+| `cm_revenue_by_cohort` | "GMV from our Marketplace by consumer cohort" | 0.650 | nearby_text (-0.05 penalty) |
 
-**Findings**:
-1. All 11 stages are verified to execute via `test_e2e_slack_all_11_stages_executed`
-2. Period inference (stage 8) lacks explicit assertion testing
-3. Only 2/4 recommended gold standard filings are present
+### Value binding verified
 
----
+`cm_revenue_by_cohort` bound to 2 annotation values:
+- 44.4% (New Consumers, chart_annotation, conf=0.765)
+- 55.6% (Existing Consumers, chart_annotation, conf=0.765)
 
-### TASK-2: Persistence E2E Tests Assessment
-*Status: ✅ Complete*
+### Pipeline gap: local image resolution
 
-**File**: `tests/integration/extraction_v2/test_persistence.py`
+The **full V2 pipeline** cannot extract from Farfetch charts because:
+1. Ingestion discovers images but only stores `filename`, not `file_path`
+2. `_download_missing_images()` needs real CIK/accession to fetch from SEC EDGAR
+3. Gold standard metadata has placeholder CIK/accession (`"0000000000"`)
+4. The chart image exists at `data/gold_standard/Farfetch_Limited/g607688g12o45.jpg` but the pipeline has no mechanism to resolve images relative to the filing HTML path
 
-**Table Coverage**:
-
-| Table | Test Class | CRUD Operations | Status |
-|-------|------------|-----------------|--------|
-| `v2_documents` | `TestDocumentPersistence` | Insert, Update, Stats | ✅ |
-| `v2_segments` | `TestSegmentPersistence` | Batch insert, Ordering | ✅ |
-| `v2_tables` | `TestTablePersistence` | Insert with cells | ✅ |
-| `v2_table_cells` | `TestTablePersistence` | header_path/stub_path arrays | ✅ |
-| `v2_metric_facts` | `TestFactPersistence` | Insert, Update, JSONB roundtrip | ✅ |
-| `v2_image_assets` | `TestImagePersistence` | Insert, chart_data JSONB | ✅ |
-
-**Evidence Pack Tests**:
-- `test_fact_evidence_pack_persisted` in `test_e2e_pipeline.py`: ✅
-- `test_persist_fact_jsonb_round_trip`: ✅ Full JSONB serialization verified
-- `test_e2e_facts_have_valid_provenance`: ✅ `snippet_html` and `dom_locator` verified
-
-**Transaction Atomicity**:
-- `test_transaction_atomicity`: ✅ Rollback on FK violation verified
-
-**Concurrent Safety**:
-- ❌ **Gap**: No concurrent extraction safety test exists in V2 tests
+**Action needed**: Add local image resolution to the V2 pipeline.
 
 ---
 
-### TASK-3: V1/V2 Comparison Tests Evaluation
-*Status: ✅ Complete*
+## TASK-2: V2 Gold Standard Baseline (Text-Only)
 
-**File**: `tests/integration/extraction_v2/test_v1_v2_comparison.py`
+### Results
 
-**Coverage**:
+| Company | V2 Precision | V2 Recall | V2 F1 | V1 Precision | V1 Recall | V1 F1 |
+|---|---|---|---|---|---|---|
+| Slack Technologies | 2.8% | 87.5% | 5.4% | 100% | 91.7% | 95.7% |
+| Farfetch Limited | 2.8% | 30.6% | 5.2% | 83.3% | 70.0% | 76.1% |
+| Snowflake Inc | 4.0% | 49.5% | 7.4% | 96.3% | 26.0% | 40.9% |
+| **Overall** | **3.2%** | **52.6%** | **6.1%** | **90.8%** | **53.7%** | **67.5%** |
 
-| Criterion | Test | Threshold | Status |
-|-----------|------|-----------|--------|
-| V2 coverage ratio | `test_v2_extracts_at_least_v1_count` | ≥70% | ✅ |
-| Value tolerance | `test_fuzzy_match_within_tolerance` | 2% | ✅ |
-| Batch comparison | `test_batch_comparison` | Both filings | ✅ |
-| Metric matching | `test_exact_match`, `test_no_match_different_metric` | - | ✅ |
+### Analysis
 
-**Strategy Doc Requirement**: "V2 extracts ≥95% of V1 metrics"
-**Actual Test Threshold**: 70% (`assert coverage >= 0.70`)
+**V2 recall is comparable to V1** (52.6% vs 53.7%).
 
-**Gap**: Test threshold (70%) is lower than strategy requirement (95%).
+**V2 precision is catastrophically low** (3.2% vs 90.8%) because the V2 pipeline outputs **all** bound values as MetricFacts (3,299 FP), while V1 uses aggressive FP filtering in `CandidateGenerator`.
 
-**Integration with Benchmark Script**:
-- `scripts/benchmark_v1_v2.py` exists for comparison
-- Test suite uses `V1V2Comparator` class which implements same logic
-- ✅ Benchmark functionality is integrated into test suite
+**Root cause**: The V2 validator treats every MetricFact as a positive prediction regardless of confidence. In production, only facts above `min_confidence_auto_accept` (0.90) would be auto-accepted.
 
----
+**Action needed**: V2 gold standard validator must filter by confidence threshold before computing precision.
 
-### TASK-4: API Endpoint E2E Status
-*Status: ⚠️ Gap Identified*
+### Samsara Vision Inc. missing
 
-**Files Analyzed**:
-- `tests/integration/web/test_api_integration.py` - V1 API tests
-- `src/web/routes/api.py` - V1 API routes
-- `src/web/routes/` - No V2-specific routes found
-
-**Current Coverage**:
-
-| Endpoint | Test File | V2 Support |
-|----------|-----------|------------|
-| `POST /api/decisions` | `test_api_integration.py` | V1 only |
-| `GET /api/filings/{id}/candidates` | `test_review_workflow.py` | V1 only |
-| `GET /api/v2/filings/{id}/facts` | ❌ None | ❌ Not implemented |
-| `GET /api/v2/facts/{id}` | ❌ None | ❌ Not implemented |
-| `POST /api/v2/facts/{id}/review` | ❌ None | ❌ Not implemented |
-
-**Gap Analysis**:
-1. **No V2 API routes exist** in `src/web/routes/`
-2. **No V2 API tests exist** in `tests/integration/web/`
-3. Strategy doc recommends: `/api/v2/facts`, `/api/v2/filings/{id}/facts`
-
-**Priority**: **High** - V2 facts are not accessible via API
+Company directory name mismatch not resolved by `_find_filing_path()`.
 
 ---
 
-### TASK-5: Browser E2E Tests Audit
-*Status: ⚠️ Partial Coverage*
+## TASK-3: Gold Standard Gap Analysis for Charts
 
-**Files**:
-- `tests/e2e/conftest.py` - DOM selectors, setup instructions
-- `tests/e2e/test_metric_dropdown_search.py` - 8 test functions
+### Current chart entries
 
-**Coverage**:
+Only **2 entries** across 229 gold standard rows are chart-sourced:
 
-| Feature | Tests | Status |
-|---------|-------|--------|
-| UXI-2 Metric Search | 8 tests | ✅ Well documented |
-| V2 Fact Display | 0 tests | ❌ Gap |
-| V2 Evidence Panel | 0 tests | ❌ Gap |
-| V2 Review Workflow | 0 tests | ❌ Gap |
-| V2 Bulk Review | 0 tests | ❌ Gap |
+| Company | metric_id | raw_value | segment_type |
+|---|---|---|---|
+| Farfetch | `cm_revenue_by_cohort` | `chart` | chart |
+| Slack | `cm_arr` | `chart` | chart |
 
-**Infrastructure Status**:
-- Playwright MCP: Configured (`tests/e2e/conftest.py:19`)
-- Flask server requirement: Port 5003
-- Test execution: Manual via Claude Code Playwright tools
+Both have `raw_value = "chart"` — no numeric values. They are skipped as definition-only by the validator.
 
-**Test Quality**:
-- Tests are well-documented with step-by-step instructions
-- DOM selectors are centralized in `SELECTORS` dict
-- Test 7 includes submission verification (success toast + navigation)
+### What's needed for chart gold standard
 
-**Gap**: All 8 tests are for UXI-2 feature only. No V2-specific UI tests exist.
+**Minimum viable changes:**
+
+1. **Replace** existing Farfetch `cm_revenue_by_cohort` entry with 2 annotation-level rows:
+   - `cm_revenue_by_cohort | 44.4 | percent | 2017 | chart_annotation`
+   - `cm_revenue_by_cohort | 55.6 | percent | 2017 | chart_annotation`
+
+2. **Add `source_type` column** (or encode in segment_type) to distinguish `text`, `table`, `chart_annotation`, `table_image`
+
+3. **Fix local image resolution** so pipeline can process gold standard images
+
+4. **Add confidence thresholding** to V2 validator
 
 ---
 
-### TASK-6: Pre-Merge Success Criteria Verification
-*Status: ✅ Complete*
+## TASK-4: V2 Precision Improvement (2026-02-16)
 
-**Strategy Document Criteria** (`docs/V2_E2E_TESTING_STRATEGY.md:479-490`):
+### Objective
 
-| # | Criterion | Test | Verifiable | Status |
-|---|-----------|------|------------|--------|
-| 1 | Gold Standard passes | `pytest -m gold_standard` | ✅ Yes | ✅ |
-| 2 | V2 ≥95% V1 metrics | `test_v2_extracts_at_least_v1_count` | ⚠️ 70% threshold | ⚠️ |
-| 3 | V2 values within 2% | `test_fuzzy_match_within_tolerance` | ✅ Yes | ✅ |
-| 4 | All V2 tables populated | `TestE2EPersistence` | ✅ Yes | ✅ |
-| 5 | Idempotent re-extraction | `TestE2EIdempotency` | ✅ Yes | ✅ |
-| 6 | <30s extraction | `test_e2e_completes_under_30_seconds` | ✅ Yes | ✅ |
-| 7 | ≥75% test coverage | `pytest --cov` | ✅ Yes (87%) | ✅ |
+Improve V2 gold standard precision from 58% toward 90% while maintaining recall.
 
-**Blocking Gaps**:
-1. Criterion 2 test threshold (70%) < requirement (95%)
-
----
-
-### TASK-7: Edge Case Coverage Analysis
-*Status: ❌ Gap Identified*
-
-**Strategy Document Synthetic Fixtures** (`docs/V2_E2E_TESTING_STRATEGY.md:447-453`):
-
-| Fixture | Purpose | Exists | Status |
-|---------|---------|--------|--------|
-| `empty_filing.html` | No extractable metrics | ❌ | ❌ Gap |
-| `malformed_tables.html` | Table recovery | ❌ | ❌ Gap |
-| `image_heavy.html` | OCR path | ❌ | ❌ Gap |
-| `large_filing.html` | Performance (10MB+) | ❌ | ❌ Gap |
-| `ambiguous_metrics.html` | Confidence scoring | ❌ | ❌ Gap |
-
-**Current Test Fixtures**:
-- `data/gold_standard/Slack_Technologies/filing.html` - Real filing
-- `data/gold_standard/Samsara_Vision_Inc_/filing.html` - Real filing
-- No `fixtures/` directory found
-
-**Edge Case Tests in Code**:
-- Strategy doc shows `TestE2EEdgeCases` class - **Not implemented**
-- Strategy doc shows `TestE2EConfidenceThresholds` class - **Not implemented**
-
-**Impact on Merge**:
-- Missing edge cases = potential runtime failures in production
-- Strategy rates "Edge case filings" as **Medium** risk
-
----
-
-### TASK-8: Idempotency and Performance Tests
-*Status: ✅ Complete*
-
-**Idempotency Test**: `TestE2EIdempotency.test_e2e_idempotent_rerun`
-
-| Verification | Method | Status |
-|--------------|--------|--------|
-| First run persists | `count_after_first` | ✅ |
-| Second run same count | `count_after_second == count_after_first` | ✅ |
-| Upsert behavior | Database fact count stable | ✅ |
-
-**Performance Test**: `TestE2EPerformance`
-
-| Test | Gate | Implementation | Status |
-|------|------|----------------|--------|
-| `test_e2e_completes_under_30_seconds` | 30s | `assert elapsed < 30.0` | ✅ |
-| `test_e2e_stage_timing_tracked` | Overhead <10% | `total_stage_time <= total_duration_ms * 1.1` | ✅ |
-
-**Performance Regression Detection**:
-- ⚠️ No historical comparison mechanism
-- Tests verify single-run performance, not regression over time
-- Strategy recommends "Performance regression V1 vs V2" - not implemented
-
----
-
-## Gap Analysis Summary
-
-| Gap | Severity | Impact | Effort to Fix |
-|-----|----------|--------|---------------|
-| V2 API endpoints missing | **High** | V2 facts not accessible to consumers | Medium |
-| V2 API tests missing | **High** | No contract testing for V2 API | Medium |
-| V2 Browser E2E missing | Medium | UI rendering issues possible | High |
-| Edge case fixtures missing | Medium | Production runtime failures | Medium |
-| Coverage threshold mismatch (70% vs 95%) | Low | False sense of security | Low |
-| Period inference not explicitly tested | Low | Stage may have bugs | Low |
-| Performance regression tracking | Low | Slowdown undetected | Medium |
-| Concurrent extraction tests | Low | Race conditions possible | Medium |
-
----
-
-## Recommendations
-
-### Pre-Merge Blockers (Must Fix)
-
-1. **Raise V1/V2 coverage threshold from 70% to 95%**
-   - File: `tests/integration/extraction_v2/test_v1_v2_comparison.py:481`
-   - Change: `assert coverage >= 0.95`
-
-2. **Add V2 API endpoints** (if V2 facts need external access)
-   - Create `src/web/routes/api_v2.py`
-   - Implement `/api/v2/filings/{id}/facts`, `/api/v2/facts/{id}`
-
-### High Priority (Should Fix Before Merge)
-
-3. **Add explicit period inference test**
-   - File: `tests/integration/extraction_v2/test_e2e_pipeline.py`
-   - Add: `test_e2e_period_inference_populated`
-
-4. **Create minimal edge case fixtures**
-   - Create `tests/fixtures/empty_filing.html`
-   - Add `TestE2EEdgeCases.test_filing_with_no_metrics`
-
-### Post-Merge (Can Defer)
-
-5. **Expand browser E2E** for V2 review UI
-6. **Add concurrent extraction tests**
-7. **Implement performance regression tracking**
-
----
-
-## Action Items
-
-| # | Action | File | Owner | Priority |
-|---|--------|------|-------|----------|
-| 1 | Raise coverage threshold to 95% | `test_v1_v2_comparison.py:481` | - | P0 |
-| 2 | Create V2 API routes | `src/web/routes/api_v2.py` | - | P1 |
-| 3 | Add period inference test | `test_e2e_pipeline.py` | - | P1 |
-| 4 | Create empty_filing.html fixture | `tests/fixtures/` | - | P2 |
-| 5 | Add V2 browser E2E tests | `tests/e2e/test_v2_review.py` | - | P3 |
-
----
-
-## Statistics
+### Baseline (after confidence thresholding at 0.50)
 
 | Metric | Value |
-|--------|-------|
-| Test Files Analyzed | 8 |
-| Test Classes Found | 15 |
-| Test Functions Found | ~60 |
-| Gaps Identified | 8 |
-| Pre-Merge Blockers | 1-2 |
-| Recommended Actions | 5 |
+|---|---|
+| Precision | 58.0% |
+| Recall | 54.1% |
+| F1 | 55.9% |
+| TP / FP / FN | 80 / 58 / 68 |
+
+### FP Diagnostic Findings
+
+Added `FalsePositiveDiagnostic` instrumentation to `v2_validator.py`. FP breakdown:
+- **value_mismatch**: 51 (88%) — wrong numbers near keywords
+- **duplicate_value**: 3 (5%) — same value extracted from multiple sources
+- **no_match**: 2 (3%) — metric not in gold standard
+- **scale_factor**: 2 (3%) — table "(In thousands)" not applied
+
+By source: 41 text FPs, 11 table FPs.
+
+### Fixes Applied
+
+| Fix | Change | Impact |
+|---|---|---|
+| **C: Same-sentence priority** | Text binding: keep all same-sentence matches, only closest for out-of-sentence | -6 FPs, 0 TP loss |
+| **C.1: Proximity window 250→100** | Tighter text proximity window | -6 FPs, -2 TPs |
+| **D: Table scale detection** | Detect "(In thousands/millions)" in headers, apply to currency only | Neutral (mixed tables) |
+| **F: Percent-only unit tightening** | Remove Unit.OTHER from percent-only metrics; add percent range (>500) and garbage value (>10B) FP rules | **-14 FPs**, -2 TPs |
+
+### Fixes Attempted & Reverted
+
+| Fix | Issue |
+|---|---|
+| **A: Fuzzy period dedup** | Collapsed legitimate same-value/different-period facts. P=44%, R=24%. |
+| **H: Scale COUNT metrics** | Financial tables mix dollar and count columns under one scale header. Broke Snowflake (-4 TPs, +7 FPs). |
+| **E: Confidence threshold >0.50** | Recall cliff at 0.55 (R drops from 53% to 20%). No viable threshold above 0.50. |
+
+### Final Results
+
+| Metric | Before | After | Delta |
+|---|---|---|---|
+| **Precision** | 58.0% | **70.1%** | **+12.1 pts** |
+| **Recall** | 54.1% | 51.7% | -2.4 pts |
+| **F1** | 55.9% | **59.5%** | **+3.6 pts** |
+| **FPs** | 58 | 32 | **-26 eliminated** |
+
+### Per-Company Breakdown
+
+| Company | Before P | After P | TPs | FPs | FNs |
+|---|---|---|---|---|---|
+| Snowflake | 77% | **91%** | 31 | 3 | 18 |
+| Samsara | 100% | **100%** | 2 | 0 | 0 |
+| Slack | 58% | **68%** | 28 | 13 | 16 |
+| Farfetch | 47% | **47%** | 14 | 16 | 36 |
+
+### Remaining 32 FPs (Harder to Fix)
+
+- **11 Farfetch table FPs**: Scale factor for count metrics in mixed financial/count tables — can't distinguish columns
+- **5 duplicate values**: Same value from multiple source types (dedup too aggressive when attempted)
+- **5 NRR text FPs**: Values 8-351 near NRR keyword (within valid percent range)
+- **4 revenue_concentration**: Wrong percentages near keyword (34%, 36%, 37% vs gold 10%, 47%)
+- **7 other text FPs**: Small numbers (20, 30, 65) near keywords; AOV value mismatches
+
+### Files Modified
+
+- `src/extraction_v2/stages/value_binding.py` — proximity window, same-sentence priority, table scale detection
+- `src/extraction_v2/stages/false_positive_filter.py` — percent range + garbage value FP rules
+- `src/extraction_v2/unit_compatibility.py` — removed Unit.OTHER from percent-only metrics
+- `src/extraction_v2/stages/deduplication.py` — fuzzy period methods added (not called)
+- `src/gold_standard/v2_validator.py` — FP diagnostic infrastructure
+- `tests/unit/extraction_v2/test_value_binding.py` — updated for new proximity window
+- `tests/unit/extraction_v2/test_unit_compatibility.py` — updated for stricter percent-only units
+
+### Test Results
+
+4,374 passed, 17 skipped, 0 failures. 80.62% coverage (exceeds 75% minimum).
+
+---
+
+## Action Items (Priority Order)
+
+| # | Action | Effort | Blocks |
+|---|---|---|---|
+| 1 | Add local image resolution in V2 pipeline ingestion/OCR | Small | Chart validation |
+| 2 | ~~Fix V2 validator precision — confidence threshold~~ DONE (Task-4) | — | — |
+| 3 | Add chart annotation rows to Farfetch gold standard | Small | Chart regression tests |
+| 4 | ~~Fix Samsara directory lookup in V2 validator~~ DONE | — | — |
+| 5 | Add `source_type` column to gold standard CSV | Medium | Clean schema |
+| 6 | Run Slack chart through GPT-4o, add annotation rows | Small | Slack chart coverage |
+| 7 | Re-save V2 baseline after validator fix | Tiny | Accurate V2 baseline |
+| 8 | Farfetch table column-aware scale factors | Medium | Farfetch P improvement |
+| 9 | Improve text FP filtering (NRR context, small-number filter) | Medium | Slack P improvement |

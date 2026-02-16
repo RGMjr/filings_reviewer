@@ -212,3 +212,114 @@ class DeduplicationStage:
                 f.confidence,
             ),
         )
+
+    def _fuzzy_period_dedup(
+        self, facts: list[MetricFact], tolerance: float
+    ) -> list[MetricFact]:
+        """
+        Second-pass dedup: collapse facts with same metric+value but different periods.
+
+        When the same metric+value is extracted with slightly different period
+        representations (e.g., "FY2019" vs "year ended Jan 31, 2019"), the
+        identity-based dedup misses them because periods differ. This pass
+        groups by (metric_id, unit, scope, value±tolerance) ignoring period,
+        then keeps only the highest-confidence fact per group.
+        """
+        if not facts:
+            return []
+
+        # Group by non-period identity fields + value tolerance
+        buckets: dict[tuple[str, str, str, str | None, str | None], list[MetricFact]] = {}
+        for fact in facts:
+            bucket_key = (
+                fact.canonical_metric_id,
+                fact.unit.value,
+                fact.scope.value,
+                fact.cohort_def,
+                fact.customer_type,
+            )
+            buckets.setdefault(bucket_key, []).append(fact)
+
+        result: list[MetricFact] = []
+        removed = 0
+
+        for bucket_key, bucket_facts in buckets.items():
+            if len(bucket_facts) == 1:
+                result.append(bucket_facts[0])
+                continue
+
+            # Within bucket, group by value tolerance
+            value_groups: list[list[MetricFact]] = []
+            used: set[str] = set()
+
+            for i, fact in enumerate(bucket_facts):
+                if fact.fact_id in used:
+                    continue
+
+                group = [fact]
+                used.add(fact.fact_id)
+
+                for other in bucket_facts[i + 1:]:
+                    if other.fact_id in used:
+                        continue
+                    if not self._values_within_tolerance(fact.value, other.value, tolerance):
+                        continue
+                    # Only merge if periods overlap or one/both are missing
+                    if not self._periods_compatible(fact, other):
+                        continue
+                    group.append(other)
+                    used.add(other.fact_id)
+
+                value_groups.append(group)
+
+            for group in value_groups:
+                if len(group) == 1:
+                    result.append(group[0])
+                else:
+                    primary = self._select_primary(group)
+                    primary.alternate_evidence.extend(
+                        f.fact_id for f in group if f.fact_id != primary.fact_id
+                    )
+                    result.append(primary)
+                    removed += len(group) - 1
+
+        if removed > 0:
+            logger.info(
+                "Fuzzy period dedup: removed %d duplicate-value facts (%d → %d)",
+                removed, len(facts), len(result),
+            )
+
+        return result
+
+    @staticmethod
+    def _periods_compatible(a: MetricFact, b: MetricFact) -> bool:
+        """
+        Check if two facts have compatible periods for fuzzy dedup.
+
+        Compatible means: periods overlap, or one/both have no period set.
+        Facts with genuinely different non-overlapping periods should NOT be merged.
+        """
+        # If either has no period, consider compatible (can't distinguish)
+        if not a.period_start or not a.period_end:
+            return True
+        if not b.period_start or not b.period_end:
+            return True
+        # Check for overlap
+        if a.period_end < b.period_start or b.period_end < a.period_start:
+            return False
+        return True
+
+    @staticmethod
+    def _values_within_tolerance(
+        v1: float | None, v2: float | None, tolerance: float
+    ) -> bool:
+        """Check if two values are within tolerance."""
+        if v1 is None and v2 is None:
+            return True
+        if v1 is None or v2 is None:
+            return False
+        if v1 == 0 and v2 == 0:
+            return True
+        if v1 == 0 or v2 == 0:
+            return abs(v1 - v2) <= tolerance
+        return abs(v1 - v2) / abs(v2) <= tolerance

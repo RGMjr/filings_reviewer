@@ -28,6 +28,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import BoundValue, SourceType, Unit
+from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
 from src.review.number_parsing import NumberMatch
 
@@ -67,6 +68,7 @@ _RANKING_NAME_RE = re.compile(
 def _is_v2_false_positive(
     bv: BoundValue,
     source_text: str,
+    metric_id: str = "",
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
@@ -76,6 +78,8 @@ def _is_v2_false_positive(
     - Linearized table markers that indicate duplicate text extraction
     - Financial table annotations that mark non-metric financial data
     - Ranking names where a number is part of a name, not a value
+    - Percentage-metric range validation (reject > 500 for percent-only metrics)
+    - Garbage value detection (absurdly large numbers)
 
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
@@ -88,6 +92,19 @@ def _is_v2_false_positive(
         stripped = raw.replace(",", "")
         if stripped.isdigit() and len(stripped) == 4:
             return True, "v2_year_value"
+
+    # Rule 5: Percentage-metric range validation.
+    # Percentage-only metrics (NRR, churn, etc.) should have values in 0-500 range.
+    # Values like 37000 or 95000 near an NRR keyword are clearly not percentages.
+    if bv.value is not None and metric_id in _PERCENT_ONLY_METRICS:
+        if bv.value > 500 or bv.value < 0:
+            return True, "v2_percent_range"
+
+    # Rule 6: Garbage value detection.
+    # Numbers with >10 digits (>10 billion) are almost certainly parsing artifacts
+    # (e.g., concatenated dates like 9202020192020).
+    if bv.value is not None and abs(bv.value) > 10_000_000_000:
+        return True, "v2_garbage_value"
 
     if not source_text:
         return False, None
@@ -284,7 +301,9 @@ class FalsePositiveFilterStage:
                     continue
 
                 # --- V2-native checks (run first, cheaper than V1) ---
-                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text)
+                candidate = candidate_map.get(bv.candidate_id)
+                metric_id = candidate.metric_id if candidate else ""
+                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text, metric_id)
                 if v2_fp:
                     filter_reasons[v2_reason or "v2_unknown"] = (
                         filter_reasons.get(v2_reason or "v2_unknown", 0) + 1

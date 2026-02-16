@@ -64,7 +64,7 @@ class ValueBindingStage:
 
     # Text proximity settings
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
-    DEFAULT_CHAR_PROXIMITY: int = 250  # Max chars for proximity search
+    DEFAULT_CHAR_PROXIMITY: int = 100  # Max chars for proximity search
 
     # Number parsing pattern
     # Matches: $1,234.56, 1,234, 45%, 1.5M, -$100, etc.
@@ -99,12 +99,24 @@ class ValueBindingStage:
         "b": 1_000_000_000,
     }
 
-    def __init__(self, proximity_window: int = 250) -> None:
+    # Table-level scale pattern: "(In thousands)", "(In millions)", etc.
+    TABLE_SCALE_PATTERN = re.compile(
+        r"\(\s*(?:in|amounts?\s+in)\s+(thousands|millions|billions|hundreds)\s*\)",
+        re.IGNORECASE,
+    )
+    TABLE_SCALE_MAP: dict[str, float] = {
+        "hundreds": 100,
+        "thousands": 1_000,
+        "millions": 1_000_000,
+        "billions": 1_000_000_000,
+    }
+
+    def __init__(self, proximity_window: int = 100) -> None:
         """
         Initialize the value binding stage.
 
         Args:
-            proximity_window: Max characters to search for values near text keywords (default: 250)
+            proximity_window: Max characters to search for values near text keywords (default: 100)
         """
         self.proximity_window = proximity_window
         self._unit_filtered_count = 0
@@ -275,6 +287,9 @@ class ValueBindingStage:
         row = loc.cell_row if loc.cell_row is not None else 0
         col = loc.cell_col if loc.cell_col is not None else 0
 
+        # Detect table-level scale factor
+        table_scale = self._detect_table_scale(table)
+
         # Strategy 1: Candidate is in a header cell → bind data cells in that column
         if candidate_cell.is_header or row < table.header_rows:
             header_path = table.get_header_path(col)
@@ -340,6 +355,15 @@ class ValueBindingStage:
                             ),
                         )
                     )
+
+        # Apply table-level scale factor to currency values only
+        # "(In thousands/millions)" in financial tables applies to dollar amounts;
+        # count metrics in the same table are typically already in correct units
+        # (financial tables mix dollar and count columns under a single scale header)
+        if table_scale != 1.0:
+            for bv in bound_values:
+                if bv.unit == Unit.CURRENCY and bv.value is not None:
+                    bv.value *= table_scale
 
         return bound_values
 
@@ -542,18 +566,18 @@ class ValueBindingStage:
         if not numbers:
             return bound_values
 
-        # Apply ambiguity penalty if multiple values found
-        ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
-
         # Get sentence bounds for the keyword match
         sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
 
         # Compute keyword center for distance decay
         keyword_center = (match_start + match_end) / 2.0
 
-        # Create bound values
+        # Classify numbers as same-sentence or out-of-sentence
+        same_sentence_candidates: list[tuple[re.Match[str], float, Unit, str, float]] = []
+        out_of_sentence_best: tuple[BoundValue, float] | None = None
+
         for num_match, value, unit, raw in numbers:
-            # Check if count value should be treated as percentage (FIX-A)
+            # Check if count value should be treated as percentage
             unit = self._check_percentage_context(
                 candidate.metric_id, unit, raw, text
             )
@@ -561,10 +585,8 @@ class ValueBindingStage:
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
-            # Check if value is in the same sentence as the keyword
-            # num_match positions are relative to window_text, need to adjust to full text
+            # num_match positions are relative to window_text, adjust to full text
             num_start_in_text = window_start + num_match.start()
-
             same_sentence = sentence_start <= num_start_in_text < sentence_end
 
             # Compute distance decay penalty
@@ -583,12 +605,15 @@ class ValueBindingStage:
             else:
                 distance_penalty = 0.0
 
-            confidence = self._compute_text_confidence(
-                unit, ambiguity_penalty, same_sentence, distance_penalty
-            )
-
-            bound_values.append(
-                BoundValue(
+            if same_sentence:
+                same_sentence_candidates.append((num_match, value, unit, raw, distance_penalty))
+            else:
+                # For out-of-sentence, track only the closest one
+                ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
+                confidence = self._compute_text_confidence(
+                    unit, ambiguity_penalty, False, distance_penalty
+                )
+                bv = BoundValue(
                     candidate_id=candidate.candidate_id,
                     value=value,
                     value_raw=raw,
@@ -601,7 +626,34 @@ class ValueBindingStage:
                         dom_locator=segment.dom_locator,
                     ),
                 )
-            )
+                if out_of_sentence_best is None or confidence > out_of_sentence_best[1]:
+                    out_of_sentence_best = (bv, confidence)
+
+        # If there are same-sentence matches, use those (all of them)
+        if same_sentence_candidates:
+            ambiguity_penalty = self.AMBIGUITY_PENALTY if len(same_sentence_candidates) > 1 else 0.0
+            for num_match, value, unit, raw, distance_penalty in same_sentence_candidates:
+                confidence = self._compute_text_confidence(
+                    unit, ambiguity_penalty, True, distance_penalty
+                )
+                bound_values.append(
+                    BoundValue(
+                        candidate_id=candidate.candidate_id,
+                        value=value,
+                        value_raw=raw,
+                        unit=unit,
+                        binding_type="text_proximity",
+                        binding_confidence=confidence,
+                        source_locator=SourceLocator(
+                            segment_id=segment.segment_id,
+                            text_span=(num_match.start(), num_match.end()),
+                            dom_locator=segment.dom_locator,
+                        ),
+                    )
+                )
+        elif out_of_sentence_best is not None:
+            # No same-sentence match: keep only the single closest out-of-sentence value
+            bound_values.append(out_of_sentence_best[0])
 
         return bound_values
 
@@ -928,6 +980,37 @@ class ValueBindingStage:
         confidence -= distance_penalty
 
         return max(min(confidence, 1.0), 0.0)
+
+    def _detect_table_scale(self, table: Table) -> float:
+        """
+        Detect table-level scale factor from header/early rows or caption text.
+
+        Searches header cells, early stub cells, and section_path for patterns
+        like "(In thousands)".
+
+        Returns:
+            Scale multiplier (1.0 if none detected)
+        """
+        # Check header cells and first few rows (scale annotation often in
+        # sub-header rows not counted as header_rows)
+        scan_rows = min(table.header_rows + 3, table.row_count)
+        for row_idx in range(scan_rows):
+            for col_idx in range(table.col_count):
+                cell = table.get_cell(row_idx, col_idx)
+                if cell and cell.text:
+                    match = self.TABLE_SCALE_PATTERN.search(cell.text)
+                    if match:
+                        scale_word = match.group(1).lower()
+                        return self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+
+        # Check section_path (often contains table caption text)
+        for path_item in table.section_path:
+            match = self.TABLE_SCALE_PATTERN.search(path_item)
+            if match:
+                scale_word = match.group(1).lower()
+                return self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+
+        return 1.0
 
     def _is_in_path(self, text: str, path: list[str]) -> bool:
         """Check if text appears in any path element."""

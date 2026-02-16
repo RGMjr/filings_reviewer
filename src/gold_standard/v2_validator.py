@@ -99,6 +99,26 @@ class MatchResult:
 
 
 @dataclass
+class FalsePositiveDiagnostic:
+    """Diagnostic info for a single false positive fact."""
+
+    metric_id: str
+    value: float | None
+    value_raw: str
+    period_start: date | None
+    period_end: date | None
+    source_type: str
+    confidence: float
+    source_snippet: str  # First 120 chars of evidence
+    # Closest gold standard match info
+    closest_gold_metric: str = ""
+    closest_gold_value: float | None = None
+    closest_gold_period: str = ""
+    value_delta_pct: float | None = None  # % difference from closest gold value
+    mismatch_category: str = ""  # "period_mismatch", "value_mismatch", "scale_factor", "both_mismatch", "no_match"
+
+
+@dataclass
 class ValidationResult:
     """Result of validating extraction against gold standard for one filing."""
 
@@ -109,6 +129,7 @@ class ValidationResult:
     missed: int
     extra: int  # V2 facts not in gold standard
     match_results: list[MatchResult] = field(default_factory=list)
+    fp_diagnostics: list[FalsePositiveDiagnostic] = field(default_factory=list)
 
     # Confusion matrix
     true_positives: int = 0
@@ -455,17 +476,29 @@ class V2GoldStandardValidator:
                         )
                     )
 
-        # Count extra facts (false positives)
+        # Count extra facts (false positives) with diagnostics
         # Note: We're conservative - only count facts with matching metric_ids as FP
         # Facts for metrics not in gold standard aren't counted as FP
         gold_metric_ids = {
             normalize_metric_id(e.metric_id) for e in expected_entries
         }
+        gold_entries_for_metric = {}
+        for entry in expected_entries:
+            mid = normalize_metric_id(entry.metric_id)
+            gold_entries_for_metric.setdefault(mid, []).append(entry)
+
         for fact in v2_facts:
             if fact.fact_id not in matched_fact_ids:
-                if normalize_metric_id(fact.canonical_metric_id) in gold_metric_ids:
+                fact_metric = normalize_metric_id(fact.canonical_metric_id)
+                if fact_metric in gold_metric_ids:
                     result.extra += 1
                     result.false_positives += 1
+
+                    # Build diagnostic
+                    diag = self._build_fp_diagnostic(
+                        fact, gold_entries_for_metric.get(fact_metric, [])
+                    )
+                    result.fp_diagnostics.append(diag)
 
         return result
 
@@ -530,6 +563,148 @@ class V2GoldStandardValidator:
         else:
             # Both near zero
             return abs(actual - expected) <= 0.01
+
+    def _build_fp_diagnostic(
+        self,
+        fact: MetricFact,
+        gold_entries: list[GoldStandardEntry],
+    ) -> FalsePositiveDiagnostic:
+        """Build a diagnostic for a false positive fact."""
+        snippet = fact.evidence_pack.snippet_html[:120] if fact.evidence_pack.snippet_html else fact.value_raw
+
+        diag = FalsePositiveDiagnostic(
+            metric_id=fact.canonical_metric_id,
+            value=fact.value,
+            value_raw=fact.value_raw,
+            period_start=fact.period_start,
+            period_end=fact.period_end,
+            source_type=fact.source_type.value,
+            confidence=fact.confidence,
+            source_snippet=snippet,
+        )
+
+        # Find closest gold match
+        closest = self._find_closest_gold_match(fact, gold_entries)
+        if closest:
+            entry, delta_pct, category = closest
+            diag.closest_gold_metric = entry.metric_id
+            diag.closest_gold_value = entry.normalized_value
+            diag.closest_gold_period = entry.period
+            diag.value_delta_pct = delta_pct
+            diag.mismatch_category = category
+        else:
+            diag.mismatch_category = "no_match"
+
+        return diag
+
+    def _find_closest_gold_match(
+        self,
+        fact: MetricFact,
+        gold_entries: list[GoldStandardEntry],
+    ) -> tuple[GoldStandardEntry, float | None, str] | None:
+        """
+        Find the closest gold standard entry to understand WHY a fact didn't match.
+
+        Returns:
+            Tuple of (closest_entry, value_delta_pct, mismatch_category) or None
+        """
+        if not gold_entries or fact.value is None:
+            return None
+
+        best_entry: GoldStandardEntry | None = None
+        best_delta: float | None = None
+
+        for entry in gold_entries:
+            gold_value = entry.normalized_value
+            if gold_value is None:
+                continue
+
+            if abs(gold_value) > 0.001:
+                delta = abs(fact.value - gold_value) / abs(gold_value)
+            elif abs(fact.value) > 0.001:
+                delta = abs(fact.value - gold_value) / abs(fact.value)
+            else:
+                delta = 0.0
+
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_entry = entry
+
+        if best_entry is None:
+            return None
+
+        # Categorize the mismatch
+        value_matches = best_delta is not None and best_delta <= self.value_tolerance
+
+        # Check period overlap
+        period_matches = True
+        if (best_entry.period_start and best_entry.period_end
+                and fact.period_start and fact.period_end):
+            if (best_entry.period_end < fact.period_start
+                    or fact.period_end < best_entry.period_start):
+                period_matches = False
+
+        if value_matches and not period_matches:
+            category = "period_mismatch"
+        elif not value_matches and period_matches:
+            # Check for scale factor (10x, 100x, 1000x differences)
+            if best_delta is not None and best_entry.normalized_value:
+                ratio = fact.value / best_entry.normalized_value if best_entry.normalized_value != 0 else 0
+                if ratio and any(abs(ratio - mult) / mult < 0.05 for mult in [0.001, 0.01, 0.1, 10, 100, 1000]):
+                    category = "scale_factor"
+                else:
+                    category = "value_mismatch"
+            else:
+                category = "value_mismatch"
+        elif not value_matches and not period_matches:
+            category = "both_mismatch"
+        else:
+            # Value and period match — shouldn't be an FP, but could be a duplicate
+            category = "duplicate_value"
+
+        return (best_entry, best_delta, category)
+
+    @staticmethod
+    def print_fp_diagnostics(results: list[ValidationResult]) -> None:
+        """Print categorized FP diagnostic report."""
+        all_diags: list[FalsePositiveDiagnostic] = []
+        for r in results:
+            all_diags.extend(r.fp_diagnostics)
+
+        if not all_diags:
+            print("\nNo false positives to diagnose.")
+            return
+
+        # Categorize
+        categories: dict[str, list[FalsePositiveDiagnostic]] = {}
+        for d in all_diags:
+            categories.setdefault(d.mismatch_category, []).append(d)
+
+        print(f"\n{'='*70}")
+        print(f"FALSE POSITIVE DIAGNOSTICS ({len(all_diags)} total FPs)")
+        print(f"{'='*70}")
+
+        for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
+            print(f"\n--- {cat.upper()} ({len(diags)} FPs) ---")
+            for d in diags[:10]:  # Show first 10 per category
+                period_str = ""
+                if d.period_start and d.period_end:
+                    period_str = f" [{d.period_start} to {d.period_end}]"
+                delta_str = f" (delta={d.value_delta_pct:.1%})" if d.value_delta_pct is not None else ""
+                gold_str = f" gold={d.closest_gold_value}" if d.closest_gold_value is not None else ""
+                print(
+                    f"  {d.metric_id}: {d.value} (raw={d.value_raw!r})"
+                    f"{period_str} src={d.source_type} conf={d.confidence:.2f}"
+                    f"{delta_str}{gold_str}"
+                )
+            if len(diags) > 10:
+                print(f"  ... and {len(diags) - 10} more")
+
+        print(f"\n{'='*70}")
+        print("SUMMARY:")
+        for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
+            print(f"  {cat}: {len(diags)}")
+        print(f"{'='*70}")
 
     def validate_all(self) -> list[ValidationResult]:
         """
@@ -813,6 +988,9 @@ def run_validation(
     print(f"  Recall: {metrics.recall:.1%}")
     print(f"  F1 Score: {metrics.f1:.1%}")
     print(f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}")
+
+    # Print FP diagnostics
+    V2GoldStandardValidator.print_fp_diagnostics(results)
 
     # Also report unfiltered facts for comparison
     review_threshold = 0.0

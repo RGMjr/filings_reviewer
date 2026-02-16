@@ -125,8 +125,10 @@ class TestPercentOnlyMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is False
 
     @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
-    def test_accepts_other(self, metric_id: str) -> None:
-        assert is_unit_compatible(metric_id, Unit.OTHER) is True
+    def test_rejects_other(self, metric_id: str) -> None:
+        """Unit.OTHER rejected for percent-only metrics to prevent bare numbers
+        (e.g., 37000 near NRR keyword) from being accepted as percentages."""
+        assert is_unit_compatible(metric_id, Unit.OTHER) is False
 
     @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
     def test_rejects_count(self, metric_id: str) -> None:
@@ -172,13 +174,13 @@ class TestGetAllowedUnits:
         assert Unit.OTHER in allowed
         assert len(allowed) == 2
 
-    def test_percent_metric_returns_percent_ratio_and_other(self) -> None:
+    def test_percent_metric_returns_percent_and_ratio_only(self) -> None:
         allowed = get_allowed_units("cm_net_revenue_retention")
         assert allowed is not None
         assert Unit.PERCENT in allowed
         assert Unit.RATIO in allowed
-        assert Unit.OTHER in allowed
-        assert len(allowed) == 3
+        assert Unit.OTHER not in allowed
+        assert len(allowed) == 2
 
     def test_unknown_metric_returns_none(self) -> None:
         assert get_allowed_units("cm_unknown_metric") is None
