@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
@@ -53,6 +53,11 @@ from src.extraction_v2.stages.validation import ValidationStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 logger = logging.getLogger(__name__)
+
+# Document type constants
+DOC_TYPE_SEC_FILING = "sec_filing"
+DOC_TYPE_TRANSCRIPT = "transcript"
+DOC_TYPE_PRESENTATION = "presentation"
 
 
 class PipelineStage(str, Enum):
@@ -104,6 +109,35 @@ class PipelineConfig:
     # Output
     save_evidence_screenshots: bool = True
     evidence_screenshot_dir: str = "evidence_v2/"
+
+    # Document type
+    document_type: str = DOC_TYPE_SEC_FILING
+    text_proximity_chars: int = 100
+    relaxed_fp_filter: bool = False
+
+    @classmethod
+    def for_transcript(cls, **overrides) -> PipelineConfig:
+        """Create a config tuned for earnings call transcripts."""
+        defaults = {
+            "document_type": DOC_TYPE_TRANSCRIPT,
+            "enable_image_extraction": False,
+            "enable_chart_extraction": False,
+            "text_proximity_chars": 250,
+            "relaxed_fp_filter": True,
+        }
+        defaults.update(overrides)
+        return cls(**defaults)
+
+    @classmethod
+    def for_presentation(cls, **overrides) -> PipelineConfig:
+        """Create a config tuned for investor presentations."""
+        defaults = {
+            "document_type": DOC_TYPE_PRESENTATION,
+            "text_proximity_chars": 200,
+            "relaxed_fp_filter": True,
+        }
+        defaults.update(overrides)
+        return cls(**defaults)
 
 
 @dataclass
@@ -199,6 +233,10 @@ class PipelineContext:
     html_path: Path
     filing_id: int
     config: PipelineConfig
+
+    # Document metadata
+    document_type: str = DOC_TYPE_SEC_FILING
+    document_date: date | None = None
 
     # Document (populated by Stage 1)
     document: Document | None = None
@@ -313,6 +351,8 @@ class V2Pipeline:
         filing_id: int,
         cik: str = "",
         accession_number: str = "",
+        document_type: str | None = None,
+        document_date: date | None = None,
     ) -> PipelineResult:
         """
         Execute the full extraction pipeline on a filing.
@@ -322,6 +362,8 @@ class V2Pipeline:
             filing_id: Database ID of the filing
             cik: SEC Central Index Key (for image downloading)
             accession_number: SEC accession number (for image downloading)
+            document_type: Override document type (defaults to config value)
+            document_date: Per-document date for period inference fallback
 
         Returns:
             PipelineResult with extracted facts and metadata
@@ -336,6 +378,8 @@ class V2Pipeline:
             config=self.config,
             cik=cik,
             accession_number=accession_number,
+            document_type=document_type or self.config.document_type,
+            document_date=document_date,
         )
 
         logger.info(
@@ -439,6 +483,8 @@ def process_filing(
     config: PipelineConfig | None = None,
     cik: str = "",
     accession_number: str = "",
+    document_type: str | None = None,
+    document_date: date | None = None,
 ) -> PipelineResult:
     """
     Process a single filing through the V2 pipeline.
@@ -451,9 +497,18 @@ def process_filing(
         config: Optional pipeline configuration
         cik: SEC Central Index Key (for image downloading)
         accession_number: SEC accession number (for image downloading)
+        document_type: Override document type (defaults to config value)
+        document_date: Per-document date for period inference fallback
 
     Returns:
         PipelineResult with extracted facts and metadata
     """
     pipeline = V2Pipeline(config=config)
-    return pipeline.process(html_path, filing_id, cik=cik, accession_number=accession_number)
+    return pipeline.process(
+        html_path,
+        filing_id,
+        cik=cik,
+        accession_number=accession_number,
+        document_type=document_type,
+        document_date=document_date,
+    )

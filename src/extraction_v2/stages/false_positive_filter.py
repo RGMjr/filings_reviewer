@@ -67,6 +67,7 @@ _RANKING_NAME_RE = re.compile(
 def _is_v2_false_positive(
     bv: BoundValue,
     source_text: str,
+    relaxed: bool = False,
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
@@ -76,6 +77,10 @@ def _is_v2_false_positive(
     - Linearized table markers that indicate duplicate text extraction
     - Financial table annotations that mark non-metric financial data
     - Ranking names where a number is part of a name, not a value
+
+    When relaxed=True (for transcripts/presentations), rules 3 and 4
+    (financial annotation and SBC) are skipped because these patterns
+    are common in earnings call language and cause excessive false negatives.
 
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
@@ -100,13 +105,15 @@ def _is_v2_false_positive(
     if _TABLE_MARKER_RE.search(source_text):
         return True, "v2_linearized_table"
 
-    # Rule 3: Financial table annotation text.
-    # Segments containing "(In thousands)" or "stock-based compensation" are
-    # financial statement text, not customer metric narrative.
-    if _FINANCIAL_ANNOTATION_RE.search(source_text):
-        return True, "v2_financial_annotation"
-    if _SBC_RE.search(source_text):
-        return True, "v2_financial_sbc"
+    # Rules 3+4 skipped in relaxed mode (transcripts/presentations)
+    if not relaxed:
+        # Rule 3: Financial table annotation text.
+        # Segments containing "(In thousands)" or "stock-based compensation" are
+        # financial statement text, not customer metric narrative.
+        if _FINANCIAL_ANNOTATION_RE.search(source_text):
+            return True, "v2_financial_annotation"
+        if _SBC_RE.search(source_text):
+            return True, "v2_financial_sbc"
 
     # Rule 4: Company ranking name.
     # "Fortune 100", "Forbes 500" — the number is part of the ranking name.
@@ -258,6 +265,9 @@ class FalsePositiveFilterStage:
         initial_count = len(context.bound_values)
         filter_reasons: dict[str, int] = {}
 
+        # Read relaxed mode from config (for transcripts/presentations)
+        relaxed = getattr(context.config, "relaxed_fp_filter", False)
+
         # Build candidate lookup for context text
         candidate_map = {c.candidate_id: c for c in context.candidates}
 
@@ -276,7 +286,7 @@ class FalsePositiveFilterStage:
                     continue
 
                 # --- V2-native checks (run first, cheaper than V1) ---
-                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text)
+                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text, relaxed=relaxed)
                 if v2_fp:
                     filter_reasons[v2_reason or "v2_unknown"] = (
                         filter_reasons.get(v2_reason or "v2_unknown", 0) + 1

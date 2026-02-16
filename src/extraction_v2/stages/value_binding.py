@@ -218,12 +218,19 @@ class ValueBindingStage:
         Returns:
             List of BoundValue objects (may be empty if no binding found)
         """
+        # Read effective proximity from config (if available), else use instance default
+        effective_proximity = getattr(
+            context.config, "text_proximity_chars", self.proximity_window
+        )
+
         # Route by source type
         if candidate.source_type in (SourceType.HTML_TABLE, SourceType.OCR_TABLE):
             # Both HTML and OCR tables use the same binding strategy
             return self._bind_table_candidate(candidate, context.tables)
         elif candidate.source_type == SourceType.TEXT:
-            return self._bind_text_candidate(candidate, context.segments)
+            return self._bind_text_candidate(
+                candidate, context.segments, proximity_chars=effective_proximity
+            )
         elif candidate.source_type == SourceType.CHART:
             return self._bind_chart_candidate(candidate, context.images)
         # All SourceType values handled above
@@ -489,6 +496,7 @@ class ValueBindingStage:
         self,
         candidate: MetricCandidate,
         segments: list[Segment],
+        proximity_chars: int | None = None,
     ) -> list[BoundValue]:
         """
         Bind a text-sourced candidate to values using proximity.
@@ -501,12 +509,14 @@ class ValueBindingStage:
         Args:
             candidate: Text-sourced metric candidate
             segments: List of document segments
+            proximity_chars: Override proximity window (defaults to self.proximity_window)
 
         Returns:
             List of BoundValue objects
         """
         bound_values: list[BoundValue] = []
         loc = candidate.source_locator
+        proximity = proximity_chars if proximity_chars is not None else self.proximity_window
 
         # Find the segment
         segment = self._find_segment(loc.segment_id, segments)
@@ -530,11 +540,11 @@ class ValueBindingStage:
             match_end = len(text)
 
         # Calculate window bounds
-        window_start = max(0, match_start - self.proximity_window)
+        window_start = max(0, match_start - proximity)
 
         # Find numbers in proximity
         numbers = self._find_numbers_in_proximity(
-            text, match_start, match_end, self.proximity_window
+            text, match_start, match_end, proximity
         )
 
         if not numbers:

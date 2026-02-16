@@ -1623,3 +1623,53 @@ class TestUnitFiltering:
 
         assert result.success
         assert len(context.bound_values) == 0  # $14.8M filtered in Strategy 5
+
+
+# ============================================================================
+# Config-Based Proximity Tests
+# ============================================================================
+
+
+class TestConfigBasedProximity:
+    """Tests that ValueBindingStage reads text_proximity_chars from config."""
+
+    def test_config_proximity_overrides_instance_default(self) -> None:
+        """Config text_proximity_chars is used instead of instance default."""
+        stage = ValueBindingStage(proximity_window=20)  # Very narrow default
+
+        # Text where value is 40+ chars from keyword
+        segment = Segment(
+            segment_id="seg-cfg",
+            text="Revenue increased significantly to $500 million in the period.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-cfg",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-cfg",
+                text_span=(0, 7),
+            ),
+        )
+
+        # With narrow instance default (20), no match
+        context_narrow = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result_narrow = stage.process(context_narrow)  # type: ignore
+        assert result_narrow.success
+        assert len(context_narrow.bound_values) == 0
+
+        # Now use a config with wider proximity — should find the value
+        @dataclass
+        class WideConfig:
+            text_proximity_chars: int = 200
+            min_confidence_auto_accept: float = 0.90
+
+        context_wide = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            config=WideConfig(),  # type: ignore
+        )
+        result_wide = stage.process(context_wide)  # type: ignore
+        assert result_wide.success
+        assert len(context_wide.bound_values) >= 1

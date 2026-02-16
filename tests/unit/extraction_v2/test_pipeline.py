@@ -1,5 +1,6 @@
 """Tests for V2 extraction pipeline orchestrator."""
 
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,9 @@ from src.extraction_v2.models import (
     Unit,
 )
 from src.extraction_v2.pipeline import (
+    DOC_TYPE_PRESENTATION,
+    DOC_TYPE_SEC_FILING,
+    DOC_TYPE_TRANSCRIPT,
     PipelineConfig,
     PipelineContext,
     PipelineResult,
@@ -588,3 +592,128 @@ class TestPipelineStages:
 
         assert result.success is True
         assert "duplicates_removed" in result.metadata
+
+
+class TestDocumentTypeSupport:
+    """Tests for document_type/document_date support."""
+
+    def test_constants_are_strings(self) -> None:
+        """Document type constants are plain strings."""
+        assert DOC_TYPE_SEC_FILING == "sec_filing"
+        assert DOC_TYPE_TRANSCRIPT == "transcript"
+        assert DOC_TYPE_PRESENTATION == "presentation"
+
+    def test_default_config_is_sec_filing(self) -> None:
+        """Default PipelineConfig uses sec_filing document type."""
+        config = PipelineConfig()
+        assert config.document_type == DOC_TYPE_SEC_FILING
+        assert config.text_proximity_chars == 100
+        assert config.relaxed_fp_filter is False
+
+    def test_for_transcript_factory(self) -> None:
+        """for_transcript() sets transcript-specific defaults."""
+        config = PipelineConfig.for_transcript()
+        assert config.document_type == DOC_TYPE_TRANSCRIPT
+        assert config.enable_image_extraction is False
+        assert config.enable_chart_extraction is False
+        assert config.text_proximity_chars == 250
+        assert config.relaxed_fp_filter is True
+
+    def test_for_transcript_allows_overrides(self) -> None:
+        """for_transcript() accepts caller overrides."""
+        config = PipelineConfig.for_transcript(
+            text_proximity_chars=300,
+            enable_section_classification=False,
+        )
+        assert config.text_proximity_chars == 300
+        assert config.enable_section_classification is False
+        # Other defaults still applied
+        assert config.document_type == DOC_TYPE_TRANSCRIPT
+        assert config.relaxed_fp_filter is True
+
+    def test_for_presentation_factory(self) -> None:
+        """for_presentation() sets presentation-specific defaults."""
+        config = PipelineConfig.for_presentation()
+        assert config.document_type == DOC_TYPE_PRESENTATION
+        assert config.text_proximity_chars == 200
+        assert config.relaxed_fp_filter is True
+        # Image extraction not disabled by default for presentations
+        assert config.enable_image_extraction is True
+
+    def test_for_presentation_allows_overrides(self) -> None:
+        """for_presentation() accepts caller overrides."""
+        config = PipelineConfig.for_presentation(
+            enable_image_extraction=False,
+        )
+        assert config.enable_image_extraction is False
+        assert config.document_type == DOC_TYPE_PRESENTATION
+
+    def test_context_default_document_type(self) -> None:
+        """PipelineContext defaults to sec_filing."""
+        context = PipelineContext(
+            html_path=Path("/test.html"),
+            filing_id=1,
+            config=PipelineConfig(),
+        )
+        assert context.document_type == DOC_TYPE_SEC_FILING
+        assert context.document_date is None
+
+    def test_context_accepts_document_date(self) -> None:
+        """PipelineContext accepts document_date."""
+        d = date(2025, 2, 26)
+        context = PipelineContext(
+            html_path=Path("/test.html"),
+            filing_id=1,
+            config=PipelineConfig(),
+            document_type=DOC_TYPE_TRANSCRIPT,
+            document_date=d,
+        )
+        assert context.document_type == DOC_TYPE_TRANSCRIPT
+        assert context.document_date == d
+
+    def test_process_passes_document_type_to_context(self, tmp_path: Path) -> None:
+        """V2Pipeline.process() propagates document_type to context."""
+        html_file = tmp_path / "test.html"
+        html_file.write_text("<html><body>Test</body></html>")
+
+        config = PipelineConfig.for_transcript()
+        pipeline = V2Pipeline(config=config)
+        result = pipeline.process(html_file, filing_id=1)
+
+        # Pipeline should succeed with transcript config
+        assert result.success is True
+
+    def test_process_document_type_override(self, tmp_path: Path) -> None:
+        """document_type kwarg overrides config default."""
+        html_file = tmp_path / "test.html"
+        html_file.write_text("<html><body>Test</body></html>")
+
+        pipeline = V2Pipeline()  # default sec_filing config
+        result = pipeline.process(
+            html_file,
+            filing_id=1,
+            document_type=DOC_TYPE_TRANSCRIPT,
+        )
+        assert result.success is True
+
+    def test_process_filing_passes_document_type(self, tmp_path: Path) -> None:
+        """process_filing() convenience function accepts document_type."""
+        html_file = tmp_path / "test.html"
+        html_file.write_text("<html><body>Test</body></html>")
+
+        result = process_filing(
+            html_file,
+            filing_id=1,
+            config=PipelineConfig.for_transcript(),
+            document_date=date(2025, 2, 26),
+        )
+        assert result.success is True
+
+    def test_backward_compat_no_new_kwargs(self, tmp_path: Path) -> None:
+        """Existing callers without new kwargs still work."""
+        html_file = tmp_path / "test.html"
+        html_file.write_text("<html><body>Test</body></html>")
+
+        # Old-style call — no document_type, no document_date
+        result = process_filing(html_file, filing_id=1)
+        assert result.success is True

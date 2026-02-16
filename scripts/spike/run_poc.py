@@ -181,12 +181,8 @@ def main():
         print(f"WARNING: No annotations loaded from {annotations_path}")
         print("Results will show extraction output but cannot compute recall/precision.")
 
-    # Configure pipeline (no image extraction for transcripts)
-    config = PipelineConfig(
-        enable_image_extraction=False,
-        enable_chart_extraction=False,
-        enable_section_classification=True,
-    )
+    # Configure pipeline for transcript processing
+    config = PipelineConfig.for_transcript()
     pipeline = V2Pipeline(config=config)
 
     # Results storage

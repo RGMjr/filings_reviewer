@@ -961,3 +961,95 @@ class TestV2RankingNames:
         is_fp, _ = _is_v2_false_positive(bv, source)
         # 65 is NOT the ranking number (100 is), so it should pass this rule
         assert is_fp is False
+
+
+# ============================================================================
+# Test: Relaxed mode (for transcripts/presentations)
+# ============================================================================
+
+
+class TestRelaxedMode:
+    """Tests for relaxed=True skipping financial annotation/SBC rules."""
+
+    def test_relaxed_skips_financial_annotation(self):
+        """relaxed=True allows values in '(In thousands)' context."""
+        source = "(In millions) Revenue 400.5 500.2"
+        bv = _make_bound_value("c1", 400.5, "400.5", Unit.CURRENCY, "seg-1")
+
+        # Default: filtered
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=False)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+        # Relaxed: NOT filtered
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp is False
+
+    def test_relaxed_skips_sbc(self):
+        """relaxed=True allows values in 'stock-based compensation' context."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+
+        # Default: filtered
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=False)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"
+
+        # Relaxed: NOT filtered
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp is False
+
+    def test_relaxed_still_filters_years(self):
+        """relaxed=True does NOT skip year filtering."""
+        bv = _make_bound_value("c1", 2019.0, "2019", Unit.PERCENT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, "fiscal year 2019", relaxed=True)
+        assert is_fp is True
+        assert reason == "v2_year_value"
+
+    def test_relaxed_still_filters_linearized_table(self):
+        """relaxed=True does NOT skip linearized table filtering."""
+        source = "[ROW] Revenue [CELL] 400"
+        bv = _make_bound_value("c1", 400.0, "400", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp is True
+        assert reason == "v2_linearized_table"
+
+    def test_relaxed_still_filters_ranking_names(self):
+        """relaxed=True does NOT skip ranking name filtering."""
+        source = "Many Fortune 500 companies use our platform."
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp is True
+        assert reason == "v2_ranking_name"
+
+    def test_relaxed_via_stage_config(self, stage):
+        """Stage reads relaxed_fp_filter from config."""
+        source = "(In millions) Revenue 400.5 500.2"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        bv = _make_bound_value("c1", 400.5, "400.5", Unit.CURRENCY, "seg-1")
+
+        # Default config: filtered
+        ctx_strict = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx_strict)
+        assert len(ctx_strict.bound_values) == 0
+
+        # Relaxed config: kept
+        @dataclass
+        class RelaxedConfig:
+            min_confidence_auto_accept: float = 0.90
+            relaxed_fp_filter: bool = True
+
+        bv2 = _make_bound_value("c1", 400.5, "400.5", Unit.CURRENCY, "seg-1")
+        ctx_relaxed = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv2],
+            config=RelaxedConfig(),  # type: ignore
+        )
+        stage.process(ctx_relaxed)
+        assert len(ctx_relaxed.bound_values) == 1
