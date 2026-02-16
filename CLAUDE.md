@@ -192,3 +192,32 @@ python scripts/benchmark_v1_v2.py --filings slack samsara
 ```
 
 See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap (all 13 phases complete).
+
+## Beyond SEC: Transcript & Presentation Support
+
+**Branch:** `earnings-call-exploration` (worktree: `filings_reviewer_beyond_sec`)
+**Status:** Research spike complete, Phase A not started
+**Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
+
+The V2 pipeline is being extended to extract customer metrics from earnings call transcripts and investor presentations. A research spike (Feb 2026) confirmed the pipeline is architecturally compatible — it processes transcripts with no code changes at 72ms/file, achieving 22.1% recall / 63.0% precision on 77 manually annotated metrics.
+
+**Document-type-aware config (implemented):**
+```python
+# Transcript processing — wider proximity, relaxed FP filter
+config = PipelineConfig.for_transcript()
+
+# Presentation processing — images enabled, relaxed FP filter
+config = PipelineConfig.for_presentation()
+
+# SEC filings — default behavior (unchanged)
+config = PipelineConfig()
+```
+
+**Phase A roadmap (NOT started):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration. Target: >= 50% recall on transcripts. See `ops/DEVELOPMENT_PLAN.md` for acceptance criteria.
+
+**Spike scripts:**
+- `scripts/spike/collect_samples.py` — HuggingFace dataset downloader
+- `scripts/spike/convert_transcript_to_html.py` — text-to-HTML converter
+- `scripts/spike/run_poc.py` — pipeline POC runner
+
+**Spike data:** `data/spike_samples/` (22 transcripts, 77 annotations), `data/spike_results/` (per-file results)

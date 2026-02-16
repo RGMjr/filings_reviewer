@@ -1,47 +1,43 @@
 # Development Plan
 
-**Worker Prompt**: Plan file at `~/.claude/plans/ethereal-snuggling-milner.md`
-**Task ID**: V2-PHASE-13
-**Task Name**: Integration & Validation (V2 Capstone)
-**Started**: 2026-02-04
+**Task ID**: BEYOND-SEC-PHASE-A
+**Task Name**: Transcript Support (Beyond SEC — Phase A)
+**Status**: NOT STARTED (planning only)
+**Design Doc**: `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 ---
 
 ## Acceptance Criteria
 
-<!--
-Populated automatically from Worker Prompt on first iteration.
-Format: - [ ] AC-N | Criterion text
-Mark complete: - [x] AC-N | Criterion text (result notes)
-Mark blocked: - [BLOCKED: reason] AC-N | Criterion text
-Mark error: - [ERROR: description] AC-N | Criterion text
--->
-
-- [x] AC-1 | `test_e2e_pipeline.py` created with 8+ tests (446 lines, 10 tests)
-- [x] AC-2 | E2E tests pass on Slack and Samsara gold standard filings (requires database to verify)
-- [x] AC-3 | All MetricFacts have valid source_locator with xpath (test_e2e_facts_have_valid_provenance)
-- [x] AC-4 | `comparison.py` with `V1V2Comparator` class created (520 lines)
-- [x] AC-5 | V2 extracts >= V1 fact count on gold standard filings (70% coverage threshold)
-- [x] AC-6 | `v2_validator.py` computes precision/recall/F1 (699 lines)
-- [x] AC-7 | V2 precision >= 85% on gold standard (threshold in test)
-- [x] AC-8 | V2 recall >= 70% on gold standard (threshold in test)
-- [x] AC-9 | `benchmark_v1_v2.py` script created and runs (298 lines)
-- [x] AC-10 | V2 execution time within 2x of V1 (speedup_ratio tracked)
-- [x] AC-11 | `docs/V2_MIGRATION_GUIDE.md` created (347 lines)
-- [x] AC-12 | `CLAUDE.md` updated with V2 section
-- [x] AC-13 | `V2_IMPLEMENTATION_ROADMAP.md` marked complete
-- [x] AC-14 | All new code passes `ruff check` and `mypy --strict` (verified)
-- [x] AC-15 | Test coverage >= 85% for new modules (unit tests pass, 20/20)
+- [ ] AC-1 | Value binding uses wider proximity windows when `document_type='transcript'` (+10% recall est.)
+- [ ] AC-2 | Sentence-level value binding for text sources (+5% recall est.)
+- [ ] AC-3 | FP filter relaxes segment-level co-occurrence rules for transcripts (+5% recall est.)
+- [ ] AC-4 | Period inference matches "FY'25" / "fiscal year '25" patterns (+5% recall est.)
+- [ ] AC-5 | Period inference uses `document_date` fallback when no period found (+5% recall est.)
+- [ ] AC-6 | Period inference matches standalone "Q4" using document_date year
+- [ ] AC-7 | Transcript converter (text→HTML) hardened from spike version, splits large paragraphs into sentences
+- [ ] AC-8 | HuggingFace `DocumentSource` implementation for kurry dataset
+- [ ] AC-9 | Schema migration: `document_type`, `ticker`, `document_date`, `transcript_source` on `filings`; relaxed constraints
+- [ ] AC-10 | Integration tests: end-to-end transcript pipeline on 5+ transcripts
+- [ ] AC-11 | Measured recall >= 50% on existing 77 manual annotations
+- [ ] AC-12 | Precision remains >= 60% (no regression from current 63%)
 
 ---
 
 ## Progress Log
 
-<!-- Automatically updated each iteration -->
-
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| 1 | AC-1-15 | ✅ COMPLETE | All files created, unit tests pass, lint/type checks pass |
+| — | — | — | Not started |
+
+---
+
+## Pre-Work Completed
+
+- Research spike complete (8a033b2): 6 design docs, 22 sample transcripts, 77 annotations
+- Pipeline config presets (b57652a): `PipelineConfig.for_transcript()` with document_type/document_date
+- Baseline: R=22.1%, P=63.0%, F1=32.7% on 8 annotated transcripts
+- See `docs/analysis/spike/gap_analysis.md` for stage-by-stage bottleneck analysis
 
 ---
 

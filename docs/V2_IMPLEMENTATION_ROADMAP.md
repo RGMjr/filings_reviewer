@@ -525,11 +525,22 @@ These V1 modules are stable and should be imported into V2:
 
 ---
 
-## Next Steps
+## Next Steps: Beyond SEC Filings
 
-1. **Create Worker Prompt** for Phase 1 (Ingestion)
-2. **Populate `ops/DEVELOPMENT_PLAN.md`** with Phase 1 acceptance criteria
-3. **Start Ralph** in develop mode
+All 13 V2 phases are complete. The pipeline is now being extended to support non-SEC document types (earnings call transcripts, investor presentations).
+
+A research spike (`earnings-call-exploration` branch, Feb 2026) confirmed the V2 pipeline is architecturally compatible with transcripts. See `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md` for full findings and roadmap.
+
+### Beyond SEC Phases
+
+| Phase | Name | Status | Target |
+|-------|------|--------|--------|
+| Spike | Research: transcripts POC + design docs | Complete (8a033b2) | R=22.1%, P=63.0% measured |
+| A | Transcript Support (P0) | **Not started** | >= 50% recall, 2-3 weeks |
+| B | Expanded Coverage (P1) | Not started | Section classification, FMP API, web UI |
+| C | Presentation Support (P2) | Not started | >= 40% recall on presentations |
+
+Phase A acceptance criteria are in `ops/DEVELOPMENT_PLAN.md`.
 
 ---
 
@@ -540,3 +551,4 @@ These V1 modules are stable and should be imported into V2:
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
+| 2026-02-16 | 1.4 | Add Beyond SEC phases (Spike complete, Phase A-C roadmap). Link to design doc and dev plan. |
