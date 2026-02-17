@@ -26,7 +26,11 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
-from src.extraction_v2.unit_compatibility import _COUNT_ONLY_METRICS, is_unit_compatible
+from src.extraction_v2.unit_compatibility import (
+    _COUNT_ONLY_METRICS,
+    _CURRENCY_ONLY_METRICS,
+    is_unit_compatible,
+)
 from src.review.false_positive_filter import should_treat_as_percentage
 
 if TYPE_CHECKING:
@@ -495,6 +499,27 @@ class ValueBindingStage:
                 candidate.metric_id, unit, raw, context_text
             )
             if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+
+            # Column-type filter: prevent count metrics from binding to
+            # dollar columns (and vice versa) in mixed financial tables.
+            if (
+                candidate.metric_id in _COUNT_ONLY_METRICS
+                and self._header_indicates_currency(cell.header_path)
+            ):
+                logger.debug(
+                    "Skipping currency-column cell (%d,%d) for count metric %s",
+                    row, col_idx, candidate.metric_id,
+                )
+                continue
+            if (
+                candidate.metric_id in _CURRENCY_ONLY_METRICS
+                and self._header_indicates_count(cell.header_path)
+            ):
+                logger.debug(
+                    "Skipping count-column cell (%d,%d) for currency metric %s",
+                    row, col_idx, candidate.metric_id,
+                )
                 continue
 
             confidence = self._compute_table_confidence(
@@ -1029,6 +1054,52 @@ class ValueBindingStage:
         table) from actual integer counts (e.g. "948").
         """
         return "." in value_raw
+
+    # Currency indicators in column headers (case-insensitive matching)
+    _CURRENCY_HEADER_INDICATORS = re.compile(
+        r"[\$\€\£]|(?:revenue|gmv|amount|dollars|spend|cost|earnings|income|"
+        r"expense|proceeds|sales|margin|ebitda|profit|loss)",
+        re.IGNORECASE,
+    )
+
+    # Count indicators in column headers (case-insensitive matching)
+    _COUNT_HEADER_INDICATORS = re.compile(
+        r"\b(?:count|number|users|customers|subscribers|members|accounts|"
+        r"merchants|consumers|buyers|sellers|drivers|riders|hosts|guests)\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _header_indicates_currency(header_path: list[str]) -> bool:
+        """Check if a column's header path indicates currency values.
+
+        Used to prevent count metrics from binding to dollar columns in
+        mixed financial tables (e.g. Farfetch's '(In thousands)' tables
+        that have both dollar and count columns).
+
+        Args:
+            header_path: Column header hierarchy (e.g. ["Revenue", "2023"])
+
+        Returns:
+            True if any header element contains a currency indicator.
+        """
+        combined = " ".join(header_path)
+        return bool(ValueBindingStage._CURRENCY_HEADER_INDICATORS.search(combined))
+
+    @staticmethod
+    def _header_indicates_count(header_path: list[str]) -> bool:
+        """Check if a column's header path indicates count values.
+
+        Used to prevent currency metrics from binding to count columns.
+
+        Args:
+            header_path: Column header hierarchy
+
+        Returns:
+            True if any header element contains a count indicator.
+        """
+        combined = " ".join(header_path)
+        return bool(ValueBindingStage._COUNT_HEADER_INDICATORS.search(combined))
 
     def _is_in_path(self, text: str, path: list[str]) -> bool:
         """Check if text appears in any path element."""
