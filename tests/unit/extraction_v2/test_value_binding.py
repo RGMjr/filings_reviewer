@@ -1876,3 +1876,78 @@ class TestTranscriptBindingFeatures:
             bv = context.bound_values[0]
             # Should NOT have adjacent sentence bonus in SEC mode
             assert bv.binding_confidence <= stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + 0.01
+
+
+# ============================================================================
+# Ambiguity Penalty After Unit Filtering Tests
+# ============================================================================
+
+
+class TestAmbiguityPenaltyPostFilter:
+    """Tests that ambiguity penalty is computed AFTER unit filtering.
+
+    When "ARR grew 7% to $4.1 billion", the 7% is filtered (incompatible
+    with cm_arr=CURRENCY_ONLY), leaving only $4.1B. The surviving value
+    should NOT get an ambiguity penalty since it's the only compatible value.
+    """
+
+    def test_no_ambiguity_penalty_after_incompatible_filtered(self) -> None:
+        """Single surviving value after unit filtering gets no ambiguity penalty."""
+        stage = ValueBindingStage(proximity_window=250)
+
+        segment = Segment(
+            segment_id="seg-arr-growth",
+            text="Annual recurring revenue grew 7% to $4.1 billion.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-arr-growth",
+            metric_id="cm_arr",
+            match_text="annual recurring revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-arr-growth",
+                text_span=(0, 24),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Only $4.1B should survive (7% filtered for cm_arr)
+        assert len(context.bound_values) == 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(4_100_000_000, rel=0.01)
+        assert bv.unit == Unit.CURRENCY
+        # No ambiguity penalty — only one compatible value survived
+        expected_conf = stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + stage.SAME_SENTENCE_BONUS
+        assert bv.binding_confidence == pytest.approx(expected_conf, abs=0.01)
+
+    def test_ambiguity_penalty_when_multiple_compatible_survive(self) -> None:
+        """Multiple compatible values still get ambiguity penalty."""
+        stage = ValueBindingStage(proximity_window=250)
+
+        segment = Segment(
+            segment_id="seg-multi-compat",
+            text="We had 10,000 customers growing to 15,000 customers.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-multi-compat",
+            metric_id="cm_customers_period_end",
+            match_text="customers",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-multi-compat",
+                text_span=(14, 23),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Both 10,000 and 15,000 are COUNT-compatible → both bound with penalty
+        assert len(context.bound_values) == 2
+        for bv in context.bound_values:
+            # Should have ambiguity penalty applied
+            assert bv.binding_confidence < stage.TEXT_BINDING_BASE + stage.SAME_SENTENCE_BONUS

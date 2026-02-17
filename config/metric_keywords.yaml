@@ -83,6 +83,14 @@ cm_new_customers_acquired:
     - '\bconsumer\s+acquisition[s]?\b'
     - '\bacquired\s+consumers?\b'
     - '\bconsumers?\s+added\b'
+    # Transcript vocabulary (telecom net adds, first-time users, new businesses)
+    - '\bnet\s+(?:additions?|adds?)\b'
+    - '\bnet\s+customer\s+additions?\b'
+    - '\bfirst[- ]time\s+(?:customers?|users?)\b'
+    - '\bnew\s+(?:businesses|merchants)\b'
+    # Transcript: telecom-specific "postpaid phone net adds", "broadband net additions"
+    - '\bpostpaid\s+(?:phone\s+)?net\s+(?:customer\s+)?(?:additions?|adds?)\b'
+    - '\b(?:broadband|fiber|5g)\s+(?:net\s+)?(?:additions?|adds?)\b'
   exclusions:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
@@ -112,6 +120,18 @@ cm_customers_period_end:
     # Transcript vocabulary (telecom: postpaid net additions, subscriber additions)
     - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
     - '\bsubscriber\s+additions?\b'
+    # Transcript: prepaid customers/subscribers, commercial seats, consumer subscriptions
+    - '\bprepaid\s+(?:customers?|subscribers?)\b'
+    - '\bcommercial\s+seats?\b'
+    - '\bconsumer\s+subscriptions?\b'
+    # Transcript: "1.4 million security customers" — bare "N customers" with magnitude
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+)?customers?\b'
+    # Transcript: "15 million Copilot users" — "N users" with magnitude
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+)?users?\b'
+    # Transcript: "organizations have used/now use" (MSFT)
+    - '\borganizations?\s+(?:have\s+)?(?:used?|adopted)\b'
+    # Transcript: "paid subscriptions grew" (ADBE)
+    - '\bpaid\s+subscriptions?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -142,6 +162,8 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
+    # Transcript: "400 deals over a million" (CRM)
+    - '\bdeals?\s+over\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -213,6 +235,10 @@ cm_active_customers_total:
     - '\bmonthly\s+active\s+unique\s+accounts?\b'
     - '\blive\s+services?\s+players?\b'
     - '\bpostpaid\b[^.;]{0,30}\bcustomers?\b(?!\s*(?:net|additions?|adds?))'
+    # Transcript: "One billion professionals use LinkedIn" (MSFT)
+    - '\bprofessionals?\s+use\b'
+    # Transcript: "100 million people use WhatsApp" (META)
+    - '\bpeople\s+use\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
@@ -278,6 +304,10 @@ cm_customer_retention_rate:
     # Consumer synonyms (e-commerce terminology)
     - '\bconsumer\s+retention\b'
     - '\bretained\s+consumers?\b'
+    # Transcript: "retention above 85%" (GDDY)
+    - '\bretention\s+above\b'
+    # Transcript: "continuing strong renewal rates" (ADSK)
+    - '\brenewal\s+rates?\b'
   exclusions:
     - '\brevenue\s+retention\b'
     - '\bdollar\s+retention\b'
@@ -294,6 +324,8 @@ cm_customer_churn_rate:
     - '\bconsumer\s+attrition\b'
     # Transcript vocabulary (telecom)
     - '\bpostpaid\b[^.;]{0,30}\bchurn\b'
+    # Transcript: "revenue attrition" (CRM)
+    - '\brevenue\s+attrition\b'
 
 cm_net_revenue_retention:
   patterns:
@@ -325,6 +357,15 @@ cm_monthly_active_users:
     - '\bmonthly\s+active\s+people\b'
     - '\bmap\b(?=\s+(?:was|were|reached|grew|increased|declined|of|across))'
     - '\bfamily\s+of\s+apps\b[^.;]{0,50}\bmonthly\b'
+    # Transcript: shorthand "monthly actives" (META), "monthly active accounts" (PYPL)
+    - '\bmonthly\s+actives?\b'
+    - '\bmonthly\s+active\s+accounts?\b'
+    # Transcript: "a billion people each month" (META)
+    - '\bpeople\b[^.;]{0,50}\beach\s+month\b'
+    # Transcript: "MAAs grew 30%" (PYPL monthly active accounts shorthand)
+    - '\bMAAs?\b'
+    # Transcript: "monthly active usage growing 23%" (ADBE)
+    - '\bmonthly\s+active\s+usage\b'
   specific_patterns:
     - 'monthly\s+active\s+users?'
     - 'monthly\s+active\s+people'
@@ -337,6 +378,9 @@ cm_daily_active_users:
     - '\bpeople\s+using\b[^.;]{0,30}\bdaily\b'
     - '\bdaily\s+active\s+people\b'
     - '\bdap\b'
+    # Transcript: "3.4 billion people...each day", "people used...daily basis"
+    - '\bpeople\b[^.;]{0,50}\beach\s+day\b'
+    - '\bpeople\s+used?\b[^.;]{0,50}\bdaily\s+basis\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (applications, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|countries?|languages?|integrations?)\b'

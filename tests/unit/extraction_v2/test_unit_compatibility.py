@@ -28,8 +28,6 @@ class TestCountOnlyMetrics:
         "cm_active_customers_total",
         "cm_large_customers_period_end",
         "cm_new_customers_acquired",
-        "cm_daily_active_users",
-        "cm_monthly_active_users",
         "cm_customers_period_end_by_tenure",
         "cm_purchase_transactions_overall",
         "cm_transactions_by_cohort",
@@ -66,9 +64,7 @@ class TestCurrencyOnlyMetrics:
         "cm_acv",
         "cm_lifetime_value_per_customer",
         "cm_customer_acquisition_cost",
-        "cm_revenue_per_customer",
         "cm_average_order_value",
-        "cm_expansion_revenue",
         "cm_deferred_revenue",
         "cm_billings",
         "cm_bookings",
@@ -146,6 +142,24 @@ class TestUnconstrainedMetrics:
         assert is_unit_compatible("cm_cac_payback_period", Unit.COUNT) is True
         assert is_unit_compatible("cm_cac_payback_period", Unit.CURRENCY) is True
 
+    @pytest.mark.parametrize(
+        "unit",
+        [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER],
+    )
+    def test_mau_unconstrained(self, unit: Unit) -> None:
+        """MAU/DAU are unconstrained — transcript annotations include growth rates."""
+        assert is_unit_compatible("cm_monthly_active_users", unit) is True
+        assert is_unit_compatible("cm_daily_active_users", unit) is True
+
+    @pytest.mark.parametrize(
+        "unit",
+        [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER],
+    )
+    def test_revenue_per_customer_unconstrained(self, unit: Unit) -> None:
+        """revenue_per_customer/expansion_revenue are unconstrained for transcripts."""
+        assert is_unit_compatible("cm_revenue_per_customer", unit) is True
+        assert is_unit_compatible("cm_expansion_revenue", unit) is True
+
 
 class TestGetAllowedUnits:
     """Tests for get_allowed_units()."""
@@ -176,4 +190,4 @@ class TestGetAllowedUnits:
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
         # Should have count + currency + percent metrics
-        assert len(METRIC_ALLOWED_UNITS) == 9 + 13 + 10  # 32 total
+        assert len(METRIC_ALLOWED_UNITS) == 7 + 11 + 10  # 28 total

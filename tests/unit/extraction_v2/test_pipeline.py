@@ -616,7 +616,7 @@ class TestDocumentTypeSupport:
         assert config.document_type == DOC_TYPE_TRANSCRIPT
         assert config.enable_image_extraction is False
         assert config.enable_chart_extraction is False
-        assert config.text_proximity_chars == 250
+        assert config.text_proximity_chars == 400
         assert config.relaxed_fp_filter is True
 
     def test_for_transcript_allows_overrides(self) -> None:

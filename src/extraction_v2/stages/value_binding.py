@@ -569,24 +569,28 @@ class ValueBindingStage:
         if not numbers:
             return bound_values
 
-        # Apply ambiguity penalty if multiple values found
-        ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
-
         # Get sentence bounds for the keyword match
         sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
 
-        # Create bound values
+        # Pre-filter: check unit compatibility and percentage context first
+        compatible: list[tuple[re.Match[str], float, Unit, str]] = []
         for num_match, value, unit, raw in numbers:
-            # Check if count value should be treated as percentage (FIX-A)
             unit = self._check_percentage_context(
                 candidate.metric_id, unit, raw, text
             )
-
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
+            compatible.append((num_match, value, unit, raw))
 
-            # Check if value is in the same sentence as the keyword
-            # num_match positions are relative to window_text, need to adjust to full text
+        if not compatible:
+            return bound_values
+
+        # Ambiguity penalty based on surviving values (not pre-filter total)
+        ambiguity_penalty = self.AMBIGUITY_PENALTY if len(compatible) > 1 else 0.0
+
+        # Create bound values
+        for num_match, value, unit, raw in compatible:
+            # num_match positions are relative to window_text, adjust to full text
             num_start_in_text = window_start + num_match.start()
 
             same_sentence = sentence_start <= num_start_in_text < sentence_end

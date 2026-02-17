@@ -9,7 +9,7 @@ Produces HTML suitable for V2 pipeline ingestion with:
 
 Design principles:
 - Deterministic (no LLM calls)
-- Sentence splitting for paragraphs >500 chars (prevents single-speaker-turn bottleneck)
+- Sentence splitting for paragraphs >300 chars (prevents single-speaker-turn bottleneck)
 - Speaker role inference from title patterns
 """
 
@@ -63,8 +63,11 @@ _MONTH_MAP = {
     "september": 9, "october": 10, "november": 11, "december": 12,
 }
 
-# Max paragraph length before sentence splitting kicks in
-_MAX_PARAGRAPH_CHARS = 500
+# Max paragraph length before sentence splitting kicks in.
+# 300 chars (not 500) — transcript speaker turns often contain keywords and
+# values in different sentences.  Splitting creates smaller segments where
+# the same-sentence proximity bonus is more effective.
+_MAX_PARAGRAPH_CHARS = 300
 
 
 @dataclass
@@ -211,7 +214,7 @@ def convert_transcript_to_html(
     Convert a plain-text earnings call transcript to semantic HTML.
 
     Key improvements over spike version:
-    - Sentence splitting for long paragraphs (>500 chars)
+    - Sentence splitting for long paragraphs (>300 chars)
     - Section detection with data-section-type attributes
     - Speaker role inference with data-speaker-role attributes
     - Metadata extraction from header

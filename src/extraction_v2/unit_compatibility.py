@@ -17,19 +17,24 @@ from src.extraction_v2.models import Unit
 # ============================================================================
 
 # Count-only metrics: customer/user counts, transaction counts
+# Note: cm_monthly_active_users and cm_daily_active_users are intentionally
+# unconstrained — transcript annotations include percent growth rates
+# (e.g. "MAU grew 23%", "MAAs grew 30%") that would be filtered at COUNT.
+# SEC filings use explicit count values, so this doesn't affect SEC precision.
 _COUNT_ONLY_METRICS: set[str] = {
     "cm_customers_period_end",
     "cm_active_customers_total",
     "cm_large_customers_period_end",
     "cm_new_customers_acquired",
-    "cm_daily_active_users",
-    "cm_monthly_active_users",
     "cm_customers_period_end_by_tenure",
     "cm_purchase_transactions_overall",
     "cm_transactions_by_cohort",
 }
 
-# Currency-only metrics: ARR, MRR, revenue-per-customer, etc.
+# Currency-only metrics: ARR, MRR, etc.
+# Note: cm_revenue_per_customer and cm_expansion_revenue are intentionally
+# unconstrained — transcript annotations include percent/ratio units
+# (e.g. ARPA growth "nearly 4%", cross-sell "six times more revenue").
 _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_arr",
     "cm_mrr",
@@ -37,9 +42,7 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_acv",
     "cm_lifetime_value_per_customer",
     "cm_customer_acquisition_cost",
-    "cm_revenue_per_customer",
     "cm_average_order_value",
-    "cm_expansion_revenue",
     "cm_deferred_revenue",
     "cm_billings",
     "cm_bookings",

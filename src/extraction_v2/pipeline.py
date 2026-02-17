@@ -122,7 +122,7 @@ class PipelineConfig:
             "document_type": DOC_TYPE_TRANSCRIPT,
             "enable_image_extraction": False,
             "enable_chart_extraction": False,
-            "text_proximity_chars": 250,
+            "text_proximity_chars": 400,
             "relaxed_fp_filter": True,
         }
         defaults.update(overrides)

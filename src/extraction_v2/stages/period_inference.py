@@ -89,9 +89,10 @@ class PeriodInferenceStage:
 
     # Fiscal year patterns
     # FY 2024, FY24, FY'24, FY'25, Fiscal Year 2024, Fiscal 2024, fiscal year '25
+    # Also: "full year 2025", "full year results" (common transcript language)
     FISCAL_YEAR_PATTERN = re.compile(
         r"""
-        (?:FY|Fiscal\s+(?:Year\s+)?|fy)[\s]*['\u2019]?[\s]*(\d{4}|\d{2})(?!\d)
+        (?:FY|Fiscal\s+(?:Year\s+)?|fy|full\s+year)[\s]*['\u2019]?[\s]*(\d{4}|\d{2})(?!\d)
         """,
         re.VERBOSE | re.IGNORECASE,
     )

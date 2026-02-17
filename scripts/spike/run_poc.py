@@ -17,7 +17,9 @@ This is a spike script — not production code.
 import csv
 import json
 import logging
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 # Add project root to path
@@ -57,12 +59,28 @@ def load_annotations(annotations_path: Path) -> dict[str, list[dict]]:
     return annotations
 
 
+_DATE_FROM_FILENAME = re.compile(r"_(\d{4}-\d{2}-\d{2})")
+
+
+def _parse_date_from_filename(html_path: Path) -> date | None:
+    """Parse document date from filename like CRM_2025-02-26.html."""
+    m = _DATE_FROM_FILENAME.search(html_path.stem)
+    if m:
+        try:
+            return date.fromisoformat(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
 def run_pipeline_on_file(pipeline: V2Pipeline, html_path: Path) -> PipelineResult:
     """Run V2 pipeline on a single HTML file."""
     logger.info(f"Processing: {html_path.name}")
+    doc_date = _parse_date_from_filename(html_path)
     result = pipeline.process(
         html_path=html_path,
         filing_id=-1,  # Dummy ID for spike
+        document_date=doc_date,
     )
     return result
 
@@ -97,11 +115,21 @@ def match_facts_to_annotations(
             try:
                 ann_value = float(ann["value"])
                 if fact.value is not None and ann_value != 0:
+                    # Try direct comparison
                     if abs(fact.value - ann_value) / abs(ann_value) <= tolerance:
                         matched.append((fact, ann))
                         used_annotations.add(j)
                         used_facts.add(i)
                         break
+                    # Annotations may store percentages as decimals (0.08 = 8%)
+                    # while pipeline extracts raw numbers (8.0).  Try *100.
+                    if ann.get("unit") in ("percent", "ratio") and 0 < ann_value < 1:
+                        ann_pct = ann_value * 100
+                        if abs(fact.value - ann_pct) / abs(ann_pct) <= tolerance:
+                            matched.append((fact, ann))
+                            used_annotations.add(j)
+                            used_facts.add(i)
+                            break
                 elif fact.value is not None and ann_value == 0 and fact.value == 0:
                     matched.append((fact, ann))
                     used_annotations.add(j)

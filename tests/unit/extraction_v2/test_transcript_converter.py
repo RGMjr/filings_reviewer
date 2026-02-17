@@ -57,11 +57,11 @@ class TestSentenceSplitting:
         assert result == [text]
 
     def test_long_text_split_on_sentence_boundaries(self):
-        # Create a long text >500 chars
+        # Create a long text >300 chars (threshold for sentence splitting)
         sentence1 = "Revenue was strong with growth exceeding our expectations across all regions and segments. " * 6
         sentence2 = "We saw significant improvement in customer metrics across all regions and countries."
         text = sentence1.strip() + " " + sentence2
-        assert len(text) > 500, f"Test text must be >500 chars, got {len(text)}"
+        assert len(text) > 300, f"Test text must be >300 chars, got {len(text)}"
         result = _split_sentences(text)
         assert len(result) > 1
 
@@ -207,7 +207,7 @@ class TestConvertTranscriptToHtml:
         assert 'class="operator"' in html
 
     def test_long_speaker_turn_split_into_sentences(self):
-        # Create a very long speaker turn (>500 chars)
+        # Create a very long speaker turn (>300 chars)
         long_content = " ".join(
             [f"We saw growth of {i}% in segment {i}." for i in range(1, 30)]
         )

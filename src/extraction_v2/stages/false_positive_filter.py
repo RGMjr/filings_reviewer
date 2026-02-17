@@ -256,9 +256,13 @@ class FalsePositiveFilterStage:
         self._filter = FalsePositiveFilter()
         # Relaxed filter for transcripts/presentations:
         # - Disables financial statement context check (SEC-specific)
-        # - TOC checks are harmless (transcripts don't have "TABLE OF CONTENTS")
+        # - Disables V1 year filtering (V2 rule 1 already catches year values)
+        # - Lowers min_metric_value to 2 (transcripts report small growth
+        #   percentages like "4%" that would be filtered at the default of 10)
         self._filter_relaxed = FalsePositiveFilter(
             filter_financial_statements=False,
+            filter_years=False,
+            min_value=2,
         )
 
     def process(self, context: PipelineContext) -> StageResult:
