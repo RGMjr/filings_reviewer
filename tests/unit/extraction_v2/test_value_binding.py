@@ -1713,3 +1713,197 @@ class TestUnitFiltering:
 
         assert result.success
         assert len(context.bound_values) == 0  # $14.8M filtered in Strategy 5
+
+
+# ============================================================================
+# Table Scale Factor - Count Metrics (Decimal-Gated)
+# ============================================================================
+
+
+class TestTableScaleFactorCountMetrics:
+    """Tests for decimal-gated count scaling in '(in thousands)' tables.
+
+    Farfetch pattern: count metrics with decimal values (796.3) in a scaled
+    table should be multiplied by the scale factor (→ 796,300).
+    Snowflake pattern: count metrics with integer values (3,117) should NOT
+    be scaled, even in a scaled table.
+    """
+
+    @staticmethod
+    def _make_thousands_table(
+        table_id: str, stub_text: str, value_text: str
+    ) -> Table:
+        """Build a minimal '(in thousands)' table with one metric row."""
+        cells = [
+            Cell(
+                row=0, col=0, text="(in thousands)", is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=0, col=1, text="2023", is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=1, col=0, text=stub_text, is_stub=True,
+                header_path=["(in thousands)"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text=value_text,
+                header_path=["2023"], stub_path=[stub_text],
+            ),
+        ]
+        table = Table(
+            table_id=table_id,
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+        return table
+
+    def test_farfetch_decimal_count_scaled(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Decimal count in '(in thousands)' table → scaled (796.3 → 796,300)."""
+        table = self._make_thousands_table("ff-1", "Active Consumers", "796.3")
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-1",
+            metric_id="cm_active_customers_total",
+            match_text="Active Consumers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(796_300, rel=1e-6)
+        assert bv.unit in (Unit.COUNT, Unit.OTHER)
+
+    def test_snowflake_integer_count_not_scaled(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Integer count in '(in thousands)' table → NOT scaled (3,117 stays 3,117)."""
+        table = self._make_thousands_table("sf-1", "Customers", "3,117")
+        candidate = MetricCandidate(
+            candidate_id="cand-sf-1",
+            metric_id="cm_customers_period_end",
+            match_text="Customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="sf-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(3117, rel=1e-6)
+        assert bv.unit in (Unit.COUNT, Unit.OTHER)
+
+    def test_dot_zero_format_still_scaled(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Trailing .0 decimal (1,118.0) still triggers scaling → 1,118,000."""
+        table = self._make_thousands_table("ff-2", "Number of Orders", "1,118.0")
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-2",
+            metric_id="cm_purchase_transactions_overall",
+            match_text="Number of Orders",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-2", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(1_118_000, rel=1e-6)
+
+    def test_currency_still_scaled_normally(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Currency values are always scaled regardless of decimal presence."""
+        table = self._make_thousands_table("cur-1", "Revenue", "$1,500")
+        candidate = MetricCandidate(
+            candidate_id="cand-cur-1",
+            metric_id="cm_arr",
+            match_text="Revenue",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="cur-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(1_500_000, rel=1e-6)
+        assert bv.unit == Unit.CURRENCY
+
+    def test_non_count_metric_decimal_not_scaled(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Non-count metric with decimal doesn't scale via the count path."""
+        table = self._make_thousands_table("nc-1", "NRR", "112.5")
+        candidate = MetricCandidate(
+            candidate_id="cand-nc-1",
+            metric_id="cm_net_revenue_retention",
+            match_text="NRR",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="nc-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # NRR is percent-only; unit filtering may reject or it won't be count-scaled
+        for bv in context.bound_values:
+            # If it passes unit filtering, it should NOT have been scaled
+            assert bv.value == pytest.approx(112.5, rel=1e-6) or bv.value == pytest.approx(1.125, rel=1e-6)
+
+    def test_has_fractional_value_with_decimal(self) -> None:
+        """_has_fractional_value returns True for strings with '.'."""
+        assert ValueBindingStage._has_fractional_value("796.3") is True
+        assert ValueBindingStage._has_fractional_value("1,118.0") is True
+        assert ValueBindingStage._has_fractional_value("0.5") is True
+
+    def test_has_fractional_value_without_decimal(self) -> None:
+        """_has_fractional_value returns False for integer strings."""
+        assert ValueBindingStage._has_fractional_value("3117") is False
+        assert ValueBindingStage._has_fractional_value("3,117") is False
+        assert ValueBindingStage._has_fractional_value("948") is False
+
+    def test_scale_pattern_with_trailing_clause(self) -> None:
+        """Scale regex matches '(in thousands, unless stated otherwise)'."""
+        pattern = ValueBindingStage.TABLE_SCALE_PATTERN
+        m = pattern.search("(in thousands, unless stated otherwise)")
+        assert m is not None
+        assert m.group(1).lower() == "thousands"
+
+    def test_scale_pattern_plain(self) -> None:
+        """Scale regex still matches plain '(in thousands)'."""
+        pattern = ValueBindingStage.TABLE_SCALE_PATTERN
+        m = pattern.search("(in thousands)")
+        assert m is not None
+        assert m.group(1).lower() == "thousands"
+
+    def test_scale_pattern_except_share(self) -> None:
+        """Scale regex matches '(in thousands except share and per share data)'."""
+        pattern = ValueBindingStage.TABLE_SCALE_PATTERN
+        m = pattern.search("(in thousands except share and per share data)")
+        assert m is not None
+        assert m.group(1).lower() == "thousands"
