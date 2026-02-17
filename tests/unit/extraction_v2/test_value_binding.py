@@ -2166,3 +2166,125 @@ class TestColumnTypeFiltering:
         assert 1_400_000 not in values  # Not scaled either
         # 796.3 should be found (and scaled by table scale factor)
         assert len(context.bound_values) >= 1
+
+
+class TestTextProximityFilters:
+    """Tests for text_proximity-specific filtering of count/currency metrics."""
+
+    def test_currency_metric_rejects_bare_number_in_text(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Bare numbers (Unit.OTHER) near currency metric keywords should not bind.
+
+        E.g., '796K' near 'average order value' is likely a customer count,
+        not a currency value.
+        """
+        segment = Segment(
+            segment_id="seg-aov",
+            text="The average order value grew. Active consumers reached 796,000 in 2018.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-aov-text",
+            metric_id="cm_average_order_value",
+            match_text="average order value",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-aov",
+                text_span=(4, 23),
+            ),
+        )
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # 796,000 is Unit.OTHER (no $ sign) — should NOT bind to AOV
+        assert len(context.bound_values) == 0
+
+    def test_currency_metric_accepts_dollar_value_in_text(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Currency values (Unit.CURRENCY) near currency metric keywords should bind."""
+        segment = Segment(
+            segment_id="seg-aov-ok",
+            text="The average order value was $72.50 in the period.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-aov-ok",
+            metric_id="cm_average_order_value",
+            match_text="average order value",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-aov-ok",
+                text_span=(4, 23),
+            ),
+        )
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        assert any(bv.value == 72.50 for bv in context.bound_values)
+
+    def test_large_value_accepted_for_count_metric_in_text(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Large values (>=100) near count metric keywords should bind normally."""
+        segment = Segment(
+            segment_id="seg-large",
+            text="Active consumers reached 796,000 in the period.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-large",
+            metric_id="cm_active_customers_total",
+            match_text="Active consumers",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-large",
+                text_span=(0, 16),
+            ),
+        )
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_table_binding_still_allows_bare_currency(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Table bindings should still allow bare numbers for currency metrics.
+
+        The Unit.OTHER filter only applies to text_proximity, not table bindings.
+        """
+        table = Table(
+            table_id="tbl-curr-bare",
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=[
+                Cell(row=0, col=0, text="Metric", is_header=True),
+                Cell(row=0, col=1, text="Value", is_header=True),
+                Cell(row=1, col=0, text="ARR", is_header=False, is_stub=True,
+                     header_path=["Metric"], stub_path=[]),
+                Cell(row=1, col=1, text="500", is_header=False,
+                     header_path=["Value"], stub_path=["ARR"]),
+            ],
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-tbl-bare",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="tbl-curr-bare",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # Table binding should still work for bare numbers
+        assert len(context.bound_values) >= 1
