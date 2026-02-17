@@ -619,6 +619,16 @@ class ValueBindingStage:
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
+            # Text-proximity-specific filters for count/currency metrics:
+            # 1. Reject bare numbers (Unit.OTHER) for currency-only metrics
+            #    (e.g., "796K" near AOV keyword is a customer count, not a price)
+            if candidate.metric_id in _CURRENCY_ONLY_METRICS and unit == Unit.OTHER:
+                logger.debug(
+                    "Skipping bare number for currency metric %s in text_proximity",
+                    candidate.metric_id,
+                )
+                continue
+
             # num_match positions are relative to window_text, adjust to full text
             num_start_in_text = window_start + num_match.start()
             same_sentence = sentence_start <= num_start_in_text < sentence_end
