@@ -1,8 +1,8 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.3
+**Version**: 1.4
 **Created**: 2026-01-23
-**Updated**: 2026-02-04
+**Updated**: 2026-02-17
 **Status**: Complete (All 13 Phases)
 
 ## Executive Summary
@@ -525,11 +525,37 @@ These V1 modules are stable and should be imported into V2:
 
 ---
 
-## Next Steps
+## Post-Completion Enhancements (2026-02-05 → 2026-02-17)
 
-1. **Create Worker Prompt** for Phase 1 (Ingestion)
-2. **Populate `ops/DEVELOPMENT_PLAN.md`** with Phase 1 acceptance criteria
-3. **Start Ralph** in develop mode
+After all 13 phases were completed, the following enhancements were added:
+
+### False Positive Filter Stage
+- **File:** `src/extraction_v2/stages/false_positive_filter.py`
+- V2-native FP filter stage that runs after candidate generation
+- Decimal-gated count scaling to prevent false inflation of count metrics
+- Percentage context detection
+
+### Unit Compatibility Module
+- **File:** `src/extraction_v2/unit_compatibility.py`
+- Cross-unit validation to reduce false positives (e.g., dollar values matched to percentage metrics)
+- Integrated into the value binding and fact construction stages
+
+### Fact Identity Deduplication (SQL)
+- **File:** `sql/10_v2_fact_identity_dedup.sql`
+- Database-level deduplication migration beyond the original schema (sql/00-09)
+- Ensures idempotent fact storage at the database layer
+
+### Gold Standard Performance (as of 2026-02-17)
+- **V2 overall:** P=73%, R=53%, F1=61%
+- **V1 baseline:** P=91%, R=54%, F1=68%
+- V2 precision improved from 58% → 70% → 73% through iterative FP reduction
+
+## Current Status
+
+All 13 implementation phases are complete. Active work focuses on:
+1. **Precision/recall optimization** via gold standard validation
+2. **Keyword tuning** in `config/metric_keywords.yaml`
+3. **FP rule refinement** in the false positive filter stage
 
 ---
 
@@ -540,3 +566,4 @@ These V1 modules are stable and should be imported into V2:
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
+| 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |

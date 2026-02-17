@@ -6,20 +6,22 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-- Farfetch gold standard: P=83%, R=70%, F1=76% (d42c54e)
-- docs/archive purge: 166→19 files, pre-commit folder guard (5682a3c)
-- V2 FP filter rules: V2-native false positive filter stage (f75f8b8)
-- Cross-metric dedup: Span-containment dedup for wrong-metric FPs (6003400)
-- NUMBER_PATTERN fix: Prevented year-splitting into fragments (879f752)
+- V2 precision tuning: 58% → 70% → 73% via FP reduction + decimal-gated count scaling (49200a7)
+- V2 recall improvements: duplicate-skip scoring + keyword fixes (2b95e1e)
+- V2 FN reduction: Snowflake + Farfetch targeted fixes (5420a8d)
+- V2 fact dedup: pipeline output bug fix + upstream dedup improvements (d3bd1b3)
+- Worker prompt archival: 13 prompts archived to docs/archive/worker-prompts/ (18745ec)
+- Context rot prevention: session-scoping rules, MEMORY enrichment (a3e342b)
 
 ## Current Focus
 
-- Context rot prevention: session-scoping rules, MEMORY enrichment, worker prompt archival
+- V2 gold standard precision/recall optimization (ongoing)
 
 ## Test Status
 
 - 4,765 tests collected, 87% coverage
-- Farfetch gold standard: P=83%, R=70%, F1=76%
+- V2 gold standard: P=73%, R=53%, F1=61% (overall, 4 companies)
+- V1 gold standard: P=91%, R=54%, F1=68% (baseline_metrics.json)
 - Pre-commit scoped to unit tests only
 
 ## Key Learnings for Next Iteration
@@ -30,10 +32,12 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Pre-commit scoped to unit tests (integration too slow for hook)
 - docs/archive policy: only extraction-validation/ and worker-prompts/ subfolders
 - Session approach matrix added to CLAUDE.md — use Ralph after 5+ commits
+- Decimal-gated count scaling prevents false inflation of count metrics
+- Unit compatibility checks reduce cross-unit false positives
 
 ## Blockers or Warnings
 
-- 13 worker prompts pending archival to docs/archive/worker-prompts/
+- None currently
 
 ---
 
