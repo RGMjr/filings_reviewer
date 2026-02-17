@@ -109,6 +109,9 @@ cm_customers_period_end:
     - '\bconsumer\s+base\b'
     - '\btotal\s+accounts?\b'
     - '\btotal\s+clients?\b'
+    # Transcript vocabulary (telecom: postpaid net additions, subscriber additions)
+    - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
+    - '\bsubscriber\s+additions?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -206,12 +209,18 @@ cm_active_customers_total:
     - '\bactive\s+clients?\b'
     - '\bactive\s+users?\b'
     - '\bactive\s+subscribers?\b'
+    # Transcript vocabulary (telecom/gaming)
+    - '\bmonthly\s+active\s+unique\s+accounts?\b'
+    - '\blive\s+services?\s+players?\b'
+    - '\bpostpaid\b[^.;]{0,30}\bcustomers?\b(?!\s*(?:net|additions?|adds?))'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
     # FIX-FP: DAU/MAU context belongs to dedicated metrics, not generic "active"
     - '\bdaily\s+active\b'
     - '\bmonthly\s+active\b'
+    # FIX-FP: Postpaid net additions/adds belong to cm_customers_period_end
+    - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -224,6 +233,9 @@ cm_revenue_per_customer:
     - '\brevenue\s+per\s+customer\b'
     - '\brevenue\s+per\s+user\b'
     - '\bper\s+customer\s+revenue\b'
+    # Transcript vocabulary (telecom)
+    - '\barpa\b'
+    - '\baverage\s+revenue\s+per\s+account\b'
   exclusions:
     - '\bcost\s+per\s+customer\b'
     - '\bcost\s+per\s+user\b'
@@ -280,6 +292,8 @@ cm_customer_churn_rate:
     # Consumer synonyms (e-commerce terminology)
     - '\bconsumer\s+churn\b'
     - '\bconsumer\s+attrition\b'
+    # Transcript vocabulary (telecom)
+    - '\bpostpaid\b[^.;]{0,30}\bchurn\b'
 
 cm_net_revenue_retention:
   patterns:
@@ -306,18 +320,29 @@ cm_monthly_active_users:
   patterns:
     - '\bmau\b'
     - '\bmonthly\s+active\s+users?\b'
+    # Transcript vocabulary (Meta/Facebook)
+    - '\bpeople\s+using\b[^.;]{0,30}\bmonthly\b'
+    - '\bmonthly\s+active\s+people\b'
+    - '\bmap\b(?=\s+(?:was|were|reached|grew|increased|declined|of|across))'
+    - '\bfamily\s+of\s+apps\b[^.;]{0,50}\bmonthly\b'
   specific_patterns:
     - 'monthly\s+active\s+users?'
+    - 'monthly\s+active\s+people'
 
 cm_daily_active_users:
   patterns:
     - '\bdau\b'
     - '\bdaily\s+active\s+users?\b'
+    # Transcript vocabulary (Meta/Facebook)
+    - '\bpeople\s+using\b[^.;]{0,30}\bdaily\b'
+    - '\bdaily\s+active\s+people\b'
+    - '\bdap\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (applications, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|countries?|languages?|integrations?)\b'
   specific_patterns:
     - 'daily\s+active\s+users?'
+    - 'daily\s+active\s+people'
 
 cm_gross_margin_by_cohort:
   # Only patterns that explicitly require "cohort" or "vintage" context

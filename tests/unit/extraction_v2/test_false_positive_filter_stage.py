@@ -1006,11 +1006,18 @@ class TestRelaxedMode:
         assert is_fp is True
         assert reason == "v2_year_value"
 
-    def test_relaxed_still_filters_linearized_table(self):
-        """relaxed=True does NOT skip linearized table filtering."""
+    def test_relaxed_skips_linearized_table(self):
+        """relaxed=True skips linearized table filtering (transcripts have no table markers)."""
         source = "[ROW] Revenue [CELL] 400"
         bv = _make_bound_value("c1", 400.0, "400", Unit.COUNT, "seg-1")
         is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp is False
+
+    def test_strict_still_filters_linearized_table(self):
+        """relaxed=False still filters linearized table markers."""
+        source = "[ROW] Revenue [CELL] 400"
+        bv = _make_bound_value("c1", 400.0, "400", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=False)
         assert is_fp is True
         assert reason == "v2_linearized_table"
 
@@ -1053,3 +1060,27 @@ class TestRelaxedMode:
         )
         stage.process(ctx_relaxed)
         assert len(ctx_relaxed.bound_values) == 1
+
+    def test_relaxed_v1_skips_financial_statement_check(self, stage):
+        """Relaxed mode uses V1 filter with financial statement check disabled."""
+        # Text that would trigger V1's financial statement filter
+        source = "Cost of Revenue Net Loss Depreciation 50,000 customers"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
+        bv = _make_bound_value("c1", 50000.0, "50,000", Unit.COUNT, "seg-1")
+
+        # Relaxed config: should keep (financial statement filter disabled)
+        @dataclass
+        class RelaxedConfig:
+            min_confidence_auto_accept: float = 0.90
+            relaxed_fp_filter: bool = True
+
+        ctx_relaxed = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=RelaxedConfig(),  # type: ignore
+        )
+        stage.process(ctx_relaxed)
+        # In relaxed mode, financial statement check is skipped so value should be kept
+        assert len(ctx_relaxed.bound_values) >= 1

@@ -88,10 +88,10 @@ class PeriodInferenceStage:
     )
 
     # Fiscal year patterns
-    # FY 2024, FY24, FY'24, Fiscal Year 2024, Fiscal 2024
+    # FY 2024, FY24, FY'24, FY'25, Fiscal Year 2024, Fiscal 2024, fiscal year '25
     FISCAL_YEAR_PATTERN = re.compile(
         r"""
-        (?:FY|Fiscal\s+(?:Year\s+)?|fy)[\s']*(\d{4}|\d{2})(?!\d)
+        (?:FY|Fiscal\s+(?:Year\s+)?|fy)[\s]*['\u2019]?[\s]*(\d{4}|\d{2})(?!\d)
         """,
         re.VERBOSE | re.IGNORECASE,
     )
@@ -167,6 +167,18 @@ class PeriodInferenceStage:
         re.VERBOSE | re.IGNORECASE,
     )
 
+    # Quarter-without-year pattern — standalone Q1, Q2, Q3, Q4 (no year attached)
+    # Used in transcripts where "in Q4" is said without specifying the year
+    QUARTER_STANDALONE_PATTERN = re.compile(
+        r"\b[Qq]([1-4])\b(?!\s*[\'\u2019]?\s*\d)",
+    )
+
+    # Relative period patterns — "this quarter", "last quarter", "prior quarter"
+    RELATIVE_QUARTER_PATTERN = re.compile(
+        r"\b(this|last|prior|previous|current)\s+quarter\b",
+        re.IGNORECASE,
+    )
+
     # Plain year pattern (with fiscal context required)
     # 2024, 2023 (only when in fiscal context like column headers)
     PLAIN_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
@@ -220,6 +232,10 @@ class PeriodInferenceStage:
         fiscal_year = context.document.fiscal_year if context.document else None
         fiscal_period = context.document.fiscal_period if context.document else ""
 
+        # Get document_date for transcript quarter inference (must be a real date)
+        raw_doc_date = getattr(context, "document_date", None)
+        document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
+
         # Build lookup for segments and tables
         segment_lookup = {s.segment_id: s for s in context.segments}
         table_lookup = {t.table_id: t for t in context.tables}
@@ -233,6 +249,7 @@ class PeriodInferenceStage:
                     table_lookup,
                     fiscal_year,
                     fiscal_period,
+                    document_date=document_date,
                 )
                 if period:
                     bound_value.period_type = period.period_type
@@ -276,6 +293,7 @@ class PeriodInferenceStage:
         table_lookup: dict[str, Table],
         fiscal_year: int | None,
         fiscal_period: str,
+        document_date: date | None = None,
     ) -> ParsedPeriod | None:
         """
         Infer the period for a single bound value.
@@ -286,6 +304,7 @@ class PeriodInferenceStage:
             table_lookup: Table ID -> Table mapping
             fiscal_year: Filing fiscal year for fallback
             fiscal_period: Filing fiscal period for fallback
+            document_date: Document date (for transcript quarter inference)
 
         Returns:
             ParsedPeriod if found, None otherwise
@@ -310,6 +329,7 @@ class PeriodInferenceStage:
                 period = self._parse_period_from_text(
                     segment.text,
                     loc.text_span,
+                    document_date=document_date,
                 )
                 if period:
                     return period
@@ -317,6 +337,12 @@ class PeriodInferenceStage:
         # Strategy 3: Filing fiscal period fallback
         if fiscal_year:
             period = self._create_fiscal_fallback(fiscal_year, fiscal_period)
+            if period:
+                return period
+
+        # Strategy 4: Document-date fallback (for transcripts without fiscal metadata)
+        if document_date:
+            period = self._create_document_date_fallback(document_date)
             if period:
                 return period
 
@@ -389,6 +415,7 @@ class PeriodInferenceStage:
         self,
         text: str,
         text_span: tuple[int, int] | None,
+        document_date: date | None = None,
     ) -> ParsedPeriod | None:
         """
         Parse period from text context around a value.
@@ -396,6 +423,7 @@ class PeriodInferenceStage:
         Args:
             text: Full segment text
             text_span: (start, end) character offsets of the value
+            document_date: Document date for resolving standalone quarters and relative periods
 
         Returns:
             ParsedPeriod if found, None otherwise
@@ -422,12 +450,40 @@ class PeriodInferenceStage:
                 period.confidence = self.SAME_SENTENCE_CONFIDENCE
                 return period
 
+            # Try transcript-specific patterns (standalone quarter, relative quarter)
+            if document_date:
+                period = self._try_parse_standalone_quarter(same_sentence_text, document_date)
+                if period:
+                    period.source = "text_context"
+                    period.confidence = self.SAME_SENTENCE_CONFIDENCE
+                    return period
+
+                period = self._try_parse_relative_quarter(same_sentence_text, document_date)
+                if period:
+                    period.source = "text_context"
+                    period.confidence = self.SAME_SENTENCE_CONFIDENCE
+                    return period
+
         # Try extended context (lower confidence)
         period = self._try_parse_all_patterns(search_text)
         if period:
             period.source = "text_context"
             period.confidence = self.EXTENDED_CONTEXT_CONFIDENCE
             return period
+
+        # Try transcript-specific patterns in extended context
+        if document_date:
+            period = self._try_parse_standalone_quarter(search_text, document_date)
+            if period:
+                period.source = "text_context"
+                period.confidence = self.EXTENDED_CONTEXT_CONFIDENCE
+                return period
+
+            period = self._try_parse_relative_quarter(search_text, document_date)
+            if period:
+                period.source = "text_context"
+                period.confidence = self.EXTENDED_CONTEXT_CONFIDENCE
+                return period
 
         return None
 
@@ -802,6 +858,124 @@ class PeriodInferenceStage:
             return None
 
         return None
+
+    def _try_parse_standalone_quarter(
+        self, text: str, document_date: date
+    ) -> ParsedPeriod | None:
+        """
+        Parse standalone quarter (e.g., "in Q4") using document_date for the year.
+
+        Only used when document_date is available (typically transcripts).
+
+        Args:
+            text: Text to search
+            document_date: Document date to infer year
+
+        Returns:
+            ParsedPeriod with QUARTERLY type, or None
+        """
+        match = self.QUARTER_STANDALONE_PATTERN.search(text)
+        if not match:
+            return None
+
+        quarter = int(match.group(1))
+        year = document_date.year
+
+        try:
+            start_month = self.QUARTER_START_MONTHS[quarter]
+            end_month = self.QUARTER_END_MONTHS[quarter]
+            start = date(year, start_month, 1)
+            end = date(year, end_month, self._last_day_of_month(year, end_month))
+            return ParsedPeriod(
+                period_type=PeriodType.QUARTERLY,
+                start=start,
+                end=end,
+                confidence=0.0,  # Set by caller
+                source="",
+                raw_text=match.group(0),
+            )
+        except ValueError:
+            return None
+
+    def _try_parse_relative_quarter(
+        self, text: str, document_date: date
+    ) -> ParsedPeriod | None:
+        """
+        Parse relative quarter patterns ("this quarter", "last quarter").
+
+        Args:
+            text: Text to search
+            document_date: Document date to resolve relative references
+
+        Returns:
+            ParsedPeriod with QUARTERLY type, or None
+        """
+        match = self.RELATIVE_QUARTER_PATTERN.search(text)
+        if not match:
+            return None
+
+        relative = match.group(1).lower()
+
+        # Current quarter from document_date
+        current_q = (document_date.month - 1) // 3 + 1
+        year = document_date.year
+
+        if relative in ("this", "current"):
+            quarter = current_q
+        elif relative in ("last", "prior", "previous"):
+            quarter = current_q - 1
+            if quarter < 1:
+                quarter = 4
+                year -= 1
+        else:
+            return None
+
+        try:
+            start_month = self.QUARTER_START_MONTHS[quarter]
+            end_month = self.QUARTER_END_MONTHS[quarter]
+            start = date(year, start_month, 1)
+            end = date(year, end_month, self._last_day_of_month(year, end_month))
+            return ParsedPeriod(
+                period_type=PeriodType.QUARTERLY,
+                start=start,
+                end=end,
+                confidence=0.0,
+                source="",
+                raw_text=match.group(0),
+            )
+        except ValueError:
+            return None
+
+    def _create_document_date_fallback(
+        self, document_date: date
+    ) -> ParsedPeriod | None:
+        """
+        Create a period from document_date as last-resort fallback.
+
+        Infers the current quarter from the document date.
+
+        Args:
+            document_date: Document date
+
+        Returns:
+            ParsedPeriod with FILING_FALLBACK_CONFIDENCE, or None
+        """
+        quarter = (document_date.month - 1) // 3 + 1
+        year = document_date.year
+
+        try:
+            start_month = self.QUARTER_START_MONTHS[quarter]
+            end_month = self.QUARTER_END_MONTHS[quarter]
+            return ParsedPeriod(
+                period_type=PeriodType.QUARTERLY,
+                start=date(year, start_month, 1),
+                end=date(year, end_month, self._last_day_of_month(year, end_month)),
+                confidence=self.FILING_FALLBACK_CONFIDENCE,
+                source="document_date_fallback",
+                raw_text=f"Q{quarter} {year} (from document date)",
+            )
+        except ValueError:
+            return None
 
     def _normalize_year(self, year_str: str) -> int | None:
         """

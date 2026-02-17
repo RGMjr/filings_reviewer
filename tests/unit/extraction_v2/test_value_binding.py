@@ -1673,3 +1673,206 @@ class TestConfigBasedProximity:
         result_wide = stage.process(context_wide)  # type: ignore
         assert result_wide.success
         assert len(context_wide.bound_values) >= 1
+
+
+# ============================================================================
+# Transcript-Specific Tests (A1: Sentence-Level Proximity)
+# ============================================================================
+
+
+@dataclass
+class TranscriptPipelineConfig:
+    """Mock config simulating PipelineConfig.for_transcript()."""
+
+    text_proximity_chars: int = 250
+    relaxed_fp_filter: bool = True
+    document_type: str = "transcript"
+    min_confidence_auto_accept: float = 0.90
+
+
+@dataclass
+class TranscriptPipelineContext:
+    """Mock pipeline context with transcript document_type."""
+
+    html_path: Path = field(default_factory=lambda: Path("/test/transcript.html"))
+    filing_id: int = 1
+    config: TranscriptPipelineConfig = field(default_factory=TranscriptPipelineConfig)
+    document_type: str = "transcript"
+    segments: list[Segment] = field(default_factory=list)
+    tables: list[Table] = field(default_factory=list)
+    images: list[Any] = field(default_factory=list)
+    candidates: list[MetricCandidate] = field(default_factory=list)
+    bound_values: list[Any] = field(default_factory=list)
+
+
+class TestTranscriptBindingFeatures:
+    """Tests for transcript-specific value binding enhancements."""
+
+    def test_transcript_uses_wider_proximity_window(self) -> None:
+        """Transcript config uses 250-char proximity instead of 100."""
+        stage = ValueBindingStage(proximity_window=100)
+
+        # Value ~180 chars from keyword (outside 100, inside 250)
+        padding = "a " * 85  # ~170 chars of padding
+        segment = Segment(
+            segment_id="seg-transcript-prox",
+            text=f"Our DAU metric is strong. {padding} We reached 150 million users.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-t-prox",
+            metric_id="cm_daily_active_users",
+            match_text="DAU",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-transcript-prox",
+                text_span=(4, 7),
+            ),
+        )
+
+        # SEC context (100 char proximity) — should NOT find value
+        context_sec = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result_sec = stage.process(context_sec)  # type: ignore
+        assert len(context_sec.bound_values) == 0
+
+        # Transcript context (250 char proximity) — should find value
+        context_tx = TranscriptPipelineContext(
+            segments=[segment], candidates=[candidate]
+        )
+        result_tx = stage.process(context_tx)  # type: ignore
+        assert len(context_tx.bound_values) >= 1
+
+    def test_adjacent_sentence_bonus_in_transcript(self) -> None:
+        """Values in adjacent sentences get bonus confidence in transcript mode."""
+        stage = ValueBindingStage()
+
+        # Keyword in one sentence, value in adjacent sentence
+        segment = Segment(
+            segment_id="seg-adj",
+            text="Our monthly active users continue to grow. The number reached 150 million.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-adj",
+            metric_id="cm_monthly_active_users",
+            match_text="monthly active users",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-adj",
+                text_span=(4, 24),
+            ),
+        )
+
+        context = TranscriptPipelineContext(
+            segments=[segment], candidates=[candidate]
+        )
+        result = stage.process(context)  # type: ignore
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+        # Should have adjacent sentence bonus (0.05) but NOT same sentence bonus (0.1)
+        bv = context.bound_values[0]
+        expected_base = stage.TEXT_BINDING_BASE  # 0.4
+        # "150 million" has no $ or % → COUNT unit, no unit presence bonus
+        # Adjacent sentence → +0.05
+        assert bv.binding_confidence >= expected_base + stage.ADJACENT_SENTENCE_BONUS - 0.01
+
+    def test_same_sentence_still_preferred_over_adjacent(self) -> None:
+        """Same-sentence values still get higher confidence than adjacent in transcripts."""
+        stage = ValueBindingStage()
+
+        segment = Segment(
+            segment_id="seg-same-tx",
+            text="We had 150 million monthly active users. Growth was strong.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-same-tx",
+            metric_id="cm_monthly_active_users",
+            match_text="monthly active users",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-same-tx",
+                text_span=(18, 38),
+            ),
+        )
+
+        context = TranscriptPipelineContext(
+            segments=[segment], candidates=[candidate]
+        )
+        result = stage.process(context)  # type: ignore
+        assert len(context.bound_values) >= 1
+
+        bv = context.bound_values[0]
+        # Same sentence bonus (0.1) > adjacent sentence bonus (0.05)
+        assert bv.binding_confidence >= stage.TEXT_BINDING_BASE + stage.SAME_SENTENCE_BONUS - 0.01
+
+    def test_approximate_value_parsing(self) -> None:
+        """Approximate value prefixes are stripped before number parsing."""
+        stage = ValueBindingStage()
+
+        test_cases = [
+            ("about 150 million", 150_000_000),
+            ("roughly $2.5 billion", 2_500_000_000),
+            ("approximately 500,000", 500_000),
+            ("nearly 100%", 100),
+            ("more than 50 million", 50_000_000),
+        ]
+
+        for text, expected in test_cases:
+            result = stage._parse_number(text)
+            assert result is not None, f"Failed to parse: {text}"
+            value, unit, raw = result
+            assert value == expected, f"Expected {expected} for '{text}', got {value}"
+
+    def test_approximate_prefix_stripped_in_binding(self) -> None:
+        """Approximate prefixes in segment text don't block value binding."""
+        stage = ValueBindingStage()
+
+        segment = Segment(
+            segment_id="seg-approx",
+            text="We now have approximately 150 million monthly active users.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-approx",
+            metric_id="cm_monthly_active_users",
+            match_text="monthly active users",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-approx",
+                text_span=(36, 56),
+            ),
+        )
+
+        context = TranscriptPipelineContext(
+            segments=[segment], candidates=[candidate]
+        )
+        result = stage.process(context)  # type: ignore
+        assert len(context.bound_values) >= 1
+        # "150 million" should parse to 150,000,000
+        values = [bv.value for bv in context.bound_values]
+        assert 150_000_000 in values
+
+    def test_non_transcript_no_adjacent_bonus(self) -> None:
+        """SEC filings (non-transcript) don't get adjacent sentence bonus."""
+        stage = ValueBindingStage()
+
+        segment = Segment(
+            segment_id="seg-sec-adj",
+            text="Our monthly active users continue to grow. The number reached 150 million.",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-sec-adj",
+            metric_id="cm_monthly_active_users",
+            match_text="monthly active users",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-sec-adj",
+                text_span=(4, 24),
+            ),
+        )
+
+        # SEC context (not transcript) — no adjacent bonus
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+        if context.bound_values:
+            bv = context.bound_values[0]
+            # Should NOT have adjacent sentence bonus in SEC mode
+            assert bv.binding_confidence <= stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + 0.01

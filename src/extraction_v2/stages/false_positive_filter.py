@@ -102,7 +102,8 @@ def _is_v2_false_positive(
     # into text segments.  The same table data is also processed by the
     # table-reconstruction path, so these text-sourced extractions are noisy
     # duplicates that bypass the structured header/stub binding.
-    if _TABLE_MARKER_RE.search(source_text):
+    # Skipped in relaxed mode (transcripts never have table markers).
+    if not relaxed and _TABLE_MARKER_RE.search(source_text):
         return True, "v2_linearized_table"
 
     # Rules 3+4 skipped in relaxed mode (transcripts/presentations)
@@ -232,8 +233,8 @@ class FalsePositiveFilterStage:
 
     V2-native rules (run first):
     - Year values for ALL unit types (V1 only handles unit=count)
-    - Linearized table text ([CELL]/[ROW] marker detection)
-    - Financial table annotations ("In thousands", "stock-based compensation")
+    - Linearized table text ([CELL]/[ROW] marker detection) — skipped in relaxed mode
+    - Financial table annotations ("In thousands", "stock-based compensation") — skipped in relaxed mode
     - Company ranking names ("Fortune 100", "Forbes 500")
 
     V1 FalsePositiveFilter (positional overlap):
@@ -242,14 +243,23 @@ class FalsePositiveFilterStage:
     - Reference numbers (page, note, section, exhibit, figure, etc.)
     - Year values (standalone 4-digit years 1990-2100, count unit only)
     - Measurement units ("24-hour", "30-day")
-    - TOC proximity and dot leader page references
-    - Financial statement line items
+    - TOC proximity and dot leader page references — skipped in relaxed mode
+    - Financial statement line items — skipped in relaxed mode
     - Below-minimum-value counts
+
+    Relaxed mode (for transcripts/presentations) disables SEC-filing-specific
+    checks that cause excessive false negatives on spoken content.
     """
 
     def __init__(self) -> None:
-        """Initialize with a V1 FalsePositiveFilter instance."""
+        """Initialize with V1 FalsePositiveFilter instances (normal + relaxed)."""
         self._filter = FalsePositiveFilter()
+        # Relaxed filter for transcripts/presentations:
+        # - Disables financial statement context check (SEC-specific)
+        # - TOC checks are harmless (transcripts don't have "TABLE OF CONTENTS")
+        self._filter_relaxed = FalsePositiveFilter(
+            filter_financial_statements=False,
+        )
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -305,12 +315,15 @@ class FalsePositiveFilterStage:
                 # value in the source text. The value is FP only if ALL
                 # occurrences are flagged (conservative: if any occurrence
                 # is in a legitimate context, keep the value).
+                # Use relaxed filter for transcripts (skips financial
+                # statement context and TOC proximity checks).
+                v1_filter = self._filter_relaxed if relaxed else self._filter
                 number_matches = _make_number_matches(bv, source_text)
 
                 is_fp = True
                 reason: str | None = None
                 for nm in number_matches:
-                    fp, r = self._filter.is_false_positive(source_text, nm)
+                    fp, r = v1_filter.is_false_positive(source_text, nm)
                     if not fp:
                         is_fp = False
                         reason = None

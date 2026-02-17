@@ -64,6 +64,16 @@ class ValueBindingStage:
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
     DEFAULT_CHAR_PROXIMITY: int = 100  # Max chars for proximity search
 
+    # Transcript: bonus for value in same or adjacent sentence
+    ADJACENT_SENTENCE_BONUS: float = 0.05
+
+    # Approximate value prefixes to strip before number parsing
+    APPROX_PREFIXES = re.compile(
+        r"\b(?:about|roughly|approximately|nearly|around|over|more\s+than|"
+        r"close\s+to|just\s+under|just\s+over|exceeded|surpassed|topped)\s+",
+        re.IGNORECASE,
+    )
+
     # Number parsing pattern
     # Matches: $1,234.56, 1,234, 45%, 1.5M, -$100, etc.
     NUMBER_PATTERN = re.compile(
@@ -223,13 +233,19 @@ class ValueBindingStage:
             context.config, "text_proximity_chars", self.proximity_window
         )
 
+        # Detect transcript mode
+        is_transcript = getattr(context, "document_type", "") == "transcript"
+
         # Route by source type
         if candidate.source_type in (SourceType.HTML_TABLE, SourceType.OCR_TABLE):
             # Both HTML and OCR tables use the same binding strategy
             return self._bind_table_candidate(candidate, context.tables)
         elif candidate.source_type == SourceType.TEXT:
             return self._bind_text_candidate(
-                candidate, context.segments, proximity_chars=effective_proximity
+                candidate,
+                context.segments,
+                proximity_chars=effective_proximity,
+                is_transcript=is_transcript,
             )
         elif candidate.source_type == SourceType.CHART:
             return self._bind_chart_candidate(candidate, context.images)
@@ -497,6 +513,7 @@ class ValueBindingStage:
         candidate: MetricCandidate,
         segments: list[Segment],
         proximity_chars: int | None = None,
+        is_transcript: bool = False,
     ) -> list[BoundValue]:
         """
         Bind a text-sourced candidate to values using proximity.
@@ -505,11 +522,13 @@ class ValueBindingStage:
         1. Find the segment containing the candidate
         2. Search for numbers within N words of the match
         3. Prefer values in same sentence
+        4. For transcripts: also boost adjacent-sentence matches
 
         Args:
             candidate: Text-sourced metric candidate
             segments: List of document segments
             proximity_chars: Override proximity window (defaults to self.proximity_window)
+            is_transcript: Whether processing a transcript (enables adjacent sentence bonus)
 
         Returns:
             List of BoundValue objects
@@ -572,7 +591,22 @@ class ValueBindingStage:
 
             same_sentence = sentence_start <= num_start_in_text < sentence_end
 
-            confidence = self._compute_text_confidence(unit, ambiguity_penalty, same_sentence)
+            # For transcripts: check adjacent sentence (keyword sentence neighbor)
+            adjacent_sentence = False
+            if is_transcript and not same_sentence:
+                num_sent_start, num_sent_end = self._find_sentence_bounds(
+                    text, num_start_in_text
+                )
+                # Adjacent if the value's sentence starts where keyword sentence
+                # ends (or vice versa), with some tolerance for whitespace
+                adjacent_sentence = (
+                    abs(num_sent_start - sentence_end) < 5
+                    or abs(sentence_start - num_sent_end) < 5
+                )
+
+            confidence = self._compute_text_confidence(
+                unit, ambiguity_penalty, same_sentence, adjacent_sentence
+            )
 
             bound_values.append(
                 BoundValue(
@@ -797,13 +831,18 @@ class ValueBindingStage:
         """
         Parse a number from text.
 
+        Strips approximate-value prefixes ("about", "roughly", "approximately",
+        "nearly", etc.) before searching for the number pattern.
+
         Args:
             text: Text containing a number
 
         Returns:
             Tuple of (value, unit, raw_text) or None if not parseable
         """
-        match = self.NUMBER_PATTERN.search(text)
+        # Strip approximate-value prefixes so "about 150 million" parses correctly
+        cleaned = self.APPROX_PREFIXES.sub("", text)
+        match = self.NUMBER_PATTERN.search(cleaned)
         if not match:
             return None
 
@@ -884,6 +923,7 @@ class ValueBindingStage:
         unit: Unit,
         ambiguity_penalty: float = 0.0,
         same_sentence: bool = False,
+        adjacent_sentence: bool = False,
     ) -> float:
         """
         Compute confidence for a text binding.
@@ -892,6 +932,7 @@ class ValueBindingStage:
             unit: Detected unit
             ambiguity_penalty: Penalty for multiple values
             same_sentence: Whether value is in same sentence as keyword
+            adjacent_sentence: Whether value is in adjacent sentence (transcript mode)
 
         Returns:
             Confidence score 0.0-1.0
@@ -905,6 +946,8 @@ class ValueBindingStage:
         # Same sentence bonus
         if same_sentence:
             confidence += self.SAME_SENTENCE_BONUS
+        elif adjacent_sentence:
+            confidence += self.ADJACENT_SENTENCE_BONUS
 
         # Apply ambiguity penalty
         confidence -= ambiguity_penalty
