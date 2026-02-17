@@ -6,12 +6,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-- V2 precision tuning: 58% → 70% → 73% via FP reduction + decimal-gated count scaling (49200a7)
-- V2 recall improvements: duplicate-skip scoring + keyword fixes (2b95e1e)
-- V2 FN reduction: Snowflake + Farfetch targeted fixes (5420a8d)
-- V2 fact dedup: pipeline output bug fix + upstream dedup improvements (d3bd1b3)
-- Worker prompt archival: 13 prompts archived to docs/archive/worker-prompts/ (18745ec)
-- Context rot prevention: session-scoping rules, MEMORY enrichment (a3e342b)
+- V2 precision: 73% → 74.3% via Unit.OTHER filter for currency metrics in text_proximity (b7e0aad)
+- Defensive column-type filter in _bind_row_values (44a8987) — zero gold standard impact but guards future
+- Diagnosed Farfetch FPs: 6/8 are text_proximity, only 2 are table_stub
+- Min-value threshold (< 100) for count metrics tested and REJECTED — causes -10pp recall
 
 ## Current Focus
 
@@ -19,21 +17,17 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Test Status
 
-- 4,765 tests collected, 87% coverage
-- V2 gold standard: P=73%, R=53%, F1=61% (overall, 4 companies)
-- V1 gold standard: P=91%, R=54%, F1=68% (baseline_metrics.json)
+- 4,396 unit tests passed, 81% coverage
+- V2 gold standard: P=74.3%, R=53.1%, F1=61.9% (overall, 4 companies)
+- V1 gold standard: P=89.4%, R=63.2%, F1=74.1% (unchanged)
 - Pre-commit scoped to unit tests only
 
 ## Key Learnings for Next Iteration
 
-- V2 schema: UUID PKs, JSONB needs json.dumps(), TEXT[] takes lists directly
-- v2_documents UNIQUE on filing_id; valid_currency constraint requires currency when unit='currency'
-- NUMBER_PATTERN greedy regex was splitting years — fixed with boundary anchoring
-- Pre-commit scoped to unit tests (integration too slow for hook)
-- docs/archive policy: only extraction-validation/ and worker-prompts/ subfolders
-- Session approach matrix added to CLAUDE.md — use Ralph after 5+ commits
-- Decimal-gated count scaling prevents false inflation of count metrics
-- Unit compatibility checks reduce cross-unit false positives
+- Unit.OTHER rejection must be text_proximity-specific (table bindings need bare numbers)
+- Min-value thresholds for count metrics destroy recall (Snowflake has legitimate small counts)
+- Farfetch FPs are mostly text_proximity, not table bindings — column-type filters have limited impact
+- Pre-commit hook runs V1 gold standard, not V2 — V2 needs separate validation
 
 ## Blockers or Warnings
 
