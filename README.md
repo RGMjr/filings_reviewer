@@ -1,8 +1,8 @@
 # Customer Metrics Filings Analysis
 
-**Version:** 2.2
+**Version:** 2.3
 **Status:** Production Ready
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-02-17
 
 A system for systematically analyzing SEC filings to assess how companies disclose customer-related metrics.
 
@@ -30,7 +30,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
 
-**Overall:** 87% overall test coverage (3,150+ tests)
+**Overall:** 87% overall test coverage (4,765 tests)
 
 **Corpus:** 7,304 in-scope S-1/F-1 filings identified (2015-2025)
 
@@ -68,7 +68,7 @@ TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
 
 ```bash
 # Apply database migrations (creates required tables)
-python scripts/apply_migrations.py
+python3 scripts/apply_migrations.py
 ```
 
 ### Running Tests
@@ -94,13 +94,15 @@ src/
 ├── infra/          # Database, SEC API client, validation
 ├── universe/       # Filing discovery and classification
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction pipeline
+├── extraction/     # Metric extraction pipeline (V1)
+├── extraction_v2/  # V2 extraction pipeline (production-ready)
 ├── review/         # Human-in-the-loop review system
 ├── web/            # Flask web application
-└── llm/            # OpenAI GPT-4o-mini integration
+├── llm/            # OpenAI GPT-4o-mini integration
+└── gold_standard/  # Gold standard validation
 ```
 
-**Pipeline Flow:**
+**V1 Pipeline Flow:**
 ```
 UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
                                         ↓
@@ -108,6 +110,14 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
                                         ↓
                                   QualityScorer → Database
 ```
+
+**V2 Pipeline** (production-ready, 13 stages):
+```
+Ingestion → SectionClassification → TableReconstruction → ImageTriage
+    → OCR/Chart → CandidateGeneration → ValueBinding → PeriodInference
+    → FactConstruction → FalsePositiveFilter → Deduplication → Validation → Persistence
+```
+See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for details.
 
 ## Documentation
 
@@ -134,10 +144,12 @@ filings_reviewer/
 │   ├── infra/             # Infrastructure (db.py, sec_client.py)
 │   ├── universe/          # Filing discovery
 │   ├── filing_fetcher/    # Document retrieval
-│   ├── extraction/        # Metric extraction
+│   ├── extraction/        # Metric extraction (V1)
+│   ├── extraction_v2/     # V2 extraction pipeline
 │   ├── review/            # Human review system
 │   ├── web/               # Flask application
-│   └── llm/               # LLM integration
+│   ├── llm/               # LLM integration
+│   └── gold_standard/     # Gold standard validation
 ├── tests/                  # Test suite
 │   ├── unit/              # Fast unit tests
 │   ├── integration/       # Database integration tests
@@ -148,7 +160,7 @@ filings_reviewer/
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (00-09)
+├── sql/                    # Database schema (00-10)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration

@@ -14,6 +14,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 | **Image Handling** | Basic detection | OCR + Vision integration with chart extraction |
 | **Evidence** | Raw text snippets | EvidencePack with highlighted HTML, context |
 | **Deduplication** | Per-metric | Identity tuple with alternate_evidence links |
+| **False Positive Filter** | V1 FP filter (shared) | V2-native FP filter stage with unit compatibility |
 | **Database Schema** | Legacy tables | Normalized v2_* tables with JSONB |
 
 ## When to Use V2 vs V1
@@ -25,9 +26,10 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 - Research requiring audit-grade evidence packs
 
 **Continue using V1 for:**
-- Existing production workflows (until V2 is validated)
 - Bulk re-processing where speed is critical
 - Legacy integrations expecting V1 output format
+
+**Validation status (as of 2026-02-17):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=73%, R=53%, F1=61%. V1 baseline: P=91%, R=54%, F1=68%.
 
 ## API Differences
 
