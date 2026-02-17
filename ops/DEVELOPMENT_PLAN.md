@@ -2,25 +2,25 @@
 
 **Task ID**: BEYOND-SEC-PHASE-A
 **Task Name**: Transcript Support (Beyond SEC — Phase A)
-**Status**: NOT STARTED (planning only)
+**Status**: NEARLY COMPLETE (11/12 ACs met)
 **Design Doc**: `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] AC-1 | Value binding uses wider proximity windows when `document_type='transcript'` (+10% recall est.)
-- [ ] AC-2 | Sentence-level value binding for text sources (+5% recall est.)
-- [ ] AC-3 | FP filter relaxes segment-level co-occurrence rules for transcripts (+5% recall est.)
-- [ ] AC-4 | Period inference matches "FY'25" / "fiscal year '25" patterns (+5% recall est.)
-- [ ] AC-5 | Period inference uses `document_date` fallback when no period found (+5% recall est.)
-- [ ] AC-6 | Period inference matches standalone "Q4" using document_date year
-- [ ] AC-7 | Transcript converter (text→HTML) hardened from spike version, splits large paragraphs into sentences
-- [ ] AC-8 | HuggingFace `DocumentSource` implementation for kurry dataset
-- [ ] AC-9 | Schema migration: `document_type`, `ticker`, `document_date`, `transcript_source` on `filings`; relaxed constraints
+- [x] AC-1 | Value binding uses wider proximity windows when `document_type='transcript'` (+10% recall est.)
+- [x] AC-2 | Sentence-level value binding for text sources (+5% recall est.)
+- [x] AC-3 | FP filter relaxes segment-level co-occurrence rules for transcripts (+5% recall est.)
+- [x] AC-4 | Period inference matches "FY'25" / "fiscal year '25" patterns (+5% recall est.)
+- [x] AC-5 | Period inference uses `document_date` fallback when no period found (+5% recall est.)
+- [x] AC-6 | Period inference matches standalone "Q4" using document_date year
+- [x] AC-7 | Transcript converter (text→HTML) hardened from spike version, splits large paragraphs into sentences
+- [x] AC-8 | HuggingFace `DocumentSource` implementation for kurry dataset
+- [x] AC-9 | Schema migration: `document_type`, `ticker`, `document_date`, `transcript_source` on `filings`; relaxed constraints
 - [ ] AC-10 | Integration tests: end-to-end transcript pipeline on 5+ transcripts
-- [ ] AC-11 | Measured recall >= 50% on existing 77 manual annotations
-- [ ] AC-12 | Precision remains >= 60% (no regression from current 63%)
+- [x] AC-11 | Measured recall >= 50% on existing 77 manual annotations (achieved: 53.2%)
+- [x] AC-12 | Precision remains >= 60% (achieved: 71.9%)
 
 ---
 
@@ -28,7 +28,55 @@
 
 | Iteration | Criterion | Status | Notes |
 |-----------|-----------|--------|-------|
-| — | — | — | Not started |
+| 6a37369 | AC-1 thru AC-9 | Done | Pipeline tuning, converter, infra |
+| 0cdcd9d | AC-11, AC-12 | Done | R=54.5%, P=60.0%, F1=57.1% |
+| 5a1c2ee | AC-12 hardened | Done | P=71.9% via 4 FP rules, 32 new tests |
+
+---
+
+## Post-Phase A: Precision Hardening (5a1c2ee)
+
+Four FP reduction rules added:
+1. **Bare small-number filter** — count values <50 without scale suffix filtered in transcript mode
+2. **Currency-on-count-metric block** — $ values rejected on MAU/DAU/active_customers/customers_period_end/new_customers/large_customers
+3. **Cross-metric dedup** — same value+segment mapped to multiple metric IDs → keep highest confidence
+4. **Scoring fix** — run_poc.py checks unit compatibility (currency≠count)
+
+Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
+
+---
+
+## Remaining Work
+
+### Phase A Cleanup
+- **AC-10**: Integration tests for transcript pipeline (not yet created)
+
+### Phase A+ (Recall Improvement — Next Priority)
+- **Non-SaaS keyword expansion**: META, PYPL, TMUS still have major vocabulary gaps
+  - META: "family of apps", "daily/monthly active people" (not "users")
+  - PYPL: "active accounts" (not "customers"), "TPV", "debit card actives"
+  - TMUS: "postpaid net additions", "ARPU/ARPA", "prepaid net adds", "broadband subscribers"
+  - Estimated impact: R=53%→65%, ~10 additional TPs
+- **PYPL $224M transcript bug**: converter produces "$224 million" for MAU count
+- **Q&A section stricter filtering**: analyst questions contain speculative numbers
+- Target: R≥60%, P≥70%, F1≥65%
+
+### Phase B (Expanded Coverage)
+- FMP API source (`FMPTranscriptSource`) for broader transcript corpus
+- Company matching by ticker
+- Web UI: document type filter, transcript viewer
+- Schema migration applied to production DB
+
+### Phase C (Presentation Support)
+- PDF-to-HTML converter (pdfplumber/docling)
+- SEC 8-K presentation source
+- Chart pipeline tuning for presentation charts
+- Target: >40% recall on presentations
+
+### Phase D (Production Readiness)
+- Monitoring/alerting for new document types
+- Batch processing scripts for periodic transcript ingestion
+- Documentation updates
 
 ---
 
@@ -37,7 +85,6 @@
 - Research spike complete (8a033b2): 6 design docs, 22 sample transcripts, 77 annotations
 - Pipeline config presets (b57652a): `PipelineConfig.for_transcript()` with document_type/document_date
 - Baseline: R=22.1%, P=63.0%, F1=32.7% on 8 annotated transcripts
-- See `docs/analysis/spike/gap_analysis.md` for stage-by-stage bottleneck analysis
 
 ---
 
