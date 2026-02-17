@@ -26,7 +26,7 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
-from src.extraction_v2.unit_compatibility import is_unit_compatible
+from src.extraction_v2.unit_compatibility import _COUNT_ONLY_METRICS, is_unit_compatible
 from src.review.false_positive_filter import should_treat_as_percentage
 
 if TYPE_CHECKING:
@@ -101,7 +101,7 @@ class ValueBindingStage:
 
     # Table-level scale pattern: "(In thousands)", "(In millions)", etc.
     TABLE_SCALE_PATTERN = re.compile(
-        r"\(\s*(?:in|amounts?\s+in)\s+(thousands|millions|billions|hundreds)\s*\)",
+        r"\(\s*(?:in|amounts?\s+in)\s+(thousands|millions|billions|hundreds)\b[^)]*\)",
         re.IGNORECASE,
     )
     TABLE_SCALE_MAP: dict[str, float] = {
@@ -356,13 +356,22 @@ class ValueBindingStage:
                         )
                     )
 
-        # Apply table-level scale factor to currency values only
-        # "(In thousands/millions)" in financial tables applies to dollar amounts;
-        # count metrics in the same table are typically already in correct units
-        # (financial tables mix dollar and count columns under a single scale header)
+        # Apply table-level scale factor
+        # Currency values always get scaled. Count metrics get scaled only when
+        # the raw cell contains a decimal point (e.g. "796.3" in a "(in thousands)"
+        # table means 796,300). Integer counts (e.g. "948") are left as-is because
+        # financial tables often mix dollar and count columns under a single header.
         if table_scale != 1.0:
             for bv in bound_values:
-                if bv.unit == Unit.CURRENCY and bv.value is not None:
+                if bv.value is None:
+                    continue
+                if bv.unit == Unit.CURRENCY:
+                    bv.value *= table_scale
+                elif (
+                    bv.unit in (Unit.COUNT, Unit.OTHER)
+                    and candidate.metric_id in _COUNT_ONLY_METRICS
+                    and self._has_fractional_value(bv.value_raw)
+                ):
                     bv.value *= table_scale
 
         return bound_values
@@ -1011,6 +1020,15 @@ class ValueBindingStage:
                 return self.TABLE_SCALE_MAP.get(scale_word, 1.0)
 
         return 1.0
+
+    @staticmethod
+    def _has_fractional_value(value_raw: str) -> bool:
+        """Check if raw value string contains a decimal point.
+
+        Used to distinguish scaled counts (e.g. "796.3" in a "(in thousands)"
+        table) from actual integer counts (e.g. "948").
+        """
+        return "." in value_raw
 
     def _is_in_path(self, text: str, path: list[str]) -> bool:
         """Check if text appears in any path element."""
