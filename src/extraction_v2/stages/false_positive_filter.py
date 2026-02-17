@@ -63,6 +63,28 @@ _RANKING_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Scale suffixes that indicate a raw value represents a large number
+# (e.g., "3 million", "1.5 billion", "400,000").  Bare single/double-digit
+# numbers without these suffixes are almost always noise in transcript text
+# (slide numbers, quarter refs like "Q4", "5G", multipliers like "4 times").
+_HAS_SCALE_SUFFIX_RE = re.compile(
+    r"(?:million|billion|thousand|,\d{3})", re.IGNORECASE
+)
+
+_BARE_SMALL_NUMBER_THRESHOLD = 50
+
+# Metrics that are inherently user/activity counts — never currency.
+# A dollar value bound to these metrics is always a false positive
+# (e.g., "$224 million" extracted as cm_monthly_active_users).
+_COUNT_ONLY_METRICS = frozenset({
+    "cm_monthly_active_users",
+    "cm_daily_active_users",
+    "cm_active_customers_total",
+    "cm_customers_period_end",
+    "cm_new_customers_acquired",
+    "cm_large_customers_period_end",
+})
+
 
 def _is_v2_false_positive(
     bv: BoundValue,
@@ -122,6 +144,18 @@ def _is_v2_false_positive(
         for m in _RANKING_NAME_RE.finditer(source_text):
             if m.group(1) == raw:
                 return True, "v2_ranking_name"
+
+    # Rule 5 (relaxed mode only): Bare small count values.
+    # In transcript text, bare single/double-digit numbers with unit=count
+    # are almost always noise — slide numbers ("Slide 6"), quarter refs
+    # ("Q4" → 4), technology labels ("5G" → 5), multipliers ("4 times"),
+    # or ranking superlatives ("top 10").  Legitimate count values in
+    # transcripts either use scale suffixes ("3,000", "1.5 million") or
+    # are large enough to be unambiguous (>= 50).
+    if relaxed and bv.unit == Unit.COUNT:
+        if bv.value is not None and bv.value < _BARE_SMALL_NUMBER_THRESHOLD:
+            if not _HAS_SCALE_SUFFIX_RE.search(raw):
+                return True, "v2_bare_small_count"
 
     return False, None
 
@@ -314,6 +348,25 @@ class FalsePositiveFilterStage:
                     )
                     continue
 
+                # --- Currency on count-only metrics ---
+                # Metrics like MAU/DAU/active_customers are always counts.
+                # Dollar values bound to them are false positives (e.g.,
+                # "$224 million" mistakenly bound to cm_monthly_active_users).
+                if bv.unit == Unit.CURRENCY:
+                    candidate = candidate_map.get(bv.candidate_id)
+                    if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
+                        reason_str = "v2_currency_on_count_metric"
+                        filter_reasons[reason_str] = (
+                            filter_reasons.get(reason_str, 0) + 1
+                        )
+                        logger.debug(
+                            "FP filter removed currency value on count metric %s: %s raw=%r",
+                            candidate.metric_id,
+                            bv.value,
+                            bv.value_raw,
+                        )
+                        continue
+
                 # --- V1 positional filter ---
                 # Build NumberMatches for all occurrences of the raw
                 # value in the source text. The value is FP only if ALL
@@ -357,6 +410,13 @@ class FalsePositiveFilterStage:
                 # On error, keep the value (fail open for individual items)
                 kept.append(bv)
 
+        # --- Cross-metric dedup: same value + same segment → keep best ---
+        # When the same raw value from the same segment is bound to multiple
+        # metric IDs, only the highest-confidence binding is meaningful.
+        # E.g., "20 million" → customers_period_end (0.46) AND
+        #        large_customers_period_end (0.46) from the same segment.
+        kept = self._cross_metric_dedup(kept, candidate_map, filter_reasons)
+
         removed_count = initial_count - len(kept)
         context.bound_values = kept
 
@@ -377,6 +437,73 @@ class FalsePositiveFilterStage:
             warnings,
             filter_reasons,
         )
+
+    @staticmethod
+    def _cross_metric_dedup(
+        kept: list[BoundValue],
+        candidate_map: dict[str, Any],
+        filter_reasons: dict[str, int],
+    ) -> list[BoundValue]:
+        """
+        When the same raw value from the same segment is bound to different
+        metric IDs, keep only the highest-confidence binding.
+
+        Groups by (segment_id, value_raw) and within each group, if multiple
+        metric IDs are present, keeps only the one with the highest
+        binding_confidence.  Ties broken by candidate_id for stability.
+        """
+        from collections import defaultdict
+
+        # Group by (segment_id, value_raw)
+        groups: dict[tuple[str | None, str], list[BoundValue]] = defaultdict(list)
+        for bv in kept:
+            key = (bv.source_locator.segment_id, bv.value_raw)
+            groups[key].append(bv)
+
+        result: list[BoundValue] = []
+        removed = 0
+
+        for (seg_id, raw), group in groups.items():
+            if len(group) <= 1:
+                result.extend(group)
+                continue
+
+            # Check if multiple metric IDs are present
+            metric_ids = set()
+            for bv in group:
+                cand = candidate_map.get(bv.candidate_id)
+                if cand:
+                    metric_ids.add(cand.metric_id)
+
+            if len(metric_ids) <= 1:
+                # All same metric — not a cross-metric dup, keep all
+                result.extend(group)
+                continue
+
+            # Multiple metrics for same value+segment: keep the best
+            best = max(
+                group,
+                key=lambda bv: (bv.binding_confidence, bv.candidate_id),
+            )
+            result.append(best)
+            removed += len(group) - 1
+
+            logger.debug(
+                "Cross-metric dedup: kept %s (conf=%.2f) from %d bindings "
+                "for value %r in segment %s",
+                candidate_map.get(best.candidate_id, best.candidate_id),
+                best.binding_confidence,
+                len(group),
+                raw,
+                seg_id,
+            )
+
+        if removed > 0:
+            filter_reasons["v2_cross_metric_dedup"] = (
+                filter_reasons.get("v2_cross_metric_dedup", 0) + removed
+            )
+
+        return result
 
     def _make_result(
         self,

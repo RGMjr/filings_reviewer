@@ -1084,3 +1084,232 @@ class TestRelaxedMode:
         stage.process(ctx_relaxed)
         # In relaxed mode, financial statement check is skipped so value should be kept
         assert len(ctx_relaxed.bound_values) >= 1
+
+
+# ============================================================================
+# Test: Bare small count filter (relaxed mode only)
+# ============================================================================
+
+
+class TestBareSmallCountFilter:
+    """Tests for the bare small count value filter in transcript (relaxed) mode."""
+
+    @pytest.mark.parametrize(
+        "raw,value,expected_fp,desc",
+        [
+            ("6", 6.0, True, "Slide 6"),
+            ("4", 4.0, True, "Q4 → bare 4"),
+            ("10", 10.0, True, "top 10"),
+            ("2", 2.0, True, "bare 2"),
+            ("5", 5.0, True, "5G → bare 5"),
+            ("25", 25.0, True, "bare 25"),
+            ("49", 49.0, True, "just below threshold"),
+            ("50", 50.0, False, "at threshold — kept"),
+            ("100", 100.0, False, "above threshold — kept"),
+            ("400", 400.0, False, "large count — kept"),
+            ("3,000", 3000.0, False, "has comma scale — kept"),
+            ("1.5 million", 1500000.0, False, "has million suffix — kept"),
+            ("2 billion", 2000000000.0, False, "has billion suffix — kept"),
+            ("500 thousand", 500000.0, False, "has thousand suffix — kept"),
+        ],
+    )
+    def test_bare_small_count_relaxed(self, raw, value, expected_fp, desc):
+        """Bare small counts filtered in relaxed mode."""
+        bv = _make_bound_value("c1", value, raw, Unit.COUNT)
+        source = f"We have {raw} active customers in this segment"
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        assert is_fp == expected_fp, f"Failed for {desc}: raw={raw!r}"
+        if expected_fp:
+            assert reason == "v2_bare_small_count"
+
+    @pytest.mark.parametrize(
+        "raw,value",
+        [
+            ("6", 6.0),
+            ("4", 4.0),
+            ("10", 10.0),
+        ],
+    )
+    def test_bare_small_count_not_filtered_in_normal_mode(self, raw, value):
+        """Bare small counts NOT filtered in normal (SEC filing) mode."""
+        bv = _make_bound_value("c1", value, raw, Unit.COUNT)
+        source = f"We had {raw} customers"
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=False)
+        assert not is_fp
+
+    def test_bare_small_percent_not_filtered(self):
+        """Small percentage values are NOT filtered (only count unit)."""
+        bv = _make_bound_value("c1", 4.0, "4%", Unit.PERCENT)
+        source = "Revenue grew 4% year-over-year"
+        is_fp, _ = _is_v2_false_positive(bv, source, relaxed=True)
+        assert not is_fp
+
+    def test_bare_small_currency_not_filtered(self):
+        """Small currency values are NOT filtered by this rule."""
+        bv = _make_bound_value("c1", 5.0, "$5", Unit.CURRENCY)
+        source = "ARPU was $5 per user"
+        is_fp, reason = _is_v2_false_positive(bv, source, relaxed=True)
+        # May or may not be filtered by other rules, but not by bare_small_count
+        if is_fp:
+            assert reason != "v2_bare_small_count"
+
+
+# ============================================================================
+# Test: Currency on count-only metrics (stage-level integration)
+# ============================================================================
+
+
+class TestCurrencyOnCountMetric:
+    """Tests for blocking currency values on count-only metrics (MAU/DAU/etc)."""
+
+    @pytest.mark.parametrize(
+        "metric_id",
+        [
+            "cm_monthly_active_users",
+            "cm_daily_active_users",
+            "cm_active_customers_total",
+            "cm_customers_period_end",
+            "cm_new_customers_acquired",
+            "cm_large_customers_period_end",
+        ],
+    )
+    def test_currency_filtered_on_count_metric(self, stage, metric_id):
+        """Currency values on count-only metrics are filtered out."""
+        source = "Monthly active accounts up 2% to $224 million"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", metric_id, "seg-1")
+        bv = _make_bound_value("c1", 224000000.0, "$224 million", Unit.CURRENCY, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 0
+
+    def test_currency_kept_on_arr_metric(self, stage):
+        """Currency values on ARR are kept (ARR is legitimately currency)."""
+        source = "ARR grew to $4.1 billion"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        bv = _make_bound_value("c1", 4100000000.0, "$4.1 billion", Unit.CURRENCY, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1
+
+    def test_count_unit_kept_on_count_metric(self, stage):
+        """Count values on count-only metrics are kept (correct unit match)."""
+        source = "We have 224 million monthly active users"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_monthly_active_users", "seg-1")
+        bv = _make_bound_value("c1", 224000000.0, "224 million", Unit.COUNT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1
+
+    def test_currency_on_revenue_per_customer_kept(self, stage):
+        """Currency on revenue_per_customer is kept (ARPU can be dollar amount)."""
+        source = "ARPU grew to $225 per user"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_revenue_per_customer", "seg-1")
+        bv = _make_bound_value("c1", 225.0, "$225", Unit.CURRENCY, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1
+
+
+# ============================================================================
+# Test: Cross-metric deduplication
+# ============================================================================
+
+
+class TestCrossMetricDedup:
+    """Tests for same-value cross-metric dedup within the FP filter stage."""
+
+    def test_same_value_different_metrics_keeps_best(self, stage):
+        """Same value in same segment bound to 2 metrics → keep higher confidence."""
+        source = "We now serve 20 million customers worldwide"
+        segment = _make_text_segment("seg-1", source)
+        c1 = _make_candidate("c1", "cm_customers_period_end", "seg-1")
+        c2 = _make_candidate("c2", "cm_large_customers_period_end", "seg-1")
+        bv1 = _make_bound_value("c1", 20000000.0, "20 million", Unit.COUNT, "seg-1")
+        bv1.binding_confidence = 0.6
+        bv2 = _make_bound_value("c2", 20000000.0, "20 million", Unit.COUNT, "seg-1")
+        bv2.binding_confidence = 0.4
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[c1, c2],
+            bound_values=[bv1, bv2],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1
+        assert ctx.bound_values[0].candidate_id == "c1"  # higher confidence
+
+    def test_same_value_same_metric_kept(self, stage):
+        """Same value + same metric from same segment → NOT deduped here."""
+        source = "We mentioned 400 deals over a million and 400 large accounts"
+        segment = _make_text_segment("seg-1", source)
+        c1 = _make_candidate("c1", "cm_large_customers_period_end", "seg-1")
+        c2 = _make_candidate("c2", "cm_large_customers_period_end", "seg-1")
+        bv1 = _make_bound_value("c1", 400.0, "400", Unit.COUNT, "seg-1")
+        bv2 = _make_bound_value("c2", 400.0, "400", Unit.COUNT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[c1, c2],
+            bound_values=[bv1, bv2],
+        )
+        stage.process(ctx)
+        # Same metric ID → not filtered by cross-metric dedup
+        assert len(ctx.bound_values) == 2
+
+    def test_different_values_different_metrics_kept(self, stage):
+        """Different values from same segment → no dedup needed."""
+        source = "We have 3000 paying customers and 400 large deals"
+        segment = _make_text_segment("seg-1", source)
+        c1 = _make_candidate("c1", "cm_customers_period_end", "seg-1")
+        c2 = _make_candidate("c2", "cm_large_customers_period_end", "seg-1")
+        bv1 = _make_bound_value("c1", 3000.0, "3,000", Unit.COUNT, "seg-1")
+        bv2 = _make_bound_value("c2", 400.0, "400", Unit.COUNT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[c1, c2],
+            bound_values=[bv1, bv2],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 2
+
+    def test_same_value_different_segments_kept(self, stage):
+        """Same value from different segments → no dedup (independent mentions)."""
+        seg1 = _make_text_segment("seg-1", "We have 1000 active customers")
+        seg2 = _make_text_segment("seg-2", "Added 1000 new customers this quarter")
+        c1 = _make_candidate("c1", "cm_active_customers_total", "seg-1")
+        c2 = _make_candidate("c2", "cm_new_customers_acquired", "seg-2")
+        bv1 = _make_bound_value("c1", 1000.0, "1000", Unit.COUNT, "seg-1")
+        bv2 = _make_bound_value("c2", 1000.0, "1000", Unit.COUNT, "seg-2")
+
+        ctx = MockPipelineContext(
+            segments=[seg1, seg2],
+            candidates=[c1, c2],
+            bound_values=[bv1, bv2],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 2

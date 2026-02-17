@@ -111,6 +111,17 @@ def match_facts_to_annotations(
             if fact.canonical_metric_id != ann["metric_id"]:
                 continue
 
+            # Match by unit compatibility — currency facts must not match
+            # count annotations (e.g. $224M should not match 224M MAU)
+            ann_unit = ann.get("unit", "")
+            fact_unit = fact.unit.value if hasattr(fact.unit, "value") else str(fact.unit)
+            if ann_unit and fact_unit:
+                # Block currency↔count cross-matches
+                if fact_unit == "currency" and ann_unit == "count":
+                    continue
+                if fact_unit == "count" and ann_unit == "currency":
+                    continue
+
             # Match by value (with tolerance)
             try:
                 ann_value = float(ann["value"])
