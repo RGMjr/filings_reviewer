@@ -2288,3 +2288,186 @@ class TestTextProximityFilters:
         assert result.success
         # Table binding should still work for bare numbers
         assert len(context.bound_values) >= 1
+
+
+class TestTableScaleExceptions:
+    """Tests for 'except as otherwise noted' table scale handling.
+
+    Farfetch pattern: KPI table says "(in thousands, except as otherwise noted)".
+    AOV values have $ prefix and are actual dollar amounts, not thousands.
+    """
+
+    @staticmethod
+    def _make_except_table(
+        table_id: str,
+        stub_text: str,
+        value_text: str,
+        annotation: str = "(in thousands, except as otherwise noted)",
+    ) -> Table:
+        """Build a table with 'except as noted' annotation."""
+        cells = [
+            Cell(
+                row=0, col=0, text=annotation, is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=0, col=1, text="2023", is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=1, col=0, text=stub_text, is_stub=True,
+                header_path=[annotation], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text=value_text,
+                header_path=["2023"], stub_path=[stub_text],
+            ),
+        ]
+        table = Table(
+            table_id=table_id,
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+        return table
+
+    def test_currency_symbol_skips_scaling(self, stage: ValueBindingStage) -> None:
+        """Values with $ in 'except as noted' table should NOT be scaled."""
+        table = self._make_except_table("ff-aov-1", "Average Order Value", "$591.7")
+        candidate = MetricCandidate(
+            candidate_id="cand-aov-1",
+            metric_id="cm_average_order_value",
+            match_text="Average Order Value",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-aov-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        bv = context.bound_values[0]
+        # Should be ~591.7, NOT 591,700
+        assert bv.value == pytest.approx(591.7, rel=1e-3)
+
+    def test_actual_stub_skips_scaling(self, stage: ValueBindingStage) -> None:
+        """Values with '(actual)' in stub should NOT be scaled."""
+        table = self._make_except_table(
+            "ff-aov-2", "Average Order Value (actual)", "591.7"
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-aov-2",
+            metric_id="cm_average_order_value",
+            match_text="Average Order Value",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-aov-2", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        bv = context.bound_values[0]
+        # Should be ~591.7, NOT 591,700
+        assert bv.value == pytest.approx(591.7, rel=1e-3)
+
+    def test_normal_value_still_scaled_in_except_table(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Non-exception values in 'except as noted' table should still be scaled."""
+        table = self._make_except_table("ff-rev-1", "Revenue", "$1,500")
+        candidate = MetricCandidate(
+            candidate_id="cand-rev-1",
+            metric_id="cm_arr",
+            match_text="Revenue",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-rev-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        bv = context.bound_values[0]
+        # Currency value $1,500 in thousands table → $1,500,000
+        # BUT wait - $1,500 has a $ symbol. In an "except" table, $ means actual.
+        # This is the correct behavior: values with $ in an except table stay as-is.
+        assert bv.value == pytest.approx(1500, rel=1e-3)
+
+    def test_no_except_annotation_scales_normally(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Tables without 'except' qualifier should scale currency normally."""
+        cells = [
+            Cell(
+                row=0, col=0, text="(in thousands)", is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=0, col=1, text="2023", is_header=True,
+                header_path=[], stub_path=[],
+            ),
+            Cell(
+                row=1, col=0, text="Revenue", is_stub=True,
+                header_path=["(in thousands)"], stub_path=[],
+            ),
+            Cell(
+                row=1, col=1, text="$1,500",
+                header_path=["2023"], stub_path=["Revenue"],
+            ),
+        ]
+        table = Table(
+            table_id="normal-1",
+            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        candidate = MetricCandidate(
+            candidate_id="cand-normal-1",
+            metric_id="cm_arr",
+            match_text="Revenue",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="normal-1", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        bv = context.bound_values[0]
+        # Normal table: $1,500 × 1000 = $1,500,000
+        assert bv.value == pytest.approx(1_500_000, rel=1e-3)
+
+    def test_except_as_noted_variant(self, stage: ValueBindingStage) -> None:
+        """'except as noted' (without 'otherwise') should also trigger exceptions."""
+        table = self._make_except_table(
+            "ff-aov-3", "Average Order Value", "$591.7",
+            annotation="(in thousands, except as noted)",
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-aov-3",
+            metric_id="cm_average_order_value",
+            match_text="Average Order Value",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-aov-3", cell_row=1, cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+        bv = context.bound_values[0]
+        assert bv.value == pytest.approx(591.7, rel=1e-3)

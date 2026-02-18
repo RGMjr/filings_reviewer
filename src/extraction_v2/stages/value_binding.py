@@ -108,6 +108,11 @@ class ValueBindingStage:
         r"\(\s*(?:in|amounts?\s+in)\s+(thousands|millions|billions|hundreds)\b[^)]*\)",
         re.IGNORECASE,
     )
+    # Pattern for "except as otherwise noted" / "except as noted" qualifiers
+    TABLE_SCALE_EXCEPT_PATTERN = re.compile(
+        r"except\s+as\s+(?:otherwise\s+)?noted",
+        re.IGNORECASE,
+    )
     TABLE_SCALE_MAP: dict[str, float] = {
         "hundreds": 100,
         "thousands": 1_000,
@@ -292,7 +297,7 @@ class ValueBindingStage:
         col = loc.cell_col if loc.cell_col is not None else 0
 
         # Detect table-level scale factor
-        table_scale = self._detect_table_scale(table)
+        table_scale, table_scale_has_exceptions = self._detect_table_scale(table)
 
         # Strategy 1: Candidate is in a header cell → bind data cells in that column
         if candidate_cell.is_header or row < table.header_rows:
@@ -365,9 +370,22 @@ class ValueBindingStage:
         # the raw cell contains a decimal point (e.g. "796.3" in a "(in thousands)"
         # table means 796,300). Integer counts (e.g. "948") are left as-is because
         # financial tables often mix dollar and count columns under a single header.
+        #
+        # When the table has "except as otherwise noted", skip scaling for values
+        # with explicit currency symbols (already actual $) or stubs marked "(actual)".
         if table_scale != 1.0:
             for bv in bound_values:
                 if bv.value is None:
+                    continue
+                # Check if this value is an exception to the table scale
+                if table_scale_has_exceptions and self._is_scale_exception(
+                    bv, candidate, table
+                ):
+                    logger.debug(
+                        "Skipping table scale for exception value %s (%s)",
+                        bv.value_raw,
+                        candidate.metric_id,
+                    )
                     continue
                 if bv.unit == Unit.CURRENCY:
                     bv.value *= table_scale
@@ -1025,7 +1043,7 @@ class ValueBindingStage:
 
         return max(min(confidence, 1.0), 0.0)
 
-    def _detect_table_scale(self, table: Table) -> float:
+    def _detect_table_scale(self, table: Table) -> tuple[float, bool]:
         """
         Detect table-level scale factor from header/early rows or caption text.
 
@@ -1033,7 +1051,8 @@ class ValueBindingStage:
         like "(In thousands)".
 
         Returns:
-            Scale multiplier (1.0 if none detected)
+            Tuple of (scale_multiplier, has_exceptions) where has_exceptions
+            is True when the annotation contains "except as otherwise noted".
         """
         # Check header cells and first few rows (scale annotation often in
         # sub-header rows not counted as header_rows)
@@ -1045,16 +1064,24 @@ class ValueBindingStage:
                     match = self.TABLE_SCALE_PATTERN.search(cell.text)
                     if match:
                         scale_word = match.group(1).lower()
-                        return self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                        scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                        has_except = bool(
+                            self.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text)
+                        )
+                        return (scale, has_except)
 
         # Check section_path (often contains table caption text)
         for path_item in table.section_path:
             match = self.TABLE_SCALE_PATTERN.search(path_item)
             if match:
                 scale_word = match.group(1).lower()
-                return self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                has_except = bool(
+                    self.TABLE_SCALE_EXCEPT_PATTERN.search(path_item)
+                )
+                return (scale, has_except)
 
-        return 1.0
+        return (1.0, False)
 
     @staticmethod
     def _has_fractional_value(value_raw: str) -> bool:
@@ -1064,6 +1091,43 @@ class ValueBindingStage:
         table) from actual integer counts (e.g. "948").
         """
         return "." in value_raw
+
+    # Pattern matching explicit currency symbols in raw cell text
+    _CURRENCY_SYMBOL_PATTERN = re.compile(r"[\$\€\£]")
+
+    def _is_scale_exception(
+        self,
+        bv: BoundValue,
+        candidate: MetricCandidate,
+        table: Table,
+    ) -> bool:
+        """Check if a bound value is an exception to table-level scaling.
+
+        In tables annotated "except as otherwise noted", values with explicit
+        currency symbols ($591.7) or stubs marked "(actual)" are already at
+        their true scale and should not be multiplied.
+
+        Args:
+            bv: The bound value to check
+            candidate: The metric candidate
+            table: The table containing the value
+
+        Returns:
+            True if this value should skip table-level scaling.
+        """
+        # Check if raw value has explicit currency symbol
+        if self._CURRENCY_SYMBOL_PATTERN.search(bv.value_raw):
+            return True
+
+        # Check if the stub path contains "(actual)"
+        loc = bv.source_locator
+        if loc.cell_row is not None:
+            stub_path = table.get_stub_path(loc.cell_row)
+            stub_text = " ".join(stub_path).lower()
+            if "(actual)" in stub_text:
+                return True
+
+        return False
 
     # Currency indicators in column headers (case-insensitive matching)
     _CURRENCY_HEADER_INDICATORS = re.compile(

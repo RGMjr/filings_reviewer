@@ -949,8 +949,16 @@ def normalize_value(
     multiplier = multipliers.get(multiplier_char, 1)
     number *= multiplier
 
-    # Apply scale_unit if provided and different from multiplier
-    if scale_unit and scale_unit.strip():
+    # Apply scale_unit if provided and different from multiplier.
+    # BUT: if scaled_value was used and differs from raw_value, the scale
+    # has already been incorporated into the scaled column — don't re-apply.
+    scaled_already_applied = (
+        scaled_value
+        and scaled_value.strip()
+        and raw_value
+        and scaled_value.strip() != raw_value.strip()
+    )
+    if scale_unit and scale_unit.strip() and not scaled_already_applied:
         unit_upper = scale_unit.strip().upper()
         if unit_upper in ("MILLIONS", "MM", "M") and multiplier_char != "M":
             number *= 1_000_000
