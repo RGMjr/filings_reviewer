@@ -105,6 +105,9 @@ class PipelineConfig:
     save_evidence_screenshots: bool = True
     evidence_screenshot_dir: str = "evidence_v2/"
 
+    # Diagnostics
+    retain_context: bool = False  # If True, attach PipelineContext to PipelineResult
+
 
 @dataclass
 class StageResult:
@@ -134,6 +137,7 @@ class PipelineResult:
     total_duration_ms: int
     success: bool
     error_message: str | None = None
+    context: Any | None = None  # PipelineContext — only set when retain_context=True
 
     @property
     def fact_count(self) -> int:
@@ -214,6 +218,9 @@ class PipelineContext:
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
 
+    # Diagnostics (only populated when config.retain_context=True)
+    _pre_filter_bound_values: list[Any] = field(default_factory=list)  # Before FP filter
+
     # SEC filing info (for image downloading)
     cik: str = ""
     accession_number: str = ""
@@ -263,9 +270,7 @@ class V2Pipeline:
             )
 
         # Stage 3: Table Reconstruction
-        self._stages.append(
-            (PipelineStage.TABLE_RECONSTRUCTION, TableReconstructionStage())
-        )
+        self._stages.append((PipelineStage.TABLE_RECONSTRUCTION, TableReconstructionStage()))
 
         # Stage 4: Image Triage
         if self.config.enable_image_extraction:
@@ -281,25 +286,19 @@ class V2Pipeline:
             )
 
         # Stage 6: Metric Candidate Generation
-        self._stages.append(
-            (PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage())
-        )
+        self._stages.append((PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage()))
 
         # Stage 7: Value Binding
         self._stages.append((PipelineStage.VALUE_BINDING, ValueBindingStage()))
 
         # Stage 7.5: False Positive Filter
-        self._stages.append(
-            (PipelineStage.FALSE_POSITIVE_FILTER, FalsePositiveFilterStage())
-        )
+        self._stages.append((PipelineStage.FALSE_POSITIVE_FILTER, FalsePositiveFilterStage()))
 
         # Stage 8: Period Inference
         self._stages.append((PipelineStage.PERIOD_INFERENCE, PeriodInferenceStage()))
 
         # Stage 9: MetricFact Construction
-        self._stages.append(
-            (PipelineStage.FACT_CONSTRUCTION, FactConstructionStage())
-        )
+        self._stages.append((PipelineStage.FACT_CONSTRUCTION, FactConstructionStage()))
 
         # Stage 10: Deduplication
         self._stages.append((PipelineStage.DEDUPLICATION, DeduplicationStage()))
@@ -338,9 +337,7 @@ class V2Pipeline:
             accession_number=accession_number,
         )
 
-        logger.info(
-            f"Starting V2 pipeline for filing {filing_id}: {html_path.name}"
-        )
+        logger.info(f"Starting V2 pipeline for filing {filing_id}: {html_path.name}")
 
         # Execute stages
         for stage_id, processor in self._stages:
@@ -350,9 +347,7 @@ class V2Pipeline:
                 context.stage_results.append(result)
 
                 if not result.success:
-                    logger.error(
-                        f"Stage {stage_id.value} failed: {result.errors}"
-                    )
+                    logger.error(f"Stage {stage_id.value} failed: {result.errors}")
                     # Continue with remaining stages unless critical failure
                     if stage_id in {
                         PipelineStage.INGESTION,
@@ -382,11 +377,7 @@ class V2Pipeline:
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Use deduplicated facts if available (Stage 10 output), else raw facts
-        output_facts = (
-            context.deduplicated_facts
-            if context.deduplicated_facts
-            else context.facts
-        )
+        output_facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
 
         logger.info(
             f"V2 pipeline complete for filing {filing_id}: "
@@ -403,6 +394,7 @@ class V2Pipeline:
             stage_results=context.stage_results,
             total_duration_ms=total_ms,
             success=True,
+            context=context if self.config.retain_context else None,
         )
 
     def _build_failure_result(

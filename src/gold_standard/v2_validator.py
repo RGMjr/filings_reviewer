@@ -18,14 +18,14 @@ from __future__ import annotations
 import csv
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dc_replace
 from datetime import date
 from decimal import InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from src.extraction_v2.models import MetricFact
-from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
+from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, V2Pipeline
 from src.gold_standard.baseline import (
     BaselineMetrics,
     MetricScores,
@@ -115,7 +115,31 @@ class FalsePositiveDiagnostic:
     closest_gold_value: float | None = None
     closest_gold_period: str = ""
     value_delta_pct: float | None = None  # % difference from closest gold value
-    mismatch_category: str = ""  # "period_mismatch", "value_mismatch", "scale_factor", "both_mismatch", "no_match"
+    mismatch_category: str = (
+        ""  # "period_mismatch", "value_mismatch", "scale_factor", "both_mismatch", "no_match"
+    )
+
+
+@dataclass
+class FNRootCause:
+    """Root cause classification for a false negative."""
+
+    category: str  # no_candidate | no_value_binding | fp_filtered | wrong_value | wrong_period | low_confidence | dedup_removed | unknown
+    detail: str
+    stage: str  # pipeline stage where the metric was lost
+
+
+@dataclass
+class FNDiagnostic:
+    """Diagnostic info for a single false negative entry."""
+
+    entry: GoldStandardEntry
+    company_name: str
+    root_cause: FNRootCause
+    candidate_count: int = 0  # How many candidates had this metric_id
+    bound_value_count: int = 0  # How many pre-filter bindings existed
+    closest_fact_value: float | None = None  # Closest extracted fact value
+    closest_fact_confidence: float | None = None
 
 
 @dataclass
@@ -130,6 +154,7 @@ class ValidationResult:
     extra: int  # V2 facts not in gold standard
     match_results: list[MatchResult] = field(default_factory=list)
     fp_diagnostics: list[FalsePositiveDiagnostic] = field(default_factory=list)
+    fn_diagnostics: list[FNDiagnostic] = field(default_factory=list)
 
     # Confusion matrix
     true_positives: int = 0
@@ -206,6 +231,7 @@ class V2GoldStandardValidator:
         v2_config: PipelineConfig | None = None,
         value_tolerance: float = 0.02,
         min_confidence: float = 0.50,
+        fn_diagnostics: bool = False,
     ):
         """
         Initialize validator.
@@ -215,9 +241,18 @@ class V2GoldStandardValidator:
             v2_config: Configuration for V2 pipeline
             value_tolerance: Tolerance for numeric value matching (default 2%)
             min_confidence: Minimum confidence to count a fact (default 0.90)
+            fn_diagnostics: If True, enable FN root cause tracing
         """
         self.gold_standard_path = Path(gold_standard_path)
-        self.v2_config = v2_config or PipelineConfig()
+        self.fn_diagnostics = fn_diagnostics
+
+        # When FN diagnostics are enabled, set retain_context on the pipeline config
+        if fn_diagnostics:
+            base = v2_config or PipelineConfig()
+            self.v2_config = dc_replace(base, retain_context=True)
+        else:
+            self.v2_config = v2_config or PipelineConfig()
+
         self.value_tolerance = value_tolerance
         self.min_confidence = min_confidence
 
@@ -373,22 +408,22 @@ class V2GoldStandardValidator:
         )
 
         # Run V2 pipeline
+        v2_context: PipelineContext | None = None
+        all_v2_facts: list[MetricFact] = []
         try:
             v2_result = self.v2_pipeline.process(
                 html_path=filing_path,
                 filing_id=0,  # Placeholder, not persisting
             )
             if not v2_result.success:
-                logger.error(
-                    f"V2 pipeline failed for {company_name}: {v2_result.error_message}"
-                )
+                logger.error(f"V2 pipeline failed for {company_name}: {v2_result.error_message}")
                 result.false_negatives = result.total_expected
                 result.missed = result.total_expected
                 return result
 
-            v2_facts = [
-                f for f in v2_result.facts if f.confidence >= self.min_confidence
-            ]
+            v2_facts = [f for f in v2_result.facts if f.confidence >= self.min_confidence]
+            all_v2_facts = v2_result.facts  # Includes low-confidence facts for FN tracing
+            v2_context = v2_result.context  # type: ignore[assignment]
             logger.debug(
                 f"{company_name}: {len(v2_result.facts)} total facts, "
                 f"{len(v2_facts)} above confidence threshold {self.min_confidence}"
@@ -450,9 +485,7 @@ class V2GoldStandardValidator:
                 # the same metric+value across multiple contexts; counting each
                 # unmatched duplicate as a FN would penalise the pipeline's
                 # own deduplication.
-                duplicate_fact = self._find_matching_fact(
-                    entry, v2_facts, set()
-                )
+                duplicate_fact = self._find_matching_fact(entry, v2_facts, set())
                 if duplicate_fact and duplicate_fact.fact_id in matched_fact_ids:
                     # Already covered by a previous entry — skip
                     result.total_expected -= 1
@@ -475,13 +508,16 @@ class V2GoldStandardValidator:
                             reason="No matching fact found",
                         )
                     )
+                    if self.fn_diagnostics and v2_context is not None:
+                        fn_diag = self._diagnose_false_negative(
+                            entry, company_name, v2_context, all_v2_facts
+                        )
+                        result.fn_diagnostics.append(fn_diag)
 
         # Count extra facts (false positives) with diagnostics
         # Note: We're conservative - only count facts with matching metric_ids as FP
         # Facts for metrics not in gold standard aren't counted as FP
-        gold_metric_ids = {
-            normalize_metric_id(e.metric_id) for e in expected_entries
-        }
+        gold_metric_ids = {normalize_metric_id(e.metric_id) for e in expected_entries}
         gold_entries_for_metric = {}
         for entry in expected_entries:
             mid = normalize_metric_id(entry.metric_id)
@@ -542,10 +578,7 @@ class V2GoldStandardValidator:
             if entry.period_start and entry.period_end:
                 if fact.period_start and fact.period_end:
                     # Periods should overlap
-                    if (
-                        entry.period_end < fact.period_start
-                        or fact.period_end < entry.period_start
-                    ):
+                    if entry.period_end < fact.period_start or fact.period_end < entry.period_start:
                         continue
 
             return fact
@@ -570,7 +603,11 @@ class V2GoldStandardValidator:
         gold_entries: list[GoldStandardEntry],
     ) -> FalsePositiveDiagnostic:
         """Build a diagnostic for a false positive fact."""
-        snippet = fact.evidence_pack.snippet_html[:120] if fact.evidence_pack.snippet_html else fact.value_raw
+        snippet = (
+            fact.evidence_pack.snippet_html[:120]
+            if fact.evidence_pack.snippet_html
+            else fact.value_raw
+        )
 
         diag = FalsePositiveDiagnostic(
             metric_id=fact.canonical_metric_id,
@@ -638,10 +675,16 @@ class V2GoldStandardValidator:
 
         # Check period overlap
         period_matches = True
-        if (best_entry.period_start and best_entry.period_end
-                and fact.period_start and fact.period_end):
-            if (best_entry.period_end < fact.period_start
-                    or fact.period_end < best_entry.period_start):
+        if (
+            best_entry.period_start
+            and best_entry.period_end
+            and fact.period_start
+            and fact.period_end
+        ):
+            if (
+                best_entry.period_end < fact.period_start
+                or fact.period_end < best_entry.period_start
+            ):
                 period_matches = False
 
         if value_matches and not period_matches:
@@ -649,8 +692,14 @@ class V2GoldStandardValidator:
         elif not value_matches and period_matches:
             # Check for scale factor (10x, 100x, 1000x differences)
             if best_delta is not None and best_entry.normalized_value:
-                ratio = fact.value / best_entry.normalized_value if best_entry.normalized_value != 0 else 0
-                if ratio and any(abs(ratio - mult) / mult < 0.05 for mult in [0.001, 0.01, 0.1, 10, 100, 1000]):
+                ratio = (
+                    fact.value / best_entry.normalized_value
+                    if best_entry.normalized_value != 0
+                    else 0
+                )
+                if ratio and any(
+                    abs(ratio - mult) / mult < 0.05 for mult in [0.001, 0.01, 0.1, 10, 100, 1000]
+                ):
                     category = "scale_factor"
                 else:
                     category = "value_mismatch"
@@ -663,6 +712,287 @@ class V2GoldStandardValidator:
             category = "duplicate_value"
 
         return (best_entry, best_delta, category)
+
+    def _diagnose_false_negative(
+        self,
+        entry: GoldStandardEntry,
+        company_name: str,
+        context: PipelineContext,
+        all_facts: list[MetricFact],
+    ) -> FNDiagnostic:
+        """
+        Trace why a gold standard entry was not extracted (false negative).
+
+        Tracing order through pipeline stages:
+        1. No candidate with matching metric_id → no_candidate
+        2. Candidate exists but no pre-filter binding → no_value_binding
+        3. Binding existed pre-filter but was removed → fp_filtered
+        4. Post-filter binding exists but no matching fact value → wrong_value
+        5. Fact exists but not in deduplicated_facts → dedup_removed
+        6. Fact exists but below confidence threshold → low_confidence
+        7. Fact value matches but period doesn't → wrong_period
+        8. Otherwise → unknown
+        """
+        entry_metric_id = normalize_metric_id(entry.metric_id)
+        expected_value = entry.normalized_value
+
+        # Step 1: Check candidates for this metric_id
+        matching_candidates = [
+            c for c in context.candidates
+            if normalize_metric_id(getattr(c, "metric_id", "")) == entry_metric_id
+        ]
+        candidate_count = len(matching_candidates)
+        candidate_ids = {getattr(c, "candidate_id", None) for c in matching_candidates}
+
+        if not matching_candidates:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="no_candidate",
+                    detail=f"No candidates generated for metric_id={entry_metric_id}",
+                    stage="candidate_generation",
+                ),
+                candidate_count=0,
+            )
+
+        # Step 2: Check pre-filter bound values for these candidates
+        pre_filter_bindings = [
+            bv for bv in context._pre_filter_bound_values
+            if getattr(bv, "candidate_id", None) in candidate_ids
+        ]
+        bound_value_count = len(pre_filter_bindings)
+
+        if not pre_filter_bindings:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="no_value_binding",
+                    detail=f"Candidates exist ({candidate_count}) but no value was bound",
+                    stage="value_binding",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=0,
+            )
+
+        # Step 3: Check post-filter bound values — were bindings FP-filtered out?
+        post_filter_bindings = [
+            bv for bv in context.bound_values
+            if getattr(bv, "candidate_id", None) in candidate_ids
+        ]
+
+        if not post_filter_bindings and pre_filter_bindings:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="fp_filtered",
+                    detail=f"{len(pre_filter_bindings)} binding(s) removed by FP filter",
+                    stage="false_positive_filter",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=bound_value_count,
+            )
+
+        # Step 4–7: Bindings survived FP filter — check facts
+        # Look at ALL facts (pre-confidence-filter) for this metric
+        metric_facts = [
+            f for f in all_facts
+            if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
+        ]
+
+        # Also check context.facts (pre-dedup) directly
+        context_facts = [
+            f for f in context.facts
+            if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
+        ]
+
+        if not context_facts and not metric_facts:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="wrong_value",
+                    detail="Post-filter bindings exist but produced no facts with matching value",
+                    stage="fact_construction",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=bound_value_count,
+            )
+
+        # Find closest fact for diagnostics
+        all_metric_facts = list({f.fact_id: f for f in (context_facts + metric_facts)}.values())
+        closest_fact: MetricFact | None = None
+        if all_metric_facts:
+            # Pick fact with lowest value delta if expected_value available
+            if expected_value is not None:
+                for f in all_metric_facts:
+                    if f.value is not None and (
+                        closest_fact is None
+                        or abs(f.value - expected_value) < abs((closest_fact.value or 0) - expected_value)
+                    ):
+                        closest_fact = f
+            else:
+                closest_fact = all_metric_facts[0]
+
+        closest_value = closest_fact.value if closest_fact else None
+        closest_conf = closest_fact.confidence if closest_fact else None
+
+        # Step 5: Check if fact exists in context.facts but not deduplicated_facts
+        dedup_fact_ids = {f.fact_id for f in context.deduplicated_facts}
+        context_fact_ids = {f.fact_id for f in context_facts}
+        dedup_removed = bool(context_fact_ids and not context_fact_ids.intersection(dedup_fact_ids))
+
+        if dedup_removed:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="dedup_removed",
+                    detail="Fact existed pre-dedup but was removed by deduplication",
+                    stage="deduplication",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=bound_value_count,
+                closest_fact_value=closest_value,
+                closest_fact_confidence=closest_conf,
+            )
+
+        # Step 6: Check confidence threshold
+        low_conf_facts = [
+            f for f in all_metric_facts
+            if f.confidence < self.min_confidence
+        ]
+        ok_conf_facts = [
+            f for f in all_metric_facts
+            if f.confidence >= self.min_confidence
+        ]
+        if low_conf_facts and not ok_conf_facts:
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="low_confidence",
+                    detail=f"Facts exist but all below threshold ({self.min_confidence}); max conf={max(f.confidence for f in low_conf_facts):.2f}",
+                    stage="validation",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=bound_value_count,
+                closest_fact_value=closest_value,
+                closest_fact_confidence=closest_conf,
+            )
+
+        # Step 7: Check period mismatch — value matches but period doesn't
+        if expected_value is not None:
+            value_matched_facts = [
+                f for f in all_metric_facts
+                if f.value is not None and self._values_match(expected_value, f.value)
+            ]
+            if value_matched_facts:
+                return FNDiagnostic(
+                    entry=entry,
+                    company_name=company_name,
+                    root_cause=FNRootCause(
+                        category="wrong_period",
+                        detail="Value match exists but period overlap check failed",
+                        stage="matching",
+                    ),
+                    candidate_count=candidate_count,
+                    bound_value_count=bound_value_count,
+                    closest_fact_value=closest_value,
+                    closest_fact_confidence=closest_conf,
+                )
+
+            # Value doesn't match any fact — wrong_value
+            return FNDiagnostic(
+                entry=entry,
+                company_name=company_name,
+                root_cause=FNRootCause(
+                    category="wrong_value",
+                    detail=f"No fact value within {self.value_tolerance:.0%} of expected={expected_value}; closest={closest_value}",
+                    stage="matching",
+                ),
+                candidate_count=candidate_count,
+                bound_value_count=bound_value_count,
+                closest_fact_value=closest_value,
+                closest_fact_confidence=closest_conf,
+            )
+
+        # Fallback
+        return FNDiagnostic(
+            entry=entry,
+            company_name=company_name,
+            root_cause=FNRootCause(
+                category="unknown",
+                detail="Could not determine root cause",
+                stage="unknown",
+            ),
+            candidate_count=candidate_count,
+            bound_value_count=bound_value_count,
+            closest_fact_value=closest_value,
+            closest_fact_confidence=closest_conf,
+        )
+
+    @staticmethod
+    def print_fn_diagnostics(results: list[ValidationResult]) -> None:
+        """Print categorized FN root cause diagnostic report."""
+        all_diags: list[FNDiagnostic] = []
+        for r in results:
+            all_diags.extend(r.fn_diagnostics)
+
+        if not all_diags:
+            print("\nNo FN diagnostics available (fn_diagnostics=False or zero FNs).")
+            return
+
+        total = len(all_diags)
+
+        # Group by root cause category
+        categories: dict[str, list[FNDiagnostic]] = {}
+        for d in all_diags:
+            categories.setdefault(d.root_cause.category, []).append(d)
+
+        print(f"\n{'=' * 70}")
+        print(f"FALSE NEGATIVE ROOT CAUSE ANALYSIS ({total} total FNs)")
+        print(f"{'=' * 70}")
+
+        for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
+            pct = len(diags) / total * 100
+            print(f"\n--- {cat.upper()} ({len(diags)} FNs, {pct:.0f}%) ---")
+
+            # Group by company within each category
+            by_company: dict[str, list[FNDiagnostic]] = {}
+            for d in diags:
+                by_company.setdefault(d.company_name, []).append(d)
+
+            shown = 0
+            for cname, cdiags in sorted(by_company.items()):
+                print(f"  [{cname}]")
+                for d in cdiags[:8]:
+                    val_str = f"expected={d.entry.raw_value}"
+                    if d.closest_fact_value is not None:
+                        val_str += f" closest_extracted={d.closest_fact_value:.4g}"
+                    conf_str = ""
+                    if d.closest_fact_confidence is not None:
+                        conf_str = f" conf={d.closest_fact_confidence:.2f}"
+                    cand_str = f" cands={d.candidate_count} bvs={d.bound_value_count}"
+                    print(
+                        f"    {d.entry.metric_id} ({d.entry.name_in_text!r}): "
+                        f"{val_str}{conf_str}{cand_str}"
+                    )
+                    print(f"      -> {d.root_cause.detail}")
+                    shown += 1
+                remaining = len(cdiags) - 8
+                if remaining > 0:
+                    print(f"    ... and {remaining} more from {cname}")
+
+        print(f"\n{'=' * 70}")
+        print("SUMMARY BY ROOT CAUSE:")
+        for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
+            pct = len(diags) / total * 100
+            print(f"  {cat:<22} {len(diags):>4}  ({pct:.0f}%)")
+        print(f"  {'TOTAL':<22} {total:>4}")
+        print(f"{'=' * 70}")
 
     @staticmethod
     def print_fp_diagnostics(results: list[ValidationResult]) -> None:
@@ -680,9 +1010,9 @@ class V2GoldStandardValidator:
         for d in all_diags:
             categories.setdefault(d.mismatch_category, []).append(d)
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"FALSE POSITIVE DIAGNOSTICS ({len(all_diags)} total FPs)")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
             print(f"\n--- {cat.upper()} ({len(diags)} FPs) ---")
@@ -690,8 +1020,12 @@ class V2GoldStandardValidator:
                 period_str = ""
                 if d.period_start and d.period_end:
                     period_str = f" [{d.period_start} to {d.period_end}]"
-                delta_str = f" (delta={d.value_delta_pct:.1%})" if d.value_delta_pct is not None else ""
-                gold_str = f" gold={d.closest_gold_value}" if d.closest_gold_value is not None else ""
+                delta_str = (
+                    f" (delta={d.value_delta_pct:.1%})" if d.value_delta_pct is not None else ""
+                )
+                gold_str = (
+                    f" gold={d.closest_gold_value}" if d.closest_gold_value is not None else ""
+                )
                 print(
                     f"  {d.metric_id}: {d.value} (raw={d.value_raw!r})"
                     f"{period_str} src={d.source_type} conf={d.confidence:.2f}"
@@ -700,11 +1034,11 @@ class V2GoldStandardValidator:
             if len(diags) > 10:
                 print(f"  ... and {len(diags) - 10} more")
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("SUMMARY:")
         for cat, diags in sorted(categories.items(), key=lambda x: -len(x[1])):
             print(f"  {cat}: {len(diags)}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
     def validate_all(self) -> list[ValidationResult]:
         """
@@ -719,9 +1053,7 @@ class V2GoldStandardValidator:
         for company_name, entries in entries_by_company.items():
             filing_path = self._find_filing_path(company_name)
             if filing_path is None:
-                logger.warning(
-                    f"No filing found for {company_name}, skipping validation"
-                )
+                logger.warning(f"No filing found for {company_name}, skipping validation")
                 continue
 
             logger.info(f"Validating {company_name}...")
@@ -756,10 +1088,7 @@ class V2GoldStandardValidator:
 
         # Try to find any matching directory (normalize both sides)
         normalized_company = (
-            company_name.lower()
-            .replace(" ", "_")
-            .replace(".", "_")
-            .replace(",", "")
+            company_name.lower().replace(" ", "_").replace(".", "_").replace(",", "")
         )
         while "__" in normalized_company:
             normalized_company = normalized_company.replace("__", "_")
@@ -769,10 +1098,7 @@ class V2GoldStandardValidator:
             if not subdir.is_dir():
                 continue
             normalized_dir = (
-                subdir.name.lower()
-                .replace(" ", "_")
-                .replace(".", "_")
-                .replace(",", "")
+                subdir.name.lower().replace(" ", "_").replace(".", "_").replace(",", "")
             )
             while "__" in normalized_dir:
                 normalized_dir = normalized_dir.replace("__", "_")
@@ -800,11 +1126,7 @@ class V2GoldStandardValidator:
 
         precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
         recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
         by_company: dict[str, MetricScores] = {}
         for r in results:
@@ -974,6 +1296,7 @@ def run_validation(
     update_baseline: bool = False,
     baseline_description: str | None = None,
     min_confidence: float = 0.50,
+    fn_diagnostics: bool = False,
 ) -> AggregateMetrics:
     """
     Run full validation and optionally update baseline.
@@ -982,12 +1305,13 @@ def run_validation(
         update_baseline: If True, save current metrics as new baseline
         baseline_description: Description for new baseline
         min_confidence: Minimum confidence threshold for counting facts
+        fn_diagnostics: If True, run FN root cause analysis and print report
 
     Returns:
         AggregateMetrics with validation results
     """
     # Run at the requested confidence threshold (default: high-confidence only)
-    validator = V2GoldStandardValidator(min_confidence=min_confidence)
+    validator = V2GoldStandardValidator(min_confidence=min_confidence, fn_diagnostics=fn_diagnostics)
     results = validator.validate_all()
     metrics = validator.compute_metrics(results)
 
@@ -995,10 +1319,16 @@ def run_validation(
     print(f"  Precision: {metrics.precision:.1%}")
     print(f"  Recall: {metrics.recall:.1%}")
     print(f"  F1 Score: {metrics.f1:.1%}")
-    print(f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}")
+    print(
+        f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}"
+    )
 
     # Print FP diagnostics
     V2GoldStandardValidator.print_fp_diagnostics(results)
+
+    # Print FN diagnostics if enabled
+    if fn_diagnostics:
+        V2GoldStandardValidator.print_fn_diagnostics(results)
 
     # Also report unfiltered facts for comparison
     review_threshold = 0.0
@@ -1007,7 +1337,9 @@ def run_validation(
         review_results = review_validator.validate_all()
         review_metrics = review_validator.compute_metrics(review_results)
         print(f"\n  Review-worthy facts (confidence >= {review_threshold}):")
-        print(f"    TP: {review_metrics.total_true_positives}, FP: {review_metrics.total_false_positives}, FN: {review_metrics.total_false_negatives}")
+        print(
+            f"    TP: {review_metrics.total_true_positives}, FP: {review_metrics.total_false_positives}, FN: {review_metrics.total_false_negatives}"
+        )
 
     if update_baseline:
         validator.save_baseline(metrics, description=baseline_description)
