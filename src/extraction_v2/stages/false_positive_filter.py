@@ -27,7 +27,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.models import BoundValue, SourceType, Unit
+from src.extraction_v2.models import BoundValue, Unit
 from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
 from src.review.number_parsing import NumberMatch
@@ -196,9 +196,7 @@ _UNIT_MAP = {
 }
 
 
-def _make_number_matches(
-    bv: BoundValue, source_text: str
-) -> list[NumberMatch]:
+def _make_number_matches(bv: BoundValue, source_text: str) -> list[NumberMatch]:
     """
     Create V1 NumberMatch(es) for every occurrence of the raw value in source_text.
 
@@ -223,21 +221,28 @@ def _make_number_matches(
         pos = source_text.find(raw, search_start)
         if pos < 0:
             break
-        matches.append(NumberMatch(
-            start=pos,
-            end=pos + len(raw),
-            raw_text=raw,
-            value=value_decimal,
-            unit=v1_unit,
-        ))
+        matches.append(
+            NumberMatch(
+                start=pos,
+                end=pos + len(raw),
+                raw_text=raw,
+                value=value_decimal,
+                unit=v1_unit,
+            )
+        )
         search_start = pos + len(raw)
 
     if not matches:
         # Fallback: position-independent (filter still checks year/min-value)
-        matches.append(NumberMatch(
-            start=0, end=len(raw), raw_text=raw,
-            value=value_decimal, unit=v1_unit,
-        ))
+        matches.append(
+            NumberMatch(
+                start=0,
+                end=len(raw),
+                raw_text=raw,
+                value=value_decimal,
+                unit=v1_unit,
+            )
+        )
 
     return matches
 
@@ -283,6 +288,10 @@ class FalsePositiveFilterStage:
         initial_count = len(context.bound_values)
         filter_reasons: dict[str, int] = {}
 
+        # Snapshot pre-filter state for FN diagnostics (only when requested)
+        if context.config.retain_context:
+            context._pre_filter_bound_values = list(context.bound_values)
+
         # Build candidate lookup for context text
         candidate_map = {c.candidate_id: c for c in context.candidates}
 
@@ -291,9 +300,7 @@ class FalsePositiveFilterStage:
         for bv in context.bound_values:
             try:
                 # Get source text for context
-                source_text = _get_source_text(
-                    bv, candidate_map, context.segments, context.tables
-                )
+                source_text = _get_source_text(bv, candidate_map, context.segments, context.tables)
 
                 if not source_text:
                     # No context available; keep the value (conservative)
@@ -349,9 +356,7 @@ class FalsePositiveFilterStage:
                     kept.append(bv)
 
             except Exception as e:
-                error_msg = (
-                    f"Error filtering BoundValue {bv.bound_value_id}: {e}"
-                )
+                error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
                 logger.error(error_msg)
                 errors.append(error_msg)
                 # On error, keep the value (fail open for individual items)
