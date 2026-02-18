@@ -46,7 +46,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 # Clone and install dependencies
 git clone <repository-url>
 cd filings_reviewer
-pip install -r requirements.txt
+uv sync --all-extras
 
 # Configure environment (see .env.template)
 cp .env.template .env

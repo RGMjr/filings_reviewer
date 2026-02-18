@@ -1,8 +1,8 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.4
+**Version**: 1.5
 **Created**: 2026-01-23
-**Updated**: 2026-02-17
+**Updated**: 2026-02-18
 **Status**: Complete (All 13 Phases)
 
 ## Executive Summary
@@ -545,10 +545,10 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-17)
-- **V2 overall:** P=73%, R=53%, F1=61%
-- **V1 baseline:** P=91%, R=54%, F1=68%
-- V2 precision improved from 58% → 70% → 73% through iterative FP reduction
+### Gold Standard Performance (as of 2026-02-18)
+- **V2 overall:** P=81.9%, R=60.6%, F1=69.6%
+- **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
+- V2 precision improved from 58% → 70% → 73% → 81.9% through iterative FP reduction
 
 ## Current Status
 
@@ -567,3 +567,4 @@ All 13 implementation phases are complete. Active work focuses on:
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
+| 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |

@@ -153,7 +153,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
-| V2 Gold Standard | ✅ Active | N/A | P=73%, R=53%, F1=61% (improving) |
+| V2 Gold Standard | ✅ Active | N/A | P=81.9%, R=60.6%, F1=69.6% (as of 2026-02-18) |
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 4,765 tests)
 
@@ -275,8 +275,8 @@ Group of customers by acquisition period or tenure. See [Metrics Taxonomy](devel
 
 **"Module not found" errors**
 - Ensure you're in the project root directory
-- Verify virtual environment is activated: `source venv/bin/activate`
-- Install dependencies: `pip install -r requirements.txt`
+- Verify virtual environment is activated: `source .venv/bin/activate`
+- Install dependencies: `uv sync --all-extras`
 
 **Database connection errors**
 - Check `DATABASE_URL` in `.env` file
@@ -380,7 +380,7 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 - ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
 - ✅ V2 human review interface with fact-by-fact review and evidence packs
 - ✅ V2 false positive filter stage and percentage context detection
-- ✅ Gold standard validator for V2 (P=73%, R=53%, F1=61%)
+- ✅ Gold standard validator for V2 (P=81.9%, R=60.6%, F1=69.6% as of 2026-02-18)
 - ✅ V2 precision tuning: FP reduction, decimal-gated count scaling, unit compatibility
 - ✅ 4,765 tests, 87% coverage
 

@@ -31,7 +31,7 @@ This guide covers deploying the system for production-scale processing of 20,500
 ### ✅ Environment
 - [ ] Python 3.11+ installed
 - [ ] Virtual environment created and activated
-- [ ] Dependencies installed (`pip install -r requirements.txt`)
+- [ ] Dependencies installed (`uv sync --all-extras`)
 - [ ] OpenAI API key obtained and funded
 - [ ] SEC User-Agent configured (with valid email)
 - [ ] PostgreSQL client tools installed (`psql`, `pg_dump`)
