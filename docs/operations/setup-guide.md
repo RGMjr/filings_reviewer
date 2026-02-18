@@ -30,33 +30,27 @@ git clone https://github.com/RGMjr/filings_reviewer_v2.git
 cd filings_reviewer_v2
 ```
 
-### 2. Create Virtual Environment
+### 2. Install uv (Package Manager)
+
+[uv](https://docs.astral.sh/uv/) provides fast, reproducible dependency management:
 
 ```bash
-# Create virtual environment
-python3.11 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # On macOS/Linux
-# OR
-venv\Scripts\activate     # On Windows
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### 3. Install Dependencies
 
-Install from the curated `requirements.txt` (DO NOT use `pip freeze`):
-
 ```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+uv sync --all-extras
 ```
 
-This installs:
+This installs all dependencies from `uv.lock` (deterministic, cross-platform):
 - **Core runtime**: psycopg3, requests, beautifulsoup4, lxml, PyYAML
 - **LLM integration**: openai, tiktoken
 - **Web framework**: flask, waitress
-- **Testing**: pytest, pytest-cov, pytest-benchmark
-- **Development tools**: black, ruff, mypy
+- **Testing**: pytest, pytest-cov, pytest-benchmark, pytest-xdist
+- **Development tools**: ruff, mypy, pre-commit
 
 ### 4. Configure Environment Variables
 
@@ -138,7 +132,7 @@ TEST_DATABASE_URL=postgresql://localhost:5432/filings_analysis_test
 
 ### 6. Run Database Migrations
 
-Apply the SQL schema migrations (00-09 in `sql/` directory):
+Apply the SQL schema migrations (00-10 in `sql/` directory):
 
 ```bash
 python3 scripts/apply_migrations.py
@@ -297,10 +291,10 @@ See `docs/V2_HUMAN_REVIEW_GUIDE.md` for the complete V2 review workflow and API 
 
 ### Code Formatting
 
-Format code with Black:
+Format code with Ruff (Black-compatible):
 
 ```bash
-black src/ tests/
+ruff format src/ tests/
 ```
 
 ### Linting
@@ -311,10 +305,10 @@ Check code quality with Ruff:
 ruff check src/ tests/
 ```
 
-Auto-fix issues:
+Auto-fix lint issues and format in one step:
 
 ```bash
-ruff check src/ tests/ --fix
+make format
 ```
 
 ### Type Checking
@@ -397,18 +391,23 @@ python3 scripts/apply_migrations.py
 
 ### Update Dependencies
 
-The `requirements.txt` is curated with comments. To update packages:
+Dependencies are managed via `pyproject.toml` and locked with `uv.lock`:
 
 ```bash
-# Update specific package
-pip install --upgrade openai
+# Add a new dependency
+uv add <package>
 
-# Regenerate if needed (manually review changes)
-pip freeze > requirements_new.txt
-# Merge changes into requirements.txt with comments preserved
+# Add a dev dependency
+uv add --dev <package>
+
+# Update all dependencies
+uv lock --upgrade
+
+# Update a specific package
+uv lock --upgrade-package <package>
 ```
 
-**Never blindly run `pip freeze > requirements.txt`** as it loses important comments and structure.
+The `requirements.txt` is kept as a fallback reference but `uv.lock` is the source of truth.
 
 ---
 
@@ -433,7 +432,7 @@ filings_reviewer_v2/
 │   ├── unit/               # Fast unit tests
 │   ├── integration/        # Database-dependent tests
 │   └── conftest.py         # Pytest fixtures
-├── sql/                    # Database schema migrations (00-09)
+├── sql/                    # Database schema migrations (00-10)
 ├── docs/                   # Documentation
 ├── .env.template           # Environment configuration template
 ├── requirements.txt        # Curated Python dependencies
@@ -485,8 +484,8 @@ filings_reviewer_v2/
 **Error:** `ModuleNotFoundError: No module named 'src'`
 
 **Solutions:**
-1. Activate virtual environment: `source venv/bin/activate`
-2. Install dependencies: `pip install -r requirements.txt`
+1. Activate virtual environment: `source .venv/bin/activate`
+2. Install dependencies: `uv sync --all-extras`
 3. Verify Python version: `python3 --version` (should be 3.11+)
 
 ---

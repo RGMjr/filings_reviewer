@@ -1070,7 +1070,7 @@ docker compose up -d
 pytest -v --cov=src --cov-report=term
 
 # Check if source files are being imported
-python -c "from src.extraction.html_segmenter import HTMLSegmenter; print('OK')"
+python3 -c "from src.extraction.html_segmenter import HTMLSegmenter; print('OK')"
 ```
 
 **Issue:** Gold standard tests fail with "baseline not found"
