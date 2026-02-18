@@ -1,3 +1,10 @@
+---
+name: ralph
+description: Autonomous execution loop for multi-step development tasks. Modes include develop, refactor, test, analyze, implement, extract, validate.
+disable-model-invocation: true
+argument-hint: "<mode> [task-id] [--isolated|--current|--yolo]"
+---
+
 # Start Ralph Loop
 
 You are starting the Ralph Loop for autonomous task execution.
