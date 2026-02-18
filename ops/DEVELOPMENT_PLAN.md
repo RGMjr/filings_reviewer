@@ -19,8 +19,8 @@
 - [x] AC-8 | HuggingFace `DocumentSource` implementation for kurry dataset
 - [x] AC-9 | Schema migration: `document_type`, `ticker`, `document_date`, `transcript_source` on `filings`; relaxed constraints
 - [ ] AC-10 | Integration tests: end-to-end transcript pipeline on 5+ transcripts
-- [x] AC-11 | Measured recall >= 50% on existing 77 manual annotations (achieved: 53.2%)
-- [x] AC-12 | Precision remains >= 60% (achieved: 71.9%)
+- [x] AC-11 | Measured recall >= 50% on existing 77 manual annotations (achieved: 59.7%)
+- [x] AC-12 | Precision remains >= 60% (achieved: 69.7%)
 
 ---
 
@@ -31,6 +31,7 @@
 | 6a37369 | AC-1 thru AC-9 | Done | Pipeline tuning, converter, infra |
 | 0cdcd9d | AC-11, AC-12 | Done | R=54.5%, P=60.0%, F1=57.1% |
 | 5a1c2ee | AC-12 hardened | Done | P=71.9% via 4 FP rules, 32 new tests |
+| c733aef | Phase A+ recall | Done | R=53%→60%, keyword expansion + binding fixes |
 
 ---
 
@@ -51,15 +52,15 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 ### Phase A Cleanup
 - **AC-10**: Integration tests for transcript pipeline (not yet created)
 
-### Phase A+ (Recall Improvement — Next Priority)
-- **Non-SaaS keyword expansion**: META, PYPL, TMUS still have major vocabulary gaps
-  - META: "family of apps", "daily/monthly active people" (not "users")
-  - PYPL: "active accounts" (not "customers"), "TPV", "debit card actives"
-  - TMUS: "postpaid net additions", "ARPU/ARPA", "prepaid net adds", "broadband subscribers"
-  - Estimated impact: R=53%→65%, ~10 additional TPs
-- **PYPL $224M transcript bug**: converter produces "$224 million" for MAU count
-- **Q&A section stricter filtering**: analyst questions contain speculative numbers
-- Target: R≥60%, P≥70%, F1≥65%
+### Phase A+ (Recall Improvement — In Progress)
+- [x] **Non-SaaS keyword expansion** (c733aef): TMUS postpaid/prepaid, PYPL debit card, MSFT enterprises/organizations, META magnitude patterns — R=53%→60%
+- [x] **Word-form number parsing** (c733aef): "one billion", "two million" etc. — 3 FNs recovered
+- [x] **is_percentage_format bug** (c733aef): "1.4 million" no longer misclassified as percentage
+- [x] **MIN_PARAGRAPH_CHARS** (c733aef): configurable per pipeline, 30 for transcripts (was 50)
+- [ ] **PYPL $224M transcript bug**: converter produces "$224 million" for MAU count
+- [ ] **Q&A section stricter filtering**: analyst questions contain speculative numbers
+- [ ] **Remaining keyword gaps**: META family-of-apps, MSFT (text missing from HTML), ADSK vocabulary
+- Current: R=59.7%, P=69.7%, F1=64.3% | Target: R≥65%, P≥70%, F1≥67%
 
 ### Phase B (Expanded Coverage)
 - FMP API source (`FMPTranscriptSource`) for broader transcript corpus

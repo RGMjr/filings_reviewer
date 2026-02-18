@@ -7,19 +7,19 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 ## Last Completed
 
 - Phase A transcript support: pipeline tuning, converter, infrastructure (6a37369)
-- Phase A recall improvements: R=22%→55%, P=63%→60%, F1=33%→57% (0cdcd9d)
-- **Phase A precision hardening: P=60%→72%, FP count 28→16, F1=57%→61% (5a1c2ee)**
+- Phase A precision hardening: P=60%→72%, FP count 28→16, F1=57%→61% (5a1c2ee)
+- **Phase A+ recall expansion: R=53%→60%, P=72%→70%, F1=61%→64% (c733aef)**
 
 ## Current Focus
 
-- Beyond SEC Phase A cleanup: integration tests (AC-10), then Phase B planning
-- See "Next Work" section below for prioritized task list
+- Remaining Phase A+ items: PYPL $224M bug, Q&A section filtering, then AC-10 integration tests
+- Target: R≥65%, P≥70%, F1≥67%
 
 ## Test Status
 
-- 4,434 unit tests, 80.66% coverage
+- 4,442 unit tests, 80.69% coverage
 - SEC gold standard: P=90.1%, R=54.2%, F1=67.7% (no regression)
-- Transcript benchmark: P=71.9%, R=53.2%, F1=61.2% (77 annotations, 8 files)
+- Transcript benchmark: P=69.7%, R=59.7%, F1=64.3% (77 annotations, 8 files)
 - Pre-commit scoped to unit tests + gold standard validation on extraction changes
 
 ## Key Learnings
@@ -28,15 +28,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Currency values on count-only metrics (MAU/DAU/active_customers) are always FP
 - Cross-metric dedup (same value+segment, different metrics) catches 3+ FPs per run
 - POC scoring must check unit compatibility — currency↔count matches inflate TP count
-- PYPL and TMUS account for 57% of all transcript FPs — non-SaaS vocabulary gaps
-- PYPL "$224M" MAU is a transcript HTML artifact ($ prefix on user count)
+- is_percentage_format decimal ratio heuristic falsely flags "1.4 million" — must skip scale suffixes
+- Word-form "a million" too ambiguous (dollar thresholds) — exclude "a", keep "one" through "twelve"
+- MAU/DAU exclusion needed on cm_customers_period_end to prevent stock/flow metric confusion
+- MIN_PARAGRAPH_CHARS=50 drops short transcript sentences — reduced to 30 for transcripts
+- 14/36 FNs are unfixable (no numeric value in text), 4 have text missing from HTML
 
 ## Next Work (Prioritized)
 
-1. **Non-SaaS keyword expansion** — META (DAP/MAP/family of apps), PYPL (active accounts, TPV, debit card actives), TMUS (postpaid/prepaid net adds, ARPU/ARPA) → could push recall from 53% to 65%+
-2. **Integration tests (AC-10)** — `tests/integration/extraction_v2/test_transcript_pipeline.py` — end-to-end on 5+ transcripts
-3. **PYPL $224M bug** — transcript converter inserts spurious `$` on "224 million" MAU — fix in transcript_converter.py
-4. **Analyst Q&A section filtering** — transcript_converter already tags `qa` sections; apply stricter FP rules in Q&A (analyst questions contain speculative numbers)
+1. **PYPL $224M bug** — transcript converter inserts spurious `$` on "224 million" MAU — fix in transcript_converter.py
+2. **Analyst Q&A section filtering** — transcript_converter tags `qa` sections; apply stricter FP rules in Q&A
+3. **Further keyword expansion** — remaining gaps in META, MSFT, ADSK vocabulary
+4. **Integration tests (AC-10)** — `tests/integration/extraction_v2/test_transcript_pipeline.py` — end-to-end on 5+ transcripts
 5. **Phase B: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
 6. **Apply schema migration** — `sql/11_transcript_support.sql` to production DB
 
