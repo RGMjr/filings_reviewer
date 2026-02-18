@@ -85,6 +85,67 @@ _COUNT_ONLY_METRICS = frozenset({
     "cm_large_customers_period_end",
 })
 
+# Metrics where percent values need conjunction-clause gating (relaxed mode).
+# In transcript text like "TPV grew 50% and MAAs grew 30%", both values
+# fall in the 400-char proximity window, but only "30%" belongs to MAU.
+_PERCENT_CLAUSE_GATE_METRICS = frozenset({
+    "cm_monthly_active_users",
+    "cm_daily_active_users",
+})
+
+# Conjunction/clause boundary pattern for splitting compound sentences.
+_CONJUNCTION_RE = re.compile(r"\b(?:and|or|but|while)\b|;", re.IGNORECASE)
+
+
+def _is_percent_in_keyword_clause(
+    source_text: str,
+    keyword_span: tuple[int, int] | None,
+    value_raw: str,
+) -> bool:
+    """
+    Check if a percent value is in the same conjunction clause as the keyword.
+
+    Splits text on conjunctions (and, or, but, while, ;) and verifies
+    both the keyword and value fall in the same clause.
+
+    Returns True (keep) if:
+    - They are in the same clause
+    - The text has no conjunctions (single clause — conservative)
+    - Positions can't be determined (fail open)
+    """
+    kw_pos = keyword_span[0] if keyword_span else None
+    if kw_pos is None:
+        return True  # Can't determine keyword position; fail open
+
+    val_pos = source_text.find(value_raw)
+    if val_pos < 0:
+        return True  # Can't find value in text; fail open
+
+    conjunctions = list(_CONJUNCTION_RE.finditer(source_text))
+    if not conjunctions:
+        return True  # Single clause — keep (conservative)
+
+    # Build clause boundaries from conjunction positions
+    boundaries = [0]
+    for m in conjunctions:
+        boundaries.append(m.start())
+    boundaries.append(len(source_text))
+
+    # Find which clause each position falls in
+    kw_clause = None
+    val_clause = None
+    for i in range(len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        if start <= kw_pos < end:
+            kw_clause = i
+        if start <= val_pos < end:
+            val_clause = i
+
+    if kw_clause is None or val_clause is None:
+        return True  # Can't determine; fail open
+
+    return kw_clause == val_clause
+
 
 def _is_v2_false_positive(
     bv: BoundValue,
@@ -382,26 +443,55 @@ class FalsePositiveFilterStage:
                     )
                     continue
 
-                # --- Currency on count-only metrics: convert to count ---
+                # --- Clause gate for percent on MAU/DAU (relaxed mode) ---
+                # In transcript text like "TPV grew 50% and MAAs grew 30%",
+                # both percents are in the proximity window but only "30%"
+                # belongs to MAU.  Split on conjunctions and verify the
+                # percent is in the same clause as the keyword.
+                if relaxed and bv.unit == Unit.PERCENT:
+                    cand_gate = candidate_map.get(bv.candidate_id)
+                    if (
+                        cand_gate
+                        and cand_gate.metric_id in _PERCENT_CLAUSE_GATE_METRICS
+                    ):
+                        if not _is_percent_in_keyword_clause(
+                            source_text,
+                            cand_gate.source_locator.text_span,
+                            bv.value_raw or "",
+                        ):
+                            reason_str = "v2_percent_wrong_clause"
+                            filter_reasons[reason_str] = (
+                                filter_reasons.get(reason_str, 0) + 1
+                            )
+                            logger.debug(
+                                "FP filter rejected percent in wrong clause "
+                                "for %s: %s raw=%r",
+                                cand_gate.metric_id,
+                                bv.value,
+                                bv.value_raw,
+                            )
+                            continue
+
+                # --- Currency on count-only metrics: reject as FP ---
                 # Metrics like MAU/DAU/active_customers are always counts.
-                # Dollar values bound to them (e.g., "$224 million" for
-                # cm_monthly_active_users) should be kept with unit=COUNT.
+                # An explicit $/EUR/GBP prefix strongly signals a dollar
+                # amount, not a user count.  Reject rather than convert.
                 # Runs after V1 to let label-embedded filters (">$100,000")
                 # remove true FPs first.
                 if bv.unit == Unit.CURRENCY:
                     candidate = candidate_map.get(bv.candidate_id)
                     if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
-                        bv.unit = Unit.COUNT
-                        reason_str = "v2_currency_to_count"
-                        conversion_reasons[reason_str] = (
-                            conversion_reasons.get(reason_str, 0) + 1
+                        reason_str = "v2_currency_on_count_metric"
+                        filter_reasons[reason_str] = (
+                            filter_reasons.get(reason_str, 0) + 1
                         )
                         logger.debug(
-                            "FP filter converted currency→count on %s: %s raw=%r",
+                            "FP filter rejected currency on count metric %s: %s raw=%r",
                             candidate.metric_id,
                             bv.value,
                             bv.value_raw,
                         )
+                        continue
 
                 kept.append(bv)
 

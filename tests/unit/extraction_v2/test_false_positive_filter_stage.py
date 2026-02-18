@@ -38,6 +38,7 @@ from src.extraction_v2.models import (
 from src.extraction_v2.stages.false_positive_filter import (
     FalsePositiveFilterStage,
     _is_v2_false_positive,
+    _is_percent_in_keyword_clause,
     _make_number_matches,
     _get_source_text,
 )
@@ -1160,7 +1161,7 @@ class TestBareSmallCountFilter:
 
 
 class TestCurrencyOnCountMetric:
-    """Tests for blocking currency values on count-only metrics (MAU/DAU/etc)."""
+    """Tests for rejecting currency values on count-only metrics (MAU/DAU/etc)."""
 
     @pytest.mark.parametrize(
         "metric_id",
@@ -1173,8 +1174,8 @@ class TestCurrencyOnCountMetric:
             "cm_large_customers_period_end",
         ],
     )
-    def test_currency_converted_to_count_on_count_metric(self, stage, metric_id):
-        """Currency values on count-only metrics are converted to COUNT (not removed)."""
+    def test_currency_rejected_on_count_metric(self, stage, metric_id):
+        """Currency values on count-only metrics are rejected as FP."""
         source = "Monthly active accounts up 2% to $224 million"
         segment = _make_text_segment("seg-1", source)
         candidate = _make_candidate("c1", metric_id, "seg-1")
@@ -1186,10 +1187,7 @@ class TestCurrencyOnCountMetric:
             bound_values=[bv],
         )
         stage.process(ctx)
-        assert len(ctx.bound_values) == 1
-        assert ctx.bound_values[0].unit == Unit.COUNT
-        assert ctx.bound_values[0].value == 224000000.0
-        assert ctx.bound_values[0].value_raw == "$224 million"
+        assert len(ctx.bound_values) == 0, f"Currency on {metric_id} should be rejected"
 
     def test_currency_kept_on_arr_metric(self, stage):
         """Currency values on ARR are kept (ARR is legitimately currency)."""
@@ -1236,8 +1234,8 @@ class TestCurrencyOnCountMetric:
         stage.process(ctx)
         assert len(ctx.bound_values) == 1
 
-    def test_currency_to_count_conversion_tracked_in_metadata(self, stage):
-        """Conversion from currency→count is tracked in result metadata."""
+    def test_currency_rejection_tracked_in_metadata(self, stage):
+        """Rejection of currency on count-only metrics is tracked in result metadata."""
         source = "Monthly active accounts up 2% to $224 million"
         segment = _make_text_segment("seg-1", source)
         candidate = _make_candidate("c1", "cm_monthly_active_users", "seg-1")
@@ -1249,10 +1247,8 @@ class TestCurrencyOnCountMetric:
             bound_values=[bv],
         )
         result = stage.process(ctx)
-        assert "conversion_reasons" in result.metadata
-        assert result.metadata["conversion_reasons"].get("v2_currency_to_count") == 1
-        # Value was converted, not removed
-        assert result.metadata["removed_count"] == 0
+        assert result.metadata["filter_reasons"].get("v2_currency_on_count_metric") == 1
+        assert result.metadata["removed_count"] == 1
 
 
 # ============================================================================
@@ -1334,3 +1330,239 @@ class TestCrossMetricDedup:
         )
         stage.process(ctx)
         assert len(ctx.bound_values) == 2
+
+
+# ============================================================================
+# Test: Percent clause gate (relaxed mode only)
+# ============================================================================
+
+
+class TestPercentClauseGateHelper:
+    """Tests for _is_percent_in_keyword_clause helper function."""
+
+    def test_same_clause_returns_true(self):
+        """Value in same clause as keyword → keep."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        # "MAAs" starts at position 17, "30%" at 27
+        assert _is_percent_in_keyword_clause(text, (17, 21), "30%") is True
+
+    def test_different_clause_returns_false(self):
+        """Value in different clause from keyword → reject."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        # "MAAs" at 17, "50%" at 9 — 50% is in clause 1, MAAs in clause 2
+        assert _is_percent_in_keyword_clause(text, (17, 21), "50%") is False
+
+    def test_single_clause_returns_true(self):
+        """No conjunctions → single clause → keep (conservative)."""
+        text = "MAAs grew 18% year-over-year"
+        assert _is_percent_in_keyword_clause(text, (0, 4), "18%") is True
+
+    def test_no_keyword_span_returns_true(self):
+        """No keyword span → fail open → keep."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        assert _is_percent_in_keyword_clause(text, None, "50%") is True
+
+    def test_value_not_found_returns_true(self):
+        """Value not found in text → fail open → keep."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        assert _is_percent_in_keyword_clause(text, (17, 21), "99%") is True
+
+    def test_semicolon_boundary(self):
+        """Semicolon also splits clauses."""
+        text = "revenue up 50%; MAAs grew 30%"
+        # "MAAs" at 16, "50%" at 11 — different clauses
+        assert _is_percent_in_keyword_clause(text, (16, 20), "50%") is False
+        # "30%" at 26 — same clause as "MAAs"
+        assert _is_percent_in_keyword_clause(text, (16, 20), "30%") is True
+
+    def test_but_boundary(self):
+        """'but' also splits clauses."""
+        text = "take rate was 4% but MAAs grew 18%"
+        assert _is_percent_in_keyword_clause(text, (21, 25), "4%") is False
+        assert _is_percent_in_keyword_clause(text, (21, 25), "18%") is True
+
+    def test_multiple_conjunctions(self):
+        """Multiple conjunctions create multiple clause boundaries."""
+        text = "revenue up 10% and TPV grew 50% and MAAs grew 30%"
+        # "MAAs" at 36, "10%" at 11 — clause 1 vs 3
+        assert _is_percent_in_keyword_clause(text, (36, 40), "10%") is False
+        # "50%" at 28 — clause 2 vs 3
+        assert _is_percent_in_keyword_clause(text, (36, 40), "50%") is False
+        # "30%" at 47 — same clause 3
+        assert _is_percent_in_keyword_clause(text, (36, 40), "30%") is True
+
+
+class TestPercentClauseGateStage:
+    """Stage-level integration tests for the percent clause gate."""
+
+    def _make_relaxed_config(self):
+        @dataclass
+        class RelaxedConfig:
+            min_confidence_auto_accept: float = 0.90
+            relaxed_fp_filter: bool = True
+        return RelaxedConfig()
+
+    def test_wrong_clause_percent_rejected_in_relaxed(self, stage):
+        """Percent value in wrong clause rejected in relaxed mode."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        segment = _make_text_segment("seg-1", text)
+        # Candidate keyword at position 17 ("MAAs")
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_monthly_active_users",
+            match_text="MAAs",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        # "50%" is in the wrong clause (clause 1, keyword in clause 2)
+        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 0, "50% in wrong clause should be rejected"
+
+    def test_same_clause_percent_kept_in_relaxed(self, stage):
+        """Percent value in same clause as keyword kept in relaxed mode."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_monthly_active_users",
+            match_text="MAAs",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        # "30%" is in the same clause as "MAAs"
+        bv = _make_bound_value("c1", 30.0, "30%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1, "30% in same clause should be kept"
+
+    def test_clause_gate_not_applied_in_normal_mode(self, stage):
+        """Clause gate only applies in relaxed mode; normal mode keeps all."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_monthly_active_users",
+            match_text="MAAs",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1, "Normal mode should not apply clause gate"
+
+    def test_clause_gate_not_applied_to_non_gated_metric(self, stage):
+        """Clause gate only applies to MAU/DAU, not other metrics."""
+        text = "Revenue grew 50% and customers grew 30%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_customers_period_end",
+            match_text="customers",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(22, 31)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        stage.process(ctx)
+        # customers_period_end is not in _PERCENT_CLAUSE_GATE_METRICS
+        assert len(ctx.bound_values) == 1
+
+    def test_single_clause_mau_percent_kept(self, stage):
+        """Single-clause segment always passes clause gate."""
+        text = "monthly active users at approximately 35%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_monthly_active_users",
+            match_text="monthly active users",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(0, 20)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        bv = _make_bound_value("c1", 35.0, "35%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 1, "Single clause should always pass"
+
+    def test_dau_also_gated(self, stage):
+        """DAU metric is also subject to clause gate."""
+        text = "engagement up 6% and DAU grew 18%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_daily_active_users",
+            match_text="DAU",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(22, 25)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        # "6%" is in the wrong clause
+        bv_wrong = _make_bound_value("c1", 6.0, "6%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv_wrong],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        stage.process(ctx)
+        assert len(ctx.bound_values) == 0, "6% in wrong clause for DAU should be rejected"
+
+    def test_clause_gate_rejection_tracked(self, stage):
+        """Clause gate rejection reason tracked in metadata."""
+        text = "TPV grew 50% and MAAs grew 30%"
+        segment = _make_text_segment("seg-1", text)
+        candidate = MetricCandidate(
+            candidate_id="c1",
+            metric_id="cm_monthly_active_users",
+            match_text="MAAs",
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_type=SourceType.TEXT,
+            context_text=text,
+        )
+        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+            config=self._make_relaxed_config(),  # type: ignore
+        )
+        result = stage.process(ctx)
+        assert result.metadata["filter_reasons"].get("v2_percent_wrong_clause") == 1
