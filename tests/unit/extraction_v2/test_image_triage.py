@@ -484,8 +484,9 @@ class TestPipelineIntegration:
 
     def test_process_empty_context(self, stage: ImageTriageStage) -> None:
         """Process should handle empty images list."""
-        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
 
         context = PipelineContext(
             filing_id=1,
@@ -503,8 +504,9 @@ class TestPipelineIntegration:
 
     def test_process_with_images(self, stage: ImageTriageStage) -> None:
         """Process should classify and score images."""
-        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
 
         context = PipelineContext(
             filing_id=1,
@@ -538,8 +540,9 @@ class TestPipelineIntegration:
 
     def test_process_returns_metadata(self, stage: ImageTriageStage) -> None:
         """Process should return classification statistics."""
-        from src.extraction_v2.pipeline import PipelineContext
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext
 
         context = PipelineContext(
             filing_id=1,
@@ -674,3 +677,43 @@ class TestPatternMatching:
             asset = ImageAsset(img_id="test", filename=filename, width=400, height=100)
             result = stage.classify_image(asset)
             assert result == ImageClassification.SIGNATURE, f"Failed for {filename}"
+
+    def test_figures_plural_classified_as_chart(self, stage: ImageTriageStage) -> None:
+        """'figures' (plural) in nearby text should trigger CHART classification."""
+        asset = ImageAsset(
+            img_id="test_farfetch",
+            filename="g607688g12o45.jpg",
+            nearby_text="The figures below represent our GMV by cohort",
+            width=800,
+            height=600,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.CHART
+
+    def test_dimensionless_image_with_metric_keywords_is_chart(
+        self, stage: ImageTriageStage
+    ) -> None:
+        """Dimensionless images (width=0, height=0) with metric keywords should be CHART."""
+        asset = ImageAsset(
+            img_id="test_dimensionless",
+            filename="g607688g09d00.jpg",
+            nearby_text="Order Contribution Margin by cohort retention analysis",
+            width=0,
+            height=0,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.CHART
+
+    def test_dimensionless_image_without_keywords_stays_unknown(
+        self, stage: ImageTriageStage
+    ) -> None:
+        """Dimensionless images without metric keywords should NOT be classified as CHART."""
+        asset = ImageAsset(
+            img_id="test_dimensionless_unknown",
+            filename="g607688x99z99.jpg",
+            nearby_text="Some general text without relevant keywords",
+            width=0,
+            height=0,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.UNKNOWN
