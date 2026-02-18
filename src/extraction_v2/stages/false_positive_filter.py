@@ -312,6 +312,7 @@ class FalsePositiveFilterStage:
 
         initial_count = len(context.bound_values)
         filter_reasons: dict[str, int] = {}
+        conversion_reasons: dict[str, int] = {}
 
         # Read relaxed mode from config (for transcripts/presentations)
         relaxed = getattr(context.config, "relaxed_fp_filter", False)
@@ -348,25 +349,6 @@ class FalsePositiveFilterStage:
                     )
                     continue
 
-                # --- Currency on count-only metrics ---
-                # Metrics like MAU/DAU/active_customers are always counts.
-                # Dollar values bound to them are false positives (e.g.,
-                # "$224 million" mistakenly bound to cm_monthly_active_users).
-                if bv.unit == Unit.CURRENCY:
-                    candidate = candidate_map.get(bv.candidate_id)
-                    if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
-                        reason_str = "v2_currency_on_count_metric"
-                        filter_reasons[reason_str] = (
-                            filter_reasons.get(reason_str, 0) + 1
-                        )
-                        logger.debug(
-                            "FP filter removed currency value on count metric %s: %s raw=%r",
-                            candidate.metric_id,
-                            bv.value,
-                            bv.value_raw,
-                        )
-                        continue
-
                 # --- V1 positional filter ---
                 # Build NumberMatches for all occurrences of the raw
                 # value in the source text. The value is FP only if ALL
@@ -398,8 +380,30 @@ class FalsePositiveFilterStage:
                         bv.value,
                         bv.value_raw,
                     )
-                else:
-                    kept.append(bv)
+                    continue
+
+                # --- Currency on count-only metrics: convert to count ---
+                # Metrics like MAU/DAU/active_customers are always counts.
+                # Dollar values bound to them (e.g., "$224 million" for
+                # cm_monthly_active_users) should be kept with unit=COUNT.
+                # Runs after V1 to let label-embedded filters (">$100,000")
+                # remove true FPs first.
+                if bv.unit == Unit.CURRENCY:
+                    candidate = candidate_map.get(bv.candidate_id)
+                    if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
+                        bv.unit = Unit.COUNT
+                        reason_str = "v2_currency_to_count"
+                        conversion_reasons[reason_str] = (
+                            conversion_reasons.get(reason_str, 0) + 1
+                        )
+                        logger.debug(
+                            "FP filter converted currency→count on %s: %s raw=%r",
+                            candidate.metric_id,
+                            bv.value,
+                            bv.value_raw,
+                        )
+
+                kept.append(bv)
 
             except Exception as e:
                 error_msg = (
@@ -422,11 +426,14 @@ class FalsePositiveFilterStage:
 
         # Log summary
         logger.info(
-            "False positive filter: %d/%d removed (%d kept). Reasons: %s",
+            "False positive filter: %d/%d removed, %d converted (%d kept). "
+            "Reasons: %s. Conversions: %s",
             removed_count,
             initial_count,
+            sum(conversion_reasons.values()),
             len(kept),
             dict(filter_reasons),
+            dict(conversion_reasons),
         )
 
         return self._make_result(
@@ -436,6 +443,7 @@ class FalsePositiveFilterStage:
             errors,
             warnings,
             filter_reasons,
+            conversion_reasons,
         )
 
     @staticmethod
@@ -513,6 +521,7 @@ class FalsePositiveFilterStage:
         errors: list[str],
         warnings: list[str],
         filter_reasons: dict[str, int],
+        conversion_reasons: dict[str, int] | None = None,
     ) -> StageResult:
         """Create a StageResult with timing and filter statistics."""
         end_time = datetime.utcnow()
@@ -531,5 +540,6 @@ class FalsePositiveFilterStage:
             metadata={
                 "removed_count": items_processed - items_output,
                 "filter_reasons": filter_reasons,
+                "conversion_reasons": conversion_reasons or {},
             },
         )

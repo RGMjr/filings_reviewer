@@ -1173,8 +1173,8 @@ class TestCurrencyOnCountMetric:
             "cm_large_customers_period_end",
         ],
     )
-    def test_currency_filtered_on_count_metric(self, stage, metric_id):
-        """Currency values on count-only metrics are filtered out."""
+    def test_currency_converted_to_count_on_count_metric(self, stage, metric_id):
+        """Currency values on count-only metrics are converted to COUNT (not removed)."""
         source = "Monthly active accounts up 2% to $224 million"
         segment = _make_text_segment("seg-1", source)
         candidate = _make_candidate("c1", metric_id, "seg-1")
@@ -1186,7 +1186,10 @@ class TestCurrencyOnCountMetric:
             bound_values=[bv],
         )
         stage.process(ctx)
-        assert len(ctx.bound_values) == 0
+        assert len(ctx.bound_values) == 1
+        assert ctx.bound_values[0].unit == Unit.COUNT
+        assert ctx.bound_values[0].value == 224000000.0
+        assert ctx.bound_values[0].value_raw == "$224 million"
 
     def test_currency_kept_on_arr_metric(self, stage):
         """Currency values on ARR are kept (ARR is legitimately currency)."""
@@ -1232,6 +1235,24 @@ class TestCurrencyOnCountMetric:
         )
         stage.process(ctx)
         assert len(ctx.bound_values) == 1
+
+    def test_currency_to_count_conversion_tracked_in_metadata(self, stage):
+        """Conversion from currency→count is tracked in result metadata."""
+        source = "Monthly active accounts up 2% to $224 million"
+        segment = _make_text_segment("seg-1", source)
+        candidate = _make_candidate("c1", "cm_monthly_active_users", "seg-1")
+        bv = _make_bound_value("c1", 224000000.0, "$224 million", Unit.CURRENCY, "seg-1")
+
+        ctx = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            bound_values=[bv],
+        )
+        result = stage.process(ctx)
+        assert "conversion_reasons" in result.metadata
+        assert result.metadata["conversion_reasons"].get("v2_currency_to_count") == 1
+        # Value was converted, not removed
+        assert result.metadata["removed_count"] == 0
 
 
 # ============================================================================
