@@ -107,6 +107,25 @@ class ValueBindingStage:
         "b": 1_000_000_000,
     }
 
+    # Word-form number parsing for "a billion", "one billion", etc.
+    # Note: "a" is intentionally excluded — too ambiguous ("over a million" = dollar threshold)
+    WORD_NUMBERS: dict[str, float] = {
+        "one": 1, "two": 2, "three": 3, "four": 4,
+        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+        "ten": 10, "eleven": 11, "twelve": 12,
+    }
+
+    WORD_NUMBER_PATTERN = re.compile(
+        r"""
+        (?P<currency>[\$\€\£])?             # Optional currency symbol
+        \s*
+        (?P<word_num>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)
+        \s+
+        (?P<suffix>million|billion|trillion|thousand)
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
     def __init__(self, proximity_window: int = 100) -> None:
         """
         Initialize the value binding stage.
@@ -784,9 +803,16 @@ class ValueBindingStage:
         window_end = min(len(text), match_end + proximity_chars)
         window_text = text[window_start:window_end]
 
-        # Find all numbers in window
+        # Find all numbers in window (digit-based)
         for match in self.NUMBER_PATTERN.finditer(window_text):
             parsed = self._parse_number(match.group())
+            if parsed:
+                value, unit, raw = parsed
+                results.append((match, value, unit, raw))
+
+        # Also find word-form numbers ("a billion", "one million")
+        for match in self.WORD_NUMBER_PATTERN.finditer(window_text):
+            parsed = self._parse_word_number(match.group())
             if parsed:
                 value, unit, raw = parsed
                 results.append((match, value, unit, raw))
@@ -848,7 +874,8 @@ class ValueBindingStage:
         cleaned = self.APPROX_PREFIXES.sub("", text)
         match = self.NUMBER_PATTERN.search(cleaned)
         if not match:
-            return None
+            # Fallback: try word-form numbers ("a billion", "one million")
+            return self._parse_word_number(cleaned)
 
         try:
             # Extract components
@@ -889,6 +916,23 @@ class ValueBindingStage:
         except (ValueError, InvalidOperation) as e:
             logger.debug(f"Could not parse number from '{text}': {e}")
             return None
+
+    def _parse_word_number(self, text: str) -> tuple[float, Unit, str] | None:
+        """Parse word-form numbers like 'a billion', 'one million'."""
+        word_match = self.WORD_NUMBER_PATTERN.search(text)
+        if not word_match:
+            return None
+
+        word = word_match.group("word_num").lower()
+        suffix = word_match.group("suffix").lower()
+        base = self.WORD_NUMBERS.get(word, 1)
+        value = base * self.SCALE_MULTIPLIERS.get(suffix, 1)
+
+        currency = word_match.group("currency")
+        unit = Unit.CURRENCY if currency else Unit.COUNT
+        raw = word_match.group().strip()
+
+        return (value, unit, raw)
 
     def _compute_table_confidence(
         self,

@@ -397,16 +397,18 @@ def is_percentage_format(raw_text: str, unit: str) -> bool:
 
     # Decimal ratio format (common for retention rates like 1.25 = 125%)
     # Accept values in 0.5 to 2.5 range with decimal point
+    # BUT skip if raw_text contains a scale suffix (e.g. "1.4 million" is NOT a ratio)
     if '.' in raw_text and unit == 'count':
-        try:
-            # Remove any non-numeric chars except decimal point
-            cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
-            val = float(cleaned)
-            # Retention rates typically 0.5 (50%) to 2.0 (200%)
-            if 0.5 <= val <= 2.5:
-                return True
-        except (ValueError, TypeError):
-            pass
+        if not re.search(r'(?:million|billion|thousand|mn|bn)', raw_text, re.IGNORECASE):
+            try:
+                # Remove any non-numeric chars except decimal point
+                cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
+                val = float(cleaned)
+                # Retention rates typically 0.5 (50%) to 2.0 (200%)
+                if 0.5 <= val <= 2.5:
+                    return True
+            except (ValueError, TypeError):
+                pass
 
     return False
 

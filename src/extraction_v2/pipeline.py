@@ -114,6 +114,7 @@ class PipelineConfig:
     document_type: str = DOC_TYPE_SEC_FILING
     text_proximity_chars: int = 100
     relaxed_fp_filter: bool = False
+    min_paragraph_chars: int = 50
 
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
@@ -124,6 +125,7 @@ class PipelineConfig:
             "enable_chart_extraction": False,
             "text_proximity_chars": 400,
             "relaxed_fp_filter": True,
+            "min_paragraph_chars": 30,
         }
         defaults.update(overrides)
         return cls(**defaults)
@@ -292,7 +294,9 @@ class V2Pipeline:
     def _setup_stages(self) -> None:
         """Initialize pipeline stages."""
         # Stage 1: Ingestion & Parsing
-        self._stages.append((PipelineStage.INGESTION, IngestionStage()))
+        self._stages.append((PipelineStage.INGESTION, IngestionStage(
+            min_paragraph_chars=self.config.min_paragraph_chars,
+        )))
 
         # Stage 2: Section Classification
         if self.config.enable_section_classification:

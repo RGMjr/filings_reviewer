@@ -50,7 +50,7 @@ class IngestionStage:
     """
 
     # V1 compatibility constants
-    MIN_PARAGRAPH_CHARS = 50  # Minimum text length for paragraphs
+    DEFAULT_MIN_PARAGRAPH_CHARS = 50  # Minimum text length for paragraphs
     MAX_PARAGRAPH_CHARS = 10000  # Maximum text length for paragraphs
 
     # Image detection constants (ported from V1)
@@ -79,9 +79,9 @@ class IngestionStage:
         r'\bfooter\b',
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, min_paragraph_chars: int | None = None) -> None:
         """Initialize the ingestion stage."""
-        pass
+        self.MIN_PARAGRAPH_CHARS = min_paragraph_chars or self.DEFAULT_MIN_PARAGRAPH_CHARS
 
     def _parse_html(self, html_path: Path) -> etree._Element | None:
         """

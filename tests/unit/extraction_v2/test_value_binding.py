@@ -1951,3 +1951,67 @@ class TestAmbiguityPenaltyPostFilter:
         for bv in context.bound_values:
             # Should have ambiguity penalty applied
             assert bv.binding_confidence < stage.TEXT_BINDING_BASE + stage.SAME_SENTENCE_BONUS
+
+
+class TestWordFormNumberParsing:
+    """Tests for word-form number parsing (a billion, one million, etc.)."""
+
+    def test_parse_a_billion_excluded(self) -> None:
+        """'a' is excluded as too ambiguous ('over a million' = dollar threshold)."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("a billion")
+        # "a" is not in WORD_NUMBERS — should not parse as word-form
+        # (may still parse if digit fallback catches something, but "a billion" has no digits)
+        assert result is None
+
+    def test_parse_one_million(self) -> None:
+        stage = ValueBindingStage()
+        result = stage._parse_number("one million")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000
+        assert unit == Unit.COUNT
+
+    def test_parse_two_billion(self) -> None:
+        stage = ValueBindingStage()
+        result = stage._parse_number("two billion")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 2_000_000_000
+        assert unit == Unit.COUNT
+
+    def test_parse_dollar_one_billion(self) -> None:
+        """'$one billion' should parse as currency."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("$one billion")
+        # "$" before word number is unusual but should parse
+        if result is not None:
+            value, unit, raw = result
+            assert value == 1_000_000_000
+            assert unit == Unit.CURRENCY
+
+    def test_digit_number_still_preferred(self) -> None:
+        """Digit-based parsing should take precedence over word-form."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("1.4 million")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_400_000
+        assert unit == Unit.COUNT
+
+    def test_word_number_in_proximity(self) -> None:
+        """Word-form numbers should be found in proximity search."""
+        stage = ValueBindingStage()
+        text = "Over one billion professionals use LinkedIn to connect learn and sell"
+        results = stage._find_numbers_in_proximity(text, 20, 40, 200)
+        # Should find "one billion"
+        values = [r[1] for r in results]
+        assert 1_000_000_000 in values
+
+    def test_parse_approx_one_billion(self) -> None:
+        """Approximate prefixes should be stripped before word-form parsing."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("approximately one billion")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000_000

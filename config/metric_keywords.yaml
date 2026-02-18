@@ -86,11 +86,16 @@ cm_new_customers_acquired:
     # Transcript vocabulary (telecom net adds, first-time users, new businesses)
     - '\bnet\s+(?:additions?|adds?)\b'
     - '\bnet\s+customer\s+additions?\b'
-    - '\bfirst[- ]time\s+(?:customers?|users?)\b'
+    - '\bfirst[- ]time\b[^.;]{0,40}\b(?:customers?|users?)\b'
     - '\bnew\s+(?:businesses|merchants)\b'
-    # Transcript: telecom-specific "postpaid phone net adds", "broadband net additions"
-    - '\bpostpaid\s+(?:phone\s+)?net\s+(?:customer\s+)?(?:additions?|adds?)\b'
+    # Transcript: telecom-specific "postpaid phone net adds/adding", "broadband net additions"
+    - '\bpostpaid\s+(?:phones?\s+)?net\s+(?:customer\s+)?(?:additions?|adds?)\b'
+    - '\bpostpaid\s+phones?\s+adding\b'
     - '\b(?:broadband|fiber|5g)\s+(?:net\s+)?(?:additions?|adds?)\b'
+    # Transcript: "prepaid net adds" (telecom)
+    - '\bprepaid\s+(?:net\s+)?(?:additions?|adds?)\b'
+    # Transcript: "4 million new debit card actives" (PYPL)
+    - '\bnew\b[^.;]{0,30}\bdebit\s+card\s+(?:actives?|users?)\b'
   exclusions:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
@@ -117,19 +122,21 @@ cm_customers_period_end:
     - '\bconsumer\s+base\b'
     - '\btotal\s+accounts?\b'
     - '\btotal\s+clients?\b'
-    # Transcript vocabulary (telecom: postpaid net additions, subscriber additions)
-    - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
-    - '\bsubscriber\s+additions?\b'
+    # Transcript vocabulary (telecom: subscriber counts — NOT net additions which are flow metrics)
+    # REMOVED: postpaid net additions pattern (moved to cm_new_customers_acquired — it's a flow metric)
+    - '\bsubscriber\s+(?:count|base)\b'
     # Transcript: prepaid customers/subscribers, commercial seats, consumer subscriptions
     - '\bprepaid\s+(?:customers?|subscribers?)\b'
     - '\bcommercial\s+seats?\b'
     - '\bconsumer\s+subscriptions?\b'
-    # Transcript: "1.4 million security customers" — bare "N customers" with magnitude
-    - '\b(?:million|billion|thousand)\s+(?:\w+\s+)?customers?\b'
-    # Transcript: "15 million Copilot users" — "N users" with magnitude
-    - '\b(?:million|billion|thousand)\s+(?:\w+\s+)?users?\b'
-    # Transcript: "organizations have used/now use" (MSFT)
-    - '\borganizations?\s+(?:have\s+)?(?:used?|adopted)\b'
+    # Transcript: "1.4 million security customers" — bare "N [adj] customers" with magnitude
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,3}customers?\b'
+    # Transcript: "15 million GitHub Copilot users" — "N [adj] users" with magnitude (0-3 words)
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,3}users?\b'
+    # Transcript: "organizations have used/now use/have already used" (MSFT)
+    - '\borganizations?\s+(?:have\s+)?(?:\w+\s+)?(?:used?|adopted)\b'
+    # Transcript: "70,000 enterprises" (MSFT Foundry)
+    - '\b\d[\d,.]*\s+(?:\w+\s+){0,2}enterprises?\b'
     # Transcript: "paid subscriptions grew" (ADBE)
     - '\bpaid\s+subscriptions?\b'
   exclusions:
@@ -144,6 +151,8 @@ cm_customers_period_end:
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
     # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
+    # FIX-FP: monthly/daily active users/people belong to MAU/DAU metrics, not stock count
+    - '\b(?:monthly|daily)\s+active\s+(?:users?|people)\b'
     # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
     - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
   specific_patterns:
@@ -425,6 +434,8 @@ cm_expansion_revenue:
     - '\bproducts?\s+per\s+customer\b'
     - '\baverage\s+products?\s+owned\b'
     - '\bexpand\b[^.;]{0,100}\brevenue\b'
+    # Transcript: "transactions per active account" (PYPL)
+    - '\btransactions?\s+per\s+(?:active\s+)?account\b'
     - '\badditional\s+products?\b'
     - '\bmulti[- ]product\b'
 
