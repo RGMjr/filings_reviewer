@@ -46,18 +46,22 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_gmv",
 }
 
-# Percent-only metrics: retention rates, churn, ratios
+# Percent-only metrics: retention rates, churn, margins
 _PERCENT_ONLY_METRICS: set[str] = {
     "cm_net_revenue_retention",
     "cm_gross_revenue_retention",
     "cm_customer_retention_rate",
     "cm_customer_churn_rate",
-    "cm_ltv_to_cac_ratio",
-    "cm_ltv_to_cac_ratio_by_cohort",
     "cm_revenue_concentration",
-    "cm_repeat_purchase_rate",
     "cm_gross_margin_by_cohort",
     "cm_gross_margin_overall",
+}
+
+# Ratio metrics: naturally appear as bare decimals (e.g., 1.42x LTV/CAC)
+_RATIO_METRICS: set[str] = {
+    "cm_ltv_to_cac_ratio",
+    "cm_ltv_to_cac_ratio_by_cohort",
+    "cm_repeat_purchase_rate",
 }
 
 # Build the lookup: metric_id → frozenset of allowed units
@@ -71,6 +75,9 @@ for _m in _CURRENCY_ONLY_METRICS:
 
 for _m in _PERCENT_ONLY_METRICS:
     METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO})
+
+for _m in _RATIO_METRICS:
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO, Unit.OTHER})
 
 
 def get_allowed_units(metric_id: str) -> frozenset[Unit] | None:

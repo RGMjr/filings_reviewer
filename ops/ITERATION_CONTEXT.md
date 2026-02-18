@@ -6,28 +6,29 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-- V2 precision: 73% → 74.3% via Unit.OTHER filter for currency metrics in text_proximity (b7e0aad)
-- Defensive column-type filter in _bind_row_values (44a8987) — zero gold standard impact but guards future
-- Diagnosed Farfetch FPs: 6/8 are text_proximity, only 2 are table_stub
-- Min-value threshold (< 100) for count metrics tested and REJECTED — causes -10pp recall
+- V2 F1: 61.9% → 69.6% (+7.7pp) via 3 fixes targeting Farfetch recall
+- Fix 1: normalize_value() double-scale bug — scaled_value already incorporates scale_unit
+- Fix 2: Ratio metrics (LTV/CAC, repeat purchase) now accept Unit.OTHER (bare decimals)
+- Fix 3: "except as otherwise noted" table scale — skip scaling for $-prefixed/(actual) values
+- Farfetch: F1 42.3% → 66.7% (+24.4pp), Snowflake: F1 61.6% → 74.7% (+13.1pp)
 
 ## Current Focus
 
-- V2 gold standard precision/recall optimization (ongoing)
+- V2 gold standard optimization — remaining FNs are mostly OCR-dependent (chart images)
 
 ## Test Status
 
-- 4,396 unit tests passed, 81% coverage
-- V2 gold standard: P=74.3%, R=53.1%, F1=61.9% (overall, 4 companies)
+- 4,405 unit tests passed (17 skipped), 87% coverage
+- V2 gold standard: P=81.9%, R=60.6%, F1=69.6% (overall, 4 companies)
 - V1 gold standard: P=89.4%, R=63.2%, F1=74.1% (unchanged)
 - Pre-commit scoped to unit tests only
 
 ## Key Learnings for Next Iteration
 
-- Unit.OTHER rejection must be text_proximity-specific (table bindings need bare numbers)
-- Min-value thresholds for count metrics destroy recall (Snowflake has legitimate small counts)
-- Farfetch FPs are mostly text_proximity, not table bindings — column-type filters have limited impact
-- Pre-commit hook runs V1 gold standard, not V2 — V2 needs separate validation
+- Gold standard CSV scaled_value column already incorporates scale_unit — don't re-apply
+- Ratio metrics (LTV/CAC) naturally appear as bare decimals — need Unit.OTHER, unlike true percents
+- "except as otherwise noted" is a common SEC filing pattern — $ symbol = actual value
+- Farfetch remaining FNs: 9 chart-only (gross_margin_by_cohort, ltv_to_cac_ratio_by_cohort)
 
 ## Blockers or Warnings
 

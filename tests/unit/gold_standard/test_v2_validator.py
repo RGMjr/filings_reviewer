@@ -245,6 +245,23 @@ class TestNormalizeValue:
         """When raw_value already has M multiplier, scale_unit M should not double it."""
         assert normalize_value("10M", scale_unit="M") == 10_000_000.0
 
+    def test_scaled_value_skips_scale_unit_reapplication(self) -> None:
+        """When scaled_value differs from raw_value, scale was already applied in CSV."""
+        # Farfetch pattern: raw="796.3", scaled="796,300", scale_unit="thousands"
+        # scaled_value already incorporates the 1000x, so don't re-apply
+        result = normalize_value("796.3", scaled_value="796,300", scale_unit="THOUSANDS")
+        assert result == pytest.approx(796_300.0)
+
+    def test_scaled_value_same_as_raw_still_applies_scale(self) -> None:
+        """When scaled_value == raw_value, scale_unit should still be applied."""
+        result = normalize_value("100", scaled_value="100", scale_unit="THOUSANDS")
+        assert result == pytest.approx(100_000.0)
+
+    def test_scaled_value_different_with_millions(self) -> None:
+        """Scaled value different from raw with millions scale_unit → no re-application."""
+        result = normalize_value("1.5", scaled_value="1,500,000", scale_unit="MILLIONS")
+        assert result == pytest.approx(1_500_000.0)
+
     def test_empty_value_raises(self) -> None:
         with pytest.raises(ValueError, match="No value to normalize"):
             normalize_value("")
