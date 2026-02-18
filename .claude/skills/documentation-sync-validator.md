@@ -1,3 +1,7 @@
+---
+description: Validate documentation accuracy against current codebase and flag stale or incorrect content
+---
+
 # Documentation Sync Validator Skill
 
 **Version:** 1.1.0
