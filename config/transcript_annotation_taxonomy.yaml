@@ -1,0 +1,500 @@
+# Transcript Annotation Taxonomy
+#
+# Conceptual definitions for the 27 active cm_* metrics used in LLM pre-annotation.
+#
+# CRITICAL: These definitions are intentionally written WITHOUT regex patterns.
+# The LLM's error profile must differ from the pipeline's keyword-matching approach
+# to prevent circular evaluation of the gold standard.
+#
+# Each entry includes:
+#   definition: Plain-language description of what the metric captures
+#   examples: Concrete phrasings commonly heard in earnings calls
+#   not_this: Common confusables / false positive patterns to reject
+#   notes: Edge cases and annotator guidance
+
+version: "1.0"
+
+metrics:
+  cm_customers_period_end:
+    label: "Paying Customers at Period End"
+    definition: >
+      The total count of paying customers (individuals, accounts, or companies depending
+      on business model) at the end of the reported period. This is a stock count — it
+      reflects how many are active subscribers or paying users RIGHT NOW at end of quarter.
+      Not a flow measure (not additions, not churn).
+    examples:
+      - "We ended the quarter with 8.5 million subscribers"
+      - "Total paying customers reached 2.3 million at December 31"
+      - "Our customer base grew to 45,000 business accounts"
+      - "We now have 120,000 paying users"
+    not_this:
+      - Mentions of ADDING customers (those go in cm_new_customers_acquired)
+      - Free users, trial accounts, or app installs without payment
+      - Cumulative historical totals ("we've served 50 million customers over our history")
+      - Monthly active users or daily active users (different metrics)
+    notes: >
+      Unit is always 'count'. When a company distinguishes between customer tiers
+      (e.g., enterprise vs SMB), annotate the most comparable overall total unless
+      the breakdown is clearly labeled with its own metric.
+
+  cm_new_customers_acquired:
+    label: "New Customers Acquired in Period"
+    definition: >
+      The number of net NEW customers added during the period, or the number of new
+      subscribers/accounts acquired. This is a flow measure — it counts how many joined
+      in this quarter or year (not the running total). Also includes net customer additions
+      (gross adds minus churn) when stated explicitly as a net figure.
+    examples:
+      - "We added 1.2 million net new subscribers this quarter"
+      - "Customer additions of 450,000 in Q3"
+      - "We acquired 12,000 new enterprise customers"
+      - "Net customer additions were 800,000"
+    not_this:
+      - The end-of-period total (that is cm_customers_period_end)
+      - Gross adds when churn is not accounted for (unless the company labels it net)
+      - Total postpaid net additions in telecom that include upgrades — annotate anyway as cm_new_customers_acquired with a note
+    notes: >
+      Unit is 'count'. When a telecom or SaaS company reports "net additions," treat
+      as cm_new_customers_acquired. If they separately report gross adds and churn,
+      annotate the net figure preferentially.
+
+  cm_active_customers_total:
+    label: "Active Customers (Engagement-Based)"
+    definition: >
+      The count of customers who engaged with the product within a recent window —
+      typically described as "active" users or customers. Distinct from cm_customers_period_end
+      in that it measures ENGAGEMENT rather than having a paid relationship.
+      Often described as monthly actives, weekly actives, or daily actives across
+      an entire platform or product family — NOT for individual products (those are MAU/DAU).
+    examples:
+      - "We had 25 million active users in the quarter"
+      - "Our platform served 8 million active customers this year"
+      - "Monthly active users across our ecosystem reached 500 million"
+    not_this:
+      - Daily active users on a single product (cm_daily_active_users)
+      - Monthly active users on a single product (cm_monthly_active_users)
+      - End-of-period subscriber counts without engagement qualifier (cm_customers_period_end)
+    notes: >
+      If a company reports "Family daily active people" or similar cross-app totals,
+      these can be cm_active_customers_total OR cm_daily_active_users depending on
+      whether it's a product-level or platform-level metric. Use context clues.
+
+  cm_large_customers_period_end:
+    label: "Large / Enterprise Customers at Period End"
+    definition: >
+      The count of large, enterprise, or high-value customers at period end. Companies
+      define this by revenue threshold (e.g., customers spending >$100K/year), by tier
+      (enterprise, strategic), or by employee size. Always a stock count at period end.
+    examples:
+      - "We ended the quarter with 7,500 customers generating more than $100,000 in ARR"
+      - "Enterprise customer count grew to 1,200"
+      - "We have 450 six-figure customers"
+      - "Global 2000 customers: 310"
+    not_this:
+      - Revenue from large customers (that would be a revenue metric)
+      - Percentage of revenue from large customers (cm_revenue_concentration)
+    notes: >
+      Annotate the revenue threshold in the raw_text field. Common thresholds:
+      $100K ARR, $500K ARR, $1M ARR. If multiple thresholds are mentioned, annotate
+      each separately.
+
+  cm_daily_active_users:
+    label: "Daily Active Users (Single Product)"
+    definition: >
+      The count of unique users or accounts that engaged with a specific product or
+      service on a daily basis, measured as an average or as of a specific date.
+      Always refers to a single named product or service.
+    examples:
+      - "Teams daily active users reached 320 million"
+      - "We averaged 2.1 billion daily active users on Facebook"
+      - "Our main app had 45 million DAUs in December"
+    not_this:
+      - Platform-level totals spanning multiple products (cm_active_customers_total)
+      - Monthly active users (cm_monthly_active_users)
+    notes: >
+      Unit is 'count'. When the number is given as a range or approximation ("more than
+      3 billion"), annotate the stated figure.
+
+  cm_monthly_active_users:
+    label: "Monthly Active Users (Single Product)"
+    definition: >
+      The count of unique users or accounts that engaged with a specific product or
+      service within a calendar month, measured as an average or peak for the period.
+    examples:
+      - "WhatsApp now has more than 3 billion monthly actives"
+      - "Threads reached 350 million monthly active users"
+      - "Our platform had 180 million monthly active users in Q4"
+    not_this:
+      - Daily active users (cm_daily_active_users)
+      - Platform-wide totals across multiple apps (cm_active_customers_total)
+    notes: >
+      Annotate per-product when multiple products are mentioned separately.
+
+  cm_arr:
+    label: "Annual Recurring Revenue (ARR)"
+    definition: >
+      The annualized value of recurring subscription or contract revenue.
+      ARR represents what the company would earn in a year if all current contracts
+      continued at their current value — a forward-looking snapshot of the recurring
+      revenue run rate at a point in time.
+    examples:
+      - "We ended Q3 with $1.2 billion in ARR"
+      - "ARR grew 25% to $850 million"
+      - "Annual recurring revenue was $4.1 billion at year end"
+      - "Cloud ARR reached $3.9 billion"
+    not_this:
+      - Revenue recognized in the period (that is accounting revenue, not ARR)
+      - Bookings or TCV (future contracted revenue)
+      - MRR × 12 unless the company explicitly states the ARR figure
+    notes: >
+      Unit is 'currency'. Some companies report product-level ARR (e.g., "Data Cloud ARR"
+      at Salesforce). Annotate each product-level ARR separately when stated. If the
+      company says "$X in ARR" and also "$Y in total ARR," prefer the total.
+
+  cm_mrr:
+    label: "Monthly Recurring Revenue (MRR)"
+    definition: >
+      The monthly equivalent of ARR — the value of recurring subscription revenue in
+      a single month. Rarely stated in earnings calls; more common in SMB SaaS companies.
+      MRR = ARR ÷ 12.
+    examples:
+      - "MRR reached $75 million in December"
+      - "Monthly recurring revenue grew to $92 million"
+    not_this:
+      - Monthly revenue (total recognized revenue in a month, not recurring only)
+    notes: >
+      Unit is 'currency'. If only MRR is stated and ARR is not, annotate MRR.
+
+  cm_net_revenue_retention:
+    label: "Net Revenue Retention (NRR)"
+    definition: >
+      The percentage of revenue retained from existing customers over a period,
+      including the effect of expansions, upsells, and contractions, but EXCLUDING
+      revenue from new customers. An NRR above 100% means existing customers are
+      spending more than they were a year ago. Also called net dollar retention (NDR)
+      or net revenue retention rate.
+    examples:
+      - "Net revenue retention was 120%"
+      - "NDR came in at 115% for the quarter"
+      - "Dollar-based net retention rate: 128%"
+      - "We expanded net dollar retention to 106%"
+    not_this:
+      - Gross revenue retention (excludes expansion; that is cm_gross_revenue_retention)
+      - Customer retention rate (counts of customers, not dollars; cm_customer_retention_rate)
+    notes: >
+      Unit is 'percent'. Value should be expressed as a decimal (e.g., 1.20 for 120%)
+      or left as percent string depending on the annotation format. Leave value empty
+      if only the direction is mentioned ("NRR improved") without a number.
+
+  cm_gross_revenue_retention:
+    label: "Gross Revenue Retention (GRR)"
+    definition: >
+      The percentage of recurring revenue retained from existing customers, counting
+      ONLY churn and contraction — NOT expansions. Always ≤ 100%. Distinguishes how
+      much revenue was lost to cancellations vs. how much was grown by upsell.
+    examples:
+      - "Gross revenue retention was 87%"
+      - "Our gross retention rate is consistently above 90%"
+    not_this:
+      - Net revenue retention (includes expansion; cm_net_revenue_retention)
+    notes: >
+      Unit is 'percent'. Less commonly reported than NRR.
+
+  cm_customer_churn_rate:
+    label: "Customer Churn Rate"
+    definition: >
+      The percentage or rate at which customers cancel, do not renew, or stop paying
+      during a period. Can be expressed as annual or quarterly. Also called attrition,
+      logo churn, or revenue attrition (when revenue-based).
+    examples:
+      - "Customer churn was 5% annually"
+      - "Q4 revenue attrition ended slightly above 8%"
+      - "Annual logo churn of 3%"
+      - "Monthly churn rate of 0.5%"
+    not_this:
+      - Net revenue retention (NRR is inverse; cm_net_revenue_retention)
+      - Number of customers churned (that would be a count, not a rate)
+    notes: >
+      Unit is 'percent'. If a company says "attrition," it is typically customer or
+      revenue churn — annotate as cm_customer_churn_rate with the raw text.
+
+  cm_customer_retention_rate:
+    label: "Customer Retention Rate"
+    definition: >
+      The percentage of customers (by count) retained over a period. The complement
+      of customer churn rate. Can be "renewal rate" for contract businesses.
+    examples:
+      - "Renewal rates remained above 95%"
+      - "Customer retention was 92% for the year"
+      - "We retained 97% of enterprise customers"
+    not_this:
+      - Revenue retention (cm_gross_revenue_retention or cm_net_revenue_retention)
+    notes: >
+      Unit is 'percent'. Annotate renewal rates as cm_customer_retention_rate.
+
+  cm_revenue_per_customer:
+    label: "Revenue Per Customer (ARPU / ARPA / ARPC)"
+    definition: >
+      Average revenue per user, per account, or per customer per period. Reported
+      as a dollar amount or index. Also includes ARPA (average revenue per account)
+      and ARPC (average revenue per customer). For telecom, may be ARPU on a monthly basis.
+    examples:
+      - "ARPU grew to $14.50 in Q4"
+      - "Average revenue per account of $42,000 annually"
+      - "ARPC increased 8% year-over-year"
+      - "Postpaid phone ARPU of $49.12"
+    not_this:
+      - Total revenue (not per-customer)
+      - NRR or GRR (retention metrics, not unit economics)
+    notes: >
+      Unit is 'currency' for dollar amounts, 'percent' for growth rates.
+      If only a growth rate is stated ("ARPU grew 4%"), annotate with empty value
+      and unit 'percent'.
+
+  cm_expansion_revenue:
+    label: "Expansion Revenue"
+    definition: >
+      Revenue generated from existing customers through upsells, cross-sells, seat
+      additions, or usage increases. Also called "expansion ARR" or "upsell revenue."
+      Measures how much the existing customer base is growing in revenue terms.
+    examples:
+      - "Expansion revenue contributed $120 million in Q3"
+      - "Net expansion ARR of $85 million"
+      - "Upsell and expansion drove $200 million in new ARR from existing customers"
+    not_this:
+      - Total new ARR from both new and existing customers
+      - NRR (includes churn and contraction; cm_net_revenue_retention)
+    notes: >
+      Unit is 'currency'. Annotate as expansion_revenue when explicitly labeled.
+
+  cm_revenue_by_cohort:
+    label: "Revenue by Customer Cohort"
+    definition: >
+      Revenue broken out by the vintage (year or quarter of acquisition) of the
+      customer cohort. Shows how different acquisition cohorts contribute to current
+      revenue and whether revenue from older cohorts is growing over time.
+    examples:
+      - "Customers acquired in 2020 now generate 2.5x their initial spend"
+      - "Our 2019 cohort grew revenue by 180% over 4 years"
+      - "Cohort analysis shows 3-year cumulative spend of $45,000 per customer"
+    not_this:
+      - Revenue segmented by geography or product line (not cohort-based)
+    notes: >
+      Relatively rare in earnings calls; more common in S-1 filings. Annotate when
+      clearly cohort-vintage-based breakdown is given.
+
+  cm_transactions_by_cohort:
+    label: "Transactions by Customer Cohort"
+    definition: >
+      Transaction volume or count broken out by customer acquisition cohort, showing
+      engagement trends across different vintage groups.
+    examples:
+      - "2021 cohort completed 3x more transactions in year 2 than year 1"
+      - "Older cohort customers transact 45% more frequently"
+    not_this:
+      - Overall transaction volume (cm_purchase_transactions_overall)
+    notes: >
+      Very rare in earnings calls. Only annotate if cohort vintage is explicitly stated.
+
+  cm_customers_period_end_by_tenure:
+    label: "Customer Count Segmented by Tenure"
+    definition: >
+      The count of customers broken out by how long they have been customers
+      (e.g., customers in their first year, second year, 3+ years).
+    examples:
+      - "We have 8,000 customers in their first year and 12,000 in year two or beyond"
+      - "Multi-year customers represent 65,000 of our total base"
+    not_this:
+      - Total customer count without tenure breakdown (cm_customers_period_end)
+    notes: >
+      Rare in earnings calls. Annotate when explicitly segmented by how long the
+      customer has been with the company.
+
+  cm_purchase_transactions_overall:
+    label: "Purchase Transactions (Overall Volume)"
+    definition: >
+      The total count or volume of purchase transactions processed in the period,
+      across all customers. Used in e-commerce and marketplace businesses.
+    examples:
+      - "We processed 2.1 billion transactions in Q4"
+      - "Order volume grew to 850 million for the year"
+      - "Total purchases: 4.2 billion transactions"
+    not_this:
+      - Cohort-based transaction data (cm_transactions_by_cohort)
+      - GMV / Total Merchandise Value (different concept — dollar value not count)
+    notes: >
+      Unit is 'count'. For marketplaces, distinguish between count of transactions
+      and dollar value of those transactions.
+
+  cm_average_order_value:
+    label: "Average Order Value (AOV)"
+    definition: >
+      The average dollar amount per transaction or order. Captures whether customers
+      are spending more or less per purchase over time.
+    examples:
+      - "Average order value increased to $85"
+      - "AOV grew 12% to $120 in Q4"
+      - "Average basket size: $47"
+    not_this:
+      - Revenue per customer per year (cm_revenue_per_customer)
+    notes: >
+      Unit is 'currency'. If only a growth rate is stated, leave value empty.
+
+  cm_repeat_purchase_rate:
+    label: "Repeat Purchase Rate"
+    definition: >
+      The percentage of customers who made more than one purchase in a given period,
+      or the share of revenue from repeat buyers. Measures customer loyalty and
+      engagement depth.
+    examples:
+      - "67% of customers made a second purchase within 90 days"
+      - "Repeat purchase rate reached 72%"
+      - "80% of our revenue comes from repeat buyers"
+    not_this:
+      - Customer retention rate (that's annual renewal, not repeat purchase frequency)
+    notes: >
+      Unit is 'percent'. Annotate when explicitly labeled as repeat purchase/buyer rate.
+
+  cm_gross_margin_by_cohort:
+    label: "Gross Margin by Customer Cohort"
+    definition: >
+      Gross margin (as a percentage or absolute dollars) broken out by customer
+      acquisition cohort, showing how unit economics improve or change as cohorts mature.
+    examples:
+      - "2018 cohort now generates 75% gross margins vs. 60% at acquisition"
+      - "Cohort gross margins improve materially in years 2 and 3"
+    not_this:
+      - Overall company gross margin (not cohort-specific)
+    notes: >
+      Rare in earnings calls. Only annotate with explicit cohort-vintage attribution.
+
+  cm_lifetime_value_per_customer:
+    label: "Customer Lifetime Value (LTV / CLV)"
+    definition: >
+      The total revenue or profit expected from a customer over their entire
+      relationship with the company. Can be stated as a dollar figure or as
+      a ratio relative to acquisition cost.
+    examples:
+      - "Customer lifetime value averages $15,000"
+      - "LTV per customer of $45,000"
+      - "We see CLV of approximately $8,000 per subscriber"
+    not_this:
+      - LTV:CAC ratio (cm_ltv_to_cac_ratio)
+    notes: >
+      Unit is 'currency'. Annotate the standalone LTV figure, not the ratio.
+
+  cm_customer_acquisition_cost:
+    label: "Customer Acquisition Cost (CAC)"
+    definition: >
+      The total cost (sales + marketing expense) incurred to acquire one new customer.
+      Can be expressed as a dollar amount per customer.
+    examples:
+      - "CAC is approximately $500 per customer"
+      - "Customer acquisition costs fell to $1,200 per enterprise account"
+    not_this:
+      - Total sales and marketing expense (not per-customer)
+      - CAC payback period (cm_cac_payback_period)
+    notes: >
+      Unit is 'currency'. Rarely disclosed explicitly in earnings calls.
+
+  cm_cac_payback_period:
+    label: "CAC Payback Period"
+    definition: >
+      The number of months required to recoup the cost of acquiring a customer,
+      based on the gross margin contribution of that customer.
+    examples:
+      - "CAC payback period is under 12 months"
+      - "We recover acquisition costs in about 18 months"
+      - "Payback period of 14 months for SMB customers"
+    not_this:
+      - LTV:CAC ratio (different metric; cm_ltv_to_cac_ratio)
+    notes: >
+      Unit is typically 'months' — record as count with note.
+
+  cm_ltv_to_cac_ratio:
+    label: "LTV:CAC Ratio (Overall)"
+    definition: >
+      The ratio of customer lifetime value to customer acquisition cost. A ratio
+      above 3x is often cited as healthy. Measures the return on customer acquisition investment.
+    examples:
+      - "Our LTV to CAC ratio is 5x"
+      - "LTV:CAC of 4.2:1"
+      - "We see greater than 3x return on acquisition spend"
+    not_this:
+      - Standalone LTV (cm_lifetime_value_per_customer)
+      - LTV:CAC by cohort (cm_ltv_to_cac_ratio_by_cohort)
+    notes: >
+      Value is the ratio number (e.g., 5.0 for "5x"). Unit is 'ratio'.
+
+  cm_ltv_to_cac_ratio_by_cohort:
+    label: "LTV:CAC Ratio by Customer Cohort"
+    definition: >
+      The LTV:CAC ratio broken out by customer acquisition cohort, showing how
+      the economics differ across vintages.
+    examples:
+      - "2019 cohort LTV:CAC is 6x vs. 4x for the 2022 cohort"
+    not_this:
+      - Overall LTV:CAC without cohort segmentation (cm_ltv_to_cac_ratio)
+    notes: >
+      Only annotate when cohort vintage is explicitly stated alongside the ratio.
+
+  cm_revenue_concentration:
+    label: "Revenue Concentration"
+    definition: >
+      The percentage of revenue attributable to the top N customers, indicating
+      how dependent the company is on a small number of large accounts.
+    examples:
+      - "Our top 10 customers represent 45% of revenue"
+      - "No single customer accounts for more than 5% of revenue"
+      - "Top 5 customers contributed 60% of ARR"
+    not_this:
+      - Revenue from large customer segment in dollars (that is expansion_revenue or a revenue metric)
+    notes: >
+      Unit is 'percent'. Also annotate the N in "top N" in the raw_text.
+
+
+# Annotation rules for earnings call transcripts
+annotation_rules:
+  skip_forward_guidance: >
+    Do NOT annotate forward-looking statements about future metrics
+    (e.g., "we expect ARR to reach $1B next year"). Only annotate reported
+    actuals for current or past periods.
+
+  spoken_numbers: >
+    Transcripts use spoken format ("3 point 4 billion", "two hundred fifty thousand").
+    Convert to numeric values in the 'value' column. Do not annotate approximate
+    language without a stated figure ("growing strongly", "well above expectations").
+
+  period_format: >
+    Use a consistent period format: "Q1 2025", "Q4 FY2025", "FY2024", "H1 2025".
+    Match the company's own fiscal year convention (FY suffix if they call it FY).
+
+  section_awareness:
+    prepared_remarks: >
+      The scripted portion read by executives before Q&A. Higher reliability.
+    q_and_a: >
+      The question-and-answer session. Metrics mentioned here may be less
+      carefully stated — use MEDIUM confidence by default unless very precise.
+    analyst: >
+      Questions or comments from sell-side analysts. Never annotate analyst
+      estimates or questions as ground truth — skip these entirely.
+
+  duplicate_handling: >
+    If the same metric+value is mentioned twice (once in prepared remarks, once in Q&A),
+    annotate ONCE using the prepared_remarks occurrence. Do not double-annotate.
+
+  growth_rates: >
+    If a company states only a growth rate without the underlying number (e.g., "ARR grew 25%"),
+    annotate with an empty 'value' field and unit 'percent', capturing the growth context.
+    Do NOT infer or calculate the absolute value yourself.
+
+  confidence_guidance:
+    HIGH: >
+      Exact figure stated clearly by management in prepared remarks with the metric
+      label explicitly used (e.g., "ARR was $1.2B").
+    MEDIUM: >
+      Figure stated but with ambiguity — in Q&A, approximate language, inferred
+      from context, or without explicit metric label.
+    LOW: >
+      Possible match but requires inference, unclear period attribution, or the
+      metric label is absent and must be inferred from context.
