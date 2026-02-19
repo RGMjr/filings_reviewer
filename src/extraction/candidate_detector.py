@@ -263,9 +263,7 @@ class CandidateDetector:
                 if not is_fp:
                     filtered_numbers.append(num)
                 else:
-                    logger.debug(
-                        f"Filtered false positive: {num.raw_text!r} ({reason})"
-                    )
+                    logger.debug(f"Filtered false positive: {num.raw_text!r} ({reason})")
             numbers = filtered_numbers
 
         if not numbers:
@@ -284,9 +282,7 @@ class CandidateDetector:
                 if self._is_valid_match(num, kw_pos, text, parser):
                     same_row = self._check_same_row(num.start, kw_pos, parser)
                     same_cell = self._check_same_cell(num.start, kw_pos, parser)
-                    confidence = self._calculate_confidence(
-                        num, kw_pos, same_row, same_cell
-                    )
+                    confidence = self._calculate_confidence(num, kw_pos, same_row, same_cell)
 
                     # Extract context for debugging
                     context_start = max(0, min(kw_pos, num.start) - 20)
@@ -390,9 +386,7 @@ class CandidateDetector:
 
         return True
 
-    def _check_same_row(
-        self, pos1: int, pos2: int, parser: StructureParser | None
-    ) -> bool:
+    def _check_same_row(self, pos1: int, pos2: int, parser: StructureParser | None) -> bool:
         """Check if two positions are in the same table row.
 
         Args:
@@ -409,9 +403,7 @@ class CandidateDetector:
         # For non-table content, assume same row (no structure to check)
         return True
 
-    def _check_same_cell(
-        self, pos1: int, pos2: int, parser: StructureParser | None
-    ) -> bool:
+    def _check_same_cell(self, pos1: int, pos2: int, parser: StructureParser | None) -> bool:
         """Check if two positions are in the same table cell.
 
         Args:

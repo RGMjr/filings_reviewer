@@ -27,7 +27,9 @@ class TestRuleApplicatorInit:
                 "metric_id": None,
                 "pattern_name": "Test Pattern",
                 "pattern_description": "Description",
-                "pattern_definition": {"conditions": [{"field": "test", "op": "eq", "value": True}]},
+                "pattern_definition": {
+                    "conditions": [{"field": "test", "op": "eq", "value": True}]
+                },
                 "precision_score": 0.95,
                 "recall_score": 0.80,
                 "f1_score": 0.87,
@@ -89,7 +91,9 @@ class TestPatternLoading:
             "metric_id": "annual_recurring_revenue",
             "pattern_name": "ARR: Exclude risk factors",
             "pattern_description": "Filter ARR in risk factors section",
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.92,
             "recall_score": 0.15,
             "f1_score": 0.26,
@@ -229,7 +233,9 @@ class TestShouldFilter:
             "metric_id": None,
             "pattern_name": "Reject risk factors",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.95,
             "recall_score": None,
             "f1_score": None,
@@ -285,7 +291,9 @@ class TestShouldFilter:
             "metric_id": None,
             "pattern_name": "Reject risk factors",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.95,
             "recall_score": None,
             "f1_score": None,
@@ -341,7 +349,9 @@ class TestShouldFilter:
             "metric_id": "annual_recurring_revenue",  # Metric-specific
             "pattern_name": "ARR specific rule",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]},
+            "pattern_definition": {
+                "conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]
+            },
             "precision_score": 0.90,
             "recall_score": None,
             "f1_score": None,
@@ -358,7 +368,9 @@ class TestShouldFilter:
             "metric_id": None,  # Global pattern
             "pattern_name": "Global rule",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.85,
             "recall_score": None,
             "f1_score": None,
@@ -414,7 +426,9 @@ class TestShouldFilter:
             "metric_id": None,
             "pattern_name": "Accept rule",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.95,
             "recall_score": None,
             "f1_score": None,
@@ -843,7 +857,9 @@ class TestIndexedLookup:
             "metric_id": "annual_recurring_revenue",
             "pattern_name": "ARR risk factors",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.95,
             "recall_score": None,
             "f1_score": None,
@@ -900,7 +916,9 @@ class TestIndexedLookup:
                 "metric_id": None,  # Global pattern
                 "pattern_name": "Global risk filter",
                 "pattern_description": None,
-                "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+                "pattern_definition": {
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+                },
                 "precision_score": 0.90,
                 "recall_score": None,
                 "f1_score": None,
@@ -958,7 +976,9 @@ class TestIndexedLookup:
                 "metric_id": "annual_recurring_revenue",
                 "pattern_name": "Metric-specific filter",
                 "pattern_description": None,
-                "pattern_definition": {"conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]},
+                "pattern_definition": {
+                    "conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]
+                },
                 "precision_score": 0.92,
                 "recall_score": None,
                 "f1_score": None,
@@ -975,7 +995,9 @@ class TestIndexedLookup:
                 "metric_id": None,
                 "pattern_name": "Global filter",
                 "pattern_description": None,
-                "pattern_definition": {"conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]},
+                "pattern_definition": {
+                    "conditions": [{"field": "keyword_distance", "op": "gt", "value": 50}]
+                },
                 "precision_score": 0.85,
                 "recall_score": None,
                 "f1_score": None,
@@ -1033,7 +1055,9 @@ class TestIndexedLookup:
             "metric_id": "customer_acquisition_cost",  # Different metric
             "pattern_name": "CAC filter",
             "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
+            "pattern_definition": {
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+            },
             "precision_score": 0.90,
             "recall_score": None,
             "f1_score": None,
@@ -1181,42 +1205,48 @@ class TestPerformanceVerification:
         # Create 100 patterns for different metrics
         patterns = []
         for i in range(100):
-            patterns.append({
-                "pattern_id": i,
+            patterns.append(
+                {
+                    "pattern_id": i,
+                    "pattern_type": "reject_rule",
+                    "metric_id": f"other_metric_{i}",
+                    "pattern_name": f"Other Pattern {i}",
+                    "pattern_description": None,
+                    "pattern_definition": {"conditions": []},
+                    "precision_score": 0.90,
+                    "recall_score": None,
+                    "f1_score": None,
+                    "sample_count": 10,
+                    "status": "approved",
+                    "approved_at": datetime.now(),
+                    "approved_by": None,
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now(),
+                }
+            )
+
+        # Add one pattern for our target metric
+        patterns.append(
+            {
+                "pattern_id": 100,
                 "pattern_type": "reject_rule",
-                "metric_id": f"other_metric_{i}",
-                "pattern_name": f"Other Pattern {i}",
+                "metric_id": "annual_recurring_revenue",
+                "pattern_name": "Target Pattern",
                 "pattern_description": None,
-                "pattern_definition": {"conditions": []},
-                "precision_score": 0.90,
+                "pattern_definition": {
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
+                },
+                "precision_score": 0.95,
                 "recall_score": None,
                 "f1_score": None,
-                "sample_count": 10,
+                "sample_count": 20,
                 "status": "approved",
                 "approved_at": datetime.now(),
                 "approved_by": None,
                 "created_at": datetime.now(),
                 "updated_at": datetime.now(),
-            })
-
-        # Add one pattern for our target metric
-        patterns.append({
-            "pattern_id": 100,
-            "pattern_type": "reject_rule",
-            "metric_id": "annual_recurring_revenue",
-            "pattern_name": "Target Pattern",
-            "pattern_description": None,
-            "pattern_definition": {"conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]},
-            "precision_score": 0.95,
-            "recall_score": None,
-            "f1_score": None,
-            "sample_count": 20,
-            "status": "approved",
-            "approved_at": datetime.now(),
-            "approved_by": None,
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-        })
+            }
+        )
 
         mock_db.get_learned_patterns.return_value = patterns
 

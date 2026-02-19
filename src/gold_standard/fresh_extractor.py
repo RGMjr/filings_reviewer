@@ -283,9 +283,7 @@ def segment_and_generate(
 
     try:
         # Segment the filing
-        segments: list[SourceSegment] = segmenter.segment_filing(
-            filing_id, str(filing_path)
-        )
+        segments: list[SourceSegment] = segmenter.segment_filing(filing_id, str(filing_path))
 
         if not segments:
             logger.warning(f"No segments generated for {filing_path}")
@@ -349,9 +347,7 @@ def extract_fresh(
         if company_name:
             gold_standard_path = _find_gold_standard_filing(company_name)
             if gold_standard_path is not None:
-                logger.info(
-                    f"Non-standard URL, using gold_standard filing: {gold_standard_path}"
-                )
+                logger.info(f"Non-standard URL, using gold_standard filing: {gold_standard_path}")
                 candidates, segment_count, error = segment_and_generate(
                     gold_standard_path,
                     filing_id=filing_id,

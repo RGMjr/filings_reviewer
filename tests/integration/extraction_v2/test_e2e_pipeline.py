@@ -73,7 +73,8 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
             company_id = result["company_id"]
 
             # Then create a test filing
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO filings (
                     company_id, cik, accession_number, form_type, filing_date, sec_html_url
                 )
@@ -84,7 +85,9 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
                 ON CONFLICT (company_id, accession_number) DO UPDATE SET
                     form_type = EXCLUDED.form_type
                 RETURNING filing_id
-            """, {"company_id": company_id})
+            """,
+                {"company_id": company_id},
+            )
             result = cur.fetchone()
             return result["filing_id"]
 
@@ -92,36 +95,25 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
 @pytest.fixture(autouse=True)
 def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
     """Clean up V2 tables before and after each test."""
+
     def _cleanup():
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
+                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute(
-                    "DELETE FROM v2_metric_facts WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute(
-                    "DELETE FROM v2_image_assets WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute("""
+                    """
                     DELETE FROM v2_table_cells
                     WHERE table_id IN (
                         SELECT table_id FROM v2_tables WHERE doc_id = %s
                     )
-                """, (test_filing_id,))
-                cur.execute(
-                    "DELETE FROM v2_tables WHERE doc_id = %s",
-                    (test_filing_id,)
+                """,
+                    (test_filing_id,),
                 )
-                cur.execute(
-                    "DELETE FROM v2_segments WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute(
-                    "DELETE FROM v2_documents WHERE filing_id = %s",
-                    (test_filing_id,)
-                )
+                cur.execute("DELETE FROM v2_tables WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
     yield
@@ -191,8 +183,7 @@ class TestE2ESlackFiling:
         assert slack_result.fact_count > 0
 
         facts_with_periods = [
-            f for f in slack_result.facts
-            if f.period_start is not None and f.period_end is not None
+            f for f in slack_result.facts if f.period_start is not None and f.period_end is not None
         ]
 
         # At least some facts should have period dates populated
@@ -229,7 +220,8 @@ class TestE2ESamsaraFiling:
             pytest.skip("No facts extracted from Samsara filing")
 
         facts_with_periods = [
-            f for f in samsara_result.facts
+            f
+            for f in samsara_result.facts
             if f.period_start is not None and f.period_end is not None
         ]
 
@@ -246,9 +238,7 @@ class TestE2EProvenance:
     """Tests for provenance tracking in V2 pipeline."""
 
     @pytest.fixture
-    def result_with_facts(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ) -> PipelineResult:
+    def result_with_facts(self, pipeline: V2Pipeline, test_filing_id: int) -> PipelineResult:
         """Run pipeline on a filing that produces facts."""
         if SLACK_FILING_PATH.exists():
             return pipeline.process(html_path=SLACK_FILING_PATH, filing_id=test_filing_id)
@@ -263,9 +253,7 @@ class TestE2EProvenance:
 
         for fact in result_with_facts.facts:
             # Every fact must have a source_locator
-            assert fact.source_locator is not None, (
-                f"Fact {fact.fact_id} missing source_locator"
-            )
+            assert fact.source_locator is not None, f"Fact {fact.fact_id} missing source_locator"
 
             # source_locator should have either dom_locator (xpath) or segment_id
             has_dom_locator = fact.source_locator.dom_locator is not None
@@ -276,21 +264,15 @@ class TestE2EProvenance:
             )
 
             # Evidence pack should exist
-            assert fact.evidence_pack is not None, (
-                f"Fact {fact.fact_id} missing evidence_pack"
-            )
-            assert fact.evidence_pack.snippet_html, (
-                f"Fact {fact.fact_id} has empty snippet_html"
-            )
+            assert fact.evidence_pack is not None, f"Fact {fact.fact_id} missing evidence_pack"
+            assert fact.evidence_pack.snippet_html, f"Fact {fact.fact_id} has empty snippet_html"
 
 
 class TestE2ETableReconstruction:
     """Tests for table reconstruction in V2 pipeline."""
 
     @pytest.fixture
-    def result_with_tables(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ) -> PipelineResult:
+    def result_with_tables(self, pipeline: V2Pipeline, test_filing_id: int) -> PipelineResult:
         """Run pipeline on a filing that has tables."""
         if SLACK_FILING_PATH.exists():
             return pipeline.process(html_path=SLACK_FILING_PATH, filing_id=test_filing_id)
@@ -323,9 +305,7 @@ class TestE2ETableReconstruction:
         if total_non_header_cells > 0:
             # At least some non-header cells should have header_path
             ratio = cells_with_header_path / total_non_header_cells
-            assert ratio > 0.5, (
-                f"Only {ratio:.1%} of data cells have header_path, expected >50%"
-            )
+            assert ratio > 0.5, f"Only {ratio:.1%} of data cells have header_path, expected >50%"
 
 
 class TestE2EPersistence:
@@ -358,14 +338,13 @@ class TestE2EPersistence:
                 # Check document
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_documents WHERE filing_id = %s",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 assert cur.fetchone()["cnt"] == 1
 
                 # Check segments
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s",
-                    (test_filing_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s", (test_filing_id,)
                 )
                 segment_count = cur.fetchone()["cnt"]
                 assert segment_count == len(result.segments)
@@ -373,7 +352,7 @@ class TestE2EPersistence:
                 # Check facts
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 fact_count = cur.fetchone()["cnt"]
                 assert fact_count == len(result.facts)
@@ -407,7 +386,7 @@ class TestE2EIdempotency:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 count_after_first = cur.fetchone()["cnt"]
 
@@ -425,7 +404,7 @@ class TestE2EIdempotency:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 count_after_second = cur.fetchone()["cnt"]
 
@@ -442,9 +421,7 @@ class TestE2EIdempotency:
 class TestE2EPerformance:
     """Performance tests for V2 pipeline."""
 
-    def test_e2e_completes_under_30_seconds(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ):
+    def test_e2e_completes_under_30_seconds(self, pipeline: V2Pipeline, test_filing_id: int):
         """Test that pipeline completes within 30 seconds performance gate."""
         if not SLACK_FILING_PATH.exists():
             pytest.skip(f"Slack filing not found at {SLACK_FILING_PATH}")
@@ -459,9 +436,7 @@ class TestE2EPerformance:
             f"Reported duration: {result.total_duration_ms}ms"
         )
 
-    def test_e2e_stage_timing_tracked(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ):
+    def test_e2e_stage_timing_tracked(self, pipeline: V2Pipeline, test_filing_id: int):
         """Test that per-stage timing is tracked."""
         if not SLACK_FILING_PATH.exists():
             pytest.skip(f"Slack filing not found at {SLACK_FILING_PATH}")
@@ -494,16 +469,12 @@ MALFORMED_TABLES_PATH = FIXTURES_DIR / "malformed_tables.html"
 class TestE2EEdgeCases:
     """Edge case tests for V2 pipeline robustness."""
 
-    def test_filing_with_no_metrics(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ):
+    def test_filing_with_no_metrics(self, pipeline: V2Pipeline, test_filing_id: int):
         """Test pipeline succeeds on filing with no customer metrics."""
         if not EMPTY_FILING_PATH.exists():
             pytest.skip(f"Empty filing fixture not found at {EMPTY_FILING_PATH}")
 
-        result = pipeline.process(
-            html_path=EMPTY_FILING_PATH, filing_id=test_filing_id
-        )
+        result = pipeline.process(html_path=EMPTY_FILING_PATH, filing_id=test_filing_id)
 
         assert result.success, f"Pipeline failed on empty filing: {result.error_message}"
         assert result.fact_count == 0, (
@@ -514,23 +485,15 @@ class TestE2EEdgeCases:
         # Segments should still be parsed
         assert len(result.segments) > 0, "Expected at least some segments from empty filing"
 
-    def test_filing_with_malformed_tables(
-        self, pipeline: V2Pipeline, test_filing_id: int
-    ):
+    def test_filing_with_malformed_tables(self, pipeline: V2Pipeline, test_filing_id: int):
         """Test pipeline doesn't crash on malformed tables."""
         if not MALFORMED_TABLES_PATH.exists():
-            pytest.skip(
-                f"Malformed tables fixture not found at {MALFORMED_TABLES_PATH}"
-            )
+            pytest.skip(f"Malformed tables fixture not found at {MALFORMED_TABLES_PATH}")
 
-        result = pipeline.process(
-            html_path=MALFORMED_TABLES_PATH, filing_id=test_filing_id
-        )
+        result = pipeline.process(html_path=MALFORMED_TABLES_PATH, filing_id=test_filing_id)
 
         # Pipeline should succeed (graceful degradation, not crash)
-        assert result.success, (
-            f"Pipeline crashed on malformed tables: {result.error_message}"
-        )
+        assert result.success, f"Pipeline crashed on malformed tables: {result.error_message}"
         assert result.document is not None
         # Should have parsed some tables (even if malformed)
         assert len(result.tables) >= 0  # May or may not detect tables

@@ -4,6 +4,7 @@ Test optimal matching in validation script.
 Verifies that two-pass optimal matching assigns best matches by score,
 rather than first-come-first-served.
 """
+
 import sys
 from pathlib import Path
 
@@ -49,22 +50,22 @@ def test_optimal_matching_prefers_higher_scores():
 
     # Candidate B: weaker match (metric only)
     candidate_b = {
-        'candidate_id': 2,
-        'suggested_metric_id': 'cm_arr',
-        'parsed_value': 2000000.0,
-        'raw_number_text': '2 million',
-        'triggering_keyword': 'arr',
-        'context_text': 'ARR was 2 million',
+        "candidate_id": 2,
+        "suggested_metric_id": "cm_arr",
+        "parsed_value": 2000000.0,
+        "raw_number_text": "2 million",
+        "triggering_keyword": "arr",
+        "context_text": "ARR was 2 million",
     }
 
     # Candidate A: stronger match (metric + close value)
     candidate_a = {
-        'candidate_id': 1,
-        'suggested_metric_id': 'cm_arr',
-        'parsed_value': 1000001.0,  # Within 1% of gold value
-        'raw_number_text': '1,000,001',
-        'triggering_keyword': 'arr',
-        'context_text': 'ARR reached 1,000,001',
+        "candidate_id": 1,
+        "suggested_metric_id": "cm_arr",
+        "parsed_value": 1000001.0,  # Within 1% of gold value
+        "raw_number_text": "1,000,001",
+        "triggering_keyword": "arr",
+        "context_text": "ARR reached 1,000,001",
     }
 
     # Pass candidates in "bad" order (B first)
@@ -92,7 +93,9 @@ def test_optimal_matching_prefers_higher_scores():
 
     # Verify that the matched candidate is A (stronger match)
     matched_candidate_id = result.tp_matches[0].candidate_id
-    assert matched_candidate_id == 1, f"Expected candidate 1 (A) to match, got {matched_candidate_id}"
+    assert matched_candidate_id == 1, (
+        f"Expected candidate 1 (A) to match, got {matched_candidate_id}"
+    )
 
 
 def test_optimal_matching_handles_overlapping_candidates():
@@ -127,28 +130,28 @@ def test_optimal_matching_handles_overlapping_candidates():
 
     candidates = [
         {
-            'candidate_id': 3,
-            'suggested_metric_id': 'cm_mrr',
-            'parsed_value': 5000000.0,
-            'raw_number_text': '5M',
-            'triggering_keyword': 'mrr',
-            'context_text': 'MRR of 5M',
+            "candidate_id": 3,
+            "suggested_metric_id": "cm_mrr",
+            "parsed_value": 5000000.0,
+            "raw_number_text": "5M",
+            "triggering_keyword": "mrr",
+            "context_text": "MRR of 5M",
         },
         {
-            'candidate_id': 2,
-            'suggested_metric_id': 'cm_arr',
-            'parsed_value': 4950000.0,
-            'raw_number_text': '4.95M',
-            'triggering_keyword': 'arr',
-            'context_text': 'ARR 4.95M',
+            "candidate_id": 2,
+            "suggested_metric_id": "cm_arr",
+            "parsed_value": 4950000.0,
+            "raw_number_text": "4.95M",
+            "triggering_keyword": "arr",
+            "context_text": "ARR 4.95M",
         },
         {
-            'candidate_id': 1,
-            'suggested_metric_id': 'cm_arr',
-            'parsed_value': 5000000.0,
-            'raw_number_text': '5M',
-            'triggering_keyword': 'arr',
-            'context_text': 'ARR 5M',
+            "candidate_id": 1,
+            "suggested_metric_id": "cm_arr",
+            "parsed_value": 5000000.0,
+            "raw_number_text": "5M",
+            "triggering_keyword": "arr",
+            "context_text": "ARR 5M",
         },
     ]
 
@@ -172,4 +175,6 @@ def test_optimal_matching_handles_overlapping_candidates():
 
     # The best match (exact value + metric) should win
     matched_candidate_id = result.tp_matches[0].candidate_id
-    assert matched_candidate_id == 1, f"Expected candidate 1 (exact match) to win, got {matched_candidate_id}"
+    assert matched_candidate_id == 1, (
+        f"Expected candidate 1 (exact match) to win, got {matched_candidate_id}"
+    )

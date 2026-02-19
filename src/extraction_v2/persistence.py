@@ -321,9 +321,7 @@ class V2PersistenceAdapter:
                         "segment_id": table.segment_id or None,
                         "dom_locator": table.dom_locator,
                         "section_path": table.section_path or [],
-                        "section_type": table.section_type.value
-                        if table.section_type
-                        else None,
+                        "section_type": table.section_type.value if table.section_type else None,
                         "row_count": table.row_count,
                         "col_count": table.col_count,
                         "header_rows": table.header_rows,
@@ -339,9 +337,7 @@ class V2PersistenceAdapter:
                         cur.execute(cell_sql, cell_params)
                         cell_count += 1
 
-        logger.debug(
-            f"Upserted {table_count} tables, {cell_count} cells for filing_id={filing_id}"
-        )
+        logger.debug(f"Upserted {table_count} tables, {cell_count} cells for filing_id={filing_id}")
         return table_count, cell_count
 
     def _cell_to_params(self, cell: Cell, table_id: str) -> dict[str, Any]:
@@ -431,15 +427,11 @@ class V2PersistenceAdapter:
                         "dom_locator": image.dom_locator,
                         "nearby_text": image.nearby_text,
                         "section_path": image.section_path or [],
-                        "section_type": image.section_type.value
-                        if image.section_type
-                        else None,
+                        "section_type": image.section_type.value if image.section_type else None,
                         "classification": image.classification.value,
                         "relevance_score": image.relevance_score,
                         "ocr_text": image.ocr_text,
-                        "ocr_table_id": image.ocr_table.table_id
-                        if image.ocr_table
-                        else None,
+                        "ocr_table_id": image.ocr_table.table_id if image.ocr_table else None,
                         "chart_type": image.chart_data.chart_type.value
                         if image.chart_data
                         else None,
@@ -566,9 +558,7 @@ class V2PersistenceAdapter:
                     )
 
                     # 2. Persist segments
-                    seg_count = self._persist_segments_in_tx(
-                        cur, result.segments, filing_id
-                    )
+                    seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
 
                     # 3. Persist tables and cells
                     table_count, cell_count = self._persist_tables_in_tx(
@@ -576,14 +566,10 @@ class V2PersistenceAdapter:
                     )
 
                     # 4. Persist images
-                    img_count = self._persist_images_in_tx(
-                        cur, result.images, filing_id
-                    )
+                    img_count = self._persist_images_in_tx(cur, result.images, filing_id)
 
                     # 5. Persist facts
-                    fact_count = self._persist_facts_in_tx(
-                        cur, result.facts, filing_id
-                    )
+                    fact_count = self._persist_facts_in_tx(cur, result.facts, filing_id)
 
             logger.info(
                 f"Persisted pipeline result for filing_id={filing_id}: "
@@ -697,9 +683,7 @@ class V2PersistenceAdapter:
                 "segment_text": segment.text,
                 "dom_locator": segment.dom_locator,
                 "section_path": segment.section_path or [],
-                "section_type": segment.section_type.value
-                if segment.section_type
-                else None,
+                "section_type": segment.section_type.value if segment.section_type else None,
                 "sequence_idx": segment.sequence,
                 "prev_segment_id": segment.prev_id,
                 "next_segment_id": segment.next_id,
@@ -859,9 +843,7 @@ class V2PersistenceAdapter:
                 "relevance_score": image.relevance_score,
                 "ocr_text": image.ocr_text,
                 "ocr_table_id": image.ocr_table.table_id if image.ocr_table else None,
-                "chart_type": image.chart_data.chart_type.value
-                if image.chart_data
-                else None,
+                "chart_type": image.chart_data.chart_type.value if image.chart_data else None,
                 "chart_data": _serialize_chart_data(image.chart_data),
                 "processed": image.processed,
                 "confidence": image.confidence,

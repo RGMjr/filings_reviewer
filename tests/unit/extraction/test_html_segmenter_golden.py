@@ -20,8 +20,7 @@ def test_small_filing_segmentation():
     # Run segmentation
     segmenter = HTMLSegmenter()
     segments = segmenter.segment_filing(
-        filing_id=1,
-        html_path="data/fixtures/small_synthetic_filing.html"
+        filing_id=1, html_path="data/fixtures/small_synthetic_filing.html"
     )
 
     # Assert match with ±5% tolerance
@@ -31,7 +30,9 @@ def test_small_filing_segmentation():
     assert len(segments) >= 8
     assert segments[0].segment_type == "paragraph"
     assert segments[0].section_heading == "Prospectus Summary"
-    assert segments[0].raw_text.startswith("We are a leading provider of cloud-based software solutions")
+    assert segments[0].raw_text.startswith(
+        "We are a leading provider of cloud-based software solutions"
+    )
 
 
 @pytest.mark.skip(reason="Requires Shopify S-1 filing download - see golden/README.md")
@@ -48,8 +49,7 @@ def test_shopify_s1_segmentation_deterministic():
 
     segmenter = HTMLSegmenter()
     segments = segmenter.segment_filing(
-        filing_id=1,
-        html_path="cache/1419612/000119312515140667/d893971ds1.htm"
+        filing_id=1, html_path="cache/1419612/000119312515140667/d893971ds1.htm"
     )
 
     assert_segments_match(segments, expected, tolerance=0.05)
@@ -69,8 +69,7 @@ def test_datadog_f1_segmentation_deterministic():
 
     segmenter = HTMLSegmenter()
     segments = segmenter.segment_filing(
-        filing_id=1,
-        html_path="cache/1561550/000119312519222862/d735281df1.htm"
+        filing_id=1, html_path="cache/1561550/000119312519222862/d735281df1.htm"
     )
 
     assert_segments_match(segments, expected, tolerance=0.05)

@@ -38,9 +38,7 @@ def test_classifier_initialization(classifier):
 def test_has_definition_flag(classifier, sample_segment):
     """Test definition detection."""
     # Text with definition indicator
-    sample_segment.raw_text = (
-        "We define daily active users as users who log in once per day."
-    )
+    sample_segment.raw_text = "We define daily active users as users who log in once per day."
     result = classifier.classify_segment(sample_segment)
     assert result.contains_definition_flag is True
 
@@ -168,7 +166,9 @@ def test_confidence_score_numeric_disclosure(classifier, sample_segment):
 
 def test_confidence_score_definition_and_numeric(classifier, sample_segment):
     """Test higher confidence for definition + numeric."""
-    sample_segment.raw_text = "We define active customers as users who made a purchase. We had 1,000 active customers."
+    sample_segment.raw_text = (
+        "We define active customers as users who made a purchase. We had 1,000 active customers."
+    )
     result = classifier.classify_segment(sample_segment)
 
     # Should have higher confidence with both flags
@@ -301,9 +301,7 @@ def test_segment_with_no_text(classifier, sample_segment):
 
 def test_cohort_metrics(classifier, sample_segment):
     """Test identification of cohort-based metrics."""
-    sample_segment.raw_text = (
-        "Revenue by cohort shows strong growth in the 2024 cohort."
-    )
+    sample_segment.raw_text = "Revenue by cohort shows strong growth in the 2024 cohort."
     result = classifier.classify_segment(sample_segment)
 
     assert "cm_revenue_by_cohort" in result.candidate_metric_ids
@@ -311,9 +309,7 @@ def test_cohort_metrics(classifier, sample_segment):
 
 def test_ltv_cac_ratio(classifier, sample_segment):
     """Test identification of LTV:CAC ratio."""
-    sample_segment.raw_text = (
-        "Our LTV:CAC ratio is 3:1, indicating healthy unit economics."
-    )
+    sample_segment.raw_text = "Our LTV:CAC ratio is 3:1, indicating healthy unit economics."
     result = classifier.classify_segment(sample_segment)
 
     assert "cm_ltv_to_cac_ratio" in result.candidate_metric_ids
@@ -463,7 +459,7 @@ def test_validation_invalid_segment_raises(classifier):
         filing_id=1,
         segment_type="paragraph",
         sequence_index=0,
-        raw_text=None  # Invalid!
+        raw_text=None,  # Invalid!
     )
 
     with pytest.raises(ValidationError):
@@ -476,10 +472,7 @@ def test_validation_can_be_disabled(classifier):
 
     # Create segment with None raw_text
     invalid_segment = SourceSegment(
-        filing_id=1,
-        segment_type="paragraph",
-        sequence_index=0,
-        raw_text=None
+        filing_id=1, segment_type="paragraph", sequence_index=0, raw_text=None
     )
 
     # Should raise AttributeError (not ValidationError) when validation disabled
@@ -499,19 +492,19 @@ def test_metrics_collection(classifier):
             filing_id=1,
             segment_type="paragraph",
             sequence_index=0,
-            raw_text="We define daily active users (DAU) as unique users who log in daily."
+            raw_text="We define daily active users (DAU) as unique users who log in daily.",
         ),
         SourceSegment(
             filing_id=1,
             segment_type="paragraph",
             sequence_index=1,
-            raw_text="Revenue per customer is calculated as total revenue divided by customer count."
+            raw_text="Revenue per customer is calculated as total revenue divided by customer count.",
         ),
         SourceSegment(
             filing_id=1,
             segment_type="paragraph",
             sequence_index=2,
-            raw_text="We had 100,000 active customers as of December 31, 2024."
+            raw_text="We had 100,000 active customers as of December 31, 2024.",
         ),
     ]
 
@@ -645,9 +638,7 @@ class TestBookingsMetricPatterns:
 
     def test_multiple_revenue_predictability_metrics(self, classifier, sample_segment):
         """Test segment with multiple revenue predictability metrics."""
-        sample_segment.raw_text = (
-            "Bookings were $100 million, billings were $90 million."
-        )
+        sample_segment.raw_text = "Bookings were $100 million, billings were $90 million."
         result = classifier.classify_segment(sample_segment)
         assert "cm_bookings" in result.candidate_metric_ids
         assert "cm_billings" in result.candidate_metric_ids
@@ -963,7 +954,9 @@ class TestSaaSContractMetricPatterns:
 
     def test_tcv_lifetime_contract_value(self, classifier, sample_segment):
         """Test identification via 'lifetime contract value' variant."""
-        sample_segment.raw_text = "Lifetime contract value for enterprise customers averages $2 million."
+        sample_segment.raw_text = (
+            "Lifetime contract value for enterprise customers averages $2 million."
+        )
         result = classifier.classify_segment(sample_segment)
         assert "cm_tcv" in result.candidate_metric_ids
 
@@ -1286,9 +1279,7 @@ class TestGoldmineBonuses:
     def test_long_text_performance(self, classifier, sample_segment):
         """Test that very long text doesn't cause performance issues."""
         # 10KB+ text
-        long_text = (
-            "We analyze customer growth by cohort in 2015, 2016, and 2017. " * 200
-        )
+        long_text = "We analyze customer growth by cohort in 2015, 2016, and 2017. " * 200
         sample_segment.raw_text = long_text
         result = classifier.classify_segment(sample_segment)
         # Should complete without issues and have bonuses
@@ -1358,7 +1349,9 @@ class TestCustomerPeriodEndMetricPatterns:
 
     def test_organizations_with_users(self, classifier, sample_segment):
         """Test identification via 'organizations with X users'."""
-        sample_segment.raw_text = "Slack had more than 600,000 organizations with three or more users."
+        sample_segment.raw_text = (
+            "Slack had more than 600,000 organizations with three or more users."
+        )
         result = classifier.classify_segment(sample_segment)
         assert "cm_customers_period_end" in result.candidate_metric_ids
 

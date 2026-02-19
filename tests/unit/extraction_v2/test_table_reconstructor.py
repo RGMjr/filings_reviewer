@@ -71,6 +71,7 @@ class TestGridValidation:
         assert table_elem is not None
 
         import logging
+
         with caplog.at_level(logging.WARNING):
             table = reconstructor.reconstruct(table_elem, validate=True)
 
@@ -736,9 +737,7 @@ class TestEdgeCases:
 class TestIntegrationSECFiling:
     """Integration tests with real SEC filing table HTML."""
 
-    def test_sec_financial_table_from_slack_filing(
-        self, reconstructor: TableReconstructor
-    ) -> None:
+    def test_sec_financial_table_from_slack_filing(self, reconstructor: TableReconstructor) -> None:
         """Test reconstruction of real SEC financial table with colspan and rowspan.
 
         This table is extracted from Slack Technologies S-1 filing and contains:

@@ -237,8 +237,7 @@ class FactConstructionStage:
 
         # Blend with period confidence (weighted average)
         confidence = (
-            confidence * BINDING_CONFIDENCE_WEIGHT
-            + bv.period_confidence * PERIOD_CONFIDENCE_WEIGHT
+            confidence * BINDING_CONFIDENCE_WEIGHT + bv.period_confidence * PERIOD_CONFIDENCE_WEIGHT
         )
 
         # Period ambiguity penalty

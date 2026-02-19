@@ -5,7 +5,6 @@ Tests the metric ID alias system that enables matching between canonical
 metric IDs and alternative identifiers used in gold standard files.
 """
 
-
 from src.extraction.keyword_config import (
     get_aliases,
     get_all_equivalent_ids,
@@ -30,8 +29,12 @@ class TestGetAliases:
         aliases = get_aliases()
         for metric_id, alias_list in aliases.items():
             assert isinstance(alias_list, list), f"{metric_id} aliases should be a list"
-            assert all(isinstance(a, str) for a in alias_list), f"{metric_id} aliases should be strings"
-            assert all(a.startswith("cm_") for a in alias_list), f"{metric_id} aliases should start with cm_"
+            assert all(isinstance(a, str) for a in alias_list), (
+                f"{metric_id} aliases should be strings"
+            )
+            assert all(a.startswith("cm_") for a in alias_list), (
+                f"{metric_id} aliases should start with cm_"
+            )
 
     def test_excludes_yaml_anchors(self):
         """YAML anchor keys (starting with _) should be excluded."""
@@ -133,8 +136,12 @@ class TestMetricsAreEquivalent:
         - cm_customers_period_end: Stock count ("total customers")
         - cm_active_customers_total: Engagement-based ("active customers")
         """
-        assert metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total") is False
-        assert metrics_are_equivalent("cm_active_customers_total", "cm_customers_period_end") is False
+        assert (
+            metrics_are_equivalent("cm_customers_period_end", "cm_active_customers_total") is False
+        )
+        assert (
+            metrics_are_equivalent("cm_active_customers_total", "cm_customers_period_end") is False
+        )
 
     def test_empty_string_handling(self):
         """Empty strings are handled gracefully."""

@@ -4,11 +4,7 @@ Unit tests for IngestionStage (Stage 1).
 Tests lxml-based HTML parsing, XPath locators, and segment extraction.
 """
 
-import tempfile
 from pathlib import Path
-
-import pytest
-from lxml import etree
 
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.ingestion import IngestionStage
@@ -921,7 +917,9 @@ class TestTableCellRowMarkers:
         result = stage._extract_table_text_with_markers(table)
 
         # Both header and data rows should have markers
-        assert "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == result
+        assert (
+            "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == result
+        )
 
     def test_empty_cells_are_skipped(self, tmp_path: Path) -> None:
         """Empty cells should not create empty markers."""
@@ -1303,7 +1301,9 @@ class TestDefinitionMethodologyDetection:
 
         # Count segment types
         definition_count = sum(1 for s in context.segments if s.segment_type.value == "definition")
-        methodology_count = sum(1 for s in context.segments if s.segment_type.value == "methodology")
+        methodology_count = sum(
+            1 for s in context.segments if s.segment_type.value == "methodology"
+        )
         paragraph_count = sum(1 for s in context.segments if s.segment_type.value == "paragraph")
 
         assert definition_count == 2  # "We define" and "refers to"

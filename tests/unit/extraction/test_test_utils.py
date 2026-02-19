@@ -94,15 +94,29 @@ class TestAssertSegmentsMatch:
     def test_assert_segments_match_success(self):
         """Test matching segments pass assertion."""
         segments = [
-            SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Shopify is a leading platform"),
-            SourceSegment(filing_id=1, sequence_index=1, segment_type="paragraph", raw_text="We define revenue"),
-            SourceSegment(filing_id=1, sequence_index=2, segment_type="table", raw_text="Revenue by region"),
+            SourceSegment(
+                filing_id=1,
+                sequence_index=0,
+                segment_type="paragraph",
+                raw_text="Shopify is a leading platform",
+            ),
+            SourceSegment(
+                filing_id=1,
+                sequence_index=1,
+                segment_type="paragraph",
+                raw_text="We define revenue",
+            ),
+            SourceSegment(
+                filing_id=1, sequence_index=2, segment_type="table", raw_text="Revenue by region"
+            ),
         ]
 
         expected = {
             "expected_segment_count": 3,
             "expected_segment_types": {"paragraph": 2, "table": 1},
-            "sample_segments": [{"sequence_index": 0, "segment_type": "paragraph", "raw_text_prefix": "Shopify is"}],
+            "sample_segments": [
+                {"sequence_index": 0, "segment_type": "paragraph", "raw_text_prefix": "Shopify is"}
+            ],
         }
 
         # Should not raise
@@ -110,7 +124,10 @@ class TestAssertSegmentsMatch:
 
     def test_assert_segments_match_count_mismatch(self):
         """Test segment count outside tolerance raises AssertionError."""
-        segments = [SourceSegment(filing_id=1, sequence_index=i, segment_type="paragraph", raw_text="test") for i in range(10)]
+        segments = [
+            SourceSegment(filing_id=1, sequence_index=i, segment_type="paragraph", raw_text="test")
+            for i in range(10)
+        ]
 
         expected = {"expected_segment_count": 20, "expected_segment_types": {"paragraph": 20}}
 
@@ -124,7 +141,10 @@ class TestAssertSegmentsMatch:
             SourceSegment(filing_id=1, sequence_index=1, segment_type="paragraph", raw_text="test"),
         ]
 
-        expected = {"expected_segment_count": 2, "expected_segment_types": {"paragraph": 1, "table": 1}}
+        expected = {
+            "expected_segment_count": 2,
+            "expected_segment_types": {"paragraph": 1, "table": 1},
+        }
 
         # The first type mismatch will be caught (paragraph has 2 instead of 1)
         with pytest.raises(AssertionError, match="Type .* count"):
@@ -132,7 +152,14 @@ class TestAssertSegmentsMatch:
 
     def test_assert_segments_match_sample_mismatch(self):
         """Test sample segment mismatch raises AssertionError."""
-        segments = [SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Wrong text content")]
+        segments = [
+            SourceSegment(
+                filing_id=1,
+                sequence_index=0,
+                segment_type="paragraph",
+                raw_text="Wrong text content",
+            )
+        ]
 
         expected = {
             "expected_segment_count": 1,
@@ -149,7 +176,9 @@ class TestAssertClassificationMatch:
 
     def test_assert_classification_match_success(self):
         """Test matching classification passes assertion."""
-        segment = SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="We define DAU as...")
+        segment = SourceSegment(
+            filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="We define DAU as..."
+        )
 
         segment.contains_definition_flag = True
         segment.contains_methodology_flag = False
@@ -171,7 +200,9 @@ class TestAssertClassificationMatch:
 
     def test_assert_classification_match_flag_mismatch(self):
         """Test flag mismatch raises AssertionError."""
-        segment = SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test")
+        segment = SourceSegment(
+            filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test"
+        )
         segment.contains_definition_flag = False
 
         expected = {"contains_definition_flag": True, "candidate_metric_ids": []}
@@ -181,23 +212,35 @@ class TestAssertClassificationMatch:
 
     def test_assert_classification_match_metrics_mismatch(self):
         """Test candidate metrics mismatch raises AssertionError."""
-        segment = SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test")
+        segment = SourceSegment(
+            filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test"
+        )
         segment.contains_definition_flag = True
         segment.candidate_metric_ids = ["cm_daily_active_users"]
 
-        expected = {"contains_definition_flag": True, "candidate_metric_ids": ["cm_monthly_active_users"]}
+        expected = {
+            "contains_definition_flag": True,
+            "candidate_metric_ids": ["cm_monthly_active_users"],
+        }
 
         with pytest.raises(AssertionError, match="Candidate metrics"):
             assert_classification_match(segment, expected)
 
     def test_assert_classification_match_confidence_out_of_range(self):
         """Test confidence outside range raises AssertionError."""
-        segment = SourceSegment(filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test")
+        segment = SourceSegment(
+            filing_id=1, sequence_index=0, segment_type="paragraph", raw_text="Test"
+        )
         segment.contains_definition_flag = True
         segment.candidate_metric_ids = []
         segment.classifier_confidence = 0.9
 
-        expected = {"contains_definition_flag": True, "candidate_metric_ids": [], "min_confidence": 0.5, "max_confidence": 0.7}
+        expected = {
+            "contains_definition_flag": True,
+            "candidate_metric_ids": [],
+            "min_confidence": 0.5,
+            "max_confidence": 0.7,
+        }
 
         with pytest.raises(AssertionError, match="Confidence .* above maximum"):
             assert_classification_match(segment, expected)

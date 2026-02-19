@@ -143,9 +143,7 @@ class TableReconstructor:
         if validate:
             validation = self._validate_grid(grid, row_count, col_count)
             if not validation.is_valid:
-                logger.warning(
-                    f"Grid validation failed: {validation.message}"
-                )
+                logger.warning(f"Grid validation failed: {validation.message}")
                 if validation.gaps:
                     logger.debug(f"Gap positions: {validation.gaps[:10]}...")
                 if validation.overlaps:
@@ -199,7 +197,7 @@ class TableReconstructor:
             2D grid where grid[row][col] = Cell or None
         """
         # Find all rows (handle thead, tbody, tfoot)
-        rows = table_elem.find_all('tr')
+        rows = table_elem.find_all("tr")
         if not rows:
             return []
 
@@ -212,8 +210,8 @@ class TableReconstructor:
         # This handles cases where earlier rows have rowspans that affect
         # how many columns later rows appear to have
         for tr in rows:
-            cells = tr.find_all(['td', 'th'])
-            total_cols = sum(int(str(cell.get('colspan', '1'))) for cell in cells)
+            cells = tr.find_all(["td", "th"])
+            total_cols = sum(int(str(cell.get("colspan", "1"))) for cell in cells)
             col_count = max(col_count, total_cols)
 
         if col_count == 0:
@@ -223,22 +221,29 @@ class TableReconstructor:
         grid: list[list[Cell | None]] = [[None] * col_count for _ in range(row_count)]
 
         # Track cells that had their spans clipped (for logging)
-        clipped_spans: list[tuple[int, int, int, int]] = []  # (row, col, orig_rowspan, orig_colspan)
+        clipped_spans: list[
+            tuple[int, int, int, int]
+        ] = []  # (row, col, orig_rowspan, orig_colspan)
 
         # Second pass: fill grid with cells
         for tr_idx, tr in enumerate(rows):
             col_idx = 0
 
-            for cell_elem in tr.find_all(['td', 'th']):
+            for cell_elem in tr.find_all(["td", "th"]):
                 # Skip cells already filled by rowspan from previous rows
                 while col_idx < col_count and grid[tr_idx][col_idx] is not None:
                     col_idx += 1
 
                 if col_idx >= col_count:
                     # All columns filled for this row - log and continue to next row
-                    remaining_cells = len(tr.find_all(['td', 'th'])) - len(
-                        [c for c in tr.find_all(['td', 'th'])
-                         if c is cell_elem or tr.find_all(['td', 'th']).index(c) < tr.find_all(['td', 'th']).index(cell_elem)]
+                    remaining_cells = len(tr.find_all(["td", "th"])) - len(
+                        [
+                            c
+                            for c in tr.find_all(["td", "th"])
+                            if c is cell_elem
+                            or tr.find_all(["td", "th"]).index(c)
+                            < tr.find_all(["td", "th"]).index(cell_elem)
+                        ]
                     )
                     if remaining_cells > 0:
                         logger.warning(
@@ -249,8 +254,8 @@ class TableReconstructor:
 
                 # Get span attributes, with validation
                 try:
-                    rowspan = max(1, int(str(cell_elem.get('rowspan', '1'))))
-                    colspan = max(1, int(str(cell_elem.get('colspan', '1'))))
+                    rowspan = max(1, int(str(cell_elem.get("rowspan", "1"))))
+                    colspan = max(1, int(str(cell_elem.get("colspan", "1"))))
                 except (ValueError, TypeError):
                     rowspan = 1
                     colspan = 1
@@ -272,7 +277,7 @@ class TableReconstructor:
                 text = cell_elem.get_text(strip=True)
 
                 # Determine if header cell
-                is_header = cell_elem.name == 'th'
+                is_header = cell_elem.name == "th"
 
                 # Create Cell object (store original spans for audit)
                 cell = Cell(
@@ -306,9 +311,7 @@ class TableReconstructor:
 
         # Log clipped spans
         if clipped_spans:
-            logger.warning(
-                f"Table had {len(clipped_spans)} spans clipped to fit grid bounds"
-            )
+            logger.warning(f"Table had {len(clipped_spans)} spans clipped to fit grid bounds")
 
         return grid
 

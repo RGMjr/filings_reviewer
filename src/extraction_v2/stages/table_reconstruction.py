@@ -63,13 +63,9 @@ class TableReconstructionStage:
         warnings: list[str] = []
 
         # Get table segments
-        table_segments = [
-            seg for seg in context.segments if seg.segment_type == SegmentType.TABLE
-        ]
+        table_segments = [seg for seg in context.segments if seg.segment_type == SegmentType.TABLE]
 
-        logger.info(
-            f"Table reconstruction: processing {len(table_segments)} table segments"
-        )
+        logger.info(f"Table reconstruction: processing {len(table_segments)} table segments")
 
         for segment in table_segments:
             try:

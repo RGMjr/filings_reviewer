@@ -49,7 +49,7 @@ def _normal_cdf(z: float) -> float:
     x_abs = abs(x)
 
     erf_x = sign * math.sqrt(
-        1 - math.exp(-x_abs**2 * (4 / math.pi + a * x_abs**2) / (1 + a * x_abs**2))
+        1 - math.exp(-(x_abs**2) * (4 / math.pi + a * x_abs**2) / (1 + a * x_abs**2))
     )
 
     return 0.5 * (1 + erf_x)

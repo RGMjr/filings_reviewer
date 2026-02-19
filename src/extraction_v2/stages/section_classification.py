@@ -112,7 +112,7 @@ class SectionClassificationStage:
             Normalized text (whitespace collapsed, trimmed)
         """
         # Collapse whitespace
-        normalized = re.sub(r'\s+', ' ', text)
+        normalized = re.sub(r"\s+", " ", text)
         # Trim
         normalized = normalized.strip()
         return normalized
@@ -184,7 +184,7 @@ class SectionClassificationStage:
 
         # Check XPath for heading elements
         xpath_lower = segment.dom_locator.lower()
-        if any(tag in xpath_lower for tag in ['/h1[', '/h2[', '/h3[', '/h4[', '/h5[', '/h6[']):
+        if any(tag in xpath_lower for tag in ["/h1[", "/h2[", "/h3[", "/h4[", "/h5[", "/h6["]):
             return True
 
         return False
@@ -205,7 +205,9 @@ class SectionClassificationStage:
         for section_type, patterns in self._compiled_patterns.items():
             for pattern in patterns:
                 if pattern.search(normalized):
-                    logger.debug(f"Detected section {section_type.value} from text: {normalized[:50]}")
+                    logger.debug(
+                        f"Detected section {section_type.value} from text: {normalized[:50]}"
+                    )
                     return section_type
 
         return SectionType.UNKNOWN

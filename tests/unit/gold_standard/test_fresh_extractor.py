@@ -48,14 +48,17 @@ def mock_filing_html(temp_filings_dir: Path) -> Path:
     cik_dir.mkdir(parents=True, exist_ok=True)
 
     filing_path = cik_dir / "slacks-1a3.htm"
-    filing_path.write_text("""
+    filing_path.write_text(
+        """
     <html>
     <body>
     <p>We had 10 million daily active users as of January 31, 2019.</p>
     <p>Our Paid Customers increased to 88,000.</p>
     </body>
     </html>
-    """, encoding="utf-8")
+    """,
+        encoding="utf-8",
+    )
 
     return filing_path
 
@@ -247,6 +250,7 @@ class TestFetchFromSec:
         # Mock at the location where it's imported (inside the function)
         with patch.dict("sys.modules", {"requests": MagicMock()}):
             import sys
+
             mock_requests = sys.modules["requests"]
             mock_requests.get.side_effect = Exception("Network error")
 
@@ -301,14 +305,17 @@ class TestSegmentAndGenerate:
     def test_segment_with_numbers(self, temp_filings_dir: Path) -> None:
         """Segment HTML containing numbers and metrics keywords."""
         html_path = temp_filings_dir / "metrics.htm"
-        html_path.write_text("""
+        html_path.write_text(
+            """
         <html>
         <body>
         <p>We have 10 million daily active users worldwide.</p>
         <p>Our customer count reached 500,000 paid subscribers.</p>
         </body>
         </html>
-        """, encoding="utf-8")
+        """,
+            encoding="utf-8",
+        )
 
         candidates, segment_count, error = segment_and_generate(html_path)
 
@@ -360,9 +367,7 @@ class TestExtractFresh:
         assert "not found in cache" in (result.error_message or "")
         assert result.local_path is None
 
-    def test_extract_with_cached_file(
-        self, temp_filings_dir: Path, mock_filing_html: Path
-    ) -> None:
+    def test_extract_with_cached_file(self, temp_filings_dir: Path, mock_filing_html: Path) -> None:
         """Successfully extract from cached file."""
         result = extract_fresh(
             document_url=SLACK_URL,
@@ -431,13 +436,9 @@ class TestExtractionResult:
 class TestExtractFreshWithSecFetch:
     """Tests for extract_fresh with SEC fetch enabled."""
 
-    def test_extract_fetches_from_sec_when_not_cached(
-        self, temp_filings_dir: Path
-    ) -> None:
+    def test_extract_fetches_from_sec_when_not_cached(self, temp_filings_dir: Path) -> None:
         """When file not cached and allow_sec_fetch=True, fetch from SEC."""
-        with patch(
-            "src.gold_standard.fresh_extractor.fetch_from_sec"
-        ) as mock_fetch:
+        with patch("src.gold_standard.fresh_extractor.fetch_from_sec") as mock_fetch:
             # Mock successful fetch
             mock_fetch.return_value = (
                 "<html><body><p>Test content</p></body></html>",
@@ -458,13 +459,9 @@ class TestExtractFreshWithSecFetch:
             assert result.local_path is not None
             assert result.local_path.exists()
 
-    def test_extract_fails_when_sec_fetch_fails(
-        self, temp_filings_dir: Path
-    ) -> None:
+    def test_extract_fails_when_sec_fetch_fails(self, temp_filings_dir: Path) -> None:
         """Return error when SEC fetch fails."""
-        with patch(
-            "src.gold_standard.fresh_extractor.fetch_from_sec"
-        ) as mock_fetch:
+        with patch("src.gold_standard.fresh_extractor.fetch_from_sec") as mock_fetch:
             mock_fetch.return_value = (None, "Connection refused")
 
             result = extract_fresh(
@@ -497,13 +494,13 @@ class TestExtractFreshBatch:
     def test_batch_extraction_multiple_urls(self, temp_filings_dir: Path) -> None:
         """Extract from multiple URLs."""
         # Create two mock filings
-        for cik, accession in [("0001764925", "000162828019007428"),
-                                ("0001740915", "000119312518252315")]:
+        for cik, accession in [
+            ("0001764925", "000162828019007428"),
+            ("0001740915", "000119312518252315"),
+        ]:
             cik_dir = temp_filings_dir / cik / accession
             cik_dir.mkdir(parents=True, exist_ok=True)
-            (cik_dir / "primary.htm").write_text(
-                "<html><body><p>Test</p></body></html>"
-            )
+            (cik_dir / "primary.htm").write_text("<html><body><p>Test</p></body></html>")
 
         results = extract_fresh_batch(
             document_urls=[SLACK_URL, FARFETCH_URL],
@@ -517,9 +514,7 @@ class TestExtractFreshBatch:
         # Each result has the correct URL
         assert results[1].document_url == FARFETCH_URL
 
-    def test_batch_extraction_with_progress_callback(
-        self, temp_filings_dir: Path
-    ) -> None:
+    def test_batch_extraction_with_progress_callback(self, temp_filings_dir: Path) -> None:
         """Progress callback is called for each URL."""
         # Create mock filing
         cik_dir = temp_filings_dir / "0001764925" / "000162828019007428"
@@ -553,7 +548,8 @@ class TestFreshExtractionIntegration:
         cik_dir.mkdir(parents=True, exist_ok=True)
 
         filing_path = cik_dir / "slacks-1a3.htm"
-        filing_path.write_text("""
+        filing_path.write_text(
+            """
         <!DOCTYPE html>
         <html>
         <head><title>Slack Technologies S-1</title></head>
@@ -570,7 +566,9 @@ class TestFreshExtractionIntegration:
         <p>Our Net Dollar Retention Rate was 143% for fiscal year 2019.</p>
         </body>
         </html>
-        """, encoding="utf-8")
+        """,
+            encoding="utf-8",
+        )
 
         result = extract_fresh(
             document_url=SLACK_URL,
@@ -665,9 +663,7 @@ class TestFindLocalFilingGoldStandard:
         assert parsed is not None
 
         # Patch the gold_standard base path
-        with patch(
-            "src.gold_standard.fresh_extractor.Path"
-        ) as mock_path_class:
+        with patch("src.gold_standard.fresh_extractor.Path") as mock_path_class:
             # Make Path("data/gold_standard") return our temp path
             def path_side_effect(path_str: str) -> Path:
                 if path_str == "data/gold_standard":
@@ -706,9 +702,7 @@ class TestFindLocalFilingGoldStandard:
             return original_path(path_str)
 
         with patch("src.gold_standard.fresh_extractor.Path", side_effect=mock_path):
-            result = find_local_filing(
-                parsed, temp_filings_dir, company_name="Slack Technologies"
-            )
+            result = find_local_filing(parsed, temp_filings_dir, company_name="Slack Technologies")
 
         # Should find the gold_standard filing
         assert result is not None
@@ -722,9 +716,7 @@ class TestFindLocalFilingGoldStandard:
         assert parsed is not None
 
         # No gold_standard directory exists, but mock_filing_html is in data/filings
-        result = find_local_filing(
-            parsed, temp_filings_dir, company_name="Nonexistent Company"
-        )
+        result = find_local_filing(parsed, temp_filings_dir, company_name="Nonexistent Company")
 
         # Should fall back and find in data/filings
         assert result is not None
@@ -748,9 +740,7 @@ class TestFindLocalFilingGoldStandard:
 class TestExtractFreshWithCompanyName:
     """Tests for extract_fresh with company_name parameter."""
 
-    def test_extract_uses_gold_standard_when_company_provided(
-        self, temp_filings_dir: Path
-    ) -> None:
+    def test_extract_uses_gold_standard_when_company_provided(self, temp_filings_dir: Path) -> None:
         """extract_fresh uses gold_standard path when company_name provided."""
         # Create gold_standard structure
         gold_standard_base = temp_filings_dir / "gold_standard"

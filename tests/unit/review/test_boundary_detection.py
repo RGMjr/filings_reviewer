@@ -5,7 +5,6 @@ Tests boundary detection for bullets, numbered lists, lettered lists,
 multi-line continuations, and edge cases.
 """
 
-
 from src.review.boundary_detection import (
     BoundaryDetector,
     TextBoundary,

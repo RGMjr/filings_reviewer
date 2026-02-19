@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class ValidationResult(Enum):
     """Result of validation check."""
+
     PASS = "pass"
     FAIL_UNIT = "fail_unit"
     FAIL_RANGE = "fail_range"
@@ -30,6 +31,7 @@ class ValidationResult(Enum):
 @dataclass
 class ValidationIssue:
     """Describes a validation issue found."""
+
     result: ValidationResult
     metric_id: str
     value: float
@@ -43,71 +45,48 @@ METRIC_UNIT_RULES: dict[str, tuple[list[str], str]] = {
     # Revenue/Money metrics - should be currency
     "cm_customer_acquisition_cost": (
         ["dollars", "usd", "$", "millions", "thousands", "billions", None],
-        "currency"
+        "currency",
     ),
     "cm_revenue_per_customer": (
         ["dollars", "usd", "$", "millions", "thousands", "billions", None],
-        "currency"
+        "currency",
     ),
     "cm_expansion_revenue": (
         ["dollars", "usd", "$", "millions", "thousands", "billions", "percent", "%", None],
-        "currency_or_percent"
+        "currency_or_percent",
     ),
-    "cm_ltv": (
-        ["dollars", "usd", "$", "millions", "thousands", None],
-        "currency"
-    ),
+    "cm_ltv": (["dollars", "usd", "$", "millions", "thousands", None], "currency"),
     "cm_revenue_by_cohort": (
         ["dollars", "usd", "$", "millions", "thousands", "billions", None],
-        "currency"
+        "currency",
     ),
     "cm_revenue_concentration": (
         ["percent", "%", "dollars", "usd", "$", "millions", None],
-        "percent_or_currency"
+        "percent_or_currency",
     ),
-
     # Rate/Percentage metrics - should be percent
-    "cm_customer_retention_rate": (
-        ["percent", "%", None],
-        "percent"
-    ),
-    "cm_churn_rate": (
-        ["percent", "%", None],
-        "percent"
-    ),
-    "cm_net_revenue_retention": (
-        ["percent", "%", None],
-        "percent"
-    ),
-    "cm_gross_revenue_retention": (
-        ["percent", "%", None],
-        "percent"
-    ),
-    "cm_gross_margin_by_cohort": (
-        ["percent", "%", None],
-        "percent"
-    ),
-    "cm_ltv_cac_ratio": (
-        ["ratio", "x", "times", None],
-        "ratio"
-    ),
-
+    "cm_customer_retention_rate": (["percent", "%", None], "percent"),
+    "cm_churn_rate": (["percent", "%", None], "percent"),
+    "cm_net_revenue_retention": (["percent", "%", None], "percent"),
+    "cm_gross_revenue_retention": (["percent", "%", None], "percent"),
+    "cm_gross_margin_by_cohort": (["percent", "%", None], "percent"),
+    "cm_ltv_cac_ratio": (["ratio", "x", "times", None], "ratio"),
     # Count metrics - should be count/number
     "cm_active_customers_total": (
         ["count", "customers", "users", "thousands", "millions", None],
-        "count"
+        "count",
     ),
     "cm_new_customers_acquired": (
         ["count", "customers", "users", "thousands", "millions", None],
-        "count"
+        "count",
     ),
     "cm_customers_by_tenure": (
         ["count", "customers", "users", "thousands", "millions", None],
-        "count"
+        "count",
     ),
     "cm_transactions_by_cohort": (
         ["count", "transactions", "thousands", "millions", None],
-        "count"
+        "count",
     ),
 }
 
@@ -117,23 +96,17 @@ METRIC_RANGE_RULES: dict[str, tuple[float | None, float | None, float, float]] =
     "cm_customer_retention_rate": (0, 100, 50, 99),
     "cm_net_revenue_retention": (0, 300, 80, 180),
     "cm_gross_revenue_retention": (0, 100, 50, 99),
-
     # Churn typically 0-50%
     "cm_churn_rate": (0, 100, 0.1, 30),
-
     # Gross margin typically 0-100%
     "cm_gross_margin_by_cohort": (-50, 100, 20, 90),
-
     # LTV:CAC ratio typically 1-10x
     "cm_ltv_cac_ratio": (0, 100, 1, 10),
-
     # Customer counts - wide range but not astronomical
     "cm_active_customers_total": (0, 1e12, 100, 1e9),
     "cm_new_customers_acquired": (0, 1e12, 10, 1e8),
-
     # CAC typically $10 - $10,000
     "cm_customer_acquisition_cost": (0, 1e9, 10, 10000),
-
     # Revenue concentration typically 1-100%
     "cm_revenue_concentration": (0, 100, 1, 50),
 }
@@ -141,45 +114,51 @@ METRIC_RANGE_RULES: dict[str, tuple[float | None, float | None, float, float]] =
 # Keywords that should appear in source for each metric
 METRIC_KEYWORDS: dict[str, list[str]] = {
     "cm_customer_acquisition_cost": [
-        "acquisition cost", "cac", "cost to acquire", "customer acquisition",
-        "cost per customer", "cost per acquisition"
+        "acquisition cost",
+        "cac",
+        "cost to acquire",
+        "customer acquisition",
+        "cost per customer",
+        "cost per acquisition",
     ],
     "cm_net_revenue_retention": [
-        "net revenue retention", "nrr", "net dollar retention", "ndr",
-        "dollar-based net retention", "net retention"
+        "net revenue retention",
+        "nrr",
+        "net dollar retention",
+        "ndr",
+        "dollar-based net retention",
+        "net retention",
     ],
-    "cm_customer_retention_rate": [
-        "retention rate", "customer retention", "retention", "retain"
-    ],
-    "cm_churn_rate": [
-        "churn", "attrition", "cancellation rate", "customer loss"
-    ],
+    "cm_customer_retention_rate": ["retention rate", "customer retention", "retention", "retain"],
+    "cm_churn_rate": ["churn", "attrition", "cancellation rate", "customer loss"],
     "cm_new_customers_acquired": [
-        "new customer", "customer acquired", "new user", "customer addition",
-        "net new", "acquired"
+        "new customer",
+        "customer acquired",
+        "new user",
+        "customer addition",
+        "net new",
+        "acquired",
     ],
     "cm_active_customers_total": [
-        "active customer", "active user", "total customer", "customer count",
-        "paying customer", "subscriber", "core customer"
+        "active customer",
+        "active user",
+        "total customer",
+        "customer count",
+        "paying customer",
+        "subscriber",
+        "core customer",
     ],
-    "cm_expansion_revenue": [
-        "expansion", "upsell", "cross-sell", "upgrade", "expansion revenue"
-    ],
-    "cm_gross_margin_by_cohort": [
-        "gross margin", "margin", "cohort", "gross profit"
-    ],
-    "cm_revenue_by_cohort": [
-        "cohort", "revenue", "vintage", "acquisition year"
-    ],
+    "cm_expansion_revenue": ["expansion", "upsell", "cross-sell", "upgrade", "expansion revenue"],
+    "cm_gross_margin_by_cohort": ["gross margin", "margin", "cohort", "gross profit"],
+    "cm_revenue_by_cohort": ["cohort", "revenue", "vintage", "acquisition year"],
     "cm_revenue_concentration": [
-        "concentration", "top customer", "largest customer", "major customer"
+        "concentration",
+        "top customer",
+        "largest customer",
+        "major customer",
     ],
-    "cm_ltv": [
-        "lifetime value", "ltv", "clv", "customer lifetime"
-    ],
-    "cm_ltv_cac_ratio": [
-        "ltv", "cac", "ratio", "lifetime value"
-    ],
+    "cm_ltv": ["lifetime value", "ltv", "clv", "customer lifetime"],
+    "cm_ltv_cac_ratio": ["ltv", "cac", "ratio", "lifetime value"],
 }
 
 
@@ -205,11 +184,7 @@ def normalize_unit(unit: str | None) -> str | None:
     return unit_mapping.get(unit_lower, unit_lower)
 
 
-def validate_unit(
-    metric_id: str,
-    unit: str | None,
-    value: float
-) -> ValidationResult:
+def validate_unit(metric_id: str, unit: str | None, value: float) -> ValidationResult:
     """
     Validate that unit is appropriate for metric type.
 
@@ -235,25 +210,21 @@ def validate_unit(
     if normalized_unit == "millions" and metric_id in [
         "cm_customer_acquisition_cost",
         "cm_expansion_revenue",
-        "cm_revenue_per_customer"
+        "cm_revenue_per_customer",
     ]:
         return ValidationResult.PASS
 
     # Special case: count metrics with "millions" is OK
     if normalized_unit in ["millions", "thousands", "billion"] and metric_id in [
         "cm_active_customers_total",
-        "cm_new_customers_acquired"
+        "cm_new_customers_acquired",
     ]:
         return ValidationResult.PASS
 
     return ValidationResult.FAIL_UNIT
 
 
-def validate_range(
-    metric_id: str,
-    value: float,
-    unit: str | None
-) -> ValidationResult:
+def validate_range(metric_id: str, value: float, unit: str | None) -> ValidationResult:
     """
     Validate that value is within expected range for metric type.
 
@@ -288,8 +259,12 @@ def validate_range(
         return ValidationResult.FAIL_RANGE
 
     # For percentages, check if value looks like it should be a percentage
-    if metric_id in ["cm_customer_retention_rate", "cm_churn_rate",
-                      "cm_net_revenue_retention", "cm_gross_margin_by_cohort"]:
+    if metric_id in [
+        "cm_customer_retention_rate",
+        "cm_churn_rate",
+        "cm_net_revenue_retention",
+        "cm_gross_margin_by_cohort",
+    ]:
         # If unit is not percent but value is in 0-100 range, might be OK
         # If value is > 100 and not NRR, likely wrong
         if value > 100 and metric_id != "cm_net_revenue_retention":
@@ -298,10 +273,7 @@ def validate_range(
     return ValidationResult.PASS
 
 
-def validate_keyword_in_source(
-    metric_id: str,
-    source_text: str
-) -> ValidationResult:
+def validate_keyword_in_source(metric_id: str, source_text: str) -> ValidationResult:
     """
     Validate that relevant keywords appear in source text.
 
@@ -326,11 +298,7 @@ def validate_keyword_in_source(
     return ValidationResult.FAIL_KEYWORD
 
 
-def validate_quote(
-    quote: str | None,
-    value: float,
-    source_text: str
-) -> ValidationResult:
+def validate_quote(quote: str | None, value: float, source_text: str) -> ValidationResult:
     """
     Validate that quote is present and contains the value.
 
@@ -405,8 +373,7 @@ def validate_quote_contains_metric_keyword(
     if not found_keyword:
         return (
             ValidationResult.FAIL_KEYWORD,
-            f"Quote missing metric keyword for {metric_id}. "
-            f"Expected one of: {keywords[:3]}..."
+            f"Quote missing metric keyword for {metric_id}. Expected one of: {keywords[:3]}...",
         )
 
     # Check if the numeric value appears in the quote
@@ -425,18 +392,14 @@ def validate_quote_contains_metric_keyword(
     if not found_value:
         return (
             ValidationResult.WARN,
-            f"Quote contains keyword '{found_keyword}' but value {value} not clearly present"
+            f"Quote contains keyword '{found_keyword}' but value {value} not clearly present",
         )
 
     return ValidationResult.PASS, f"Quote validated: contains '{found_keyword}' and value"
 
 
 def validate_extraction(
-    metric_id: str,
-    value: float,
-    unit: str | None,
-    quote: str | None,
-    source_text: str
+    metric_id: str, value: float, unit: str | None, quote: str | None, source_text: str
 ) -> list[ValidationIssue]:
     """
     Run all validation checks on an extraction.
@@ -457,50 +420,58 @@ def validate_extraction(
     # Unit validation
     unit_result = validate_unit(metric_id, unit, value)
     if unit_result == ValidationResult.FAIL_UNIT:
-        issues.append(ValidationIssue(
-            result=unit_result,
-            metric_id=metric_id,
-            value=value,
-            unit=unit,
-            message=f"Unit '{unit}' not valid for {metric_id}",
-            source_preview=source_preview
-        ))
+        issues.append(
+            ValidationIssue(
+                result=unit_result,
+                metric_id=metric_id,
+                value=value,
+                unit=unit,
+                message=f"Unit '{unit}' not valid for {metric_id}",
+                source_preview=source_preview,
+            )
+        )
 
     # Range validation
     range_result = validate_range(metric_id, value, unit)
     if range_result == ValidationResult.FAIL_RANGE:
-        issues.append(ValidationIssue(
-            result=range_result,
-            metric_id=metric_id,
-            value=value,
-            unit=unit,
-            message=f"Value {value} out of expected range for {metric_id}",
-            source_preview=source_preview
-        ))
+        issues.append(
+            ValidationIssue(
+                result=range_result,
+                metric_id=metric_id,
+                value=value,
+                unit=unit,
+                message=f"Value {value} out of expected range for {metric_id}",
+                source_preview=source_preview,
+            )
+        )
 
     # Keyword validation
     keyword_result = validate_keyword_in_source(metric_id, source_text)
     if keyword_result == ValidationResult.FAIL_KEYWORD:
-        issues.append(ValidationIssue(
-            result=keyword_result,
-            metric_id=metric_id,
-            value=value,
-            unit=unit,
-            message=f"No keywords for {metric_id} found in source",
-            source_preview=source_preview
-        ))
+        issues.append(
+            ValidationIssue(
+                result=keyword_result,
+                metric_id=metric_id,
+                value=value,
+                unit=unit,
+                message=f"No keywords for {metric_id} found in source",
+                source_preview=source_preview,
+            )
+        )
 
     # Quote validation
     quote_result = validate_quote(quote, value, source_text)
     if quote_result == ValidationResult.FAIL_QUOTE:
-        issues.append(ValidationIssue(
-            result=quote_result,
-            metric_id=metric_id,
-            value=value,
-            unit=unit,
-            message="Quote missing or too short",
-            source_preview=source_preview
-        ))
+        issues.append(
+            ValidationIssue(
+                result=quote_result,
+                metric_id=metric_id,
+                value=value,
+                unit=unit,
+                message="Quote missing or too short",
+                source_preview=source_preview,
+            )
+        )
 
     return issues
 

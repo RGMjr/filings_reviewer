@@ -62,9 +62,7 @@ class ExtractionPipeline:
     6. Write all results to database
     """
 
-    def __init__(
-        self, db: DatabaseAdapter, llm_client: Optional["OpenAIClient"] = None
-    ):
+    def __init__(self, db: DatabaseAdapter, llm_client: Optional["OpenAIClient"] = None):
         """
         Initialize the extraction pipeline.
 
@@ -147,7 +145,9 @@ class ExtractionPipeline:
             # Log goldmine statistics
             goldmines = [s for s in selected_segments if (s.richness_score or 0) >= 6.0]
             clusters = cluster_goldmine_segments(goldmines) if goldmines else []
-            logger.info(f"  Identified {len(goldmines)} goldmine segments in {len(clusters)} clusters")
+            logger.info(
+                f"  Identified {len(goldmines)} goldmine segments in {len(clusters)} clusters"
+            )
 
             # Step 3: Extract values (from selected segments)
             logger.info(f"  Stage 3: Extracting values from {len(selected_segments)} segments")
@@ -176,9 +176,7 @@ class ExtractionPipeline:
 
             # Step 6: Write to database
             logger.info("  Stage 6: Writing to database")
-            self._write_results(
-                filing_id, selected_segments, all_values, definitions, incidences
-            )
+            self._write_results(filing_id, selected_segments, all_values, definitions, incidences)
 
             logger.info(f"✓ Successfully processed filing {filing_id}")
             logger.info(
@@ -198,23 +196,18 @@ class ExtractionPipeline:
 
         except (ValueError, KeyError) as e:
             # Data/validation errors - filing data is invalid or missing expected fields
-            logger.error(
-                f"✗ Data error processing filing {filing_id}: {e}", exc_info=True
-            )
+            logger.error(f"✗ Data error processing filing {filing_id}: {e}", exc_info=True)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except OSError as e:
             # File system errors - HTML file not found or unreadable
-            logger.error(
-                f"✗ File error processing filing {filing_id}: {e}", exc_info=True
-            )
+            logger.error(f"✗ File error processing filing {filing_id}: {e}", exc_info=True)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except Exception as e:
             # Unexpected errors - log with full details for debugging
             logger.critical(
-                f"✗ Unexpected error processing filing {filing_id}: "
-                f"{type(e).__name__}: {e}",
+                f"✗ Unexpected error processing filing {filing_id}: {type(e).__name__}: {e}",
                 exc_info=True,
             )
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
@@ -242,7 +235,7 @@ class ExtractionPipeline:
         }
 
         for i, filing_id in enumerate(filing_ids):
-            logger.info(f"[{i+1}/{len(filing_ids)}] Processing filing {filing_id}")
+            logger.info(f"[{i + 1}/{len(filing_ids)}] Processing filing {filing_id}")
 
             result = self.process_filing(filing_id)
 
@@ -288,18 +281,13 @@ class ExtractionPipeline:
         filing = result[0]
 
         # Check if HTML file exists
-        if (
-            not filing["html_storage_path"]
-            or not Path(filing["html_storage_path"]).exists()
-        ):
+        if not filing["html_storage_path"] or not Path(filing["html_storage_path"]).exists():
             logger.error(f"HTML file not found: {filing['html_storage_path']}")
             return None
 
         return filing
 
-    def _select_segments_tiered(
-        self, segments: list[SourceSegment]
-    ) -> list[SourceSegment]:
+    def _select_segments_tiered(self, segments: list[SourceSegment]) -> list[SourceSegment]:
         """
         Select segments using tiered prioritization.
 
@@ -358,12 +346,13 @@ class ExtractionPipeline:
         # Threshold: 3.0 (Lower than medium)
         DIRECT_HIT_THRESHOLD = 3.0
         direct_hits = [
-            s for s in segments
+            s
+            for s in segments
             if (s.richness_score or 0) >= DIRECT_HIT_THRESHOLD
             and (s.richness_score or 0) < MEDIUM_THRESHOLD
             and s.candidate_metric_ids
-            and len(s.candidate_metric_ids) == 1 # Very specific
-            and s.contains_numeric_disclosure_flag # Must have numbers
+            and len(s.candidate_metric_ids) == 1  # Very specific
+            and s.contains_numeric_disclosure_flag  # Must have numbers
         ]
 
         for seg in direct_hits:
@@ -521,17 +510,13 @@ class ExtractionPipeline:
                         defn.definition_segment_id is not None
                         and defn.definition_segment_id in segment_id_map
                     ):
-                        defn.definition_segment_id = segment_id_map[
-                            defn.definition_segment_id
-                        ]
+                        defn.definition_segment_id = segment_id_map[defn.definition_segment_id]
 
                     if (
                         defn.methodology_segment_id is not None
                         and defn.methodology_segment_id in segment_id_map
                     ):
-                        defn.methodology_segment_id = segment_id_map[
-                            defn.methodology_segment_id
-                        ]
+                        defn.methodology_segment_id = segment_id_map[defn.methodology_segment_id]
                     valid_definitions.append(defn)
 
                 # Insert metric definitions

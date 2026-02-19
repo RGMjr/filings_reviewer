@@ -279,9 +279,7 @@ class ValueBindingStage:
         # Find the table
         table = self._find_table(loc.table_id, tables)
         if not table:
-            logger.warning(
-                f"Table {loc.table_id} not found for candidate {candidate.candidate_id}"
-            )
+            logger.warning(f"Table {loc.table_id} not found for candidate {candidate.candidate_id}")
             return bound_values
 
         # Find the cell where the candidate was found
@@ -302,31 +300,23 @@ class ValueBindingStage:
         # Strategy 1: Candidate is in a header cell → bind data cells in that column
         if candidate_cell.is_header or row < table.header_rows:
             header_path = table.get_header_path(col)
-            bound_values.extend(
-                self._bind_column_values(candidate, table, col, header_path)
-            )
+            bound_values.extend(self._bind_column_values(candidate, table, col, header_path))
 
         # Strategy 2: Candidate is in a stub cell → bind data cells in that row
         if candidate_cell.is_stub or col < table.stub_cols:
             stub_path = table.get_stub_path(row)
-            bound_values.extend(
-                self._bind_row_values(candidate, table, row, stub_path)
-            )
+            bound_values.extend(self._bind_row_values(candidate, table, row, stub_path))
 
         # Strategy 3: Metric mentioned in header_path → bind column values
         if not bound_values and self._is_in_path(match_text_lower, candidate_cell.header_path):
             bound_values.extend(
-                self._bind_column_values(
-                    candidate, table, col, candidate_cell.header_path
-                )
+                self._bind_column_values(candidate, table, col, candidate_cell.header_path)
             )
 
         # Strategy 4: Metric mentioned in stub_path → bind row values
         if not bound_values and self._is_in_path(match_text_lower, candidate_cell.stub_path):
             bound_values.extend(
-                self._bind_row_values(
-                    candidate, table, row, candidate_cell.stub_path
-                )
+                self._bind_row_values(candidate, table, row, candidate_cell.stub_path)
             )
 
         # Strategy 5: Candidate cell itself contains a value (data cell with both keyword and value)
@@ -335,12 +325,8 @@ class ValueBindingStage:
             if parsed:
                 value, unit, raw = parsed
                 # Check percentage context from table headers/stubs
-                context_text = " ".join(
-                    candidate_cell.header_path + candidate_cell.stub_path
-                )
-                unit = self._check_percentage_context(
-                    candidate.metric_id, unit, raw, context_text
-                )
+                context_text = " ".join(candidate_cell.header_path + candidate_cell.stub_path)
+                unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
                 if not self._should_filter_unit(candidate.metric_id, unit):
                     confidence = self._compute_table_confidence(
                         match_text_lower,
@@ -378,9 +364,7 @@ class ValueBindingStage:
                 if bv.value is None:
                     continue
                 # Check if this value is an exception to the table scale
-                if table_scale_has_exceptions and self._is_scale_exception(
-                    bv, candidate, table
-                ):
+                if table_scale_has_exceptions and self._is_scale_exception(bv, candidate, table):
                     logger.debug(
                         "Skipping table scale for exception value %s (%s)",
                         bv.value_raw,
@@ -441,9 +425,7 @@ class ValueBindingStage:
             value, unit, raw = parsed
             # Check percentage context from table headers/stubs
             context_text = " ".join(header_path + cell.stub_path)
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, context_text
-            )
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
@@ -513,30 +495,30 @@ class ValueBindingStage:
             value, unit, raw = parsed
             # Check percentage context from table headers/stubs
             context_text = " ".join(cell.header_path + stub_path)
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, context_text
-            )
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
             # Column-type filter: prevent count metrics from binding to
             # dollar columns (and vice versa) in mixed financial tables.
-            if (
-                candidate.metric_id in _COUNT_ONLY_METRICS
-                and self._header_indicates_currency(cell.header_path)
+            if candidate.metric_id in _COUNT_ONLY_METRICS and self._header_indicates_currency(
+                cell.header_path
             ):
                 logger.debug(
                     "Skipping currency-column cell (%d,%d) for count metric %s",
-                    row, col_idx, candidate.metric_id,
+                    row,
+                    col_idx,
+                    candidate.metric_id,
                 )
                 continue
-            if (
-                candidate.metric_id in _CURRENCY_ONLY_METRICS
-                and self._header_indicates_count(cell.header_path)
+            if candidate.metric_id in _CURRENCY_ONLY_METRICS and self._header_indicates_count(
+                cell.header_path
             ):
                 logger.debug(
                     "Skipping count-column cell (%d,%d) for currency metric %s",
-                    row, col_idx, candidate.metric_id,
+                    row,
+                    col_idx,
+                    candidate.metric_id,
                 )
                 continue
 
@@ -630,9 +612,7 @@ class ValueBindingStage:
 
         for num_match, value, unit, raw in numbers:
             # Check if count value should be treated as percentage
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, text
-            )
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, text)
 
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
@@ -741,9 +721,7 @@ class ValueBindingStage:
         loc = candidate.source_locator
 
         # Find the image asset
-        asset = next(
-            (img for img in images if img.img_id == loc.img_id), None
-        )
+        asset = next((img for img in images if img.img_id == loc.img_id), None)
         if not asset or not asset.chart_data:
             return bound_values
 
@@ -822,10 +800,7 @@ class ValueBindingStage:
             return Unit.CURRENCY
         if "%" in label_lower or "percent" in label_lower or "rate" in label_lower:
             return Unit.PERCENT
-        if any(
-            s in label_lower
-            for s in ("count", "number", "users", "customers", "subscribers")
-        ):
+        if any(s in label_lower for s in ("count", "number", "users", "customers", "subscribers")):
             return Unit.COUNT
         return Unit.OTHER
 
@@ -899,7 +874,7 @@ class ValueBindingStage:
         # Find sentence start (look backwards for sentence boundary)
         sentence_start = 0
         # Pattern for sentence boundary: period/exclamation/question followed by space and capital
-        boundary_pattern = re.compile(r'[.!?]\s+[A-Z]')
+        boundary_pattern = re.compile(r"[.!?]\s+[A-Z]")
 
         # Search backwards from position
         text_before = text[:position]
@@ -1065,9 +1040,7 @@ class ValueBindingStage:
                     if match:
                         scale_word = match.group(1).lower()
                         scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
-                        has_except = bool(
-                            self.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text)
-                        )
+                        has_except = bool(self.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text))
                         return (scale, has_except)
 
         # Check section_path (often contains table caption text)
@@ -1076,9 +1049,7 @@ class ValueBindingStage:
             if match:
                 scale_word = match.group(1).lower()
                 scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
-                has_except = bool(
-                    self.TABLE_SCALE_EXCEPT_PATTERN.search(path_item)
-                )
+                has_except = bool(self.TABLE_SCALE_EXCEPT_PATTERN.search(path_item))
                 return (scale, has_except)
 
         return (1.0, False)
@@ -1195,9 +1166,7 @@ class ValueBindingStage:
             return None
         return table.get_cell(row, col)
 
-    def _find_segment(
-        self, segment_id: str | None, segments: list[Segment]
-    ) -> Segment | None:
+    def _find_segment(self, segment_id: str | None, segments: list[Segment]) -> Segment | None:
         """Find a segment by ID."""
         if not segment_id:
             return None

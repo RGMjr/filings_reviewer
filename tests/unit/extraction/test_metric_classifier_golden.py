@@ -24,10 +24,7 @@ def test_synthetic_segments_classification():
     # Classify each test segment
     for i, test_case in enumerate(golden["test_segments"]):
         segment = SourceSegment(
-            filing_id=1,
-            segment_type="paragraph",
-            sequence_index=i,
-            raw_text=test_case["raw_text"]
+            filing_id=1, segment_type="paragraph", sequence_index=i, raw_text=test_case["raw_text"]
         )
 
         # Classify
@@ -57,7 +54,7 @@ def test_shopify_segments_classification():
             filing_id=1,
             segment_type="paragraph",
             sequence_index=test_case["sequence_index"],
-            raw_text=test_case["raw_text"]
+            raw_text=test_case["raw_text"],
         )
 
         result = classifier.classify_segment(segment)
@@ -84,7 +81,7 @@ def test_datadog_segments_classification():
             filing_id=1,
             segment_type="paragraph",
             sequence_index=test_case["sequence_index"],
-            raw_text=test_case["raw_text"]
+            raw_text=test_case["raw_text"],
         )
 
         result = classifier.classify_segment(segment)

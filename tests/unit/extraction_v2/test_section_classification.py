@@ -6,9 +6,7 @@ Tests section heading detection and classification into semantic sections.
 
 from pathlib import Path
 
-import pytest
-
-from src.extraction_v2.models import Segment, SegmentType, SectionType
+from src.extraction_v2.models import SectionType, Segment, SegmentType
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
 
@@ -217,7 +215,10 @@ class TestSectionTypeDetection:
         """Test detection of MDA by ITEM 7 pattern."""
         stage = SectionClassificationStage()
         assert stage._detect_section_type("ITEM 7. MANAGEMENT'S DISCUSSION") == SectionType.MDA
-        assert stage._detect_section_type("ITEM 7: MANAGEMENT DISCUSSION AND ANALYSIS") == SectionType.MDA
+        assert (
+            stage._detect_section_type("ITEM 7: MANAGEMENT DISCUSSION AND ANALYSIS")
+            == SectionType.MDA
+        )
 
     def test_detect_mda_standalone(self) -> None:
         """Test detection of MDA by standalone pattern."""
@@ -241,20 +242,29 @@ class TestSectionTypeDetection:
         """Test detection of FINANCIALS section."""
         stage = SectionClassificationStage()
         assert stage._detect_section_type("ITEM 8. FINANCIAL STATEMENTS") == SectionType.FINANCIALS
-        assert stage._detect_section_type("FINANCIAL STATEMENTS AND SUPPLEMENTARY DATA") == SectionType.FINANCIALS
+        assert (
+            stage._detect_section_type("FINANCIAL STATEMENTS AND SUPPLEMENTARY DATA")
+            == SectionType.FINANCIALS
+        )
         assert stage._detect_section_type("CONSOLIDATED BALANCE SHEETS") == SectionType.FINANCIALS
 
     def test_detect_notes(self) -> None:
         """Test detection of NOTES section."""
         stage = SectionClassificationStage()
-        assert stage._detect_section_type("NOTES TO CONSOLIDATED FINANCIAL STATEMENTS") == SectionType.NOTES
+        assert (
+            stage._detect_section_type("NOTES TO CONSOLIDATED FINANCIAL STATEMENTS")
+            == SectionType.NOTES
+        )
         assert stage._detect_section_type("NOTE 1") == SectionType.NOTES
 
     def test_detect_exhibits(self) -> None:
         """Test detection of EXHIBITS section."""
         stage = SectionClassificationStage()
         assert stage._detect_section_type("ITEM 15. EXHIBITS") == SectionType.EXHIBITS
-        assert stage._detect_section_type("EXHIBITS AND FINANCIAL STATEMENT SCHEDULES") == SectionType.EXHIBITS
+        assert (
+            stage._detect_section_type("EXHIBITS AND FINANCIAL STATEMENT SCHEDULES")
+            == SectionType.EXHIBITS
+        )
         assert stage._detect_section_type("EXHIBIT INDEX") == SectionType.EXHIBITS
 
     def test_detect_signatures(self) -> None:
@@ -765,9 +775,7 @@ class TestIntegrationSECFiling:
 
         # Verify specific section assignments by finding key phrases
         risk_factors_segments = [
-            seg
-            for seg in context.segments
-            if "high degree of risk" in seg.text.lower()
+            seg for seg in context.segments if "high degree of risk" in seg.text.lower()
         ]
         assert len(risk_factors_segments) > 0
         assert risk_factors_segments[0].section_type == SectionType.RISK_FACTORS
@@ -783,33 +791,25 @@ class TestIntegrationSECFiling:
         assert "Mda" in mda_segments[0].section_path[0]
 
         business_segments = [
-            seg
-            for seg in context.segments
-            if "cloud-based software" in seg.text.lower()
+            seg for seg in context.segments if "cloud-based software" in seg.text.lower()
         ]
         assert len(business_segments) > 0
         assert business_segments[0].section_type == SectionType.BUSINESS
         assert "Business" in business_segments[0].section_path[0]
 
         financials_segments = [
-            seg
-            for seg in context.segments
-            if seg.section_type == SectionType.FINANCIALS
+            seg for seg in context.segments if seg.section_type == SectionType.FINANCIALS
         ]
         assert len(financials_segments) > 0
         assert any("balance sheets" in seg.text.lower() for seg in financials_segments)
 
-        notes_segments = [
-            seg for seg in context.segments if seg.section_type == SectionType.NOTES
-        ]
+        notes_segments = [seg for seg in context.segments if seg.section_type == SectionType.NOTES]
         assert len(notes_segments) > 0
         assert any("note 1" in seg.text.lower() for seg in notes_segments)
 
         # Verify cover section appears first
         first_content_segments = context.segments[:5]
-        assert any(
-            seg.section_type == SectionType.COVER for seg in first_content_segments
-        )
+        assert any(seg.section_type == SectionType.COVER for seg in first_content_segments)
 
         # Verify exhibits and signatures appear last
         last_segments = context.segments[-10:]

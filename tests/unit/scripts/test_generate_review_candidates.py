@@ -179,9 +179,7 @@ class TestProcessFilings:
 
     @patch("generate_review_candidates.generate_candidates_for_filing")
     @patch("generate_review_candidates.logger")
-    def test_process_single_filing_success(
-        self, mock_logger, mock_generate
-    ):
+    def test_process_single_filing_success(self, mock_logger, mock_generate):
         """Test processing a single filing successfully."""
         mock_db = Mock()
         mock_generate.return_value = [Mock(), Mock(), Mock()]  # 3 candidates
@@ -196,9 +194,7 @@ class TestProcessFilings:
             }
         ]
 
-        stats = process_filings(
-            mock_db, filings, dry_run=False, batch_id=None, show_progress=False
-        )
+        stats = process_filings(mock_db, filings, dry_run=False, batch_id=None, show_progress=False)
 
         assert stats["filings_processed"] == 1
         assert stats["filings_failed"] == 0

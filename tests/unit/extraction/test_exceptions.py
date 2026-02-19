@@ -2,7 +2,6 @@
 Tests for extraction exceptions.
 """
 
-
 from src.extraction.exceptions import (
     EncodingError,
     ExtractionError,
@@ -16,7 +15,9 @@ class TestHTMLParsingError:
 
     def test_html_parsing_error_with_context(self):
         """Test HTMLParsingError stores filing ID and file path."""
-        error = HTMLParsingError("Missing BODY tag", filing_id=123, html_path="/path/to/filing.html")
+        error = HTMLParsingError(
+            "Missing BODY tag", filing_id=123, html_path="/path/to/filing.html"
+        )
 
         assert str(error) == "Missing BODY tag"
         assert error.filing_id == 123
@@ -38,7 +39,10 @@ class TestEncodingError:
     def test_encoding_error_with_full_context(self):
         """Test EncodingError stores all contextual information."""
         error = EncodingError(
-            "Cannot decode file", file_path="/path/to/file.html", attempted_encodings=["utf-8", "latin-1"], position=1234
+            "Cannot decode file",
+            file_path="/path/to/file.html",
+            attempted_encodings=["utf-8", "latin-1"],
+            position=1234,
         )
 
         assert str(error) == "Cannot decode file"
@@ -61,7 +65,9 @@ class TestValidationError:
 
     def test_validation_error_with_field_context(self):
         """Test ValidationError stores field name and invalid value."""
-        error = ValidationError("Filing ID must be positive", field_name="filing_id", invalid_value=-1)
+        error = ValidationError(
+            "Filing ID must be positive", field_name="filing_id", invalid_value=-1
+        )
 
         assert str(error) == "Filing ID must be positive"
         assert error.field_name == "filing_id"

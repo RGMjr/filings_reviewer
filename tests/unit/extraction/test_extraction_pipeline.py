@@ -145,9 +145,7 @@ def test_process_filing_no_segments_extracted(
     Path(temp_html_file).unlink()
 
 
-def test_process_filing_successful(
-    pipeline, mock_db, sample_filing_metadata, temp_html_file
-):
+def test_process_filing_successful(pipeline, mock_db, sample_filing_metadata, temp_html_file):
     """Test successful filing processing."""
     sample_filing_metadata["html_storage_path"] = temp_html_file
     mock_db.query.return_value = [sample_filing_metadata]
@@ -202,9 +200,7 @@ def test_process_filing_successful(
     pipeline.segmenter.segment_filing = Mock(return_value=mock_segments)
     pipeline.classifier.classify_batch = Mock(return_value=mock_segments)
     pipeline.value_extractor.extract_from_segment = Mock(return_value=mock_values)
-    pipeline.definition_extractor.extract_definitions = Mock(
-        return_value=mock_definitions
-    )
+    pipeline.definition_extractor.extract_definitions = Mock(return_value=mock_definitions)
     pipeline.quality_scorer.score_filing = Mock(return_value=mock_incidences)
 
     # Mock database transaction
@@ -562,16 +558,13 @@ def test_tiered_selection_prioritizes_goldmines(pipeline):
     """High richness segments (>= 6.0) should appear first."""
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=0,
-            raw_text="Low", richness_score=2.0
+            filing_id=1, segment_type="p", sequence_index=0, raw_text="Low", richness_score=2.0
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="Goldmine", richness_score=8.0
+            filing_id=1, segment_type="p", sequence_index=1, raw_text="Goldmine", richness_score=8.0
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=2,
-            raw_text="Medium", richness_score=5.0
+            filing_id=1, segment_type="p", sequence_index=2, raw_text="Medium", richness_score=5.0
         ),
     ]
 
@@ -589,16 +582,13 @@ def test_tiered_selection_includes_medium_richness(pipeline):
     """Medium tier (4.0-6.0) should be included after goldmines."""
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=0,
-            raw_text="Medium1", richness_score=4.5
+            filing_id=1, segment_type="p", sequence_index=0, raw_text="Medium1", richness_score=4.5
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="Goldmine", richness_score=7.0
+            filing_id=1, segment_type="p", sequence_index=1, raw_text="Goldmine", richness_score=7.0
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=2,
-            raw_text="Medium2", richness_score=5.5
+            filing_id=1, segment_type="p", sequence_index=2, raw_text="Medium2", richness_score=5.5
         ),
     ]
 
@@ -615,18 +605,27 @@ def test_tiered_selection_includes_critical_flags(pipeline):
     """Definitions/methodologies included even if low richness."""
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=0,
-            raw_text="Definition", richness_score=2.0,
-            contains_definition_flag=True
+            filing_id=1,
+            segment_type="p",
+            sequence_index=0,
+            raw_text="Definition",
+            richness_score=2.0,
+            contains_definition_flag=True,
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="Methodology", richness_score=1.5,
-            contains_methodology_flag=True
+            filing_id=1,
+            segment_type="p",
+            sequence_index=1,
+            raw_text="Methodology",
+            richness_score=1.5,
+            contains_methodology_flag=True,
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=2,
-            raw_text="Normal low", richness_score=1.0
+            filing_id=1,
+            segment_type="p",
+            sequence_index=2,
+            raw_text="Normal low",
+            richness_score=1.0,
         ),
     ]
 
@@ -645,8 +644,11 @@ def test_tiered_selection_caps_at_80(pipeline):
     # Create 100 high-richness segments
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=i,
-            raw_text=f"Segment {i}", richness_score=9.0
+            filing_id=1,
+            segment_type="p",
+            sequence_index=i,
+            raw_text=f"Segment {i}",
+            richness_score=9.0,
         )
         for i in range(100)
     ]
@@ -662,16 +664,18 @@ def test_tiered_selection_deduplicates(pipeline):
     """No segment should appear twice in result."""
     # Create segment that qualifies for multiple tiers
     dual_qualify = SourceSegment(
-        filing_id=1, segment_type="p", sequence_index=0,
-        raw_text="High richness with definition", richness_score=7.0,
-        contains_definition_flag=True  # Would also match tier 3
+        filing_id=1,
+        segment_type="p",
+        sequence_index=0,
+        raw_text="High richness with definition",
+        richness_score=7.0,
+        contains_definition_flag=True,  # Would also match tier 3
     )
 
     segments = [
         dual_qualify,
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="Other", richness_score=5.0
+            filing_id=1, segment_type="p", sequence_index=1, raw_text="Other", richness_score=5.0
         ),
     ]
 
@@ -691,12 +695,10 @@ def test_tiered_selection_all_low_richness(pipeline):
     """All low richness segments should still work (may be empty or critical only)."""
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=0,
-            raw_text="Low1", richness_score=1.0
+            filing_id=1, segment_type="p", sequence_index=0, raw_text="Low1", richness_score=1.0
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="Low2", richness_score=2.0
+            filing_id=1, segment_type="p", sequence_index=1, raw_text="Low2", richness_score=2.0
         ),
     ]
 
@@ -710,12 +712,18 @@ def test_tiered_selection_none_richness_scores(pipeline):
     """Segments with None richness_score should be handled as 0.0."""
     segments = [
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=0,
-            raw_text="None score", richness_score=None
+            filing_id=1,
+            segment_type="p",
+            sequence_index=0,
+            raw_text="None score",
+            richness_score=None,
         ),
         SourceSegment(
-            filing_id=1, segment_type="p", sequence_index=1,
-            raw_text="High score", richness_score=7.0
+            filing_id=1,
+            segment_type="p",
+            sequence_index=1,
+            raw_text="High score",
+            richness_score=7.0,
         ),
     ]
 
@@ -731,11 +739,10 @@ def test_tiered_selection_none_richness_scores(pipeline):
 # =============================================================================
 
 
-def test_goldmine_count_logged(
-    pipeline, mock_db, sample_filing_metadata, temp_html_file, caplog
-):
+def test_goldmine_count_logged(pipeline, mock_db, sample_filing_metadata, temp_html_file, caplog):
     """Verify goldmine count appears in logs."""
     import logging
+
     caplog.set_level(logging.INFO)
 
     sample_filing_metadata["html_storage_path"] = temp_html_file
@@ -776,11 +783,10 @@ def test_goldmine_count_logged(
     Path(temp_html_file).unlink()
 
 
-def test_no_goldmines_logs_zero(
-    pipeline, mock_db, sample_filing_metadata, temp_html_file, caplog
-):
+def test_no_goldmines_logs_zero(pipeline, mock_db, sample_filing_metadata, temp_html_file, caplog):
     """When no goldmines, logs should show 0."""
     import logging
+
     caplog.set_level(logging.INFO)
 
     sample_filing_metadata["html_storage_path"] = temp_html_file
@@ -881,9 +887,7 @@ def test_pipeline_still_completes_successfully_with_enrichment(
     pipeline.classifier.classify_batch = Mock(return_value=mock_segments)
     # Use real enricher
     pipeline.value_extractor.extract_from_segment = Mock(return_value=mock_values)
-    pipeline.definition_extractor.extract_definitions = Mock(
-        return_value=mock_definitions
-    )
+    pipeline.definition_extractor.extract_definitions = Mock(return_value=mock_definitions)
     pipeline.quality_scorer.score_filing = Mock(return_value=mock_incidences)
 
     # Mock database transaction

@@ -249,9 +249,7 @@ class CohortChartDetector:
 
         return images
 
-    def _estimate_text_position(
-        self, html: str, html_pos: int, soup: BeautifulSoup
-    ) -> int:
+    def _estimate_text_position(self, html: str, html_pos: int, soup: BeautifulSoup) -> int:
         """
         Estimate the text position corresponding to an HTML position.
 

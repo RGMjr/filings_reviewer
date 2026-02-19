@@ -88,11 +88,7 @@ def deduplicate_candidates(
 
     for candidate in candidates:
         # Create key - convert Decimal to string for hashing
-        value_key = (
-            str(candidate.parsed_value)
-            if candidate.parsed_value is not None
-            else "None"
-        )
+        value_key = str(candidate.parsed_value) if candidate.parsed_value is not None else "None"
         metric_key = candidate.suggested_metric_id or "none"
 
         # L1: Include period in key to preserve different periods
@@ -118,8 +114,7 @@ def deduplicate_candidates(
             candidates_to_consider = group
             if prefer_same_sentence:
                 same_sentence_candidates = [
-                    c for c in group
-                    if c.features and c.features.is_same_sentence
+                    c for c in group if c.features and c.features.is_same_sentence
                 ]
                 # Only filter if we have same-sentence candidates
                 # (fallback: if none are marked same-sentence, consider all)
@@ -139,9 +134,7 @@ def deduplicate_candidates(
                 key=lambda c: (
                     c.suggestion_confidence is not None,
                     c.suggestion_confidence or 0,
-                    (c.features.respectively_confidence or 0)
-                    if c.features
-                    else 0,
+                    (c.features.respectively_confidence or 0) if c.features else 0,
                 ),
                 reverse=True,
             )
