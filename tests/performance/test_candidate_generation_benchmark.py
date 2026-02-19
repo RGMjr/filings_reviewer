@@ -7,7 +7,6 @@ performance baselines and detect regressions.
 Run with: pytest tests/performance/ -v --benchmark-only
 """
 
-
 import pytest
 from memory_profiler import memory_usage
 
@@ -315,9 +314,7 @@ class TestLearnedPatternsScaling:
         # Log results for comparison
         print(f"  Candidates generated: {len(result)}")
 
-    def test_throughput_with_2000_patterns(
-        self, benchmark, benchmark_db, realistic_segments_100
-    ):
+    def test_throughput_with_2000_patterns(self, benchmark, benchmark_db, realistic_segments_100):
         """
         Extreme stress test with 2000 patterns.
 
@@ -339,7 +336,7 @@ class TestLearnedPatternsScaling:
                     with conn.cursor() as cur:
                         cur.execute(
                             "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %s",
-                            (pattern_id,)
+                            (pattern_id,),
                         )
                 approved_count += 1
 

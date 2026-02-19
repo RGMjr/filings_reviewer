@@ -35,14 +35,12 @@ class TestCohortChartImageDetection:
     def enricher(self) -> SegmentEnricher:
         return SegmentEnricher()
 
-    def test_detects_cohort_keyword_near_image(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_detects_cohort_keyword_near_image(self, enricher: SegmentEnricher) -> None:
         """Should detect image when 'cohort' appears nearby."""
-        html = '''
+        html = """
         <p>The chart below illustrates the annual recurring revenue, or ARR, of each cohort over the periods presented.</p>
         <img src="mdaa2.jpg" alt="ARR by cohort" width="569" height="357"/>
-        '''
+        """
         text = "The chart below illustrates the annual recurring revenue, or ARR, of each cohort over the periods presented."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -53,14 +51,12 @@ class TestCohortChartImageDetection:
         assert "cohort" in [kw.lower() for kw in result[0]["detected_keywords"]]
         assert result[0]["confidence"] >= 0.6
 
-    def test_detects_retention_cohort_pattern(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_detects_retention_cohort_pattern(self, enricher: SegmentEnricher) -> None:
         """Should detect retention by cohort pattern."""
-        html = '''
+        html = """
         <p>The following graph shows our net dollar retention by cohort.</p>
         <img src="retention_chart.png" width="500" height="300"/>
-        '''
+        """
         text = "The following graph shows our net dollar retention by cohort."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -69,14 +65,12 @@ class TestCohortChartImageDetection:
         assert len(result) == 1
         assert result[0]["confidence"] >= 0.7  # Higher confidence due to chart keyword
 
-    def test_detects_ltv_cac_pattern(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_detects_ltv_cac_pattern(self, enricher: SegmentEnricher) -> None:
         """Should detect LTV/CAC chart pattern."""
-        html = '''
+        html = """
         <p>The chart below shows our LTV/CAC ratios over time.</p>
         <img src="ltv_cac.jpg" width="600" height="400"/>
-        '''
+        """
         text = "The chart below shows our LTV/CAC ratios over time."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -85,14 +79,12 @@ class TestCohortChartImageDetection:
         assert len(result) == 1
         assert "LTV/CAC" in result[0]["detected_keywords"]
 
-    def test_ignores_decorative_images(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_ignores_decorative_images(self, enricher: SegmentEnricher) -> None:
         """Should ignore small decorative images."""
-        html = '''
+        html = """
         <p>The chart below illustrates cohort revenue.</p>
         <img src="icon.png" width="20" height="20"/>
-        '''
+        """
         text = "The chart below illustrates cohort revenue."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -100,16 +92,14 @@ class TestCohortChartImageDetection:
 
         assert len(result) == 0
 
-    def test_ignores_image_without_cohort_keyword(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_ignores_image_without_cohort_keyword(self, enricher: SegmentEnricher) -> None:
         """Should not detect images when no cohort keywords are present."""
         # Text without any cohort keywords
         text = "Our company has grown significantly with strong revenue."
-        html = f'''
+        html = f"""
         <p>{text}</p>
         <img src="chart.jpg" width="500" height="300"/>
-        '''
+        """
         segment = make_segment(raw_text=text, raw_html=html)
 
         result = enricher._detect_cohort_chart_images(segment)
@@ -117,14 +107,12 @@ class TestCohortChartImageDetection:
         # Image should not be detected because no cohort keywords
         assert len(result) == 0
 
-    def test_no_cohort_keywords_returns_empty(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_no_cohort_keywords_returns_empty(self, enricher: SegmentEnricher) -> None:
         """Should return empty when no cohort keywords present."""
-        html = '''
+        html = """
         <p>Our revenue grew significantly last year.</p>
         <img src="revenue.jpg" width="500" height="300"/>
-        '''
+        """
         text = "Our revenue grew significantly last year."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -132,11 +120,9 @@ class TestCohortChartImageDetection:
 
         assert len(result) == 0
 
-    def test_no_images_returns_empty(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_no_images_returns_empty(self, enricher: SegmentEnricher) -> None:
         """Should return empty when no images present."""
-        html = '<p>Our cohort analysis shows strong retention.</p>'
+        html = "<p>Our cohort analysis shows strong retention.</p>"
         text = "Our cohort analysis shows strong retention."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -144,9 +130,7 @@ class TestCohortChartImageDetection:
 
         assert len(result) == 0
 
-    def test_empty_html_returns_empty(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_empty_html_returns_empty(self, enricher: SegmentEnricher) -> None:
         """Should return empty for missing HTML."""
         segment = make_segment(raw_text="cohort analysis", raw_html=None)
 
@@ -154,40 +138,38 @@ class TestCohortChartImageDetection:
 
         assert len(result) == 0
 
-    def test_multiple_images_detected(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_multiple_images_detected(self, enricher: SegmentEnricher) -> None:
         """Should detect multiple cohort chart images."""
-        html = '''
+        html = """
         <p>The following charts illustrate cohort performance.</p>
         <img src="chart1.jpg" width="500" height="300"/>
         <p>ARR by cohort year is shown below.</p>
         <img src="chart2.jpg" width="500" height="300"/>
-        '''
-        text = "The following charts illustrate cohort performance. ARR by cohort year is shown below."
+        """
+        text = (
+            "The following charts illustrate cohort performance. ARR by cohort year is shown below."
+        )
         segment = make_segment(raw_text=text, raw_html=html)
 
         result = enricher._detect_cohort_chart_images(segment)
 
         assert len(result) == 2
 
-    def test_chart_keyword_increases_confidence(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_chart_keyword_increases_confidence(self, enricher: SegmentEnricher) -> None:
         """Presence of 'chart' should increase confidence."""
         # With chart keyword
-        html_with = '''
+        html_with = """
         <p>The chart below illustrates cohort revenue.</p>
         <img src="chart.jpg" width="500" height="300"/>
-        '''
+        """
         text_with = "The chart below illustrates cohort revenue."
         segment_with = make_segment(raw_text=text_with, raw_html=html_with)
 
         # Without chart keyword
-        html_without = '''
+        html_without = """
         <p>cohort revenue is shown.</p>
         <img src="img.jpg" width="500" height="300"/>
-        '''
+        """
         text_without = "cohort revenue is shown."
         segment_without = make_segment(raw_text=text_without, raw_html=html_without)
 
@@ -206,14 +188,12 @@ class TestCohortChartEnrichmentIntegration:
     def enricher(self) -> SegmentEnricher:
         return SegmentEnricher()
 
-    def test_enrichment_populates_extra_metadata(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_enrichment_populates_extra_metadata(self, enricher: SegmentEnricher) -> None:
         """Enrichment should populate cohort_chart_candidates in extra_metadata."""
-        html = '''
+        html = """
         <p>The chart below illustrates the ARR of each cohort.</p>
         <img src="cohort_arr.jpg" width="500" height="300"/>
-        '''
+        """
         text = "The chart below illustrates the ARR of each cohort."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -225,11 +205,9 @@ class TestCohortChartEnrichmentIntegration:
         assert len(candidates) == 1
         assert candidates[0]["image_src"] == "cohort_arr.jpg"
 
-    def test_no_cohort_charts_no_key(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_no_cohort_charts_no_key(self, enricher: SegmentEnricher) -> None:
         """When no cohort charts detected, key should not be present."""
-        html = '<p>Our revenue grew strongly.</p>'
+        html = "<p>Our revenue grew strongly.</p>"
         text = "Our revenue grew strongly."
         segment = make_segment(raw_text=text, raw_html=html)
 
@@ -323,11 +301,9 @@ class TestElementPositionEstimation:
         # Position should be around the length of "Hello world"
         assert pos >= 10
 
-    def test_element_not_found_returns_zero(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_element_not_found_returns_zero(self, enricher: SegmentEnricher) -> None:
         """Should return 0 if element not found."""
-        html = '<p>Hello world</p>'
+        html = "<p>Hello world</p>"
         element = '<img src="missing.jpg"/>'
 
         pos = enricher._estimate_element_position(html, element)

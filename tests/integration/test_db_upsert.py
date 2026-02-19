@@ -95,15 +95,11 @@ class TestConflictNewLoses:
         company_id, filing_id = create_test_company_and_filing(clean_db)
 
         # Insert existing candidate
-        existing = make_candidate(
-            filing_id, company_id, suggestion_confidence=0.8
-        )
+        existing = make_candidate(filing_id, company_id, suggestion_confidence=0.8)
         [existing_id] = clean_db.bulk_insert_review_candidates([existing])
 
         # Try to insert new with lower confidence
-        new_candidate = make_candidate(
-            filing_id, company_id, suggestion_confidence=0.5
-        )
+        new_candidate = make_candidate(filing_id, company_id, suggestion_confidence=0.5)
         result = clean_db.bulk_insert_review_candidates([new_candidate])
 
         # Should return existing ID
@@ -119,7 +115,8 @@ class TestConflictNewLoses:
 
         # Insert existing
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.8,
             context_text="Original context",
         )
@@ -127,7 +124,8 @@ class TestConflictNewLoses:
 
         # Try with equal confidence
         new_candidate = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.8,
             context_text="New context",
         )
@@ -146,7 +144,8 @@ class TestConflictNewLoses:
         # Insert 3 existing with high confidence
         existing = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=i * 100,
                 suggestion_confidence=0.9,
             )
@@ -157,7 +156,8 @@ class TestConflictNewLoses:
         # Try to insert 3 new with lower confidence
         new_candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=i * 100,
                 suggestion_confidence=0.5,
             )
@@ -177,7 +177,8 @@ class TestConflictNewWins:
 
         # Insert existing with low confidence
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.5,
             context_text="Old context",
         )
@@ -185,7 +186,8 @@ class TestConflictNewWins:
 
         # Insert new with higher confidence
         new_candidate = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.9,
             context_text="New context",
         )
@@ -205,7 +207,8 @@ class TestConflictNewWins:
 
         # Insert existing
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.3,
             raw_number_text="old_number",
             triggering_keyword="old_keyword",
@@ -214,7 +217,8 @@ class TestConflictNewWins:
 
         # Insert winner
         winner = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.9,
             raw_number_text="new_number",
             triggering_keyword="new_keyword",
@@ -233,7 +237,8 @@ class TestConflictNewWins:
 
         # Insert existing
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.3,
             suggested_metric_id="cm_old",
         )
@@ -241,13 +246,12 @@ class TestConflictNewWins:
 
         # Insert winner with log_suppressed
         winner = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             suggestion_confidence=0.9,
             suggested_metric_id="cm_old",  # Same metric, different confidence
         )
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            [winner], log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates([winner], log_suppressed=True)
 
         assert len(result_ids) == 1
         assert len(logs) == 1
@@ -269,22 +273,22 @@ class TestRunnerUpCapture:
         # Two candidates at same position, different metrics
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_mrr",
                 suggestion_confidence=0.7,
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         # Both should be inserted (different metrics)
         assert len(result_ids) == 2
@@ -305,22 +309,22 @@ class TestRunnerUpCapture:
         # Two candidates at same position, SAME metric
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.7,
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         # Same ID for both (dedup within batch)
         assert result_ids[0] == result_ids[1]
@@ -336,28 +340,29 @@ class TestRunnerUpCapture:
         # 3 metrics at same position
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_mrr",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_customers",
                 suggestion_confidence=0.7,
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
@@ -371,22 +376,22 @@ class TestRunnerUpCapture:
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_mrr",
                 suggestion_confidence=0.7,
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         # Find which ID is cm_arr (the winner)
         arr_id = result_ids[0]  # First one is cm_arr
@@ -405,7 +410,8 @@ class TestNullSegmentHandling:
 
         # Insert existing with NULL segment
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             source_segment_id=None,
             suggestion_confidence=0.8,
         )
@@ -413,7 +419,8 @@ class TestNullSegmentHandling:
 
         # Try lower confidence
         new_candidate = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             source_segment_id=None,
             suggestion_confidence=0.5,
         )
@@ -428,21 +435,26 @@ class TestNullSegmentHandling:
         # Create a segment
         with clean_db.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     INSERT INTO source_segments (filing_id, segment_type, raw_text, sequence_index)
                     VALUES (%(filing_id)s, 'paragraph', 'Test text', 0)
                     RETURNING source_segment_id
-                """, {"filing_id": filing_id})
+                """,
+                    {"filing_id": filing_id},
+                )
                 segment_id = cur.fetchone()["source_segment_id"]
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 source_segment_id=segment_id,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=200,
                 source_segment_id=None,
             ),
@@ -459,14 +471,16 @@ class TestNullSegmentHandling:
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 source_segment_id=None,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 source_segment_id=None,
                 suggested_metric_id="cm_mrr",
@@ -474,9 +488,7 @@ class TestNullSegmentHandling:
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
@@ -492,7 +504,8 @@ class TestReturnContract:
 
         # Mix of new, conflict-wins, conflict-loses
         existing = make_candidate(
-            filing_id, company_id,
+            filing_id,
+            company_id,
             char_position=100,
             suggestion_confidence=0.5,
         )
@@ -501,18 +514,21 @@ class TestReturnContract:
         candidates = [
             # Conflict: loses to existing
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggestion_confidence=0.3,
             ),
             # New
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=200,
             ),
             # Conflict: wins over existing
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggestion_confidence=0.9,
             ),
@@ -528,17 +544,20 @@ class TestReturnContract:
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=300,
                 suggested_metric_id="cm_third",
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_first",
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=200,
                 suggested_metric_id="cm_second",
             ),
@@ -562,13 +581,15 @@ class TestWithinBatchDedup:
         # Same uniqueness key, different confidence
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
@@ -592,14 +613,16 @@ class TestWithinBatchDedup:
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.8,
                 context_text="First context",
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.8,
@@ -618,22 +641,22 @@ class TestWithinBatchDedup:
 
         candidates = [
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
-                filing_id, company_id,
+                filing_id,
+                company_id,
                 char_position=100,
                 suggested_metric_id="cm_arr",
                 suggestion_confidence=0.9,
             ),
         ]
 
-        result_ids, logs = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         # One suppression for the loser
         assert len(logs) == 1
@@ -660,9 +683,7 @@ class TestBackwardCompatibility:
         company_id, filing_id = create_test_company_and_filing(clean_db)
 
         candidates = [make_candidate(filing_id, company_id)]
-        result = clean_db.bulk_insert_review_candidates(
-            candidates, log_suppressed=True
-        )
+        result = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
         assert isinstance(result, tuple)
         assert len(result) == 2
@@ -675,8 +696,7 @@ class TestBackwardCompatibility:
         company_id, filing_id = create_test_company_and_filing(clean_db)
 
         candidates = [
-            make_candidate(filing_id, company_id, char_position=i * 100)
-            for i in range(5)
+            make_candidate(filing_id, company_id, char_position=i * 100) for i in range(5)
         ]
 
         result = clean_db.bulk_insert_review_candidates(candidates)

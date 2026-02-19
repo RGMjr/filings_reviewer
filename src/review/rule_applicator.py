@@ -89,9 +89,7 @@ class RuleApplicator:
         """
         try:
             patterns_data = self.db.get_learned_patterns(status="approved")
-            self._patterns = [
-                LearnedPattern.from_row(row) for row in patterns_data
-            ]
+            self._patterns = [LearnedPattern.from_row(row) for row in patterns_data]
             self._patterns_by_metric = self._build_index(self._patterns)
             self._last_reload = datetime.now()
             logger.info(f"Loaded {len(self._patterns)} approved patterns from database")
@@ -182,9 +180,7 @@ class RuleApplicator:
 
         # Apply metric-specific reject patterns first (O(1) lookup)
         if candidate.suggested_metric_id:
-            metric_patterns = self._patterns_by_metric.get(
-                candidate.suggested_metric_id, []
-            )
+            metric_patterns = self._patterns_by_metric.get(candidate.suggested_metric_id, [])
             for pattern in metric_patterns:
                 if pattern.matches(features):
                     return True, f"Learned rule: {pattern.pattern_name}"
@@ -217,15 +213,9 @@ class RuleApplicator:
         """
         self._check_reload()
 
-        reject_count = sum(
-            1 for p in self._patterns if p.pattern_type == "reject_rule"
-        )
-        accept_count = sum(
-            1 for p in self._patterns if p.pattern_type == "accept_rule"
-        )
-        weight_count = sum(
-            1 for p in self._patterns if p.pattern_type == "feature_weight"
-        )
+        reject_count = sum(1 for p in self._patterns if p.pattern_type == "reject_rule")
+        accept_count = sum(1 for p in self._patterns if p.pattern_type == "accept_rule")
+        weight_count = sum(1 for p in self._patterns if p.pattern_type == "feature_weight")
 
         cache_age = None
         if self._last_reload:
@@ -236,9 +226,7 @@ class RuleApplicator:
             "reject_patterns": reject_count,
             "accept_patterns": accept_count,
             "feature_weight_patterns": weight_count,
-            "last_reload": (
-                self._last_reload.isoformat() if self._last_reload else None
-            ),
+            "last_reload": (self._last_reload.isoformat() if self._last_reload else None),
             "cache_age_seconds": cache_age,
         }
 

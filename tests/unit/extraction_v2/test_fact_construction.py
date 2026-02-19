@@ -33,13 +33,12 @@ from src.extraction_v2.stages.fact_construction import (
     BINDING_CONFIDENCE_WEIGHT,
     BUSINESS_SECTION_BONUS,
     CHART_PENALTY,
-    FactConstructionStage,
     MDA_SECTION_BONUS,
     OCR_TABLE_PENALTY,
     PERIOD_AMBIGUITY_PENALTY,
     PERIOD_CONFIDENCE_WEIGHT,
+    FactConstructionStage,
 )
-
 
 # ============================================================================
 # Fixtures
@@ -262,9 +261,7 @@ def test_multiple_bound_values_to_facts(
     assert mock_context.facts[1].value == 200.0
 
 
-def test_missing_candidate(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_missing_candidate(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test that missing candidate results in empty metric_id."""
     bv = make_bound_value(candidate_id="missing_candidate", segment_id="seg_1")
 
@@ -311,9 +308,7 @@ def test_base_confidence_from_binding(
     assert abs(fact.confidence - expected) < 0.01
 
 
-def test_mda_section_bonus(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_mda_section_bonus(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test MDA section bonus (+0.1)."""
     candidate = make_candidate(candidate_id="cand_1", section_type=SectionType.MDA)
     bv = make_bound_value(
@@ -334,9 +329,8 @@ def test_mda_section_bonus(
     fact = mock_context.facts[0]
     # Confidence = (0.7 + 0.1) * 0.8 + 0.8 * 0.2 = 0.8 * 0.8 + 0.16 = 0.8
     expected = (
-        (0.7 + MDA_SECTION_BONUS) * BINDING_CONFIDENCE_WEIGHT
-        + 0.8 * PERIOD_CONFIDENCE_WEIGHT
-    )
+        0.7 + MDA_SECTION_BONUS
+    ) * BINDING_CONFIDENCE_WEIGHT + 0.8 * PERIOD_CONFIDENCE_WEIGHT
     assert abs(fact.confidence - expected) < 0.01
 
 
@@ -362,15 +356,12 @@ def test_business_section_bonus(
     assert result.success
     fact = mock_context.facts[0]
     expected = (
-        (0.7 + BUSINESS_SECTION_BONUS) * BINDING_CONFIDENCE_WEIGHT
-        + 0.8 * PERIOD_CONFIDENCE_WEIGHT
-    )
+        0.7 + BUSINESS_SECTION_BONUS
+    ) * BINDING_CONFIDENCE_WEIGHT + 0.8 * PERIOD_CONFIDENCE_WEIGHT
     assert abs(fact.confidence - expected) < 0.01
 
 
-def test_ocr_table_penalty(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_ocr_table_penalty(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test OCR_TABLE penalty (-0.1)."""
     candidate = make_candidate(candidate_id="cand_1")
     bv = make_bound_value(
@@ -396,9 +387,8 @@ def test_ocr_table_penalty(
     assert fact.source_type == SourceType.OCR_TABLE
     # Confidence = (0.9 - 0.1) * 0.8 + 0.8 * 0.2 = 0.8 * 0.8 + 0.16 = 0.8
     expected = (
-        (0.9 - OCR_TABLE_PENALTY) * BINDING_CONFIDENCE_WEIGHT
-        + 0.8 * PERIOD_CONFIDENCE_WEIGHT
-    )
+        0.9 - OCR_TABLE_PENALTY
+    ) * BINDING_CONFIDENCE_WEIGHT + 0.8 * PERIOD_CONFIDENCE_WEIGHT
     assert abs(fact.confidence - expected) < 0.01
 
 
@@ -422,9 +412,7 @@ def test_chart_penalty(stage: FactConstructionStage, mock_context: PipelineConte
     fact = mock_context.facts[0]
     # Source type should be CHART
     assert fact.source_type == SourceType.CHART
-    expected = (
-        (0.9 - CHART_PENALTY) * BINDING_CONFIDENCE_WEIGHT + 0.8 * PERIOD_CONFIDENCE_WEIGHT
-    )
+    expected = (0.9 - CHART_PENALTY) * BINDING_CONFIDENCE_WEIGHT + 0.8 * PERIOD_CONFIDENCE_WEIGHT
     assert abs(fact.confidence - expected) < 0.01
 
 
@@ -531,9 +519,7 @@ def test_source_type_html_table(
     assert fact.source_type == SourceType.HTML_TABLE
 
 
-def test_source_type_text(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_source_type_text(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test TEXT source type (segment_id, no table_id, no img_id)."""
     candidate = make_candidate(candidate_id="cand_1")
     bv = make_bound_value(candidate_id="cand_1", segment_id="seg_1", text_span=(10, 15))
@@ -549,9 +535,7 @@ def test_source_type_text(
     assert fact.source_type == SourceType.TEXT
 
 
-def test_source_type_chart(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_source_type_chart(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test CHART source type (img_id, no table_id)."""
     candidate = make_candidate(candidate_id="cand_1")
     bv = make_bound_value(candidate_id="cand_1", img_id="img_1")
@@ -566,9 +550,7 @@ def test_source_type_chart(
     assert fact.source_type == SourceType.CHART
 
 
-def test_source_type_ocr_table(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_source_type_ocr_table(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test OCR_TABLE source type (table_id and img_id)."""
     candidate = make_candidate(candidate_id="cand_1")
     bv = make_bound_value(
@@ -694,9 +676,7 @@ def test_evidence_pack_minimal_source(
 # ============================================================================
 
 
-def test_source_locator_copied(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_source_locator_copied(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test that source_locator is copied from BoundValue to MetricFact."""
     candidate = make_candidate(candidate_id="cand_1")
     bv = make_bound_value(
@@ -727,9 +707,7 @@ def test_source_locator_copied(
 # ============================================================================
 
 
-def test_stage_result_metadata(
-    stage: FactConstructionStage, mock_context: PipelineContext
-) -> None:
+def test_stage_result_metadata(stage: FactConstructionStage, mock_context: PipelineContext) -> None:
     """Test that StageResult metadata is populated correctly."""
     candidate = make_candidate(candidate_id="cand_1")
     bv1 = make_bound_value(candidate_id="cand_1", segment_id="seg_1")

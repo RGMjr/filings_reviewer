@@ -197,20 +197,14 @@ class TestSentenceBoundaryRespect:
 
     def test_same_sentence_pattern_matches(self):
         """Values and periods in same sentence should match."""
-        text = (
-            "Gross margin for 2015, 2016 and 2017 was "
-            "33%, 35% and 43%, respectively."
-        )
+        text = "Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
         result = detect_respectively_pattern(text)
         assert result is not None
         assert len(result.associations) == 3
 
     def test_sentence_with_abbreviation_not_split(self):
         """'Inc.' and 'Ltd.' should not split sentences."""
-        text = (
-            "Revenue for Acme Inc. for 2015, 2016 and 2017 was "
-            "$1M, $2M and $3M, respectively."
-        )
+        text = "Revenue for Acme Inc. for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively."
         result = detect_respectively_pattern(text)
         assert result is not None  # Single sentence despite "Inc."
 
@@ -414,7 +408,7 @@ class TestRespectivelyMatchDataclass:
             periods=["2015", "2016"],
             associations=[("33%", "2015"), ("35%", "2016")],
             confidence=0.85,
-            span=(0, 50)
+            span=(0, 50),
         )
 
         assert match.values == ["33%", "35%"]
@@ -428,7 +422,7 @@ class TestRespectivelyMatchDataclass:
                 periods=["2015", "2016"],  # Only 2 periods
                 associations=[("33%", "2015"), ("35%", "2016")],
                 confidence=0.85,
-                span=(0, 50)
+                span=(0, 50),
             )
 
     def test_validation_confidence_out_of_range(self):
@@ -439,7 +433,7 @@ class TestRespectivelyMatchDataclass:
                 periods=["2015", "2016"],
                 associations=[("33%", "2015"), ("35%", "2016")],
                 confidence=1.5,  # Invalid confidence
-                span=(0, 50)
+                span=(0, 50),
             )
 
     def test_validation_associations_length(self):
@@ -450,7 +444,7 @@ class TestRespectivelyMatchDataclass:
                 periods=["2015", "2016"],
                 associations=[("33%", "2015")],  # Only 1 association
                 confidence=0.85,
-                span=(0, 50)
+                span=(0, 50),
             )
 
 

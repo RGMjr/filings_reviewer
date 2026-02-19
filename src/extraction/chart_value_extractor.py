@@ -9,6 +9,7 @@ Usage:
     for value in result.values:
         print(f"{value.cohort_label}: {value.value} {value.unit}")
 """
+
 from __future__ import annotations
 
 import json

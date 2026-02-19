@@ -133,12 +133,12 @@ class TestParseTextIntoWords:
         # "hello" at position 0-5
         assert words[0][0] == 0
         assert words[0][1] == 5
-        assert text[words[0][0]:words[0][1]] == "hello"
+        assert text[words[0][0] : words[0][1]] == "hello"
 
         # "world" at position 6-11
         assert words[1][0] == 6
         assert words[1][1] == 11
-        assert text[words[1][0]:words[1][1]] == "world"
+        assert text[words[1][0] : words[1][1]] == "world"
 
     def test_handles_multiple_spaces(self, extractor):
         """Should treat multiple spaces as single separator."""

@@ -13,13 +13,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.extraction.chart_value_extractor import (
+    DEFAULT_EXTRACTION_PROMPT,
     ChartExtractionResult,
     ChartValueExtractor,
-    DEFAULT_EXTRACTION_PROMPT,
     ExtractedChartValue,
 )
 from src.llm.vision_client import VisionResponse
-
 
 # Mock responses from VIS-GPT4O-VALIDATION.md
 MOCK_SLACK_RESPONSE = """{
@@ -192,7 +191,9 @@ class TestJsonParsing:
     def test_parse_plain_json(self):
         """Test parsing plain JSON response."""
         extractor = ChartValueExtractor()
-        json_str = '{"chart_title": "Test", "metric_type": "ARR", "has_y_axis_scale": true, "cohorts": []}'
+        json_str = (
+            '{"chart_title": "Test", "metric_type": "ARR", "has_y_axis_scale": true, "cohorts": []}'
+        )
 
         result = extractor._extract_json(json_str)
 
@@ -467,8 +468,13 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2015", period="FY2019",
-                value=100.0, unit="USD", confidence=0.8, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2015",
+                period="FY2019",
+                value=100.0,
+                unit="USD",
+                confidence=0.8,
+                source_image="chart.jpg",
             ),
         ]
 
@@ -487,8 +493,13 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2015", period="FY2019",
-                value=None, unit="USD", confidence=0.5, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2015",
+                period="FY2019",
+                value=None,
+                unit="USD",
+                confidence=0.5,
+                source_image="chart.jpg",
             ),
         ]
 
@@ -507,8 +518,13 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2015", period="FY2019",
-                value=100.0, unit="USD", confidence=0.3, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2015",
+                period="FY2019",
+                value=100.0,
+                unit="USD",
+                confidence=0.3,
+                source_image="chart.jpg",
             ),
         ]
 
@@ -527,8 +543,13 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2015", period="FY2019",
-                value=None, unit="USD (no scale)", confidence=0.4, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2015",
+                period="FY2019",
+                value=None,
+                unit="USD (no scale)",
+                confidence=0.4,
+                source_image="chart.jpg",
             ),
         ]
 
@@ -559,16 +580,31 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2015", period="FY2019",
-                value=100.0, unit="USD", confidence=0.8, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2015",
+                period="FY2019",
+                value=100.0,
+                unit="USD",
+                confidence=0.8,
+                source_image="chart.jpg",
             ),
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2016", period="FY2019",
-                value=150.0, unit="USD", confidence=0.8, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2016",
+                period="FY2019",
+                value=150.0,
+                unit="USD",
+                confidence=0.8,
+                source_image="chart.jpg",
             ),
             ExtractedChartValue(
-                metric_type="ARR", cohort_label="FY2017", period="FY2019",
-                value=200.0, unit="USD", confidence=0.8, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label="FY2017",
+                period="FY2019",
+                value=200.0,
+                unit="USD",
+                confidence=0.8,
+                source_image="chart.jpg",
             ),
         ]
 
@@ -587,8 +623,13 @@ class TestConfidenceCalculation:
 
         values = [
             ExtractedChartValue(
-                metric_type="ARR", cohort_label=f"FY{year}", period="FY2019",
-                value=100.0, unit="USD", confidence=0.8, source_image="chart.jpg"
+                metric_type="ARR",
+                cohort_label=f"FY{year}",
+                period="FY2019",
+                value=100.0,
+                unit="USD",
+                confidence=0.8,
+                source_image="chart.jpg",
             )
             for year in range(2015, 2025)  # 10 unique cohorts
         ]
@@ -714,7 +755,10 @@ class TestExtractMethod:
         )
 
         assert result.has_y_axis_scale is False
-        assert result.chart_title == "Annual Recurring Revenue (ARR) by Annual Cohort through January 31, 2019"
+        assert (
+            result.chart_title
+            == "Annual Recurring Revenue (ARR) by Annual Cohort through January 31, 2019"
+        )
         # All values should be None
         for value in result.values:
             assert value.value is None

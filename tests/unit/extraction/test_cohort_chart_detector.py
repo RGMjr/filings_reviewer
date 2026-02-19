@@ -6,15 +6,15 @@ detects cohort chart images in SEC filing HTML by finding cohort-related
 keywords near <img> tags.
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 
 from src.extraction.cohort_chart_detector import (
     CohortChartCandidate,
     CohortChartDetector,
 )
-
 
 # =============================================================================
 # Test Fixtures - HTML Templates
@@ -49,15 +49,19 @@ HTML_COHORT_WITH_IMAGE = """
 </html>
 """
 
-HTML_COHORT_IMAGE_FAR_AWAY = """
+HTML_COHORT_IMAGE_FAR_AWAY = (
+    """
 <html>
 <body>
 <p>The following cohort chart shows retention.</p>
-""" + ("x" * 2000) + """
+"""
+    + ("x" * 2000)
+    + """
 <img src="chart.jpg" width="400" height="300">
 </body>
 </html>
 """
+)
 
 HTML_WITH_DECORATIVE = """
 <html>
@@ -175,6 +179,7 @@ HTML_WITH_CHART_INDICATOR = """
 # TestCohortChartCandidate (AC-2)
 # =============================================================================
 
+
 class TestCohortChartCandidate:
     """Tests for the CohortChartCandidate dataclass."""
 
@@ -256,6 +261,7 @@ class TestCohortChartCandidate:
 # =============================================================================
 # TestCohortChartDetectorKeywords (AC-3)
 # =============================================================================
+
 
 class TestCohortChartDetectorKeywords:
     """Tests for keyword pattern matching."""
@@ -358,6 +364,7 @@ class TestCohortChartDetectorKeywords:
 # TestDetectFromHtml (AC-4)
 # =============================================================================
 
+
 class TestDetectFromHtml:
     """Tests for the main detect_from_html method."""
 
@@ -439,6 +446,7 @@ class TestDetectFromHtml:
 # TestDetectFromFile (AC-5)
 # =============================================================================
 
+
 class TestDetectFromFile:
     """Tests for the detect_from_file method."""
 
@@ -470,7 +478,7 @@ class TestDetectFromFile:
         html_file = tmp_path / "test.html"
         html_file.write_text(HTML_COHORT_WITH_IMAGE)
 
-        with patch.object(Path, "read_text", side_effect=IOError("Read error")):
+        with patch.object(Path, "read_text", side_effect=OSError("Read error")):
             results = detector.detect_from_file(html_file)
 
         assert results == []
@@ -479,6 +487,7 @@ class TestDetectFromFile:
 # =============================================================================
 # TestExtractImagesWithPositions (AC-6)
 # =============================================================================
+
 
 class TestExtractImagesWithPositions:
     """Tests for the _extract_images_with_positions method."""
@@ -571,6 +580,7 @@ class TestExtractImagesWithPositions:
 # TestIsDecorativeImage (AC-7)
 # =============================================================================
 
+
 class TestIsDecorativeImage:
     """Tests for the _is_decorative_image method."""
 
@@ -644,6 +654,7 @@ class TestIsDecorativeImage:
 # TestParseDimension (AC-8)
 # =============================================================================
 
+
 class TestParseDimension:
     """Tests for the _parse_dimension method."""
 
@@ -692,6 +703,7 @@ class TestParseDimension:
 # =============================================================================
 # TestCalculateConfidence (AC-9)
 # =============================================================================
+
 
 class TestCalculateConfidence:
     """Tests for the _calculate_confidence method."""
@@ -797,6 +809,7 @@ class TestCalculateConfidence:
 # TestEstimateTextPosition (Additional tests for comprehensive coverage)
 # =============================================================================
 
+
 class TestEstimateTextPosition:
     """Tests for the _estimate_text_position method."""
 
@@ -845,6 +858,7 @@ class TestEstimateTextPosition:
 # =============================================================================
 # Integration-style tests
 # =============================================================================
+
 
 class TestCohortChartDetectorIntegration:
     """Integration-style tests combining multiple components."""

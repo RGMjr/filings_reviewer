@@ -102,11 +102,17 @@ class CandidateGenerationStage:
 
         try:
             all_keywords = get_metric_keywords()
-            self._keywords = {mid: p for mid, p in all_keywords.items() if not is_metric_deprecated(mid)}
+            self._keywords = {
+                mid: p for mid, p in all_keywords.items() if not is_metric_deprecated(mid)
+            }
             all_exclusions = get_exclusion_patterns()
-            self._exclusions = {mid: p for mid, p in all_exclusions.items() if not is_metric_deprecated(mid)}
+            self._exclusions = {
+                mid: p for mid, p in all_exclusions.items() if not is_metric_deprecated(mid)
+            }
             all_context = get_required_context()
-            self._required_context = {mid: c for mid, c in all_context.items() if not is_metric_deprecated(mid)}
+            self._required_context = {
+                mid: c for mid, c in all_context.items() if not is_metric_deprecated(mid)
+            }
             self._specific_patterns = get_specific_patterns()
             self._compile_patterns()
             self._initialized = True
@@ -129,9 +135,7 @@ class CandidateGenerationStage:
                 try:
                     compiled.append(re.compile(pattern, re.IGNORECASE))
                 except re.error as e:
-                    logger.warning(
-                        f"Invalid regex pattern for {metric_id}: {pattern!r} - {e}"
-                    )
+                    logger.warning(f"Invalid regex pattern for {metric_id}: {pattern!r} - {e}")
             self._compiled_patterns[metric_id] = compiled
 
         # Compile exclusion patterns
@@ -141,9 +145,7 @@ class CandidateGenerationStage:
                 try:
                     compiled.append(re.compile(pattern, re.IGNORECASE))
                 except re.error as e:
-                    logger.warning(
-                        f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}"
-                    )
+                    logger.warning(f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}")
             self._compiled_exclusions[metric_id] = compiled
 
         # Compile required context patterns with proximity
@@ -153,9 +155,7 @@ class CandidateGenerationStage:
                 try:
                     compiled.append(re.compile(pattern, re.IGNORECASE))
                 except re.error as e:
-                    logger.warning(
-                        f"Invalid context pattern for {metric_id}: {pattern!r} - {e}"
-                    )
+                    logger.warning(f"Invalid context pattern for {metric_id}: {pattern!r} - {e}")
             proximity = config.get("proximity_chars", self._default_proximity_chars)
             self._compiled_context[metric_id] = (compiled, proximity)
 
@@ -184,9 +184,7 @@ class CandidateGenerationStage:
         # Initialize patterns if needed
         if not self._ensure_initialized():
             errors.append("Failed to initialize keyword configuration")
-            return self._make_result(
-                start_time, 0, candidates_found, errors, warnings
-            )
+            return self._make_result(start_time, 0, candidates_found, errors, warnings)
 
         # Scan segments (skip TABLE segments — they are processed via _scan_table)
         for segment in context.segments:
@@ -237,9 +235,7 @@ class CandidateGenerationStage:
             f"{charts_scanned} charts"
         )
 
-        return self._make_result(
-            start_time, items_processed, candidates_found, errors, warnings
-        )
+        return self._make_result(start_time, items_processed, candidates_found, errors, warnings)
 
     def _scan_segment(self, segment: Segment) -> list[MetricCandidate]:
         """
@@ -337,15 +333,13 @@ class CandidateGenerationStage:
                             continue
 
                         # Check required context (proximity-based)
-                        if not self._has_required_context(
-                            metric_id, combined_text, match.start()
-                        ):
+                        if not self._has_required_context(metric_id, combined_text, match.start()):
                             continue
 
                         # Determine if match is in cell text or only in header/stub
-                        match_in_cell_text = bool(
-                            pattern.search(cell.text)
-                        ) if cell_text_lower else False
+                        match_in_cell_text = (
+                            bool(pattern.search(cell.text)) if cell_text_lower else False
+                        )
 
                         if not match_in_cell_text:
                             # Header/stub-only match: emit only once per (metric, col)
@@ -429,9 +423,7 @@ class CandidateGenerationStage:
                     for match in pattern.finditer(combined_text):
                         if self._is_excluded(metric_id, combined_text, match):
                             continue
-                        if not self._has_required_context(
-                            metric_id, combined_text, match.start()
-                        ):
+                        if not self._has_required_context(metric_id, combined_text, match.start()):
                             continue
 
                         confidence = self._compute_confidence(
@@ -465,9 +457,7 @@ class CandidateGenerationStage:
                     for match in pattern.finditer(nearby_text):
                         if self._is_excluded(metric_id, nearby_text, match):
                             continue
-                        if not self._has_required_context(
-                            metric_id, nearby_text, match.start()
-                        ):
+                        if not self._has_required_context(metric_id, nearby_text, match.start()):
                             continue
 
                         confidence = self._compute_confidence(
@@ -520,9 +510,7 @@ class CandidateGenerationStage:
                 seen[key] = candidate
         return list(seen.values())
 
-    def _cross_metric_dedup(
-        self, candidates: list[MetricCandidate]
-    ) -> list[MetricCandidate]:
+    def _cross_metric_dedup(self, candidates: list[MetricCandidate]) -> list[MetricCandidate]:
         """
         Suppress candidates whose match span is strictly contained by another
         candidate's span within the same segment or table cell.
@@ -616,7 +604,11 @@ class CandidateGenerationStage:
                     a_text = a.match_text.lower()
                     b_text = b.match_text.lower()
                     # Check if b's match_text is a strict substring of a's (same metric only)
-                    if a.metric_id == b.metric_id and b_text in a_text and len(b_text) < len(a_text):
+                    if (
+                        a.metric_id == b.metric_id
+                        and b_text in a_text
+                        and len(b_text) < len(a_text)
+                    ):
                         suppressed.add(id(b))
                         logger.debug(
                             f"Cross-metric dedup (table): suppressed {b.metric_id} "
@@ -627,14 +619,11 @@ class CandidateGenerationStage:
         result = [c for c in candidates if id(c) not in suppressed]
         if suppressed:
             logger.info(
-                f"Cross-metric dedup: suppressed {len(suppressed)} of "
-                f"{len(candidates)} candidates"
+                f"Cross-metric dedup: suppressed {len(suppressed)} of {len(candidates)} candidates"
             )
         return result
 
-    def _deduplicate_candidates(
-        self, candidates: list[MetricCandidate]
-    ) -> list[MetricCandidate]:
+    def _deduplicate_candidates(self, candidates: list[MetricCandidate]) -> list[MetricCandidate]:
         """
         Remove duplicate candidates for the same metric at the same location.
 
@@ -680,9 +669,7 @@ class CandidateGenerationStage:
 
         return list(seen.values())
 
-    def _is_excluded(
-        self, metric_id: str, text: str, match: re.Match[str]
-    ) -> bool:
+    def _is_excluded(self, metric_id: str, text: str, match: re.Match[str]) -> bool:
         """
         Check if a match should be excluded by exclusion patterns.
 
@@ -710,9 +697,7 @@ class CandidateGenerationStage:
 
         return False
 
-    def _has_required_context(
-        self, metric_id: str, text: str, match_position: int
-    ) -> bool:
+    def _has_required_context(self, metric_id: str, text: str, match_position: int) -> bool:
         """
         Check if required context patterns are present within proximity.
 

@@ -125,10 +125,7 @@ def test_segment_sgml_format(sample_html_sgml, temp_html_file):
 
         # Check that text was extracted
         all_text = " ".join(s.raw_text for s in segments)
-        assert (
-            "prospectus" in all_text.lower()
-            or "monthly active users" in all_text.lower()
-        )
+        assert "prospectus" in all_text.lower() or "monthly active users" in all_text.lower()
 
     finally:
         Path(html_path).unlink()
@@ -169,7 +166,7 @@ def test_boundary_detector_is_singleton(temp_html_file):
     segmenter = HTMLSegmenter()
 
     # Verify instance exists
-    assert hasattr(segmenter, '_boundary_detector')
+    assert hasattr(segmenter, "_boundary_detector")
     assert isinstance(segmenter._boundary_detector, BoundaryDetector)
 
     # Verify it's the same instance (singleton pattern)
@@ -427,7 +424,9 @@ def test_section_heading_skips_multiple_metadata_headings():
             # Should skip Index, Table of Contents, and Cover Page
             assert content_segments[0].section_heading == "Prospectus Summary"
             assert content_segments[0].section_heading not in [
-                "Index", "Table of Contents", "Cover Page"
+                "Index",
+                "Table of Contents",
+                "Cover Page",
             ]
 
     finally:
@@ -705,7 +704,14 @@ class TestSEG7EncodingFallbackCascade:
             metrics = segmenter.get_metrics()
             assert metrics is not None
             # Should have used some encoding (utf-8, latin-1, or auto-detected)
-            assert metrics.encoding_used in ["utf-8", "latin-1", "iso-8859-1", "ascii", "cp1252", "windows-1252"]
+            assert metrics.encoding_used in [
+                "utf-8",
+                "latin-1",
+                "iso-8859-1",
+                "ascii",
+                "cp1252",
+                "windows-1252",
+            ]
 
         finally:
             Path(html_path).unlink()
@@ -745,7 +751,9 @@ class TestSEG7GracefulDegradation:
             Path(html_path).unlink()
         finally:
             # Restore original state
-            monkeypatch.setattr(segmenter_module, "CHARSET_NORMALIZER_AVAILABLE", original_available)
+            monkeypatch.setattr(
+                segmenter_module, "CHARSET_NORMALIZER_AVAILABLE", original_available
+            )
 
     def test_empty_file_handled_gracefully(self, temp_html_file):
         """Test that empty files are handled gracefully."""
@@ -812,7 +820,7 @@ class TestSEG7EncodingEdgeCases:
             "Test error",
             file_path="/test/path.html",
             attempted_encodings=["utf-8", "latin-1", "cp1252"],
-            position=100
+            position=100,
         )
 
         assert error.file_path == "/test/path.html"
@@ -1044,6 +1052,7 @@ def test_raise_on_error_empty_html():
     finally:
         Path(html_path).unlink()
 
+
 # ===== Composite Segment Splitting Tests (L5) =====
 
 
@@ -1070,8 +1079,8 @@ class TestCompositeSegmentSplitting:
 
             # Should have one table segment
             assert len(segments) == 1
-            assert segments[0].segment_type == 'table'
-            assert 'Revenue' in segments[0].raw_text
+            assert segments[0].segment_type == "table"
+            assert "Revenue" in segments[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -1100,15 +1109,15 @@ class TestCompositeSegmentSplitting:
             assert len(segments) >= 2
 
             # Find the segments
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
-            tables = [s for s in segments if s.segment_type == 'table']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            tables = [s for s in segments if s.segment_type == "table"]
 
             assert len(paragraphs) >= 1
             assert len(tables) >= 1
 
             # Check content separation
-            assert any('revenue metrics' in p.raw_text.lower() for p in paragraphs)
-            assert any('Q4 2024' in t.raw_text for t in tables)
+            assert any("revenue metrics" in p.raw_text.lower() for p in paragraphs)
+            assert any("Q4 2024" in t.raw_text for t in tables)
 
         finally:
             Path(html_path).unlink()
@@ -1138,16 +1147,16 @@ class TestCompositeSegmentSplitting:
             assert len(segments) >= 3
 
             # Verify segment types in order
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
-            tables = [s for s in segments if s.segment_type == 'table']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            tables = [s for s in segments if s.segment_type == "table"]
 
             assert len(paragraphs) >= 2  # Before and after table
             assert len(tables) >= 1
 
             # Check content
-            assert any('customer metrics' in p.raw_text.lower() for p in paragraphs)
-            assert any('Active Customers' in t.raw_text for t in tables)
-            assert any('shown in the table above' in p.raw_text.lower() for p in paragraphs)
+            assert any("customer metrics" in p.raw_text.lower() for p in paragraphs)
+            assert any("Active Customers" in t.raw_text for t in tables)
+            assert any("shown in the table above" in p.raw_text.lower() for p in paragraphs)
 
         finally:
             Path(html_path).unlink()
@@ -1179,15 +1188,15 @@ class TestCompositeSegmentSplitting:
             # Should have at least 3 segments: paragraph + 2 tables
             assert len(segments) >= 3
 
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
-            tables = [s for s in segments if s.segment_type == 'table']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            tables = [s for s in segments if s.segment_type == "table"]
 
             assert len(paragraphs) >= 1
             assert len(tables) >= 2  # Two separate table segments
 
             # Check that tables are separate
-            assert any('Q3' in t.raw_text for t in tables)
-            assert any('Q4' in t.raw_text for t in tables)
+            assert any("Q3" in t.raw_text for t in tables)
+            assert any("Q4" in t.raw_text for t in tables)
 
         finally:
             Path(html_path).unlink()
@@ -1213,7 +1222,7 @@ class TestCompositeSegmentSplitting:
             segments = segmenter.segment_filing(filing_id=5, html_path=html_path)
 
             # Should only have table segment, no empty paragraph
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
 
             # No segment should be empty or whitespace-only
@@ -1247,10 +1256,11 @@ class TestCompositeSegmentSplitting:
 
             # Find segments with our test content
             content_segments = [
-                s for s in segments
-                if 'performance indicators' in s.raw_text.lower()
-                or 'DAU' in s.raw_text
-                or 'retention' in s.raw_text.lower()
+                s
+                for s in segments
+                if "performance indicators" in s.raw_text.lower()
+                or "DAU" in s.raw_text
+                or "retention" in s.raw_text.lower()
             ]
 
             # All should have the same section heading
@@ -1317,12 +1327,12 @@ class TestCompositeSegmentSplitting:
             segments = segmenter.segment_filing(filing_id=8, html_path=html_path)
 
             # Should have one table segment containing nested table
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
 
             # The table segment should contain the nested table content
             table_text = tables[0].raw_text
-            assert 'Nested Data' in table_text or 'Outer table data' in table_text
+            assert "Nested Data" in table_text or "Outer table data" in table_text
 
         finally:
             Path(html_path).unlink()
@@ -1402,10 +1412,11 @@ class TestCompositeSegmentSplitting:
 
             # Find segments from our div
             content_segments = [
-                s for s in segments
-                if 'concentration' in s.raw_text.lower()
-                or 'Customer A' in s.raw_text
-                or 'Loss of any major' in s.raw_text
+                s
+                for s in segments
+                if "concentration" in s.raw_text.lower()
+                or "Customer A" in s.raw_text
+                or "Loss of any major" in s.raw_text
             ]
 
             assert len(content_segments) >= 2
@@ -1439,7 +1450,7 @@ class TestCompositeSegmentSplitting:
             segments = segmenter.segment_filing(filing_id=11, html_path=html_path)
 
             # Short paragraph should be filtered
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
 
             # No paragraph should exist if it's too short
             for p in paragraphs:
@@ -1477,16 +1488,16 @@ class TestCompositeSegmentSplitting:
             # Should have: text, table, text, table, text = 5 segments
             assert len(segments) >= 5
 
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
-            tables = [s for s in segments if s.segment_type == 'table']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            tables = [s for s in segments if s.segment_type == "table"]
 
             assert len(paragraphs) >= 3
             assert len(tables) >= 2
 
             # Check content is properly separated
-            assert any('active user metrics' in p.raw_text.lower() for p in paragraphs)
-            assert any('revenue metrics' in p.raw_text.lower() for p in paragraphs)
-            assert any('consistent growth' in p.raw_text.lower() for p in paragraphs)
+            assert any("active user metrics" in p.raw_text.lower() for p in paragraphs)
+            assert any("revenue metrics" in p.raw_text.lower() for p in paragraphs)
+            assert any("consistent growth" in p.raw_text.lower() for p in paragraphs)
 
         finally:
             Path(html_path).unlink()
@@ -1549,8 +1560,8 @@ class TestCompositeSegmentSplitting:
 
             # Should have exactly one paragraph segment
             assert len(segments) == 1
-            assert segments[0].segment_type == 'paragraph'
-            assert 'retention strategies' in segments[0].raw_text
+            assert segments[0].segment_type == "paragraph"
+            assert "retention strategies" in segments[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -1585,15 +1596,15 @@ class TestCompositeSegmentSplitting:
             # Should have at least 4 segments: 2 paragraphs + 2 tables
             assert len(segments) >= 4
 
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
-            tables = [s for s in segments if s.segment_type == 'table']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
+            tables = [s for s in segments if s.segment_type == "table"]
 
             assert len(paragraphs) >= 2
             assert len(tables) >= 2
 
             # Check both sections are represented
-            assert any('recurring revenue' in p.raw_text.lower() for p in paragraphs)
-            assert any('churn rates' in p.raw_text.lower() for p in paragraphs)
+            assert any("recurring revenue" in p.raw_text.lower() for p in paragraphs)
+            assert any("churn rates" in p.raw_text.lower() for p in paragraphs)
 
         finally:
             Path(html_path).unlink()
@@ -1644,7 +1655,7 @@ class TestSentenceDetection:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Tables should NOT have sentence boundaries
             assert tables[0].sentence_boundaries is None
@@ -1695,7 +1706,7 @@ class TestSentenceDetection:
 
             assert len(segments) >= 1
             # Should end with a period (complete sentence)
-            assert segments[0].raw_text.rstrip().endswith('.')
+            assert segments[0].raw_text.rstrip().endswith(".")
 
         finally:
             Path(html_path).unlink()
@@ -1724,8 +1735,8 @@ class TestDefinitionMerging:
 
             # Should be merged into one segment
             assert len(segments) == 1
-            assert 'active customers' in segments[0].raw_text
-            assert '90 days' in segments[0].raw_text
+            assert "active customers" in segments[0].raw_text
+            assert "90 days" in segments[0].raw_text
             assert segments[0].definition_merged_count >= 2
 
         finally:
@@ -1748,8 +1759,8 @@ class TestDefinitionMerging:
 
             # Should be merged
             assert len(segments) == 1
-            assert 'recurring revenue' in segments[0].raw_text.lower()
-            assert 'excludes' in segments[0].raw_text
+            assert "recurring revenue" in segments[0].raw_text.lower()
+            assert "excludes" in segments[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -1869,10 +1880,7 @@ class TestLargeTableHandling:
     def test_table_uses_higher_limit(self, temp_html_file):
         """Tables should use 25K limit instead of 10K."""
         # Create table with ~15K chars (exceeds default 10K, under 25K)
-        rows = "".join(
-            f"<tr><td>Row {i}</td><td>{'Data ' * 20}</td></tr>"
-            for i in range(200)
-        )
+        rows = "".join(f"<tr><td>Row {i}</td><td>{'Data ' * 20}</td></tr>" for i in range(200))
         html = f"""
         <html><body>
             <table>
@@ -1888,7 +1896,7 @@ class TestLargeTableHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Should not be truncated (under 25K)
             assert not tables[0].table_truncated_flag
@@ -1899,10 +1907,7 @@ class TestLargeTableHandling:
     def test_very_large_table_creates_summary(self, temp_html_file):
         """Tables exceeding 25K should get tri-region summary (SEG12)."""
         # Create very large table (~30K chars)
-        rows = "".join(
-            f"<tr><td>Row {i}</td><td>{'Data ' * 50}</td></tr>"
-            for i in range(500)
-        )
+        rows = "".join(f"<tr><td>Row {i}</td><td>{'Data ' * 50}</td></tr>" for i in range(500))
         html = f"""
         <html><body>
             <table>
@@ -1918,16 +1923,16 @@ class TestLargeTableHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Should be summarized to much less than TABLE_MAX_LENGTH
             assert len(tables[0].raw_text) < 5000
             # Should be marked as truncated
             assert tables[0].table_truncated_flag
             # Should have tri-region sampling markers
-            assert '...[end sample]...' in tables[0].raw_text
+            assert "...[end sample]..." in tables[0].raw_text
             # Should still contain header info
-            assert '[Table headers:' in tables[0].raw_text
+            assert "[Table headers:" in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -1935,8 +1940,7 @@ class TestLargeTableHandling:
     def test_large_table_preserves_headers(self, temp_html_file):
         """Large tables should preserve header content after truncation."""
         rows = "".join(
-            f"<tr><td>Row {i}</td><td>Value {i}</td><td>{'X' * 100}</td></tr>"
-            for i in range(400)
+            f"<tr><td>Row {i}</td><td>Value {i}</td><td>{'X' * 100}</td></tr>" for i in range(400)
         )
         html = f"""
         <html><body>
@@ -1953,10 +1957,10 @@ class TestLargeTableHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Header content should be at the beginning and preserved
-            assert 'Customer ID' in tables[0].raw_text or 'Revenue' in tables[0].raw_text
+            assert "Customer ID" in tables[0].raw_text or "Revenue" in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -1990,13 +1994,13 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Table should be truncated
             assert tables[0].table_truncated_flag
             # Should have tri-region markers
-            assert '...[middle sample]...' in tables[0].raw_text
-            assert '...[end sample]...' in tables[0].raw_text
+            assert "...[middle sample]..." in tables[0].raw_text
+            assert "...[end sample]..." in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2006,8 +2010,7 @@ class TestTableSummaryTriRegionSampling:
         # Create table with recognizable content at beginning
         rows_start = "<tr><td>START_MARKER_BEGINNING</td><td>First row data</td></tr>"
         rows_middle = "".join(
-            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>"
-            for i in range(50)
+            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>" for i in range(50)
         )
         rows_end = "<tr><td>END_MARKER_LAST</td><td>Final row data</td></tr>"
         html = f"""
@@ -2027,10 +2030,10 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Beginning marker should be present
-            assert 'START_MARKER_BEGINNING' in tables[0].raw_text
+            assert "START_MARKER_BEGINNING" in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2040,8 +2043,7 @@ class TestTableSummaryTriRegionSampling:
         # Create table with recognizable content at end
         rows_start = "<tr><td>FirstRow</td><td>Start data</td></tr>"
         rows_middle = "".join(
-            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>"
-            for i in range(50)
+            f"<tr><td>Middle{i:04d}</td><td>{'MiddleData' * 20}</td></tr>" for i in range(50)
         )
         rows_end = "<tr><td>END_MARKER_FINAL_ROW</td><td>Last row data here</td></tr>"
         html = f"""
@@ -2061,10 +2063,10 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # End marker should be present after [end sample]
-            assert 'END_MARKER_FINAL_ROW' in tables[0].raw_text
+            assert "END_MARKER_FINAL_ROW" in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2073,18 +2075,15 @@ class TestTableSummaryTriRegionSampling:
         """Middle sample should contain content from around the center of the table."""
         # Create table with recognizable content in the middle
         rows_start = "".join(
-            f"<tr><td>Start{i:04d}</td><td>{'StartData' * 15}</td></tr>"
-            for i in range(25)
+            f"<tr><td>Start{i:04d}</td><td>{'StartData' * 15}</td></tr>" for i in range(25)
         )
         # Middle marker at row ~50
         rows_middle = "<tr><td>MIDDLE_MARKER_CENTER</td><td>Center row data value</td></tr>"
         rows_middle += "".join(
-            f"<tr><td>Mid{i:04d}</td><td>{'MidData' * 15}</td></tr>"
-            for i in range(25)
+            f"<tr><td>Mid{i:04d}</td><td>{'MidData' * 15}</td></tr>" for i in range(25)
         )
         rows_end = "".join(
-            f"<tr><td>End{i:04d}</td><td>{'EndData' * 15}</td></tr>"
-            for i in range(25)
+            f"<tr><td>End{i:04d}</td><td>{'EndData' * 15}</td></tr>" for i in range(25)
         )
         html = f"""
         <html><body>
@@ -2103,10 +2102,10 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Middle marker should be present
-            assert 'MIDDLE_MARKER_CENTER' in tables[0].raw_text
+            assert "MIDDLE_MARKER_CENTER" in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2133,13 +2132,13 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Table should NOT be truncated
             assert not tables[0].table_truncated_flag
             # Should NOT have sampling markers
-            assert '...[middle sample]...' not in tables[0].raw_text
-            assert '...[end sample]...' not in tables[0].raw_text
+            assert "...[middle sample]..." not in tables[0].raw_text
+            assert "...[end sample]..." not in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2166,12 +2165,12 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Table should be truncated
             assert tables[0].table_truncated_flag
             # Should have at least the end sample marker
-            assert '...[end sample]...' in tables[0].raw_text
+            assert "...[end sample]..." in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2198,11 +2197,11 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Should be truncated and have markers
             assert tables[0].table_truncated_flag
-            assert '...[end sample]...' in tables[0].raw_text
+            assert "...[end sample]..." in tables[0].raw_text
             # Should not have any index errors - test passes if we get here
 
         finally:
@@ -2229,15 +2228,15 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             raw_text = tables[0].raw_text
             # Table should be truncated
             assert tables[0].table_truncated_flag
             # Headers should be present
-            assert '[Table headers:' in raw_text
+            assert "[Table headers:" in raw_text
             # Row count should be present
-            assert 'rows total]' in raw_text
+            assert "rows total]" in raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2264,14 +2263,14 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             raw_text = tables[0].raw_text
             # Table should be truncated
             assert tables[0].table_truncated_flag
 
             # Find the position of [middle sample] marker and check preceding char
-            middle_marker_pos = raw_text.find('...[middle sample]...')
+            middle_marker_pos = raw_text.find("...[middle sample]...")
             if middle_marker_pos > 0:
                 # Character before marker should be whitespace or end of word
                 char_before = raw_text[middle_marker_pos - 1]
@@ -2304,12 +2303,12 @@ class TestTableSummaryTriRegionSampling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            tables = [s for s in segments if s.segment_type == 'table']
+            tables = [s for s in segments if s.segment_type == "table"]
             assert len(tables) >= 1
             # Table should be truncated
             assert tables[0].table_truncated_flag
             # Should not raise any encoding errors - test passes if we get here
-            assert '...[end sample]...' in tables[0].raw_text
+            assert "...[end sample]..." in tables[0].raw_text
 
         finally:
             Path(html_path).unlink()
@@ -2339,7 +2338,7 @@ class TestContextOverlap:
             assert len(segments) >= 2
             # Second segment should have context from first
             assert segments[1].context_prefix is not None
-            assert 'retention metrics' in segments[1].context_prefix
+            assert "retention metrics" in segments[1].context_prefix
 
         finally:
             Path(html_path).unlink()
@@ -2362,7 +2361,7 @@ class TestContextOverlap:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            paragraphs = [s for s in segments if s.segment_type == 'paragraph']
+            paragraphs = [s for s in segments if s.segment_type == "paragraph"]
             if paragraphs:
                 # Paragraph should NOT have context from table
                 assert paragraphs[0].context_prefix is None
@@ -2447,7 +2446,7 @@ class TestListHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            list_items = [s for s in segments if s.segment_type == 'list_item']
+            list_items = [s for s in segments if s.segment_type == "list_item"]
             assert len(list_items) >= 3
 
         finally:
@@ -2471,11 +2470,11 @@ class TestListHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            list_items = [s for s in segments if s.segment_type == 'list_item']
+            list_items = [s for s in segments if s.segment_type == "list_item"]
             if list_items:
                 # List items should have intro as context
                 assert list_items[0].context_prefix is not None
-                assert 'performance indicators' in list_items[0].context_prefix
+                assert "performance indicators" in list_items[0].context_prefix
 
         finally:
             Path(html_path).unlink()
@@ -2499,7 +2498,7 @@ class TestListHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            list_items = [s for s in segments if s.segment_type == 'list_item']
+            list_items = [s for s in segments if s.segment_type == "list_item"]
             assert len(list_items) >= 3
 
         finally:
@@ -2523,7 +2522,7 @@ class TestListHandling:
         try:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
-            list_items = [s for s in segments if s.segment_type == 'list_item']
+            list_items = [s for s in segments if s.segment_type == "list_item"]
             # Only the long item should be included
             for item in list_items:
                 assert len(item.raw_text) >= 50
@@ -2555,7 +2554,7 @@ class TestListHandling:
             segments = segmenter.segment_filing(filing_id=1, html_path=html_path)
 
             # Should extract outer list items only (nested handled within)
-            list_items = [s for s in segments if s.segment_type == 'list_item']
+            list_items = [s for s in segments if s.segment_type == "list_item"]
             # We expect outer list items to be extracted
             assert len(list_items) >= 2
 
@@ -2631,9 +2630,7 @@ class TestHeadingCacheBinarySearch:
         """Verify O(log n) behavior with many headings."""
         segmenter = HTMLSegmenter()
         # Create 100 headings at positions 100, 200, 300, ...
-        segmenter._heading_cache = [
-            (i * 100, 2, f"Heading {i}") for i in range(1, 101)
-        ]
+        segmenter._heading_cache = [(i * 100, 2, f"Heading {i}") for i in range(1, 101)]
         # Element at position 5050 should find "Heading 50"
         result = segmenter._get_section_from_cache(None, element_position=5050)
         assert result == ("Heading 50", "Heading 50")
@@ -2924,6 +2921,7 @@ class TestParallelSentenceDetection:
         try:
             # Patch the executor map method
             from concurrent.futures import ThreadPoolExecutor
+
             monkeypatch.setattr(ThreadPoolExecutor, "map", mock_executor_map)
 
             # Should fallback to sequential and complete successfully
@@ -2968,10 +2966,12 @@ class TestHierarchicalSectionPath:
     @pytest.fixture
     def temp_html_file(self):
         """Create a temporary HTML file for testing."""
+
         def _create_temp_file(html_content: str) -> str:
             with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
                 f.write(html_content)
                 return f.name
+
         return _create_temp_file
 
     # --- Basic Hierarchy Tests ---
@@ -3148,7 +3148,9 @@ class TestHierarchicalSectionPath:
             assert len(content_segments) >= 1
 
             seg = content_segments[0]
-            assert seg.section_path == "Item 1. Business > Detailed Subsection > Deep Nested Content"
+            assert (
+                seg.section_path == "Item 1. Business > Detailed Subsection > Deep Nested Content"
+            )
             assert seg.section_heading == "Deep Nested Content"
         finally:
             Path(html_path).unlink()
@@ -3277,7 +3279,9 @@ class TestHierarchicalSectionPath:
             segments = segmenter.segment_filing(filing_id=12, html_path=html_path)
 
             sec_two_segments = [s for s in segments if "section two should" in s.raw_text.lower()]
-            sec_three_segments = [s for s in segments if "section three should" in s.raw_text.lower()]
+            sec_three_segments = [
+                s for s in segments if "section three should" in s.raw_text.lower()
+            ]
 
             if sec_two_segments:
                 assert sec_two_segments[0].section_path == "Section Two"
@@ -3308,7 +3312,9 @@ class TestHierarchicalSectionPath:
             segmenter = HTMLSegmenter(min_length=30)
             segments = segmenter.segment_filing(filing_id=13, html_path=html_path)
 
-            content_segments = [s for s in segments if "deeply nested content" in s.raw_text.lower()]
+            content_segments = [
+                s for s in segments if "deeply nested content" in s.raw_text.lower()
+            ]
             assert len(content_segments) >= 1
 
             seg = content_segments[0]
@@ -3335,7 +3341,9 @@ class TestHierarchicalSectionPath:
             segments = segmenter.segment_filing(filing_id=14, html_path=html_path)
 
             intro_segments = [s for s in segments if "introductory paragraph" in s.raw_text.lower()]
-            overview_segments = [s for s in segments if "under the h2 overview" in s.raw_text.lower()]
+            overview_segments = [
+                s for s in segments if "under the h2 overview" in s.raw_text.lower()
+            ]
 
             if intro_segments:
                 seg = intro_segments[0]
@@ -3375,7 +3383,9 @@ class TestHierarchicalSectionPath:
 
             # Find segments by content
             customer_segs = [s for s in segments if "enterprise customers" in s.raw_text.lower()]
-            revenue_segs = [s for s in segments if "subscription revenue model" in s.raw_text.lower()]
+            revenue_segs = [
+                s for s in segments if "subscription revenue model" in s.raw_text.lower()
+            ]
             risk_segs = [s for s in segments if "market risks including" in s.raw_text.lower()]
 
             # Verify customer segment path
@@ -3385,7 +3395,10 @@ class TestHierarchicalSectionPath:
 
             # Verify revenue segment path (3 levels)
             if revenue_segs:
-                assert revenue_segs[0].section_path == "Item 1. Business > Revenue > Subscription Revenue"
+                assert (
+                    revenue_segs[0].section_path
+                    == "Item 1. Business > Revenue > Subscription Revenue"
+                )
                 assert revenue_segs[0].section_heading == "Subscription Revenue"
 
             # Verify risk segment path (new h1 resets hierarchy)
@@ -4029,7 +4042,7 @@ class TestCSSSelector:
         segmenter = HTMLSegmenter()
         from bs4 import BeautifulSoup
 
-        html = '<div><p>First</p><p>Second</p><p>Third</p></div>'
+        html = "<div><p>First</p><p>Second</p><p>Third</p></div>"
         soup = BeautifulSoup(html, "html.parser")
         paragraphs = soup.find_all("p")
 
@@ -4074,7 +4087,9 @@ class TestCSSSelector:
         segmenter = HTMLSegmenter()
         from bs4 import BeautifulSoup
 
-        html = '<html><body><div id="main"><section><p>Deep content</p></section></div></body></html>'
+        html = (
+            '<html><body><div id="main"><section><p>Deep content</p></section></div></body></html>'
+        )
         soup = BeautifulSoup(html, "html.parser")
         element = soup.find("p")
 
@@ -4171,7 +4186,7 @@ class TestCSSSelector:
         # NavigableString (not Tag) - simulate
         from bs4 import BeautifulSoup
 
-        html = '<p>Text content</p>'
+        html = "<p>Text content</p>"
         soup = BeautifulSoup(html, "html.parser")
         text_node = soup.find("p").string  # This is a NavigableString
 
@@ -4242,11 +4257,12 @@ class TestCSSSelector:
 
             # All segments should have html_selector populated
             for segment in segments:
-                assert segment.html_selector is not None, f"Segment missing selector: {segment.raw_text[:50]}"
+                assert segment.html_selector is not None, (
+                    f"Segment missing selector: {segment.raw_text[:50]}"
+                )
                 # Selector should be valid CSS syntax (contains expected patterns)
                 assert any(
-                    pattern in segment.html_selector
-                    for pattern in ["#", ".", "nth-of-type"]
+                    pattern in segment.html_selector for pattern in ["#", ".", "nth-of-type"]
                 ), f"Invalid selector format: {segment.html_selector}"
 
         finally:
@@ -4274,7 +4290,9 @@ class TestCSSSelector:
 
             # Selectors should be unique
             selectors = [p.html_selector for p in paragraphs]
-            assert len(selectors) == len(set(selectors)), "Selectors should be unique for different elements"
+            assert len(selectors) == len(set(selectors)), (
+                "Selectors should be unique for different elements"
+            )
 
             # Should have different nth-of-type values
             assert any("nth-of-type(1)" in s for s in selectors)
@@ -4334,7 +4352,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Our revenue metrics show growth in Q4 2024: Quarter Revenue Q4 2024 $5M",
             raw_html=html,
-            sequence_index=0
+            sequence_index=0,
         )
 
         # Parse element for caching
@@ -4342,7 +4360,9 @@ class TestSEG9CachedDOMParsing:
         cached_element = soup.find("div")
 
         # Split with cached element
-        result_with_cache = segmenter._split_composite_segment(segment, parsed_element=cached_element)
+        result_with_cache = segmenter._split_composite_segment(
+            segment, parsed_element=cached_element
+        )
 
         # Split without cached element (fallback to parsing)
         result_without_cache = segmenter._split_composite_segment(segment, parsed_element=None)
@@ -4378,7 +4398,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Some text before the table. Metric Value Users 10,000",
             raw_html=html,
-            sequence_index=0
+            sequence_index=0,
         )
 
         # Parse element for caching
@@ -4422,7 +4442,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Text with metrics explanation. Metric Value Active Users 50,000",
             raw_html=html,
-            sequence_index=0
+            sequence_index=0,
         )
 
         # Split with None cached element
@@ -4453,7 +4473,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Paragraph text. Metric Value Revenue $1M",
             raw_html=html,
-            sequence_index=0
+            sequence_index=0,
         )
 
         # Pass invalid types as cached_element
@@ -4489,8 +4509,8 @@ class TestSEG9CachedDOMParsing:
             # Final segments should not contain any Tag references
             for segment in segments:
                 # Check that no Tag objects are stored in segment attributes
-                assert not hasattr(segment, '_cached_element')
-                assert not hasattr(segment, 'element')
+                assert not hasattr(segment, "_cached_element")
+                assert not hasattr(segment, "element")
 
                 # Verify the segment is a clean SourceSegment with expected types
                 assert isinstance(segment.raw_text, str)
@@ -4526,8 +4546,9 @@ class TestSEG9CachedDOMParsing:
             for segment in segments:
                 # Check all attributes for Tag objects
                 for attr_name, attr_value in segment.__dict__.items():
-                    assert not isinstance(attr_value, Tag), \
+                    assert not isinstance(attr_value, Tag), (
                         f"Segment attribute {attr_name} contains Tag reference"
+                    )
 
         finally:
             Path(html_path).unlink()
@@ -4591,7 +4612,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="This is just a plain text paragraph with no tables.",
             raw_html="<p>This is just a plain text paragraph with no tables.</p>",
-            sequence_index=0
+            sequence_index=0,
         )
 
         result = segmenter._split_composite_segment(segment, parsed_element=None)
@@ -4612,7 +4633,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="table",
             raw_text="Metric Value Users 10,000",
             raw_html="<table><tr><th>Metric</th><th>Value</th></tr><tr><td>Users</td><td>10,000</td></tr></table>",
-            sequence_index=0
+            sequence_index=0,
         )
 
         result = segmenter._split_composite_segment(segment, parsed_element=None)
@@ -4651,7 +4672,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Summary of financial metrics. Category Details Revenue Q1 $10M Q2 $12M",
             raw_html=html,
-            sequence_index=0
+            sequence_index=0,
         )
 
         # Parse for caching
@@ -4677,7 +4698,7 @@ class TestSEG9CachedDOMParsing:
             segment_type="paragraph",
             raw_text="Some text content",
             raw_html=None,
-            sequence_index=0
+            sequence_index=0,
         )
 
         result = segmenter._split_composite_segment(segment, parsed_element=None)
@@ -4707,8 +4728,8 @@ class TestTableCellMarkers:
             <tr><td>A</td><td>B</td><td>C</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4727,8 +4748,8 @@ class TestTableCellMarkers:
             <tr><td>E</td><td>F</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4751,8 +4772,8 @@ class TestTableCellMarkers:
             <tr><td>DAU</td><td>1500</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4769,8 +4790,8 @@ class TestTableCellMarkers:
             <tr><td>A</td><td></td><td>B</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4790,8 +4811,8 @@ class TestTableCellMarkers:
             </td><td>C</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4811,8 +4832,8 @@ class TestTableCellMarkers:
             text  </td><td>Normal</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4829,8 +4850,8 @@ class TestTableCellMarkers:
             <tr><td>Retention Rate</td><td>171%</td><td>152%</td><td>143%</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4850,8 +4871,8 @@ class TestTableCellMarkers:
             <tr><td>First</td><td>Last</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4880,8 +4901,8 @@ class TestTableCellMarkers:
             </tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4909,8 +4930,8 @@ class TestTableCellMarkers:
             <tr><td>Retention Rate</td><td>171%</td><td>152%</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         text = segmenter._extract_table_text_with_markers(table)
@@ -4935,18 +4956,18 @@ class TestTableCellMarkers:
             <tr><td>171%</td><td>152%</td><td>143%</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
 
         # Standard number pattern should still find all numbers
-        numbers = re.findall(r'\d+', result)
+        numbers = re.findall(r"\d+", result)
         assert len(numbers) == 3
-        assert '171' in numbers
-        assert '152' in numbers
-        assert '143' in numbers
+        assert "171" in numbers
+        assert "152" in numbers
+        assert "143" in numbers
 
     def test_keyword_positions_correct_with_markers(self):
         """Keyword positions should account for marker characters."""
@@ -4957,8 +4978,8 @@ class TestTableCellMarkers:
             <tr><td>Revenue</td><td>$10M</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -4982,8 +5003,8 @@ class TestTableCellMarkers:
             <tr><td>First</td><td>Second</td><td>Third</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5007,8 +5028,8 @@ class TestTableCellMarkers:
             <tr><td>Row2A</td><td>Row2B</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         text = segmenter._extract_table_text_with_markers(table)
@@ -5034,8 +5055,8 @@ class TestTableCellMarkers:
         from bs4 import BeautifulSoup
 
         html = "<table></table>"
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5053,8 +5074,8 @@ class TestTableCellMarkers:
             <tr><td>B</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5067,8 +5088,8 @@ class TestTableCellMarkers:
         from bs4 import BeautifulSoup
 
         html = "<p>This is a paragraph, not a table.</p>"
-        soup = BeautifulSoup(html, 'html.parser')
-        para = soup.find('p')
+        soup = BeautifulSoup(html, "html.parser")
+        para = soup.find("p")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(para)
@@ -5087,8 +5108,8 @@ class TestTableCellMarkers:
             <tr><th>Header 1</th><th>Header 2</th><th>Header 3</th></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5106,8 +5127,8 @@ class TestTableCellMarkers:
             rows.append(f"<tr>{cells}</tr>")
 
         html = f"<table>{''.join(rows)}</table>"
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5141,12 +5162,16 @@ class TestTableCellMarkers:
 
         # Find the table segment
         table_segments = [s for s in segments if s.segment_type == "table"]
-        assert len(table_segments) > 0, f"Expected table segments, got segment types: {[s.segment_type for s in segments]}"
+        assert len(table_segments) > 0, (
+            f"Expected table segments, got segment types: {[s.segment_type for s in segments]}"
+        )
 
         table_segment = table_segments[0]
         # Should have markers in raw_text
         assert "[CELL]" in table_segment.raw_text, f"Expected markers in: {table_segment.raw_text}"
-        assert "[ROW]" in table_segment.raw_text, f"Expected row markers in: {table_segment.raw_text}"
+        assert "[ROW]" in table_segment.raw_text, (
+            f"Expected row markers in: {table_segment.raw_text}"
+        )
 
     def test_extract_segment_no_markers_for_paragraphs(self, temp_html_file):
         """_extract_segment should not use markers for non-table elements."""
@@ -5163,7 +5188,9 @@ class TestTableCellMarkers:
 
         # Find paragraph segments
         para_segments = [s for s in segments if s.segment_type == "paragraph"]
-        assert len(para_segments) > 0, f"Expected paragraph segments, got segment types: {[s.segment_type for s in segments]}"
+        assert len(para_segments) > 0, (
+            f"Expected paragraph segments, got segment types: {[s.segment_type for s in segments]}"
+        )
 
         para_segment = para_segments[0]
         # Should NOT have markers
@@ -5183,8 +5210,8 @@ class TestTableCellMarkers:
             <tr><td>Metric (with parens)</td><td>Value [with brackets]</td><td>100%</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5204,8 +5231,8 @@ class TestTableCellMarkers:
             <tr><td>A</td><td>B</td><td>C</td></tr>
         </table>
         """
-        soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
 
         segmenter = HTMLSegmenter()
         result = segmenter._extract_table_text_with_markers(table)
@@ -5259,7 +5286,9 @@ class TestSplitCompositeTableMaxLength:
 
         # Should have split into paragraph + table
         table_segments = [s for s in split_segments if s.segment_type == "table"]
-        assert len(table_segments) >= 1, f"Expected table segment, got types: {[s.segment_type for s in split_segments]}"
+        assert len(table_segments) >= 1, (
+            f"Expected table segment, got types: {[s.segment_type for s in split_segments]}"
+        )
 
         # Table segment should NOT be truncated to 10000
         table_seg = table_segments[0]
@@ -5278,7 +5307,9 @@ class TestSplitCompositeTableMaxLength:
         assert len(long_text) > 10000
 
         paragraph_html = f"<p>{long_text}</p>"
-        table_html = "<table><tr><td>Metric</td><td>Value</td></tr><tr><td>DAU</td><td>100</td></tr></table>"
+        table_html = (
+            "<table><tr><td>Metric</td><td>Value</td></tr><tr><td>DAU</td><td>100</td></tr></table>"
+        )
         composite_html = f"<div>{paragraph_html}{table_html}</div>"
 
         segment = SourceSegment(
@@ -5314,7 +5345,9 @@ class TestSplitCompositeTableMaxLength:
         paragraph_html = f"<p>{long_para}</p>"
 
         # Medium table (> 10000, < 25000)
-        rows = "".join(f"<tr><td>Row {i} extended text</td><td>Val {i}</td></tr>" for i in range(200))
+        rows = "".join(
+            f"<tr><td>Row {i} extended text</td><td>Val {i}</td></tr>" for i in range(200)
+        )
         table_html = f"<table>{rows}</table>"
 
         composite_html = f"<div>{paragraph_html}{table_html}</div>"
@@ -5354,7 +5387,10 @@ class TestValidateTextHtmlConsistency:
 
         # Simulate the bug: raw_text has more content than can be extracted from raw_html
         raw_html = "<p>Short HTML content here.</p>"  # ~25 chars extractable
-        raw_text = "Short HTML content here. But wait, there's more text that doesn't exist in the HTML! " * 3
+        raw_text = (
+            "Short HTML content here. But wait, there's more text that doesn't exist in the HTML! "
+            * 3
+        )
 
         with caplog.at_level(logging.WARNING):
             result = segmenter._validate_text_html_consistency(raw_text, raw_html, "table")
@@ -5421,7 +5457,9 @@ class TestFarfetchTablePatternRegression:
 
         # Find table segment
         table_segments = [s for s in segments if s.segment_type == "table"]
-        assert len(table_segments) >= 1, f"Expected table segment, got: {[s.segment_type for s in segments]}"
+        assert len(table_segments) >= 1, (
+            f"Expected table segment, got: {[s.segment_type for s in segments]}"
+        )
 
         table_seg = table_segments[0]
 
@@ -5500,9 +5538,7 @@ class TestDivOnlyTableSkip:
             table_segments = [s for s in segments if s.segment_type == "table"]
             paragraph_segments = [s for s in segments if s.segment_type == "paragraph"]
 
-            assert len(table_segments) == 1, (
-                f"Expected 1 table segment, got {len(table_segments)}"
-            )
+            assert len(table_segments) == 1, f"Expected 1 table segment, got {len(table_segments)}"
             # The div wrapper should NOT create a paragraph segment
             # (any paragraph would have the same content as the table)
             for p in paragraph_segments:

@@ -94,6 +94,11 @@ class DeduplicationStage:
 
             primaries.append(primary)
 
+        # Second pass: collapse same-value facts with different periods
+        after_identity = len(primaries)
+        primaries = self._fuzzy_period_dedup(primaries, tolerance)
+        fuzzy_removed = after_identity - len(primaries)
+
         # Store deduplicated facts
         context.deduplicated_facts = primaries
 
@@ -111,6 +116,7 @@ class DeduplicationStage:
                 "duplicates_removed": duplicates_removed,
                 "groups_with_alternates": groups_with_alternates,
                 "total_groups": len(groups),
+                "fuzzy_period_removed": fuzzy_removed,
             },
         )
 
@@ -213,9 +219,7 @@ class DeduplicationStage:
             ),
         )
 
-    def _fuzzy_period_dedup(
-        self, facts: list[MetricFact], tolerance: float
-    ) -> list[MetricFact]:
+    def _fuzzy_period_dedup(self, facts: list[MetricFact], tolerance: float) -> list[MetricFact]:
         """
         Second-pass dedup: collapse facts with same metric+value but different periods.
 
@@ -259,7 +263,7 @@ class DeduplicationStage:
                 group = [fact]
                 used.add(fact.fact_id)
 
-                for other in bucket_facts[i + 1:]:
+                for other in bucket_facts[i + 1 :]:
                     if other.fact_id in used:
                         continue
                     if not self._values_within_tolerance(fact.value, other.value, tolerance):
@@ -286,7 +290,9 @@ class DeduplicationStage:
         if removed > 0:
             logger.info(
                 "Fuzzy period dedup: removed %d duplicate-value facts (%d → %d)",
-                removed, len(facts), len(result),
+                removed,
+                len(facts),
+                len(result),
             )
 
         return result
@@ -310,9 +316,7 @@ class DeduplicationStage:
         return True
 
     @staticmethod
-    def _values_within_tolerance(
-        v1: float | None, v2: float | None, tolerance: float
-    ) -> bool:
+    def _values_within_tolerance(v1: float | None, v2: float | None, tolerance: float) -> bool:
         """Check if two values are within tolerance."""
         if v1 is None and v2 is None:
             return True

@@ -10,7 +10,6 @@ Test categories:
 4. Edge cases (colspan, nested elements, large tables)
 """
 
-
 from src.extraction.structure_parser import RowSpan, StructureParser, TextSpan
 
 

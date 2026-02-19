@@ -306,9 +306,7 @@ def test_db_url():
     Set TEST_DATABASE_URL environment variable to a test database.
     Default: postgresql://localhost/filings_analysis_test
     """
-    return os.getenv(
-        "TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test"
-    )
+    return os.getenv("TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test")
 
 
 @pytest.fixture(scope="session")
@@ -501,9 +499,7 @@ def mock_sec_client_with_fixtures(all_fixtures):
     Returns:
         MockSECClient configured with test fixtures
     """
-    filing_metadata_list = [
-        metadata_to_filing_metadata(fixture) for fixture in all_fixtures
-    ]
+    filing_metadata_list = [metadata_to_filing_metadata(fixture) for fixture in all_fixtures]
 
     return MockSECClient(mock_filings=filing_metadata_list)
 
@@ -513,7 +509,9 @@ def mock_sec_client_with_fixtures(all_fixtures):
 # =============================================================================
 
 # Default baseline path
-GOLD_STANDARD_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "baseline.json"
+GOLD_STANDARD_BASELINE_PATH = (
+    Path(__file__).parent.parent.parent / "data" / "gold_standard" / "baseline.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -559,7 +557,9 @@ def baseline_metrics(baseline_path):
 # V2 Gold Standard Regression Test Fixtures
 # =============================================================================
 
-V2_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "v2_baseline.json"
+V2_BASELINE_PATH = (
+    Path(__file__).parent.parent.parent / "data" / "gold_standard" / "v2_baseline.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -581,4 +581,3 @@ def v2_baseline_metrics(v2_baseline_path):
         return None
 
     return load_baseline(v2_baseline_path)
-

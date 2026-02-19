@@ -199,14 +199,10 @@ class TestComputeCategoricalImportance:
         assert "True" in result["value_distribution"]
         assert "False" in result["value_distribution"]
 
-    def test_categorical_importance_with_boolean_conversion(
-        self, mock_db, sample_decisions_data
-    ):
+    def test_categorical_importance_with_boolean_conversion(self, mock_db, sample_decisions_data):
         """Should convert boolean values to strings."""
         analyzer = PatternAnalyzer(mock_db)
-        result = analyzer._compute_categorical_importance(
-            "is_in_table", sample_decisions_data
-        )
+        result = analyzer._compute_categorical_importance("is_in_table", sample_decisions_data)
 
         assert result is not None
         # Booleans should be converted to strings
@@ -227,9 +223,7 @@ class TestComputeCategoricalImportance:
         ]
 
         analyzer = PatternAnalyzer(mock_db)
-        result = analyzer._compute_categorical_importance(
-            "keyword_position", decisions_data
-        )
+        result = analyzer._compute_categorical_importance("keyword_position", decisions_data)
 
         assert result is None
 
@@ -244,9 +238,7 @@ class TestComputeCategoricalImportance:
         ]
 
         analyzer = PatternAnalyzer(mock_db)
-        result = analyzer._compute_categorical_importance(
-            "keyword_position", decisions_data
-        )
+        result = analyzer._compute_categorical_importance("keyword_position", decisions_data)
 
         # Should return None or handle gracefully
         # (actual behavior depends on chi_squared_test implementation)
@@ -264,9 +256,7 @@ class TestComputeNumericImportance:
     def test_numeric_importance_basic(self, mock_db, sample_decisions_data):
         """Should compute numeric importance correctly."""
         analyzer = PatternAnalyzer(mock_db)
-        result = analyzer._compute_numeric_importance(
-            "keyword_distance", sample_decisions_data
-        )
+        result = analyzer._compute_numeric_importance("keyword_distance", sample_decisions_data)
 
         assert result is not None
         assert result["feature_name"] == "keyword_distance"
@@ -284,14 +274,10 @@ class TestComputeNumericImportance:
         assert result["mean_by_decision"]["accept"] == pytest.approx(17.5)
         assert result["mean_by_decision"]["reject"] == pytest.approx(107.5)
 
-    def test_numeric_importance_includes_reclassify_in_means(
-        self, mock_db, sample_decisions_data
-    ):
+    def test_numeric_importance_includes_reclassify_in_means(self, mock_db, sample_decisions_data):
         """Should include reclassify in mean computation but not in t-test."""
         analyzer = PatternAnalyzer(mock_db)
-        result = analyzer._compute_numeric_importance(
-            "keyword_distance", sample_decisions_data
-        )
+        result = analyzer._compute_numeric_importance("keyword_distance", sample_decisions_data)
 
         # Should have mean for reclassify (not in t-test comparison)
         assert "reclassify" in result["mean_by_decision"]
@@ -400,9 +386,7 @@ class TestAnalyzeDecisions:
         result = analyzer.analyze_decisions(filing_id=None)
 
         # Should call get_all_reviewed_candidates_with_decisions, not get_review_candidates_with_decisions
-        mock_db.get_all_reviewed_candidates_with_decisions.assert_called_once_with(
-            metric_id=None
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.assert_called_once_with(metric_id=None)
         mock_db.get_review_candidates_with_decisions.assert_not_called()
 
         # Should return valid analysis
@@ -517,9 +501,7 @@ class TestAnalyzeDecisions:
         chi_squared_values = [f["chi_squared"] for f in result["categorical_features"]]
         assert chi_squared_values == sorted(chi_squared_values, reverse=True)
 
-    def test_analyze_decisions_sorts_numeric_by_effect_size(
-        self, mock_db, sample_decisions_data
-    ):
+    def test_analyze_decisions_sorts_numeric_by_effect_size(self, mock_db, sample_decisions_data):
         """Should sort numeric features by absolute effect size descending."""
         mock_db.get_review_candidates_with_decisions.return_value = [
             {
@@ -622,9 +604,7 @@ class TestGeneratePatternName:
 
         pattern_def = {
             "pattern_type": "accept_rule",
-            "conditions": [
-                {"field": "is_in_risk_factors", "op": "eq", "value": "False"}
-            ],
+            "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": "False"}],
         }
 
         name = analyzer.generate_pattern_name(pattern_def, "accept_rule")
@@ -636,9 +616,7 @@ class TestGeneratePatternName:
 
         pattern_def = {
             "pattern_type": "reject_rule",
-            "conditions": [
-                {"field": "keyword_distance", "op": "gte", "value": 100.0}
-            ],
+            "conditions": [{"field": "keyword_distance", "op": "gte", "value": 100.0}],
         }
 
         name = analyzer.generate_pattern_name(pattern_def, "reject_rule")
@@ -677,9 +655,7 @@ class TestGeneratePatternName:
         for op_code, op_symbol in operators_to_test:
             pattern_def = {
                 "pattern_type": "reject_rule",
-                "conditions": [
-                    {"field": "keyword_distance", "op": op_code, "value": 50}
-                ],
+                "conditions": [{"field": "keyword_distance", "op": op_code, "value": 50}],
             }
 
             name = analyzer.generate_pattern_name(pattern_def, "reject_rule")
@@ -732,9 +708,7 @@ class TestGenerateSingleFeaturePatterns:
 
         # Should have patterns for keyword_distance at quartiles
         distance_patterns = [
-            p
-            for p in patterns
-            if p["conditions"][0]["field"] == "keyword_distance"
+            p for p in patterns if p["conditions"][0]["field"] == "keyword_distance"
         ]
 
         # Should have 6 patterns: 3 quartiles × 2 operators (lte, gte)
@@ -763,9 +737,7 @@ class TestGenerateSingleFeaturePatterns:
         pattern_features = [p["conditions"][0]["field"] for p in patterns]
         assert "keyword_distance" not in pattern_features
 
-    def test_generate_patterns_converts_booleans_to_strings(
-        self, mock_db, sample_decisions_data
-    ):
+    def test_generate_patterns_converts_booleans_to_strings(self, mock_db, sample_decisions_data):
         """Should convert boolean values to strings for categorical patterns."""
         analyzer = PatternAnalyzer(mock_db)
 
@@ -774,11 +746,7 @@ class TestGenerateSingleFeaturePatterns:
         )
 
         # Find patterns for boolean feature
-        bool_patterns = [
-            p
-            for p in patterns
-            if p["conditions"][0]["field"] == "is_in_risk_factors"
-        ]
+        bool_patterns = [p for p in patterns if p["conditions"][0]["field"] == "is_in_risk_factors"]
 
         # Values should be strings "True" and "False"
         values = [p["conditions"][0]["value"] for p in bool_patterns]
@@ -845,9 +813,7 @@ class TestEvaluatePattern:
 
         pattern_def = {
             "pattern_type": "reject_rule",
-            "conditions": [
-                {"field": "is_in_risk_factors", "op": "eq", "value": True}
-            ],
+            "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
             "metric_id": None,
         }
 
@@ -886,9 +852,7 @@ class TestEvaluatePattern:
 
         pattern_def = {
             "pattern_type": "reject_rule",
-            "conditions": [
-                {"field": "is_in_risk_factors", "op": "eq", "value": True}
-            ],
+            "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
             "metric_id": None,
         }
 
@@ -937,9 +901,7 @@ class TestEvaluatePattern:
 
         pattern_def = {
             "pattern_type": "reject_rule",
-            "conditions": [
-                {"field": "keyword_distance", "op": "gte", "value": 100}
-            ],
+            "conditions": [{"field": "keyword_distance", "op": "gte", "value": 100}],
             "metric_id": None,
         }
 
@@ -1068,9 +1030,7 @@ class TestDiscoverPatterns:
             for d in sample_decisions_data
         ]
 
-        analyzer = PatternAnalyzer(
-            mock_db, min_pattern_precision=0.95, min_pattern_support=2
-        )
+        analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.95, min_pattern_support=2)
         patterns = analyzer.discover_patterns(filing_id=100)
 
         # All patterns should meet criteria
@@ -1097,9 +1057,7 @@ class TestSavePatterns:
                 pattern_name="Reject: is_in_risk_factors = True",
                 pattern_definition={
                     "pattern_type": "reject_rule",
-                    "conditions": [
-                        {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                    ],
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
                 },
                 metric_id=None,
                 precision_score=0.85,
@@ -1130,9 +1088,7 @@ class TestSavePatterns:
                 pattern_name="Reject: is_in_risk_factors = True",
                 pattern_definition={
                     "pattern_type": "reject_rule",
-                    "conditions": [
-                        {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                    ],
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
                 },
                 metric_id=None,
                 precision_score=0.95,  # Above threshold
@@ -1166,9 +1122,7 @@ class TestSavePatterns:
                 pattern_name="Reject: is_in_risk_factors = True",
                 pattern_definition={
                     "pattern_type": "reject_rule",
-                    "conditions": [
-                        {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                    ],
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
                 },
                 metric_id=None,
                 precision_score=0.85,
@@ -1215,6 +1169,7 @@ class TestSavePatterns:
         assert results["approved_count"] == 1  # Only the second one
         assert results["candidate_count"] == 1  # Only the first one
 
+
 # =============================================================================
 # TestCrossValidation
 # =============================================================================
@@ -1227,12 +1182,8 @@ class TestCrossValidation:
         """Should create k folds with stratified sampling."""
         # Create decisions with 60% reject, 40% accept
         decisions_data = [
-            {"decision": "reject", "features": {"keyword_distance": i}}
-            for i in range(30)
-        ] + [
-            {"decision": "accept", "features": {"keyword_distance": i}}
-            for i in range(20)
-        ]
+            {"decision": "reject", "features": {"keyword_distance": i}} for i in range(30)
+        ] + [{"decision": "accept", "features": {"keyword_distance": i}} for i in range(20)]
 
         mock_db = Mock()
         analyzer = PatternAnalyzer(mock_db)
@@ -1259,9 +1210,9 @@ class TestCrossValidation:
 
     def test_stratified_k_fold_split_preserves_all_data(self):
         """Should include all decisions across folds."""
-        decisions_data = [
-            {"decision": "reject", "features": {}, "id": i} for i in range(10)
-        ] + [{"decision": "accept", "features": {}, "id": i} for i in range(10, 15)]
+        decisions_data = [{"decision": "reject", "features": {}, "id": i} for i in range(10)] + [
+            {"decision": "accept", "features": {}, "id": i} for i in range(10, 15)
+        ]
 
         mock_db = Mock()
         analyzer = PatternAnalyzer(mock_db)
@@ -1291,9 +1242,7 @@ class TestCrossValidation:
         ]
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         analyzer = PatternAnalyzer(mock_db)
 
@@ -1330,9 +1279,7 @@ class TestCrossValidation:
             )
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.5)
 
@@ -1387,15 +1334,11 @@ class TestCrossValidation:
             )
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.5)
 
-        results = analyzer.discover_patterns_with_cross_validation(
-            k=5, max_variance=0.1
-        )
+        results = analyzer.discover_patterns_with_cross_validation(k=5, max_variance=0.1)
 
         # Should have is_stable flags
         # Note: Whether we actually get unstable patterns depends on the data
@@ -1430,9 +1373,7 @@ class TestCrossValidation:
             )
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         # Set very high minimum precision
         analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.99)
@@ -1472,9 +1413,7 @@ class TestCrossValidation:
             )
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.5)
 
@@ -1511,9 +1450,7 @@ class TestCrossValidation:
             )
 
         mock_db = Mock()
-        mock_db.get_all_reviewed_candidates_with_decisions.return_value = (
-            decisions_data
-        )
+        mock_db.get_all_reviewed_candidates_with_decisions.return_value = decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_precision=0.5)
 
@@ -1611,9 +1548,7 @@ class TestPatternConflictDetection:
             pattern_type="reject_rule",
             pattern_name="Reject: is_in_risk_factors=True",
             pattern_definition={
-                "conditions": [
-                    {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                ],
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
                 "logic": "and",
             },
         )
@@ -1622,9 +1557,7 @@ class TestPatternConflictDetection:
             pattern_type="reject_rule",
             pattern_name="Reject: keyword_distance > 100",
             pattern_definition={
-                "conditions": [
-                    {"field": "keyword_distance", "op": "gt", "value": 100}
-                ],
+                "conditions": [{"field": "keyword_distance", "op": "gt", "value": 100}],
                 "logic": "and",
             },
         )
@@ -1724,9 +1657,7 @@ class TestPatternConflictDetection:
                 pattern_type="accept_rule",
                 pattern_name="Accept: distance < 30",
                 pattern_definition={
-                    "conditions": [
-                        {"field": "keyword_distance", "op": "lt", "value": 30}
-                    ],
+                    "conditions": [{"field": "keyword_distance", "op": "lt", "value": 30}],
                     "logic": "and",
                 },
             ),
@@ -1734,9 +1665,7 @@ class TestPatternConflictDetection:
                 pattern_type="reject_rule",
                 pattern_name="Reject: distance < 30",
                 pattern_definition={
-                    "conditions": [
-                        {"field": "keyword_distance", "op": "lt", "value": 30}
-                    ],
+                    "conditions": [{"field": "keyword_distance", "op": "lt", "value": 30}],
                     "logic": "and",
                 },
             ),
@@ -1793,9 +1722,7 @@ class TestPatternConflictDetection:
             pattern_type="reject_rule",
             pattern_name="Reject: distance > 100",
             pattern_definition={
-                "conditions": [
-                    {"field": "keyword_distance", "op": "gt", "value": 100}
-                ],
+                "conditions": [{"field": "keyword_distance", "op": "gt", "value": 100}],
                 "logic": "and",
             },
         )
@@ -1840,9 +1767,7 @@ class TestDatabaseSideEvaluation:
         analyzer = PatternAnalyzer(mock_db)
 
         pattern_def = {
-            "conditions": [
-                {"field": "is_in_risk_factors", "op": "eq", "value": True}
-            ],
+            "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}],
             "logic": "and",
         }
 
@@ -1857,9 +1782,7 @@ class TestDatabaseSideEvaluation:
         analyzer = PatternAnalyzer(mock_db)
 
         pattern_def = {
-            "conditions": [
-                {"field": "keyword_position", "op": "eq", "value": "before"}
-            ],
+            "conditions": [{"field": "keyword_position", "op": "eq", "value": "before"}],
             "logic": "and",
         }
 
@@ -1928,9 +1851,7 @@ class TestDatabaseSideEvaluation:
 
         for op_code, op_symbol in operators_tests:
             pattern_def = {
-                "conditions": [
-                    {"field": "keyword_distance", "op": op_code, "value": 50}
-                ],
+                "conditions": [{"field": "keyword_distance", "op": op_code, "value": 50}],
                 "logic": "and",
             }
 
@@ -1967,9 +1888,7 @@ class TestDatabaseSideEvaluation:
         analyzer = PatternAnalyzer(mock_db)
 
         pattern_def = {
-            "conditions": [
-                {"field": "section_name", "op": "contains", "value": "Risk"}
-            ],
+            "conditions": [{"field": "section_name", "op": "contains", "value": "Risk"}],
             "logic": "and",
         }
 
@@ -1996,9 +1915,7 @@ class TestDatabaseSideEvaluation:
         analyzer = PatternAnalyzer(mock_db)
 
         pattern_def = {
-            "conditions": [
-                {"field": "keyword_distance", "op": "unknown_op", "value": 50}
-            ],
+            "conditions": [{"field": "keyword_distance", "op": "unknown_op", "value": 50}],
             "logic": "and",
         }
 
@@ -2065,9 +1982,7 @@ class TestTwoFeaturePatterns:
     def test_discover_patterns_with_two_feature_flag(self, sample_decisions_data):
         """Should include two-feature patterns when flag is True."""
         mock_db = Mock()
-        mock_db.get_review_candidates_with_decisions.return_value = (
-            sample_decisions_data
-        )
+        mock_db.get_review_candidates_with_decisions.return_value = sample_decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_support=1, min_pattern_precision=0.5)
 
@@ -2081,9 +1996,7 @@ class TestTwoFeaturePatterns:
         single_feature_count = sum(
             1 for p in patterns if len(p.pattern_definition["conditions"]) == 1
         )
-        two_feature_count = sum(
-            1 for p in patterns if len(p.pattern_definition["conditions"]) == 2
-        )
+        two_feature_count = sum(1 for p in patterns if len(p.pattern_definition["conditions"]) == 2)
 
         assert single_feature_count > 0
         assert two_feature_count > 0
@@ -2091,9 +2004,7 @@ class TestTwoFeaturePatterns:
     def test_discover_patterns_without_two_feature_flag(self, sample_decisions_data):
         """Should not include two-feature patterns when flag is False (default)."""
         mock_db = Mock()
-        mock_db.get_review_candidates_with_decisions.return_value = (
-            sample_decisions_data
-        )
+        mock_db.get_review_candidates_with_decisions.return_value = sample_decisions_data
 
         analyzer = PatternAnalyzer(mock_db, min_pattern_support=1, min_pattern_precision=0.5)
 
@@ -2162,9 +2073,7 @@ class TestPatternExplanations:
             metric_id=None,
             pattern_name="Reject: keyword_distance > 75",
             pattern_definition={
-                "conditions": [
-                    {"field": "keyword_distance", "op": "gt", "value": 75}
-                ],
+                "conditions": [{"field": "keyword_distance", "op": "gt", "value": 75}],
                 "logic": "and",
             },
             precision_score=0.87,
@@ -2215,8 +2124,7 @@ class TestPatternExplanations:
         description = analyzer._describe_condition(condition)
 
         assert (
-            "the distance from the number to the metric keyword is greater than 75"
-            in description
+            "the distance from the number to the metric keyword is greater than 75" in description
         )
 
     def test_describe_condition_boolean_eq(self, mock_db):
@@ -2261,9 +2169,7 @@ class TestPatternExplanations:
         """Should generate description for single-condition pattern."""
         analyzer = PatternAnalyzer(mock_db)
 
-        description = analyzer._generate_pattern_description(
-            sample_pattern_single_condition
-        )
+        description = analyzer._generate_pattern_description(sample_pattern_single_condition)
 
         assert "This pattern rejects candidates where" in description
         assert "the distance from the number to the metric keyword" in description
@@ -2275,9 +2181,7 @@ class TestPatternExplanations:
         """Should generate description for multi-condition AND pattern."""
         analyzer = PatternAnalyzer(mock_db)
 
-        description = analyzer._generate_pattern_description(
-            sample_pattern_multi_condition
-        )
+        description = analyzer._generate_pattern_description(sample_pattern_multi_condition)
 
         assert "This pattern accepts candidates where ALL of the following are true:" in description
         assert "1." in description  # Numbered list
@@ -2304,15 +2208,11 @@ class TestPatternExplanations:
         assert "no conditions" in description.lower()
         assert "matches all" in description.lower()
 
-    def test_format_performance_metrics_with_counts(
-        self, mock_db, sample_pattern_single_condition
-    ):
+    def test_format_performance_metrics_with_counts(self, mock_db, sample_pattern_single_condition):
         """Should format performance metrics with counts interpretation."""
         analyzer = PatternAnalyzer(mock_db)
 
-        metrics_text = analyzer._format_performance_metrics(
-            sample_pattern_single_condition
-        )
+        metrics_text = analyzer._format_performance_metrics(sample_pattern_single_condition)
 
         # Should include precision with interpretation
         assert "Precision: 87%" in metrics_text
@@ -2444,9 +2344,7 @@ class TestPatternExplanations:
         # Should limit to 3 examples
         assert len(examples) == 3
 
-    def test_generate_pattern_explanation_full(
-        self, mock_db, sample_pattern_single_condition
-    ):
+    def test_generate_pattern_explanation_full(self, mock_db, sample_pattern_single_condition):
         """Should generate complete explanation with all sections."""
         analyzer = PatternAnalyzer(mock_db)
 

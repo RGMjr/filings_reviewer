@@ -104,9 +104,7 @@ def _validate_config(config: dict[str, Any]) -> None:
 
         patterns = metric_config["patterns"]
         if not isinstance(patterns, list) or not patterns:
-            raise KeywordConfigError(
-                f"Invalid 'patterns' for {metric_id}: expected non-empty list"
-            )
+            raise KeywordConfigError(f"Invalid 'patterns' for {metric_id}: expected non-empty list")
 
         # Validate each pattern is a string
         for i, pattern in enumerate(patterns):
@@ -119,9 +117,7 @@ def _validate_config(config: dict[str, Any]) -> None:
         if "exclusions" in metric_config:
             exclusions = metric_config["exclusions"]
             if not isinstance(exclusions, list):
-                raise KeywordConfigError(
-                    f"Invalid 'exclusions' for {metric_id}: expected list"
-                )
+                raise KeywordConfigError(f"Invalid 'exclusions' for {metric_id}: expected list")
             for i, exc in enumerate(exclusions):
                 if not isinstance(exc, str):
                     raise KeywordConfigError(
@@ -144,9 +140,7 @@ def _validate_config(config: dict[str, Any]) -> None:
                     f"Invalid 'required_context' for {metric_id}: expected dict"
                 )
             if "patterns" not in req_ctx:
-                raise KeywordConfigError(
-                    f"Missing 'patterns' in required_context for {metric_id}"
-                )
+                raise KeywordConfigError(f"Missing 'patterns' in required_context for {metric_id}")
             ctx_patterns = req_ctx["patterns"]
             if not isinstance(ctx_patterns, list) or not ctx_patterns:
                 raise KeywordConfigError(
@@ -156,8 +150,7 @@ def _validate_config(config: dict[str, Any]) -> None:
             for j, ctx_pattern in enumerate(ctx_patterns):
                 if not isinstance(ctx_pattern, str):
                     raise KeywordConfigError(
-                        f"Invalid required_context pattern {j} for {metric_id}: "
-                        "expected string"
+                        f"Invalid required_context pattern {j} for {metric_id}: expected string"
                     )
             # Validate proximity_chars if present
             if "proximity_chars" in req_ctx:
@@ -172,14 +165,10 @@ def _validate_config(config: dict[str, Any]) -> None:
         if "aliases" in metric_config:
             aliases_list = metric_config["aliases"]
             if not isinstance(aliases_list, list):
-                raise KeywordConfigError(
-                    f"Invalid 'aliases' for {metric_id}: expected list"
-                )
+                raise KeywordConfigError(f"Invalid 'aliases' for {metric_id}: expected list")
             for i, alias in enumerate(aliases_list):
                 if not isinstance(alias, str):
-                    raise KeywordConfigError(
-                        f"Invalid alias {i} for {metric_id}: expected string"
-                    )
+                    raise KeywordConfigError(f"Invalid alias {i} for {metric_id}: expected string")
                 if not alias.startswith("cm_"):
                     raise KeywordConfigError(
                         f"Invalid alias '{alias}' for {metric_id}: must start with 'cm_'"
@@ -189,9 +178,7 @@ def _validate_config(config: dict[str, Any]) -> None:
         if "status" in metric_config:
             status = metric_config["status"]
             if not isinstance(status, str):
-                raise KeywordConfigError(
-                    f"Invalid 'status' for {metric_id}: expected string"
-                )
+                raise KeywordConfigError(f"Invalid 'status' for {metric_id}: expected string")
             if status not in ("active", "deprecated"):
                 raise KeywordConfigError(
                     f"Invalid 'status' value for {metric_id}: expected 'active' or 'deprecated'"
@@ -497,7 +484,6 @@ def metrics_are_equivalent(
         >>> metrics_are_equivalent("cm_arr", "cm_mrr")
         False  # Different metrics
     """
-    return (
-        resolve_to_canonical(metric_id_1, config_path)
-        == resolve_to_canonical(metric_id_2, config_path)
+    return resolve_to_canonical(metric_id_1, config_path) == resolve_to_canonical(
+        metric_id_2, config_path
     )

@@ -154,9 +154,7 @@ class TestSegmentScanning:
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
         """Stage finds multiple different metric keywords in one segment."""
-        segment = make_segment(
-            "Our ARR grew to $100M while we added 1,000 new customers."
-        )
+        segment = make_segment("Our ARR grew to $100M while we added 1,000 new customers.")
         mock_context.segments.append(segment)
 
         result = stage.process(mock_context)
@@ -309,9 +307,7 @@ class TestFiltering:
     ) -> None:
         """Stage filters out matches that hit exclusion patterns."""
         # "new customers" should NOT match when followed by "acquisition cost"
-        segment = make_segment(
-            "Our new customer acquisition cost was $50."
-        )
+        segment = make_segment("Our new customer acquisition cost was $50.")
         mock_context.segments.append(segment)
 
         stage.process(mock_context)
@@ -321,8 +317,10 @@ class TestFiltering:
         for candidate in mock_context.candidates:
             if candidate.metric_id == "cm_new_customers_acquired":
                 # If it's found, it should NOT be the "cost" context
-                assert "acquisition cost" not in candidate.context_text.lower() or \
-                       "cost" not in segment.text.lower()
+                assert (
+                    "acquisition cost" not in candidate.context_text.lower()
+                    or "cost" not in segment.text.lower()
+                )
 
     def test_excludes_without_required_context(
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
@@ -338,18 +336,14 @@ class TestFiltering:
         # without cohort keywords
         # Note: This depends on actual YAML config having required_context
         # The test validates the mechanism works
-        assert result_does_not_contain_revenue_synonym_without_context(
-            mock_context.candidates
-        )
+        assert result_does_not_contain_revenue_synonym_without_context(mock_context.candidates)
 
     def test_includes_with_required_context(
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
         """Metrics with required context pass when context is present."""
         # Include cohort keyword to satisfy required_context
-        segment = make_segment(
-            "The GMV per customer cohort showed strong retention patterns."
-        )
+        segment = make_segment("The GMV per customer cohort showed strong retention patterns.")
         mock_context.segments.append(segment)
 
         stage.process(mock_context)
@@ -395,8 +389,7 @@ def result_does_not_contain_revenue_synonym_without_context(
             # If found, there should be cohort/per-customer context
             context_lower = c.context_text.lower()
             has_context = any(
-                kw in context_lower
-                for kw in ["cohort", "per customer", "per user", "by customer"]
+                kw in context_lower for kw in ["cohort", "per customer", "per user", "by customer"]
             )
             if not has_context:
                 return False
@@ -541,17 +534,21 @@ class TestIntegration:
     ) -> None:
         """Stage handles multiple segments and tables correctly."""
         # Multiple segments
-        mock_context.segments.extend([
-            make_segment("We have new customers.", segment_id="seg-1"),
-            make_segment("Our ARR is growing.", segment_id="seg-2"),
-            make_segment("Daily active users increased.", segment_id="seg-3"),
-        ])
+        mock_context.segments.extend(
+            [
+                make_segment("We have new customers.", segment_id="seg-1"),
+                make_segment("Our ARR is growing.", segment_id="seg-2"),
+                make_segment("Daily active users increased.", segment_id="seg-3"),
+            ]
+        )
 
         # Multiple tables
-        mock_context.tables.extend([
-            make_table([make_cell(0, 0, "Paid Customers")], table_id="tbl-1"),
-            make_table([make_cell(0, 0, "Monthly Active Users")], table_id="tbl-2"),
-        ])
+        mock_context.tables.extend(
+            [
+                make_table([make_cell(0, 0, "Paid Customers")], table_id="tbl-1"),
+                make_table([make_cell(0, 0, "Monthly Active Users")], table_id="tbl-2"),
+            ]
+        )
 
         result = stage.process(mock_context)
 
@@ -586,9 +583,7 @@ class TestEdgeCases:
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
         """Multiple different metrics in same segment all generate candidates."""
-        segment = make_segment(
-            "Our net revenue retention was 120% and we added 500 new customers."
-        )
+        segment = make_segment("Our net revenue retention was 120% and we added 500 new customers.")
         mock_context.segments.append(segment)
 
         stage.process(mock_context)
@@ -620,9 +615,7 @@ class TestEdgeCases:
         stage = CandidateGenerationStage()
 
         # Mock failed initialization
-        with patch.object(
-            stage, "_ensure_initialized", return_value=False
-        ):
+        with patch.object(stage, "_ensure_initialized", return_value=False):
             result = stage.process(mock_context)
 
         assert not result.success
@@ -649,9 +642,7 @@ class TestEdgeCases:
             assert "new customers" in candidate.context_text
             assert len(candidate.context_text) > len(keyword)
 
-    def test_invalid_regex_pattern_handled(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_invalid_regex_pattern_handled(self, mock_context: MockPipelineContext) -> None:
         """Invalid regex patterns are logged and skipped gracefully."""
         stage = CandidateGenerationStage()
 
@@ -669,9 +660,7 @@ class TestEdgeCases:
         assert "test_metric" in stage._compiled_patterns
         assert len(stage._compiled_patterns["test_metric"]) == 0
 
-    def test_invalid_exclusion_pattern_handled(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_invalid_exclusion_pattern_handled(self, mock_context: MockPipelineContext) -> None:
         """Invalid exclusion regex patterns are skipped gracefully."""
         stage = CandidateGenerationStage()
 
@@ -688,18 +677,14 @@ class TestEdgeCases:
         # Invalid exclusion should be skipped
         assert len(stage._compiled_exclusions.get("test_metric", [])) == 0
 
-    def test_invalid_context_pattern_handled(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_invalid_context_pattern_handled(self, mock_context: MockPipelineContext) -> None:
         """Invalid required_context patterns are skipped gracefully."""
         stage = CandidateGenerationStage()
 
         stage._initialized = False
         stage._keywords = {"test_metric": [r"\btest\b"]}
         stage._exclusions = {}
-        stage._required_context = {
-            "test_metric": {"patterns": ["[unclosed", r"\bvalid\b"]}
-        }
+        stage._required_context = {"test_metric": {"patterns": ["[unclosed", r"\bvalid\b"]}}
         stage._specific_patterns = []
 
         stage._compile_patterns()
@@ -711,9 +696,7 @@ class TestEdgeCases:
         patterns, proximity = context_data
         assert len(patterns) == 1  # Only valid pattern compiled
 
-    def test_invalid_specific_pattern_handled(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_invalid_specific_pattern_handled(self, mock_context: MockPipelineContext) -> None:
         """Invalid specific patterns are skipped gracefully."""
         stage = CandidateGenerationStage()
 
@@ -739,10 +722,7 @@ class TestEdgeCases:
         stage._ensure_initialized()
 
         # Mock _scan_segment to raise an error
-        with patch.object(
-            stage, "_scan_segment",
-            side_effect=RuntimeError("Segment error")
-        ):
+        with patch.object(stage, "_scan_segment", side_effect=RuntimeError("Segment error")):
             result = stage.process(mock_context)
 
             # Should not crash, but should have errors
@@ -761,10 +741,7 @@ class TestEdgeCases:
         stage._ensure_initialized()
 
         # Mock _scan_table to raise an error
-        with patch.object(
-            stage, "_scan_table",
-            side_effect=RuntimeError("Table error")
-        ):
+        with patch.object(stage, "_scan_table", side_effect=RuntimeError("Table error")):
             result = stage.process(mock_context)
 
             # Should not crash, but should have errors
@@ -785,7 +762,7 @@ class TestEdgeCases:
         # Mock get_metric_keywords to fail - but it shouldn't be called
         with patch(
             "src.extraction_v2.stages.candidate_generation.get_metric_keywords",
-            side_effect=Exception("Should not be called")
+            side_effect=Exception("Should not be called"),
         ):
             # Second call returns immediately without reloading
             result2 = stage._ensure_initialized()
@@ -795,9 +772,7 @@ class TestEdgeCases:
 class TestProximityBasedContext:
     """Tests for proximity-based required context checking."""
 
-    def test_context_within_proximity_passes(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_context_within_proximity_passes(self, mock_context: MockPipelineContext) -> None:
         """Required context within proximity window is accepted."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -817,9 +792,7 @@ class TestProximityBasedContext:
 
         assert len(candidates) == 1, "Should match when context is within proximity"
 
-    def test_context_beyond_proximity_fails(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_context_beyond_proximity_fails(self, mock_context: MockPipelineContext) -> None:
         """Required context beyond proximity window is rejected."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -899,9 +872,7 @@ class TestCandidateDeduplication:
         # Should deduplicate to 1 candidate (highest confidence or first)
         assert len(candidates) == 1
 
-    def test_keeps_different_metrics_same_location(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_keeps_different_metrics_same_location(self, mock_context: MockPipelineContext) -> None:
         """Different metrics at same location are kept separate."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -922,9 +893,7 @@ class TestCandidateDeduplication:
         metric_ids = {c.metric_id for c in candidates}
         assert metric_ids == {"cm_customers", "cm_other"}
 
-    def test_keeps_same_metric_different_locations(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_keeps_same_metric_different_locations(self, mock_context: MockPipelineContext) -> None:
         """Same metric at different locations is kept separate."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -943,9 +912,7 @@ class TestCandidateDeduplication:
         # Both mentions should be kept (different positions)
         assert len(candidates) == 2
 
-    def test_deduplicates_table_cells(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_deduplicates_table_cells(self, mock_context: MockPipelineContext) -> None:
         """Deduplication works for table cell candidates."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -967,9 +934,7 @@ class TestCandidateDeduplication:
         # Should deduplicate to 1
         assert len(candidates) == 1
 
-    def test_keeps_higher_confidence_on_dedup(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_keeps_higher_confidence_on_dedup(self, mock_context: MockPipelineContext) -> None:
         """When deduplicating, keeps the candidate with higher confidence."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -1201,10 +1166,7 @@ class TestTableSegmentSkipping:
 
         assert result.success
         # No candidates from text scanning the TABLE segment
-        text_candidates = [
-            c for c in mock_context.candidates
-            if c.source_type == SourceType.TEXT
-        ]
+        text_candidates = [c for c in mock_context.candidates if c.source_type == SourceType.TEXT]
         assert len(text_candidates) == 0
 
     def test_paragraph_segment_still_scanned(
@@ -1238,10 +1200,7 @@ class TestTableSegmentSkipping:
         assert result.success
         assert len(mock_context.candidates) >= 1
         # Candidates should come from table source type
-        assert all(
-            c.source_type == SourceType.HTML_TABLE
-            for c in mock_context.candidates
-        )
+        assert all(c.source_type == SourceType.HTML_TABLE for c in mock_context.candidates)
 
     def test_mixed_segment_types_only_non_table_scanned(
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
@@ -1303,9 +1262,7 @@ class TestExactSpanDedup:
         # Same match_text length → both kept (genuinely ambiguous)
         assert len(candidates) == 2
 
-    def test_same_span_different_length_match_text(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_same_span_different_length_match_text(self, mock_context: MockPipelineContext) -> None:
         """Exact same span, different match_text lengths: shorter suppressed."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -1339,9 +1296,7 @@ class TestExactSpanDedup:
         assert len(result) == 1
         assert result[0].metric_id == "cm_long"  # Longer match_text kept
 
-    def test_same_span_same_length_both_kept(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_same_span_same_length_both_kept(self, mock_context: MockPipelineContext) -> None:
         """Exact same span, same match_text length: both kept."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -1399,21 +1354,16 @@ class TestHeaderColumnBroadcastDedup:
 
         # 5 cells in column 1, all with "Customers" in header_path but not in cell text
         cells = [
-            make_cell(row=i, col=1, text=str(i * 100), header_path=["Customers"])
-            for i in range(5)
+            make_cell(row=i, col=1, text=str(i * 100), header_path=["Customers"]) for i in range(5)
         ]
         table = make_table(cells)
         candidates = stage._scan_table(table)
 
         # Should emit only 1 candidate for the column, not 5
-        customer_candidates = [
-            c for c in candidates if c.metric_id == "cm_customers_period_end"
-        ]
+        customer_candidates = [c for c in candidates if c.metric_id == "cm_customers_period_end"]
         assert len(customer_candidates) == 1
 
-    def test_metric_in_cell_text_emits_per_cell(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_metric_in_cell_text_emits_per_cell(self, mock_context: MockPipelineContext) -> None:
         """Metric in both header AND cell text → candidate per cell."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -1429,7 +1379,8 @@ class TestHeaderColumnBroadcastDedup:
         # Cells where "customers" appears in cell text too
         cells = [
             make_cell(
-                row=i, col=1,
+                row=i,
+                col=1,
                 text=f"{i * 100} customers",
                 header_path=["Total Customers"],
             )
@@ -1439,14 +1390,10 @@ class TestHeaderColumnBroadcastDedup:
         candidates = stage._scan_table(table)
 
         # Each cell has "customers" in its own text, so each gets a candidate
-        customer_candidates = [
-            c for c in candidates if c.metric_id == "cm_customers_period_end"
-        ]
+        customer_candidates = [c for c in candidates if c.metric_id == "cm_customers_period_end"]
         assert len(customer_candidates) == 3
 
-    def test_header_dedup_across_different_columns(
-        self, mock_context: MockPipelineContext
-    ) -> None:
+    def test_header_dedup_across_different_columns(self, mock_context: MockPipelineContext) -> None:
         """Header-only matches in different columns emit one each."""
         stage = CandidateGenerationStage()
         stage._initialized = True
@@ -1470,7 +1417,5 @@ class TestHeaderColumnBroadcastDedup:
         candidates = stage._scan_table(table)
 
         # Should emit 1 per column = 2 total
-        customer_candidates = [
-            c for c in candidates if c.metric_id == "cm_customers_period_end"
-        ]
+        customer_candidates = [c for c in candidates if c.metric_id == "cm_customers_period_end"]
         assert len(customer_candidates) == 2

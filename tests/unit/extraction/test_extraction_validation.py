@@ -174,39 +174,27 @@ class TestValidateQuote:
         result = validate_quote(
             quote="We had 10,000 active customers.",
             value=10000,
-            source_text="We had 10,000 active customers last quarter."
+            source_text="We had 10,000 active customers last quarter.",
         )
         assert result == ValidationResult.PASS
 
     def test_empty_quote_fails(self):
-        result = validate_quote(
-            quote="",
-            value=100,
-            source_text="Some source text."
-        )
+        result = validate_quote(quote="", value=100, source_text="Some source text.")
         assert result == ValidationResult.FAIL_QUOTE
 
     def test_none_quote_fails(self):
-        result = validate_quote(
-            quote=None,
-            value=100,
-            source_text="Some source text."
-        )
+        result = validate_quote(quote=None, value=100, source_text="Some source text.")
         assert result == ValidationResult.FAIL_QUOTE
 
     def test_short_quote_fails(self):
-        result = validate_quote(
-            quote="short",
-            value=100,
-            source_text="Some source text."
-        )
+        result = validate_quote(quote="short", value=100, source_text="Some source text.")
         assert result == ValidationResult.FAIL_QUOTE
 
     def test_quote_with_formatted_number(self):
         result = validate_quote(
             quote="Revenue was $1,500,000 for the quarter.",
             value=1500000,
-            source_text="Revenue was $1,500,000 for the quarter."
+            source_text="Revenue was $1,500,000 for the quarter.",
         )
         assert result == ValidationResult.PASS
 
@@ -220,7 +208,7 @@ class TestValidateExtraction:
             value=92,
             unit="percent",
             quote="Customer retention rate was 92% for fiscal 2023.",
-            source_text="Our customer retention rate was 92% for fiscal 2023."
+            source_text="Our customer retention rate was 92% for fiscal 2023.",
         )
         assert len(issues) == 0
 
@@ -230,7 +218,7 @@ class TestValidateExtraction:
             value=150,
             unit="percent",
             quote="CAC was 150%.",
-            source_text="Our CAC was 150%."
+            source_text="Our CAC was 150%.",
         )
         assert len(issues) >= 1
         assert any(i.result == ValidationResult.FAIL_UNIT for i in issues)
@@ -241,7 +229,7 @@ class TestValidateExtraction:
             value=250,
             unit="percent",
             quote="Retention was 250%.",
-            source_text="Retention was 250%."
+            source_text="Retention was 250%.",
         )
         assert len(issues) >= 1
         assert any(i.result == ValidationResult.FAIL_RANGE for i in issues)
@@ -252,7 +240,7 @@ class TestValidateExtraction:
             value=150,
             unit="dollars",
             quote="We spent $150 on marketing.",
-            source_text="We spent $150 on marketing this quarter."
+            source_text="We spent $150 on marketing this quarter.",
         )
         assert len(issues) >= 1
         assert any(i.result == ValidationResult.FAIL_KEYWORD for i in issues)
@@ -263,7 +251,7 @@ class TestValidateExtraction:
             value=92,
             unit="percent",
             quote="",
-            source_text="Our customer retention rate was 92%."
+            source_text="Our customer retention rate was 92%.",
         )
         assert len(issues) >= 1
         assert any(i.result == ValidationResult.FAIL_QUOTE for i in issues)
@@ -282,7 +270,7 @@ class TestShouldRejectExtraction:
                 metric_id="cm_cac",
                 value=100,
                 unit="percent",
-                message="Wrong unit"
+                message="Wrong unit",
             )
         ]
         assert should_reject_extraction(issues) is True
@@ -294,7 +282,7 @@ class TestShouldRejectExtraction:
                 metric_id="cm_retention",
                 value=500,
                 unit="percent",
-                message="Out of range"
+                message="Out of range",
             )
         ]
         assert should_reject_extraction(issues) is True
@@ -306,7 +294,7 @@ class TestShouldRejectExtraction:
                 metric_id="cm_cac",
                 value=100,
                 unit="dollars",
-                message="Keyword missing"
+                message="Keyword missing",
             )
         ]
         assert should_reject_extraction(issues) is True
@@ -318,7 +306,7 @@ class TestShouldRejectExtraction:
                 metric_id="cm_cac",
                 value=100,
                 unit="dollars",
-                message="Minor issue"
+                message="Minor issue",
             )
         ]
         assert should_reject_extraction(issues) is False
@@ -337,7 +325,7 @@ class TestGetRejectionReason:
                 metric_id="cm_cac",
                 value=100,
                 unit="percent",
-                message="Unit 'percent' not valid for cm_cac"
+                message="Unit 'percent' not valid for cm_cac",
             )
         ]
         reason = get_rejection_reason(issues)
@@ -350,14 +338,14 @@ class TestGetRejectionReason:
                 metric_id="cm_cac",
                 value=100,
                 unit="percent",
-                message="Wrong unit"
+                message="Wrong unit",
             ),
             ValidationIssue(
                 result=ValidationResult.FAIL_RANGE,
                 metric_id="cm_cac",
                 value=100,
                 unit="percent",
-                message="Out of range"
+                message="Out of range",
             ),
         ]
         reason = get_rejection_reason(issues)

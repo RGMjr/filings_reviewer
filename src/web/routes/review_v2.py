@@ -123,9 +123,9 @@ def review_filing(filing_id: int):
         )
 
         # Get unique metrics for filter dropdown
-        available_metrics = sorted(set(
-            f["canonical_metric_id"] for f in all_facts if f.get("canonical_metric_id")
-        ))
+        available_metrics = sorted(
+            set(f["canonical_metric_id"] for f in all_facts if f.get("canonical_metric_id"))
+        )
 
         # Select current fact
         fact_id_param = request.args.get("fact_id")
@@ -133,8 +133,12 @@ def review_filing(filing_id: int):
 
         # Calculate progress
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
-        accepted_count = sum(1 for f in all_facts if f["review_status"] in ("accepted", "auto_accepted"))
-        rejected_count = sum(1 for f in all_facts if f["review_status"] in ("rejected", "corrected"))
+        accepted_count = sum(
+            1 for f in all_facts if f["review_status"] in ("accepted", "auto_accepted")
+        )
+        rejected_count = sum(
+            1 for f in all_facts if f["review_status"] in ("rejected", "corrected")
+        )
 
         # Extract existing decision from current fact
         existing_decision = None
@@ -155,7 +159,9 @@ def review_filing(filing_id: int):
             "status": filter_status,
             "metric": filter_metric,
             "sort": sort_by,
-            "has_active_filters": filter_status != "all" or filter_metric != "all" or sort_by != "confidence_desc",
+            "has_active_filters": filter_status != "all"
+            or filter_metric != "all"
+            or sort_by != "confidence_desc",
         }
 
         return render_template(

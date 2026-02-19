@@ -6,8 +6,9 @@ Provides API key authentication for protecting API routes.
 
 import hmac
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from flask import current_app, jsonify, request
 
@@ -57,8 +58,7 @@ def require_api_key(f: Callable[P, T]) -> Callable[P, T]:
         # Client must provide API key
         if not api_key:
             logger.warning(
-                f"Missing API key for {request.method} {request.path} "
-                f"from {request.remote_addr}"
+                f"Missing API key for {request.method} {request.path} from {request.remote_addr}"
             )
             return (
                 jsonify({"status": "error", "message": "API key required"}),
@@ -68,8 +68,7 @@ def require_api_key(f: Callable[P, T]) -> Callable[P, T]:
         # Constant-time comparison to prevent timing attacks
         if not hmac.compare_digest(api_key, expected_key):
             logger.warning(
-                f"Invalid API key for {request.method} {request.path} "
-                f"from {request.remote_addr}"
+                f"Invalid API key for {request.method} {request.path} from {request.remote_addr}"
             )
             return (
                 jsonify({"status": "error", "message": "Invalid API key"}),

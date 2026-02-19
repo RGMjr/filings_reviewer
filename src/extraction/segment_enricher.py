@@ -65,9 +65,9 @@ class SegmentEnricher:
     # selection. Moving them here creates better separation of concerns: the
     # enricher owns scoring/classification logic, the pipeline owns selection.
     # =========================================================================
-    TIER1_THRESHOLD: float = 6.0   # High-value goldmines → LLM extraction
-    TIER2_THRESHOLD: float = 4.0   # Medium-value → rule-based extraction
-    TIER3_THRESHOLD: float = 3.0   # Low-value → manual review flagging
+    TIER1_THRESHOLD: float = 6.0  # High-value goldmines → LLM extraction
+    TIER2_THRESHOLD: float = 4.0  # Medium-value → rule-based extraction
+    TIER3_THRESHOLD: float = 3.0  # Low-value → manual review flagging
 
     # Keywords that indicate a decorative (non-meaningful) image (G7)
     DECORATIVE_KEYWORDS: list[str] = ["icon", "logo", "bullet", "arrow", "spacer"]
@@ -77,9 +77,7 @@ class SegmentEnricher:
     YEAR_PATTERN: Pattern[str] = re.compile(r"\b20\d{2}\b")
 
     # Fiscal period pattern: FY2023, FY 2022, Q1 2023, Q4 2022, etc.
-    FISCAL_PERIOD_PATTERN: Pattern[str] = re.compile(
-        r"\b(?:FY|Q[1-4])\s*20\d{2}\b", re.IGNORECASE
-    )
+    FISCAL_PERIOD_PATTERN: Pattern[str] = re.compile(r"\b(?:FY|Q[1-4])\s*20\d{2}\b", re.IGNORECASE)
 
     # Year-over-year language patterns (case-insensitive)
     YOY_PATTERNS: list[Pattern[str]] = [
@@ -111,9 +109,7 @@ class SegmentEnricher:
         ),
         # Explicit cohort analysis language
         re.compile(r"\bcohort\s+analysis\b", re.IGNORECASE),
-        re.compile(
-            r"\bby\s+(?:acquisition|tenure|vintage)\s+cohort\b", re.IGNORECASE
-        ),
+        re.compile(r"\bby\s+(?:acquisition|tenure|vintage)\s+cohort\b", re.IGNORECASE),
         re.compile(r"\bcustomers?\s+acquired\s+in\s+20\d{2}\b", re.IGNORECASE),
         # Customer segmentation language
         re.compile(
@@ -131,15 +127,11 @@ class SegmentEnricher:
         # Net Dollar Retention: "Net Dollar Retention Rate", "net dollar expansion"
         re.compile(r"\bnet\s+dollar\s+(?:retention|expansion)\b", re.IGNORECASE),
         # Dollar-based retention: "dollar-based net retention", "dollar based expansion"
-        re.compile(
-            r"\bdollar[- ]?based\s+(?:net\s+)?(?:retention|expansion)\b", re.IGNORECASE
-        ),
+        re.compile(r"\bdollar[- ]?based\s+(?:net\s+)?(?:retention|expansion)\b", re.IGNORECASE),
         # NRR/NDRR abbreviations: standalone "NRR" or "NDRR" (common SaaS terms)
         re.compile(r"\b(?:NRR|NDRR)\b"),
         # Fiscal year cohort: "fiscal year 2015 cohort", "FY2020 cohort"
-        re.compile(
-            r"\b(?:fiscal\s+year\s*|FY\s*)20\d{2}\s+cohort\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:fiscal\s+year\s*|FY\s*)20\d{2}\s+cohort\b", re.IGNORECASE),
         # Year cohort: "the 2019 cohort", "2020 cohort represents"
         re.compile(r"\b20\d{2}\s+cohort\b", re.IGNORECASE),
         # Quarter cohort: "Q4 2020 cohort", "Q1 2019 cohort"
@@ -147,18 +139,14 @@ class SegmentEnricher:
         # ARR cohort association: "ARR of each cohort", "ARR by cohort"
         re.compile(r"\bARR\b.{0,30}\bcohort\b", re.IGNORECASE),
         # Annual recurring revenue cohort: "annual recurring revenue...cohort"
-        re.compile(
-            r"\bannual\s+recurring\s+revenue\b.{0,30}\bcohort\b", re.IGNORECASE
-        ),
+        re.compile(r"\bannual\s+recurring\s+revenue\b.{0,30}\bcohort\b", re.IGNORECASE),
         # MRR cohort: "MRR for each cohort", "MRR by cohort"
         re.compile(r"\bMRR\b.{0,30}\bcohort\b", re.IGNORECASE),
         # =====================================================================
         # Priority 2 Patterns (GI-4) - Medium impact for cohort detection
         # =====================================================================
         # Retention rate with percentage: "retention rate of 143%", "retention rate was 95%"
-        re.compile(
-            r"\bretention\s+rate\s+(?:of\s+|was\s+|is\s+)?\d+(?:\.\d+)?%", re.IGNORECASE
-        ),
+        re.compile(r"\bretention\s+rate\s+(?:of\s+|was\s+|is\s+)?\d+(?:\.\d+)?%", re.IGNORECASE),
         # Percentage retention rate: "143% retention rate", "95% net retention"
         re.compile(
             r"\b\d+(?:\.\d+)?%\s+(?:net\s+)?(?:retention|dollar\s+retention)\b",
@@ -170,13 +158,9 @@ class SegmentEnricher:
             re.IGNORECASE,
         ),
         # Expansion revenue: "expansion revenue", "upsell revenue"
-        re.compile(
-            r"\b(?:expansion|upsell|cross-sell)\s+revenue\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:expansion|upsell|cross-sell)\s+revenue\b", re.IGNORECASE),
         # LTV/CAC ratio: "LTV/CAC", "lifetime value / CAC", "LTV:CAC"
-        re.compile(
-            r"\b(?:LTV|lifetime\s+value)\s*[/:]?\s*CAC\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:LTV|lifetime\s+value)\s*[/:]?\s*CAC\b", re.IGNORECASE),
         # LTV cohort association: "LTV of each cohort"
         re.compile(r"\bLTV\b.{0,30}\bcohort\b", re.IGNORECASE),
         # =====================================================================
@@ -185,9 +169,7 @@ class SegmentEnricher:
         # Paid Customer proper noun (case-sensitive): "Paid Customer base", "Paid Customers"
         re.compile(r"\bPaid\s+Customers?\b"),
         # Expansion within customer: "expansion within...customer base"
-        re.compile(
-            r"\bexpansion\s+within\b.{0,30}\b(?:customer|organization)\b", re.IGNORECASE
-        ),
+        re.compile(r"\bexpansion\s+within\b.{0,30}\b(?:customer|organization)\b", re.IGNORECASE),
         # Land and expand: common SaaS sales motion
         re.compile(r"\bland\s+and\s+expand\b", re.IGNORECASE),
         # Gross/Net retention standalone: "gross retention", "net retention"
@@ -197,9 +179,7 @@ class SegmentEnricher:
         # Churn rate: inverse of retention
         re.compile(r"\b(?:churn|attrition)\s+rate\b", re.IGNORECASE),
         # MRR/ARR growth: "ARR growth", "MRR expansion"
-        re.compile(
-            r"\b(?:MRR|ARR)\s+(?:growth|increase|expansion)\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:MRR|ARR)\s+(?:growth|increase|expansion)\b", re.IGNORECASE),
         # Renewal rate: related to retention
         re.compile(r"\brenewal\s+rate\b", re.IGNORECASE),
     ]
@@ -352,8 +332,16 @@ class SegmentEnricher:
 
     # Chart-related keywords that increase confidence
     CHART_INDICATOR_KEYWORDS: list[str] = [
-        "chart", "graph", "figure", "illustrates", "below", "following",
-        "depicts", "shows", "presents", "displays",
+        "chart",
+        "graph",
+        "figure",
+        "illustrates",
+        "below",
+        "following",
+        "depicts",
+        "shows",
+        "presents",
+        "displays",
     ]
 
     # Maximum character distance between cohort keyword and image tag
@@ -473,21 +461,21 @@ class SegmentEnricher:
     # points (+0.5 per metric, capped at +1.5). These are the "money metrics"
     # identified in GI-2 and GI-3 analysis.
     # =========================================================================
-    HIGH_VALUE_METRICS: frozenset[str] = frozenset({
-        # Retention metrics (highest value for investor analysis)
-        "cm_net_revenue_retention",       # Net Dollar Retention / NRR
-        "cm_gross_revenue_retention",     # Gross Revenue Retention / GRR
-        "cm_customer_retention_rate",     # Customer retention rate
-
-        # Unit economics metrics
-        "cm_lifetime_value_per_customer",  # Customer Lifetime Value (LTV)
-        "cm_customer_acquisition_cost",    # Customer Acquisition Cost (CAC)
-        "cm_ltv_to_cac_ratio",             # LTV/CAC ratio
-
-        # Cohort-related metrics
-        "cm_revenue_by_cohort",            # Revenue by cohort
-        "cm_customers_period_end_by_tenure",  # Customers by tenure cohort
-    })
+    HIGH_VALUE_METRICS: frozenset[str] = frozenset(
+        {
+            # Retention metrics (highest value for investor analysis)
+            "cm_net_revenue_retention",  # Net Dollar Retention / NRR
+            "cm_gross_revenue_retention",  # Gross Revenue Retention / GRR
+            "cm_customer_retention_rate",  # Customer retention rate
+            # Unit economics metrics
+            "cm_lifetime_value_per_customer",  # Customer Lifetime Value (LTV)
+            "cm_customer_acquisition_cost",  # Customer Acquisition Cost (CAC)
+            "cm_ltv_to_cac_ratio",  # LTV/CAC ratio
+            # Cohort-related metrics
+            "cm_revenue_by_cohort",  # Revenue by cohort
+            "cm_customers_period_end_by_tenure",  # Customers by tenure cohort
+        }
+    )
 
     # =========================================================================
     # SaaS-Specific Indicator Patterns (GI-5)
@@ -519,9 +507,7 @@ class SegmentEnricher:
         # Calculated billings: "calculated billings were $200 million"
         re.compile(r"\bcalculated\s+billings\b", re.IGNORECASE),
         # Billings with growth/amount: "billings grew 40%", "billings of $X"
-        re.compile(
-            r"\bbillings\s+(?:grew|increased|of\s+\$|were\s+\$)", re.IGNORECASE
-        ),
+        re.compile(r"\bbillings\s+(?:grew|increased|of\s+\$|were\s+\$)", re.IGNORECASE),
         # Deferred revenue in SaaS context (standalone deferred revenue metric)
         re.compile(r"\bdeferred\s+revenue\s+(?:of|was|were|grew|increased)\b", re.IGNORECASE),
         # Net expansion rate: "net expansion rate of 130%" (NOT expansion revenue)
@@ -548,9 +534,7 @@ class SegmentEnricher:
         # Payback period: "payback period of 12 months"
         re.compile(r"\bpayback\s+period\b", re.IGNORECASE),
         # Lifetime value standalone (not LTV/CAC): "high lifetime value"
-        re.compile(
-            r"\b(?:high|strong|increasing)\s+lifetime\s+value\b", re.IGNORECASE
-        ),
+        re.compile(r"\b(?:high|strong|increasing)\s+lifetime\s+value\b", re.IGNORECASE),
     ]
 
     def __init__(self, weights: FormulaWeights | None = None) -> None:
@@ -622,9 +606,7 @@ class SegmentEnricher:
             Same segments list with enrichment fields populated
         """
         if not segments:
-            logger.info(
-                "Enrichment complete: segments=0 time=0.00s throughput=0/s (empty batch)"
-            )
+            logger.info("Enrichment complete: segments=0 time=0.00s throughput=0/s (empty batch)")
             return segments
 
         start_time = time.perf_counter()
@@ -636,9 +618,7 @@ class SegmentEnricher:
                 self._enrich_segment(segment)
                 enriched_count += 1
             except Exception as e:
-                logger.warning(
-                    f"Failed to enrich segment {segment.sequence_index}: {e}"
-                )
+                logger.warning(f"Failed to enrich segment {segment.sequence_index}: {e}")
                 warning_count += 1
 
         elapsed = time.perf_counter() - start_time
@@ -765,43 +745,35 @@ class SegmentEnricher:
 
         # Detect SaaS-specific indicators (GI-5) - store in extra_metadata
         segment.extra_metadata = segment.extra_metadata or {}
-        segment.extra_metadata["contains_saas_indicator"] = self._detect_saas_indicators(
-            text
-        )
+        segment.extra_metadata["contains_saas_indicator"] = self._detect_saas_indicators(text)
 
         # Detect retention keywords (GI-6) - store in extra_metadata
-        segment.extra_metadata["contains_retention_keywords"] = (
-            self._detect_retention_keywords(text)
+        segment.extra_metadata["contains_retention_keywords"] = self._detect_retention_keywords(
+            text
         )
 
         # Detect usage keywords (GI-6) - store in extra_metadata
-        segment.extra_metadata["contains_usage_keywords"] = self._detect_usage_keywords(
+        segment.extra_metadata["contains_usage_keywords"] = self._detect_usage_keywords(text)
+
+        # Detect usage metrics with count (GI-10) - store in extra_metadata
+        segment.extra_metadata["contains_usage_with_count"] = self._detect_usage_with_count(text)
+
+        # Detect platform/marketplace keywords (GR-6) - store in extra_metadata
+        segment.extra_metadata["contains_platform_keywords"] = self._detect_platform_keywords(text)
+
+        # Detect platform metrics with count (GR-6) - store in extra_metadata
+        segment.extra_metadata["contains_platform_with_count"] = self._detect_platform_with_count(
             text
         )
 
-        # Detect usage metrics with count (GI-10) - store in extra_metadata
-        segment.extra_metadata["contains_usage_with_count"] = (
-            self._detect_usage_with_count(text)
-        )
-
-        # Detect platform/marketplace keywords (GR-6) - store in extra_metadata
-        segment.extra_metadata["contains_platform_keywords"] = (
-            self._detect_platform_keywords(text)
-        )
-
-        # Detect platform metrics with count (GR-6) - store in extra_metadata
-        segment.extra_metadata["contains_platform_with_count"] = (
-            self._detect_platform_with_count(text)
-        )
-
         # Detect engagement keywords (GR-7) - store in extra_metadata
-        segment.extra_metadata["contains_engagement_keywords"] = (
-            self._detect_engagement_keywords(text)
+        segment.extra_metadata["contains_engagement_keywords"] = self._detect_engagement_keywords(
+            text
         )
 
         # Detect conversion keywords (GR-7) - store in extra_metadata
-        segment.extra_metadata["contains_conversion_keywords"] = (
-            self._detect_conversion_keywords(text)
+        segment.extra_metadata["contains_conversion_keywords"] = self._detect_conversion_keywords(
+            text
         )
 
         # Detect cohort chart images (HRV-IMG) - store in extra_metadata
@@ -888,9 +860,7 @@ class SegmentEnricher:
         if not text:
             return False
         if not isinstance(text, str):
-            logger.warning(
-                f"Non-string raw_text in segment {sequence_index}: {type(text)}"
-            )
+            logger.warning(f"Non-string raw_text in segment {sequence_index}: {type(text)}")
             return False
 
         # Check for multiple distinct years (primary signal)
@@ -938,9 +908,7 @@ class SegmentEnricher:
         if not text:
             return False
         if not isinstance(text, str):
-            logger.warning(
-                f"Non-string raw_text in segment {sequence_index}: {type(text)}"
-            )
+            logger.warning(f"Non-string raw_text in segment {sequence_index}: {type(text)}")
             return False
 
         # Check regex patterns for cohort language
@@ -951,9 +919,7 @@ class SegmentEnricher:
         # Check for multiple cohort-related metric IDs (quaternary signal)
         if candidate_metric_ids:
             cohort_metrics = [
-                m
-                for m in candidate_metric_ids
-                if "cohort" in m.lower() or "tenure" in m.lower()
+                m for m in candidate_metric_ids if "cohort" in m.lower() or "tenure" in m.lower()
             ]
             if len(cohort_metrics) >= 2:
                 return True
@@ -1292,13 +1258,17 @@ class SegmentEnricher:
                 preceding_start = max(0, img_pos - 200)
                 preceding_text = raw_text[preceding_start:img_pos].strip()
 
-                candidates.append({
-                    "image_src": src,
-                    "preceding_text": preceding_text,
-                    "char_distance": int(closest_distance) if closest_distance != float("inf") else 0,
-                    "confidence": round(confidence, 2),
-                    "detected_keywords": list(set(matched_keywords)),
-                })
+                candidates.append(
+                    {
+                        "image_src": src,
+                        "preceding_text": preceding_text,
+                        "char_distance": int(closest_distance)
+                        if closest_distance != float("inf")
+                        else 0,
+                        "confidence": round(confidence, 2),
+                        "detected_keywords": list(set(matched_keywords)),
+                    }
+                )
 
         except Exception as e:
             logger.debug(f"Error detecting cohort chart images: {e}")
@@ -1467,9 +1437,7 @@ class SegmentEnricher:
 
             # Count meaningful images (filtered for decorative elements)
             img_tags = soup.find_all("img")
-            meaningful_imgs = [
-                img for img in img_tags if not self._is_decorative_image(img)
-            ]
+            meaningful_imgs = [img for img in img_tags if not self._is_decorative_image(img)]
 
             return len(meaningful_imgs) + svg_count + canvas_count
 
@@ -1847,8 +1815,7 @@ def summarize_cluster(cluster: list[SourceSegment]) -> dict[str, Any]:
 
     # Compute average richness (treating None as 0.0)
     richness_scores = [
-        s.richness_score if s.richness_score is not None else 0.0
-        for s in sorted_cluster
+        s.richness_score if s.richness_score is not None else 0.0 for s in sorted_cluster
     ]
     avg_richness = sum(richness_scores) / len(richness_scores)
 

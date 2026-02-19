@@ -188,9 +188,7 @@ def generate_candidates_for_filing(
         # - 'lower_confidence': within-batch duplicates and cross-batch conflicts
         # - 'runner_up': best alternative metric at same position
         if log_suppressed:
-            result = db.bulk_insert_review_candidates(
-                candidate_dicts, log_suppressed=True
-            )
+            result = db.bulk_insert_review_candidates(candidate_dicts, log_suppressed=True)
             candidate_ids, suppression_entries = result
 
             # Log suppression summary
@@ -213,8 +211,6 @@ def generate_candidates_for_filing(
         for candidate, cid in zip(candidates, candidate_ids, strict=True):
             candidate.candidate_id = cid
 
-        logger.info(
-            f"Saved {len(candidate_ids)} candidates for filing {filing_id}"
-        )
+        logger.info(f"Saved {len(candidate_ids)} candidates for filing {filing_id}")
 
     return candidates

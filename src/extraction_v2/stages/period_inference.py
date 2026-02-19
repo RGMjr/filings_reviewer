@@ -173,18 +173,30 @@ class PeriodInferenceStage:
 
     # Month name mapping
     MONTH_NAMES: dict[str, int] = {
-        "january": 1, "jan": 1,
-        "february": 2, "feb": 2,
-        "march": 3, "mar": 3,
-        "april": 4, "apr": 4,
+        "january": 1,
+        "jan": 1,
+        "february": 2,
+        "feb": 2,
+        "march": 3,
+        "mar": 3,
+        "april": 4,
+        "apr": 4,
         "may": 5,
-        "june": 6, "jun": 6,
-        "july": 7, "jul": 7,
-        "august": 8, "aug": 8,
-        "september": 9, "sep": 9, "sept": 9,
-        "october": 10, "oct": 10,
-        "november": 11, "nov": 11,
-        "december": 12, "dec": 12,
+        "june": 6,
+        "jun": 6,
+        "july": 7,
+        "jul": 7,
+        "august": 8,
+        "aug": 8,
+        "september": 9,
+        "sep": 9,
+        "sept": 9,
+        "october": 10,
+        "oct": 10,
+        "november": 11,
+        "nov": 11,
+        "december": 12,
+        "dec": 12,
     }
 
     # Quarter end months (calendar year)
@@ -247,9 +259,7 @@ class PeriodInferenceStage:
                     bound_value.period_type = PeriodType.OTHER
                     bound_value.period_ambiguous = True
                     ambiguous_count += 1
-                    warnings.append(
-                        f"No period found for bound value {bound_value.bound_value_id}"
-                    )
+                    warnings.append(f"No period found for bound value {bound_value.bound_value_id}")
             except Exception as e:
                 error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
                 logger.error(error_msg)
@@ -322,9 +332,7 @@ class PeriodInferenceStage:
 
         return None
 
-    def _parse_period_from_headers(
-        self, header_path: list[str]
-    ) -> ParsedPeriod | None:
+    def _parse_period_from_headers(self, header_path: list[str]) -> ParsedPeriod | None:
         """
         Parse period from table header path.
 
@@ -411,7 +419,7 @@ class PeriodInferenceStage:
             sentence_start, sentence_end = self._find_sentence_bounds(text, start)
             same_sentence_text = text[sentence_start:sentence_end]
         else:
-            search_text = text[:self.context_chars * 2]
+            search_text = text[: self.context_chars * 2]
             same_sentence_text = ""
 
         # Try to find period in same sentence first (higher confidence)
@@ -548,7 +556,7 @@ class PeriodInferenceStage:
         # Determine period type from the pattern prefix
         text_lower = text.lower()
 
-        if "year" in text_lower[:match.end()]:
+        if "year" in text_lower[: match.end()]:
             period_type = PeriodType.ANNUAL
             # Adjust for calendar year
             if month == 12 and day == 31:
@@ -560,21 +568,21 @@ class PeriodInferenceStage:
                     start = date(year - 1, month + 1, 1)
                 else:
                     start = date(year, 1, 1)
-        elif any(x in text_lower[:match.end()] for x in ["quarter", "three months", "3 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["quarter", "three months", "3 months"]):
             period_type = PeriodType.QUARTERLY
             # Calculate start as 3 months before end
             if month >= 4:
                 start = date(year, month - 3, 1)
             else:
                 start = date(year - 1, month + 9, 1)
-        elif any(x in text_lower[:match.end()] for x in ["nine months", "9 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["nine months", "9 months"]):
             period_type = PeriodType.YTD
             # Calculate start as 9 months before end
             if month >= 10:
                 start = date(year, month - 9, 1)
             else:
                 start = date(year - 1, month + 3, 1)
-        elif any(x in text_lower[:match.end()] for x in ["six months", "6 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["six months", "6 months"]):
             period_type = PeriodType.YTD
             # Calculate start as 6 months before end
             if month >= 7:
@@ -673,7 +681,13 @@ class PeriodInferenceStage:
                 try:
                     end = date(year, month, day)
                     # TTM is 12 months trailing
-                    start = date(year - 1, month, day + 1) if day < 28 else date(year - 1, month + 1, 1) if month < 12 else date(year - 1, 1, 1)
+                    start = (
+                        date(year - 1, month, day + 1)
+                        if day < 28
+                        else date(year - 1, month + 1, 1)
+                        if month < 12
+                        else date(year - 1, 1, 1)
+                    )
                     return ParsedPeriod(
                         period_type=PeriodType.TRAILING,
                         start=start,
@@ -761,9 +775,7 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
-    def _create_fiscal_fallback(
-        self, fiscal_year: int, fiscal_period: str
-    ) -> ParsedPeriod | None:
+    def _create_fiscal_fallback(self, fiscal_year: int, fiscal_period: str) -> ParsedPeriod | None:
         """
         Create a period from filing fiscal metadata as fallback.
 
@@ -793,7 +805,9 @@ class PeriodInferenceStage:
                 return ParsedPeriod(
                     period_type=PeriodType.QUARTERLY,
                     start=date(fiscal_year, start_month, 1),
-                    end=date(fiscal_year, end_month, self._last_day_of_month(fiscal_year, end_month)),
+                    end=date(
+                        fiscal_year, end_month, self._last_day_of_month(fiscal_year, end_month)
+                    ),
                     confidence=self.FILING_FALLBACK_CONFIDENCE,
                     source="filing_fallback",
                     raw_text=f"{fiscal_period_upper} {fiscal_year}",
@@ -842,7 +856,7 @@ class PeriodInferenceStage:
         """
         # Find sentence start (look backwards for sentence boundary)
         sentence_start = 0
-        boundary_pattern = re.compile(r'[.!?]\s+[A-Z]')
+        boundary_pattern = re.compile(r"[.!?]\s+[A-Z]")
 
         text_before = text[:position]
         boundaries_before = list(boundary_pattern.finditer(text_before))

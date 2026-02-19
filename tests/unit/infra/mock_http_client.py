@@ -46,7 +46,9 @@ class MockHTTPClient:
     request_history: list[str] = field(default_factory=list)
     response_factory: Callable[[str], HTTPResponse] | None = None
 
-    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
+    def get(
+        self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0
+    ) -> HTTPResponse:
         """Mock GET request.
 
         Args:
@@ -78,7 +80,9 @@ class MockHTTPClient:
         # Default: raise 404
         raise requests.HTTPError(f"No mock response configured for {url}")
 
-    def add_response(self, url: str, status_code: int, content: bytes, headers: dict[str, str] | None = None) -> None:
+    def add_response(
+        self, url: str, status_code: int, content: bytes, headers: dict[str, str] | None = None
+    ) -> None:
         """Helper to add a response.
 
         Args:
@@ -88,7 +92,11 @@ class MockHTTPClient:
             headers: Response headers (defaults to empty dict)
         """
         self.responses[url] = HTTPResponse(
-            status_code=status_code, content=content, headers=headers or {}, url=url, elapsed_seconds=0.1
+            status_code=status_code,
+            content=content,
+            headers=headers or {},
+            url=url,
+            elapsed_seconds=0.1,
         )
 
     def add_failure(self, url: str, exception: Exception) -> None:

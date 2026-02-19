@@ -20,19 +20,16 @@ import pytest
 
 from src.extraction_v2.models import (
     BoundValue,
+    Cell,
     Document,
     PeriodType,
     Segment,
     SourceLocator,
-    SourceType,
     Table,
-    Cell,
 )
 from src.extraction_v2.stages.period_inference import (
-    ParsedPeriod,
     PeriodInferenceStage,
 )
-
 
 # ============================================================================
 # Fixtures
@@ -56,9 +53,7 @@ def mock_context() -> MagicMock:
     return context
 
 
-def make_table_with_headers(
-    table_id: str, header_texts: list[str], data_rows: int = 2
-) -> Table:
+def make_table_with_headers(table_id: str, header_texts: list[str], data_rows: int = 2) -> Table:
     """Create a simple table with column headers."""
     table = Table(
         table_id=table_id,
@@ -759,17 +754,13 @@ class TestEdgeCases:
         result = stage._try_parse_as_of("As of Smarch 31, 2024")
         assert result is None
 
-    def test_fiscal_fallback_with_empty_period(
-        self, stage: PeriodInferenceStage
-    ) -> None:
+    def test_fiscal_fallback_with_empty_period(self, stage: PeriodInferenceStage) -> None:
         """Fiscal fallback with empty fiscal period string."""
         result = stage._create_fiscal_fallback(2024, "")
         assert result is not None
         assert result.period_type == PeriodType.ANNUAL
 
-    def test_fiscal_fallback_invalid_period(
-        self, stage: PeriodInferenceStage
-    ) -> None:
+    def test_fiscal_fallback_invalid_period(self, stage: PeriodInferenceStage) -> None:
         """Fiscal fallback returns None for invalid period."""
         result = stage._create_fiscal_fallback(2024, "Q5")
         assert result is None

@@ -10,7 +10,6 @@ Tests the weight adjustments based on GI-3 distribution analysis:
 Test coverage target: >= 95% for _compute_richness_score() and detection methods.
 """
 
-
 import pytest
 
 from src.extraction.models import SourceSegment
@@ -114,9 +113,7 @@ class TestComponentIsolation:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(1.0, abs=0.01)
 
-    def test_definition_with_1_metric_adds_1_point(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_definition_with_1_metric_adds_1_point(self, enricher: SegmentEnricher) -> None:
         """Definition flag with 1 metric adds +1.0 (standard bonus)."""
         segment = make_segment(
             classifier_confidence=0,
@@ -176,9 +173,7 @@ class TestComponentIsolation:
 class TestCombinationBonuses:
     """Test bonus combinations and stacking."""
 
-    def test_temporal_plus_cohort_gets_combination_bonus(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_temporal_plus_cohort_gets_combination_bonus(self, enricher: SegmentEnricher) -> None:
         """Temporal AND cohort together adds combination bonus (+0.5)."""
         segment = make_segment(
             classifier_confidence=0,
@@ -189,9 +184,7 @@ class TestCombinationBonuses:
         # 1.0 (temporal) + 1.5 (cohort) + 0.5 (combination) = 3.0
         assert score == pytest.approx(3.0, abs=0.01)
 
-    def test_temporal_only_no_combination_bonus(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_temporal_only_no_combination_bonus(self, enricher: SegmentEnricher) -> None:
         """Temporal alone does not get combination bonus."""
         segment = make_segment(
             classifier_confidence=0,
@@ -201,9 +194,7 @@ class TestCombinationBonuses:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(1.0, abs=0.01)  # Just temporal
 
-    def test_cohort_only_no_combination_bonus(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_cohort_only_no_combination_bonus(self, enricher: SegmentEnricher) -> None:
         """Cohort alone does not get combination bonus."""
         segment = make_segment(
             classifier_confidence=0,
@@ -213,9 +204,7 @@ class TestCombinationBonuses:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(1.5, abs=0.01)  # Just cohort
 
-    def test_all_flags_max_metrics_approaches_max(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_all_flags_max_metrics_approaches_max(self, enricher: SegmentEnricher) -> None:
         """All bonuses active with max metrics approaches 10.0."""
         segment = make_segment(
             classifier_confidence=1.0,  # +3.0
@@ -247,9 +236,7 @@ class TestCombinationBonuses:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(0.6, abs=0.01)  # Just 0.2 * 3.0
 
-    def test_retention_cohort_temporal_stack(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_retention_cohort_temporal_stack(self, enricher: SegmentEnricher) -> None:
         """Retention + cohort + temporal all stack correctly."""
         segment = make_segment(
             classifier_confidence=0.5,  # +1.5
@@ -261,9 +248,7 @@ class TestCombinationBonuses:
         # 1.5 + 1.0 + 1.5 + 0.5 (combo) + 1.0 = 5.5
         assert score == pytest.approx(5.5, abs=0.01)
 
-    def test_definition_metrics_retention_stack(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_definition_metrics_retention_stack(self, enricher: SegmentEnricher) -> None:
         """Definition with metrics AND retention stack."""
         segment = make_segment(
             classifier_confidence=0.8,  # +2.4
@@ -284,9 +269,7 @@ class TestCombinationBonuses:
 class TestBoundaryValues:
     """Test threshold boundaries and edge cases."""
 
-    def test_score_exactly_at_goldmine_threshold(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_score_exactly_at_goldmine_threshold(self, enricher: SegmentEnricher) -> None:
         """Score can be exactly at 6.0 (goldmine threshold)."""
         # Build segment to hit exactly 6.0
         # 1.5 (conf 0.5) + 1.5 (3 metrics) + 1.0 (temporal) + 1.0 (definition) + 1.0 (retention) = 6.0
@@ -312,9 +295,7 @@ class TestBoundaryValues:
         assert score2 == pytest.approx(6.0, abs=0.01)
         assert score2 >= SegmentEnricher.GOLDMINE_THRESHOLD
 
-    def test_score_exactly_at_high_value_threshold(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_score_exactly_at_high_value_threshold(self, enricher: SegmentEnricher) -> None:
         """Score can reach 8.0 (high-value threshold)."""
         segment = make_segment(
             classifier_confidence=1.0,  # +3.0
@@ -371,9 +352,7 @@ class TestRetentionKeywordDetection:
 
     def test_net_dollar_retention_detected(self, enricher: SegmentEnricher) -> None:
         """'Net Dollar Retention Rate was 143%' triggers retention."""
-        segment = make_segment(
-            raw_text="Net Dollar Retention Rate was 143% for the year."
-        )
+        segment = make_segment(raw_text="Net Dollar Retention Rate was 143% for the year.")
         assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_ndrr_acronym_detected(self, enricher: SegmentEnricher) -> None:
@@ -388,23 +367,17 @@ class TestRetentionKeywordDetection:
 
     def test_gross_retention_rate_detected(self, enricher: SegmentEnricher) -> None:
         """'gross retention rate' triggers retention."""
-        segment = make_segment(
-            raw_text="Our gross retention rate remains strong at 95%."
-        )
+        segment = make_segment(raw_text="Our gross retention rate remains strong at 95%.")
         assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_dollar_based_retention_detected(self, enricher: SegmentEnricher) -> None:
         """'dollar-based retention' triggers retention."""
-        segment = make_segment(
-            raw_text="Dollar-based retention exceeded expectations."
-        )
+        segment = make_segment(raw_text="Dollar-based retention exceeded expectations.")
         assert enricher._detect_retention_keywords(segment.raw_text) is True
 
     def test_customer_retention_not_detected(self, enricher: SegmentEnricher) -> None:
         """'customer retention' is too generic - not detected."""
-        segment = make_segment(
-            raw_text="We focus on customer retention initiatives."
-        )
+        segment = make_segment(raw_text="We focus on customer retention initiatives.")
         # "customer retention" doesn't match NRR/NDRR/gross retention rate patterns
         assert enricher._detect_retention_keywords(segment.raw_text) is False
 
@@ -415,9 +388,7 @@ class TestRetentionKeywordDetection:
 
     def test_none_text_returns_false(self, enricher: SegmentEnricher) -> None:
         """None text returns False."""
-        segment = SourceSegment(
-            filing_id=1, segment_type="paragraph", raw_text=None
-        )
+        segment = SourceSegment(filing_id=1, segment_type="paragraph", raw_text=None)
         assert enricher._detect_retention_keywords(segment.raw_text) is False
 
 
@@ -478,9 +449,7 @@ class TestUsageKeywordDetection:
 class TestRegressionScenarios:
     """Ensure existing behavior is preserved."""
 
-    def test_farfetch_style_segment_scores_above_7(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_farfetch_style_segment_scores_above_7(self, enricher: SegmentEnricher) -> None:
         """Farfetch-style high-confidence segment with temporal still scores >= 7.0."""
         # Simulates Farfetch top segment characteristics
         segment = make_segment(
@@ -496,9 +465,7 @@ class TestRegressionScenarios:
         # 3.0 + 2.0 + 1.0 + 1.5 = 7.5
         assert score >= 7.0
 
-    def test_basic_segment_without_special_flags(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_basic_segment_without_special_flags(self, enricher: SegmentEnricher) -> None:
         """Basic segment without special flags scores as expected."""
         segment = make_segment(
             classifier_confidence=0.2,
@@ -529,9 +496,7 @@ class TestRegressionScenarios:
 class TestRealS1Scenarios:
     """Test against realistic S-1 disclosure patterns."""
 
-    def test_slack_nrr_segment_scores_above_7(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_slack_nrr_segment_scores_above_7(self, enricher: SegmentEnricher) -> None:
         """Slack NRR segment (143% retention language) should score >= 7.0."""
         segment = make_segment(
             raw_text="Our Net Dollar Retention Rate was 143% for fiscal year 2019, "
@@ -547,9 +512,7 @@ class TestRealS1Scenarios:
         # 2.55 + 2.0 + 1.0 + 1.5 + 1.5 + 0.5 + 1.0 = 10.05 -> capped to 10.0
         assert score >= 7.0
 
-    def test_slack_dau_segment_scores_above_4_5(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_slack_dau_segment_scores_above_4_5(self, enricher: SegmentEnricher) -> None:
         """Slack DAU segment should score >= 4.5."""
         segment = make_segment(
             raw_text="We define a daily active user, or DAU, as a user who reads or "
@@ -565,9 +528,7 @@ class TestRealS1Scenarios:
         # 2.1 + 1.0 + 1.5 (enhanced def) + 0.5 = 5.1
         assert score >= 4.5
 
-    def test_slack_cohort_nrr_temporal_scores_above_8(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_slack_cohort_nrr_temporal_scores_above_8(self, enricher: SegmentEnricher) -> None:
         """Slack cohort + NRR + temporal combined should score >= 8.0."""
         segment = make_segment(
             raw_text="Net Dollar Retention Rate was 171% for the fiscal 2017 cohort, "
@@ -599,9 +560,7 @@ class TestEdgeCases:
         assert enricher._detect_retention_keywords(segment.raw_text) is False
         assert enricher._detect_usage_keywords(segment.raw_text) is False
 
-    def test_multiple_retention_keywords_not_stacked(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_multiple_retention_keywords_not_stacked(self, enricher: SegmentEnricher) -> None:
         """Multiple retention keywords in same segment still only +1.0."""
         segment = make_segment(
             raw_text="Our Net Dollar Retention Rate (NRR) was 143%. NDRR exceeded "
@@ -614,15 +573,11 @@ class TestEdgeCases:
 
     def test_overlapping_patterns(self, enricher: SegmentEnricher) -> None:
         """Overlapping patterns (e.g., 'net dollar retention rate') match once."""
-        segment = make_segment(
-            raw_text="net dollar retention rate of 143%"
-        )
+        segment = make_segment(raw_text="net dollar retention rate of 143%")
         # Should match, but only count once
         assert enricher._detect_retention_keywords(segment.raw_text) is True
 
-    def test_high_confidence_all_bonuses_caps_at_10(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_high_confidence_all_bonuses_caps_at_10(self, enricher: SegmentEnricher) -> None:
         """Very high confidence (1.0) + all bonuses still caps at 10.0."""
         segment = make_segment(
             classifier_confidence=1.0,
@@ -667,9 +622,7 @@ class TestEdgeCases:
 class TestEnrichSegmentIntegration:
     """Test that _enrich_segment properly populates extra_metadata."""
 
-    def test_retention_keywords_populated_in_metadata(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_retention_keywords_populated_in_metadata(self, enricher: SegmentEnricher) -> None:
         """_enrich_segment populates contains_retention_keywords in extra_metadata."""
         segment = SourceSegment(
             filing_id=1,
@@ -683,9 +636,7 @@ class TestEnrichSegmentIntegration:
         assert segment.extra_metadata is not None
         assert segment.extra_metadata.get("contains_retention_keywords") is True
 
-    def test_usage_keywords_populated_in_metadata(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_usage_keywords_populated_in_metadata(self, enricher: SegmentEnricher) -> None:
         """_enrich_segment populates contains_usage_keywords in extra_metadata."""
         segment = SourceSegment(
             filing_id=1,
@@ -699,9 +650,7 @@ class TestEnrichSegmentIntegration:
         assert segment.extra_metadata is not None
         assert segment.extra_metadata.get("contains_usage_keywords") is True
 
-    def test_full_enrichment_computes_richness_correctly(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_full_enrichment_computes_richness_correctly(self, enricher: SegmentEnricher) -> None:
         """Full enrichment flow computes richness score with new bonuses."""
         segment = SourceSegment(
             filing_id=1,
@@ -827,9 +776,7 @@ class TestCustomWeightsModifyScores:
         from src.extraction.enricher_config import FormulaWeights
 
         default_enricher = SegmentEnricher()
-        custom_enricher = SegmentEnricher(
-            weights=FormulaWeights(confidence_multiplier=5.0)
-        )
+        custom_enricher = SegmentEnricher(weights=FormulaWeights(confidence_multiplier=5.0))
 
         segment = make_segment(classifier_confidence=0.5)
 
@@ -846,9 +793,7 @@ class TestCustomWeightsModifyScores:
         from src.extraction.enricher_config import FormulaWeights
 
         # Enricher with temporal bonus disabled
-        custom_enricher = SegmentEnricher(
-            weights=FormulaWeights(temporal_trend_bonus=0.0)
-        )
+        custom_enricher = SegmentEnricher(weights=FormulaWeights(temporal_trend_bonus=0.0))
 
         segment = make_segment(
             classifier_confidence=0,
@@ -862,9 +807,7 @@ class TestCustomWeightsModifyScores:
         """Custom usage bonus values affect final score."""
         from src.extraction.enricher_config import FormulaWeights
 
-        custom_enricher = SegmentEnricher(
-            weights=FormulaWeights(usage_with_count_bonus=3.0)
-        )
+        custom_enricher = SegmentEnricher(weights=FormulaWeights(usage_with_count_bonus=3.0))
 
         segment = make_segment(
             classifier_confidence=0,
@@ -879,9 +822,7 @@ class TestCustomWeightsModifyScores:
         from src.extraction.enricher_config import FormulaWeights
 
         # Lower the cap to 5.0
-        custom_enricher = SegmentEnricher(
-            weights=FormulaWeights(score_cap=5.0)
-        )
+        custom_enricher = SegmentEnricher(weights=FormulaWeights(score_cap=5.0))
 
         # Segment that would normally score > 5
         segment = make_segment(

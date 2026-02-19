@@ -85,33 +85,37 @@ class TableRowParser:
         self.rows = []
 
         # Check if HTML contains a table
-        soup = BeautifulSoup(self.html, 'html.parser')
-        table = soup.find('table')
+        soup = BeautifulSoup(self.html, "html.parser")
+        table = soup.find("table")
 
         if not table:
             # Not a table - treat entire text as single "row"
             logger.debug("No table found in HTML, treating as single row")
-            self.rows.append(TableRow(
-                row_index=0,
-                text_start=0,
-                text_end=len(self.extracted_text),
-                row_text=self.extracted_text,
-                has_header=False
-            ))
+            self.rows.append(
+                TableRow(
+                    row_index=0,
+                    text_start=0,
+                    text_end=len(self.extracted_text),
+                    row_text=self.extracted_text,
+                    has_header=False,
+                )
+            )
             return
 
         # Find all table rows
-        tr_elements = table.find_all('tr', recursive=True)
+        tr_elements = table.find_all("tr", recursive=True)
 
         if not tr_elements:
             logger.debug("Table found but no <tr> elements, treating as single row")
-            self.rows.append(TableRow(
-                row_index=0,
-                text_start=0,
-                text_end=len(self.extracted_text),
-                row_text=self.extracted_text,
-                has_header=False
-            ))
+            self.rows.append(
+                TableRow(
+                    row_index=0,
+                    text_start=0,
+                    text_end=len(self.extracted_text),
+                    row_text=self.extracted_text,
+                    has_header=False,
+                )
+            )
             return
 
         # Track current position in extracted text
@@ -133,9 +137,7 @@ class TableRowParser:
             if row_start == -1:
                 # Exact match failed - use flexible whitespace matching
                 # This handles cases where <br/> normalization differs
-                row_start, matched_length = self._find_row_flexible(
-                    row_text, current_pos
-                )
+                row_start, matched_length = self._find_row_flexible(row_text, current_pos)
 
             if row_start == -1:
                 # Still not found - try approximate match with first few words
@@ -154,7 +156,7 @@ class TableRowParser:
             row_end = row_start + matched_length
 
             # Check if row has a header cell (th or first td with text)
-            cells = tr.find_all(['th', 'td'])
+            cells = tr.find_all(["th", "td"])
             has_header = False
             header_text = None
             header_start = None
@@ -164,13 +166,13 @@ class TableRowParser:
                 first_cell_text = self._normalize_text(cells[0].get_text()).strip()
                 has_header = bool(
                     first_cell_text
-                    and not first_cell_text.replace(',', '')
-                    .replace('.', '')
-                    .replace('(', '')
-                    .replace(')', '')
-                    .replace('-', '')
-                    .replace('%', '')
-                    .replace('$', '')
+                    and not first_cell_text.replace(",", "")
+                    .replace(".", "")
+                    .replace("(", "")
+                    .replace(")", "")
+                    .replace("-", "")
+                    .replace("%", "")
+                    .replace("$", "")
                     .isdigit()
                 )
 
@@ -178,23 +180,24 @@ class TableRowParser:
                     header_text = first_cell_text
                     # Find header position using flexible matching
                     header_match = self._find_text_flexible(
-                        header_text,
-                        self.extracted_text[row_start:row_end]
+                        header_text, self.extracted_text[row_start:row_end]
                     )
                     if header_match is not None:
                         header_start = row_start + header_match[0]
                         header_end = row_start + header_match[1]
 
-            self.rows.append(TableRow(
-                row_index=row_idx,
-                text_start=row_start,
-                text_end=row_end,
-                row_text=row_text,
-                has_header=has_header,
-                header_text=header_text,
-                header_start=header_start,
-                header_end=header_end
-            ))
+            self.rows.append(
+                TableRow(
+                    row_index=row_idx,
+                    text_start=row_start,
+                    text_end=row_end,
+                    row_text=row_text,
+                    has_header=has_header,
+                    header_text=header_text,
+                    header_start=header_start,
+                    header_end=header_end,
+                )
+            )
 
             current_pos = row_end
 
@@ -208,12 +211,10 @@ class TableRowParser:
     def _normalize_text(self, text: str) -> str:
         """Normalize text the same way as HTMLSegmenter does."""
         # Collapse multiple whitespace into single space
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
         return text.strip()
 
-    def _find_row_flexible(
-        self, row_text: str, start_pos: int
-    ) -> tuple[int, int]:
+    def _find_row_flexible(self, row_text: str, start_pos: int) -> tuple[int, int]:
         """
         Find row text with flexible whitespace matching.
 
@@ -233,7 +234,7 @@ class TableRowParser:
         # Build regex pattern: tokens separated by optional whitespace (\s*)
         # This matches even when whitespace is completely absent
         pattern_parts = [re.escape(token) for token in tokens]
-        pattern = r'\s*'.join(pattern_parts)
+        pattern = r"\s*".join(pattern_parts)
 
         try:
             match = re.search(pattern, self.extracted_text[start_pos:])
@@ -244,9 +245,7 @@ class TableRowParser:
 
         return (-1, 0)
 
-    def _find_text_flexible(
-        self, text: str, search_in: str
-    ) -> tuple[int, int] | None:
+    def _find_text_flexible(self, text: str, search_in: str) -> tuple[int, int] | None:
         """
         Find text with flexible whitespace matching within a string.
 
@@ -258,7 +257,7 @@ class TableRowParser:
             return None
 
         pattern_parts = [re.escape(token) for token in tokens]
-        pattern = r'\s*'.join(pattern_parts)
+        pattern = r"\s*".join(pattern_parts)
 
         try:
             match = re.search(pattern, search_in)
@@ -282,7 +281,7 @@ class TableRowParser:
             return -1
 
         # Use \s* (zero or more) instead of \s+ to handle missing whitespace
-        search_pattern = r'\s*'.join(re.escape(w) for w in words)
+        search_pattern = r"\s*".join(re.escape(w) for w in words)
         try:
             match = re.search(search_pattern, self.extracted_text[start_pos:])
             if match:
@@ -346,7 +345,7 @@ class TableRowParser:
 
     def is_table(self) -> bool:
         """Check if the HTML contains a table structure."""
-        return '<table' in self.html.lower() and len(self.rows or []) > 1
+        return "<table" in self.html.lower() and len(self.rows or []) > 1
 
     def is_row_heading(self, position: int) -> bool:
         """

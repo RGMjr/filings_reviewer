@@ -219,7 +219,11 @@ class TestCheckPoolHealth:
         mock_conn = MagicMock()
         mock_pool.connection.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_pool.connection.return_value.__exit__ = MagicMock(return_value=False)
-        mock_pool.get_stats.return_value = {"pool_size": 5, "pool_available": 3, "requests_waiting": 0}
+        mock_pool.get_stats.return_value = {
+            "pool_size": 5,
+            "pool_available": 3,
+            "requests_waiting": 0,
+        }
         mock_pool.min_size = 2
         mock_pool.max_size = 10
 
@@ -239,7 +243,11 @@ class TestCheckPoolHealth:
 
         mock_pool = MagicMock()
         mock_pool.connection.side_effect = Exception("Connection failed")
-        mock_pool.get_stats.return_value = {"pool_size": 0, "pool_available": 0, "requests_waiting": 0}
+        mock_pool.get_stats.return_value = {
+            "pool_size": 0,
+            "pool_available": 0,
+            "requests_waiting": 0,
+        }
 
         result = check_pool_health(mock_pool)
 
@@ -467,7 +475,11 @@ class TestExecuteBatch:
             raise ValueError("Failed")
 
         # Mix of tasks - failure should cancel others
-        tasks = [lambda i=i: task(i) for i in range(3)] + [failing_task] + [lambda i=i: task(i) for i in range(3, 6)]
+        tasks = (
+            [lambda i=i: task(i) for i in range(3)]
+            + [failing_task]
+            + [lambda i=i: task(i) for i in range(3, 6)]
+        )
 
         with pytest.raises(PoolExecutionError):
             execute_batch(tasks, fail_fast=True, max_workers=2)
@@ -485,10 +497,7 @@ class TestExecuteBatch:
             raise ValueError("Something went wrong")
 
         with pytest.raises(PoolExecutionError) as exc_info:
-            execute_batch(
-                [failing_task],
-                task_descriptions=["Process filing 123"]
-            )
+            execute_batch([failing_task], task_descriptions=["Process filing 123"])
 
         error = exc_info.value
         failure = error.failures[0]
@@ -522,7 +531,7 @@ class TestExecuteBatch:
         mock_pool.get_stats.return_value = {
             "pool_size": 5,
             "pool_available": 3,
-            "requests_waiting": 0
+            "requests_waiting": 0,
         }
         mock_pool.min_size = 2
         mock_pool.max_size = 10
@@ -530,13 +539,13 @@ class TestExecuteBatch:
         report = check_pool_health(mock_pool)
 
         assert isinstance(report, PoolHealthReport)
-        assert hasattr(report, 'is_healthy')
-        assert hasattr(report, 'total_connections')
-        assert hasattr(report, 'idle_connections')
-        assert hasattr(report, 'active_connections')
-        assert hasattr(report, 'test_query_elapsed')
-        assert hasattr(report, 'timestamp')
-        assert hasattr(report, 'error')
+        assert hasattr(report, "is_healthy")
+        assert hasattr(report, "total_connections")
+        assert hasattr(report, "idle_connections")
+        assert hasattr(report, "active_connections")
+        assert hasattr(report, "test_query_elapsed")
+        assert hasattr(report, "timestamp")
+        assert hasattr(report, "error")
         assert report.timestamp is not None
 
     def test_pool_health_check_includes_metrics(self):
@@ -550,7 +559,7 @@ class TestExecuteBatch:
         mock_pool.get_stats.return_value = {
             "pool_size": 8,
             "pool_available": 5,
-            "requests_waiting": 0
+            "requests_waiting": 0,
         }
         mock_pool.min_size = 2
         mock_pool.max_size = 10
@@ -574,7 +583,7 @@ class TestExecuteBatch:
             mock_pool.get_stats.return_value = {
                 "pool_size": 5,
                 "pool_available": 3,
-                "requests_waiting": 0
+                "requests_waiting": 0,
             }
             mock_create_pool.return_value = mock_pool
 
@@ -604,7 +613,7 @@ class TestExecuteBatch:
             execute_batch(
                 [failing_task, failing_task, failing_task],
                 task_descriptions=descriptions,
-                fail_fast=True
+                fail_fast=True,
             )
 
         error = exc_info.value

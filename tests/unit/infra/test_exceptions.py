@@ -2,7 +2,6 @@
 Tests for infrastructure exceptions.
 """
 
-
 from src.infra.exceptions import (
     HTTPError,
     InfrastructureError,
@@ -50,7 +49,9 @@ class TestSECClientErrors:
     def test_sec_data_error_with_context(self):
         """Test SECDataError stores URL and response preview."""
         error = SECDataError(
-            "Invalid JSON", url="https://data.sec.gov/submissions/CIK0001234567.json", response_preview="not valid json{"
+            "Invalid JSON",
+            url="https://data.sec.gov/submissions/CIK0001234567.json",
+            response_preview="not valid json{",
         )
 
         assert str(error) == "Invalid JSON"
@@ -65,7 +66,12 @@ class TestPoolExecutionError:
     def test_task_failure_dataclass(self):
         """Test TaskFailure stores failure details."""
         exc = ValueError("Invalid input")
-        failure = TaskFailure(task_index=3, task_description="Process filing 1234", exception=exc, traceback_str="Traceback...")
+        failure = TaskFailure(
+            task_index=3,
+            task_description="Process filing 1234",
+            exception=exc,
+            traceback_str="Traceback...",
+        )
 
         assert failure.task_index == 3
         assert failure.task_description == "Process filing 1234"
@@ -93,7 +99,12 @@ class TestPoolExecutionError:
             TaskFailure(5, "Extract filing 6", OSError("File not found"), ""),
             TaskFailure(7, "Extract filing 8", KeyError("Missing field"), ""),
         ]
-        error = PoolExecutionError(failures=failures, completed_count=7, total_count=10, partial_results=[1, 2, None, 4, 5, None, 7, None, 9, 10])
+        error = PoolExecutionError(
+            failures=failures,
+            completed_count=7,
+            total_count=10,
+            partial_results=[1, 2, None, 4, 5, None, 7, None, 9, 10],
+        )
 
         summary = error.get_error_summary(max_errors=2)
 
