@@ -448,4 +448,92 @@ To recover the 21 remaining FNs, the Slack quarterly table needs to be TABLE-bou
 
 **Proposed fix**: Check `TableReconstructionStage` for handling of colspan/rowspan headers and verify that Slack's quarterly table structure generates proper `header_path` entries for each column.
 
+---
+
+## WP-06: Farfetch Recall Investigation
+
+**Date**: 2026-02-19
+**V2 scores (image extraction disabled)**: TP=10, FP=2, FN=24 — P=83.3%, R=29.4%, F1=43.5%
+
+> Note: These scores are without image extraction (no OpenAI API key). Many Farfetch metrics are in chart figures; image extraction would significantly improve recall.
+
+### FN Root Cause Summary (24 FNs)
+
+| Diagnostic category | Count | Metrics |
+|---|---|---|
+| `fp_filtered` | 9 | cm_ltv_to_cac_ratio (3), cm_ltv_to_cac_ratio_by_cohort (6) |
+| `no_value_binding` | 8 | cm_gross_margin_by_cohort (6), cm_cac_payback_period (1), cm_revenue_by_cohort (1) |
+| `wrong_period` | 5 | cm_average_order_value |
+| `no_candidate` | 2 | Empty metric_id rows in CSV |
+
+### Actual Root Cause Analysis
+
+**Important caveat**: The diagnostic categories are misleading for some FNs. Actual root causes differ from the reported categories in several cases.
+
+#### Root Cause 1: LTV/CAC ratio values not bound (9 FNs — diagnostic: `fp_filtered`)
+
+The Farfetch filing describes LTV/CAC in a text cell: *"Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77 respectively."*
+
+- The keyword "LTV/CAC" matches in a table cell (table_id=e1011fdc, table-bound candidate)
+- The value binding stage finds the **nearest** number to the keyword in the window
+- "31" (from "December **31**") is closer to "LTV/CAC" than "1.42" in the text
+- The binding for val=31, raw='31' is correctly FP-filtered by `part_of_date`
+- This leaves zero post-filter bindings → diagnostic reports `fp_filtered`
+- The actual values 1.42, 1.53, 1.77, 1.81, 2.04, 2.71 are never bound
+
+**Root cause**: Value binding only picks the nearest number; comma-separated value lists further from the keyword are ignored.
+
+**Fix required**: Multi-value extraction for comma-separated lists ("was 1.42, 1.53, and 1.77") in table cell text.
+
+#### Root Cause 2: Cohort metrics in charts (6+1+1 FNs — diagnostic: `no_value_binding`)
+
+- `cm_gross_margin_by_cohort` (6 FNs): Source text says *"The chart below illustrates the Order Contribution Margin..."* → values only in bar chart images
+- `cm_revenue_by_cohort` (1 FN): Gold standard has `segment_type=chart` explicitly
+- `cm_cac_payback_period` (1 FN): Text says "payback period on CAC has been consistently less than [X]" — the numeric value appears in a chart
+
+**Root cause**: Chart-dependent data; not addressable without Vision API (OpenAI image extraction).
+
+#### Root Cause 3: AOV values bound but low-confidence (5 FNs — diagnostic: `wrong_period`)
+
+AOV values ($591.7, $622.1, $586.8, $583.6, $620.0) ARE being found and bound from table `c4f2ffc3`:
+- Binding: bc=0.70 (table-bound), pc=0.00 (no period in header_path), period=None~None
+- Confidence formula: `0.70 × 0.8 + 0.00 × 0.2 = 0.56` → should be **above** the 0.50 threshold
+
+These facts should be matching. The diagnostic shows conf=0.410 for the "closest fact", suggesting a different binding is being selected (possible: text-bound $591.7 at bc=0.60, which gets FP-filtered, then a table-sourced scaled version from table `3950ef78` at val=591,700 is wrong by ×1000).
+
+**Root cause (likely)**: Massive binding duplication (table `c4f2ffc3` appears in many candidates, producing hundreds of AOV bindings). The deduplication stage may be selecting the wrong deduplicated fact, or the value-matching in dedup is discarding the correct ones. Also, table `3950ef78` (which has "(in thousands)" scale) produces scaled values of $591,700 that don't match the expected $591.7.
+
+**Immediate fix available**: Ensure the dedup stage retains the highest-confidence binding per (metric, value). Also investigate why table `c4f2ffc3` generates so many candidate bindings (n×m candidates × p bindings = explosive growth).
+
+#### Root Cause 4: CSV data issue (2 FNs — diagnostic: `no_candidate`)
+
+Two gold standard rows have empty `Standard Metric Name` (metric_id). The validator attempts to match these, fails to find candidates, and reports `no_candidate`. These rows (raw=' 44 ' and ' 57 ') should either be assigned a metric_id or removed from the CSV.
+
+**Fix**: Remove or correct these two rows in `data/gold_standard/golden_set_251218.csv`.
+
+### Chart vs Non-Chart Separation
+
+| Category | FN count | Addressable without Vision API? |
+|---|---|---|
+| LTV/CAC comma-separated values not bound | 9 | **Yes** — multi-value extraction |
+| Cohort charts (gross_margin, revenue, cac) | 8 | No — requires Vision API |
+| AOV dedup/scaling issue | 5 | **Yes** — dedup + scale fix |
+| Empty metric_id in CSV | 2 | **Yes** — CSV cleanup |
+
+**Addressable FNs**: 9 + 5 + 2 = **16 of 24**
+**Chart-only FNs**: 8 of 24
+
+### False Positives (2 FPs)
+
+Both FPs are for `cm_average_order_value` with values "$12.7 million" and "$15.4 million". These are likely non-AOV revenue figures near an AOV keyword. With image extraction enabled, more FPs may appear from chart annotations.
+
+### Key Finding for WP-09
+
+Three distinct addressable issues:
+1. **Multi-value binding** (LTV/CAC): Value binding must extract comma-separated lists when the source text pattern matches "X was A, B, and C respectively"
+2. **AOV binding explosion**: Too many candidates for AOV, leading to dedup problems. Investigate why table `c4f2ffc3` appears in so many candidate contexts
+3. **Scale table contamination**: Table `3950ef78` has "(in thousands)" and incorrectly scales AOV values by ×1000
+
+The highest-value target: fixing multi-value extraction would recover 9 FNs for LTV/CAC metrics alone.
+
 **Expected recovery**: If table binding succeeds, bc rises from 0.40-0.50 to 0.60, pushing conf from 0.46-0.49 to 0.54-0.66, recovering ~18-20 FNs.
