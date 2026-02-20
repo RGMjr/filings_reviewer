@@ -134,50 +134,15 @@ class V2PersistenceAdapter:
         Returns:
             The doc_id (UUID) of the upserted document
         """
-        sql = """
-            INSERT INTO v2_documents (
-                doc_id, filing_id, parse_version,
-                segment_count, table_count, image_count, fact_count,
-                status, parse_completed_at, extract_completed_at, created_at
-            )
-            VALUES (
-                %(doc_id)s, %(filing_id)s, %(parse_version)s,
-                %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s,
-                %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW()
-            )
-            ON CONFLICT (filing_id) DO UPDATE SET
-                parse_version = EXCLUDED.parse_version,
-                segment_count = EXCLUDED.segment_count,
-                table_count = EXCLUDED.table_count,
-                image_count = EXCLUDED.image_count,
-                fact_count = EXCLUDED.fact_count,
-                status = EXCLUDED.status,
-                extract_completed_at = EXCLUDED.extract_completed_at,
-                updated_at = NOW()
-            RETURNING doc_id
-        """
-
-        params = {
-            "doc_id": document.doc_id,
-            "filing_id": filing_id,
-            "parse_version": document.parse_version,
-            "segment_count": segment_count,
-            "table_count": table_count,
-            "image_count": image_count,
-            "fact_count": fact_count,
-            "status": status,
-            "parse_completed_at": document.created_at,
-            "extract_completed_at": datetime.utcnow(),
-        }
-
-        with self._db.get_connection() as conn:
+        with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, params)
-                result = cur.fetchone()
-                doc_id: str = str(result["doc_id"]) if result else document.doc_id
-
-        logger.debug(f"Upserted document: filing_id={filing_id}, doc_id={doc_id}")
-        return doc_id
+                self._persist_document_in_tx(
+                    cur, document, filing_id,
+                    segment_count, table_count, image_count, fact_count,
+                    status,
+                )
+        logger.debug(f"Upserted document: filing_id={filing_id}, doc_id={document.doc_id}")
+        return document.doc_id
 
     def persist_segments(
         self,
@@ -194,52 +159,9 @@ class V2PersistenceAdapter:
         Returns:
             Number of segments upserted
         """
-        if not segments:
-            return 0
-
-        sql = """
-            INSERT INTO v2_segments (
-                segment_id, doc_id, segment_type, segment_text,
-                dom_locator, section_path, section_type, sequence_idx,
-                prev_segment_id, next_segment_id, created_at
-            )
-            VALUES (
-                %(segment_id)s, %(doc_id)s, %(segment_type)s, %(segment_text)s,
-                %(dom_locator)s, %(section_path)s, %(section_type)s, %(sequence_idx)s,
-                %(prev_segment_id)s, %(next_segment_id)s, NOW()
-            )
-            ON CONFLICT (segment_id) DO UPDATE SET
-                segment_type = EXCLUDED.segment_type,
-                segment_text = EXCLUDED.segment_text,
-                dom_locator = EXCLUDED.dom_locator,
-                section_path = EXCLUDED.section_path,
-                section_type = EXCLUDED.section_type,
-                sequence_idx = EXCLUDED.sequence_idx,
-                prev_segment_id = EXCLUDED.prev_segment_id,
-                next_segment_id = EXCLUDED.next_segment_id
-        """
-
-        count = 0
-        with self._db.get_connection() as conn:
+        with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                for segment in segments:
-                    params = {
-                        "segment_id": segment.segment_id,
-                        "doc_id": filing_id,
-                        "segment_type": segment.segment_type.value,
-                        "segment_text": segment.text,
-                        "dom_locator": segment.dom_locator,
-                        "section_path": segment.section_path or [],
-                        "section_type": segment.section_type.value
-                        if segment.section_type
-                        else None,
-                        "sequence_idx": segment.sequence,
-                        "prev_segment_id": segment.prev_id,
-                        "next_segment_id": segment.next_id,
-                    }
-                    cur.execute(sql, params)
-                    count += 1
-
+                count = self._persist_segments_in_tx(cur, segments, filing_id)
         logger.debug(f"Upserted {count} segments for filing_id={filing_id}")
         return count
 
@@ -258,85 +180,9 @@ class V2PersistenceAdapter:
         Returns:
             Tuple of (tables_upserted, cells_upserted)
         """
-        if not tables:
-            return 0, 0
-
-        table_sql = """
-            INSERT INTO v2_tables (
-                table_id, doc_id, segment_id, dom_locator,
-                section_path, section_type,
-                row_count, col_count, header_rows, stub_cols,
-                raw_html, created_at
-            )
-            VALUES (
-                %(table_id)s, %(doc_id)s, %(segment_id)s, %(dom_locator)s,
-                %(section_path)s, %(section_type)s,
-                %(row_count)s, %(col_count)s, %(header_rows)s, %(stub_cols)s,
-                %(raw_html)s, NOW()
-            )
-            ON CONFLICT (table_id) DO UPDATE SET
-                segment_id = EXCLUDED.segment_id,
-                dom_locator = EXCLUDED.dom_locator,
-                section_path = EXCLUDED.section_path,
-                section_type = EXCLUDED.section_type,
-                row_count = EXCLUDED.row_count,
-                col_count = EXCLUDED.col_count,
-                header_rows = EXCLUDED.header_rows,
-                stub_cols = EXCLUDED.stub_cols,
-                raw_html = EXCLUDED.raw_html
-        """
-
-        cell_sql = """
-            INSERT INTO v2_table_cells (
-                cell_id, table_id, row_idx, col_idx, cell_text,
-                is_header, is_stub, header_path, stub_path,
-                rowspan, colspan, dom_locator
-            )
-            VALUES (
-                gen_random_uuid(), %(table_id)s, %(row_idx)s, %(col_idx)s, %(cell_text)s,
-                %(is_header)s, %(is_stub)s, %(header_path)s, %(stub_path)s,
-                %(rowspan)s, %(colspan)s, %(dom_locator)s
-            )
-            ON CONFLICT (table_id, row_idx, col_idx) DO UPDATE SET
-                cell_text = EXCLUDED.cell_text,
-                is_header = EXCLUDED.is_header,
-                is_stub = EXCLUDED.is_stub,
-                header_path = EXCLUDED.header_path,
-                stub_path = EXCLUDED.stub_path,
-                rowspan = EXCLUDED.rowspan,
-                colspan = EXCLUDED.colspan,
-                dom_locator = EXCLUDED.dom_locator
-        """
-
-        table_count = 0
-        cell_count = 0
-
-        with self._db.get_connection() as conn:
+        with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                for table in tables:
-                    # Upsert table
-                    table_params = {
-                        "table_id": table.table_id,
-                        "doc_id": filing_id,
-                        "segment_id": table.segment_id or None,
-                        "dom_locator": table.dom_locator,
-                        "section_path": table.section_path or [],
-                        "section_type": table.section_type.value if table.section_type else None,
-                        "row_count": table.row_count,
-                        "col_count": table.col_count,
-                        "header_rows": table.header_rows,
-                        "stub_cols": table.stub_cols,
-                        "raw_html": None,  # Not stored by default
-                    }
-                    cur.execute(table_sql, table_params)
-                    table_count += 1
-
-                    # Upsert cells
-                    for cell in table.cells:
-                        cell_params = self._cell_to_params(cell, table.table_id)
-                        cur.execute(cell_sql, cell_params)
-                        cell_count += 1
-
+                table_count, cell_count = self._persist_tables_in_tx(cur, tables, filing_id)
         logger.debug(f"Upserted {table_count} tables, {cell_count} cells for filing_id={filing_id}")
         return table_count, cell_count
 
@@ -371,78 +217,9 @@ class V2PersistenceAdapter:
         Returns:
             Number of images upserted
         """
-        if not images:
-            return 0
-
-        sql = """
-            INSERT INTO v2_image_assets (
-                img_id, doc_id, segment_id, filename, file_path,
-                width, height, dom_locator, nearby_text,
-                section_path, section_type,
-                classification, relevance_score,
-                ocr_text, ocr_table_id, chart_type, chart_data,
-                processed, confidence, requires_manual, created_at
-            )
-            VALUES (
-                %(img_id)s, %(doc_id)s, %(segment_id)s, %(filename)s, %(file_path)s,
-                %(width)s, %(height)s, %(dom_locator)s, %(nearby_text)s,
-                %(section_path)s, %(section_type)s,
-                %(classification)s, %(relevance_score)s,
-                %(ocr_text)s, %(ocr_table_id)s, %(chart_type)s, %(chart_data)s,
-                %(processed)s, %(confidence)s, %(requires_manual)s, NOW()
-            )
-            ON CONFLICT (img_id) DO UPDATE SET
-                segment_id = EXCLUDED.segment_id,
-                filename = EXCLUDED.filename,
-                file_path = EXCLUDED.file_path,
-                width = EXCLUDED.width,
-                height = EXCLUDED.height,
-                dom_locator = EXCLUDED.dom_locator,
-                nearby_text = EXCLUDED.nearby_text,
-                section_path = EXCLUDED.section_path,
-                section_type = EXCLUDED.section_type,
-                classification = EXCLUDED.classification,
-                relevance_score = EXCLUDED.relevance_score,
-                ocr_text = EXCLUDED.ocr_text,
-                ocr_table_id = EXCLUDED.ocr_table_id,
-                chart_type = EXCLUDED.chart_type,
-                chart_data = EXCLUDED.chart_data,
-                processed = EXCLUDED.processed,
-                confidence = EXCLUDED.confidence,
-                requires_manual = EXCLUDED.requires_manual
-        """
-
-        count = 0
-        with self._db.get_connection() as conn:
+        with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                for image in images:
-                    params = {
-                        "img_id": image.img_id,
-                        "doc_id": filing_id,
-                        "segment_id": image.segment_id,
-                        "filename": image.filename,
-                        "file_path": image.file_path,
-                        "width": image.width,
-                        "height": image.height,
-                        "dom_locator": image.dom_locator,
-                        "nearby_text": image.nearby_text,
-                        "section_path": image.section_path or [],
-                        "section_type": image.section_type.value if image.section_type else None,
-                        "classification": image.classification.value,
-                        "relevance_score": image.relevance_score,
-                        "ocr_text": image.ocr_text,
-                        "ocr_table_id": image.ocr_table.table_id if image.ocr_table else None,
-                        "chart_type": image.chart_data.chart_type.value
-                        if image.chart_data
-                        else None,
-                        "chart_data": _serialize_chart_data(image.chart_data),
-                        "processed": image.processed,
-                        "confidence": image.confidence,
-                        "requires_manual": image.requires_manual_capture,
-                    }
-                    cur.execute(sql, params)
-                    count += 1
-
+                count = self._persist_images_in_tx(cur, images, filing_id)
         logger.debug(f"Upserted {count} images for filing_id={filing_id}")
         return count
 
@@ -465,63 +242,9 @@ class V2PersistenceAdapter:
         Returns:
             Number of facts upserted
         """
-        if not facts:
-            return 0
-
-        # Identity-based upsert: ON CONFLICT on the unique identity index
-        # Uses COALESCE sentinels matching idx_v2_metric_facts_identity_unique
-        sql = """
-            INSERT INTO v2_metric_facts (
-                fact_id, doc_id, canonical_metric_id,
-                value, value_raw, unit, currency,
-                period_type, period_start, period_end,
-                scope, scope_detail, cohort_def, customer_type,
-                source_type, source_locator, evidence_pack,
-                confidence, extraction_method, requires_review, review_reason, review_status,
-                alternate_evidence, primary_fact_id, pipeline_version, created_at
-            )
-            VALUES (
-                %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
-                %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
-                %(period_type)s, %(period_start)s, %(period_end)s,
-                %(scope)s, %(scope_detail)s, %(cohort_def)s, %(customer_type)s,
-                %(source_type)s, %(source_locator)s, %(evidence_pack)s,
-                %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
-                %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
-            )
-            ON CONFLICT (
-                doc_id, canonical_metric_id,
-                COALESCE(period_start, '1900-01-01'::date),
-                COALESCE(period_end, '1900-01-01'::date),
-                unit, scope,
-                COALESCE(cohort_def, ''),
-                COALESCE(customer_type, '')
-            ) DO UPDATE SET
-                value = EXCLUDED.value,
-                value_raw = EXCLUDED.value_raw,
-                currency = EXCLUDED.currency,
-                period_type = EXCLUDED.period_type,
-                source_type = EXCLUDED.source_type,
-                source_locator = EXCLUDED.source_locator,
-                evidence_pack = EXCLUDED.evidence_pack,
-                confidence = EXCLUDED.confidence,
-                extraction_method = EXCLUDED.extraction_method,
-                requires_review = EXCLUDED.requires_review,
-                review_reason = EXCLUDED.review_reason,
-                alternate_evidence = EXCLUDED.alternate_evidence,
-                primary_fact_id = EXCLUDED.primary_fact_id,
-                pipeline_version = EXCLUDED.pipeline_version,
-                updated_at = NOW()
-        """
-
-        count = 0
-        with self._db.get_connection() as conn:
+        with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                for fact in facts:
-                    params = self._fact_to_params(fact, filing_id)
-                    cur.execute(sql, params)
-                    count += 1
-
+                count = self._persist_facts_in_tx(cur, facts, filing_id)
         logger.debug(f"Upserted {count} facts for filing_id={filing_id}")
         return count
 

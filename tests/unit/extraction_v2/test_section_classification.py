@@ -9,6 +9,7 @@ from pathlib import Path
 from src.extraction_v2.models import SectionType, Segment, SegmentType
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
+from src.extraction_v2.text_utils import normalize_text
 
 
 class TestNormalizeText:
@@ -16,23 +17,18 @@ class TestNormalizeText:
 
     def test_normalize_collapses_whitespace(self) -> None:
         """Test that multiple spaces/newlines are collapsed to single space."""
-        stage = SectionClassificationStage()
         text = "ITEM   1A    \n  RISK\n\nFACTORS"
-        normalized = stage._normalize_text(text)
-        assert normalized == "ITEM 1A RISK FACTORS"
+        assert normalize_text(text) == "ITEM 1A RISK FACTORS"
 
     def test_normalize_trims_whitespace(self) -> None:
         """Test that leading/trailing whitespace is removed."""
-        stage = SectionClassificationStage()
         text = "  \n  RISK FACTORS  \n  "
-        normalized = stage._normalize_text(text)
-        assert normalized == "RISK FACTORS"
+        assert normalize_text(text) == "RISK FACTORS"
 
     def test_normalize_empty_string(self) -> None:
         """Test normalizing empty string."""
-        stage = SectionClassificationStage()
-        assert stage._normalize_text("") == ""
-        assert stage._normalize_text("   ") == ""
+        assert normalize_text("") == ""
+        assert normalize_text("   ") == ""
 
 
 class TestMostlyUppercase:

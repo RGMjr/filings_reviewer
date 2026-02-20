@@ -435,18 +435,18 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 **Tasks:**
 1. [x] Create end-to-end test with real filing - `tests/integration/extraction_v2/test_e2e_pipeline.py` (8 tests)
-2. [x] Compare V2 output against V1 baseline - `src/extraction_v2/comparison.py` (V1V2Comparator)
+2. [x] Compare V2 output against V1 baseline - `src/extraction_v2/comparison.py` (V1V2Comparator) — **removed in cleanup (commit 378b37f)**
 3. [x] Run gold standard validation - `src/gold_standard/v2_validator.py` (V2GoldStandardValidator)
-4. [x] Performance benchmarks (V2 vs V1) - `scripts/benchmark_v1_v2.py`
+4. [x] Performance benchmarks (V2 vs V1) - `scripts/benchmark_v1_v2.py` — **removed in cleanup (commit 378b37f)**
 5. [x] Document migration path - `docs/V2_MIGRATION_GUIDE.md`
 
 **Deliverables:**
-- `tests/integration/extraction_v2/test_e2e_pipeline.py` - 8 E2E tests
-- `tests/integration/extraction_v2/test_v1_v2_comparison.py` - Comparison tests
-- `src/extraction_v2/comparison.py` - V1V2Comparator class
-- `src/gold_standard/v2_validator.py` - V2GoldStandardValidator class
-- `scripts/benchmark_v1_v2.py` - Benchmark CLI
-- `docs/V2_MIGRATION_GUIDE.md` - Migration documentation
+- `tests/integration/extraction_v2/test_e2e_pipeline.py` - 8 E2E tests (active)
+- `tests/integration/extraction_v2/test_v1_v2_comparison.py` - Comparison tests — **removed in cleanup (commit 378b37f)**
+- `src/extraction_v2/comparison.py` - V1V2Comparator class — **removed in cleanup (commit 378b37f)**
+- `src/gold_standard/v2_validator.py` - V2GoldStandardValidator class (active)
+- `scripts/benchmark_v1_v2.py` - Benchmark CLI — **removed in cleanup (commit 378b37f)**
+- `docs/V2_MIGRATION_GUIDE.md` - Migration documentation (active)
 
 **Dependencies:** All phases
 

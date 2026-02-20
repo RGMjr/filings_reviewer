@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from lxml import etree, html
 
+from src.extraction_v2.text_utils import normalize_text
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
@@ -169,20 +170,6 @@ class IngestionStage:
         # Prepend / for absolute path
         return "/" + "/".join(path_parts)
 
-    def _normalize_text(self, text: str) -> str:
-        """
-        Normalize text by collapsing whitespace.
-
-        Args:
-            text: Raw text content
-
-        Returns:
-            Normalized text with collapsed whitespace
-        """
-        # Replace multiple whitespace (including newlines) with single space
-        normalized = re.sub(r"\s+", " ", text)
-        return normalized.strip()
-
     def _get_element_position(self, tree: etree._Element, element: etree._Element) -> int:
         """
         Get position of element in document order.
@@ -307,10 +294,10 @@ class IngestionStage:
             return False
 
         # Get text from div and from first table
-        div_text = self._normalize_text(
+        div_text = normalize_text(
             div_element.text_content() if hasattr(div_element, "text_content") else ""
         )
-        table_text = self._normalize_text(
+        table_text = normalize_text(
             tables[0].text_content() if hasattr(tables[0], "text_content") else ""
         )
 
@@ -361,7 +348,7 @@ class IngestionStage:
             if table is None:
                 # No table found - fall back to standard normalization
                 logger.debug("No table found in element, using standard normalization")
-                return self._normalize_text(
+                return normalize_text(
                     table_element.text_content() if hasattr(table_element, "text_content") else ""
                 )
 
@@ -382,7 +369,7 @@ class IngestionStage:
                 # Extract and normalize text from each cell
                 cell_texts = []
                 for cell in cells:
-                    cell_text = self._normalize_text(
+                    cell_text = normalize_text(
                         cell.text_content() if hasattr(cell, "text_content") else ""
                     )
                     # Skip empty cells (no empty markers)
@@ -406,7 +393,7 @@ class IngestionStage:
             logger.warning(
                 f"Error extracting table text with markers: {e}, falling back to standard normalization"
             )
-            return self._normalize_text(
+            return normalize_text(
                 table_element.text_content() if hasattr(table_element, "text_content") else ""
             )
 
@@ -531,7 +518,7 @@ class IngestionStage:
 
             # Extract text content
             text_content = element.text_content() if hasattr(element, "text_content") else ""
-            normalized_text = self._normalize_text(text_content)
+            normalized_text = normalize_text(text_content)
 
             # Apply length filters
             if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
@@ -644,7 +631,7 @@ class IngestionStage:
             captions = parent.xpath(".//figcaption")
             for caption in captions:
                 text = caption.text_content() if hasattr(caption, "text_content") else ""
-                text = self._normalize_text(text)
+                text = normalize_text(text)
                 if text:
                     nearby_parts.append(text)
 
@@ -660,7 +647,7 @@ class IngestionStage:
             while current is not None and count < 2:
                 if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
                     text = current.text_content() if hasattr(current, "text_content") else ""
-                    text = self._normalize_text(text)
+                    text = normalize_text(text)
                     if text:
                         prev_siblings.insert(0, text)
                         count += 1
@@ -676,7 +663,7 @@ class IngestionStage:
             while current is not None and count < 2:
                 if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
                     text = current.text_content() if hasattr(current, "text_content") else ""
-                    text = self._normalize_text(text)
+                    text = normalize_text(text)
                     if text:
                         next_siblings.append(text)
                         count += 1
@@ -696,7 +683,7 @@ class IngestionStage:
             while current is not None and count < 2:
                 if current.tag in _block_tags:
                     text = current.text_content() if hasattr(current, "text_content") else ""
-                    text = self._normalize_text(text)
+                    text = normalize_text(text)
                     if text:
                         parent_prev.insert(0, text)
                         count += 1
@@ -710,7 +697,7 @@ class IngestionStage:
             while current is not None and count < 2:
                 if current.tag in _block_tags:
                     text = current.text_content() if hasattr(current, "text_content") else ""
-                    text = self._normalize_text(text)
+                    text = normalize_text(text)
                     if text:
                         parent_next.append(text)
                         count += 1

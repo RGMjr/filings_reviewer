@@ -26,6 +26,7 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
+from src.extraction_v2.text_utils import find_sentence_bounds
 from src.extraction_v2.unit_compatibility import (
     _COUNT_ONLY_METRICS,
     _CURRENCY_ONLY_METRICS,
@@ -601,7 +602,7 @@ class ValueBindingStage:
             return bound_values
 
         # Get sentence bounds for the keyword match
-        sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
+        sentence_start, sentence_end = find_sentence_bounds(text, match_start)
 
         # Compute keyword center for distance decay
         keyword_center = (match_start + match_end) / 2.0
@@ -862,44 +863,6 @@ class ValueBindingStage:
                 results.append((match, value, unit, raw))
 
         return results
-
-    def _find_sentence_bounds(self, text: str, position: int) -> tuple[int, int]:
-        """
-        Find sentence boundaries around a given position.
-
-        Uses regex to detect sentence endings: [.!?] followed by whitespace and capital letter,
-        or start/end of text.
-
-        Args:
-            text: Full text to search
-            position: Character position to find sentence bounds around
-
-        Returns:
-            Tuple of (sentence_start, sentence_end) positions
-        """
-        # Find sentence start (look backwards for sentence boundary)
-        sentence_start = 0
-        # Pattern for sentence boundary: period/exclamation/question followed by space and capital
-        boundary_pattern = re.compile(r"[.!?]\s+[A-Z]")
-
-        # Search backwards from position
-        text_before = text[:position]
-        boundaries_before = list(boundary_pattern.finditer(text_before))
-        if boundaries_before:
-            # Start after the last sentence boundary found
-            last_boundary = boundaries_before[-1]
-            # Start position is after the punctuation and whitespace
-            sentence_start = last_boundary.end() - 1  # -1 to include the capital letter
-
-        # Find sentence end (look forwards for sentence boundary)
-        sentence_end = len(text)
-        text_after = text[position:]
-        boundary_match = boundary_pattern.search(text_after)
-        if boundary_match:
-            # End at the punctuation mark
-            sentence_end = position + boundary_match.start() + 1  # +1 to include punctuation
-
-        return (sentence_start, sentence_end)
 
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
         """
