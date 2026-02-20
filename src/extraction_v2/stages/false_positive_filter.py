@@ -25,6 +25,7 @@ import logging
 import re
 from datetime import datetime
 from decimal import Decimal
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import BoundValue, Unit
@@ -90,6 +91,155 @@ _FORTUNE_SUBSET_RE = re.compile(
 _LEADING_ZERO_RE = re.compile(r"^0\d{1,2}$")
 
 
+# =============================================================================
+# Individual FP Rule Functions
+# Each returns a reason string if it fires, None otherwise.
+# Signature: (bv: BoundValue, source_text: str, metric_id: str) -> str | None
+# =============================================================================
+
+
+def _rule_year_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Year value for ALL units (V1 only filters unit=count)."""
+    if bv.value is not None and _YEAR_MIN <= bv.value <= _YEAR_MAX:
+        raw = (bv.value_raw or "").strip()
+        stripped = raw.replace(",", "")
+        if stripped.isdigit() and len(stripped) == 4:
+            return "v2_year_value"
+    return None
+
+
+def _rule_percent_range(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Percentage-only metrics should have values in 0-500 range."""
+    if bv.value is not None and metric_id in _PERCENT_ONLY_METRICS:
+        if bv.value > 500 or bv.value < 0:
+            return "v2_percent_range"
+    return None
+
+
+def _rule_garbage_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Numbers with >10 digits are almost certainly parsing artifacts."""
+    if bv.value is not None and abs(bv.value) > 10_000_000_000:
+        return "v2_garbage_value"
+    return None
+
+
+def _rule_year_fragment(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Leading-zero fragments like '018' from proximity window cutting '2018'."""
+    raw = (bv.value_raw or "").strip()
+    if raw and _LEADING_ZERO_RE.match(raw):
+        return "v2_year_fragment"
+    return None
+
+
+def _rule_linearized_table(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Text with [CELL]/[ROW] markers is a linearized table duplicate."""
+    if source_text and _TABLE_MARKER_RE.search(source_text):
+        return "v2_linearized_table"
+    return None
+
+
+def _rule_financial_annotation(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Financial table annotations like '(In thousands)' near the value."""
+    if not source_text or bv.source_locator.table_id is not None:
+        return None
+    raw = (bv.value_raw or "").strip()
+    value_pos = source_text.find(raw) if raw else -1
+    ann_match = _FINANCIAL_ANNOTATION_RE.search(source_text)
+    if ann_match:
+        if value_pos < 0 or abs(ann_match.start() - value_pos) <= 300:
+            return "v2_financial_annotation"
+    return None
+
+
+def _rule_financial_sbc(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Stock-based compensation footnotes near the value."""
+    if not source_text or bv.source_locator.table_id is not None:
+        return None
+    raw = (bv.value_raw or "").strip()
+    value_pos = source_text.find(raw) if raw else -1
+    sbc_match = _SBC_RE.search(source_text)
+    if sbc_match:
+        if value_pos < 0 or abs(sbc_match.start() - value_pos) <= 300:
+            return "v2_financial_sbc"
+    return None
+
+
+def _rule_ranking_name(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Company ranking names like 'Fortune 100', 'Forbes 500'."""
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if raw:
+        for m in _RANKING_NAME_RE.finditer(source_text):
+            if m.group(1) == raw:
+                return "v2_ranking_name"
+    return None
+
+
+def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Geographic revenue context for cm_revenue_concentration."""
+    if not source_text or metric_id != "cm_revenue_concentration":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
+    if geo_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(geo_match.start() - value_pos) <= 200:
+            return "v2_geographic_revenue"
+    return None
+
+
+def _rule_developer_count(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Developer/engineer count mistaken for cm_daily_active_users."""
+    if not source_text or metric_id != "cm_daily_active_users":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    dev_match = _DEVELOPER_COUNT_RE.search(source_text)
+    if dev_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(dev_match.start() - value_pos) <= 150:
+            return "v2_developer_count"
+    return None
+
+
+def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Fortune/Forbes subset count for cm_customers_period_end."""
+    if not source_text or metric_id != "cm_customers_period_end":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    fortune_match = _FORTUNE_SUBSET_RE.search(source_text)
+    if fortune_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
+            return "v2_fortune_subset"
+    return None
+
+
+# =============================================================================
+# FP Rule Registry — order matters (first match wins)
+# =============================================================================
+
+_FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
+    ("year_value", _rule_year_value),
+    ("percent_range", _rule_percent_range),
+    ("garbage_value", _rule_garbage_value),
+    ("year_fragment", _rule_year_fragment),
+    ("linearized_table", _rule_linearized_table),
+    ("financial_annotation", _rule_financial_annotation),
+    ("financial_sbc", _rule_financial_sbc),
+    ("ranking_name", _rule_ranking_name),
+    ("geographic_revenue", _rule_geographic_revenue),
+    ("developer_count", _rule_developer_count),
+    ("fortune_subset", _rule_fortune_subset),
+]
+
+
 def _is_v2_false_positive(
     bv: BoundValue,
     source_text: str,
@@ -98,110 +248,15 @@ def _is_v2_false_positive(
     """
     V2-native false positive checks that go beyond V1's positional filter.
 
-    These rules exploit V2 pipeline context that V1 doesn't have:
-    - Year values across all unit types (V1 only checks unit=count)
-    - Linearized table markers that indicate duplicate text extraction
-    - Financial table annotations that mark non-metric financial data
-    - Ranking names where a number is part of a name, not a value
-    - Percentage-metric range validation (reject > 500 for percent-only metrics)
-    - Garbage value detection (absurdly large numbers)
+    Iterates over registered FP rules and returns the first match.
 
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
     """
-    raw = (bv.value_raw or "").strip()
-
-    # Rule 1: Year value for ALL units (V1 only filters unit=count).
-    # Catches e.g. "2019" extracted as cm_net_revenue_retention with unit=PERCENT.
-    if bv.value is not None and _YEAR_MIN <= bv.value <= _YEAR_MAX:
-        stripped = raw.replace(",", "")
-        if stripped.isdigit() and len(stripped) == 4:
-            return True, "v2_year_value"
-
-    # Rule 5: Percentage-metric range validation.
-    # Percentage-only metrics (NRR, churn, etc.) should have values in 0-500 range.
-    # Values like 37000 or 95000 near an NRR keyword are clearly not percentages.
-    if bv.value is not None and metric_id in _PERCENT_ONLY_METRICS:
-        if bv.value > 500 or bv.value < 0:
-            return True, "v2_percent_range"
-
-    # Rule 6: Garbage value detection.
-    # Numbers with >10 digits (>10 billion) are almost certainly parsing artifacts
-    # (e.g., concatenated dates like 9202020192020).
-    if bv.value is not None and abs(bv.value) > 10_000_000_000:
-        return True, "v2_garbage_value"
-
-    # Rule 7: Leading-zero year-fragment artifact.
-    # Values like "018" or "019" start with zero and are almost certainly produced
-    # by the proximity window cutting a 4-digit year (e.g., "2018" → "018").
-    if raw and _LEADING_ZERO_RE.match(raw):
-        return True, "v2_year_fragment"
-
-    if not source_text:
-        return False, None
-
-    # Rule 2: Linearized table text ([CELL]/[ROW] markers).
-    # The ingestion stage injects these markers when linearizing HTML tables
-    # into text segments.  The same table data is also processed by the
-    # table-reconstruction path, so these text-sourced extractions are noisy
-    # duplicates that bypass the structured header/stub binding.
-    if _TABLE_MARKER_RE.search(source_text):
-        return True, "v2_linearized_table"
-
-    # Rule 3: Financial table annotation text.
-    # Only flag as FP if annotation is within 300 chars of the bound value.
-    # Exempt table-sourced values: structural header/stub binding is more
-    # reliable than text proximity, and "(In thousands)" is a scale indicator,
-    # not evidence of non-metric financial data in table context.
-    if bv.source_locator.table_id is None:
-        value_pos = source_text.find(raw) if raw else -1
-        ann_match = _FINANCIAL_ANNOTATION_RE.search(source_text)
-        if ann_match:
-            if value_pos < 0 or abs(ann_match.start() - value_pos) <= 300:
-                return True, "v2_financial_annotation"
-        sbc_match = _SBC_RE.search(source_text)
-        if sbc_match:
-            if value_pos < 0 or abs(sbc_match.start() - value_pos) <= 300:
-                return True, "v2_financial_sbc"
-
-    # Rule 4: Company ranking name.
-    # "Fortune 100", "Forbes 500" — the number is part of the ranking name.
-    if raw:
-        for m in _RANKING_NAME_RE.finditer(source_text):
-            if m.group(1) == raw:
-                return True, "v2_ranking_name"
-
-    # Rule 8: Geographic revenue context for cm_revenue_concentration.
-    # Percentages near geographic keywords (international, domestic, EMEA, etc.)
-    # describe revenue mix by region, NOT customer revenue concentration.
-    # Proximity check (200 chars) prevents firing on distant geographic mentions in long segments.
-    if metric_id == "cm_revenue_concentration" and raw:
-        geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
-        if geo_match:
-            value_pos = source_text.find(raw)
-            if value_pos >= 0 and abs(geo_match.start() - value_pos) <= 200:
-                return True, "v2_geographic_revenue"
-
-    # Rule 9: Developer/engineer count for cm_daily_active_users.
-    # "500,000 registered developers" is not a daily active user count.
-    # Proximity check (150 chars) prevents firing when developer mention is in a distant sentence.
-    if metric_id == "cm_daily_active_users" and raw:
-        dev_match = _DEVELOPER_COUNT_RE.search(source_text)
-        if dev_match:
-            value_pos = source_text.find(raw)
-            if value_pos >= 0 and abs(dev_match.start() - value_pos) <= 150:
-                return True, "v2_developer_count"
-
-    # Rule 10: Fortune/Forbes subset count for cm_customers_period_end.
-    # "65 of the Fortune 100" counts Fortune 100 membership, not total paid customers.
-    # Proximity check (100 chars): the subset number appears immediately before "of the Fortune N".
-    if metric_id == "cm_customers_period_end" and raw:
-        fortune_match = _FORTUNE_SUBSET_RE.search(source_text)
-        if fortune_match:
-            value_pos = source_text.find(raw)
-            if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
-                return True, "v2_fortune_subset"
-
+    for _name, rule_fn in _FP_RULES:
+        reason = rule_fn(bv, source_text, metric_id)
+        if reason is not None:
+            return True, reason
     return False, None
 
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from decimal import InvalidOperation
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import (
@@ -26,6 +25,7 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
+from src.extraction_v2.stages import number_parsing as _np
 from src.extraction_v2.text_utils import find_sentence_bounds
 from src.extraction_v2.unit_compatibility import (
     _COUNT_ONLY_METRICS,
@@ -71,55 +71,12 @@ class ValueBindingStage:
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
     DEFAULT_CHAR_PROXIMITY: int = 100  # Max chars for proximity search
 
-    # Number parsing pattern
-    # Matches: $1,234.56, 1,234, 45%, 1.5M, -$100, etc.
-    NUMBER_PATTERN = re.compile(
-        r"""
-        (?P<negative>-)?                    # Optional negative
-        (?P<currency>[\$\€\£])?             # Optional currency symbol
-        \s*
-        (?P<number>
-            \d{1,3}(?:,\d{3})+              # Comma-separated integer (requires at least one comma group)
-            (?:\.\d+)?                       # Optional decimal
-            |
-            \d+(?:\.\d+)?                    # Plain number
-        )
-        \s*
-        (?P<suffix>million|billion|thousand|mn|bn|k|m|b)?  # Scale suffix
-        \s*
-        (?P<percent>%|percent)?             # Percentage indicator
-        """,
-        re.IGNORECASE | re.VERBOSE,
-    )
-
-    # Scale multipliers
-    SCALE_MULTIPLIERS: dict[str, float] = {
-        "thousand": 1_000,
-        "k": 1_000,
-        "million": 1_000_000,
-        "mn": 1_000_000,
-        "m": 1_000_000,
-        "billion": 1_000_000_000,
-        "bn": 1_000_000_000,
-        "b": 1_000_000_000,
-    }
-
-    # Table-level scale pattern: "(In thousands)", "(In millions)", etc.
-    TABLE_SCALE_PATTERN = re.compile(
-        r"\(\s*(?:in|amounts?\s+in)\s+(thousands|millions|billions|hundreds)\b[^)]*\)",
-        re.IGNORECASE,
-    )
-    # Pattern for "except as otherwise noted" / "except as noted" qualifiers
-    TABLE_SCALE_EXCEPT_PATTERN = re.compile(
-        r"except\s+as\s+(?:otherwise\s+)?noted",
-        re.IGNORECASE,
-    )
-    TABLE_SCALE_MAP: dict[str, float] = {
-        "hundreds": 100,
-        "thousands": 1_000,
-        "millions": 1_000_000,
-        "billions": 1_000_000_000,
-    }
+    # Number parsing constants — defined in stages/number_parsing.py
+    NUMBER_PATTERN = _np.NUMBER_PATTERN
+    SCALE_MULTIPLIERS = _np.SCALE_MULTIPLIERS
+    TABLE_SCALE_PATTERN = _np.TABLE_SCALE_PATTERN
+    TABLE_SCALE_EXCEPT_PATTERN = _np.TABLE_SCALE_EXCEPT_PATTERN
+    TABLE_SCALE_MAP = _np.TABLE_SCALE_MAP
 
     def __init__(self, proximity_window: int = 100) -> None:
         """
@@ -383,55 +340,106 @@ class ValueBindingStage:
 
         return bound_values
 
-    def _bind_column_values(
+    def _bind_cells(
         self,
         candidate: MetricCandidate,
         table: Table,
-        col: int | None,
-        header_path: list[str],
+        fixed_idx: int | None,
+        fixed_path: list[str],
+        binding_type: str,
+        iterate_rows: bool,
     ) -> list[BoundValue]:
         """
-        Bind values from data cells in the same column.
+        Unified cell binding for both column-scan and row-scan patterns.
+
+        When iterate_rows=True (column binding):
+          - Iterates data rows, fixed column index
+          - fixed_path is the header_path; cell.stub_path is the dynamic path
+
+        When iterate_rows=False (row binding):
+          - Iterates data columns, fixed row index
+          - fixed_path is the stub_path; cell.header_path is the dynamic path
+          - Also applies count/currency column-type filters
 
         Args:
-            candidate: The metric candidate
-            table: The table
-            col: Column index
-            header_path: Header path for confidence scoring
+            candidate: The metric candidate.
+            table: The table to search.
+            fixed_idx: The fixed column (iterate_rows=True) or row (iterate_rows=False) index.
+            fixed_path: The header_path or stub_path that is fixed for all cells in this scan.
+            binding_type: "table_header" or "table_stub".
+            iterate_rows: True to scan rows (column binding), False to scan columns (row binding).
 
         Returns:
-            List of BoundValue objects
+            List of BoundValue objects.
         """
         bound_values: list[BoundValue] = []
-        if col is None:
+        if fixed_idx is None:
             return bound_values
 
         match_text_lower = candidate.match_text.lower()
+        indices = (
+            range(table.header_rows, table.row_count)
+            if iterate_rows
+            else range(table.stub_cols, table.col_count)
+        )
 
-        # Iterate through data rows (skip header rows)
-        for row_idx in range(table.header_rows, table.row_count):
-            cell = table.get_cell(row_idx, col)
+        for idx in indices:
+            if iterate_rows:
+                cell = table.get_cell(idx, fixed_idx)
+                cell_row, cell_col = idx, fixed_idx
+            else:
+                cell = table.get_cell(fixed_idx, idx)
+                cell_row, cell_col = fixed_idx, idx
+
             if not cell or not cell.text.strip():
                 continue
-
-            # Skip if cell is a header or stub
             if cell.is_header or cell.is_stub:
                 continue
 
-            # Try to parse the cell value
             parsed = self._parse_number(cell.text)
             if not parsed:
                 continue
 
             value, unit, raw = parsed
-            # Check percentage context from table headers/stubs
-            context_text = " ".join(header_path + cell.stub_path)
+
+            if iterate_rows:
+                header_path_eff = fixed_path
+                stub_path_eff = cell.stub_path
+            else:
+                header_path_eff = cell.header_path
+                stub_path_eff = fixed_path
+
+            context_text = " ".join(header_path_eff + stub_path_eff)
             unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
+            # Column-type filter (row binding only): prevent count metrics from
+            # binding to dollar columns (and vice versa) in mixed financial tables.
+            if not iterate_rows:
+                if candidate.metric_id in _COUNT_ONLY_METRICS and self._header_indicates_currency(
+                    cell.header_path
+                ):
+                    logger.debug(
+                        "Skipping currency-column cell (%d,%d) for count metric %s",
+                        fixed_idx,
+                        idx,
+                        candidate.metric_id,
+                    )
+                    continue
+                if candidate.metric_id in _CURRENCY_ONLY_METRICS and self._header_indicates_count(
+                    cell.header_path
+                ):
+                    logger.debug(
+                        "Skipping count-column cell (%d,%d) for currency metric %s",
+                        fixed_idx,
+                        idx,
+                        candidate.metric_id,
+                    )
+                    continue
+
             confidence = self._compute_table_confidence(
-                match_text_lower, header_path, cell.stub_path, unit
+                match_text_lower, header_path_eff, stub_path_eff, unit
             )
 
             bound_values.append(
@@ -440,18 +448,28 @@ class ValueBindingStage:
                     value=value,
                     value_raw=raw,
                     unit=unit,
-                    binding_type="table_header",
+                    binding_type=binding_type,
                     binding_confidence=confidence,
                     source_locator=SourceLocator(
                         table_id=table.table_id,
-                        cell_row=row_idx,
-                        cell_col=col,
+                        cell_row=cell_row,
+                        cell_col=cell_col,
                         dom_locator=cell.dom_locator,
                     ),
                 )
             )
 
         return bound_values
+
+    def _bind_column_values(
+        self,
+        candidate: MetricCandidate,
+        table: Table,
+        col: int | None,
+        header_path: list[str],
+    ) -> list[BoundValue]:
+        """Bind values from data cells in the same column (delegates to _bind_cells)."""
+        return self._bind_cells(candidate, table, col, header_path, "table_header", iterate_rows=True)
 
     def _bind_row_values(
         self,
@@ -460,91 +478,8 @@ class ValueBindingStage:
         row: int | None,
         stub_path: list[str],
     ) -> list[BoundValue]:
-        """
-        Bind values from data cells in the same row.
-
-        Args:
-            candidate: The metric candidate
-            table: The table
-            row: Row index
-            stub_path: Stub path for confidence scoring
-
-        Returns:
-            List of BoundValue objects
-        """
-        bound_values: list[BoundValue] = []
-        if row is None:
-            return bound_values
-
-        match_text_lower = candidate.match_text.lower()
-
-        # Iterate through data columns (skip stub columns)
-        for col_idx in range(table.stub_cols, table.col_count):
-            cell = table.get_cell(row, col_idx)
-            if not cell or not cell.text.strip():
-                continue
-
-            # Skip if cell is a header or stub
-            if cell.is_header or cell.is_stub:
-                continue
-
-            # Try to parse the cell value
-            parsed = self._parse_number(cell.text)
-            if not parsed:
-                continue
-
-            value, unit, raw = parsed
-            # Check percentage context from table headers/stubs
-            context_text = " ".join(cell.header_path + stub_path)
-            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
-            if self._should_filter_unit(candidate.metric_id, unit):
-                continue
-
-            # Column-type filter: prevent count metrics from binding to
-            # dollar columns (and vice versa) in mixed financial tables.
-            if candidate.metric_id in _COUNT_ONLY_METRICS and self._header_indicates_currency(
-                cell.header_path
-            ):
-                logger.debug(
-                    "Skipping currency-column cell (%d,%d) for count metric %s",
-                    row,
-                    col_idx,
-                    candidate.metric_id,
-                )
-                continue
-            if candidate.metric_id in _CURRENCY_ONLY_METRICS and self._header_indicates_count(
-                cell.header_path
-            ):
-                logger.debug(
-                    "Skipping count-column cell (%d,%d) for currency metric %s",
-                    row,
-                    col_idx,
-                    candidate.metric_id,
-                )
-                continue
-
-            confidence = self._compute_table_confidence(
-                match_text_lower, cell.header_path, stub_path, unit
-            )
-
-            bound_values.append(
-                BoundValue(
-                    candidate_id=candidate.candidate_id,
-                    value=value,
-                    value_raw=raw,
-                    unit=unit,
-                    binding_type="table_stub",
-                    binding_confidence=confidence,
-                    source_locator=SourceLocator(
-                        table_id=table.table_id,
-                        cell_row=row,
-                        cell_col=col_idx,
-                        dom_locator=cell.dom_locator,
-                    ),
-                )
-            )
-
-        return bound_values
+        """Bind values from data cells in the same row (delegates to _bind_cells)."""
+        return self._bind_cells(candidate, table, row, stub_path, "table_stub", iterate_rows=False)
 
     def _bind_text_candidate(
         self,
@@ -856,7 +791,7 @@ class ValueBindingStage:
         window_text = text[window_start:window_end]
 
         # Find all numbers in window
-        for match in self.NUMBER_PATTERN.finditer(window_text):
+        for match in _np.NUMBER_PATTERN.finditer(window_text):
             parsed = self._parse_number(match.group())
             if parsed:
                 value, unit, raw = parsed
@@ -865,58 +800,8 @@ class ValueBindingStage:
         return results
 
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
-        """
-        Parse a number from text.
-
-        Args:
-            text: Text containing a number
-
-        Returns:
-            Tuple of (value, unit, raw_text) or None if not parseable
-        """
-        match = self.NUMBER_PATTERN.search(text)
-        if not match:
-            return None
-
-        try:
-            # Extract components
-            number_str = match.group("number")
-            currency = match.group("currency")
-            suffix = match.group("suffix")
-            percent = match.group("percent")
-            negative = match.group("negative")
-
-            # Clean number string
-            clean_number = number_str.replace(",", "")
-            value = float(clean_number)
-
-            # Apply scale multiplier
-            if suffix:
-                suffix_lower = suffix.lower()
-                if suffix_lower in self.SCALE_MULTIPLIERS:
-                    value *= self.SCALE_MULTIPLIERS[suffix_lower]
-
-            # Apply negative
-            if negative:
-                value = -value
-
-            # Determine unit
-            if percent:
-                unit = Unit.PERCENT
-                # Keep percentage as-is (don't convert to decimal)
-            elif currency:
-                unit = Unit.CURRENCY
-            else:
-                unit = Unit.OTHER
-
-            # Raw text
-            raw = match.group().strip()
-
-            return (value, unit, raw)
-
-        except (ValueError, InvalidOperation) as e:
-            logger.debug(f"Could not parse number from '{text}': {e}")
-            return None
+        """Parse a number from text. Delegates to stages.number_parsing.parse_number."""
+        return _np.parse_number(text)
 
     def _compute_table_confidence(
         self,
@@ -998,39 +883,32 @@ class ValueBindingStage:
             Tuple of (scale_multiplier, has_exceptions) where has_exceptions
             is True when the annotation contains "except as otherwise noted".
         """
-        # Check header cells and first few rows (scale annotation often in
-        # sub-header rows not counted as header_rows)
         scan_rows = min(table.header_rows + 3, table.row_count)
         for row_idx in range(scan_rows):
             for col_idx in range(table.col_count):
                 cell = table.get_cell(row_idx, col_idx)
                 if cell and cell.text:
-                    match = self.TABLE_SCALE_PATTERN.search(cell.text)
+                    match = _np.TABLE_SCALE_PATTERN.search(cell.text)
                     if match:
                         scale_word = match.group(1).lower()
-                        scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
-                        has_except = bool(self.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text))
+                        scale = _np.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                        has_except = bool(_np.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text))
                         return (scale, has_except)
 
-        # Check section_path (often contains table caption text)
         for path_item in table.section_path:
-            match = self.TABLE_SCALE_PATTERN.search(path_item)
+            match = _np.TABLE_SCALE_PATTERN.search(path_item)
             if match:
                 scale_word = match.group(1).lower()
-                scale = self.TABLE_SCALE_MAP.get(scale_word, 1.0)
-                has_except = bool(self.TABLE_SCALE_EXCEPT_PATTERN.search(path_item))
+                scale = _np.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                has_except = bool(_np.TABLE_SCALE_EXCEPT_PATTERN.search(path_item))
                 return (scale, has_except)
 
         return (1.0, False)
 
     @staticmethod
     def _has_fractional_value(value_raw: str) -> bool:
-        """Check if raw value string contains a decimal point.
-
-        Used to distinguish scaled counts (e.g. "796.3" in a "(in thousands)"
-        table) from actual integer counts (e.g. "948").
-        """
-        return "." in value_raw
+        """Check if raw value string contains a decimal point. Delegates to number_parsing."""
+        return _np.has_fractional_value(value_raw)
 
     # Pattern matching explicit currency symbols in raw cell text
     _CURRENCY_SYMBOL_PATTERN = re.compile(r"[\$\€\£]")

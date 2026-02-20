@@ -396,57 +396,14 @@ class PeriodInferenceStage:
         # Combine all headers for searching
         combined_text = " ".join(header_path)
 
-        # Try patterns in order of specificity
-        period = self._try_parse_period_ended(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_quarter(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_trailing(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_ytd(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_fiscal_year(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_as_of(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        # Try bare date (e.g., "January 31, 2017") — common in quarterly table headers
-        # without an "As of" or "Year ended" prefix.
-        period = self._try_parse_bare_date(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        # Try plain year as last resort (only in header context)
-        period = self._try_parse_plain_year(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE - 0.1  # Slightly lower
-            return period
+        # Try patterns in order of specificity (first match wins)
+        for method_name, confidence_offset in self._header_patterns:
+            parser = getattr(self, method_name)
+            period = parser(combined_text)
+            if period:
+                period.source = "header_path"
+                period.confidence = self.HEADER_PATH_CONFIDENCE + confidence_offset
+                return period
 
         return None
 
@@ -497,16 +454,13 @@ class PeriodInferenceStage:
         return None
 
     def _try_parse_all_patterns(self, text: str) -> ParsedPeriod | None:
-        """Try all period patterns on text, returning most specific match."""
-        # Order by specificity: period_ended > quarter > trailing > ytd > fiscal_year > as_of
-        return (
-            self._try_parse_period_ended(text)
-            or self._try_parse_quarter(text)
-            or self._try_parse_trailing(text)
-            or self._try_parse_ytd(text)
-            or self._try_parse_fiscal_year(text)
-            or self._try_parse_as_of(text)
-        )
+        """Try all text period patterns on text, returning most specific match."""
+        for method_name in self._text_patterns:
+            parser = getattr(self, method_name)
+            period = parser(text)
+            if period:
+                return period
+        return None
 
     def _try_parse_quarter(self, text: str) -> ParsedPeriod | None:
         """
