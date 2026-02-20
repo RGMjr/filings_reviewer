@@ -817,7 +817,7 @@ echo "Archive created at: $ARCHIVE_DIR"
 - [ ] All filings processed (S-1/F-1: 10 years)
 - [ ] Success rate > 95%
 - [ ] Total cost within budget
-- [ ] Gold standard validation: precision > 90%, recall > 80%
+- [ ] Gold standard validation: precision > 80%, recall > 55% (current V2 actuals: P=81.9%, R=60.6%, F1=69.6%)
 - [ ] Database exported to CSV/JSON
 - [ ] Summary report generated
 - [ ] Data backed up

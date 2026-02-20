@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.3
+**Version:** 2.4
 **Status:** Production Ready
-**Last Updated:** 2026-02-17
+**Last Updated:** 2026-02-20
 
 ---
 
@@ -341,6 +341,7 @@ Rules that auto-load when working with specific file paths:
 | `extraction.md` | `src/extraction/**`, `config/metric_keywords.yaml` | Core principles, gold standard validation requirements |
 | `testing.md` | `tests/**` | Test conventions, coverage requirements |
 | `gold-standard.md` | Gold standard files | Validation workflow and thresholds |
+| `docs.md` | `docs/**` | Canonical folder structure and document placement rules |
 
 Rules are applied automatically based on which files are being edited.
 

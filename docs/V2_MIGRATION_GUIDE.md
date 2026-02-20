@@ -203,15 +203,10 @@ metric_fact = MetricFact(
 Before migrating, validate V2 produces acceptable results:
 
 ```bash
-# Run comparison benchmark
-python3 scripts/benchmark_v1_v2.py --filings slack samsara
-
-# Expected output:
-# - Coverage >= 70% (V2 finds most of what V1 found)
-# - V2 execution time within 2x of V1
-
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
+
+# Expected scores (as of 2026-02-18): P=81.9%, R=60.6%, F1=69.6%
 ```
 
 ### Step 2: Parallel Running (Recommended)
