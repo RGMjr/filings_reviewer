@@ -28,3 +28,17 @@ def pytest_addoption(parser):
         default=False,
         help="Update baseline instead of comparing against it",
     )
+    # Transcript gold standard options
+    parser.addoption(
+        "--transcript-split",
+        action="store",
+        default="tuning",
+        choices=["tuning", "test", "all"],
+        help="Transcript split to evaluate: tuning (default), test, or all",
+    )
+    parser.addoption(
+        "--transcript-update-baseline",
+        action="store_true",
+        default=False,
+        help="Save current transcript extraction results as the new baseline",
+    )

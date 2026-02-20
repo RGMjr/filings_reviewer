@@ -1,21 +1,21 @@
-company,ticker,date,quarter,source,format,doc_type,filename,size_chars,sector
-Adobe,ADBE,2025-03-12,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,ADBE_2025-03-12.txt,61782,SaaS
-Adobe,ADBE,2024-12-11,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,ADBE_2024-12-11.txt,56065,SaaS
-Autodesk,ADSK,2025-02-27,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,ADSK_2025-02-27.txt,58085,SaaS
-Autodesk,ADSK,2024-11-26,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,ADSK_2024-11-26.txt,53403,SaaS
-Salesforce,CRM,2025-02-26,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,CRM_2025-02-26.txt,59121,SaaS
-Salesforce,CRM,2024-12-03,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,CRM_2024-12-03.txt,56997,SaaS
-Electronic Arts,EA,2025-05-06,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,EA_2025-05-06.txt,51535,Gaming
-Electronic Arts,EA,2025-02-04,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,EA_2025-02-04.txt,47945,Gaming
-GoDaddy,GDDY,2025-05-01,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,GDDY_2025-05-01.txt,51106,SaaS
-GoDaddy,GDDY,2025-02-13,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,GDDY_2025-02-13.txt,55536,SaaS
-Intuit,INTU,2025-02-25,Q2 2025,kurry/sp500_earnings_transcripts,text,transcript,INTU_2025-02-25.txt,55803,SaaS
-Intuit,INTU,2024-11-21,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,INTU_2024-11-21.txt,58585,SaaS
-Meta Platforms,META,2025-04-30,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,META_2025-04-30.txt,53920,Consumer Tech
-Meta Platforms,META,2025-01-29,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,META_2025-01-29.txt,53829,Consumer Tech
-Microsoft,MSFT,2025-04-30,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,MSFT_2025-04-30.txt,48913,SaaS
-Microsoft,MSFT,2025-01-29,Q2 2025,kurry/sp500_earnings_transcripts,text,transcript,MSFT_2025-01-29.txt,52986,SaaS
-PayPal,PYPL,2025-04-29,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,PYPL_2025-04-29.txt,51852,Fintech
-PayPal,PYPL,2025-02-04,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,PYPL_2025-02-04.txt,51205,Fintech
-T-Mobile,TMUS,2025-04-24,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,TMUS_2025-04-24.txt,59283,Telecom
-T-Mobile,TMUS,2025-01-29,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,TMUS_2025-01-29.txt,56821,Telecom
+company,ticker,date,quarter,source,format,doc_type,filename,size_chars,sector,fiscal_year_end
+Adobe,ADBE,2025-03-12,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,ADBE_2025-03-12.txt,61782,SaaS,November
+Adobe,ADBE,2024-12-11,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,ADBE_2024-12-11.txt,56065,SaaS,November
+Autodesk,ADSK,2025-02-27,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,ADSK_2025-02-27.txt,58085,SaaS,January
+Autodesk,ADSK,2024-11-26,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,ADSK_2024-11-26.txt,53403,SaaS,January
+Salesforce,CRM,2025-02-26,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,CRM_2025-02-26.txt,59121,SaaS,January
+Salesforce,CRM,2024-12-03,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,CRM_2024-12-03.txt,56997,SaaS,January
+Electronic Arts,EA,2025-05-06,Q4 2025,kurry/sp500_earnings_transcripts,text,transcript,EA_2025-05-06.txt,51535,Gaming,March
+Electronic Arts,EA,2025-02-04,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,EA_2025-02-04.txt,47945,Gaming,March
+GoDaddy,GDDY,2025-05-01,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,GDDY_2025-05-01.txt,51106,SaaS,December
+GoDaddy,GDDY,2025-02-13,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,GDDY_2025-02-13.txt,55536,SaaS,December
+Intuit,INTU,2025-02-25,Q2 2025,kurry/sp500_earnings_transcripts,text,transcript,INTU_2025-02-25.txt,55803,SaaS,July
+Intuit,INTU,2024-11-21,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,INTU_2024-11-21.txt,58585,SaaS,July
+Meta Platforms,META,2025-04-30,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,META_2025-04-30.txt,53920,Consumer Tech,December
+Meta Platforms,META,2025-01-29,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,META_2025-01-29.txt,53829,Consumer Tech,December
+Microsoft,MSFT,2025-04-30,Q3 2025,kurry/sp500_earnings_transcripts,text,transcript,MSFT_2025-04-30.txt,48913,SaaS,June
+Microsoft,MSFT,2025-01-29,Q2 2025,kurry/sp500_earnings_transcripts,text,transcript,MSFT_2025-01-29.txt,52986,SaaS,June
+PayPal,PYPL,2025-04-29,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,PYPL_2025-04-29.txt,51852,Fintech,December
+PayPal,PYPL,2025-02-04,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,PYPL_2025-02-04.txt,51205,Fintech,December
+T-Mobile,TMUS,2025-04-24,Q1 2025,kurry/sp500_earnings_transcripts,text,transcript,TMUS_2025-04-24.txt,59283,Telecom,December
+T-Mobile,TMUS,2025-01-29,Q4 2024,kurry/sp500_earnings_transcripts,text,transcript,TMUS_2025-01-29.txt,56821,Telecom,December

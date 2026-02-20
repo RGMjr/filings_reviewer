@@ -182,9 +182,9 @@ metrics:
       - Gross revenue retention (excludes expansion; that is cm_gross_revenue_retention)
       - Customer retention rate (counts of customers, not dollars; cm_customer_retention_rate)
     notes: >
-      Unit is 'percent'. Value should be expressed as a decimal (e.g., 1.20 for 120%)
-      or left as percent string depending on the annotation format. Leave value empty
-      if only the direction is mentioned ("NRR improved") without a number.
+      Unit is 'percent'. Store the stated number as-is (e.g., 120 for "120%", 115 for
+      "115%"). NRR above 100 is normal and expected for expanding SaaS businesses.
+      Leave value empty if only the direction is mentioned ("NRR improved") without a number.
 
   cm_gross_revenue_retention:
     label: "Gross Revenue Retention (GRR)"
@@ -215,7 +215,8 @@ metrics:
       - Net revenue retention (NRR is inverse; cm_net_revenue_retention)
       - Number of customers churned (that would be a count, not a rate)
     notes: >
-      Unit is 'percent'. If a company says "attrition," it is typically customer or
+      Unit is 'percent'. Store the stated number as-is (e.g., 5 for "5%", 0.5 for
+      "0.5%"). If a company says "attrition," it is typically customer or
       revenue churn — annotate as cm_customer_churn_rate with the raw text.
 
   cm_customer_retention_rate:
@@ -230,7 +231,8 @@ metrics:
     not_this:
       - Revenue retention (cm_gross_revenue_retention or cm_net_revenue_retention)
     notes: >
-      Unit is 'percent'. Annotate renewal rates as cm_customer_retention_rate.
+      Unit is 'percent'. Store the stated number as-is (e.g., 92 for "92%", 97 for
+      "97%"). Annotate renewal rates as cm_customer_retention_rate.
 
   cm_revenue_per_customer:
     label: "Revenue Per Customer (ARPU / ARPA / ARPC)"

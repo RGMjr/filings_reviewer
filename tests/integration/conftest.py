@@ -582,3 +582,48 @@ def v2_baseline_metrics(v2_baseline_path):
 
     return load_baseline(v2_baseline_path)
 
+
+# =============================================================================
+# Transcript Gold Standard Fixtures
+# =============================================================================
+
+_TRANSCRIPT_GS_DIR = Path(__file__).parent.parent.parent / "data" / "transcript_gold_standard"
+_TRANSCRIPT_RESULTS_DIR = Path(__file__).parent.parent.parent / "data" / "spike_results"
+
+
+@pytest.fixture(scope="session")
+def transcript_split(request):
+    """Return the transcript split selected via --transcript-split (default: tuning)."""
+    return request.config.getoption("--transcript-split")
+
+
+@pytest.fixture(scope="session")
+def transcript_update_baseline(request):
+    """Return True if --transcript-update-baseline flag was set."""
+    return request.config.getoption("--transcript-update-baseline")
+
+
+@pytest.fixture(scope="session")
+def transcript_baseline_path(transcript_split):
+    """Return the baseline JSON path for the selected split."""
+    if transcript_split == "tuning":
+        return _TRANSCRIPT_RESULTS_DIR / "transcript_baseline_tuning.json"
+    if transcript_split == "test":
+        return _TRANSCRIPT_RESULTS_DIR / "transcript_baseline_test.json"
+    return _TRANSCRIPT_RESULTS_DIR / "transcript_baseline.json"
+
+
+@pytest.fixture(scope="session")
+def transcript_baseline(transcript_baseline_path):
+    """
+    Load the transcript extraction baseline JSON.
+
+    Returns None if no baseline exists (first run before --transcript-update-baseline).
+    """
+    if not transcript_baseline_path.exists():
+        return None
+    try:
+        return json.loads(transcript_baseline_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+

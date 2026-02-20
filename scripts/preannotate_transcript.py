@@ -54,6 +54,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.gold_standard.transcript_metrics import ACTIVE_METRICS  # noqa: E402
+
 logger = logging.getLogger("preannotate_transcript")
 
 # Output directory
@@ -73,39 +75,6 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 # Confidence ordering for sort (LOW first to force critical engagement)
 CONFIDENCE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
-
-# Active metric IDs (must match config/metric_keywords.yaml active set)
-ACTIVE_METRICS = frozenset(
-    [
-        "cm_active_customers_total",
-        "cm_arr",
-        "cm_average_order_value",
-        "cm_cac_payback_period",
-        "cm_customer_acquisition_cost",
-        "cm_customer_churn_rate",
-        "cm_customer_retention_rate",
-        "cm_customers_period_end",
-        "cm_customers_period_end_by_tenure",
-        "cm_daily_active_users",
-        "cm_expansion_revenue",
-        "cm_gross_margin_by_cohort",
-        "cm_gross_revenue_retention",
-        "cm_large_customers_period_end",
-        "cm_lifetime_value_per_customer",
-        "cm_ltv_to_cac_ratio",
-        "cm_ltv_to_cac_ratio_by_cohort",
-        "cm_monthly_active_users",
-        "cm_mrr",
-        "cm_net_revenue_retention",
-        "cm_new_customers_acquired",
-        "cm_purchase_transactions_overall",
-        "cm_repeat_purchase_rate",
-        "cm_revenue_by_cohort",
-        "cm_revenue_concentration",
-        "cm_revenue_per_customer",
-        "cm_transactions_by_cohort",
-    ]
-)
 
 # Synthetic trap annotations — plausible-sounding but NOT customer metrics.
 # Reviewer must REJECT these. Randomly sample 2-3 per transcript.
@@ -677,6 +646,7 @@ def annotate_transcript(
     inv_entry = inventory.get(inv_key, {})
     company = company_override or inv_entry.get("company") or ticker
     quarter = inv_entry.get("quarter", "")
+    fiscal_year_end = inv_entry.get("fiscal_year_end", "December")
 
     print(f"\n{'='*60}")
     print(f"  Annotating: {company} ({ticker}) — {date}")
@@ -691,7 +661,9 @@ def annotate_transcript(
 
     # Build prompts
     system_prompt = build_system_prompt(taxonomy, company, ticker)
-    user_prompt = build_user_prompt(transcript_text, company, ticker, date, quarter=quarter)
+    user_prompt = build_user_prompt(
+        transcript_text, company, ticker, date, fiscal_year_end=fiscal_year_end, quarter=quarter
+    )
 
     # Call LLM
     print("  Calling LLM...", end="", flush=True)

@@ -51,3 +51,31 @@ Commit the updated `data/gold_standard/baseline_metrics.json`.
 
 - Regression tolerance: 1% (configurable via `--tolerance`)
 - Tests fail if any metric drops below baseline - tolerance
+
+## Transcript Gold Standard
+
+After completing the transcript annotation workflow (Phase 2), use these commands:
+
+### Quick validation (CLI)
+```bash
+# Validate against tuning split with baseline comparison
+python3 scripts/validate_transcript_extraction.py --split tuning --baseline --verbose
+```
+
+### Pytest integration
+```bash
+# Run transcript gold standard (tuning split, default):
+pytest -m transcript_gold_standard -v
+
+# Run against test split:
+pytest -m transcript_gold_standard --transcript-split test -v
+
+# Update transcript baseline after intentional improvement:
+pytest -m transcript_gold_standard --transcript-update-baseline -v
+```
+
+### First-run baseline setup
+```bash
+python3 scripts/validate_transcript_extraction.py --split tuning --save-baseline
+python3 scripts/validate_transcript_extraction.py --split test --save-baseline
+```

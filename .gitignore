@@ -64,6 +64,7 @@ htmlcov/
 
 # Runtime data
 data/llm_cache.db
+data/annotation_cache.db
 logs/*.jsonl
 
 # Generated analysis artifacts

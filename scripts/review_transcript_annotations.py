@@ -45,42 +45,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.gold_standard.transcript_metrics import ACTIVE_METRICS  # noqa: E402
+
 OUTPUT_DIR = ROOT / "data" / "transcript_gold_standard"
 
 # Transcript source directory — used to display context around raw_text
 TRANSCRIPT_DIR = ROOT / "data" / "spike_samples" / "transcripts"
-
-ACTIVE_METRICS = frozenset(
-    [
-        "cm_active_customers_total",
-        "cm_arr",
-        "cm_average_order_value",
-        "cm_cac_payback_period",
-        "cm_customer_acquisition_cost",
-        "cm_customer_churn_rate",
-        "cm_customer_retention_rate",
-        "cm_customers_period_end",
-        "cm_customers_period_end_by_tenure",
-        "cm_daily_active_users",
-        "cm_expansion_revenue",
-        "cm_gross_margin_by_cohort",
-        "cm_gross_revenue_retention",
-        "cm_large_customers_period_end",
-        "cm_lifetime_value_per_customer",
-        "cm_ltv_to_cac_ratio",
-        "cm_ltv_to_cac_ratio_by_cohort",
-        "cm_monthly_active_users",
-        "cm_mrr",
-        "cm_net_revenue_retention",
-        "cm_new_customers_acquired",
-        "cm_purchase_transactions_overall",
-        "cm_repeat_purchase_rate",
-        "cm_revenue_by_cohort",
-        "cm_revenue_concentration",
-        "cm_revenue_per_customer",
-        "cm_transactions_by_cohort",
-    ]
-)
 
 OUTPUT_FIELDNAMES = [
     "company",
@@ -304,7 +274,7 @@ def review_candidate(
             print(red("\n  WARNING: This is a TRAP annotation — you accepted a false positive!"))
             print(red("  Traps should always be REJECTED. Changing to REJECT."))
             result["disposition"] = "REJECT"
-            result["disposition_reason"] = "Trap accepted in error — auto-corrected to REJECT"
+            result["disposition_reason"] = "TRAP_ACCEPTED_AUTO_CORRECTED"
             prompt("  Press Enter to continue...", None)
         return result
 
