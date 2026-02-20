@@ -664,7 +664,10 @@ class ValueBindingStage:
                     binding_confidence=confidence,
                     source_locator=SourceLocator(
                         segment_id=segment.segment_id,
-                        text_span=(num_match.start(), num_match.end()),
+                        text_span=(
+                            window_start + num_match.start(),
+                            window_start + num_match.end(),
+                        ),
                         dom_locator=segment.dom_locator,
                     ),
                 )
@@ -688,7 +691,10 @@ class ValueBindingStage:
                         binding_confidence=confidence,
                         source_locator=SourceLocator(
                             segment_id=segment.segment_id,
-                            text_span=(num_match.start(), num_match.end()),
+                            text_span=(
+                                window_start + num_match.start(),
+                                window_start + num_match.end(),
+                            ),
                             dom_locator=segment.dom_locator,
                         ),
                     )

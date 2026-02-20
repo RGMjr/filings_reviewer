@@ -108,6 +108,10 @@ class PipelineConfig:
     # Diagnostics
     retain_context: bool = False  # If True, attach PipelineContext to PipelineResult
 
+    # Fiscal year configuration (for non-calendar fiscal years)
+    fiscal_year_end_month: int | None = None  # e.g., 1 for January FYE
+    fiscal_year_end_day: int | None = None  # e.g., 31 for Jan 31 FYE
+
 
 @dataclass
 class StageResult:

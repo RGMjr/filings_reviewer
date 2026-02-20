@@ -16,7 +16,7 @@ from src.extraction_v2.models import Unit
 # Metric → Allowed Units mapping
 # ============================================================================
 
-# Count-only metrics: customer/user counts, transaction counts
+# Count-only metrics: customer/user counts, transaction counts, time-based periods
 _COUNT_ONLY_METRICS: set[str] = {
     "cm_customers_period_end",
     "cm_active_customers_total",
@@ -27,6 +27,7 @@ _COUNT_ONLY_METRICS: set[str] = {
     "cm_customers_period_end_by_tenure",
     "cm_purchase_transactions_overall",
     "cm_transactions_by_cohort",
+    "cm_cac_payback_period",  # payback period in months — not a currency value
 }
 
 # Currency-only metrics: ARR, MRR, revenue-per-customer, etc.
@@ -44,6 +45,7 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_billings",
     "cm_bookings",
     "cm_gmv",
+    "cm_revenue_by_cohort",  # cohort revenue breakdowns — always currency
 }
 
 # Percent-only metrics: retention rates, churn, margins

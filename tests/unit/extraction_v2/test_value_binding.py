@@ -2223,7 +2223,7 @@ class TestColumnTypeFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-ct-4",
-            metric_id="cm_revenue_by_cohort",  # Not in COUNT or CURRENCY sets
+            metric_id="cm_some_unconstrained_metric",  # Not in any constraint set
             match_text="Active Consumers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
