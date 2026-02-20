@@ -178,7 +178,7 @@ filings_reviewer/
 
 ```bash
 # Format code
-black src/ tests/
+ruff format src/ tests/
 
 # Lint
 ruff check src/ tests/

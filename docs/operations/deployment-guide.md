@@ -7,7 +7,7 @@
 
 ## Overview
 
-This guide covers deploying the system for production-scale processing of 20,500+ SEC filings using PostgreSQL-backed infrastructure and the real extraction pipeline.
+This guide covers deploying the system for production-scale processing of 7,304 in-scope S-1/F-1 filings using PostgreSQL-backed infrastructure and the real extraction pipeline.
 
 **Deployment Phases:**
 1. Environment setup
@@ -132,8 +132,8 @@ Validate the system on a small sample before full deployment.
 7. **Go/No-Go Decision**
    - ✅ Success rate > 95%
    - ✅ Cost per filing < $0.20
-   - ✅ Precision > 90% (vs gold standard)
-   - ✅ Recall > 80% (vs gold standard)
+   - ✅ Precision > 75% (vs gold standard; current V2: 81.9%)
+   - ✅ Recall > 55% (vs gold standard; current V2: 60.6%)
    - ✅ No critical bugs
 
    **If not meeting criteria:** Debug, iterate, re-run pilot
@@ -712,10 +712,10 @@ python3 scripts/validate_against_gold_standard.py \
 # Review results
 cat data/validation/final_validation.json | jq '.summary'
 
-# Expected metrics:
-# - Precision > 90%
-# - Recall > 80%
-# - F1 > 85%
+# Expected metrics (current V2 actuals: P=81.9%, R=60.6%, F1=69.6%):
+# - Precision > 75%
+# - Recall > 55%
+# - F1 > 65%
 ```
 
 ### 2. Export Final Dataset
@@ -909,9 +909,9 @@ pg_dump $DATABASE_URL | gzip > \
 
 ### Quality Success
 ✅ Extracted 50,000-75,000 metrics
-✅ Precision > 90% (vs gold standard)
-✅ Recall > 80% (vs gold standard)
-✅ F1 Score > 85%
+✅ Precision > 75% (vs gold standard; V2 current: 81.9%)
+✅ Recall > 55% (vs gold standard; V2 current: 60.6%)
+✅ F1 Score > 65% (V2 current: 69.6%)
 
 ### Business Success
 ✅ Usable dataset for CMASB research

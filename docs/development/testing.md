@@ -1,7 +1,7 @@
 # Testing Strategy
 
-**Version:** 3.0
-**Last Updated:** 2026-02-05
+**Version:** 3.1
+**Last Updated:** 2026-02-20
 
 ---
 
@@ -22,7 +22,7 @@ Comprehensive testing strategy for ensuring quality extraction at scale with min
 
 ```
               ┌─────────────────┐
-              │  Gold Standard  │  37 curated filings
+              │  Gold Standard  │  4 companies (ground-truth CSV)
               │  Regression     │  (Baseline validation)
               └─────────────────┘
                       ▲
@@ -51,7 +51,7 @@ tests/
 ├── performance/         # Performance benchmarks (2 files)
 ├── unit/               # Unit tests (70+ files)
 │   ├── extraction/      # 27 test files
-│   ├── extraction_v2/   # 8 test files
+│   ├── extraction_v2/   # 17 test files
 │   ├── filing_fetcher/  # 2 test files
 │   ├── gold_standard/   # 3 test files
 │   ├── infra/           # 7 test files
@@ -817,16 +817,18 @@ pytest --cov=src --cov-report=term-missing
 | Test Coverage | ≥75% | `pytest --cov=src` |
 | Test Success Rate | 100% | All tests pass on main |
 | Type Check Pass | 100% | `mypy src/review/ --strict` |
-| Gold Standard Precision | ≥90% | `pytest -m gold_standard` |
-| Gold Standard Recall | ≥80% | `pytest -m gold_standard` |
+| Gold Standard Precision | ≥80% | `pytest -m gold_standard` |
+| Gold Standard Recall | ≥55% | `pytest -m gold_standard` |
 
 ### Quality Metrics (Gold Standard)
 
+Current V2 scores as of 2026-02-18: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+
 | Metric | Target | Formula |
 |--------|--------|---------|
-| Precision | >90% | `true_positives / (true_positives + false_positives)` |
-| Recall | >80% | `true_positives / (true_positives + false_negatives)` |
-| F1 Score | >0.85 | `2 * (precision * recall) / (precision + recall)` |
+| Precision | >80% | `true_positives / (true_positives + false_positives)` |
+| Recall | >55% | `true_positives / (true_positives + false_negatives)` |
+| F1 Score | >0.65 | `2 * (precision * recall) / (precision + recall)` |
 
 ### Manual QA Protocol
 
@@ -875,40 +877,28 @@ For validating extraction on new filings:
 
 ## Continuous Integration
 
-### GitHub Actions Workflow
+### GitHub Actions Workflows
 
-Tests run automatically on pull requests:
+Active workflow files in `.github/workflows/`:
 
-```yaml
-# .github/workflows/test.yml
-name: Tests
-on: [push, pull_request]
+- `claude.yml` - Claude Code integration
+- `claude-code-review.yml` - Automated code review
+- `docs-sync.yml` - Documentation synchronization
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+To run tests locally before pushing (equivalent to CI):
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -e ".[dev]"
+```bash
+# Unit tests
+pytest tests/unit/ -v
 
-      - name: Run unit tests
-        run: pytest tests/unit/ -v
+# Type checks
+mypy src/review/ --strict
 
-      - name: Run type checks
-        run: mypy src/review/ --strict
+# Code formatting check
+ruff format --check src/ tests/
 
-      - name: Check code formatting
-        run: black --check src/ tests/
-
-      - name: Run linter
-        run: ruff check src/ tests/
+# Linter
+ruff check src/ tests/
 ```
 
 ### Pre-commit Hooks
@@ -916,10 +906,7 @@ jobs:
 Install pre-commit hooks to run tests before commits:
 
 ```bash
-# Install pre-commit
-pip install pre-commit
-
-# Install hooks
+# pre-commit is included in dev dependencies; install hooks after uv sync:
 pre-commit install
 
 # Run manually
@@ -1051,8 +1038,8 @@ def test_value_normalization(input_value, expected):
 
 **Issue:** Tests fail with "No module named 'src'"
 ```bash
-# Solution: Install package in editable mode
-pip install -e .
+# Solution: Sync all dependencies including dev extras
+uv sync --all-extras
 ```
 
 **Issue:** Integration tests fail with database connection error

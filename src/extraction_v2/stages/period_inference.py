@@ -25,6 +25,7 @@ from src.extraction_v2.models import (
     BoundValue,
     PeriodType,
 )
+from src.extraction_v2.text_utils import find_sentence_bounds
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Segment, Table
@@ -231,6 +232,30 @@ class PeriodInferenceStage:
         # Fiscal year end metadata — set from document in process()
         self._fy_end_month: int | None = None
         self._fy_end_day: int | None = None
+
+        # Pattern registries: list of (parser_method, confidence_offset) tuples.
+        # Ordered by specificity — first match wins.
+        # confidence_offset is added to the base confidence for the context.
+        self._header_patterns: list[tuple[str, float]] = [
+            ("_try_parse_period_ended", 0.0),
+            ("_try_parse_quarter", 0.0),
+            ("_try_parse_trailing", 0.0),
+            ("_try_parse_ytd", 0.0),
+            ("_try_parse_fiscal_year", 0.0),
+            ("_try_parse_as_of", 0.0),
+            ("_try_parse_bare_date", 0.0),
+            ("_try_parse_plain_year", -0.1),
+        ]
+
+        # Text patterns: subset used for text context (no bare_date or plain_year).
+        self._text_patterns: list[str] = [
+            "_try_parse_period_ended",
+            "_try_parse_quarter",
+            "_try_parse_trailing",
+            "_try_parse_ytd",
+            "_try_parse_fiscal_year",
+            "_try_parse_as_of",
+        ]
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -448,7 +473,7 @@ class PeriodInferenceStage:
             search_text = text[window_start:window_end]
 
             # Check if match is in same sentence for higher confidence
-            sentence_start, sentence_end = self._find_sentence_bounds(text, start)
+            sentence_start, sentence_end = find_sentence_bounds(text, start)
             same_sentence_text = text[sentence_start:sentence_end]
         else:
             search_text = text[: self.context_chars * 2]
@@ -940,36 +965,6 @@ class PeriodInferenceStage:
     def _last_day_of_month(self, year: int, month: int) -> int:
         """Get the last day of a month."""
         return calendar.monthrange(year, month)[1]
-
-    def _find_sentence_bounds(self, text: str, position: int) -> tuple[int, int]:
-        """
-        Find sentence boundaries around a given position.
-
-        Args:
-            text: Full text to search
-            position: Character position
-
-        Returns:
-            Tuple of (sentence_start, sentence_end) positions
-        """
-        # Find sentence start (look backwards for sentence boundary)
-        sentence_start = 0
-        boundary_pattern = re.compile(r"[.!?]\s+[A-Z]")
-
-        text_before = text[:position]
-        boundaries_before = list(boundary_pattern.finditer(text_before))
-        if boundaries_before:
-            last_boundary = boundaries_before[-1]
-            sentence_start = last_boundary.end() - 1
-
-        # Find sentence end
-        sentence_end = len(text)
-        text_after = text[position:]
-        boundary_match = boundary_pattern.search(text_after)
-        if boundary_match:
-            sentence_end = position + boundary_match.start() + 1
-
-        return (sentence_start, sentence_end)
 
     def _make_result(
         self,

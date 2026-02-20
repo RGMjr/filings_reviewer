@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import SectionType, Segment
+from src.extraction_v2.text_utils import normalize_text
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -101,22 +102,6 @@ class SectionClassificationStage:
             re.compile(pattern, re.IGNORECASE) for pattern in self.HEADING_PREFIXES
         ]
 
-    def _normalize_text(self, text: str) -> str:
-        """
-        Normalize text for pattern matching.
-
-        Args:
-            text: Raw text to normalize
-
-        Returns:
-            Normalized text (whitespace collapsed, trimmed)
-        """
-        # Collapse whitespace
-        normalized = re.sub(r"\s+", " ", text)
-        # Trim
-        normalized = normalized.strip()
-        return normalized
-
     def _is_mostly_uppercase(self, text: str) -> bool:
         """
         Check if text is mostly uppercase (>70% of letters).
@@ -172,7 +157,7 @@ class SectionClassificationStage:
             return False
 
         # Normalize text
-        normalized = self._normalize_text(segment.text)
+        normalized = normalize_text(segment.text)
 
         # Check for heading prefix
         if self._has_heading_prefix(normalized):
@@ -199,7 +184,7 @@ class SectionClassificationStage:
         Returns:
             Detected SectionType or SectionType.UNKNOWN if no match
         """
-        normalized = self._normalize_text(text)
+        normalized = normalize_text(text)
 
         # Try each section type's patterns
         for section_type, patterns in self._compiled_patterns.items():
