@@ -36,6 +36,7 @@ Claude Code loads path-specific rules automatically from `.claude/rules/`:
 - `extraction.md` - Loaded when editing `src/extraction/**` or `config/metric_keywords.yaml`
 - `testing.md` - Loaded when editing `tests/**`
 - `gold-standard.md` - Loaded when working with gold standard validation
+- `docs.md` - Loaded when editing `docs/**`; defines canonical folder structure and placement rules
 
 ## Available Commands
 
