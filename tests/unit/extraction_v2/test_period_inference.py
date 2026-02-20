@@ -236,6 +236,73 @@ class TestFiscalYearPatternParsing:
         assert result is None
 
 
+class TestNonCalendarFiscalYear:
+    """Tests for non-calendar fiscal year boundary calculation (WP-08)."""
+
+    def test_january_fye_fy2020(self, stage: PeriodInferenceStage) -> None:
+        """FY2020 with Jan 31 FYE (Slack/Snowflake): Feb 1 2019 - Jan 31 2020."""
+        stage._fy_end_month = 1
+        stage._fy_end_day = 31
+        result = stage._try_parse_fiscal_year("FY 2020")
+        assert result is not None
+        assert result.period_type == PeriodType.ANNUAL
+        assert result.start == date(2019, 2, 1)
+        assert result.end == date(2020, 1, 31)
+
+    def test_january_fye_fy2021(self, stage: PeriodInferenceStage) -> None:
+        """FY2021 with Jan 31 FYE: Feb 1 2020 - Jan 31 2021."""
+        stage._fy_end_month = 1
+        stage._fy_end_day = 31
+        result = stage._try_parse_fiscal_year("FY2021")
+        assert result is not None
+        assert result.start == date(2020, 2, 1)
+        assert result.end == date(2021, 1, 31)
+
+    def test_march_fye(self, stage: PeriodInferenceStage) -> None:
+        """FY2020 with Mar 31 FYE: Apr 1 2019 - Mar 31 2020."""
+        stage._fy_end_month = 3
+        stage._fy_end_day = 31
+        result = stage._try_parse_fiscal_year("FY 2020")
+        assert result is not None
+        assert result.start == date(2019, 4, 1)
+        assert result.end == date(2020, 3, 31)
+
+    def test_june_fye(self, stage: PeriodInferenceStage) -> None:
+        """FY2020 with Jun 30 FYE: Jul 1 2019 - Jun 30 2020."""
+        stage._fy_end_month = 6
+        stage._fy_end_day = 30
+        result = stage._try_parse_fiscal_year("FY 2020")
+        assert result is not None
+        assert result.start == date(2019, 7, 1)
+        assert result.end == date(2020, 6, 30)
+
+    def test_december_fye_calendar_year(self, stage: PeriodInferenceStage) -> None:
+        """Dec 31 FYE still produces calendar year boundaries."""
+        stage._fy_end_month = 12
+        stage._fy_end_day = 31
+        result = stage._try_parse_fiscal_year("FY 2024")
+        assert result is not None
+        assert result.start == date(2024, 1, 1)
+        assert result.end == date(2024, 12, 31)
+
+    def test_no_fye_falls_back_to_calendar_year(self, stage: PeriodInferenceStage) -> None:
+        """When _fy_end_month is None, calendar year (Jan 1 - Dec 31) is used."""
+        stage._fy_end_month = None
+        stage._fy_end_day = None
+        result = stage._try_parse_fiscal_year("FY 2024")
+        assert result is not None
+        assert result.start == date(2024, 1, 1)
+        assert result.end == date(2024, 12, 31)
+
+    def test_fye_day_defaults_to_last_day_of_month(self, stage: PeriodInferenceStage) -> None:
+        """When _fy_end_day is None, defaults to last day of end month."""
+        stage._fy_end_month = 1
+        stage._fy_end_day = None  # Should default to Jan 31
+        result = stage._try_parse_fiscal_year("FY 2020")
+        assert result is not None
+        assert result.end == date(2020, 1, 31)
+
+
 # ============================================================================
 # Period Ended Pattern Tests
 # ============================================================================

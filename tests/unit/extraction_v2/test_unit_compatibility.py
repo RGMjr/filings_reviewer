@@ -163,6 +163,24 @@ class TestRatioMetrics:
         assert is_unit_compatible(metric_id, Unit.COUNT) is False
 
 
+class TestNewConstraints:
+    """Tests for constraints added in WP-04."""
+
+    def test_cac_payback_period_constrained_to_count(self) -> None:
+        assert is_unit_compatible("cm_cac_payback_period", Unit.COUNT) is True
+        assert is_unit_compatible("cm_cac_payback_period", Unit.OTHER) is True
+        assert is_unit_compatible("cm_cac_payback_period", Unit.CURRENCY) is False
+        assert is_unit_compatible("cm_cac_payback_period", Unit.PERCENT) is False
+        assert is_unit_compatible("cm_cac_payback_period", Unit.RATIO) is False
+
+    def test_revenue_by_cohort_constrained_to_currency(self) -> None:
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.CURRENCY) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.OTHER) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is False
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.RATIO) is False
+
+
 class TestUnconstrainedMetrics:
     """Metrics not in any constraint group accept all units."""
 
@@ -171,7 +189,7 @@ class TestUnconstrainedMetrics:
         [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER, Unit.BASIS_POINTS],
     )
     def test_unknown_metric_accepts_all(self, unit: Unit) -> None:
-        assert is_unit_compatible("cm_revenue_by_cohort", unit) is True
+        assert is_unit_compatible("cm_some_unrecognized_metric", unit) is True
 
     @pytest.mark.parametrize(
         "unit",
@@ -179,10 +197,6 @@ class TestUnconstrainedMetrics:
     )
     def test_nonexistent_metric_accepts_all(self, unit: Unit) -> None:
         assert is_unit_compatible("cm_totally_fake_metric", unit) is True
-
-    def test_cac_payback_period_unconstrained(self) -> None:
-        assert is_unit_compatible("cm_cac_payback_period", Unit.COUNT) is True
-        assert is_unit_compatible("cm_cac_payback_period", Unit.CURRENCY) is True
 
 
 class TestGetAllowedUnits:
@@ -224,4 +238,4 @@ class TestGetAllowedUnits:
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
         # Should have count + currency + percent + ratio metrics
-        assert len(METRIC_ALLOWED_UNITS) == 9 + 13 + 7 + 3  # 32 total
+        assert len(METRIC_ALLOWED_UNITS) == 10 + 14 + 7 + 3  # 34 total

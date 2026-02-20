@@ -167,6 +167,23 @@ class PeriodInferenceStage:
         re.VERBOSE | re.IGNORECASE,
     )
 
+    # Bare date pattern — matches "Month Day, Year" or "Month Day Year" without prefix.
+    # Used only in table header context to recognize quarter-end dates like "January 31, 2017".
+    BARE_DATE_PATTERN = re.compile(
+        r"""
+        (?<!\w)                                    # Word boundary at start
+        (january|february|march|april|may|june|july|august|
+         september|october|november|december|
+         jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)  # Month name
+        \s+
+        (\d{1,2})                                  # Day (1-31)
+        (?:,\s*|\s+)                               # Comma or space separator
+        ((?:19|20)\d{2})                           # 4-digit year
+        (?!\d)                                     # Not followed by digit
+        """,
+        re.VERBOSE | re.IGNORECASE,
+    )
+
     # Plain year pattern (with fiscal context required)
     # 2024, 2023 (only when in fiscal context like column headers)
     PLAIN_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
@@ -211,6 +228,9 @@ class PeriodInferenceStage:
             context_chars: Number of characters to search around text values (default: 200)
         """
         self.context_chars = context_chars
+        # Fiscal year end metadata — set from document in process()
+        self._fy_end_month: int | None = None
+        self._fy_end_day: int | None = None
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -231,6 +251,10 @@ class PeriodInferenceStage:
         # Get filing fiscal period for fallback
         fiscal_year = context.document.fiscal_year if context.document else None
         fiscal_period = context.document.fiscal_period if context.document else ""
+
+        # Load fiscal year end metadata from document (set by IngestionStage)
+        self._fy_end_month = context.document.fiscal_year_end_month if context.document else None
+        self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
 
         # Build lookup for segments and tables
         segment_lookup = {s.segment_id: s for s in context.segments}
@@ -384,6 +408,14 @@ class PeriodInferenceStage:
             period.confidence = self.HEADER_PATH_CONFIDENCE
             return period
 
+        # Try bare date (e.g., "January 31, 2017") — common in quarterly table headers
+        # without an "As of" or "Year ended" prefix.
+        period = self._try_parse_bare_date(combined_text)
+        if period:
+            period.source = "header_path"
+            period.confidence = self.HEADER_PATH_CONFIDENCE
+            return period
+
         # Try plain year as last resort (only in header context)
         period = self._try_parse_plain_year(combined_text)
         if period:
@@ -498,6 +530,10 @@ class PeriodInferenceStage:
 
         Examples: FY 2024, FY24, Fiscal Year 2024
 
+        Uses filing metadata (fiscal_year_end_month/day) when available to compute
+        accurate non-calendar fiscal year boundaries. Falls back to calendar year
+        (Jan 1 - Dec 31) when metadata is unavailable.
+
         Returns:
             ParsedPeriod with ANNUAL type, or None
         """
@@ -510,9 +546,34 @@ class PeriodInferenceStage:
             return None
 
         try:
-            # Calendar year assumption (Jan 1 - Dec 31)
-            start = date(year, 1, 1)
-            end = date(year, 12, 31)
+            fy_end_month = self._fy_end_month
+            fy_end_day = self._fy_end_day
+
+            if fy_end_month is not None:
+                # Use filing-specific fiscal year end date
+                end_day = (
+                    fy_end_day
+                    if fy_end_day is not None
+                    else calendar.monthrange(year, fy_end_month)[1]
+                )
+                end = date(year, fy_end_month, end_day)
+
+                if fy_end_month == 12 and end_day == 31:
+                    # Standard calendar year ending Dec 31
+                    start = date(year, 1, 1)
+                else:
+                    # Non-calendar FY: starts on the first day of the month
+                    # after the fiscal year end month, one year prior.
+                    # e.g., FY2020 ending Jan 31 2020 → starts Feb 1 2019
+                    # e.g., FY2020 ending Mar 31 2020 → starts Apr 1 2019
+                    start_month = (fy_end_month % 12) + 1  # next month (wraps 12→1)
+                    start_year = year - 1 if fy_end_month < 12 else year
+                    start = date(start_year, start_month, 1)
+            else:
+                # Calendar year fallback (Jan 1 - Dec 31)
+                start = date(year, 1, 1)
+                end = date(year, 12, 31)
+
             return ParsedPeriod(
                 period_type=PeriodType.ANNUAL,
                 start=start,
@@ -722,6 +783,43 @@ class PeriodInferenceStage:
             ParsedPeriod with POINT_IN_TIME type, or None
         """
         match = self.AS_OF_PATTERN.search(text)
+        if not match:
+            return None
+
+        month_name = match.group(1).lower()
+        day = int(match.group(2))
+        year = int(match.group(3))
+
+        month = self.MONTH_NAMES.get(month_name)
+        if not month:
+            return None
+
+        try:
+            point_date = date(year, month, day)
+            return ParsedPeriod(
+                period_type=PeriodType.POINT_IN_TIME,
+                start=point_date,
+                end=point_date,
+                confidence=0.0,
+                source="",
+                raw_text=match.group(0),
+            )
+        except ValueError:
+            return None
+
+    def _try_parse_bare_date(self, text: str) -> ParsedPeriod | None:
+        """
+        Parse bare date patterns without a leading "As of" or period-type prefix.
+
+        Examples: "January 31, 2017", "Jan 31 2017"
+
+        Used only in table header context to recognise quarter-end / year-end column
+        headings that omit the "As of" prefix (common in Slack-style quarterly tables).
+
+        Returns:
+            ParsedPeriod with POINT_IN_TIME type, or None
+        """
+        match = self.BARE_DATE_PATTERN.search(text)
         if not match:
             return None
 

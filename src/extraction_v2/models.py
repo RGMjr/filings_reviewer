@@ -710,6 +710,8 @@ class Document:
     filing_date: date | None = None
     fiscal_year: int | None = None
     fiscal_period: str = ""  # FY, Q1-Q4
+    fiscal_year_end_month: int | None = None  # e.g., 1 for Jan FYE (Slack, Snowflake)
+    fiscal_year_end_day: int | None = None  # e.g., 31 for Jan 31 FYE
 
     # Source
     html_path: str = ""  # Path to source HTML

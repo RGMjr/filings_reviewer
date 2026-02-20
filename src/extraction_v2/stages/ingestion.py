@@ -910,9 +910,11 @@ class IngestionStage:
                 paragraph_segments_with_elements + table_segments_with_elements
             )
 
-            # Sort by tree position to maintain document order
-            # lxml elements can be compared for document order using < operator
-            all_segments_with_elements.sort(key=lambda x: self._get_element_position(tree, x[1]))
+            # Sort by tree position to maintain document order.
+            # Pre-build position index once (O(n)) to avoid O(n^2) from calling
+            # _get_element_position() repeatedly inside the sort key.
+            _position_index = {elem: idx for idx, elem in enumerate(tree.iter())}
+            all_segments_with_elements.sort(key=lambda x: _position_index.get(x[1], 0))
 
             # Assign unified sequence numbers
             for idx, (segment, _) in enumerate(all_segments_with_elements):
@@ -928,6 +930,8 @@ class IngestionStage:
             doc = Document(
                 doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
+                fiscal_year_end_month=context.config.fiscal_year_end_month,
+                fiscal_year_end_day=context.config.fiscal_year_end_day,
             )
             context.document = doc
 

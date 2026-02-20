@@ -1154,7 +1154,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1178,7 +1178,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1203,7 +1203,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1229,7 +1229,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
