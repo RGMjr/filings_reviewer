@@ -31,6 +31,7 @@ from src.extraction_v2.models import (
     Unit,
 )
 from src.extraction_v2.stages.value_binding import ValueBindingStage
+from src.extraction_v2.text_utils import find_sentence_bounds
 
 # ============================================================================
 # Test Fixtures
@@ -757,23 +758,21 @@ class TestTextBinding:
 
     def test_sentence_boundary_detection(self) -> None:
         """Sentence boundary detection works correctly."""
-        stage = ValueBindingStage()
-
         text = "First sentence here. Second sentence has content. Third one too!"
 
         # Test position in middle of second sentence
-        start, end = stage._find_sentence_bounds(text, 30)
+        start, end = find_sentence_bounds(text, 30)
         sentence = text[start:end]
         assert "Second sentence has content" in sentence
         assert "First sentence" not in sentence
         assert "Third one" not in sentence
 
         # Test position at start of text
-        start, end = stage._find_sentence_bounds(text, 5)
+        start, end = find_sentence_bounds(text, 5)
         assert start == 0
 
         # Test position at end of text
-        start, end = stage._find_sentence_bounds(text, len(text) - 5)
+        start, end = find_sentence_bounds(text, len(text) - 5)
         assert end == len(text)
 
 
