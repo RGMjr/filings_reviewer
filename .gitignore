@@ -30,6 +30,9 @@ data/filings/
 # But keep fixture metadata
 !data/fixtures/*.json
 
+# Keep transcript gold standard annotations
+!data/transcript_gold_standard/*.csv
+
 # Jupyter
 .ipynb_checkpoints/
 

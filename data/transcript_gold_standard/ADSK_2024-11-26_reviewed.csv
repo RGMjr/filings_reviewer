@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Autodesk,ADSK,2024-11-26,cm_revenue_concentration,45,percent,Q3 FY2025,text,Top 10 customers represent 45% of revenue; Top 5 customers contributed 60% of ARR,MEDIUM,q_and_a,false,EDIT,"Fixed value from '45%' to numeric 45; fixed period from FY2026 to Q3 FY2025"
+Autodesk,ADSK,2024-11-26,cm_revenue_concentration,45,percent,Q3 FY2025,text,Our top 10 customers represent 45% of revenue,MEDIUM,q_and_a,false,ACCEPT,
+Autodesk,ADSK,2024-11-26,cm_revenue_concentration,60,percent,Q3 FY2025,text,Top 5 customers contributed 60% of ARR,MEDIUM,q_and_a,false,ACCEPT,
+Autodesk,ADSK,2024-11-26,cm_new_customers_acquired,21547,count,Q3 2025,text,We ended Q3 2025 with 21547 employees globally,MEDIUM,prepared_remarks,true,REJECT,"employees, not customers"
+Autodesk,ADSK,2024-11-26,cm_net_revenue_retention,100,percent,Q3 FY2025,text,Net revenue retention rate remained within the 100% to 110% range at constant exchange rate.,HIGH,prepared_remarks,false,ACCEPT,
+Autodesk,ADSK,2024-11-26,cm_net_revenue_retention,110,percent,Q3 FY2025,text,Net revenue retention rate remained within the 100% to 110% range at constant exchange rate.,HIGH,prepared_remarks,false,ACCEPT,
+Autodesk,ADSK,2024-11-26,cm_arr,7000000000,currency,Q3 2025,text,Total revenue for the Q3 2025 was $3 billion,HIGH,prepared_remarks,true,REJECT,"revenue, not arr"

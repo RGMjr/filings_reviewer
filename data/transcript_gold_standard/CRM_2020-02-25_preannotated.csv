@@ -1,0 +1,7 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+CRM,CRM,2020-02-25,cm_arr,,currency,Q4 FY2020,text,the number of Salesforce customers spending $20 million annually grew 34%,MEDIUM,prepared_remarks,false
+CRM,CRM,2020-02-25,cm_customer_churn_rate,8,percent,Q4 FY2020,text,Lower revenue attrition also continued to support our growth in Q4 and for the full fiscal year with dollar attrition continuing the downward trend,MEDIUM,prepared_remarks,false
+CRM,CRM,2020-02-25,cm_large_customers_period_end,,count,Q4 FY2020,text,the number of Salesforce customers spending $20 million annually grew 34%,MEDIUM,prepared_remarks,false
+CRM,CRM,2020-02-25,cm_net_revenue_retention,0.92,percent,2020-02-25,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true
+CRM,CRM,2020-02-25,cm_customer_churn_rate,9,percent,FY2020,text,the revenue attrition for the year is now currently below 9%. This is a historic low for Salesforce.,HIGH,prepared_remarks,false
+CRM,CRM,2020-02-25,cm_arr,9000000000,currency,2020-02-25,text,Total revenue for the 2020-02-25 was $4 billion,HIGH,prepared_remarks,true
