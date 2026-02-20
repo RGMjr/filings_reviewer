@@ -64,6 +64,31 @@ _RANKING_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Geographic revenue context — "international", "domestic", "geographic" etc.
+# Used to suppress cm_revenue_concentration FPs from geographic revenue breakdowns.
+_GEOGRAPHIC_REVENUE_RE = re.compile(
+    r"\b(?:international|domestic|geographic|geography|united\s+states|americas|emea|apac|"
+    r"asia[- ]pacific|europe|rest\s+of\s+(?:the\s+)?world)\b",
+    re.IGNORECASE,
+)
+
+# Developer/engineer count context.
+# Used to suppress cm_daily_active_users FPs from developer registration counts.
+_DEVELOPER_COUNT_RE = re.compile(
+    r"\b(?:registered\s+)?(?:developers?|engineers?|api\s+users?|third[- ]party\s+developers?)\b",
+    re.IGNORECASE,
+)
+
+# "N of the Fortune M" or "N of the Forbes M" — a subset-of-ranking phrase.
+# Used to suppress cm_customers_period_end FPs from Fortune 100 company counts.
+_FORTUNE_SUBSET_RE = re.compile(
+    r"\bof\s+(?:the\s+)?(?:Fortune|Forbes)\s+\d+\b",
+    re.IGNORECASE,
+)
+
+# Leading-zero number fragment — "018", "019", etc. from proximity window cutting "2018", "2019".
+_LEADING_ZERO_RE = re.compile(r"^0\d{1,2}$")
+
 
 def _is_v2_false_positive(
     bv: BoundValue,
@@ -106,6 +131,12 @@ def _is_v2_false_positive(
     if bv.value is not None and abs(bv.value) > 10_000_000_000:
         return True, "v2_garbage_value"
 
+    # Rule 7: Leading-zero year-fragment artifact.
+    # Values like "018" or "019" start with zero and are almost certainly produced
+    # by the proximity window cutting a 4-digit year (e.g., "2018" → "018").
+    if raw and _LEADING_ZERO_RE.match(raw):
+        return True, "v2_year_fragment"
+
     if not source_text:
         return False, None
 
@@ -139,6 +170,37 @@ def _is_v2_false_positive(
         for m in _RANKING_NAME_RE.finditer(source_text):
             if m.group(1) == raw:
                 return True, "v2_ranking_name"
+
+    # Rule 8: Geographic revenue context for cm_revenue_concentration.
+    # Percentages near geographic keywords (international, domestic, EMEA, etc.)
+    # describe revenue mix by region, NOT customer revenue concentration.
+    # Proximity check (200 chars) prevents firing on distant geographic mentions in long segments.
+    if metric_id == "cm_revenue_concentration" and raw:
+        geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
+        if geo_match:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0 and abs(geo_match.start() - value_pos) <= 200:
+                return True, "v2_geographic_revenue"
+
+    # Rule 9: Developer/engineer count for cm_daily_active_users.
+    # "500,000 registered developers" is not a daily active user count.
+    # Proximity check (150 chars) prevents firing when developer mention is in a distant sentence.
+    if metric_id == "cm_daily_active_users" and raw:
+        dev_match = _DEVELOPER_COUNT_RE.search(source_text)
+        if dev_match:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0 and abs(dev_match.start() - value_pos) <= 150:
+                return True, "v2_developer_count"
+
+    # Rule 10: Fortune/Forbes subset count for cm_customers_period_end.
+    # "65 of the Fortune 100" counts Fortune 100 membership, not total paid customers.
+    # Proximity check (100 chars): the subset number appears immediately before "of the Fortune N".
+    if metric_id == "cm_customers_period_end" and raw:
+        fortune_match = _FORTUNE_SUBSET_RE.search(source_text)
+        if fortune_match:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
+                return True, "v2_fortune_subset"
 
     return False, None
 

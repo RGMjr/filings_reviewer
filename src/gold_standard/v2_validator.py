@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import re
 from dataclasses import dataclass, field, replace as dc_replace
@@ -386,6 +387,7 @@ class V2GoldStandardValidator:
         company_name: str,
         filing_path: Path,
         expected_entries: list[GoldStandardEntry],
+        pipeline_override: V2Pipeline | None = None,
     ) -> ValidationResult:
         """
         Validate V2 extraction against expected entries for a single filing.
@@ -394,6 +396,8 @@ class V2GoldStandardValidator:
             company_name: Company name for reporting
             filing_path: Path to HTML filing
             expected_entries: Expected gold standard entries
+            pipeline_override: Optional pipeline instance with filing-specific config
+                (e.g., non-calendar fiscal year end). If None, uses self.v2_pipeline.
 
         Returns:
             ValidationResult with precision/recall metrics
@@ -407,11 +411,13 @@ class V2GoldStandardValidator:
             extra=0,
         )
 
+        pipeline = pipeline_override if pipeline_override is not None else self.v2_pipeline
+
         # Run V2 pipeline
         v2_context: PipelineContext | None = None
         all_v2_facts: list[MetricFact] = []
         try:
-            v2_result = self.v2_pipeline.process(
+            v2_result = pipeline.process(
                 html_path=filing_path,
                 filing_id=0,  # Placeholder, not persisting
             )
@@ -1056,8 +1062,27 @@ class V2GoldStandardValidator:
                 logger.warning(f"No filing found for {company_name}, skipping validation")
                 continue
 
+            # Build per-filing pipeline if metadata specifies a non-calendar FYE
+            metadata = self._load_filing_metadata(company_name)
+            fy_end_month = metadata.get("fiscal_year_end_month")
+            fy_end_day = metadata.get("fiscal_year_end_day")
+            if fy_end_month is not None and (
+                fy_end_month != self.v2_config.fiscal_year_end_month
+                or fy_end_day != self.v2_config.fiscal_year_end_day
+            ):
+                filing_config = dc_replace(
+                    self.v2_config,
+                    fiscal_year_end_month=fy_end_month,
+                    fiscal_year_end_day=fy_end_day,
+                )
+                filing_pipeline: V2Pipeline | None = V2Pipeline(config=filing_config)
+            else:
+                filing_pipeline = None  # Use default self.v2_pipeline
+
             logger.info(f"Validating {company_name}...")
-            result = self.validate_filing(company_name, filing_path, entries)
+            result = self.validate_filing(
+                company_name, filing_path, entries, pipeline_override=filing_pipeline
+            )
             results.append(result)
             logger.info(
                 f"  {company_name}: P={result.precision:.1%}, "
@@ -1065,6 +1090,30 @@ class V2GoldStandardValidator:
             )
 
         return results
+
+    def _load_filing_metadata(self, company_name: str) -> dict[str, Any]:
+        """
+        Load metadata.json for a company filing.
+
+        Returns:
+            Metadata dict, or empty dict if no metadata file exists.
+        """
+        safe_name = company_name.replace(" ", "_").replace(",", "").replace(".", "_")
+        while "__" in safe_name:
+            safe_name = safe_name.replace("__", "_")
+        safe_name = safe_name.rstrip("_")
+
+        candidates = [
+            GOLD_STANDARD_DIR / safe_name / "metadata.json",
+            GOLD_STANDARD_DIR / company_name / "metadata.json",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                try:
+                    return json.loads(candidate.read_text())
+                except (json.JSONDecodeError, OSError):
+                    pass
+        return {}
 
     def _find_filing_path(self, company_name: str) -> Path | None:
         """Find the HTML filing path for a company."""
