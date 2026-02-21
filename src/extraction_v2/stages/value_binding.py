@@ -321,8 +321,10 @@ class ValueBindingStage:
             for bv in bound_values:
                 if bv.value is None:
                     continue
-                # Check if this value is an exception to the table scale
-                if table_scale_has_exceptions and self._is_scale_exception(bv, candidate, table):
+                # Check if this value is an exception to the table scale.
+                # "(actual)" stub-path markers exempt unconditionally; currency-symbol
+                # exemption only applies when the table has "except as otherwise noted".
+                if self._is_scale_exception(bv, candidate, table, table_scale_has_exceptions):
                     logger.debug(
                         "Skipping table scale for exception value %s (%s)",
                         bv.value_raw,
@@ -481,81 +483,105 @@ class ValueBindingStage:
         """Bind values from data cells in the same row (delegates to _bind_cells)."""
         return self._bind_cells(candidate, table, row, stub_path, "table_stub", iterate_rows=False)
 
-    def _bind_text_candidate(
+    def _locate_text_window(
         self,
         candidate: MetricCandidate,
         segments: list[Segment],
-    ) -> list[BoundValue]:
+    ) -> tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float] | None:
         """
-        Bind a text-sourced candidate to values using proximity.
+        Locate the candidate's segment and extract the proximity search window.
 
-        Strategy:
-        1. Find the segment containing the candidate
-        2. Search for numbers within N words of the match
-        3. Prefer values in same sentence
+        Finds the segment by ID, resolves the keyword span, runs number discovery
+        within the proximity window, and computes sentence bounds and keyword center
+        for use by downstream scoring.
 
         Args:
-            candidate: Text-sourced metric candidate
-            segments: List of document segments
+            candidate: Text-sourced metric candidate.
+            segments: All document segments.
 
         Returns:
-            List of BoundValue objects
+            Tuple of (segment, text, window_start, numbers, sentence_start,
+            sentence_end, keyword_center), or None if the segment is missing or
+            the text is empty / contains no numbers in proximity.
         """
-        bound_values: list[BoundValue] = []
         loc = candidate.source_locator
 
-        # Find the segment
         segment = self._find_segment(loc.segment_id, segments)
         if not segment:
             logger.warning(
                 f"Segment {loc.segment_id} not found for candidate {candidate.candidate_id}"
             )
-            return bound_values
+            return None
 
-        # Get text span
         text = segment.text
         if not text:
-            return bound_values
+            return None
 
-        # Determine search window
         if loc.text_span:
             match_start, match_end = loc.text_span
         else:
-            # Fallback: search entire text
             match_start = 0
             match_end = len(text)
 
-        # Calculate window bounds
         window_start = max(0, match_start - self.proximity_window)
-
-        # Find numbers in proximity
         numbers = self._find_numbers_in_proximity(
             text, match_start, match_end, self.proximity_window
         )
 
         if not numbers:
-            return bound_values
+            return None
 
-        # Get sentence bounds for the keyword match
         sentence_start, sentence_end = find_sentence_bounds(text, match_start)
-
-        # Compute keyword center for distance decay
         keyword_center = (match_start + match_end) / 2.0
 
-        # Classify numbers as same-sentence or out-of-sentence
+        return segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center
+
+    def _score_text_numbers(
+        self,
+        candidate: MetricCandidate,
+        segment: Segment,
+        text: str,
+        window_start: int,
+        numbers: list[tuple[re.Match[str], float, Unit, str]],
+        sentence_start: int,
+        sentence_end: int,
+        keyword_center: float,
+    ) -> tuple[
+        list[tuple[re.Match[str], float, Unit, str, float]],
+        tuple[BoundValue, float] | None,
+    ]:
+        """
+        Classify and score number matches from a proximity window.
+
+        Applies unit compatibility filters and text-proximity-specific rules,
+        then separates matches into same-sentence candidates (all kept) and
+        the single best out-of-sentence candidate.
+
+        Args:
+            candidate: Text-sourced metric candidate.
+            segment: The segment containing the candidate.
+            text: Full segment text.
+            window_start: Char offset where the proximity window begins.
+            numbers: Output of _find_numbers_in_proximity.
+            sentence_start: Start of the sentence containing the keyword.
+            sentence_end: End of the sentence containing the keyword.
+            keyword_center: Fractional char offset of keyword midpoint.
+
+        Returns:
+            Tuple of (same_sentence_candidates, out_of_sentence_best) where
+            same_sentence_candidates is a list of
+            (num_match, value, unit, raw, distance_penalty) and
+            out_of_sentence_best is a (BoundValue, confidence) pair or None.
+        """
         same_sentence_candidates: list[tuple[re.Match[str], float, Unit, str, float]] = []
         out_of_sentence_best: tuple[BoundValue, float] | None = None
 
         for num_match, value, unit, raw in numbers:
-            # Check if count value should be treated as percentage
             unit = self._check_percentage_context(candidate.metric_id, unit, raw, text)
 
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
-            # Text-proximity-specific filters for count/currency metrics:
-            # 1. Reject bare numbers (Unit.OTHER) for currency-only metrics
-            #    (e.g., "796K" near AOV keyword is a customer count, not a price)
             if candidate.metric_id in _CURRENCY_ONLY_METRICS and unit == Unit.OTHER:
                 logger.debug(
                     "Skipping bare number for currency metric %s in text_proximity",
@@ -563,11 +589,9 @@ class ValueBindingStage:
                 )
                 continue
 
-            # num_match positions are relative to window_text, adjust to full text
             num_start_in_text = window_start + num_match.start()
             same_sentence = sentence_start <= num_start_in_text < sentence_end
 
-            # Compute distance decay penalty
             num_center = num_start_in_text + (num_match.end() - num_match.start()) / 2.0
             char_distance = abs(num_center - keyword_center)
             if char_distance > self.DISTANCE_DECAY_THRESHOLD:
@@ -586,7 +610,6 @@ class ValueBindingStage:
             if same_sentence:
                 same_sentence_candidates.append((num_match, value, unit, raw, distance_penalty))
             else:
-                # For out-of-sentence, track only the closest one
                 ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
                 confidence = self._compute_text_confidence(
                     unit, ambiguity_penalty, False, distance_penalty
@@ -610,7 +633,41 @@ class ValueBindingStage:
                 if out_of_sentence_best is None or confidence > out_of_sentence_best[1]:
                     out_of_sentence_best = (bv, confidence)
 
-        # If there are same-sentence matches, use those (all of them)
+        return same_sentence_candidates, out_of_sentence_best
+
+    def _bind_text_candidate(
+        self,
+        candidate: MetricCandidate,
+        segments: list[Segment],
+    ) -> list[BoundValue]:
+        """
+        Bind a text-sourced candidate to values using proximity.
+
+        Strategy:
+        1. Locate the segment and extract the proximity search window
+        2. Score and classify number matches (same-sentence vs out-of-sentence)
+        3. Prefer same-sentence matches; fall back to single best out-of-sentence
+
+        Args:
+            candidate: Text-sourced metric candidate
+            segments: List of document segments
+
+        Returns:
+            List of BoundValue objects
+        """
+        located = self._locate_text_window(candidate, segments)
+        if located is None:
+            return []
+
+        segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center = located
+
+        same_sentence_candidates, out_of_sentence_best = self._score_text_numbers(
+            candidate, segment, text, window_start, numbers,
+            sentence_start, sentence_end, keyword_center,
+        )
+
+        bound_values: list[BoundValue] = []
+
         if same_sentence_candidates:
             ambiguity_penalty = self.AMBIGUITY_PENALTY if len(same_sentence_candidates) > 1 else 0.0
             for num_match, value, unit, raw, distance_penalty in same_sentence_candidates:
@@ -636,7 +693,6 @@ class ValueBindingStage:
                     )
                 )
         elif out_of_sentence_best is not None:
-            # No same-sentence match: keep only the single closest out-of-sentence value
             bound_values.append(out_of_sentence_best[0])
 
         return bound_values
@@ -918,32 +974,38 @@ class ValueBindingStage:
         bv: BoundValue,
         candidate: MetricCandidate,
         table: Table,
+        table_has_exceptions: bool = False,
     ) -> bool:
         """Check if a bound value is an exception to table-level scaling.
 
-        In tables annotated "except as otherwise noted", values with explicit
-        currency symbols ($591.7) or stubs marked "(actual)" are already at
-        their true scale and should not be multiplied.
+        Two independent signals exempt a value from scaling:
+        1. Stub row is labelled "(actual)" — the row is already at true scale
+           regardless of whether the table header says "except as noted".
+        2. Raw value has an explicit currency symbol (e.g. "$591.7") — only
+           honoured when the table itself declares "except as otherwise noted",
+           because bare currency symbols can appear in scale-qualified tables.
 
         Args:
             bv: The bound value to check
             candidate: The metric candidate
             table: The table containing the value
+            table_has_exceptions: True when the table header contains
+                "except as otherwise noted" (enables currency-symbol exemption).
 
         Returns:
             True if this value should skip table-level scaling.
         """
-        # Check if raw value has explicit currency symbol
-        if self._CURRENCY_SYMBOL_PATTERN.search(bv.value_raw):
-            return True
-
-        # Check if the stub path contains "(actual)"
+        # Check if the stub path contains "(actual)" — unconditional exemption
         loc = bv.source_locator
         if loc.cell_row is not None:
             stub_path = table.get_stub_path(loc.cell_row)
             stub_text = " ".join(stub_path).lower()
             if "(actual)" in stub_text:
                 return True
+
+        # Currency-symbol exemption only when table explicitly says "except as noted"
+        if table_has_exceptions and self._CURRENCY_SYMBOL_PATTERN.search(bv.value_raw):
+            return True
 
         return False
 
