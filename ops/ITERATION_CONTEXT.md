@@ -6,21 +6,22 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**WP-12 (refactor)**: Extract number_parsing module, FP rule registry, period pattern lists (commits 85e0c87, b3b116c)
-**WP-06 (investigation)**: Farfetch FN root cause analysis complete (2026-02-19); see ops/ANALYSIS_RESULTS.md
+**WP-09 (partial, 2026-02-20)**: Farfetch CSV cleanup (4 empty-metric rows removed) + scale exemption for `(actual)` stub rows (commits 628ca47, 01e3838)
+- Farfetch FN: 24 → 22 (2 no_candidate FNs resolved via CSV cleanup)
+- Scale fix prevents ×1000 inflation on AOV rows labelled `(actual)` — correct, but AOV FNs still `wrong_period`
 
-### Farfetch V2 scores (no image extraction): TP=10, FP=2, FN=24 — P=83.3%, R=29.4%, F1=43.5%
+### Farfetch V2 scores (no image extraction): TP=10, FP=2, FN=22 — P=83.3%, R=31.2%, F1=45.5%
 
-Farfetch FN root causes:
-- **9 FNs (LTV/CAC)**: Value binding picks "31" from "December 31" (closer to keyword) instead of "1.42, 1.53..." — multi-value comma-separated binding not supported
-- **8 FNs (charts)**: cm_gross_margin_by_cohort (6), cm_revenue_by_cohort (1), cm_cac_payback_period (1) — requires Vision API
-- **5 FNs (AOV)**: Values bound at bc=0.70 but dedup or scale-table contamination (table×1000) prevents match
-- **2 FNs**: Empty metric_id rows in CSV
+Remaining Farfetch FN breakdown:
+- **9 FNs (LTV/CAC)**: fp_filtered — "31" (from "December 31") bound instead of "1.42, 1.53..." — multi-value not supported
+- **8 FNs (charts)**: no_value_binding — requires Vision API
+- **5 FNs (AOV)**: wrong_period — values extracted at correct scale but period inference assigns wrong dates
 
 ## Current Focus
 
-- WP-09: Fix Farfetch recall — 3 addressable issues: (1) multi-value extraction, (2) AOV dedup explosion, (3) scale table contamination
-- Slack table binding fix: complex colspan headers prevent table reconstruction (new WP needed)
+- WP-09 remaining: LTV/CAC multi-value binding (9 FNs) — significant feature; needs new design
+- AOV wrong_period (5 FNs) — blocked by WP-08 (period inference for non-calendar FY)
+- Slack table binding fix: complex colspan headers (new WP needed)
 - Baseline refresh: v2_baseline.json needs update after all WPs complete
 
 ## Test Status
@@ -31,10 +32,11 @@ Farfetch FN root causes:
 
 ## Key Learnings for Next Iteration
 
-- Farfetch LTV/CAC: value binding picks nearest number; "December 31" beats "1.42" in proximity scoring
-- AOV mass-duplication: table `c4f2ffc3` generates hundreds of bindings (candidates × table cells)
-- Scale contamination: table `3950ef78` has "(in thousands)" — AOV values ×1000 wrong
-- The `fp_filtered` diagnostic can be misleading: a DIFFERENT value (not the target) was bound and removed
+- Farfetch LTV/CAC: "31" (nearest number) bound instead of "1.42, 1.53"; multi-value comma lists unsupported
+- AOV wrong_period: values ARE extracted at correct scale; period mismatch is the gating issue (needs WP-08)
+- `_is_scale_exception` now fires on `(actual)` stub unconditionally; currency-symbol check still gated
+- FN diagnostic `wrong_period` with `closest != None` means value is found but period doesn't overlap
+- V2 baseline (v2_baseline.json) is stale — set Feb-18, pre-WP-02; comparison against it is misleading
 
 ## Blockers or Warnings
 
