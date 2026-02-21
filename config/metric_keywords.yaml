@@ -397,52 +397,11 @@ cm_revenue_concentration:
 
 cm_bookings:
   status: deprecated
-  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbookings\b'
-    - '\btotal\s+bookings\b'
-    - '\bnew\s+bookings\b'
-    - '\bcontract\s+bookings\b'
-    - '\bnet\s+new\s+bookings\b'
-    - '\bquarterly\s+bookings\b'
-    - '\bannual\s+bookings\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_billings:
   status: deprecated
-  deprecation_reason: "GAAP financial metric, not customer-specific. Use ARR/MRR for recurring revenue metrics."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbillings\b'
-    - '\btotal\s+billings\b'
-    - '\bcalculated\s+billings\b'
-    - '\badjusted\s+billings\b'
-  exclusions:
-    # Cash flow metrics (from Slack table - these appear in same segment as "Calculated Billings")
-    - '\bfree\s+cash\s+flows?\b'
-    - '\badjusted\s+free\s+cash\s+flows?\b'
-    - '\bcash\s+flows?\b'
-    - '\boperating\s+(?:activities|cash|assets)\b'
-    - '\bnet\s+loss\b'
-    # Cash flow statement line items (common accounting terms)
-    - '\bnon[- ]cash\s+charges?\b'
-    - '\bdepreciation\s+and\s+amortization\b'
-    - '\bstock[- ]based\s+compensation\b'
-    - '\baccounts\s+(?:payable|receivable)\b'
-    - '\bprepaid\s+expenses?\b'
-    - '\baccrued\s+expenses?\b'
-    # Tender offer / compensation items
-    - '\btender\s+offer\b'
-    - '\brepurchases?\s+deemed\s+compensation\b'
-    # Revenue line items (general financial statements)
-    - '\brevenue\b'
-    - '\bdeferred\s+revenue\b'
-    - '\bcost\s+of\s+(?:revenue|sales)\b'
-    - '\bnet\s+revenue\b'
-    # Period markers (accounting context)
-    - '\b(?:beginning|end)\s+of\s+period\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # E-Commerce / Consumer Metrics
@@ -477,19 +436,7 @@ cm_repeat_purchase_rate:
 
 cm_gmv:
   status: deprecated
-  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bgmv\b'
-    - '\bgross\s+merchandise\s+value\b'
-    - '\bgross\s+merchandise\s+volume\b'
-    - '\bgross\s+booking\s+value\b'
-    - '\bgross\s+bookings\s+value\b'
-    - '\bgross\s+transaction\s+value\b'
-    - '\btotal\s+transaction\s+value\b'
-    - '\bgross\s+order\s+value\b'
-    - '\bplatform\s+(?:transaction\s+)?volume\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # cm_take_rate: REMOVED (2026-01-02)
 # Rationale: Take rate is a platform/marketplace revenue metric, not a customer metric.
@@ -503,27 +450,11 @@ cm_gmv:
 
 cm_acv:
   status: deprecated
-  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bacv\b'
-    - '\bannual\s+contract\s+value\b'
-    - '\baverage\s+contract\s+value\b'
-    - '\bannualized\s+contract\s+value\b'
-    - '\baverage\s+annual\s+contract\b'
-    - '\bcontract\s+value\s+per\s+customer\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_tcv:
   status: deprecated
-  deprecation_reason: "Financial metric, not customer metric unless cohort-specific."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\btcv\b'
-    - '\btotal\s+contract\s+value\b'
-    - '\blifetime\s+contract\s+value\b'
-    - '\bcontract\s+lifetime\s+value\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # Customer Value Metrics

@@ -589,34 +589,34 @@ class TestBookingsMetricPatterns:
         )
 
     def test_bookings_basic(self, classifier, sample_segment):
-        """Test identification of basic bookings mention."""
+        """Test that deprecated bookings metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Our bookings grew 25% year-over-year to $100 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_bookings" in result.candidate_metric_ids
+        assert "cm_bookings" not in result.candidate_metric_ids
 
     def test_bookings_total(self, classifier, sample_segment):
-        """Test identification of total bookings."""
+        """Test that deprecated bookings metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Total bookings for fiscal 2024 were $500 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_bookings" in result.candidate_metric_ids
+        assert "cm_bookings" not in result.candidate_metric_ids
 
     def test_bookings_new(self, classifier, sample_segment):
-        """Test identification of new bookings."""
+        """Test that deprecated bookings metric is not detected (patterns removed)."""
         sample_segment.raw_text = "New bookings increased by $50 million in Q4."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_bookings" in result.candidate_metric_ids
+        assert "cm_bookings" not in result.candidate_metric_ids
 
     def test_billings_basic(self, classifier, sample_segment):
-        """Test identification of billings metric."""
+        """Test that deprecated billings metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Billings were $120 million, up from $100 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_billings" in result.candidate_metric_ids
+        assert "cm_billings" not in result.candidate_metric_ids
 
     def test_billings_total(self, classifier, sample_segment):
-        """Test identification of total billings."""
+        """Test that deprecated billings metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Total billings reached $400 million in 2024."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_billings" in result.candidate_metric_ids
+        assert "cm_billings" not in result.candidate_metric_ids
 
     # NOTE: cm_deferred_revenue was removed from taxonomy - deferred revenue,
     # unearned revenue, RPO, backlog, and contract liabilities are GAAP items,
@@ -626,22 +626,22 @@ class TestBookingsMetricPatterns:
         """Test that singular 'booking' (reservations) doesn't match."""
         sample_segment.raw_text = "The booking process for hotel reservations is simple."
         result = classifier.classify_segment(sample_segment)
-        # Should NOT match cm_bookings (pattern requires plural or compound)
+        # Should NOT match cm_bookings (metric deprecated, patterns removed)
         assert "cm_bookings" not in result.candidate_metric_ids
 
     def test_billings_not_billing_singular(self, classifier, sample_segment):
         """Test that singular 'billing' (invoicing) doesn't match."""
         sample_segment.raw_text = "Our billing department handles invoices."
         result = classifier.classify_segment(sample_segment)
-        # Should NOT match cm_billings (pattern requires plural)
+        # Should NOT match cm_billings (metric deprecated, patterns removed)
         assert "cm_billings" not in result.candidate_metric_ids
 
     def test_multiple_revenue_predictability_metrics(self, classifier, sample_segment):
-        """Test segment with multiple revenue predictability metrics."""
+        """Test that deprecated revenue predictability metrics are not detected."""
         sample_segment.raw_text = "Bookings were $100 million, billings were $90 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_bookings" in result.candidate_metric_ids
-        assert "cm_billings" in result.candidate_metric_ids
+        assert "cm_bookings" not in result.candidate_metric_ids
+        assert "cm_billings" not in result.candidate_metric_ids
 
 
 # ===== T6: E-Commerce Metrics Tests =====
@@ -799,52 +799,52 @@ class TestMarketplaceMetricPatterns:
     # --- Gross Merchandise Value Tests ---
 
     def test_gmv_acronym(self, classifier, sample_segment):
-        """Test identification via GMV acronym."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "GMV increased to $10 billion in fiscal 2024."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_full_phrase(self, classifier, sample_segment):
-        """Test identification via 'gross merchandise value' phrase."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Gross merchandise value grew 25% year-over-year."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_volume_variant(self, classifier, sample_segment):
-        """Test identification via 'gross merchandise volume' variant."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Gross merchandise volume reached $5 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_booking_value(self, classifier, sample_segment):
-        """Test identification via 'gross booking value' (ride-sharing)."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Gross booking value for rides was $15 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_transaction_value(self, classifier, sample_segment):
-        """Test identification via 'gross transaction value' variant."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Gross transaction value on our platform was $2 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_total_transaction_value(self, classifier, sample_segment):
-        """Test identification via 'total transaction value' variant."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Total transaction value processed was $8 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_order_value(self, classifier, sample_segment):
-        """Test identification via 'gross order value' e-commerce variant."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Gross order value for Q4 was $1.5 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_platform_volume(self, classifier, sample_segment):
-        """Test identification via 'platform volume' variant."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Platform transaction volume exceeded $20 billion."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     # --- Take Rate Tests ---
     # REMOVED (2026-01-02): cm_take_rate removed - platform revenue metric, not customer metric
@@ -858,30 +858,26 @@ class TestMarketplaceMetricPatterns:
         assert "cm_gmv" not in result.candidate_metric_ids
 
     def test_gmv_cmasb_extended_boost(self, classifier, sample_segment):
-        """Test that GMV receives CMASB extended boost."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = (
             "Gross merchandise value on our platform increased to $10 billion in "
             "fiscal 2024, representing 30% growth over the prior year. This GMV growth "
             "was driven by increased transactions and customer engagement."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
-        # Should have extended boost (0.1) applied
-        # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
-        assert result.classifier_confidence >= 0.6
+        assert "cm_gmv" not in result.candidate_metric_ids
 
     # test_take_rate_cmasb_extended_boost REMOVED (2026-01-02)
 
     def test_gmv_real_example(self, classifier, sample_segment):
-        """Test realistic marketplace S-1 disclosure language with GMV."""
+        """Test that deprecated GMV metric is not detected (patterns removed)."""
         sample_segment.raw_text = (
             "For the fiscal year ended December 31, 2024, our GMV was $25.3 billion, "
             "representing a 28% increase compared to the prior year, driven by "
             "improvements in our transaction optimization and customer engagement."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_gmv" in result.candidate_metric_ids
-        assert result.contains_numeric_disclosure_flag is True
+        assert "cm_gmv" not in result.candidate_metric_ids
 
 
 class TestSaaSContractMetricPatterns:
@@ -903,80 +899,80 @@ class TestSaaSContractMetricPatterns:
     # --- Annual Contract Value (ACV) Tests ---
 
     def test_acv_acronym(self, classifier, sample_segment):
-        """Test identification via ACV acronym."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "ACV increased to $50,000 per customer in 2024."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_acv_full_phrase(self, classifier, sample_segment):
-        """Test identification via 'annual contract value' phrase."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Annual contract value grew 35% year-over-year."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_acv_average_contract_value(self, classifier, sample_segment):
-        """Test identification via 'average contract value' variant."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Our average contract value reached $75,000."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_acv_annualized_contract_value(self, classifier, sample_segment):
-        """Test identification via 'annualized contract value' variant."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Annualized contract value for enterprise customers was $120,000."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_acv_average_annual_contract(self, classifier, sample_segment):
-        """Test identification via 'average annual contract' variant."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "The average annual contract for new customers is $45,000."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_acv_contract_value_per_customer(self, classifier, sample_segment):
-        """Test identification via 'contract value per customer' variant."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Contract value per customer increased to $65,000."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
 
     # --- Total Contract Value (TCV) Tests ---
 
     def test_tcv_acronym(self, classifier, sample_segment):
-        """Test identification via TCV acronym."""
+        """Test that deprecated TCV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "TCV for multi-year deals was $5 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_tcv" in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     def test_tcv_full_phrase(self, classifier, sample_segment):
-        """Test identification via 'total contract value' phrase."""
+        """Test that deprecated TCV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Total contract value of signed agreements was $10 million."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_tcv" in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     def test_tcv_lifetime_contract_value(self, classifier, sample_segment):
-        """Test identification via 'lifetime contract value' variant."""
+        """Test that deprecated TCV metric is not detected (patterns removed)."""
         sample_segment.raw_text = (
             "Lifetime contract value for enterprise customers averages $2 million."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_tcv" in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     def test_tcv_contract_lifetime_value(self, classifier, sample_segment):
-        """Test identification via 'contract lifetime value' variant."""
+        """Test that deprecated TCV metric is not detected (patterns removed)."""
         sample_segment.raw_text = "Contract lifetime value has increased 40% since 2022."
         result = classifier.classify_segment(sample_segment)
-        assert "cm_tcv" in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     # --- ACV/TCV Together Tests ---
 
     def test_acv_tcv_together_in_segment(self, classifier, sample_segment):
-        """Test identification of both ACV and TCV in same segment."""
+        """Test that deprecated ACV and TCV metrics are not detected (patterns removed)."""
         sample_segment.raw_text = (
             "Our ACV for enterprise customers reached $150,000 while "
             "TCV for multi-year contracts averaged $450,000."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
-        assert "cm_tcv" in result.candidate_metric_ids
+        assert "cm_acv" not in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     # --- Negative Tests ---
 
@@ -995,19 +991,17 @@ class TestSaaSContractMetricPatterns:
     # --- CMASB Extended Boost Tests ---
 
     def test_acv_cmasb_extended_boost(self, classifier, sample_segment):
-        """Test that ACV receives CMASB extended boost."""
+        """Test that deprecated ACV metric is not detected (patterns removed)."""
         sample_segment.raw_text = (
             "Annual contract value grew to $75,000 per customer in fiscal 2024, "
             "representing a 25% increase over the prior year. Our ACV growth "
             "was driven by enterprise customer expansion and upsells."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
-        # Should have extended boost (0.1) applied
-        assert result.classifier_confidence >= 0.6
+        assert "cm_acv" not in result.candidate_metric_ids
 
     def test_tcv_cmasb_extended_boost(self, classifier, sample_segment):
-        """Test that TCV receives CMASB extended boost."""
+        """Test that deprecated TCV metric is not detected (patterns removed)."""
         sample_segment.raw_text = (
             "Total contract value for new enterprise customers was 25 million in 2024, "
             "up from 18 million in the prior year. TCV growth reflected our success "
@@ -1015,15 +1009,12 @@ class TestSaaSContractMetricPatterns:
             "total contract value deals worth 100 million during Q4 alone."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_tcv" in result.candidate_metric_ids
-        # Should have extended boost (0.1) applied - needs numeric disclosure + single candidate
-        # Base: 0.3 (numeric) + 0.3 (single candidate) + 0.1 (CMASB) = 0.7
-        assert result.classifier_confidence >= 0.6
+        assert "cm_tcv" not in result.candidate_metric_ids
 
     # --- Real-World Example ---
 
     def test_saas_contract_metrics_real_example(self, classifier, sample_segment):
-        """Test realistic SaaS S-1 disclosure language."""
+        """Test that deprecated SaaS metrics are not detected (patterns removed)."""
         sample_segment.raw_text = (
             "For the fiscal year ended December 31, 2024, our ACV per enterprise "
             "customer was approximately $120,000, representing 28% growth compared "
@@ -1031,9 +1022,8 @@ class TestSaaSContractMetricPatterns:
             "the year was $350 million, with an average contract duration of 3 years."
         )
         result = classifier.classify_segment(sample_segment)
-        assert "cm_acv" in result.candidate_metric_ids
-        assert "cm_tcv" in result.candidate_metric_ids
-        assert result.contains_numeric_disclosure_flag is True
+        assert "cm_acv" not in result.candidate_metric_ids
+        assert "cm_tcv" not in result.candidate_metric_ids
 
 
 # ===== G10: Goldmine Bonuses Tests =====
@@ -1193,7 +1183,7 @@ class TestGoldmineBonuses:
     def test_confidence_multi_metric_bonus(self, classifier, sample_segment):
         """Test that segment with 3+ metrics gets +0.15 bonus."""
         sample_segment.raw_text = (
-            "We track Active Customers, Average Order Value, and GMV as our key "
+            "We track Active Customers, Average Order Value, and Customer Churn Rate as our key "
             "performance indicators. These metrics help us understand customer "
             "engagement and business health across all regions and segments."
         )
@@ -1207,7 +1197,7 @@ class TestGoldmineBonuses:
         """Test that segment with all goldmine indicators gets cumulative bonuses."""
         sample_segment.raw_text = (
             "In 2015 and 2017, by cohort analysis, 44% were Active Customers, "
-            "contributing to GMV and Average Order Value growth. We saw strong "
+            "contributing to churn rate and Average Order Value growth. We saw strong "
             "performance across all customer cohorts and tenure segments during "
             "this period of accelerated growth and market expansion."
         )
