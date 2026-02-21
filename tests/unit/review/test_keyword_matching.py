@@ -1687,18 +1687,22 @@ class TestRequiredContext:
             assert is_metric_deprecated(metric_id), f"{metric_id} should be deprecated"
 
     def test_revenue_synonyms_have_required_context(self):
-        """All revenue synonym metrics should have required_context in YAML config."""
+        """All non-deprecated revenue synonym metrics should have required_context in YAML config."""
         from src.extraction.keyword_config import get_required_context
+        from src.extraction.keyword_config import is_metric_deprecated
 
-        # Use raw config (unfiltered) since all synonyms are now deprecated
-        # and METRIC_REQUIRED_CONTEXT filters deprecated metrics out
+        # Deprecated metrics no longer have patterns/required_context
         raw_context = get_required_context()
         for metric_id in self.REVENUE_SYNONYM_METRICS:
-            assert metric_id in raw_context, (
-                f"{metric_id} should have required_context defined in YAML"
-            )
-            assert "patterns" in raw_context[metric_id]
-            assert "proximity_chars" in raw_context[metric_id]
+            if is_metric_deprecated(metric_id):
+                # Deprecated metrics are filtered out and don't need required_context
+                assert metric_id not in raw_context
+            else:
+                assert metric_id in raw_context, (
+                    f"{metric_id} should have required_context defined in YAML"
+                )
+                assert "patterns" in raw_context[metric_id]
+                assert "proximity_chars" in raw_context[metric_id]
 
     def test_arr_mrr_not_context_gated(self):
         """ARR and MRR should NOT have required context (inherently customer-related)."""

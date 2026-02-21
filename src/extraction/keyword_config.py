@@ -99,6 +99,10 @@ def _validate_config(config: dict[str, Any]) -> None:
                 f"Invalid config for {metric_id}: expected dict, got {type(metric_config)}"
             )
 
+        # Skip validation for deprecated metrics (patterns removed at trim time)
+        if metric_config.get("status") == "deprecated":
+            continue
+
         if "patterns" not in metric_config:
             raise KeywordConfigError(f"Missing 'patterns' for metric {metric_id}")
 
@@ -251,7 +255,7 @@ def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     return {
         metric_id: cast(list[str], metric_config["patterns"])
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id)
+        if _is_metric_key(metric_id) and metric_config.get("status") != "deprecated"
     }
 
 
@@ -271,7 +275,7 @@ def get_exclusion_patterns(config_path: str | None = None) -> dict[str, list[str
     return {
         metric_id: metric_config["exclusions"]
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id) and "exclusions" in metric_config
+        if _is_metric_key(metric_id) and "exclusions" in metric_config and metric_config.get("status") != "deprecated"
     }
 
 
@@ -289,7 +293,7 @@ def get_specific_patterns(config_path: str | None = None) -> list[str]:
     config = _load_config(config_path)
     patterns: list[str] = []
     for metric_id, metric_config in config.items():
-        if _is_metric_key(metric_id) and "specific_patterns" in metric_config:
+        if _is_metric_key(metric_id) and "specific_patterns" in metric_config and metric_config.get("status") != "deprecated":
             patterns.extend(metric_config["specific_patterns"])
     return patterns
 
@@ -318,7 +322,7 @@ def get_required_context(config_path: str | None = None) -> dict[str, dict[str, 
     return {
         metric_id: metric_config["required_context"]
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id) and "required_context" in metric_config
+        if _is_metric_key(metric_id) and "required_context" in metric_config and metric_config.get("status") != "deprecated"
     }
 
 
