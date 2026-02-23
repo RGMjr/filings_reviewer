@@ -286,7 +286,7 @@ class PatternAnalyzer:
                         "before": {"total": 0, "accepted": 0, "precision": 0.0},
                         "after": {"total": 0, "accepted": 0, "precision": 0.0},
                         "unknown": {"total": 0, "accepted": 0, "precision": 0.0},
-                    }
+                    },
                 }
 
             # Update totals
@@ -311,7 +311,9 @@ class PatternAnalyzer:
 
             for _direction, direction_stats in stats["by_direction"].items():
                 if direction_stats["total"] > 0:
-                    direction_stats["precision"] = direction_stats["accepted"] / direction_stats["total"]
+                    direction_stats["precision"] = (
+                        direction_stats["accepted"] / direction_stats["total"]
+                    )
 
         return {
             "total_decisions": len(decisions_data),
@@ -372,6 +374,7 @@ class PatternAnalyzer:
         """
         # Get current multipliers from config (default values)
         from src.review.config import CandidateGenerationConfig
+
         default_config = CandidateGenerationConfig()
 
         current_multipliers = {
@@ -631,18 +634,14 @@ class PatternAnalyzer:
 
         # Check if we have any valid values
         if not feature_values:
-            self.logger.debug(
-                f"Feature '{feature_name}' has all None values, skipping"
-            )
+            self.logger.debug(f"Feature '{feature_name}' has all None values, skipping")
             return None
 
         # Run chi-squared test
         try:
             chi_result = chi_squared_test(feature_values, decision_values)
         except ValueError as e:
-            self.logger.warning(
-                f"Chi-squared test failed for '{feature_name}': {e}"
-            )
+            self.logger.warning(f"Chi-squared test failed for '{feature_name}': {e}")
             return None
 
         # Build value distribution
@@ -878,16 +877,14 @@ class PatternAnalyzer:
 
             # Perform chi-squared test
             try:
-                result = chi_squared_test(feature_values[:len(decisions)], decisions)
+                result = chi_squared_test(feature_values[: len(decisions)], decisions)
                 p_value = result["p_value"]
 
                 # Include if significant OR if p-value not computable
                 if p_value is None or p_value < self.significance_threshold:
                     significant_features.add(feature_name)
                 else:
-                    self.logger.debug(
-                        f"Feature '{feature_name}' not significant (p={p_value:.4f})"
-                    )
+                    self.logger.debug(f"Feature '{feature_name}' not significant (p={p_value:.4f})")
             except Exception as e:
                 self.logger.warning(f"Error testing feature '{feature_name}': {e}")
                 # Include feature if test fails (conservative approach)
@@ -921,9 +918,7 @@ class PatternAnalyzer:
                 if p_value is None or p_value < self.significance_threshold:
                     significant_features.add(feature_name)
                 else:
-                    self.logger.debug(
-                        f"Feature '{feature_name}' not significant (p={p_value:.4f})"
-                    )
+                    self.logger.debug(f"Feature '{feature_name}' not significant (p={p_value:.4f})")
             except Exception as e:
                 self.logger.warning(f"Error testing feature '{feature_name}': {e}")
                 # Include feature if test fails (conservative approach)
@@ -1107,7 +1102,9 @@ class PatternAnalyzer:
                 filtered_patterns.append(pattern)
 
         # Sort by F1 score descending (treat None as 0.0)
-        filtered_patterns.sort(key=lambda p: p.f1_score if p.f1_score is not None else 0.0, reverse=True)
+        filtered_patterns.sort(
+            key=lambda p: p.f1_score if p.f1_score is not None else 0.0, reverse=True
+        )
 
         evaluation_method = "database-side" if use_db_evaluation else "Python-side"
         self.logger.info(
@@ -1186,9 +1183,7 @@ class PatternAnalyzer:
                 f"(minimum {min_cv_sample_size} required for meaningful CV)"
             )
 
-        self.logger.info(
-            f"Starting {k}-fold cross-validation with {len(decisions_data)} decisions"
-        )
+        self.logger.info(f"Starting {k}-fold cross-validation with {len(decisions_data)} decisions")
 
         # Perform stratified k-fold split
         splits = self._stratified_k_fold_split(decisions_data, k=k)
@@ -1246,9 +1241,7 @@ class PatternAnalyzer:
             # Evaluate each pattern on test data (held-out fold)
             for pattern in train_patterns:
                 # Compute metrics on test data
-                target_decision = (
-                    "accept" if pattern.pattern_type == "accept_rule" else "reject"
-                )
+                target_decision = "accept" if pattern.pattern_type == "accept_rule" else "reject"
 
                 # Build true/predicted labels for test data
                 true_labels = [d["decision"] for d in test_data]
@@ -1347,9 +1340,7 @@ class PatternAnalyzer:
 
         return cv_results
 
-    def detect_pattern_conflicts(
-        self, patterns: list[LearnedPattern]
-    ) -> dict[str, Any]:
+    def detect_pattern_conflicts(self, patterns: list[LearnedPattern]) -> dict[str, Any]:
         """
         Detect contradictory and redundant patterns.
 
@@ -1532,9 +1523,7 @@ class PatternAnalyzer:
                 patterns.append(
                     {
                         "pattern_type": f"{target_decision}_rule",
-                        "conditions": [
-                            {"field": feature_name, "op": "eq", "value": value}
-                        ],
+                        "conditions": [{"field": feature_name, "op": "eq", "value": value}],
                         "metric_id": None,  # Applies to all metrics
                     }
                 )
@@ -1663,7 +1652,7 @@ class PatternAnalyzer:
                 continue
 
             try:
-                result = chi_squared_test(feature_values[:len(decisions)], decisions)
+                result = chi_squared_test(feature_values[: len(decisions)], decisions)
                 if result["is_valid"]:
                     feature_importance.append((feature_name, result["chi_squared"], "categorical"))
             except Exception:
@@ -2006,9 +1995,7 @@ class PatternAnalyzer:
             - Speedup: 10-100x
         """
         # Build WHERE clause for pattern conditions
-        pattern_where, pattern_params = self._build_jsonb_where_clause(
-            pattern_definition
-        )
+        pattern_where, pattern_params = self._build_jsonb_where_clause(pattern_definition)
 
         # Build base WHERE clause for filing/metric filters
         base_where_parts: list[str] = []
@@ -2085,9 +2072,7 @@ class PatternAnalyzer:
         recall = true_positives / support
 
         f1_score = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
+            2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
         )
 
         # Generate pattern name
@@ -2221,9 +2206,7 @@ class PatternAnalyzer:
             if success:
                 saved_count += 1
             else:
-                self.logger.warning(
-                    f"Failed to save pattern: {pattern.pattern_name}"
-                )
+                self.logger.warning(f"Failed to save pattern: {pattern.pattern_name}")
 
         self.logger.info(
             f"Saved {saved_count} patterns "
@@ -2277,7 +2260,7 @@ class PatternAnalyzer:
         lines = []
 
         # Header
-        lines.append(f"Pattern: \"{pattern.pattern_name}\"")
+        lines.append(f'Pattern: "{pattern.pattern_name}"')
         lines.append("")
 
         # Natural language explanation
@@ -2287,9 +2270,7 @@ class PatternAnalyzer:
         lines.append("")
 
         # Examples
-        examples = self._get_pattern_examples(
-            pattern, filing_id, metric_id, num_examples
-        )
+        examples = self._get_pattern_examples(pattern, filing_id, metric_id, num_examples)
         if examples:
             lines.append("Examples:")
             for example in examples:
@@ -2332,9 +2313,7 @@ class PatternAnalyzer:
 
         # Multiple conditions
         connector = logic.upper()
-        condition_descriptions = [
-            self._describe_condition(cond) for cond in conditions
-        ]
+        condition_descriptions = [self._describe_condition(cond) for cond in conditions]
 
         if connector == "AND":
             main_desc = f"This pattern {action} candidates where ALL of the following are true:\n"
@@ -2458,9 +2437,7 @@ class PatternAnalyzer:
                 if pattern.matches(features):
                     matching_candidates.append(candidate)
             except Exception as e:
-                self.logger.warning(
-                    f"Failed to create CandidateFeatures from dict: {e}"
-                )
+                self.logger.warning(f"Failed to create CandidateFeatures from dict: {e}")
                 continue
 
         if not matching_candidates:
@@ -2529,9 +2506,7 @@ class PatternAnalyzer:
             if tp is not None and fn is not None and (tp + fn) > 0:
                 recall_pct = int(recall * 100)
                 total_actual = tp + fn
-                lines.append(
-                    f"  Recall: {recall_pct}% ({tp}/{total_actual} cases detected)"
-                )
+                lines.append(f"  Recall: {recall_pct}% ({tp}/{total_actual} cases detected)")
             else:
                 recall_pct = int(recall * 100)
                 lines.append(f"  Recall: {recall_pct}%")

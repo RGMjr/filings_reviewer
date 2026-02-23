@@ -103,15 +103,11 @@ class DefinitionExtractor:
         # Group segments by metric
         metric_segments = self._group_segments_by_metric(segments)
         priority_metric_ids = self._get_priority_metric_ids(segments)
-        metric_segments = self._filter_metric_segments(
-            metric_segments, priority_metric_ids
-        )
+        metric_segments = self._filter_metric_segments(metric_segments, priority_metric_ids)
 
         # Extract definition for each metric
         for metric_id, metric_segs in metric_segments.items():
-            definition = self._extract_metric_definition(
-                metric_id, metric_segs, company_id
-            )
+            definition = self._extract_metric_definition(metric_id, metric_segs, company_id)
             if definition:
                 definitions.append(definition)
 
@@ -151,8 +147,7 @@ class DefinitionExtractor:
             from .metric_classifier import MetricClassifier
 
             cmasb_priority = (
-                MetricClassifier.CMASB_CORE_METRICS
-                | MetricClassifier.CMASB_EXTENDED_METRICS
+                MetricClassifier.CMASB_CORE_METRICS | MetricClassifier.CMASB_EXTENDED_METRICS
             )
         except Exception:
             cmasb_priority = set()
@@ -179,8 +174,7 @@ class DefinitionExtractor:
             preferred = [
                 seg
                 for seg in sorted_segs
-                if is_priority_metric
-                and metric_id in (seg.candidate_metric_ids or [])
+                if is_priority_metric and metric_id in (seg.candidate_metric_ids or [])
             ]
 
             preferred_ids = {id(seg) for seg in preferred}
@@ -243,9 +237,7 @@ class DefinitionExtractor:
         # Try LLM extraction first if available
         if self.llm_client:
             try:
-                logger.info(
-                    f"Attempting LLM definition extraction for metric {metric_id}"
-                )
+                logger.info(f"Attempting LLM definition extraction for metric {metric_id}")
                 definition = self._extract_definition_with_llm(
                     metric_id, definition_segments + methodology_segments, company_id
                 )
@@ -253,9 +245,7 @@ class DefinitionExtractor:
                     logger.info(f"LLM definition extraction succeeded for {metric_id}")
                     return definition
                 else:
-                    logger.info(
-                        "LLM extraction returned no definition, falling back to rules"
-                    )
+                    logger.info("LLM extraction returned no definition, falling back to rules")
             except Exception as e:
                 logger.warning(f"LLM definition extraction failed for {metric_id}: {e}")
                 logger.info("Falling back to rule-based extraction")
@@ -264,8 +254,8 @@ class DefinitionExtractor:
         logger.debug(f"Using rule-based definition extraction for {metric_id}")
 
         # Extract and normalize text from verified snippets
-        definition_text, definition_segment_id, definition_raw_text = (
-            self._select_verified_snippet(definition_segments, segments)
+        definition_text, definition_segment_id, definition_raw_text = self._select_verified_snippet(
+            definition_segments, segments
         )
 
         methodology_text, methodology_segment_id, methodology_raw_text = (
@@ -360,9 +350,7 @@ class DefinitionExtractor:
                     # Verify quote exists in source
                     if quote:
                         if not verify_quote_in_source(quote, combined_text):
-                            truncated_quote = (
-                                quote[:100] + "..." if len(quote) > 100 else quote
-                            )
+                            truncated_quote = quote[:100] + "..." if len(quote) > 100 else quote
                             logger.warning(
                                 f"Quote verification failed for definition extraction: {metric_id}. "
                                 f"Falling back to rule-based. Quote: '{truncated_quote}'"
@@ -391,9 +379,7 @@ class DefinitionExtractor:
                         filing_id=filing_id,
                         company_id=company_id,
                         metric_id=metric_id,
-                        definition_text_normalized=self._normalize_definition_text(
-                            definition_text
-                        ),
+                        definition_text_normalized=self._normalize_definition_text(definition_text),
                         methodology_text_normalized=(
                             self._normalize_definition_text(methodology_text)
                             if methodology_text
@@ -473,9 +459,7 @@ class DefinitionExtractor:
 
 
 # Convenience function
-def extract_definitions(
-    segments: list[SourceSegment], company_id: int
-) -> list[MetricDefinition]:
+def extract_definitions(segments: list[SourceSegment], company_id: int) -> list[MetricDefinition]:
     """
     Convenience function to extract definitions from segments.
 

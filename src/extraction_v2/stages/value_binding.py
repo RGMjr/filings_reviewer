@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from decimal import InvalidOperation
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import (
@@ -26,7 +25,13 @@ from src.extraction_v2.models import (
     SourceType,
     Unit,
 )
-from src.extraction_v2.unit_compatibility import is_unit_compatible
+from src.extraction_v2.stages import number_parsing as _np
+from src.extraction_v2.text_utils import find_sentence_bounds
+from src.extraction_v2.unit_compatibility import (
+    _COUNT_ONLY_METRICS,
+    _CURRENCY_ONLY_METRICS,
+    is_unit_compatible,
+)
 from src.review.false_positive_filter import should_treat_as_percentage
 
 if TYPE_CHECKING:
@@ -59,6 +64,8 @@ class ValueBindingStage:
     UNIT_PRESENCE_BONUS: float = 0.1
     AMBIGUITY_PENALTY: float = 0.1
     SAME_SENTENCE_BONUS: float = 0.1
+    DISTANCE_DECAY_THRESHOLD: int = 100  # Chars before decay starts
+    MAX_DISTANCE_PENALTY: float = 0.1  # Max penalty at edge of window
 
     # Text proximity settings
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
@@ -67,6 +74,10 @@ class ValueBindingStage:
     # Transcript: bonus for value in same or adjacent sentence
     ADJACENT_SENTENCE_BONUS: float = 0.05
 
+    # Minimum cell text length to trigger prose-cell binding (Strategy 6).
+    # Cells shorter than this are treated as header/stub/data cells, not prose.
+    PROSE_CELL_MIN_LEN: int = 50
+
     # Approximate value prefixes to strip before number parsing
     APPROX_PREFIXES = re.compile(
         r"\b(?:about|roughly|approximately|nearly|around|over|more\s+than|"
@@ -74,38 +85,12 @@ class ValueBindingStage:
         re.IGNORECASE,
     )
 
-    # Number parsing pattern
-    # Matches: $1,234.56, 1,234, 45%, 1.5M, -$100, etc.
-    NUMBER_PATTERN = re.compile(
-        r"""
-        (?P<negative>-)?                    # Optional negative
-        (?P<currency>[\$\€\£])?             # Optional currency symbol
-        \s*
-        (?P<number>
-            \d{1,3}(?:,\d{3})+              # Comma-separated integer (requires at least one comma group)
-            (?:\.\d+)?                       # Optional decimal
-            |
-            \d+(?:\.\d+)?                    # Plain number
-        )
-        \s*
-        (?P<suffix>million|billion|thousand|mn|bn|k|m|b)?  # Scale suffix
-        \s*
-        (?P<percent>%|percent)?             # Percentage indicator
-        """,
-        re.IGNORECASE | re.VERBOSE,
-    )
-
-    # Scale multipliers
-    SCALE_MULTIPLIERS: dict[str, float] = {
-        "thousand": 1_000,
-        "k": 1_000,
-        "million": 1_000_000,
-        "mn": 1_000_000,
-        "m": 1_000_000,
-        "billion": 1_000_000_000,
-        "bn": 1_000_000_000,
-        "b": 1_000_000_000,
-    }
+    # Number parsing constants — defined in stages/number_parsing.py
+    NUMBER_PATTERN = _np.NUMBER_PATTERN
+    SCALE_MULTIPLIERS = _np.SCALE_MULTIPLIERS
+    TABLE_SCALE_PATTERN = _np.TABLE_SCALE_PATTERN
+    TABLE_SCALE_EXCEPT_PATTERN = _np.TABLE_SCALE_EXCEPT_PATTERN
+    TABLE_SCALE_MAP = _np.TABLE_SCALE_MAP
 
     # Word-form number parsing for "a billion", "one billion", etc.
     # Note: "a" is intentionally excluded — too ambiguous ("over a million" = dollar threshold)
@@ -155,7 +140,7 @@ class ValueBindingStage:
         Returns:
             Updated unit (PERCENT if context indicates percentage, else original)
         """
-        if unit != Unit.COUNT:
+        if unit not in (Unit.COUNT, Unit.OTHER):
             return unit
 
         # Map V2 unit to V1 string for the function call
@@ -298,9 +283,7 @@ class ValueBindingStage:
         # Find the table
         table = self._find_table(loc.table_id, tables)
         if not table:
-            logger.warning(
-                f"Table {loc.table_id} not found for candidate {candidate.candidate_id}"
-            )
+            logger.warning(f"Table {loc.table_id} not found for candidate {candidate.candidate_id}")
             return bound_values
 
         # Find the cell where the candidate was found
@@ -315,34 +298,29 @@ class ValueBindingStage:
         row = loc.cell_row if loc.cell_row is not None else 0
         col = loc.cell_col if loc.cell_col is not None else 0
 
+        # Detect table-level scale factor
+        table_scale, table_scale_has_exceptions = self._detect_table_scale(table)
+
         # Strategy 1: Candidate is in a header cell → bind data cells in that column
         if candidate_cell.is_header or row < table.header_rows:
             header_path = table.get_header_path(col)
-            bound_values.extend(
-                self._bind_column_values(candidate, table, col, header_path)
-            )
+            bound_values.extend(self._bind_column_values(candidate, table, col, header_path))
 
         # Strategy 2: Candidate is in a stub cell → bind data cells in that row
         if candidate_cell.is_stub or col < table.stub_cols:
             stub_path = table.get_stub_path(row)
-            bound_values.extend(
-                self._bind_row_values(candidate, table, row, stub_path)
-            )
+            bound_values.extend(self._bind_row_values(candidate, table, row, stub_path))
 
         # Strategy 3: Metric mentioned in header_path → bind column values
         if not bound_values and self._is_in_path(match_text_lower, candidate_cell.header_path):
             bound_values.extend(
-                self._bind_column_values(
-                    candidate, table, col, candidate_cell.header_path
-                )
+                self._bind_column_values(candidate, table, col, candidate_cell.header_path)
             )
 
         # Strategy 4: Metric mentioned in stub_path → bind row values
         if not bound_values and self._is_in_path(match_text_lower, candidate_cell.stub_path):
             bound_values.extend(
-                self._bind_row_values(
-                    candidate, table, row, candidate_cell.stub_path
-                )
+                self._bind_row_values(candidate, table, row, candidate_cell.stub_path)
             )
 
         # Strategy 5: Candidate cell itself contains a value (data cell with both keyword and value)
@@ -351,12 +329,8 @@ class ValueBindingStage:
             if parsed:
                 value, unit, raw = parsed
                 # Check percentage context from table headers/stubs
-                context_text = " ".join(
-                    candidate_cell.header_path + candidate_cell.stub_path
-                )
-                unit = self._check_percentage_context(
-                    candidate.metric_id, unit, raw, context_text
-                )
+                context_text = " ".join(candidate_cell.header_path + candidate_cell.stub_path)
+                unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
                 if not self._should_filter_unit(candidate.metric_id, unit):
                     confidence = self._compute_table_confidence(
                         match_text_lower,
@@ -381,6 +355,236 @@ class ValueBindingStage:
                         )
                     )
 
+        # Strategy 6: Prose cell — candidate cell is a sentence with inline values.
+        # Fires when cell text is long enough to be prose (e.g., "LTV/CAC ratio for
+        # the years ended Dec 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77").
+        # Column/row scans may pick up wrong values from adjacent cells in layout tables,
+        # so prose-cell bindings replace strategy 1-4 results when found.
+        if candidate_cell.text and len(candidate_cell.text) >= self.PROSE_CELL_MIN_LEN:
+            prose_values = self._bind_prose_cell(candidate, candidate_cell)
+            if prose_values:
+                bound_values = prose_values
+
+        # Apply table-level scale factor
+        # Currency values always get scaled. Count metrics get scaled only when
+        # the raw cell contains a decimal point (e.g. "796.3" in a "(in thousands)"
+        # table means 796,300). Integer counts (e.g. "948") are left as-is because
+        # financial tables often mix dollar and count columns under a single header.
+        #
+        # When the table has "except as otherwise noted", skip scaling for values
+        # with explicit currency symbols (already actual $) or stubs marked "(actual)".
+        if table_scale != 1.0:
+            for bv in bound_values:
+                if bv.value is None:
+                    continue
+                # Check if this value is an exception to the table scale.
+                # "(actual)" stub-path markers exempt unconditionally; currency-symbol
+                # exemption only applies when the table has "except as otherwise noted".
+                if self._is_scale_exception(bv, candidate, table, table_scale_has_exceptions):
+                    logger.debug(
+                        "Skipping table scale for exception value %s (%s)",
+                        bv.value_raw,
+                        candidate.metric_id,
+                    )
+                    continue
+                if bv.unit == Unit.CURRENCY:
+                    bv.value *= table_scale
+                elif (
+                    bv.unit in (Unit.COUNT, Unit.OTHER)
+                    and candidate.metric_id in _COUNT_ONLY_METRICS
+                    and self._has_fractional_value(bv.value_raw)
+                ):
+                    bv.value *= table_scale
+
+        return bound_values
+
+    def _bind_cells(
+        self,
+        candidate: MetricCandidate,
+        table: Table,
+        fixed_idx: int | None,
+        fixed_path: list[str],
+        binding_type: str,
+        iterate_rows: bool,
+    ) -> list[BoundValue]:
+        """
+        Unified cell binding for both column-scan and row-scan patterns.
+
+        When iterate_rows=True (column binding):
+          - Iterates data rows, fixed column index
+          - fixed_path is the header_path; cell.stub_path is the dynamic path
+
+        When iterate_rows=False (row binding):
+          - Iterates data columns, fixed row index
+          - fixed_path is the stub_path; cell.header_path is the dynamic path
+          - Also applies count/currency column-type filters
+
+        Args:
+            candidate: The metric candidate.
+            table: The table to search.
+            fixed_idx: The fixed column (iterate_rows=True) or row (iterate_rows=False) index.
+            fixed_path: The header_path or stub_path that is fixed for all cells in this scan.
+            binding_type: "table_header" or "table_stub".
+            iterate_rows: True to scan rows (column binding), False to scan columns (row binding).
+
+        Returns:
+            List of BoundValue objects.
+        """
+        bound_values: list[BoundValue] = []
+        if fixed_idx is None:
+            return bound_values
+
+        match_text_lower = candidate.match_text.lower()
+        indices = (
+            range(table.header_rows, table.row_count)
+            if iterate_rows
+            else range(table.stub_cols, table.col_count)
+        )
+
+        for idx in indices:
+            if iterate_rows:
+                cell = table.get_cell(idx, fixed_idx)
+                cell_row, cell_col = idx, fixed_idx
+            else:
+                cell = table.get_cell(fixed_idx, idx)
+                cell_row, cell_col = fixed_idx, idx
+
+            if not cell or not cell.text.strip():
+                continue
+            if cell.is_header or cell.is_stub:
+                continue
+
+            parsed = self._parse_number(cell.text)
+            if not parsed:
+                continue
+
+            value, unit, raw = parsed
+
+            if iterate_rows:
+                header_path_eff = fixed_path
+                stub_path_eff = cell.stub_path
+            else:
+                header_path_eff = cell.header_path
+                stub_path_eff = fixed_path
+
+            context_text = " ".join(header_path_eff + stub_path_eff)
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+
+            # Column-type filter (row binding only): prevent count metrics from
+            # binding to dollar columns (and vice versa) in mixed financial tables.
+            if not iterate_rows:
+                if candidate.metric_id in _COUNT_ONLY_METRICS and self._header_indicates_currency(
+                    cell.header_path
+                ):
+                    logger.debug(
+                        "Skipping currency-column cell (%d,%d) for count metric %s",
+                        fixed_idx,
+                        idx,
+                        candidate.metric_id,
+                    )
+                    continue
+                if candidate.metric_id in _CURRENCY_ONLY_METRICS and self._header_indicates_count(
+                    cell.header_path
+                ):
+                    logger.debug(
+                        "Skipping count-column cell (%d,%d) for currency metric %s",
+                        fixed_idx,
+                        idx,
+                        candidate.metric_id,
+                    )
+                    continue
+
+            confidence = self._compute_table_confidence(
+                match_text_lower, header_path_eff, stub_path_eff, unit
+            )
+
+            bound_values.append(
+                BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=value,
+                    value_raw=raw,
+                    unit=unit,
+                    binding_type=binding_type,
+                    binding_confidence=confidence,
+                    source_locator=SourceLocator(
+                        table_id=table.table_id,
+                        cell_row=cell_row,
+                        cell_col=cell_col,
+                        dom_locator=cell.dom_locator,
+                    ),
+                )
+            )
+
+        return bound_values
+
+    def _bind_prose_cell(
+        self,
+        candidate: MetricCandidate,
+        cell: Cell,
+    ) -> list[BoundValue]:
+        """
+        Bind values from a prose-like table cell containing both keyword and values inline.
+
+        Used by Strategy 6 when the candidate cell is a sentence (e.g., "LTV/CAC ratio
+        for the years ended Dec 31, 2015, 2016 and 2017 was 1.42, 1.53 and 1.77").
+        Only same-sentence numbers are returned; callers can apply FP filter to remove
+        year-like values (2015, 2016) while keeping the true metric values (1.42, 1.53).
+
+        Args:
+            candidate: Table-sourced metric candidate whose cell is prose-like.
+            cell: The candidate cell containing inline prose text.
+
+        Returns:
+            List of BoundValue objects for same-sentence numbers near the keyword,
+            or empty list if the keyword is not found or no numbers are in sentence.
+        """
+        text = cell.text
+        text_lower = text.lower()
+        keyword = candidate.match_text.lower()
+
+        kw_start = text_lower.find(keyword)
+        if kw_start < 0:
+            return []
+        kw_end = kw_start + len(keyword)
+
+        numbers = self._find_numbers_in_proximity(text, kw_start, kw_end, self.proximity_window)
+        if not numbers:
+            return []
+
+        sentence_start, sentence_end = find_sentence_bounds(text, kw_start)
+        context_text = " ".join(cell.header_path + cell.stub_path)
+
+        bound_values: list[BoundValue] = []
+        for num_match, value, unit, raw in numbers:
+            if not (sentence_start <= num_match.start() <= sentence_end):
+                continue
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+            confidence = self._compute_table_confidence(
+                candidate.match_text.lower(),
+                cell.header_path,
+                cell.stub_path,
+                unit,
+            )
+            bound_values.append(
+                BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=value,
+                    value_raw=raw,
+                    unit=unit,
+                    binding_type="table_cell",
+                    binding_confidence=confidence,
+                    source_locator=SourceLocator(
+                        table_id=candidate.source_locator.table_id,
+                        cell_row=cell.row,
+                        cell_col=cell.col,
+                        dom_locator=cell.dom_locator,
+                    ),
+                )
+            )
         return bound_values
 
     def _bind_column_values(
@@ -390,70 +594,8 @@ class ValueBindingStage:
         col: int | None,
         header_path: list[str],
     ) -> list[BoundValue]:
-        """
-        Bind values from data cells in the same column.
-
-        Args:
-            candidate: The metric candidate
-            table: The table
-            col: Column index
-            header_path: Header path for confidence scoring
-
-        Returns:
-            List of BoundValue objects
-        """
-        bound_values: list[BoundValue] = []
-        if col is None:
-            return bound_values
-
-        match_text_lower = candidate.match_text.lower()
-
-        # Iterate through data rows (skip header rows)
-        for row_idx in range(table.header_rows, table.row_count):
-            cell = table.get_cell(row_idx, col)
-            if not cell or not cell.text.strip():
-                continue
-
-            # Skip if cell is a header or stub
-            if cell.is_header or cell.is_stub:
-                continue
-
-            # Try to parse the cell value
-            parsed = self._parse_number(cell.text)
-            if not parsed:
-                continue
-
-            value, unit, raw = parsed
-            # Check percentage context from table headers/stubs
-            context_text = " ".join(header_path + cell.stub_path)
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, context_text
-            )
-            if self._should_filter_unit(candidate.metric_id, unit):
-                continue
-
-            confidence = self._compute_table_confidence(
-                match_text_lower, header_path, cell.stub_path, unit
-            )
-
-            bound_values.append(
-                BoundValue(
-                    candidate_id=candidate.candidate_id,
-                    value=value,
-                    value_raw=raw,
-                    unit=unit,
-                    binding_type="table_header",
-                    binding_confidence=confidence,
-                    source_locator=SourceLocator(
-                        table_id=table.table_id,
-                        cell_row=row_idx,
-                        cell_col=col,
-                        dom_locator=cell.dom_locator,
-                    ),
-                )
-            )
-
-        return bound_values
+        """Bind values from data cells in the same column (delegates to _bind_cells)."""
+        return self._bind_cells(candidate, table, col, header_path, "table_header", iterate_rows=True)
 
     def _bind_row_values(
         self,
@@ -462,70 +604,160 @@ class ValueBindingStage:
         row: int | None,
         stub_path: list[str],
     ) -> list[BoundValue]:
+        """Bind values from data cells in the same row (delegates to _bind_cells)."""
+        return self._bind_cells(candidate, table, row, stub_path, "table_stub", iterate_rows=False)
+
+    def _locate_text_window(
+        self,
+        candidate: MetricCandidate,
+        segments: list[Segment],
+    ) -> tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float] | None:
         """
-        Bind values from data cells in the same row.
+        Locate the candidate's segment and extract the proximity search window.
+
+        Finds the segment by ID, resolves the keyword span, runs number discovery
+        within the proximity window, and computes sentence bounds and keyword center
+        for use by downstream scoring.
 
         Args:
-            candidate: The metric candidate
-            table: The table
-            row: Row index
-            stub_path: Stub path for confidence scoring
+            candidate: Text-sourced metric candidate.
+            segments: All document segments.
 
         Returns:
-            List of BoundValue objects
+            Tuple of (segment, text, window_start, numbers, sentence_start,
+            sentence_end, keyword_center), or None if the segment is missing or
+            the text is empty / contains no numbers in proximity.
         """
-        bound_values: list[BoundValue] = []
-        if row is None:
-            return bound_values
+        loc = candidate.source_locator
 
-        match_text_lower = candidate.match_text.lower()
-
-        # Iterate through data columns (skip stub columns)
-        for col_idx in range(table.stub_cols, table.col_count):
-            cell = table.get_cell(row, col_idx)
-            if not cell or not cell.text.strip():
-                continue
-
-            # Skip if cell is a header or stub
-            if cell.is_header or cell.is_stub:
-                continue
-
-            # Try to parse the cell value
-            parsed = self._parse_number(cell.text)
-            if not parsed:
-                continue
-
-            value, unit, raw = parsed
-            # Check percentage context from table headers/stubs
-            context_text = " ".join(cell.header_path + stub_path)
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, context_text
+        segment = self._find_segment(loc.segment_id, segments)
+        if not segment:
+            logger.warning(
+                f"Segment {loc.segment_id} not found for candidate {candidate.candidate_id}"
             )
+            return None
+
+        text = segment.text
+        if not text:
+            return None
+
+        if loc.text_span:
+            match_start, match_end = loc.text_span
+        else:
+            match_start = 0
+            match_end = len(text)
+
+        window_start = max(0, match_start - self.proximity_window)
+        numbers = self._find_numbers_in_proximity(
+            text, match_start, match_end, self.proximity_window
+        )
+
+        if not numbers:
+            return None
+
+        sentence_start, sentence_end = find_sentence_bounds(text, match_start)
+        keyword_center = (match_start + match_end) / 2.0
+
+        return segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center
+
+    def _score_text_numbers(
+        self,
+        candidate: MetricCandidate,
+        segment: Segment,
+        text: str,
+        window_start: int,
+        numbers: list[tuple[re.Match[str], float, Unit, str]],
+        sentence_start: int,
+        sentence_end: int,
+        keyword_center: float,
+    ) -> tuple[
+        list[tuple[re.Match[str], float, Unit, str, float]],
+        tuple[BoundValue, float] | None,
+    ]:
+        """
+        Classify and score number matches from a proximity window.
+
+        Applies unit compatibility filters and text-proximity-specific rules,
+        then separates matches into same-sentence candidates (all kept) and
+        the single best out-of-sentence candidate.
+
+        Args:
+            candidate: Text-sourced metric candidate.
+            segment: The segment containing the candidate.
+            text: Full segment text.
+            window_start: Char offset where the proximity window begins.
+            numbers: Output of _find_numbers_in_proximity.
+            sentence_start: Start of the sentence containing the keyword.
+            sentence_end: End of the sentence containing the keyword.
+            keyword_center: Fractional char offset of keyword midpoint.
+
+        Returns:
+            Tuple of (same_sentence_candidates, out_of_sentence_best) where
+            same_sentence_candidates is a list of
+            (num_match, value, unit, raw, distance_penalty) and
+            out_of_sentence_best is a (BoundValue, confidence) pair or None.
+        """
+        same_sentence_candidates: list[tuple[re.Match[str], float, Unit, str, float]] = []
+        out_of_sentence_best: tuple[BoundValue, float] | None = None
+
+        for num_match, value, unit, raw in numbers:
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, text)
+
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
-            confidence = self._compute_table_confidence(
-                match_text_lower, cell.header_path, stub_path, unit
-            )
+            if candidate.metric_id in _CURRENCY_ONLY_METRICS and unit == Unit.OTHER:
+                logger.debug(
+                    "Skipping bare number for currency metric %s in text_proximity",
+                    candidate.metric_id,
+                )
+                continue
 
-            bound_values.append(
-                BoundValue(
+            num_start_in_text = window_start + num_match.start()
+            same_sentence = sentence_start <= num_start_in_text < sentence_end
+
+            num_center = num_start_in_text + (num_match.end() - num_match.start()) / 2.0
+            char_distance = abs(num_center - keyword_center)
+            if char_distance > self.DISTANCE_DECAY_THRESHOLD:
+                decay_range = self.proximity_window - self.DISTANCE_DECAY_THRESHOLD
+                if decay_range > 0:
+                    fraction = min(
+                        (char_distance - self.DISTANCE_DECAY_THRESHOLD) / decay_range,
+                        1.0,
+                    )
+                    distance_penalty = fraction * self.MAX_DISTANCE_PENALTY
+                else:
+                    distance_penalty = 0.0
+            else:
+                distance_penalty = 0.0
+
+            if same_sentence:
+                same_sentence_candidates.append((num_match, value, unit, raw, distance_penalty))
+            else:
+                ambiguity_penalty = self.AMBIGUITY_PENALTY if len(numbers) > 1 else 0.0
+                confidence = self._compute_text_confidence(
+                    unit, ambiguity_penalty, False, distance_penalty=distance_penalty
+                )
+                bv = BoundValue(
                     candidate_id=candidate.candidate_id,
                     value=value,
                     value_raw=raw,
                     unit=unit,
-                    binding_type="table_stub",
+                    binding_type="text_proximity",
                     binding_confidence=confidence,
                     source_locator=SourceLocator(
-                        table_id=table.table_id,
-                        cell_row=row,
-                        cell_col=col_idx,
-                        dom_locator=cell.dom_locator,
+                        segment_id=segment.segment_id,
+                        text_span=(
+                            window_start + num_match.start(),
+                            window_start + num_match.end(),
+                        ),
+                        dom_locator=segment.dom_locator,
                     ),
                 )
-            )
+                if out_of_sentence_best is None or confidence > out_of_sentence_best[1]:
+                    out_of_sentence_best = (bv, confidence)
 
-        return bound_values
+        return same_sentence_candidates, out_of_sentence_best
 
     def _bind_text_candidate(
         self,
@@ -538,9 +770,9 @@ class ValueBindingStage:
         Bind a text-sourced candidate to values using proximity.
 
         Strategy:
-        1. Find the segment containing the candidate
-        2. Search for numbers within N words of the match
-        3. Prefer values in same sentence
+        1. Locate the segment and extract the proximity search window
+        2. Score and classify number matches (same-sentence vs out-of-sentence)
+        3. Prefer same-sentence matches; fall back to single best out-of-sentence
         4. For transcripts: also boost adjacent-sentence matches
 
         Args:
@@ -552,100 +784,68 @@ class ValueBindingStage:
         Returns:
             List of BoundValue objects
         """
-        bound_values: list[BoundValue] = []
-        loc = candidate.source_locator
-        proximity = proximity_chars if proximity_chars is not None else self.proximity_window
+        located = self._locate_text_window(candidate, segments)
+        if located is None:
+            return []
 
-        # Find the segment
-        segment = self._find_segment(loc.segment_id, segments)
-        if not segment:
-            logger.warning(
-                f"Segment {loc.segment_id} not found for candidate {candidate.candidate_id}"
-            )
-            return bound_values
+        segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center = located
 
-        # Get text span
-        text = segment.text
-        if not text:
-            return bound_values
-
-        # Determine search window
-        if loc.text_span:
-            match_start, match_end = loc.text_span
-        else:
-            # Fallback: search entire text
-            match_start = 0
-            match_end = len(text)
-
-        # Calculate window bounds
-        window_start = max(0, match_start - proximity)
-
-        # Find numbers in proximity
-        numbers = self._find_numbers_in_proximity(
-            text, match_start, match_end, proximity
+        same_sentence_candidates, out_of_sentence_best = self._score_text_numbers(
+            candidate, segment, text, window_start, numbers,
+            sentence_start, sentence_end, keyword_center,
         )
 
-        if not numbers:
-            return bound_values
+        bound_values: list[BoundValue] = []
 
-        # Get sentence bounds for the keyword match
-        sentence_start, sentence_end = self._find_sentence_bounds(text, match_start)
-
-        # Pre-filter: check unit compatibility and percentage context first
-        compatible: list[tuple[re.Match[str], float, Unit, str]] = []
-        for num_match, value, unit, raw in numbers:
-            unit = self._check_percentage_context(
-                candidate.metric_id, unit, raw, text
-            )
-            if self._should_filter_unit(candidate.metric_id, unit):
-                continue
-            compatible.append((num_match, value, unit, raw))
-
-        if not compatible:
-            return bound_values
-
-        # Ambiguity penalty based on surviving values (not pre-filter total)
-        ambiguity_penalty = self.AMBIGUITY_PENALTY if len(compatible) > 1 else 0.0
-
-        # Create bound values
-        for num_match, value, unit, raw in compatible:
-            # num_match positions are relative to window_text, adjust to full text
-            num_start_in_text = window_start + num_match.start()
-
-            same_sentence = sentence_start <= num_start_in_text < sentence_end
-
-            # For transcripts: check adjacent sentence (keyword sentence neighbor)
-            adjacent_sentence = False
-            if is_transcript and not same_sentence:
-                num_sent_start, num_sent_end = self._find_sentence_bounds(
-                    text, num_start_in_text
+        if same_sentence_candidates:
+            ambiguity_penalty = self.AMBIGUITY_PENALTY if len(same_sentence_candidates) > 1 else 0.0
+            for num_match, value, unit, raw, distance_penalty in same_sentence_candidates:
+                confidence = self._compute_text_confidence(
+                    unit, ambiguity_penalty, True, distance_penalty=distance_penalty
                 )
-                # Adjacent if the value's sentence starts where keyword sentence
-                # ends (or vice versa), with some tolerance for whitespace
+                bound_values.append(
+                    BoundValue(
+                        candidate_id=candidate.candidate_id,
+                        value=value,
+                        value_raw=raw,
+                        unit=unit,
+                        binding_type="text_proximity",
+                        binding_confidence=confidence,
+                        source_locator=SourceLocator(
+                            segment_id=segment.segment_id,
+                            text_span=(
+                                window_start + num_match.start(),
+                                window_start + num_match.end(),
+                            ),
+                            dom_locator=segment.dom_locator,
+                        ),
+                    )
+                )
+        elif out_of_sentence_best is not None:
+            bv, confidence = out_of_sentence_best
+            # For transcripts: check if the out-of-sentence value is in an adjacent
+            # sentence (keyword sentence neighbor) and boost its confidence.
+            if is_transcript and bv.source_locator.text_span:
+                num_start_in_text = bv.source_locator.text_span[0]
+                num_sent_start, num_sent_end = find_sentence_bounds(text, num_start_in_text)
                 adjacent_sentence = (
                     abs(num_sent_start - sentence_end) < 5
                     or abs(sentence_start - num_sent_end) < 5
                 )
-
-            confidence = self._compute_text_confidence(
-                unit, ambiguity_penalty, same_sentence, adjacent_sentence
-            )
-
-            bound_values.append(
-                BoundValue(
-                    candidate_id=candidate.candidate_id,
-                    value=value,
-                    value_raw=raw,
-                    unit=unit,
-                    binding_type="text_proximity",
-                    binding_confidence=confidence,
-                    source_locator=SourceLocator(
-                        segment_id=segment.segment_id,
-                        text_span=(num_match.start(), num_match.end()),
-                        dom_locator=segment.dom_locator,
-                    ),
-                )
-            )
+                if adjacent_sentence:
+                    boosted_confidence = min(
+                        confidence + self.ADJACENT_SENTENCE_BONUS, 1.0
+                    )
+                    bv = BoundValue(
+                        candidate_id=bv.candidate_id,
+                        value=bv.value,
+                        value_raw=bv.value_raw,
+                        unit=bv.unit,
+                        binding_type=bv.binding_type,
+                        binding_confidence=boosted_confidence,
+                        source_locator=bv.source_locator,
+                    )
+            bound_values.append(bv)
 
         return bound_values
 
@@ -671,9 +871,7 @@ class ValueBindingStage:
         loc = candidate.source_locator
 
         # Find the image asset
-        asset = next(
-            (img for img in images if img.img_id == loc.img_id), None
-        )
+        asset = next((img for img in images if img.img_id == loc.img_id), None)
         if not asset or not asset.chart_data:
             return bound_values
 
@@ -752,10 +950,7 @@ class ValueBindingStage:
             return Unit.CURRENCY
         if "%" in label_lower or "percent" in label_lower or "rate" in label_lower:
             return Unit.PERCENT
-        if any(
-            s in label_lower
-            for s in ("count", "number", "users", "customers", "subscribers")
-        ):
+        if any(s in label_lower for s in ("count", "number", "users", "customers", "subscribers")):
             return Unit.COUNT
         return Unit.OTHER
 
@@ -804,7 +999,7 @@ class ValueBindingStage:
         window_text = text[window_start:window_end]
 
         # Find all numbers in window (digit-based)
-        for match in self.NUMBER_PATTERN.finditer(window_text):
+        for match in _np.NUMBER_PATTERN.finditer(window_text):
             parsed = self._parse_number(match.group())
             if parsed:
                 value, unit, raw = parsed
@@ -819,103 +1014,9 @@ class ValueBindingStage:
 
         return results
 
-    def _find_sentence_bounds(self, text: str, position: int) -> tuple[int, int]:
-        """
-        Find sentence boundaries around a given position.
-
-        Uses regex to detect sentence endings: [.!?] followed by whitespace and capital letter,
-        or start/end of text.
-
-        Args:
-            text: Full text to search
-            position: Character position to find sentence bounds around
-
-        Returns:
-            Tuple of (sentence_start, sentence_end) positions
-        """
-        # Find sentence start (look backwards for sentence boundary)
-        sentence_start = 0
-        # Pattern for sentence boundary: period/exclamation/question followed by space and capital
-        boundary_pattern = re.compile(r'[.!?]\s+[A-Z]')
-
-        # Search backwards from position
-        text_before = text[:position]
-        boundaries_before = list(boundary_pattern.finditer(text_before))
-        if boundaries_before:
-            # Start after the last sentence boundary found
-            last_boundary = boundaries_before[-1]
-            # Start position is after the punctuation and whitespace
-            sentence_start = last_boundary.end() - 1  # -1 to include the capital letter
-
-        # Find sentence end (look forwards for sentence boundary)
-        sentence_end = len(text)
-        text_after = text[position:]
-        boundary_match = boundary_pattern.search(text_after)
-        if boundary_match:
-            # End at the punctuation mark
-            sentence_end = position + boundary_match.start() + 1  # +1 to include punctuation
-
-        return (sentence_start, sentence_end)
-
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
-        """
-        Parse a number from text.
-
-        Strips approximate-value prefixes ("about", "roughly", "approximately",
-        "nearly", etc.) before searching for the number pattern.
-
-        Args:
-            text: Text containing a number
-
-        Returns:
-            Tuple of (value, unit, raw_text) or None if not parseable
-        """
-        # Strip approximate-value prefixes so "about 150 million" parses correctly
-        cleaned = self.APPROX_PREFIXES.sub("", text)
-        match = self.NUMBER_PATTERN.search(cleaned)
-        if not match:
-            # Fallback: try word-form numbers ("a billion", "one million")
-            return self._parse_word_number(cleaned)
-
-        try:
-            # Extract components
-            number_str = match.group("number")
-            currency = match.group("currency")
-            suffix = match.group("suffix")
-            percent = match.group("percent")
-            negative = match.group("negative")
-
-            # Clean number string
-            clean_number = number_str.replace(",", "")
-            value = float(clean_number)
-
-            # Apply scale multiplier
-            if suffix:
-                suffix_lower = suffix.lower()
-                if suffix_lower in self.SCALE_MULTIPLIERS:
-                    value *= self.SCALE_MULTIPLIERS[suffix_lower]
-
-            # Apply negative
-            if negative:
-                value = -value
-
-            # Determine unit
-            if percent:
-                unit = Unit.PERCENT
-                # Keep percentage as-is (don't convert to decimal)
-            elif currency:
-                unit = Unit.CURRENCY
-            else:
-                unit = Unit.COUNT
-
-            # Raw text
-            raw = match.group().strip()
-
-            return (value, unit, raw)
-
-        except (ValueError, InvalidOperation) as e:
-            logger.debug(f"Could not parse number from '{text}': {e}")
-            return None
+        """Parse a number from text. Delegates to stages.number_parsing.parse_number."""
+        return _np.parse_number(text)
 
     def _parse_word_number(self, text: str) -> tuple[float, Unit, str] | None:
         """Parse word-form numbers like 'a billion', 'one million'."""
@@ -972,6 +1073,7 @@ class ValueBindingStage:
         ambiguity_penalty: float = 0.0,
         same_sentence: bool = False,
         adjacent_sentence: bool = False,
+        distance_penalty: float = 0.0,
     ) -> float:
         """
         Compute confidence for a text binding.
@@ -981,6 +1083,7 @@ class ValueBindingStage:
             ambiguity_penalty: Penalty for multiple values
             same_sentence: Whether value is in same sentence as keyword
             adjacent_sentence: Whether value is in adjacent sentence (transcript mode)
+            distance_penalty: Penalty for distance from keyword (0.0-0.1)
 
         Returns:
             Confidence score 0.0-1.0
@@ -1000,7 +1103,137 @@ class ValueBindingStage:
         # Apply ambiguity penalty
         confidence -= ambiguity_penalty
 
+        # Apply distance decay penalty
+        confidence -= distance_penalty
+
         return max(min(confidence, 1.0), 0.0)
+
+    def _detect_table_scale(self, table: Table) -> tuple[float, bool]:
+        """
+        Detect table-level scale factor from header/early rows or caption text.
+
+        Searches header cells, early stub cells, and section_path for patterns
+        like "(In thousands)".
+
+        Returns:
+            Tuple of (scale_multiplier, has_exceptions) where has_exceptions
+            is True when the annotation contains "except as otherwise noted".
+        """
+        scan_rows = min(table.header_rows + 3, table.row_count)
+        for row_idx in range(scan_rows):
+            for col_idx in range(table.col_count):
+                cell = table.get_cell(row_idx, col_idx)
+                if cell and cell.text:
+                    match = _np.TABLE_SCALE_PATTERN.search(cell.text)
+                    if match:
+                        scale_word = match.group(1).lower()
+                        scale = _np.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                        has_except = bool(_np.TABLE_SCALE_EXCEPT_PATTERN.search(cell.text))
+                        return (scale, has_except)
+
+        for path_item in table.section_path:
+            match = _np.TABLE_SCALE_PATTERN.search(path_item)
+            if match:
+                scale_word = match.group(1).lower()
+                scale = _np.TABLE_SCALE_MAP.get(scale_word, 1.0)
+                has_except = bool(_np.TABLE_SCALE_EXCEPT_PATTERN.search(path_item))
+                return (scale, has_except)
+
+        return (1.0, False)
+
+    @staticmethod
+    def _has_fractional_value(value_raw: str) -> bool:
+        """Check if raw value string contains a decimal point. Delegates to number_parsing."""
+        return _np.has_fractional_value(value_raw)
+
+    # Pattern matching explicit currency symbols in raw cell text
+    _CURRENCY_SYMBOL_PATTERN = re.compile(r"[\$\€\£]")
+
+    def _is_scale_exception(
+        self,
+        bv: BoundValue,
+        candidate: MetricCandidate,
+        table: Table,
+        table_has_exceptions: bool = False,
+    ) -> bool:
+        """Check if a bound value is an exception to table-level scaling.
+
+        Two independent signals exempt a value from scaling:
+        1. Stub row is labelled "(actual)" — the row is already at true scale
+           regardless of whether the table header says "except as noted".
+        2. Raw value has an explicit currency symbol (e.g. "$591.7") — only
+           honoured when the table itself declares "except as otherwise noted",
+           because bare currency symbols can appear in scale-qualified tables.
+
+        Args:
+            bv: The bound value to check
+            candidate: The metric candidate
+            table: The table containing the value
+            table_has_exceptions: True when the table header contains
+                "except as otherwise noted" (enables currency-symbol exemption).
+
+        Returns:
+            True if this value should skip table-level scaling.
+        """
+        # Check if the stub path contains "(actual)" — unconditional exemption
+        loc = bv.source_locator
+        if loc.cell_row is not None:
+            stub_path = table.get_stub_path(loc.cell_row)
+            stub_text = " ".join(stub_path).lower()
+            if "(actual)" in stub_text:
+                return True
+
+        # Currency-symbol exemption only when table explicitly says "except as noted"
+        if table_has_exceptions and self._CURRENCY_SYMBOL_PATTERN.search(bv.value_raw):
+            return True
+
+        return False
+
+    # Currency indicators in column headers (case-insensitive matching)
+    _CURRENCY_HEADER_INDICATORS = re.compile(
+        r"[\$\€\£]|(?:revenue|gmv|amount|dollars|spend|cost|earnings|income|"
+        r"expense|proceeds|sales|margin|ebitda|profit|loss)",
+        re.IGNORECASE,
+    )
+
+    # Count indicators in column headers (case-insensitive matching)
+    _COUNT_HEADER_INDICATORS = re.compile(
+        r"\b(?:count|number|users|customers|subscribers|members|accounts|"
+        r"merchants|consumers|buyers|sellers|drivers|riders|hosts|guests)\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _header_indicates_currency(header_path: list[str]) -> bool:
+        """Check if a column's header path indicates currency values.
+
+        Used to prevent count metrics from binding to dollar columns in
+        mixed financial tables (e.g. Farfetch's '(In thousands)' tables
+        that have both dollar and count columns).
+
+        Args:
+            header_path: Column header hierarchy (e.g. ["Revenue", "2023"])
+
+        Returns:
+            True if any header element contains a currency indicator.
+        """
+        combined = " ".join(header_path)
+        return bool(ValueBindingStage._CURRENCY_HEADER_INDICATORS.search(combined))
+
+    @staticmethod
+    def _header_indicates_count(header_path: list[str]) -> bool:
+        """Check if a column's header path indicates count values.
+
+        Used to prevent currency metrics from binding to count columns.
+
+        Args:
+            header_path: Column header hierarchy
+
+        Returns:
+            True if any header element contains a count indicator.
+        """
+        combined = " ".join(header_path)
+        return bool(ValueBindingStage._COUNT_HEADER_INDICATORS.search(combined))
 
     def _is_in_path(self, text: str, path: list[str]) -> bool:
         """Check if text appears in any path element."""
@@ -1022,9 +1255,7 @@ class ValueBindingStage:
             return None
         return table.get_cell(row, col)
 
-    def _find_segment(
-        self, segment_id: str | None, segments: list[Segment]
-    ) -> Segment | None:
+    def _find_segment(self, segment_id: str | None, segments: list[Segment]) -> Segment | None:
         """Find a segment by ID."""
         if not segment_id:
             return None

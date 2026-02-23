@@ -57,9 +57,7 @@ class BaselineMetrics:
             "baseline_date": self.baseline_date,
             "description": self.description,
             "overall": asdict(self.overall),
-            "by_company": {
-                company: asdict(scores) for company, scores in self.by_company.items()
-            },
+            "by_company": {company: asdict(scores) for company, scores in self.by_company.items()},
             "pipeline_version": self.pipeline_version,
         }
 
@@ -102,9 +100,7 @@ class BaselineMetrics:
                     f1=scores["f1"],
                 )
             except KeyError as e:
-                raise ValueError(
-                    f"Missing field in scores for company '{company}': {e}"
-                ) from e
+                raise ValueError(f"Missing field in scores for company '{company}': {e}") from e
 
         return cls(
             baseline_date=data["baseline_date"],
@@ -180,8 +176,7 @@ def load_baseline(path: str | Path) -> BaselineMetrics:
 
     if not path.exists():
         raise FileNotFoundError(
-            f"Baseline file not found: {path}. "
-            f"Run validation with --update-baseline to create one."
+            f"Baseline file not found: {path}. Run validation with --update-baseline to create one."
         )
 
     with open(path, encoding="utf-8") as f:

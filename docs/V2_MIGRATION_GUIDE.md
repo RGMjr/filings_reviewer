@@ -14,6 +14,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 | **Image Handling** | Basic detection | OCR + Vision integration with chart extraction |
 | **Evidence** | Raw text snippets | EvidencePack with highlighted HTML, context |
 | **Deduplication** | Per-metric | Identity tuple with alternate_evidence links |
+| **False Positive Filter** | V1 FP filter (shared) | V2-native FP filter stage with unit compatibility |
 | **Database Schema** | Legacy tables | Normalized v2_* tables with JSONB |
 
 ## When to Use V2 vs V1
@@ -25,9 +26,10 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 - Research requiring audit-grade evidence packs
 
 **Continue using V1 for:**
-- Existing production workflows (until V2 is validated)
 - Bulk re-processing where speed is critical
 - Legacy integrations expecting V1 output format
+
+**Validation status (as of 2026-02-18):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 ## API Differences
 
@@ -201,15 +203,10 @@ metric_fact = MetricFact(
 Before migrating, validate V2 produces acceptable results:
 
 ```bash
-# Run comparison benchmark
-python3 scripts/benchmark_v1_v2.py --filings slack samsara
-
-# Expected output:
-# - Coverage >= 70% (V2 finds most of what V1 found)
-# - V2 execution time within 2x of V1
-
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
+
+# Expected scores (as of 2026-02-18): P=81.9%, R=60.6%, F1=69.6%
 ```
 
 ### Step 2: Parallel Running (Recommended)

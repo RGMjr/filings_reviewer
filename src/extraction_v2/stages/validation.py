@@ -91,9 +91,7 @@ class ValidationStage:
             schema_issues = self._validate_schema(fact)
             if schema_issues:
                 stats["schema_validation_failures"] += 1
-                logger.debug(
-                    f"Schema validation failed for fact {fact.fact_id}: {schema_issues}"
-                )
+                logger.debug(f"Schema validation failed for fact {fact.fact_id}: {schema_issues}")
 
             # Build review reasons
             reasons: list[str] = []
@@ -132,9 +130,7 @@ class ValidationStage:
                 fact.requires_review = True
                 fact.review_status = ReviewStatus.PENDING_REVIEW
                 if not reasons:
-                    reasons.append(
-                        f"Confidence {fact.confidence:.0%} below auto-accept threshold"
-                    )
+                    reasons.append(f"Confidence {fact.confidence:.0%} below auto-accept threshold")
                 fact.review_reason = "; ".join(reasons)
                 stats["pending_review"] += 1
 

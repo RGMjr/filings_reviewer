@@ -230,6 +230,4 @@ class FormulaWeights:
         ]:
             value = getattr(self, field_name)
             if value < 0:
-                raise ValueError(
-                    f"FormulaWeights.{field_name} must be non-negative, got {value}"
-                )
+                raise ValueError(f"FormulaWeights.{field_name} must be non-negative, got {value}")

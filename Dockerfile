@@ -3,7 +3,7 @@
 # SEC Filings Analysis Pipeline
 # This container runs batch extraction scripts and tests for analyzing S-1/F-1 filings.
 
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 FROM python:${PYTHON_VERSION}-slim AS base
 
 # Prevents Python from writing pyc files.
@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
 ARG UID=10001
@@ -35,16 +38,17 @@ RUN adduser \
     --uid "${UID}" \
     appuser
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# into this layer.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+# Copy dependency files first for Docker layer caching
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv (frozen from lockfile)
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .
+
+# Install the project itself
+RUN uv sync --frozen --no-dev
 
 # Create directories for logs, data, and coverage with proper permissions
 RUN mkdir -p /app/logs /app/data /app/filings_cache /app/htmlcov && \
@@ -61,4 +65,4 @@ USER appuser
 #   docker run filings-reviewer python -m pytest tests/unit/llm/   # Run specific tests
 #   docker run filings-reviewer python scripts/run_phase1b_extraction.py  # Run script
 #   docker run -it filings-reviewer bash                           # Interactive shell
-CMD ["python", "-m", "pytest", "-v", "--tb=short", "--no-cov", "-p", "no:cacheprovider"]
+CMD ["uv", "run", "pytest", "-v", "--tb=short", "--no-cov", "-p", "no:cacheprovider"]

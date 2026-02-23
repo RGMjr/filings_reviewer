@@ -10,9 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any
-
-import pytest
 
 from src.extraction_v2.models import (
     EvidencePack,
@@ -27,7 +24,6 @@ from src.extraction_v2.stages.deduplication import (
     SOURCE_QUALITY_RANK,
     DeduplicationStage,
 )
-
 
 # ============================================================================
 # Test Fixtures
@@ -264,9 +260,7 @@ class TestPrimarySelection:
         stage = DeduplicationStage()
         facts = [
             make_fact(fact_id="text", source_type=SourceType.TEXT, confidence=0.9),
-            make_fact(
-                fact_id="table", source_type=SourceType.HTML_TABLE, confidence=0.7
-            ),
+            make_fact(fact_id="table", source_type=SourceType.HTML_TABLE, confidence=0.7),
         ]
 
         primary = stage._select_primary(facts)
@@ -301,12 +295,8 @@ class TestPrimarySelection:
         """When source type is same, higher confidence should win."""
         stage = DeduplicationStage()
         facts = [
-            make_fact(
-                fact_id="low", source_type=SourceType.HTML_TABLE, confidence=0.6
-            ),
-            make_fact(
-                fact_id="high", source_type=SourceType.HTML_TABLE, confidence=0.9
-            ),
+            make_fact(fact_id="low", source_type=SourceType.HTML_TABLE, confidence=0.6),
+            make_fact(fact_id="high", source_type=SourceType.HTML_TABLE, confidence=0.9),
         ]
 
         primary = stage._select_primary(facts)
@@ -370,9 +360,7 @@ class TestAlternateEvidenceLinking:
     def test_single_fact_no_alternates(self) -> None:
         """Single fact (no duplicates) should have no alternates."""
         stage = DeduplicationStage()
-        context = MockPipelineContext(
-            facts=[make_fact(fact_id="fact-1")]
-        )
+        context = MockPipelineContext(facts=[make_fact(fact_id="fact-1")])
 
         stage.process(context)
 
@@ -478,9 +466,7 @@ class TestStageResult:
     def test_result_success(self) -> None:
         """Stage should return success=True."""
         stage = DeduplicationStage()
-        context = MockPipelineContext(
-            facts=[make_fact(fact_id="fact-1")]
-        )
+        context = MockPipelineContext(facts=[make_fact(fact_id="fact-1")])
 
         result = stage.process(context)
 
@@ -549,9 +535,7 @@ class TestStageResult:
     def test_result_duration_ms(self) -> None:
         """duration_ms should be populated."""
         stage = DeduplicationStage()
-        context = MockPipelineContext(
-            facts=[make_fact(fact_id="fact-1")]
-        )
+        context = MockPipelineContext(facts=[make_fact(fact_id="fact-1")])
 
         result = stage.process(context)
 
@@ -589,6 +573,205 @@ class TestConfigIntegration:
         stage = DeduplicationStage(value_tolerance=0.05)
 
         assert stage.value_tolerance == 0.05
+
+
+# ============================================================================
+# Fuzzy Period Dedup Tests
+# ============================================================================
+
+
+class TestFuzzyPeriodDedup:
+    """Tests for _fuzzy_period_dedup second-pass deduplication."""
+
+    def test_same_metric_value_overlapping_periods_merged(self) -> None:
+        """Same metric+value with overlapping periods should be merged into one."""
+        stage = DeduplicationStage()
+        # period_start/end slightly different but overlapping
+        facts = [
+            make_fact(
+                fact_id="fact-table",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-text",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.TEXT,
+                period_start=date(2024, 6, 1),
+                period_end=date(2024, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 1
+        assert result[0].fact_id == "fact-table"  # HTML_TABLE preferred
+        assert "fact-text" in result[0].alternate_evidence
+
+    def test_same_metric_value_non_overlapping_periods_kept_separate(self) -> None:
+        """Same metric+value with non-overlapping periods should be kept separate."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-2024",
+                metric_id="cm_arr",
+                value=100.0,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-2023",
+                metric_id="cm_arr",
+                value=100.0,
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 2
+        ids = {f.fact_id for f in result}
+        assert "fact-2024" in ids
+        assert "fact-2023" in ids
+
+    def test_same_metric_different_values_kept_separate(self) -> None:
+        """Same metric with different values should not be merged."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-100",
+                metric_id="cm_arr",
+                value=100.0,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-200",
+                metric_id="cm_arr",
+                value=200.0,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 2
+
+    def test_mix_of_exact_and_fuzzy_duplicates(self) -> None:
+        """Mix of exact and fuzzy period duplicates handled correctly in one pass."""
+        stage = DeduplicationStage()
+        # After identity dedup, we'd have primaries like these:
+        # fact-arr-table: ARR 100 from table (FY2024)
+        # fact-arr-text: ARR 100 from text (6-month overlap with FY2024) — fuzzy dup
+        # fact-mrr-a: MRR 50 (2024)
+        # fact-mrr-b: MRR 50 (2023) — different year, keep separate
+        facts = [
+            make_fact(
+                fact_id="fact-arr-table",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-arr-text",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.TEXT,
+                period_start=date(2024, 6, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-mrr-2024",
+                metric_id="cm_mrr",
+                value=50.0,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-mrr-2023",
+                metric_id="cm_mrr",
+                value=50.0,
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        # ARR: 2 → 1 (fuzzy merged); MRR: 2 → 2 (different years, not merged)
+        assert len(result) == 3
+        result_ids = {f.fact_id for f in result}
+        assert "fact-arr-table" in result_ids  # primary
+        assert "fact-arr-text" not in result_ids  # absorbed as alternate
+        assert "fact-mrr-2024" in result_ids
+        assert "fact-mrr-2023" in result_ids
+
+    def test_fuzzy_dedup_called_via_process(self) -> None:
+        """process() should call fuzzy period dedup as second pass."""
+        stage = DeduplicationStage()
+        # Two ARR facts with same value but overlapping (not identical) periods
+        # Identity-based dedup won't catch this; fuzzy dedup should
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-table",
+                    metric_id="cm_arr",
+                    value=100.0,
+                    source_type=SourceType.HTML_TABLE,
+                    period_start=date(2024, 1, 1),
+                    period_end=date(2024, 12, 31),
+                ),
+                make_fact(
+                    fact_id="fact-text",
+                    metric_id="cm_arr",
+                    value=100.0,
+                    source_type=SourceType.TEXT,
+                    period_start=date(2024, 6, 1),
+                    period_end=date(2024, 12, 31),
+                ),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        assert result.metadata["fuzzy_period_removed"] == 1
+        assert result.metadata["duplicates_removed"] == 1
+
+    def test_none_period_compatible_with_any_period(self) -> None:
+        """A fact with None period is compatible with any other period."""
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-with-period",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-no-period",
+                metric_id="cm_arr",
+                value=100.0,
+                source_type=SourceType.TEXT,
+                period_start=None,
+                period_end=None,
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 1
+        assert result[0].fact_id == "fact-with-period"
 
 
 # ============================================================================
@@ -650,10 +833,7 @@ class TestGroupingPerformance:
         stage = DeduplicationStage()
 
         # Same metric, but widely different values
-        facts = [
-            make_fact(fact_id=f"f{i}", value=float(i * 100))
-            for i in range(1, 11)
-        ]
+        facts = [make_fact(fact_id=f"f{i}", value=float(i * 100)) for i in range(1, 11)]
 
         groups = stage._group_duplicates(facts, tolerance=0.02)
 

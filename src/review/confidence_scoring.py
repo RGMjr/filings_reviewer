@@ -251,9 +251,7 @@ class ConfidenceScorer:
             self.TABLE_AMBIGUITY_PENALTY = config.confidence_table_ambiguity_penalty
 
         # Compile specific keyword patterns
-        self._specific_patterns = [
-            re.compile(p, re.IGNORECASE) for p in SPECIFIC_KEYWORD_PATTERNS
-        ]
+        self._specific_patterns = [re.compile(p, re.IGNORECASE) for p in SPECIFIC_KEYWORD_PATTERNS]
 
     def compute_confidence(
         self,
@@ -279,9 +277,7 @@ class ConfidenceScorer:
         score = self.BASE_SCORE
 
         # Distance score: linear decay from max bonus at 0 to 0 at max_distance
-        distance_ratio = 1.0 - min(
-            keyword_distance / self.max_keyword_distance, 1.0
-        )
+        distance_ratio = 1.0 - min(keyword_distance / self.max_keyword_distance, 1.0)
         score += self.DISTANCE_MAX_WEIGHT * distance_ratio
 
         # Position bonus: keyword before number is slightly more reliable

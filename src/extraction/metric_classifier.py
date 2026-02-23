@@ -58,9 +58,7 @@ class ClassificationMetrics:
         Returns:
             List of (metric_id, count) tuples sorted by count descending
         """
-        sorted_metrics = sorted(
-            self.metric_id_counts.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_metrics = sorted(self.metric_id_counts.items(), key=lambda x: x[1], reverse=True)
         return sorted_metrics[:n]
 
     def summary(self) -> str:
@@ -97,14 +95,14 @@ class MetricClassifier:
         r"\brefers\s+to\b",
         # "means" only when in clear definition context:
         # 1. Quoted term followed by "means" (handles straight ", curly "", and « quotes)
-        r'[\u0022\u201c\u201d\u00ab\u00bb]\w[^\u0022\u201c\u201d\u00ab\u00bb]*[\u0022\u201c\u201d\u00ab\u00bb]\s*means\b',
+        r"[\u0022\u201c\u201d\u00ab\u00bb]\w[^\u0022\u201c\u201d\u00ab\u00bb]*[\u0022\u201c\u201d\u00ab\u00bb]\s*means\b",
         # 2. Bullet point definition at start: • "Term" means (limited to 50 chars for term)
-        r'(?:^|[\n\u2022])\s*[\u0022\u201c\u201d][^\u0022\u201c\u201d]{1,50}[\u0022\u201c\u201d]\s*means\b',
+        r"(?:^|[\n\u2022])\s*[\u0022\u201c\u201d][^\u0022\u201c\u201d]{1,50}[\u0022\u201c\u201d]\s*means\b",
         r"\bmeaning\s+of\b",  # More specific than just "meaning"
         r"\bmetric\s+definitions?\b",
         r"\bis\s+defined\b",
         # 3. Explicit "the term" definition pattern
-        r'\bthe\s+term\s+[\u0022\u201c\u201d][^\u0022\u201c\u201d]+[\u0022\u201c\u201d]\s*means\b',
+        r"\bthe\s+term\s+[\u0022\u201c\u201d][^\u0022\u201c\u201d]+[\u0022\u201c\u201d]\s*means\b",
     ]
 
     # Methodology/calculation indicators
@@ -126,39 +124,39 @@ class MetricClassifier:
 
     # CMASB Priority Metrics (for confidence boosting)
     CMASB_CORE_METRICS = {
-        'cm_new_customers_acquired',
-        'cm_customers_period_end_by_tenure',
-        'cm_revenue_by_cohort',
-        'cm_transactions_by_cohort',
+        "cm_new_customers_acquired",
+        "cm_customers_period_end_by_tenure",
+        "cm_revenue_by_cohort",
+        "cm_transactions_by_cohort",
     }
 
     CMASB_EXTENDED_METRICS = {
-        'cm_customer_acquisition_cost',
-        'cm_active_customers_total',
-        'cm_customers_period_end',
-        'cm_large_customers_period_end',
-        'cm_revenue_per_customer',
-        'cm_gross_margin_by_cohort',
-        'cm_arr',
-        'cm_mrr',
-        'cm_revenue_concentration',
-        'cm_customer_churn_rate',
-        'cm_customer_retention_rate',
-        'cm_net_revenue_retention',
-        'cm_expansion_revenue',
+        "cm_customer_acquisition_cost",
+        "cm_active_customers_total",
+        "cm_customers_period_end",
+        "cm_large_customers_period_end",
+        "cm_revenue_per_customer",
+        "cm_gross_margin_by_cohort",
+        "cm_arr",
+        "cm_mrr",
+        "cm_revenue_concentration",
+        "cm_customer_churn_rate",
+        "cm_customer_retention_rate",
+        "cm_net_revenue_retention",
+        "cm_expansion_revenue",
         # T5: Revenue predictability metrics
-        'cm_bookings',
-        'cm_billings',
+        "cm_bookings",
+        "cm_billings",
         # cm_deferred_revenue - REMOVED 2025-12-26 (financial metric, not customer metric)
         # T6: E-commerce metrics
-        'cm_average_order_value',
-        'cm_repeat_purchase_rate',
+        "cm_average_order_value",
+        "cm_repeat_purchase_rate",
         # T7: Marketplace metrics
-        'cm_gmv',
+        "cm_gmv",
         # cm_take_rate - REMOVED 2026-01-02 (platform revenue metric, not customer metric)
         # T8: SaaS contract metrics
-        'cm_acv',
-        'cm_tcv',
+        "cm_acv",
+        "cm_tcv",
     }
 
     # NOTE: Required context patterns are loaded from config/metric_keywords.yaml.
@@ -177,17 +175,15 @@ class MetricClassifier:
     ]
 
     # Number patterns
-    NUMBER_PATTERN = r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
+    NUMBER_PATTERN = (
+        r"\b\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|%|percent))?\b"
+    )
 
     def __init__(self) -> None:
         """Initialize the metric classifier."""
         # Compile all patterns for performance
-        self._definition_regex = [
-            re.compile(p, re.IGNORECASE) for p in self.DEFINITION_PATTERNS
-        ]
-        self._methodology_regex = [
-            re.compile(p, re.IGNORECASE) for p in self.METHODOLOGY_PATTERNS
-        ]
+        self._definition_regex = [re.compile(p, re.IGNORECASE) for p in self.DEFINITION_PATTERNS]
+        self._methodology_regex = [re.compile(p, re.IGNORECASE) for p in self.METHODOLOGY_PATTERNS]
         self._general_metric_regex = [
             re.compile(p, re.IGNORECASE) for p in self.GENERAL_METRIC_KEYWORDS
         ]
@@ -199,9 +195,7 @@ class MetricClassifier:
         # Compile metric-specific patterns
         self._metric_patterns = {}
         for metric_id, patterns in keyword_source.items():
-            self._metric_patterns[metric_id] = [
-                re.compile(p, re.IGNORECASE) for p in patterns
-            ]
+            self._metric_patterns[metric_id] = [re.compile(p, re.IGNORECASE) for p in patterns]
 
         # Metrics tracking
         self._metrics: ClassificationMetrics | None = None
@@ -217,6 +211,7 @@ class MetricClassifier:
             KeywordConfigError: If YAML config cannot be loaded.
         """
         from .keyword_config import get_metric_keywords
+
         keywords = get_metric_keywords()
         logger.debug(f"Loaded {len(keywords)} metrics from YAML config")
         # Cast needed for mypy --strict when checking this file alone
@@ -262,7 +257,9 @@ class MetricClassifier:
 
         return segment
 
-    def classify_batch(self, segments: list[SourceSegment], validate: bool = True) -> list[SourceSegment]:
+    def classify_batch(
+        self, segments: list[SourceSegment], validate: bool = True
+    ) -> list[SourceSegment]:
         """
         Classify multiple segments efficiently with metrics collection.
 
@@ -300,7 +297,7 @@ class MetricClassifier:
             self._metrics.total_confidence += confidence
 
             # Track metric IDs
-            for metric_id in (classified_segment.candidate_metric_ids or []):
+            for metric_id in classified_segment.candidate_metric_ids or []:
                 self._metrics.metric_id_counts[metric_id] = (
                     self._metrics.metric_id_counts.get(metric_id, 0) + 1
                 )
@@ -396,17 +393,17 @@ class MetricClassifier:
         text_lower = text.lower()
 
         cohort_keywords = [
-            'cohort',
-            'by tenure',
-            'by vintage',
-            'by acquisition',
-            'first year customers',
-            'repeat customers',
-            'new vs existing',
-            'existing vs new',
-            'customer age',
-            'customer lifetime',
-            'acquired in 20',  # matches "acquired in 2015", "acquired in 2017", etc.
+            "cohort",
+            "by tenure",
+            "by vintage",
+            "by acquisition",
+            "first year customers",
+            "repeat customers",
+            "new vs existing",
+            "existing vs new",
+            "customer age",
+            "customer lifetime",
+            "acquired in 20",  # matches "acquired in 2015", "acquired in 2017", etc.
         ]
 
         return any(kw in text_lower for kw in cohort_keywords)
@@ -427,7 +424,7 @@ class MetricClassifier:
         if not text:
             return False
 
-        year_pattern = r'\b20\d{2}\b'
+        year_pattern = r"\b20\d{2}\b"
         years = re.findall(year_pattern, text)
         unique_years = set(years)
 
@@ -508,16 +505,12 @@ class MetricClassifier:
         # Cohort analysis bonus
         if self._has_cohort_patterns(raw_text):
             confidence += 0.15
-            logger.debug(
-                f"Cohort pattern bonus +0.15 (segment {segment.sequence_index})"
-            )
+            logger.debug(f"Cohort pattern bonus +0.15 (segment {segment.sequence_index})")
 
         # Temporal trend bonus
         if self._has_temporal_patterns(raw_text):
             confidence += 0.10
-            logger.debug(
-                f"Temporal trend bonus +0.10 (segment {segment.sequence_index})"
-            )
+            logger.debug(f"Temporal trend bonus +0.10 (segment {segment.sequence_index})")
 
         # Penalize very short segments
         if len(raw_text) < 100:

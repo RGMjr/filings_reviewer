@@ -343,104 +343,6 @@ enricher = SegmentEnricher(weights=FormulaWeights(
 
 ---
 
-### 2.6. Cohort Chart Detector
-
-**Module:** `src/extraction/cohort_chart_detector.py`
-**Class:** `CohortChartDetector`
-**Status:** Complete (21 tests covering detection and confidence scoring)
-
-**Responsibilities:**
-- Detect cohort analysis charts and visualizations in filing HTML
-- Find images with "cohort" keywords in surrounding text (within 1500 chars)
-- Calculate confidence scores based on context quality
-- Filter decorative images (icons, logos, bullets)
-- Complement segment-level detection by analyzing standalone images
-
-**Interface:**
-
-```python
-@dataclass
-class CohortChartCandidate:
-    image_src: str           # Image source URL or filename
-    image_alt: str          # Alt text if available
-    keyword_matches: List[str]  # Matched cohort keywords
-    context_text: str       # Surrounding text (max 1500 chars)
-    confidence: float       # Score 0.0-1.0
-    position_in_doc: int    # Approximate character position
-
-class CohortChartDetector:
-    COHORT_CHART_KEYWORDS = ["cohort"]
-    CHART_INDICATOR_KEYWORDS = ["chart", "graph", "figure", "visualization"]
-    COHORT_IMAGE_PROXIMITY_CHARS = 1500  # Context window size
-
-    def detect_from_html(self, html_content: str) -> List[CohortChartCandidate]:
-        """
-        Detect cohort charts from HTML content.
-
-        Process:
-        1. Find all <img> tags in HTML
-        2. Filter decorative images (icons, logos, bullets)
-        3. Extract context window (1500 chars before/after)
-        4. Search for cohort keywords in context
-        5. Calculate confidence scores
-        6. Return candidates sorted by confidence
-
-        Args:
-            html_content: Raw HTML from SEC filing
-
-        Returns:
-            List of CohortChartCandidate objects
-        """
-
-    def detect_from_file(self, html_path: str) -> List[CohortChartCandidate]:
-        """Convenience method to detect from HTML file path."""
-```
-
-**Confidence Scoring:**
-
-| Component | Points | Condition |
-|-----------|--------|-----------|
-| Base score | 0.6 | Cohort keyword found near image |
-| Chart keywords | +0.15 | Context contains "chart", "graph", "figure" |
-| Retention context | +0.10 | Context mentions "retention" or "revenue" |
-| Multiple keywords | +0.10 | 2+ cohort keyword matches |
-| **Maximum** | **0.95** | All bonuses applied |
-
-**Decorative Image Filtering:**
-
-Images are excluded if they match any pattern:
-- Size: `width < 50px` or `height < 50px`
-- Filename: Contains "icon", "logo", "bullet", "arrow", "spacer"
-- Alt text: Generic terms like "bullet point", "decorative"
-
-**Use Cases:**
-
-1. **ARR by Cohort Charts**: Revenue retention visualizations (e.g., Slack S-1)
-2. **LTV/CAC by Cohort**: Customer economics charts (e.g., Farfetch F-1)
-3. **Retention Curves**: Cohort retention over time
-4. **Net Revenue Retention**: NRR breakdowns by customer cohort
-
-**Design Notes:**
-- Complements segment-level detection (which misses standalone images)
-- HTMLSegmenter captures images within segments, but not all images are segmented
-- Stores results in `extra_metadata["cohort_chart_candidates"]` at segment level
-- Filing-level detector provides comprehensive image analysis
-- No database access - operates on HTML strings
-
-**Example Output:**
-
-```python
-# Slack S-1: ARR by Cohort chart
-CohortChartCandidate(
-    image_src="mdaa2.jpg",
-    image_alt="ARR by Cohort",
-    keyword_matches=["cohort"],
-    context_text="The following chart shows our annual recurring revenue by customer cohort...",
-    confidence=0.85,
-    position_in_doc=125000
-)
-```
-
 ---
 
 ### 3. Value Extractor
@@ -820,30 +722,7 @@ DATABASE_URL=postgresql://user:password@localhost/filings_analysis
 OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction
 ```
 
-**Config File (`config/extraction.yaml`):**
-```yaml
-segmentation:
-  min_paragraph_length: 50
-  max_segment_length: 10000
-  table_max_length: 25000  # Higher limit for tables
-  enable_sentence_detection: true
-  enable_definition_merging: true
-  definition_lookahead_max: 3  # Max segments to merge
-  definition_max_combined_length: 2000
-  context_overlap_sentences: 1  # Sentences from prev segment
-  calculate_document_position: true
-
-classification:
-  confidence_threshold: 0.5
-
-extraction:
-  table_parser_mode: "pandas"  # or "beautifulsoup"
-  llm_enabled: true
-  llm_model: "gpt-4o-mini"
-
-quality:
-  alignment_threshold: 0.7
-```
+**Metric Keywords:** Configured in `config/metric_keywords.yaml` — the authoritative source for all keyword patterns, exclusions, and required-context rules used by both V1 and V2 pipelines.
 
 ---
 
@@ -1098,20 +977,20 @@ class ExtractedContext:
 - **System Architecture:** `docs/architecture/system-overview.md` - High-level design
 - **Data Model:** `docs/architecture/data-model.md` - Database schemas
 - **LLM Integration:** `docs/architecture/llm-integration.md` - OpenAI integration details
+- **Extraction Decisions:** `docs/architecture/extraction-decisions.md` - Design decisions and rationale
 - **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
 - **Metrics Taxonomy:** `docs/development/metrics-taxonomy.md` - Canonical metric definitions
 
 ---
 
-## Extraction V2 Pipeline (Experimental)
+## Extraction V2 Pipeline
 
 ### Overview
 
-The V2 extraction pipeline (`src/extraction_v2/`) is an **experimental, research-focused** implementation that explores structure-first extraction approaches. It is **NOT** a replacement for V1 and is not used in production.
+The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It runs alongside V1 and is the target for new extraction work.
 
-**Status:** Alpha (experimental research implementation)
-**Production Use:** None (V1 remains the production pipeline)
-**Purpose:** Research and experimentation with advanced extraction techniques
+**Status:** Production-ready (P=81.9%, R=60.6%, F1=69.6% on gold standard)
+**See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`
 
 ### Key Architectural Differences
 
@@ -1123,24 +1002,27 @@ The V2 extraction pipeline (`src/extraction_v2/`) is an **experimental, research
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Production ready (87% coverage) | Alpha (not production ready) |
+| **Status** | Production ready (87% coverage) | Production ready (F1=69.6%) |
 
 ### V2 Pipeline Stages
 
-The V2 pipeline implements an 11-stage extraction workflow:
+The V2 pipeline implements a 13-stage extraction workflow, plus post-completion enhancements:
 
 ```
-1. Ingestion & Parsing       → Segments with XPath locators
-2. Section Classification    → MD&A, Risk Factors, Business, etc.
-3. Table Reconstruction      → header_path, stub_path per cell
-4. Image Triage              → chart, table_image, decorative
-5. OCR & Chart Extraction    → labeled values only (never interpolate)
-6. Metric Candidate Generation → YAML taxonomy matching
-7. Value Binding             → structural link required
-8. Period Inference          → from header_path or context
-9. MetricFact Construction   → with complete evidence_pack
-10. Deduplication            → by identity tuple (metric, period, cohort, value)
+1.  Ingestion & Parsing         → Segments with XPath locators
+2.  Section Classification      → MD&A, Risk Factors, Business, etc.
+3.  Table Reconstruction        → header_path, stub_path per cell
+4.  Image Triage                → chart, table_image, decorative
+5.  OCR & Chart Extraction      → labeled values only (never interpolate)
+6.  Metric Candidate Generation → YAML taxonomy matching
+7.  Value Binding               → structural link required
+7.5 False Positive Filtering    → unit compatibility, decimal-gated count scaling
+8.  Period Inference            → from header_path or context
+9.  MetricFact Construction     → with complete evidence_pack
+10. Deduplication               → by identity tuple (metric, period, cohort, value)
 11. Validation & Review Routing → confidence-based (auto-accept/review/reject)
+12. Database Persistence        → v2_* tables with idempotent upserts
+13. Integration & Validation    → gold standard regression testing
 ```
 
 ### Core Data Models
@@ -1172,7 +1054,7 @@ The V2 pipeline implements an 11-stage extraction workflow:
 ### Key Files
 
 - **`models.py`** - Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
-- **`pipeline.py`** - Pipeline orchestrator with 11-stage workflow and configuration
+- **`pipeline.py`** - Pipeline orchestrator with 13-stage workflow and configuration
 - **`table_reconstructor.py`** - Table reconstruction with colspan/rowspan resolution
 - **`stages/ingestion.py`** - HTML parsing with XPath locators and segment extraction
 
@@ -1187,31 +1069,22 @@ The V2 pipeline implements an 11-stage extraction workflow:
 
 ### When to Use V1 vs V2
 
-**Use V1 (Production Pipeline):**
-- All production extraction tasks
-- Bulk filing processing
-- Any task requiring proven, stable extraction
-- When results need to be written to production database
+**Use V2 for:**
+- New filings requiring full provenance tracking (XPath, EvidencePack)
+- Filings with complex tables (multi-level headers, merged cells)
+- Filings with chart images containing labeled values
+- Research requiring audit-grade evidence packs
 
-**Use V2 (Research Only):**
-- Exploring structure-first extraction approaches
-- Testing advanced table reconstruction techniques
-- Experimenting with image/chart extraction via OCR/vision models
-- Research on complete provenance tracking
-- When evaluating alternative extraction strategies
-
-**Do NOT use V2 for:**
-- Production data extraction
-- Any task where results must be reliable
-- Bulk processing of filings for analysis
-- Integration with existing review/quality systems
+**Continue using V1 for:**
+- Bulk re-processing of the full corpus where speed is critical
+- Legacy integrations expecting V1 output format (`metric_values`, `metric_definitions` tables)
 
 ### Configuration
 
 V2 pipeline is configured via `PipelineConfig` dataclass:
 
 ```python
-from src.extraction_v2.pipeline import ExtractionPipelineV2, PipelineConfig
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
 
 config = PipelineConfig(
     enable_section_classification=True,
@@ -1228,28 +1101,19 @@ config = PipelineConfig(
     evidence_screenshot_dir="evidence_v2/"
 )
 
-pipeline = ExtractionPipelineV2(config=config)
-result = pipeline.process_document(document)
+pipeline = V2Pipeline(config=config)
+result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 ```
-
-### Testing Status
-
-V2 is in alpha status with limited test coverage. The module is not integrated with:
-- Production database schema
-- Human review system
-- Gold standard validation
-- Bulk processing scripts
-
-V2 is maintained separately from V1 and does not replace any V1 functionality.
 
 ---
 
-**Last Updated:** 2026-02-03
-**Version:** 2.5
-**Status:** Production Ready (V1), Alpha (V2)
+**Last Updated:** 2026-02-20
+**Version:** 2.6
+**Status:** Production Ready
 
 **Changelog:**
-- v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation (experimental research implementation)
+- v2.6 (2026-02-20): Removed deleted cohort_chart_detector section; updated V2 stage list (13 stages + FP filter); corrected V2Pipeline class name and process() method; removed config/extraction.yaml reference; added extraction-decisions.md cross-reference; updated V2 from alpha to production-ready
+- v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation
 - v2.4 (2025-12-26): Added CandidateDetector (EA-2) - unified candidate detection module
 - v2.3 (2025-12-26): Added StructureParser (EA-1) and ContextExtractor (EA-3) documentation
 - v2.2 (2025-12-17): Added SegmentEnricher configuration system (GR-11)

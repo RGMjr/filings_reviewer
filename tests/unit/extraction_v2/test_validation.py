@@ -11,11 +11,8 @@ Tests cover:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from src.extraction_v2.models import (
     EvidencePack,
@@ -162,9 +159,7 @@ class TestConfidenceRouting:
         high_conf = create_valid_fact(confidence=0.95)
         mid_conf = create_valid_fact(confidence=0.50)
         low_conf = create_valid_fact(confidence=0.10)
-        context = MockPipelineContext(
-            deduplicated_facts=[high_conf, mid_conf, low_conf]
-        )
+        context = MockPipelineContext(deduplicated_facts=[high_conf, mid_conf, low_conf])
 
         result = stage.process(context)
 
@@ -280,9 +275,7 @@ class TestReviewReasonAssignment:
     def test_ocr_source_adds_verification_reason(self) -> None:
         """OCR source type adds verification reason."""
         stage = ValidationStage()
-        fact = create_valid_fact(
-            confidence=0.95, source_type=SourceType.OCR_TABLE
-        )
+        fact = create_valid_fact(confidence=0.95, source_type=SourceType.OCR_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
         result = stage.process(context)
@@ -293,9 +286,7 @@ class TestReviewReasonAssignment:
     def test_chart_source_adds_verification_reason(self) -> None:
         """Chart source type adds verification reason."""
         stage = ValidationStage()
-        fact = create_valid_fact(
-            confidence=0.95, source_type=SourceType.CHART
-        )
+        fact = create_valid_fact(confidence=0.95, source_type=SourceType.CHART)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
         result = stage.process(context)
@@ -306,9 +297,7 @@ class TestReviewReasonAssignment:
     def test_html_table_source_no_extra_reason(self) -> None:
         """HTML_TABLE source type doesn't add verification reason."""
         stage = ValidationStage()
-        fact = create_valid_fact(
-            confidence=0.95, source_type=SourceType.HTML_TABLE
-        )
+        fact = create_valid_fact(confidence=0.95, source_type=SourceType.HTML_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
         result = stage.process(context)
@@ -319,9 +308,7 @@ class TestReviewReasonAssignment:
     def test_text_source_no_extra_reason(self) -> None:
         """TEXT source type doesn't add verification reason."""
         stage = ValidationStage()
-        fact = create_valid_fact(
-            confidence=0.95, source_type=SourceType.TEXT
-        )
+        fact = create_valid_fact(confidence=0.95, source_type=SourceType.TEXT)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
         result = stage.process(context)
@@ -413,9 +400,7 @@ class TestEdgeCases:
 
     def test_custom_thresholds_via_init(self) -> None:
         """Custom thresholds can be set via __init__ when config lacks them."""
-        stage = ValidationStage(
-            auto_accept_threshold=0.80, auto_reject_threshold=0.20
-        )
+        stage = ValidationStage(auto_accept_threshold=0.80, auto_reject_threshold=0.20)
         fact = create_valid_fact(confidence=0.85)
         # Use EmptyConfig so init thresholds are used
         context = MockPipelineContext(deduplicated_facts=[fact], config=EmptyConfig())

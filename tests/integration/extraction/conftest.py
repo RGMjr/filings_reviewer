@@ -193,7 +193,7 @@ def setup_test_filing(clean_extraction_db, sample_filing_html, tmp_path):
                 )
                 RETURNING filing_id
                 """,
-                {"company_id": company_id, "html_path": str(html_path)}
+                {"company_id": company_id, "html_path": str(html_path)},
             )
             filing_id = cur.fetchone()["filing_id"]
 
@@ -240,7 +240,7 @@ def setup_empty_filing(clean_extraction_db, empty_filing_html, tmp_path):
                 )
                 RETURNING filing_id
                 """,
-                {"company_id": company_id, "html_path": str(html_path)}
+                {"company_id": company_id, "html_path": str(html_path)},
             )
             filing_id = cur.fetchone()["filing_id"]
 

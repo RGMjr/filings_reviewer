@@ -119,9 +119,7 @@ def filing_list():
                 f"Page {page} does not exist. Showing page 1 of {pagination['total_pages']}.",
                 "warning",
             )
-            return redirect(
-                url_for("review_images.filing_list", status=status, per_page=per_page)
-            )
+            return redirect(url_for("review_images.filing_list", status=status, per_page=per_page))
 
         # Get filings for current page
         filings = db.get_filings_with_image_candidates(
@@ -149,9 +147,7 @@ def filing_list():
 
     # Handle empty results
     if not filings and page == 1:
-        flash(
-            "No filings with image candidates found. Generate candidates first.", "info"
-        )
+        flash("No filings with image candidates found. Generate candidates first.", "info")
 
     return render_template(
         "image_filing_list.html",
@@ -174,7 +170,6 @@ def review_filing(filing_id: int):
         abort(404)
 
     try:
-
         # Get filter and sort parameters
         filter_status = request.args.get("status", "all")
         sort_by = request.args.get("sort", "tier")
@@ -184,9 +179,7 @@ def review_filing(filing_id: int):
         db_sort = sort_by if sort_by in ("tier", "confidence", "position") else "tier"
 
         # Get all candidates (unfiltered) for progress calculation
-        all_candidates = db.get_image_review_candidates_for_filing(
-            filing_id=filing_id, limit=1000
-        )
+        all_candidates = db.get_image_review_candidates_for_filing(filing_id=filing_id, limit=1000)
 
         if not all_candidates:
             flash("This filing has no image candidates.", "info")
@@ -229,9 +222,7 @@ def review_filing(filing_id: int):
         }
 
         # Build chart_types and rejection_reasons for dropdowns from models.py
-        chart_types = [
-            (ct, IMAGE_CHART_TYPE_LABELS[ct]) for ct in IMAGE_CHART_TYPES
-        ]
+        chart_types = [(ct, IMAGE_CHART_TYPE_LABELS[ct]) for ct in IMAGE_CHART_TYPES]
         rejection_reasons = [
             (rr, IMAGE_REJECTION_REASON_LABELS[rr]) for rr in IMAGE_REJECTION_REASONS
         ]
@@ -425,9 +416,7 @@ def _build_sec_filing_url(cik: str, accession_number: str) -> str:
     return f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/"
 
 
-def _select_current_candidate(
-    candidates: list[dict], requested_id: int | None
-) -> dict | None:
+def _select_current_candidate(candidates: list[dict], requested_id: int | None) -> dict | None:
     """
     Select the current candidate to display.
 

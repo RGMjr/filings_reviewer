@@ -212,6 +212,7 @@ def test_filing_list_pagination(client, db):
 # Test Filtering and Sorting (HRI-6)
 # =============================================================================
 
+
 def test_review_filing_status_filter(client, db):
     """Test filtering candidates by status."""
     # Create filing with multiple candidates with different statuses

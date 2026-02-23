@@ -53,15 +53,13 @@ def _check_api_key():
 
     if not api_key:
         logger.warning(
-            f"Missing API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Missing API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "API key required"}), 401
 
     if not hmac.compare_digest(api_key, expected_key):
         logger.warning(
-            f"Invalid API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Invalid API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
 
@@ -255,13 +253,9 @@ def create_image_decision():
 
         # Check for existing decision
         if candidate.get("decision"):
-            logger.warning(
-                f"Image candidate {image_candidate_id} already has decision"
-            )
+            logger.warning(f"Image candidate {image_candidate_id} already has decision")
             return (
-                jsonify(
-                    {"status": "error", "message": "Candidate already has a decision"}
-                ),
+                jsonify({"status": "error", "message": "Candidate already has a decision"}),
                 409,
             )
 
@@ -276,8 +270,7 @@ def create_image_decision():
         )
 
         logger.info(
-            f"Created image decision {decision_id} for candidate "
-            f"{image_candidate_id}: {decision}"
+            f"Created image decision {decision_id} for candidate {image_candidate_id}: {decision}"
         )
 
         # Get next candidate for navigation
@@ -300,13 +293,9 @@ def create_image_decision():
         return jsonify({"status": "error", "message": str(e)}), 400
 
     except psycopg.errors.UniqueViolation:
-        logger.warning(
-            f"Duplicate decision for image candidate {data.get('image_candidate_id')}"
-        )
+        logger.warning(f"Duplicate decision for image candidate {data.get('image_candidate_id')}")
         return (
-            jsonify(
-                {"status": "error", "message": "Candidate already has a decision"}
-            ),
+            jsonify({"status": "error", "message": "Candidate already has a decision"}),
             409,
         )
 
@@ -334,9 +323,7 @@ def create_image_decision():
 # =============================================================================
 
 
-@api_images_bp.route(
-    "/image-candidates/<int:image_candidate_id>/skip", methods=["POST"]
-)
+@api_images_bp.route("/image-candidates/<int:image_candidate_id>/skip", methods=["POST"])
 def skip_image_candidate(image_candidate_id: int):
     """
     Skip an image candidate without making a decision.

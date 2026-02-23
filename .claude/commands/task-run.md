@@ -1,3 +1,8 @@
+t---
+description: Load and execute an existing worker prompt with critical review
+argument-hint: "<task-id>"
+---
+
 # Execute Worker Prompt
 
 You are executing an existing worker prompt.

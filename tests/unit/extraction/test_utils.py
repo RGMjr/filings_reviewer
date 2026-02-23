@@ -65,7 +65,9 @@ def create_temp_html_file(content: str, suffix: str = ".html") -> str:
         return f.name
 
 
-def assert_segments_match(actual: list[SourceSegment], expected: dict, tolerance: float = 0.05) -> None:
+def assert_segments_match(
+    actual: list[SourceSegment], expected: dict, tolerance: float = 0.05
+) -> None:
     """Assert segments match golden file expectations.
 
     Compares actual segmentation results against expected values from golden file.
@@ -97,9 +99,9 @@ def assert_segments_match(actual: list[SourceSegment], expected: dict, tolerance
     min_count = int(expected_count * (1 - tolerance))
     max_count = int(expected_count * (1 + tolerance))
 
-    assert (
-        min_count <= len(actual) <= max_count
-    ), f"Segment count {len(actual)} not in expected range [{min_count}, {max_count}] (target: {expected_count})"
+    assert min_count <= len(actual) <= max_count, (
+        f"Segment count {len(actual)} not in expected range [{min_count}, {max_count}] (target: {expected_count})"
+    )
 
     # Check segment type distribution
     actual_types: dict[str, int] = {}
@@ -111,9 +113,9 @@ def assert_segments_match(actual: list[SourceSegment], expected: dict, tolerance
         min_type_count = int(expected_type_count * (1 - tolerance))
         max_type_count = int(expected_type_count * (1 + tolerance))
 
-        assert (
-            min_type_count <= actual_type_count <= max_type_count
-        ), f"Type '{seg_type}' count {actual_type_count} not in range [{min_type_count}, {max_type_count}] (target: {expected_type_count})"
+        assert min_type_count <= actual_type_count <= max_type_count, (
+            f"Type '{seg_type}' count {actual_type_count} not in range [{min_type_count}, {max_type_count}] (target: {expected_type_count})"
+        )
 
     # Check sample segments
     if "sample_segments" in expected:
@@ -122,32 +124,36 @@ def assert_segments_match(actual: list[SourceSegment], expected: dict, tolerance
 
             # Find segment by index
             matching_segments = [s for s in actual if s.sequence_index == seq_index]
-            assert len(matching_segments) == 1, f"Expected exactly 1 segment with sequence_index={seq_index}, found {len(matching_segments)}"
+            assert len(matching_segments) == 1, (
+                f"Expected exactly 1 segment with sequence_index={seq_index}, found {len(matching_segments)}"
+            )
 
             segment = matching_segments[0]
 
             # Check segment type
             if "segment_type" in expected_sample:
-                assert (
-                    segment.segment_type == expected_sample["segment_type"]
-                ), f"Segment {seq_index}: expected type '{expected_sample['segment_type']}', got '{segment.segment_type}'"
+                assert segment.segment_type == expected_sample["segment_type"], (
+                    f"Segment {seq_index}: expected type '{expected_sample['segment_type']}', got '{segment.segment_type}'"
+                )
 
             # Check text prefix
             if "raw_text_prefix" in expected_sample:
                 prefix = expected_sample["raw_text_prefix"]
-                assert segment.raw_text.startswith(
-                    prefix
-                ), f"Segment {seq_index}: text doesn't start with '{prefix}', got: {segment.raw_text[:50]}"
+                assert segment.raw_text.startswith(prefix), (
+                    f"Segment {seq_index}: text doesn't start with '{prefix}', got: {segment.raw_text[:50]}"
+                )
 
             # Check section heading
             if "section_heading" in expected_sample:
-                assert (
-                    segment.section_heading == expected_sample["section_heading"]
-                ), f"Segment {seq_index}: expected heading '{expected_sample['section_heading']}', got '{segment.section_heading}'"
+                assert segment.section_heading == expected_sample["section_heading"], (
+                    f"Segment {seq_index}: expected heading '{expected_sample['section_heading']}', got '{segment.section_heading}'"
+                )
 
     # Check sequence indices are sequential
     indices = [s.sequence_index for s in actual]
-    assert indices == list(range(len(indices))), f"Sequence indices not sequential: {indices[:10]}..."
+    assert indices == list(range(len(indices))), (
+        f"Sequence indices not sequential: {indices[:10]}..."
+    )
 
 
 def assert_classification_match(segment: SourceSegment, expected: dict) -> None:
@@ -178,35 +184,37 @@ def assert_classification_match(segment: SourceSegment, expected: dict) -> None:
         >>> assert_classification_match(segment, expected)
     """
     # Check flags
-    assert (
-        segment.contains_definition_flag == expected["contains_definition_flag"]
-    ), f"Definition flag: expected {expected['contains_definition_flag']}, got {segment.contains_definition_flag}"
+    assert segment.contains_definition_flag == expected["contains_definition_flag"], (
+        f"Definition flag: expected {expected['contains_definition_flag']}, got {segment.contains_definition_flag}"
+    )
 
     if "contains_methodology_flag" in expected:
-        assert (
-            segment.contains_methodology_flag == expected["contains_methodology_flag"]
-        ), f"Methodology flag: expected {expected['contains_methodology_flag']}, got {segment.contains_methodology_flag}"
+        assert segment.contains_methodology_flag == expected["contains_methodology_flag"], (
+            f"Methodology flag: expected {expected['contains_methodology_flag']}, got {segment.contains_methodology_flag}"
+        )
 
     if "contains_numeric_disclosure_flag" in expected:
         assert (
             segment.contains_numeric_disclosure_flag == expected["contains_numeric_disclosure_flag"]
-        ), f"Numeric flag: expected {expected['contains_numeric_disclosure_flag']}, got {segment.contains_numeric_disclosure_flag}"
+        ), (
+            f"Numeric flag: expected {expected['contains_numeric_disclosure_flag']}, got {segment.contains_numeric_disclosure_flag}"
+        )
 
     # Check candidate metrics (order independent)
     expected_metrics = set(expected["candidate_metric_ids"])
     actual_metrics = set(segment.candidate_metric_ids or [])
 
-    assert (
-        actual_metrics == expected_metrics
-    ), f"Candidate metrics: expected {expected_metrics}, got {actual_metrics}. Missing: {expected_metrics - actual_metrics}, Extra: {actual_metrics - expected_metrics}"
+    assert actual_metrics == expected_metrics, (
+        f"Candidate metrics: expected {expected_metrics}, got {actual_metrics}. Missing: {expected_metrics - actual_metrics}, Extra: {actual_metrics - expected_metrics}"
+    )
 
     # Check confidence range
     if "min_confidence" in expected:
-        assert (
-            segment.classifier_confidence >= expected["min_confidence"]
-        ), f"Confidence {segment.classifier_confidence} below minimum {expected['min_confidence']}"
+        assert segment.classifier_confidence >= expected["min_confidence"], (
+            f"Confidence {segment.classifier_confidence} below minimum {expected['min_confidence']}"
+        )
 
     if "max_confidence" in expected:
-        assert (
-            segment.classifier_confidence <= expected["max_confidence"]
-        ), f"Confidence {segment.classifier_confidence} above maximum {expected['max_confidence']}"
+        assert segment.classifier_confidence <= expected["max_confidence"], (
+            f"Confidence {segment.classifier_confidence} above maximum {expected['max_confidence']}"
+        )

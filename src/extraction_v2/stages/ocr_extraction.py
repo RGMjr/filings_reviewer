@@ -91,7 +91,9 @@ class OCRExtractionStage:
     @staticmethod
     def _strip_code_fences(text: str) -> str:
         """Strip markdown code fences from LLM response."""
-        return re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE).rstrip("`").strip()
+        return (
+            re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE).rstrip("`").strip()
+        )
 
     def _should_process(self, asset: ImageAsset) -> bool:
         """
@@ -139,8 +141,8 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
 
         if not context.cik or not context.accession_number:
             return 0
@@ -185,9 +187,7 @@ class OCRExtractionStage:
                     image_path.write_bytes(image_bytes)
                     asset.file_path = str(image_path)
                     downloaded += 1
-                    logger.info(
-                        f"Downloaded image {asset.filename}: {len(image_bytes)} bytes"
-                    )
+                    logger.info(f"Downloaded image {asset.filename}: {len(image_bytes)} bytes")
                 else:
                     logger.warning(f"Failed to download image {asset.filename}")
             except Exception as e:
@@ -646,10 +646,7 @@ time periods, or definitions that help interpret the chart's data.
                         if isinstance(y_val, str):
                             # Strip common non-numeric chars (%, $, commas)
                             y_cleaned = (
-                                y_val.replace("$", "")
-                                .replace("%", "")
-                                .replace(",", "")
-                                .strip()
+                                y_val.replace("$", "").replace("%", "").replace(",", "").strip()
                             )
                             y_val = float(y_cleaned)
                         else:
@@ -691,7 +688,9 @@ time periods, or definitions that help interpret the chart's data.
 
             # Compute confidence from extraction quality
             # Use confidence from response if provided, otherwise compute based on data completeness
-            confidence = chart_response.get("confidence", 0.8)  # Default to 0.8 for successful extraction
+            confidence = chart_response.get(
+                "confidence", 0.8
+            )  # Default to 0.8 for successful extraction
             asset.confidence = float(confidence)
 
             # Don't mark for manual capture if we successfully extracted labeled values
@@ -800,7 +799,9 @@ time periods, or definitions that help interpret the chart's data.
                         self._chart_call_count += 1
                     else:
                         # Unknown type - skip
-                        logger.debug(f"Skipping image {asset.img_id} with classification {asset.classification}")
+                        logger.debug(
+                            f"Skipping image {asset.img_id} with classification {asset.classification}"
+                        )
                         skipped_count += 1
                         continue
 

@@ -232,10 +232,8 @@ class TestExclusionPatternARPU:
         for match in matches:
             if match.metric_id == "cm_revenue_per_customer":
                 # Check if it matched in the cost context
-                if "cost per customer" in text[max(0, match.start - 50):match.end + 50].lower():
-                    pytest.fail(
-                        f"ARPU matched in cost-per-customer context: {match.keyword}"
-                    )
+                if "cost per customer" in text[max(0, match.start - 50) : match.end + 50].lower():
+                    pytest.fail(f"ARPU matched in cost-per-customer context: {match.keyword}")
 
 
 class TestExclusionEdgeCases:
@@ -254,8 +252,10 @@ class TestExclusionEdgeCases:
         cac_matches = [m for m in matches if m.metric_id == "cm_customer_acquisition_cost"]
         # All CAC matches should be excluded because contribution margin is within 50 chars
         for match in cac_matches:
-            context = text[max(0, match.start - 50):match.end + 50].lower()
-            assert "contribution margin" not in context, "CAC should be excluded near contribution margin"
+            context = text[max(0, match.start - 50) : match.end + 50].lower()
+            assert "contribution margin" not in context, (
+                "CAC should be excluded near contribution margin"
+            )
 
     def test_empty_exclusion_list_handled(self) -> None:
         """Metrics without exclusions should work normally."""
@@ -364,13 +364,17 @@ class TestRegressionExistingBehavior:
         text1 = "Active customers reached 1 million"
         matches1 = matcher.find_all_keywords(text1)
         matched_metrics1 = {m.metric_id for m in matches1}
-        assert "cm_active_customers_total" in matched_metrics1, f"Should match cm_active_customers_total: {text1}"
+        assert "cm_active_customers_total" in matched_metrics1, (
+            f"Should match cm_active_customers_total: {text1}"
+        )
 
         # "Total customers" → cm_customers_period_end (NOT cm_active_customers_total)
         text2 = "Total customers grew by 20%"
         matches2 = matcher.find_all_keywords(text2)
         matched_metrics2 = {m.metric_id for m in matches2}
-        assert "cm_customers_period_end" in matched_metrics2, f"Should match cm_customers_period_end: {text2}"
+        assert "cm_customers_period_end" in matched_metrics2, (
+            f"Should match cm_customers_period_end: {text2}"
+        )
 
     def test_existing_churn_patterns(self) -> None:
         """Ensure churn patterns still work."""
@@ -406,7 +410,9 @@ Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios"""
         matches = matcher.find_all_keywords(text)
 
         # Find LTV matches - should be LTV/CAC ratio, not standalone LTV
-        ltv_matches = [m for m in matches if "lifetime" in m.metric_id.lower() or "ltv" in m.metric_id.lower()]
+        ltv_matches = [
+            m for m in matches if "lifetime" in m.metric_id.lower() or "ltv" in m.metric_id.lower()
+        ]
         for match in ltv_matches:
             # Standalone LTV should be excluded near LTV/CAC
             if match.metric_id == "cm_lifetime_value_per_customer":

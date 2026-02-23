@@ -30,7 +30,6 @@ from src.extraction_v2.models import (
     MetricCandidate,
     Segment,
     SegmentType,
-    SectionType,
     SourceLocator,
     SourceType,
     Unit,
@@ -40,9 +39,7 @@ from src.extraction_v2.stages.false_positive_filter import (
     _is_v2_false_positive,
     _is_percent_in_keyword_clause,
     _make_number_matches,
-    _get_source_text,
 )
-
 
 # ============================================================================
 # Test Fixtures
@@ -54,6 +51,7 @@ class MockPipelineConfig:
     """Mock pipeline config for testing."""
 
     min_confidence_auto_accept: float = 0.90
+    retain_context: bool = False
 
 
 @dataclass
@@ -184,12 +182,20 @@ class TestDateComponentFiltering:
 
         # BoundValue for the "31" inside the date
         bv_date = _make_bound_value(
-            "c1", 31.0, "31", Unit.COUNT, "seg-1",
+            "c1",
+            31.0,
+            "31",
+            Unit.COUNT,
+            "seg-1",
             text_span=(15, 17),  # position of "31" in the text
         )
         # BoundValue for the real metric
         bv_real = _make_bound_value(
-            "c1", 50000.0, "50,000", Unit.COUNT, "seg-1",
+            "c1",
+            50000.0,
+            "50,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(31, 37),
         )
 
@@ -212,11 +218,19 @@ class TestDateComponentFiltering:
         candidate = _make_candidate("c1", "cm_subscribers", "seg-1")
 
         bv_year = _make_bound_value(
-            "c1", 2019.0, "2019", Unit.COUNT, "seg-1",
+            "c1",
+            2019.0,
+            "2019",
+            Unit.COUNT,
+            "seg-1",
             text_span=(22, 26),
         )
         bv_real = _make_bound_value(
-            "c1", 1000.0, "1,000", Unit.COUNT, "seg-1",
+            "c1",
+            1000.0,
+            "1,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(36, 41),
         )
 
@@ -247,7 +261,11 @@ class TestLabelEmbeddedFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_label = _make_bound_value(
-            "c1", 100000.0, "$100,000", Unit.CURRENCY, "seg-1",
+            "c1",
+            100000.0,
+            "$100,000",
+            Unit.CURRENCY,
+            "seg-1",
             text_span=(17, 25),
         )
 
@@ -276,11 +294,19 @@ class TestReferenceNumberFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_page = _make_bound_value(
-            "c1", 12.0, "12", Unit.COUNT, "seg-1",
+            "c1",
+            12.0,
+            "12",
+            Unit.COUNT,
+            "seg-1",
             text_span=(9, 11),
         )
         bv_real = _make_bound_value(
-            "c1", 5000.0, "5,000", Unit.COUNT, "seg-1",
+            "c1",
+            5000.0,
+            "5,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(32, 37),
         )
 
@@ -301,7 +327,11 @@ class TestReferenceNumberFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_note = _make_bound_value(
-            "c1", 5.0, "5", Unit.COUNT, "seg-1",
+            "c1",
+            5.0,
+            "5",
+            Unit.COUNT,
+            "seg-1",
             text_span=(9, 10),
         )
 
@@ -331,11 +361,19 @@ class TestYearFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_year = _make_bound_value(
-            "c1", 2023.0, "2023", Unit.COUNT, "seg-1",
+            "c1",
+            2023.0,
+            "2023",
+            Unit.COUNT,
+            "seg-1",
             text_span=(3, 7),
         )
         bv_real = _make_bound_value(
-            "c1", 150000.0, "150,000", Unit.COUNT, "seg-1",
+            "c1",
+            150000.0,
+            "150,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(19, 26),
         )
 
@@ -357,7 +395,11 @@ class TestYearFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 2025.0, "2025", Unit.COUNT, "seg-1",
+            "c1",
+            2025.0,
+            "2025",
+            Unit.COUNT,
+            "seg-1",
             text_span=(3, 7),
         )
 
@@ -386,11 +428,19 @@ class TestMeasurementUnitFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_unit = _make_bound_value(
-            "c1", 24.0, "24", Unit.COUNT, "seg-1",
+            "c1",
+            24.0,
+            "24",
+            Unit.COUNT,
+            "seg-1",
             text_span=(4, 6),
         )
         bv_real = _make_bound_value(
-            "c1", 5000.0, "5,000", Unit.COUNT, "seg-1",
+            "c1",
+            5000.0,
+            "5,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(31, 36),
         )
 
@@ -411,7 +461,11 @@ class TestMeasurementUnitFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 30.0, "30", Unit.COUNT, "seg-1",
+            "c1",
+            30.0,
+            "30",
+            Unit.COUNT,
+            "seg-1",
             text_span=(12, 14),
         )
 
@@ -440,7 +494,11 @@ class TestTOCFiltering:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 12.0, "12", Unit.COUNT, "seg-1",
+            "c1",
+            12.0,
+            "12",
+            Unit.COUNT,
+            "seg-1",
             text_span=(31, 33),
         )
 
@@ -464,15 +522,16 @@ class TestFinancialStatementFiltering:
 
     def test_revenue_in_income_statement_filtered(self, stage):
         """Revenue values in financial statement context should be filtered."""
-        text = (
-            "CONSOLIDATED STATEMENTS OF OPERATIONS\n"
-            "Revenue $400,552 thousand"
-        )
+        text = "CONSOLIDATED STATEMENTS OF OPERATIONS\nRevenue $400,552 thousand"
         segment = _make_text_segment("seg-1", text)
         candidate = _make_candidate("c1", "cm_arr", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 400552.0, "$400,552", Unit.CURRENCY, "seg-1",
+            "c1",
+            400552.0,
+            "$400,552",
+            Unit.CURRENCY,
+            "seg-1",
             text_span=(47, 55),
         )
 
@@ -501,7 +560,11 @@ class TestLegitimateValuesKept:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 150000.0, "150,000", Unit.COUNT, "seg-1",
+            "c1",
+            150000.0,
+            "150,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(13, 20),
         )
 
@@ -522,7 +585,11 @@ class TestLegitimateValuesKept:
         candidate = _make_candidate("c1", "cm_net_revenue_retention", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 143.0, "143%", Unit.PERCENT, "seg-1",
+            "c1",
+            143.0,
+            "143%",
+            Unit.PERCENT,
+            "seg-1",
             text_span=(26, 30),
         )
 
@@ -543,7 +610,11 @@ class TestLegitimateValuesKept:
         candidate = _make_candidate("c1", "cm_arr", "seg-1")
 
         bv = _make_bound_value(
-            "c1", 1200000000.0, "$1.2 billion", Unit.CURRENCY, "seg-1",
+            "c1",
+            1200000000.0,
+            "$1.2 billion",
+            Unit.CURRENCY,
+            "seg-1",
             text_span=(36, 48),
         )
 
@@ -561,7 +632,11 @@ class TestLegitimateValuesKept:
         # Segment not in the context
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-missing")
         bv = _make_bound_value(
-            "c1", 50000.0, "50,000", Unit.COUNT, "seg-missing",
+            "c1",
+            50000.0,
+            "50,000",
+            Unit.COUNT,
+            "seg-missing",
         )
 
         ctx = MockPipelineContext(
@@ -589,11 +664,19 @@ class TestStageResult:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_year = _make_bound_value(
-            "c1", 2023.0, "2023", Unit.COUNT, "seg-1",
+            "c1",
+            2023.0,
+            "2023",
+            Unit.COUNT,
+            "seg-1",
             text_span=(3, 7),
         )
         bv_real = _make_bound_value(
-            "c1", 50000.0, "50,000", Unit.COUNT, "seg-1",
+            "c1",
+            50000.0,
+            "50,000",
+            Unit.COUNT,
+            "seg-1",
             text_span=(16, 22),
         )
 
@@ -615,7 +698,11 @@ class TestStageResult:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         bv_year = _make_bound_value(
-            "c1", 2023.0, "2023", Unit.COUNT, "seg-1",
+            "c1",
+            2023.0,
+            "2023",
+            Unit.COUNT,
+            "seg-1",
             text_span=(3, 7),
         )
 
@@ -712,6 +799,32 @@ class TestPercentageContextDetection:
         )
         assert result == Unit.PERCENT
 
+    def test_other_unit_retention_treated_as_percentage(self):
+        """A Unit.OTHER value in retention context should become PERCENT."""
+        from src.extraction_v2.stages.value_binding import ValueBindingStage
+
+        vbs = ValueBindingStage()
+        result = vbs._check_percentage_context(
+            "cm_net_revenue_retention",
+            Unit.OTHER,
+            "158",
+            "Our net dollar retention rate was 158 for the period.",
+        )
+        assert result == Unit.PERCENT
+
+    def test_other_unit_non_retention_stays_other(self):
+        """A Unit.OTHER value without retention context should stay OTHER."""
+        from src.extraction_v2.stages.value_binding import ValueBindingStage
+
+        vbs = ValueBindingStage()
+        result = vbs._check_percentage_context(
+            "cm_customers_period_end",
+            Unit.OTHER,
+            "500",
+            "We had 500 customers.",
+        )
+        assert result == Unit.OTHER
+
 
 # ============================================================================
 # Test: Integration - mixed FP and real values
@@ -732,21 +845,15 @@ class TestIntegration:
         candidate = _make_candidate("c1", "cm_customers_period_end", "seg-1")
 
         # Date component: 31
-        bv_date = _make_bound_value(
-            "c1", 31.0, "31", Unit.COUNT, "seg-1", text_span=(28, 30)
-        )
+        bv_date = _make_bound_value("c1", 31.0, "31", Unit.COUNT, "seg-1", text_span=(28, 30))
         # Year: 2019
-        bv_year = _make_bound_value(
-            "c1", 2019.0, "2019", Unit.COUNT, "seg-1", text_span=(32, 36)
-        )
+        bv_year = _make_bound_value("c1", 2019.0, "2019", Unit.COUNT, "seg-1", text_span=(32, 36))
         # Real: 150,000
         bv_real = _make_bound_value(
             "c1", 150000.0, "150,000", Unit.COUNT, "seg-1", text_span=(46, 53)
         )
         # Real: 143%
-        bv_pct = _make_bound_value(
-            "c1", 143.0, "143%", Unit.PERCENT, "seg-1", text_span=(75, 79)
-        )
+        bv_pct = _make_bound_value("c1", 143.0, "143%", Unit.PERCENT, "seg-1", text_span=(75, 79))
 
         ctx = MockPipelineContext(
             segments=[segment],
@@ -797,10 +904,18 @@ class TestV2YearFilterAllUnits:
         candidate = _make_candidate("c1", "cm_net_revenue_retention", "seg-1")
 
         bv_year = _make_bound_value(
-            "c1", 2019.0, "2019", Unit.PERCENT, "seg-1",
+            "c1",
+            2019.0,
+            "2019",
+            Unit.PERCENT,
+            "seg-1",
         )
         bv_real = _make_bound_value(
-            "c1", 110.0, "110%", Unit.PERCENT, "seg-1",
+            "c1",
+            110.0,
+            "110%",
+            Unit.PERCENT,
+            "seg-1",
         )
 
         ctx = MockPipelineContext(
@@ -914,6 +1029,38 @@ class TestV2FinancialAnnotations:
         bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
         is_fp, _ = _is_v2_false_positive(bv, source)
         assert is_fp is False
+
+    def test_value_far_from_annotation_not_filtered(self):
+        """Value far (>300 chars) from '(In thousands)' should NOT be filtered."""
+        filler = "x " * 200  # 400 chars of filler between annotation and value
+        source = f"(In thousands) Revenue 100 200 {filler} We had 95,000 paid customers."
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_value_near_annotation_still_filtered(self):
+        """Value near (<300 chars) '(In thousands)' should still be filtered."""
+        source = "(In thousands) Cost of revenue 37,000 59,000"
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_sbc_far_from_value_not_filtered(self):
+        """Value far (>300 chars) from 'stock-based compensation' should NOT be filtered."""
+        filler = "x " * 200
+        source = f"Includes stock-based compensation as follows: 100 200 {filler} We had 95,000 customers."
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source)
+        assert is_fp is False
+
+    def test_sbc_near_value_still_filtered(self):
+        """Value near (<300 chars) 'stock-based compensation' should still be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"
 
 
 # ============================================================================
@@ -1566,3 +1713,68 @@ class TestPercentClauseGateStage:
         )
         result = stage.process(ctx)
         assert result.metadata["filter_reasons"].get("v2_percent_wrong_clause") == 1
+
+
+# ============================================================================
+# Test: V2-native — Table-sourced exemption from financial annotation rules
+# ============================================================================
+
+
+class TestV2TableSourcedExemption:
+    """Table-sourced values should be exempt from financial annotation FP rules."""
+
+    def test_table_sourced_exempt_from_financial_annotation(self):
+        """Table-sourced value near '(In thousands)' should NOT be filtered."""
+        source = "(In thousands) Paid Customers 37,000 59,000"
+        bv = BoundValue(
+            candidate_id="c1",
+            value=37000.0,
+            value_raw="37,000",
+            unit=Unit.COUNT,
+            binding_type="table_stub",
+            binding_confidence=0.6,
+            source_locator=SourceLocator(
+                table_id="table-1",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is False, (
+            "Table-sourced values should be exempt from financial annotation rule"
+        )
+
+    def test_text_sourced_still_filtered_by_financial_annotation(self):
+        """Text-sourced value near '(In thousands)' should still be filtered."""
+        source = "(In thousands) Cost of revenue 37,000 59,000"
+        bv = _make_bound_value("c1", 37000.0, "37,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_annotation"
+
+    def test_table_sourced_exempt_from_sbc(self):
+        """Table-sourced value near 'stock-based compensation' should NOT be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = BoundValue(
+            candidate_id="c1",
+            value=67000.0,
+            value_raw="67,000",
+            unit=Unit.COUNT,
+            binding_type="table_stub",
+            binding_confidence=0.6,
+            source_locator=SourceLocator(
+                table_id="table-1",
+                cell_row=1,
+                cell_col=1,
+            ),
+        )
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is False, "Table-sourced values should be exempt from SBC rule"
+
+    def test_text_sourced_still_filtered_by_sbc(self):
+        """Text-sourced value near 'stock-based compensation' should still be filtered."""
+        source = "Includes stock-based compensation as follows: 67,000 95,000"
+        bv = _make_bound_value("c1", 67000.0, "67,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is True
+        assert reason == "v2_financial_sbc"

@@ -1,8 +1,8 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.3
+**Version**: 1.5
 **Created**: 2026-01-23
-**Updated**: 2026-02-04
+**Updated**: 2026-02-18
 **Status**: Complete (All 13 Phases)
 
 ## Executive Summary
@@ -435,18 +435,18 @@ The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations
 
 **Tasks:**
 1. [x] Create end-to-end test with real filing - `tests/integration/extraction_v2/test_e2e_pipeline.py` (8 tests)
-2. [x] Compare V2 output against V1 baseline - `src/extraction_v2/comparison.py` (V1V2Comparator)
+2. [x] Compare V2 output against V1 baseline - `src/extraction_v2/comparison.py` (V1V2Comparator) — **removed in cleanup (commit 378b37f)**
 3. [x] Run gold standard validation - `src/gold_standard/v2_validator.py` (V2GoldStandardValidator)
-4. [x] Performance benchmarks (V2 vs V1) - `scripts/benchmark_v1_v2.py`
+4. [x] Performance benchmarks (V2 vs V1) - `scripts/benchmark_v1_v2.py` — **removed in cleanup (commit 378b37f)**
 5. [x] Document migration path - `docs/V2_MIGRATION_GUIDE.md`
 
 **Deliverables:**
-- `tests/integration/extraction_v2/test_e2e_pipeline.py` - 8 E2E tests
-- `tests/integration/extraction_v2/test_v1_v2_comparison.py` - Comparison tests
-- `src/extraction_v2/comparison.py` - V1V2Comparator class
-- `src/gold_standard/v2_validator.py` - V2GoldStandardValidator class
-- `scripts/benchmark_v1_v2.py` - Benchmark CLI
-- `docs/V2_MIGRATION_GUIDE.md` - Migration documentation
+- `tests/integration/extraction_v2/test_e2e_pipeline.py` - 8 E2E tests (active)
+- `tests/integration/extraction_v2/test_v1_v2_comparison.py` - Comparison tests — **removed in cleanup (commit 378b37f)**
+- `src/extraction_v2/comparison.py` - V1V2Comparator class — **removed in cleanup (commit 378b37f)**
+- `src/gold_standard/v2_validator.py` - V2GoldStandardValidator class (active)
+- `scripts/benchmark_v1_v2.py` - Benchmark CLI — **removed in cleanup (commit 378b37f)**
+- `docs/V2_MIGRATION_GUIDE.md` - Migration documentation (active)
 
 **Dependencies:** All phases
 
@@ -525,6 +525,31 @@ These V1 modules are stable and should be imported into V2:
 
 ---
 
+## Post-Completion Enhancements (2026-02-05 → 2026-02-17)
+
+After all 13 phases were completed, the following enhancements were added:
+
+### False Positive Filter Stage
+- **File:** `src/extraction_v2/stages/false_positive_filter.py`
+- V2-native FP filter stage that runs after candidate generation
+- Decimal-gated count scaling to prevent false inflation of count metrics
+- Percentage context detection
+
+### Unit Compatibility Module
+- **File:** `src/extraction_v2/unit_compatibility.py`
+- Cross-unit validation to reduce false positives (e.g., dollar values matched to percentage metrics)
+- Integrated into the value binding and fact construction stages
+
+### Fact Identity Deduplication (SQL)
+- **File:** `sql/10_v2_fact_identity_dedup.sql`
+- Database-level deduplication migration beyond the original schema (sql/00-09)
+- Ensures idempotent fact storage at the database layer
+
+### Gold Standard Performance (as of 2026-02-18)
+- **V2 overall:** P=81.9%, R=60.6%, F1=69.6%
+- **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
+- V2 precision improved from 58% → 70% → 73% → 81.9% through iterative FP reduction
+
 ## Next Steps: Beyond SEC Filings
 
 All 13 V2 phases are complete. The pipeline is now being extended to support non-SEC document types (earnings call transcripts, investor presentations).
@@ -536,7 +561,7 @@ A research spike (`earnings-call-exploration` branch, Feb 2026) confirmed the V2
 | Phase | Name | Status | Target |
 |-------|------|--------|--------|
 | Spike | Research: transcripts POC + design docs | Complete (8a033b2) | R=22.1%, P=63.0% measured |
-| A | Transcript Support (P0) | **Not started** | >= 50% recall, 2-3 weeks |
+| A | Transcript Support (P0) | **In progress** | >= 50% recall |
 | B | Expanded Coverage (P1) | Not started | Section classification, FMP API, web UI |
 | C | Presentation Support (P2) | Not started | >= 40% recall on presentations |
 
@@ -551,4 +576,6 @@ Phase A acceptance criteria are in `ops/DEVELOPMENT_PLAN.md`.
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
-| 2026-02-16 | 1.4 | Add Beyond SEC phases (Spike complete, Phase A-C roadmap). Link to design doc and dev plan. |
+| 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
+| 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
+| 2026-02-23 | 1.6 | Add Beyond SEC phases (Spike complete, Phase A in progress, Phase B-C roadmap). |

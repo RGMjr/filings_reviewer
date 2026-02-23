@@ -76,6 +76,10 @@ class TestCurrencyOnlyMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is True
 
     @pytest.mark.parametrize("metric_id", CURRENCY_METRICS)
+    def test_accepts_other(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.OTHER) is True
+
+    @pytest.mark.parametrize("metric_id", CURRENCY_METRICS)
     def test_rejects_count(self, metric_id: str) -> None:
         assert is_unit_compatible(metric_id, Unit.COUNT) is False
 
@@ -89,17 +93,14 @@ class TestCurrencyOnlyMetrics:
 
 
 class TestPercentOnlyMetrics:
-    """Percent-only metrics should reject currency and count."""
+    """Percent-only metrics should reject currency, count, and OTHER."""
 
     PERCENT_METRICS = [
         "cm_net_revenue_retention",
         "cm_gross_revenue_retention",
         "cm_customer_retention_rate",
         "cm_customer_churn_rate",
-        "cm_ltv_to_cac_ratio",
-        "cm_ltv_to_cac_ratio_by_cohort",
         "cm_revenue_concentration",
-        "cm_repeat_purchase_rate",
         "cm_gross_margin_by_cohort",
         "cm_gross_margin_overall",
     ]
@@ -117,8 +118,63 @@ class TestPercentOnlyMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is False
 
     @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
+    def test_rejects_other(self, metric_id: str) -> None:
+        """Unit.OTHER rejected for percent-only metrics to prevent bare numbers
+        (e.g., 37000 near NRR keyword) from being accepted as percentages."""
+        assert is_unit_compatible(metric_id, Unit.OTHER) is False
+
+    @pytest.mark.parametrize("metric_id", PERCENT_METRICS)
     def test_rejects_count(self, metric_id: str) -> None:
         assert is_unit_compatible(metric_id, Unit.COUNT) is False
+
+
+class TestRatioMetrics:
+    """Ratio metrics accept percent, ratio, AND other (bare decimals like 1.42x)."""
+
+    RATIO_METRICS = [
+        "cm_ltv_to_cac_ratio",
+        "cm_ltv_to_cac_ratio_by_cohort",
+        "cm_repeat_purchase_rate",
+    ]
+
+    @pytest.mark.parametrize("metric_id", RATIO_METRICS)
+    def test_accepts_percent(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.PERCENT) is True
+
+    @pytest.mark.parametrize("metric_id", RATIO_METRICS)
+    def test_accepts_ratio(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.RATIO) is True
+
+    @pytest.mark.parametrize("metric_id", RATIO_METRICS)
+    def test_accepts_other(self, metric_id: str) -> None:
+        """Ratio metrics like LTV/CAC naturally appear as bare decimals (1.42)."""
+        assert is_unit_compatible(metric_id, Unit.OTHER) is True
+
+    @pytest.mark.parametrize("metric_id", RATIO_METRICS)
+    def test_rejects_currency(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.CURRENCY) is False
+
+    @pytest.mark.parametrize("metric_id", RATIO_METRICS)
+    def test_rejects_count(self, metric_id: str) -> None:
+        assert is_unit_compatible(metric_id, Unit.COUNT) is False
+
+
+class TestNewConstraints:
+    """Tests for constraints added in WP-04."""
+
+    def test_cac_payback_period_constrained_to_count(self) -> None:
+        assert is_unit_compatible("cm_cac_payback_period", Unit.COUNT) is True
+        assert is_unit_compatible("cm_cac_payback_period", Unit.OTHER) is True
+        assert is_unit_compatible("cm_cac_payback_period", Unit.CURRENCY) is False
+        assert is_unit_compatible("cm_cac_payback_period", Unit.PERCENT) is False
+        assert is_unit_compatible("cm_cac_payback_period", Unit.RATIO) is False
+
+    def test_revenue_by_cohort_constrained_to_currency(self) -> None:
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.CURRENCY) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.OTHER) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is False
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.RATIO) is False
 
 
 class TestUnconstrainedMetrics:
@@ -129,7 +185,7 @@ class TestUnconstrainedMetrics:
         [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER, Unit.BASIS_POINTS],
     )
     def test_unknown_metric_accepts_all(self, unit: Unit) -> None:
-        assert is_unit_compatible("cm_revenue_by_cohort", unit) is True
+        assert is_unit_compatible("cm_some_unrecognized_metric", unit) is True
 
     @pytest.mark.parametrize(
         "unit",
@@ -161,6 +217,7 @@ class TestUnconstrainedMetrics:
         assert is_unit_compatible("cm_expansion_revenue", unit) is True
 
 
+
 class TestGetAllowedUnits:
     """Tests for get_allowed_units()."""
 
@@ -171,18 +228,28 @@ class TestGetAllowedUnits:
         assert Unit.OTHER in allowed
         assert Unit.CURRENCY not in allowed
 
-    def test_currency_metric_returns_currency(self) -> None:
+    def test_currency_metric_returns_currency_and_other(self) -> None:
         allowed = get_allowed_units("cm_arr")
         assert allowed is not None
         assert Unit.CURRENCY in allowed
-        assert len(allowed) == 1
+        assert Unit.OTHER in allowed
+        assert len(allowed) == 2
 
-    def test_percent_metric_returns_percent_and_ratio(self) -> None:
+    def test_percent_metric_returns_percent_and_ratio_only(self) -> None:
         allowed = get_allowed_units("cm_net_revenue_retention")
         assert allowed is not None
         assert Unit.PERCENT in allowed
         assert Unit.RATIO in allowed
+        assert Unit.OTHER not in allowed
         assert len(allowed) == 2
+
+    def test_ratio_metric_returns_percent_ratio_and_other(self) -> None:
+        allowed = get_allowed_units("cm_ltv_to_cac_ratio")
+        assert allowed is not None
+        assert Unit.PERCENT in allowed
+        assert Unit.RATIO in allowed
+        assert Unit.OTHER in allowed
+        assert len(allowed) == 3
 
     def test_unknown_metric_returns_none(self) -> None:
         assert get_allowed_units("cm_unknown_metric") is None

@@ -40,19 +40,15 @@ METRIC_NAME_MAPPING = {
     "customer_acquisition": "cm_new_customers_acquired",
     "customers_acquired": "cm_new_customers_acquired",
     "new_customer_additions": "cm_new_customers_acquired",
-
     "customers_by_tenure": "cm_customers_period_end_by_tenure",
     "customer_count_by_tenure": "cm_customers_period_end_by_tenure",
     "customer_cohort_count": "cm_customers_period_end_by_tenure",
-
     "revenue_by_cohort": "cm_revenue_by_cohort",
     "cohort_revenue": "cm_revenue_by_cohort",
     "revenue_by_customer_cohort": "cm_revenue_by_cohort",
-
     "transactions_by_cohort": "cm_transactions_by_cohort",
     "purchases_by_cohort": "cm_transactions_by_cohort",
     "orders_by_cohort": "cm_transactions_by_cohort",
-
     # Extended metrics - customer counts
     "active_customers": "cm_active_customers_total",
     "active_customers_total": "cm_active_customers_total",
@@ -60,63 +56,50 @@ METRIC_NAME_MAPPING = {
     "active_users": "cm_active_customers_total",
     "customer_count": "cm_active_customers_total",
     "total_customers": "cm_active_customers_total",
-
     # Extended metrics - engagement
     "monthly_active_users": "cm_monthly_active_users",
     "mau": "cm_monthly_active_users",
     "monthly_active": "cm_monthly_active_users",
-
     "daily_active_users": "cm_daily_active_users",
     "dau": "cm_daily_active_users",
     "daily_active": "cm_daily_active_users",
-
     # Extended metrics - unit economics
     "revenue_per_customer": "cm_revenue_per_customer",
     "arpu": "cm_revenue_per_customer",
     "average_revenue_per_user": "cm_revenue_per_customer",
     "revenue_per_user": "cm_revenue_per_customer",
-
     "customer_acquisition_cost": "cm_customer_acquisition_cost",
     "cac": "cm_customer_acquisition_cost",
     "acquisition_cost": "cm_customer_acquisition_cost",
-
     "cac_payback_period": "cm_cac_payback_period",
     "cac_payback": "cm_cac_payback_period",
     "payback_period": "cm_cac_payback_period",
-
     "customer_lifetime_value": "cm_lifetime_value_per_customer",
     "lifetime_value": "cm_lifetime_value_per_customer",
     "ltv": "cm_lifetime_value_per_customer",
     "clv": "cm_lifetime_value_per_customer",
-
     "ltv_to_cac_ratio": "cm_ltv_to_cac_ratio",
     "ltv_cac": "cm_ltv_to_cac_ratio",
     "ltv_cac_ratio": "cm_ltv_to_cac_ratio",
-
     "ltv_to_cac_ratio_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
     "ltv_cac_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
     "cohort_ltv_cac": "cm_ltv_to_cac_ratio_by_cohort",
-
     # Extended metrics - retention
     "customer_retention_rate": "cm_customer_retention_rate",
     "retention_rate": "cm_customer_retention_rate",
     "customer_retention": "cm_customer_retention_rate",
-
     "customer_churn_rate": "cm_customer_churn_rate",
     "churn_rate": "cm_customer_churn_rate",
     "churn": "cm_customer_churn_rate",
     "attrition_rate": "cm_customer_churn_rate",
-
     "net_revenue_retention": "cm_net_revenue_retention",
     "nrr": "cm_net_revenue_retention",
     "net_dollar_retention": "cm_net_revenue_retention",
     "net_dollar_retention_rate": "cm_net_revenue_retention",
     "ndr": "cm_net_revenue_retention",
     "revenue_retention": "cm_net_revenue_retention",
-
     "gross_revenue_retention": "cm_gross_revenue_retention",
     "grr": "cm_gross_revenue_retention",
-
     # Extended metrics - customer counts specific (period-end stock count)
     "paid_customers": "cm_customers_period_end",
     "total_paid_customers": "cm_customers_period_end",
@@ -126,47 +109,38 @@ METRIC_NAME_MAPPING = {
     "customer_base": "cm_customers_period_end",
     "total_customer_count": "cm_customers_period_end",
     "customers_at_period_end": "cm_customers_period_end",
-
     "paid_customers_100k": "cm_large_customers_period_end",
     "paid_customers_100k+": "cm_large_customers_period_end",
     "customers_over_100k": "cm_large_customers_period_end",
     "large_customers": "cm_large_customers_period_end",
     "enterprise_customers": "cm_large_customers_period_end",
-
     # Extended metrics - recurring revenue
     "arr": "cm_arr",
     "annual_recurring_revenue": "cm_arr",
     "annualized_recurring_revenue": "cm_arr",
-
     "mrr": "cm_mrr",
     "monthly_recurring_revenue": "cm_mrr",
-
     # Extended metrics - transactions
     "purchase_transactions": "cm_purchase_transactions_overall",
     "total_transactions": "cm_purchase_transactions_overall",
     "transaction_count": "cm_purchase_transactions_overall",
     "order_count": "cm_purchase_transactions_overall",
     "total_orders": "cm_purchase_transactions_overall",
-
     # Extended metrics - cohort economics
     "gross_margin_by_cohort": "cm_gross_margin_by_cohort",
     "cohort_gross_margin": "cm_gross_margin_by_cohort",
     "cohort_margin": "cm_gross_margin_by_cohort",
-
     # Extended metrics - expansion and concentration
     "expansion_revenue": "cm_expansion_revenue",
     "upsell_revenue": "cm_expansion_revenue",
     "cross_sell_revenue": "cm_expansion_revenue",
-
     "revenue_concentration": "cm_revenue_concentration",
     "customer_concentration": "cm_revenue_concentration",
     "top_customers": "cm_revenue_concentration",
-
     # Extended metrics - e-commerce
     "average_order_value": "cm_average_order_value",
     "aov": "cm_average_order_value",
     "avg_order_value": "cm_average_order_value",
-
     "repeat_purchase_rate": "cm_repeat_purchase_rate",
     "repeat_purchases": "cm_repeat_purchase_rate",
     "purchase_frequency": "cm_repeat_purchase_rate",
@@ -177,8 +151,7 @@ VALID_METRIC_IDS = set(METRIC_NAME_MAPPING.values())
 
 
 def map_llm_name_to_metric_id(
-    llm_name: str,
-    candidate_metric_ids: list[str] | None = None
+    llm_name: str, candidate_metric_ids: list[str] | None = None
 ) -> str | None:
     """
     Map an LLM-returned metric name to a canonical metric ID.
@@ -254,7 +227,7 @@ def _normalize_text(text: str | None) -> str:
     # Replace everything else with space
     # This ensures "Net-Dollar Retention" matches "Net Dollar Retention"
     # while keeping "1.5" distinct from "15"
-    normalized = re.sub(r'[^a-zA-Z0-9\.\%\$\€\£\s]', ' ', normalized)
+    normalized = re.sub(r"[^a-zA-Z0-9\.\%\$\€\£\s]", " ", normalized)
 
     # Normalize whitespace (including newlines)
     normalized = " ".join(normalized.split())
@@ -333,9 +306,7 @@ class ValueExtractor:
     """
 
     # Number patterns
-    NUMBER_PATTERN = (
-        r"[-]?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:million|billion|thousand|%)?"
-    )
+    NUMBER_PATTERN = r"[-]?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(?:million|billion|thousand|%)?"
 
     # Period patterns
     QUARTER_PATTERN = r"[qQ]([1-4])\s+(\d{4})"
@@ -370,15 +341,13 @@ class ValueExtractor:
             self._fp_filter = FalsePositiveFilter()
             logger.debug("False positive filter initialized successfully")
         except Exception as e:
-            logger.warning(f"Failed to initialize false positive filter: {e}. Extraction will continue without filtering.")
+            logger.warning(
+                f"Failed to initialize false positive filter: {e}. Extraction will continue without filtering."
+            )
             self._fp_filter = None
 
     def _is_false_positive_value(
-        self,
-        value_str: str,
-        position: int | None,
-        context_text: str,
-        unit: str | None = None
+        self, value_str: str, position: int | None, context_text: str, unit: str | None = None
     ) -> tuple[bool, str | None]:
         """
         Check if an extracted value is a false positive.
@@ -401,7 +370,9 @@ class ValueExtractor:
             try:
                 position = context_text.find(value_str)
                 if position == -1:
-                    logger.debug(f"Could not find value '{value_str}' in context for false positive check")
+                    logger.debug(
+                        f"Could not find value '{value_str}' in context for false positive check"
+                    )
                     return False, None  # Can't filter without position
             except Exception as e:
                 logger.debug(f"Error finding position for value '{value_str}': {e}")
@@ -427,7 +398,7 @@ class ValueExtractor:
                 end=position + len(value_str),
                 raw_text=value_str,
                 value=parsed_value,
-                unit=unit
+                unit=unit,
             )
 
             # Check if it's a false positive
@@ -436,7 +407,7 @@ class ValueExtractor:
             if is_fp:
                 logger.debug(
                     f"False positive detected: value='{value_str}' reason={reason} "
-                    f"context={context_text[max(0, position-30):min(len(context_text), position+30)]!r}"
+                    f"context={context_text[max(0, position - 30) : min(len(context_text), position + 30)]!r}"
                 )
 
             return is_fp, reason
@@ -448,9 +419,7 @@ class ValueExtractor:
             )
             return False, None  # Don't block extraction on filter errors
 
-    def extract_from_segment(
-        self, segment: SourceSegment, company_id: int
-    ) -> list[MetricValue]:
+    def extract_from_segment(self, segment: SourceSegment, company_id: int) -> list[MetricValue]:
         """
         Extract all metric values from a segment.
 
@@ -481,14 +450,10 @@ class ValueExtractor:
                     values = self.extract_from_text_with_llm(segment, company_id)
 
                 if values:  # LLM extraction succeeded
-                    logger.info(
-                        f"LLM extraction succeeded: {len(values)} values extracted"
-                    )
+                    logger.info(f"LLM extraction succeeded: {len(values)} values extracted")
                     return values
                 else:
-                    logger.info(
-                        "LLM extraction returned no values, falling back to rules"
-                    )
+                    logger.info("LLM extraction returned no values, falling back to rules")
 
             except Exception as e:
                 logger.warning(
@@ -503,9 +468,7 @@ class ValueExtractor:
         else:
             return self.extract_from_text(segment, company_id)
 
-    def extract_from_table(
-        self, segment: SourceSegment, company_id: int
-    ) -> list[MetricValue]:
+    def extract_from_table(self, segment: SourceSegment, company_id: int) -> list[MetricValue]:
         """
         Extract structured data from table segments.
 
@@ -546,10 +509,7 @@ class ValueExtractor:
 
         # Parse header row to identify columns
         header_row = rows[0]
-        headers = [
-            self._clean_text(cell.get_text())
-            for cell in header_row.find_all(["th", "td"])
-        ]
+        headers = [self._clean_text(cell.get_text()) for cell in header_row.find_all(["th", "td"])]
 
         # Identify column types
         column_info = self._identify_columns(headers)
@@ -571,9 +531,7 @@ class ValueExtractor:
         )
         return values
 
-    def extract_from_text(
-        self, segment: SourceSegment, company_id: int
-    ) -> list[MetricValue]:
+    def extract_from_text(self, segment: SourceSegment, company_id: int) -> list[MetricValue]:
         """
         Extract values from text segments using pattern matching with smart scoring.
 
@@ -596,7 +554,7 @@ class ValueExtractor:
         # We want to ignore the day (31) and year (2019)
         date_pattern = re.compile(
             r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(\d{4})",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
 
         # Matches standalone page numbers/TOC entries at start of line
@@ -649,10 +607,11 @@ class ValueExtractor:
             return score
 
         # Split text into sentences
-        sentences = re.split(r'[.\n]+', segment.raw_text)
+        sentences = re.split(r"[.\n]+", segment.raw_text)
 
         # Import metric classifier to access patterns
         from .metric_classifier import MetricClassifier
+
         classifier = MetricClassifier()
 
         for sentence in sentences:
@@ -700,9 +659,9 @@ class ValueExtractor:
                 candidates = []
 
                 for match in number_matches:
-                    val_str = match.group(1) # The numeric part
-                    full_str = match.group(0) # The full match including $ million etc.
-                    start, end = match.span(1) # Span of the numeric part
+                    val_str = match.group(1)  # The numeric part
+                    full_str = match.group(0)  # The full match including $ million etc.
+                    start, end = match.span(1)  # Span of the numeric part
 
                     # Skip if in excluded range (Date/Page)
                     if is_excluded(start, end, exclusions):
@@ -714,7 +673,7 @@ class ValueExtractor:
                         value_str=val_str,
                         position=position_in_full_text,
                         context_text=segment.raw_text,
-                        unit=None
+                        unit=None,
                     )
                     if is_fp:
                         filtered_count += 1
@@ -722,13 +681,15 @@ class ValueExtractor:
 
                     # Score it
                     score = score_candidate(val_str, full_str, sentence)
-                    candidates.append({
-                        "val_str": val_str,
-                        "numeric_value": self._parse_number(val_str),
-                        "unit": self._infer_unit(val_str, metric_id),
-                        "score": score,
-                        "full_match": full_str
-                    })
+                    candidates.append(
+                        {
+                            "val_str": val_str,
+                            "numeric_value": self._parse_number(val_str),
+                            "unit": self._infer_unit(val_str, metric_id),
+                            "score": score,
+                            "full_match": full_str,
+                        }
+                    )
 
                 if not candidates:
                     continue
@@ -824,7 +785,7 @@ class ValueExtractor:
                     value_str=value_str,
                     position=position,
                     context_text=segment.raw_text,
-                    unit=item.get("units")
+                    unit=item.get("units"),
                 )
 
                 if is_fp:
@@ -842,10 +803,7 @@ class ValueExtractor:
 
                 # Determine metric_id using the mapping function
                 llm_metric_name = item.get("metric_name")
-                metric_id = map_llm_name_to_metric_id(
-                    llm_metric_name,
-                    segment.candidate_metric_ids
-                )
+                metric_id = map_llm_name_to_metric_id(llm_metric_name, segment.candidate_metric_ids)
                 if not metric_id:
                     # Log unmapped metric names for debugging
                     logger.warning(
@@ -863,9 +821,7 @@ class ValueExtractor:
                         qa_status = "pass"  # Quote verified
                     else:
                         # Log with details for debugging (truncate long quotes)
-                        truncated_quote = (
-                            quote[:100] + "..." if len(quote) > 100 else quote
-                        )
+                        truncated_quote = quote[:100] + "..." if len(quote) > 100 else quote
                         logger.warning(
                             f"Quote verification failed for {metric_id}. "
                             f"Rejecting extraction. Quote: '{truncated_quote}'"
@@ -888,6 +844,7 @@ class ValueExtractor:
                     validate_extraction,
                     validate_quote_contains_metric_keyword,
                 )
+
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
                     quote=quote,
@@ -911,17 +868,14 @@ class ValueExtractor:
                 )
                 if should_reject_extraction(validation_issues):
                     reason = get_rejection_reason(validation_issues)
-                    logger.warning(
-                        f"Validation failed for {metric_id}={numeric_value}: {reason}"
-                    )
+                    logger.warning(f"Validation failed for {metric_id}={numeric_value}: {reason}")
                     continue  # Skip this extraction - validation failed
 
                 value = MetricValue(
                     filing_id=segment.filing_id,
                     company_id=company_id,
                     metric_id=metric_id,
-                    source_segment_id=segment.source_segment_id
-                    or segment.sequence_index,
+                    source_segment_id=segment.source_segment_id or segment.sequence_index,
                     source_type="text",
                     extraction_method="llm_text",
                     value_numeric=numeric_value,
@@ -935,7 +889,9 @@ class ValueExtractor:
                 values.append(value)
 
             if filtered_count > 0:
-                logger.debug(f"Filtered {filtered_count} false positive(s) from LLM text extraction")
+                logger.debug(
+                    f"Filtered {filtered_count} false positive(s) from LLM text extraction"
+                )
 
             logger.info(f"LLM extracted {len(values)} values from text segment")
             return values
@@ -1013,7 +969,7 @@ class ValueExtractor:
                     value_str=value_str,
                     position=position,
                     context_text=source_for_filtering,
-                    unit=item.get("units")
+                    unit=item.get("units"),
                 )
 
                 if is_fp:
@@ -1034,16 +990,11 @@ class ValueExtractor:
                 cohort_normalized = None
                 cohort_label = item.get("cohort_label") or item.get("row_label")
                 if cohort_label:
-                    cohort_type, cohort_normalized = self.parse_cohort_label(
-                        cohort_label
-                    )
+                    cohort_type, cohort_normalized = self.parse_cohort_label(cohort_label)
 
                 # Determine metric_id using the mapping function
                 llm_metric_name = item.get("metric_name")
-                metric_id = map_llm_name_to_metric_id(
-                    llm_metric_name,
-                    segment.candidate_metric_ids
-                )
+                metric_id = map_llm_name_to_metric_id(llm_metric_name, segment.candidate_metric_ids)
                 if not metric_id:
                     # Log unmapped metric names for debugging
                     logger.warning(
@@ -1062,9 +1013,7 @@ class ValueExtractor:
                     if verify_quote_in_source(quote, source_for_verification):
                         qa_status = "pass"  # Quote verified
                     else:
-                        truncated_quote = (
-                            quote[:100] + "..." if len(quote) > 100 else quote
-                        )
+                        truncated_quote = quote[:100] + "..." if len(quote) > 100 else quote
                         logger.warning(
                             f"Quote verification failed for table extraction: {metric_id}. "
                             f"Rejecting extraction. Quote: '{truncated_quote}'"
@@ -1087,6 +1036,7 @@ class ValueExtractor:
                     validate_extraction,
                     validate_quote_contains_metric_keyword,
                 )
+
                 quote_keyword_result, reason = validate_quote_contains_metric_keyword(
                     metric_id=metric_id,
                     quote=quote,
@@ -1120,8 +1070,7 @@ class ValueExtractor:
                     filing_id=segment.filing_id,
                     company_id=company_id,
                     metric_id=metric_id,
-                    source_segment_id=segment.source_segment_id
-                    or segment.sequence_index,
+                    source_segment_id=segment.source_segment_id or segment.sequence_index,
                     source_type="table",
                     extraction_method="llm_table",
                     value_numeric=numeric_value,
@@ -1137,7 +1086,9 @@ class ValueExtractor:
                 values.append(value)
 
             if filtered_count > 0:
-                logger.debug(f"Filtered {filtered_count} false positive(s) from LLM table extraction")
+                logger.debug(
+                    f"Filtered {filtered_count} false positive(s) from LLM table extraction"
+                )
 
             logger.info(f"LLM extracted {len(values)} values from table segment")
             return values
@@ -1236,7 +1187,7 @@ class ValueExtractor:
                 value_str=cell_text,
                 position=position,
                 context_text=segment.raw_text or "",
-                unit=None  # Will be inferred
+                unit=None,  # Will be inferred
             )
 
             if is_fp:
@@ -1282,6 +1233,7 @@ class ValueExtractor:
             # Check if row label matches any candidate metric
             if segment.candidate_metric_ids:
                 from .metric_classifier import MetricClassifier
+
                 classifier = MetricClassifier()
                 for cid in segment.candidate_metric_ids:
                     patterns = classifier._metric_patterns.get(cid, [])
@@ -1324,11 +1276,15 @@ class ValueExtractor:
         if filtered_count > 0:
             logger.debug(f"Filtered {filtered_count} false positive(s) from table row")
         if row_boundary_filtered_count > 0:
-            logger.debug(f"Filtered {row_boundary_filtered_count} cross-row match(es) from table row")
+            logger.debug(
+                f"Filtered {row_boundary_filtered_count} cross-row match(es) from table row"
+            )
 
         return values
 
-    def _infer_metric_from_context(self, segment: SourceSegment, headers: list[str], column_index: int) -> str | None:
+    def _infer_metric_from_context(
+        self, segment: SourceSegment, headers: list[str], column_index: int
+    ) -> str | None:
         """
         Infer metric ID from column context (header).
         """
@@ -1352,13 +1308,14 @@ class ValueExtractor:
             # If the segment has candidates, check if header matches one of them
             if segment.candidate_metric_ids:
                 from .metric_classifier import MetricClassifier
+
                 classifier = MetricClassifier()
 
                 for metric_id in segment.candidate_metric_ids:
                     patterns = classifier._metric_patterns.get(metric_id, [])
                     for pattern in patterns:
-                         if pattern.search(header):
-                             return metric_id
+                        if pattern.search(header):
+                            return metric_id
 
         return None
 

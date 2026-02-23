@@ -106,9 +106,7 @@ class TestOCRExtractionBasics:
         )
         assert stage._should_process(asset) is False
 
-    def test_should_not_process_already_processed(
-        self, stage: OCRExtractionStage
-    ) -> None:
+    def test_should_not_process_already_processed(self, stage: OCRExtractionStage) -> None:
         """Already processed images should be skipped."""
         asset = ImageAsset(
             img_id="test_3",

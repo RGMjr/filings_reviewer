@@ -25,9 +25,11 @@ import logging
 import re
 from datetime import datetime
 from decimal import Decimal
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.models import BoundValue, SourceType, Unit
+from src.extraction_v2.models import BoundValue, Unit
+from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
 from src.review.number_parsing import NumberMatch
 
@@ -96,6 +98,31 @@ _PERCENT_CLAUSE_GATE_METRICS = frozenset({
 # Conjunction/clause boundary pattern for splitting compound sentences.
 _CONJUNCTION_RE = re.compile(r"\b(?:and|or|but|while)\b|;", re.IGNORECASE)
 
+# Geographic revenue context — "international", "domestic", "geographic" etc.
+# Used to suppress cm_revenue_concentration FPs from geographic revenue breakdowns.
+_GEOGRAPHIC_REVENUE_RE = re.compile(
+    r"\b(?:international|domestic|geographic|geography|united\s+states|americas|emea|apac|"
+    r"asia[- ]pacific|europe|rest\s+of\s+(?:the\s+)?world)\b",
+    re.IGNORECASE,
+)
+
+# Developer/engineer count context.
+# Used to suppress cm_daily_active_users FPs from developer registration counts.
+_DEVELOPER_COUNT_RE = re.compile(
+    r"\b(?:registered\s+)?(?:developers?|engineers?|api\s+users?|third[- ]party\s+developers?)\b",
+    re.IGNORECASE,
+)
+
+# "N of the Fortune M" or "N of the Forbes M" — a subset-of-ranking phrase.
+# Used to suppress cm_customers_period_end FPs from Fortune 100 company counts.
+_FORTUNE_SUBSET_RE = re.compile(
+    r"\bof\s+(?:the\s+)?(?:Fortune|Forbes)\s+\d+\b",
+    re.IGNORECASE,
+)
+
+# Leading-zero number fragment — "018", "019", etc. from proximity window cutting "2018", "2019".
+_LEADING_ZERO_RE = re.compile(r"^0\d{1,2}$")
+
 
 def _is_percent_in_keyword_clause(
     source_text: str,
@@ -147,66 +174,192 @@ def _is_percent_in_keyword_clause(
     return kw_clause == val_clause
 
 
+# =============================================================================
+# Individual FP Rule Functions
+# Each returns a reason string if it fires, None otherwise.
+# Signature: (bv: BoundValue, source_text: str, metric_id: str) -> str | None
+# =============================================================================
+
+
+def _rule_year_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Year value for ALL units (V1 only filters unit=count)."""
+    if bv.value is not None and _YEAR_MIN <= bv.value <= _YEAR_MAX:
+        raw = (bv.value_raw or "").strip()
+        stripped = raw.replace(",", "")
+        if stripped.isdigit() and len(stripped) == 4:
+            return "v2_year_value"
+    return None
+
+
+def _rule_percent_range(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Percentage-only metrics should have values in 0-500 range."""
+    if bv.value is not None and metric_id in _PERCENT_ONLY_METRICS:
+        if bv.value > 500 or bv.value < 0:
+            return "v2_percent_range"
+    return None
+
+
+def _rule_garbage_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Numbers with >10 digits are almost certainly parsing artifacts."""
+    if bv.value is not None and abs(bv.value) > 10_000_000_000:
+        return "v2_garbage_value"
+    return None
+
+
+def _rule_year_fragment(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Leading-zero fragments like '018' from proximity window cutting '2018'."""
+    raw = (bv.value_raw or "").strip()
+    if raw and _LEADING_ZERO_RE.match(raw):
+        return "v2_year_fragment"
+    return None
+
+
+def _rule_linearized_table(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Text with [CELL]/[ROW] markers is a linearized table duplicate."""
+    if source_text and _TABLE_MARKER_RE.search(source_text):
+        return "v2_linearized_table"
+    return None
+
+
+def _rule_financial_annotation(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Financial table annotations like '(In thousands)' near the value."""
+    if not source_text or bv.source_locator.table_id is not None:
+        return None
+    raw = (bv.value_raw or "").strip()
+    value_pos = source_text.find(raw) if raw else -1
+    ann_match = _FINANCIAL_ANNOTATION_RE.search(source_text)
+    if ann_match:
+        if value_pos < 0 or abs(ann_match.start() - value_pos) <= 300:
+            return "v2_financial_annotation"
+    return None
+
+
+def _rule_financial_sbc(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Stock-based compensation footnotes near the value."""
+    if not source_text or bv.source_locator.table_id is not None:
+        return None
+    raw = (bv.value_raw or "").strip()
+    value_pos = source_text.find(raw) if raw else -1
+    sbc_match = _SBC_RE.search(source_text)
+    if sbc_match:
+        if value_pos < 0 or abs(sbc_match.start() - value_pos) <= 300:
+            return "v2_financial_sbc"
+    return None
+
+
+def _rule_ranking_name(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Company ranking names like 'Fortune 100', 'Forbes 500'."""
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if raw:
+        for m in _RANKING_NAME_RE.finditer(source_text):
+            if m.group(1) == raw:
+                return "v2_ranking_name"
+    return None
+
+
+def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Geographic revenue context for cm_revenue_concentration."""
+    if not source_text or metric_id != "cm_revenue_concentration":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
+    if geo_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(geo_match.start() - value_pos) <= 200:
+            return "v2_geographic_revenue"
+    return None
+
+
+def _rule_developer_count(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Developer/engineer count mistaken for cm_daily_active_users."""
+    if not source_text or metric_id != "cm_daily_active_users":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    dev_match = _DEVELOPER_COUNT_RE.search(source_text)
+    if dev_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(dev_match.start() - value_pos) <= 150:
+            return "v2_developer_count"
+    return None
+
+
+def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Fortune/Forbes subset count for cm_customers_period_end."""
+    if not source_text or metric_id != "cm_customers_period_end":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    fortune_match = _FORTUNE_SUBSET_RE.search(source_text)
+    if fortune_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
+            return "v2_fortune_subset"
+    return None
+
+
+# =============================================================================
+# FP Rule Registry — order matters (first match wins)
+# Tags are used by the relaxed-mode skip list below.
+# =============================================================================
+
+_FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
+    ("year_value", _rule_year_value),
+    ("percent_range", _rule_percent_range),
+    ("garbage_value", _rule_garbage_value),
+    ("year_fragment", _rule_year_fragment),
+    ("linearized_table", _rule_linearized_table),
+    ("financial_annotation", _rule_financial_annotation),
+    ("financial_sbc", _rule_financial_sbc),
+    ("ranking_name", _rule_ranking_name),
+    ("geographic_revenue", _rule_geographic_revenue),
+    ("developer_count", _rule_developer_count),
+    ("fortune_subset", _rule_fortune_subset),
+]
+
+# Rules skipped in relaxed mode (transcripts/presentations).
+# These patterns are common in earnings call language and cause excessive
+# false negatives when applied to spoken content.
+_RELAXED_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation", "financial_sbc"})
+
+
 def _is_v2_false_positive(
     bv: BoundValue,
     source_text: str,
+    metric_id: str = "",
     relaxed: bool = False,
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
 
-    These rules exploit V2 pipeline context that V1 doesn't have:
-    - Year values across all unit types (V1 only checks unit=count)
-    - Linearized table markers that indicate duplicate text extraction
-    - Financial table annotations that mark non-metric financial data
-    - Ranking names where a number is part of a name, not a value
+    Iterates over registered FP rules and returns the first match.
 
-    When relaxed=True (for transcripts/presentations), rules 3 and 4
-    (financial annotation and SBC) are skipped because these patterns
-    are common in earnings call language and cause excessive false negatives.
+    When relaxed=True (for transcripts/presentations), rules tagged as
+    "linearized_table", "financial_annotation", or "financial_sbc" are skipped
+    because these patterns are common in earnings call language and cause
+    excessive false negatives on spoken content.
+
+    After the registry loop, additional transcript-specific checks are applied
+    when relaxed=True:
+    - Bare small count values (single/double-digit without scale suffix)
 
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
     """
-    raw = (bv.value_raw or "").strip()
+    for tag, rule_fn in _FP_RULES:
+        if relaxed and tag in _RELAXED_SKIP_TAGS:
+            continue
+        reason = rule_fn(bv, source_text, metric_id)
+        if reason is not None:
+            return True, reason
 
-    # Rule 1: Year value for ALL units (V1 only filters unit=count).
-    # Catches e.g. "2019" extracted as cm_net_revenue_retention with unit=PERCENT.
-    if bv.value is not None and _YEAR_MIN <= bv.value <= _YEAR_MAX:
-        stripped = raw.replace(",", "")
-        if stripped.isdigit() and len(stripped) == 4:
-            return True, "v2_year_value"
-
-    if not source_text:
-        return False, None
-
-    # Rule 2: Linearized table text ([CELL]/[ROW] markers).
-    # The ingestion stage injects these markers when linearizing HTML tables
-    # into text segments.  The same table data is also processed by the
-    # table-reconstruction path, so these text-sourced extractions are noisy
-    # duplicates that bypass the structured header/stub binding.
-    # Skipped in relaxed mode (transcripts never have table markers).
-    if not relaxed and _TABLE_MARKER_RE.search(source_text):
-        return True, "v2_linearized_table"
-
-    # Rules 3+4 skipped in relaxed mode (transcripts/presentations)
-    if not relaxed:
-        # Rule 3: Financial table annotation text.
-        # Segments containing "(In thousands)" or "stock-based compensation" are
-        # financial statement text, not customer metric narrative.
-        if _FINANCIAL_ANNOTATION_RE.search(source_text):
-            return True, "v2_financial_annotation"
-        if _SBC_RE.search(source_text):
-            return True, "v2_financial_sbc"
-
-    # Rule 4: Company ranking name.
-    # "Fortune 100", "Forbes 500" — the number is part of the ranking name.
-    if raw:
-        for m in _RANKING_NAME_RE.finditer(source_text):
-            if m.group(1) == raw:
-                return True, "v2_ranking_name"
-
-    # Rule 5 (relaxed mode only): Bare small count values.
+    # Relaxed mode only: bare small count values.
     # In transcript text, bare single/double-digit numbers with unit=count
     # are almost always noise — slide numbers ("Slide 6"), quarter refs
     # ("Q4" → 4), technology labels ("5G" → 5), multipliers ("4 times"),
@@ -214,6 +367,7 @@ def _is_v2_false_positive(
     # transcripts either use scale suffixes ("3,000", "1.5 million") or
     # are large enough to be unambiguous (>= 50).
     if relaxed and bv.unit == Unit.COUNT:
+        raw = (bv.value_raw or "").strip()
         if bv.value is not None and bv.value < _BARE_SMALL_NUMBER_THRESHOLD:
             if not _HAS_SCALE_SUFFIX_RE.search(raw):
                 return True, "v2_bare_small_count"
@@ -274,9 +428,7 @@ _UNIT_MAP = {
 }
 
 
-def _make_number_matches(
-    bv: BoundValue, source_text: str
-) -> list[NumberMatch]:
+def _make_number_matches(bv: BoundValue, source_text: str) -> list[NumberMatch]:
     """
     Create V1 NumberMatch(es) for every occurrence of the raw value in source_text.
 
@@ -301,21 +453,28 @@ def _make_number_matches(
         pos = source_text.find(raw, search_start)
         if pos < 0:
             break
-        matches.append(NumberMatch(
-            start=pos,
-            end=pos + len(raw),
-            raw_text=raw,
-            value=value_decimal,
-            unit=v1_unit,
-        ))
+        matches.append(
+            NumberMatch(
+                start=pos,
+                end=pos + len(raw),
+                raw_text=raw,
+                value=value_decimal,
+                unit=v1_unit,
+            )
+        )
         search_start = pos + len(raw)
 
     if not matches:
         # Fallback: position-independent (filter still checks year/min-value)
-        matches.append(NumberMatch(
-            start=0, end=len(raw), raw_text=raw,
-            value=value_decimal, unit=v1_unit,
-        ))
+        matches.append(
+            NumberMatch(
+                start=0,
+                end=len(raw),
+                raw_text=raw,
+                value=value_decimal,
+                unit=v1_unit,
+            )
+        )
 
     return matches
 
@@ -378,6 +537,10 @@ class FalsePositiveFilterStage:
         # Read relaxed mode from config (for transcripts/presentations)
         relaxed = getattr(context.config, "relaxed_fp_filter", False)
 
+        # Snapshot pre-filter state for FN diagnostics (only when requested)
+        if context.config.retain_context:
+            context._pre_filter_bound_values = list(context.bound_values)
+
         # Build candidate lookup for context text
         candidate_map = {c.candidate_id: c for c in context.candidates}
 
@@ -386,9 +549,7 @@ class FalsePositiveFilterStage:
         for bv in context.bound_values:
             try:
                 # Get source text for context
-                source_text = _get_source_text(
-                    bv, candidate_map, context.segments, context.tables
-                )
+                source_text = _get_source_text(bv, candidate_map, context.segments, context.tables)
 
                 if not source_text:
                     # No context available; keep the value (conservative)
@@ -396,7 +557,11 @@ class FalsePositiveFilterStage:
                     continue
 
                 # --- V2-native checks (run first, cheaper than V1) ---
-                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text, relaxed=relaxed)
+                candidate = candidate_map.get(bv.candidate_id)
+                metric_id = candidate.metric_id if candidate else ""
+                v2_fp, v2_reason = _is_v2_false_positive(
+                    bv, source_text, metric_id=metric_id, relaxed=relaxed
+                )
                 if v2_fp:
                     filter_reasons[v2_reason or "v2_unknown"] = (
                         filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
@@ -479,7 +644,6 @@ class FalsePositiveFilterStage:
                 # Runs after V1 to let label-embedded filters (">$100,000")
                 # remove true FPs first.
                 if bv.unit == Unit.CURRENCY:
-                    candidate = candidate_map.get(bv.candidate_id)
                     if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
                         reason_str = "v2_currency_on_count_metric"
                         filter_reasons[reason_str] = (
@@ -496,9 +660,7 @@ class FalsePositiveFilterStage:
                 kept.append(bv)
 
             except Exception as e:
-                error_msg = (
-                    f"Error filtering BoundValue {bv.bound_value_id}: {e}"
-                )
+                error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
                 logger.error(error_msg)
                 errors.append(error_msg)
                 # On error, keep the value (fail open for individual items)

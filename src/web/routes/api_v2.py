@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 V2_DECISION_TYPES = ("accept", "reject", "correct")
 
 V2_REJECTION_CATEGORIES = (
-    "wrong_metric", "not_a_metric", "wrong_value", "wrong_period", "duplicate", "other"
+    "wrong_metric",
+    "not_a_metric",
+    "wrong_value",
+    "wrong_period",
+    "duplicate",
+    "other",
 )
 
 
@@ -138,11 +143,13 @@ def create_decision():
 
         # Check for existing decision
         if fact.get("decision_id"):
-            return jsonify({
-                "status": "error",
-                "message": "Fact already has a decision. Delete it first to re-decide.",
-                "existing_decision_id": str(fact["decision_id"]),
-            }), 409
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Fact already has a decision. Delete it first to re-decide.",
+                    "existing_decision_id": str(fact["decision_id"]),
+                }
+            ), 409
 
         # Insert decision
         decision_id = db.insert_v2_review_decision(
@@ -162,24 +169,30 @@ def create_decision():
         filing_id = fact["doc_id"]
         next_fact = _get_next_pending_fact(db, filing_id, fact_id)
 
-        return jsonify({
-            "status": "success",
-            "decision_id": decision_id,
-            "fact_id": fact_id,
-            "next_fact": next_fact,
-        }), 201
+        return jsonify(
+            {
+                "status": "success",
+                "decision_id": decision_id,
+                "fact_id": fact_id,
+                "next_fact": next_fact,
+            }
+        ), 201
 
     except psycopg.errors.UniqueViolation:
-        return jsonify({
-            "status": "error",
-            "message": "A decision already exists for this fact",
-        }), 409
+        return jsonify(
+            {
+                "status": "error",
+                "message": "A decision already exists for this fact",
+            }
+        ), 409
 
     except psycopg.errors.ForeignKeyViolation as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Invalid reference: {e}",
-        }), 400
+        return jsonify(
+            {
+                "status": "error",
+                "message": f"Invalid reference: {e}",
+            }
+        ), 400
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error creating V2 decision: {e}", exc_info=True)
@@ -206,12 +219,14 @@ def undo_decision(decision_id: str):
 
         logger.info(f"Undid V2 decision {decision_id} for fact {result['fact_id']}")
 
-        return jsonify({
-            "status": "success",
-            "message": "Decision reverted",
-            "fact_id": result["fact_id"],
-            "filing_id": result["filing_id"],
-        }), 200
+        return jsonify(
+            {
+                "status": "success",
+                "message": "Decision reverted",
+                "fact_id": result["fact_id"],
+                "filing_id": result["filing_id"],
+            }
+        ), 200
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error undoing V2 decision {decision_id}: {e}", exc_info=True)

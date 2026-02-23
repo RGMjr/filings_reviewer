@@ -1,3 +1,7 @@
+---
+description: Generate comprehensive completion reports when phases or improvement initiatives finish
+---
+
 # Completion Report Generator Skill
 
 **Version:** 1.0.0

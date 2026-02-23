@@ -14,12 +14,11 @@ Design source: Claude V2 PRD MetricFact schema + GPT-5.2 PRD pragmatic constrain
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
-import uuid
-
 
 # ============================================================================
 # Enums
@@ -162,9 +161,7 @@ class BoundingBox:
     @classmethod
     def from_dict(cls, data: dict[str, float]) -> BoundingBox:
         """Create from dictionary."""
-        return cls(
-            x=data["x"], y=data["y"], width=data["width"], height=data["height"]
-        )
+        return cls(x=data["x"], y=data["y"], width=data["width"], height=data["height"])
 
 
 @dataclass
@@ -320,9 +317,7 @@ class MetricFact:
     source_locator: SourceLocator = field(default_factory=SourceLocator)
 
     # Evidence (for human review)
-    evidence_pack: EvidencePack = field(
-        default_factory=lambda: EvidencePack(snippet_html="")
-    )
+    evidence_pack: EvidencePack = field(default_factory=lambda: EvidencePack(snippet_html=""))
 
     # Quality signals
     confidence: float = 0.0  # 0-1
@@ -338,7 +333,9 @@ class MetricFact:
     created_at: datetime = field(default_factory=datetime.utcnow)
     pipeline_version: str = "2.0.0"
 
-    def identity_tuple(self) -> tuple[str, date | None, date | None, Unit, float | None, Scope, str | None, str | None]:
+    def identity_tuple(
+        self,
+    ) -> tuple[str, date | None, date | None, Unit, float | None, Scope, str | None, str | None]:
         """
         Identity tuple for deduplication.
 
@@ -472,7 +469,7 @@ class Cell:
         # 6. Number must end at word boundary or end of string
         #
         # This avoids matching partial numbers in identifiers like "SKU-001"
-        pattern = r'''
+        pattern = r"""
             (?:^|(?<=\s)|(?<=[\(\[]))  # Start of string, after whitespace, or after opening bracket
             [\$\€\£]?                   # Optional currency symbol
             \(?                         # Optional opening paren (for negative)
@@ -483,7 +480,7 @@ class Cell:
             \)?                         # Optional closing paren
             \s*%?                       # Optional percent symbol with optional space
             (?=$|[\s,\.\)\]\;])         # End of string, whitespace, or punctuation
-        '''
+        """
         return bool(re.search(pattern, self.text.strip(), re.VERBOSE))
 
 
@@ -713,6 +710,8 @@ class Document:
     filing_date: date | None = None
     fiscal_year: int | None = None
     fiscal_period: str = ""  # FY, Q1-Q4
+    fiscal_year_end_month: int | None = None  # e.g., 1 for Jan FYE (Slack, Snowflake)
+    fiscal_year_end_day: int | None = None  # e.g., 31 for Jan 31 FYE
 
     # Source
     html_path: str = ""  # Path to source HTML

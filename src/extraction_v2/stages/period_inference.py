@@ -25,6 +25,7 @@ from src.extraction_v2.models import (
     BoundValue,
     PeriodType,
 )
+from src.extraction_v2.text_utils import find_sentence_bounds
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Segment, Table
@@ -180,24 +181,53 @@ class PeriodInferenceStage:
         re.IGNORECASE,
     )
 
+    # Bare date pattern — matches "Month Day, Year" or "Month Day Year" without prefix.
+    # Used only in table header context to recognize quarter-end dates like "January 31, 2017".
+    BARE_DATE_PATTERN = re.compile(
+        r"""
+        (?<!\w)                                    # Word boundary at start
+        (january|february|march|april|may|june|july|august|
+         september|october|november|december|
+         jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)  # Month name
+        \s+
+        (\d{1,2})                                  # Day (1-31)
+        (?:,\s*|\s+)                               # Comma or space separator
+        ((?:19|20)\d{2})                           # 4-digit year
+        (?!\d)                                     # Not followed by digit
+        """,
+        re.VERBOSE | re.IGNORECASE,
+    )
+
     # Plain year pattern (with fiscal context required)
     # 2024, 2023 (only when in fiscal context like column headers)
     PLAIN_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
 
     # Month name mapping
     MONTH_NAMES: dict[str, int] = {
-        "january": 1, "jan": 1,
-        "february": 2, "feb": 2,
-        "march": 3, "mar": 3,
-        "april": 4, "apr": 4,
+        "january": 1,
+        "jan": 1,
+        "february": 2,
+        "feb": 2,
+        "march": 3,
+        "mar": 3,
+        "april": 4,
+        "apr": 4,
         "may": 5,
-        "june": 6, "jun": 6,
-        "july": 7, "jul": 7,
-        "august": 8, "aug": 8,
-        "september": 9, "sep": 9, "sept": 9,
-        "october": 10, "oct": 10,
-        "november": 11, "nov": 11,
-        "december": 12, "dec": 12,
+        "june": 6,
+        "jun": 6,
+        "july": 7,
+        "jul": 7,
+        "august": 8,
+        "aug": 8,
+        "september": 9,
+        "sep": 9,
+        "sept": 9,
+        "october": 10,
+        "oct": 10,
+        "november": 11,
+        "nov": 11,
+        "december": 12,
+        "dec": 12,
     }
 
     # Quarter end months (calendar year)
@@ -212,6 +242,33 @@ class PeriodInferenceStage:
             context_chars: Number of characters to search around text values (default: 200)
         """
         self.context_chars = context_chars
+        # Fiscal year end metadata — set from document in process()
+        self._fy_end_month: int | None = None
+        self._fy_end_day: int | None = None
+
+        # Pattern registries: list of (parser_method, confidence_offset) tuples.
+        # Ordered by specificity — first match wins.
+        # confidence_offset is added to the base confidence for the context.
+        self._header_patterns: list[tuple[str, float]] = [
+            ("_try_parse_period_ended", 0.0),
+            ("_try_parse_quarter", 0.0),
+            ("_try_parse_trailing", 0.0),
+            ("_try_parse_ytd", 0.0),
+            ("_try_parse_fiscal_year", 0.0),
+            ("_try_parse_as_of", 0.0),
+            ("_try_parse_bare_date", 0.0),
+            ("_try_parse_plain_year", -0.1),
+        ]
+
+        # Text patterns: subset used for text context (no bare_date or plain_year).
+        self._text_patterns: list[str] = [
+            "_try_parse_period_ended",
+            "_try_parse_quarter",
+            "_try_parse_trailing",
+            "_try_parse_ytd",
+            "_try_parse_fiscal_year",
+            "_try_parse_as_of",
+        ]
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -236,6 +293,10 @@ class PeriodInferenceStage:
         # Get document_date for transcript quarter inference (must be a real date)
         raw_doc_date = getattr(context, "document_date", None)
         document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
+
+        # Load fiscal year end metadata from document (set by IngestionStage)
+        self._fy_end_month = context.document.fiscal_year_end_month if context.document else None
+        self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
 
         # Build lookup for segments and tables
         segment_lookup = {s.segment_id: s for s in context.segments}
@@ -265,9 +326,7 @@ class PeriodInferenceStage:
                     bound_value.period_type = PeriodType.OTHER
                     bound_value.period_ambiguous = True
                     ambiguous_count += 1
-                    warnings.append(
-                        f"No period found for bound value {bound_value.bound_value_id}"
-                    )
+                    warnings.append(f"No period found for bound value {bound_value.bound_value_id}")
             except Exception as e:
                 error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
                 logger.error(error_msg)
@@ -349,9 +408,7 @@ class PeriodInferenceStage:
 
         return None
 
-    def _parse_period_from_headers(
-        self, header_path: list[str]
-    ) -> ParsedPeriod | None:
+    def _parse_period_from_headers(self, header_path: list[str]) -> ParsedPeriod | None:
         """
         Parse period from table header path.
 
@@ -366,49 +423,14 @@ class PeriodInferenceStage:
         # Combine all headers for searching
         combined_text = " ".join(header_path)
 
-        # Try patterns in order of specificity
-        period = self._try_parse_period_ended(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_quarter(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_trailing(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_ytd(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_fiscal_year(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        period = self._try_parse_as_of(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE
-            return period
-
-        # Try plain year as last resort (only in header context)
-        period = self._try_parse_plain_year(combined_text)
-        if period:
-            period.source = "header_path"
-            period.confidence = self.HEADER_PATH_CONFIDENCE - 0.1  # Slightly lower
-            return period
+        # Try patterns in order of specificity (first match wins)
+        for method_name, confidence_offset in self._header_patterns:
+            parser = getattr(self, method_name)
+            period = parser(combined_text)
+            if period:
+                period.source = "header_path"
+                period.confidence = self.HEADER_PATH_CONFIDENCE + confidence_offset
+                return period
 
         return None
 
@@ -437,10 +459,10 @@ class PeriodInferenceStage:
             search_text = text[window_start:window_end]
 
             # Check if match is in same sentence for higher confidence
-            sentence_start, sentence_end = self._find_sentence_bounds(text, start)
+            sentence_start, sentence_end = find_sentence_bounds(text, start)
             same_sentence_text = text[sentence_start:sentence_end]
         else:
-            search_text = text[:self.context_chars * 2]
+            search_text = text[: self.context_chars * 2]
             same_sentence_text = ""
 
         # Try to find period in same sentence first (higher confidence)
@@ -489,16 +511,13 @@ class PeriodInferenceStage:
         return None
 
     def _try_parse_all_patterns(self, text: str) -> ParsedPeriod | None:
-        """Try all period patterns on text, returning most specific match."""
-        # Order by specificity: period_ended > quarter > trailing > ytd > fiscal_year > as_of
-        return (
-            self._try_parse_period_ended(text)
-            or self._try_parse_quarter(text)
-            or self._try_parse_trailing(text)
-            or self._try_parse_ytd(text)
-            or self._try_parse_fiscal_year(text)
-            or self._try_parse_as_of(text)
-        )
+        """Try all text period patterns on text, returning most specific match."""
+        for method_name in self._text_patterns:
+            parser = getattr(self, method_name)
+            period = parser(text)
+            if period:
+                return period
+        return None
 
     def _try_parse_quarter(self, text: str) -> ParsedPeriod | None:
         """
@@ -547,6 +566,10 @@ class PeriodInferenceStage:
 
         Examples: FY 2024, FY24, Fiscal Year 2024
 
+        Uses filing metadata (fiscal_year_end_month/day) when available to compute
+        accurate non-calendar fiscal year boundaries. Falls back to calendar year
+        (Jan 1 - Dec 31) when metadata is unavailable.
+
         Returns:
             ParsedPeriod with ANNUAL type, or None
         """
@@ -559,9 +582,34 @@ class PeriodInferenceStage:
             return None
 
         try:
-            # Calendar year assumption (Jan 1 - Dec 31)
-            start = date(year, 1, 1)
-            end = date(year, 12, 31)
+            fy_end_month = self._fy_end_month
+            fy_end_day = self._fy_end_day
+
+            if fy_end_month is not None:
+                # Use filing-specific fiscal year end date
+                end_day = (
+                    fy_end_day
+                    if fy_end_day is not None
+                    else calendar.monthrange(year, fy_end_month)[1]
+                )
+                end = date(year, fy_end_month, end_day)
+
+                if fy_end_month == 12 and end_day == 31:
+                    # Standard calendar year ending Dec 31
+                    start = date(year, 1, 1)
+                else:
+                    # Non-calendar FY: starts on the first day of the month
+                    # after the fiscal year end month, one year prior.
+                    # e.g., FY2020 ending Jan 31 2020 → starts Feb 1 2019
+                    # e.g., FY2020 ending Mar 31 2020 → starts Apr 1 2019
+                    start_month = (fy_end_month % 12) + 1  # next month (wraps 12→1)
+                    start_year = year - 1 if fy_end_month < 12 else year
+                    start = date(start_year, start_month, 1)
+            else:
+                # Calendar year fallback (Jan 1 - Dec 31)
+                start = date(year, 1, 1)
+                end = date(year, 12, 31)
+
             return ParsedPeriod(
                 period_type=PeriodType.ANNUAL,
                 start=start,
@@ -605,7 +653,7 @@ class PeriodInferenceStage:
         # Determine period type from the pattern prefix
         text_lower = text.lower()
 
-        if "year" in text_lower[:match.end()]:
+        if "year" in text_lower[: match.end()]:
             period_type = PeriodType.ANNUAL
             # Adjust for calendar year
             if month == 12 and day == 31:
@@ -617,21 +665,21 @@ class PeriodInferenceStage:
                     start = date(year - 1, month + 1, 1)
                 else:
                     start = date(year, 1, 1)
-        elif any(x in text_lower[:match.end()] for x in ["quarter", "three months", "3 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["quarter", "three months", "3 months"]):
             period_type = PeriodType.QUARTERLY
             # Calculate start as 3 months before end
             if month >= 4:
                 start = date(year, month - 3, 1)
             else:
                 start = date(year - 1, month + 9, 1)
-        elif any(x in text_lower[:match.end()] for x in ["nine months", "9 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["nine months", "9 months"]):
             period_type = PeriodType.YTD
             # Calculate start as 9 months before end
             if month >= 10:
                 start = date(year, month - 9, 1)
             else:
                 start = date(year - 1, month + 3, 1)
-        elif any(x in text_lower[:match.end()] for x in ["six months", "6 months"]):
+        elif any(x in text_lower[: match.end()] for x in ["six months", "6 months"]):
             period_type = PeriodType.YTD
             # Calculate start as 6 months before end
             if month >= 7:
@@ -730,7 +778,13 @@ class PeriodInferenceStage:
                 try:
                     end = date(year, month, day)
                     # TTM is 12 months trailing
-                    start = date(year - 1, month, day + 1) if day < 28 else date(year - 1, month + 1, 1) if month < 12 else date(year - 1, 1, 1)
+                    start = (
+                        date(year - 1, month, day + 1)
+                        if day < 28
+                        else date(year - 1, month + 1, 1)
+                        if month < 12
+                        else date(year - 1, 1, 1)
+                    )
                     return ParsedPeriod(
                         period_type=PeriodType.TRAILING,
                         start=start,
@@ -789,6 +843,43 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
+    def _try_parse_bare_date(self, text: str) -> ParsedPeriod | None:
+        """
+        Parse bare date patterns without a leading "As of" or period-type prefix.
+
+        Examples: "January 31, 2017", "Jan 31 2017"
+
+        Used only in table header context to recognise quarter-end / year-end column
+        headings that omit the "As of" prefix (common in Slack-style quarterly tables).
+
+        Returns:
+            ParsedPeriod with POINT_IN_TIME type, or None
+        """
+        match = self.BARE_DATE_PATTERN.search(text)
+        if not match:
+            return None
+
+        month_name = match.group(1).lower()
+        day = int(match.group(2))
+        year = int(match.group(3))
+
+        month = self.MONTH_NAMES.get(month_name)
+        if not month:
+            return None
+
+        try:
+            point_date = date(year, month, day)
+            return ParsedPeriod(
+                period_type=PeriodType.POINT_IN_TIME,
+                start=point_date,
+                end=point_date,
+                confidence=0.0,
+                source="",
+                raw_text=match.group(0),
+            )
+        except ValueError:
+            return None
+
     def _try_parse_plain_year(self, text: str) -> ParsedPeriod | None:
         """
         Parse plain year as fiscal year (only in header context).
@@ -818,9 +909,7 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
-    def _create_fiscal_fallback(
-        self, fiscal_year: int, fiscal_period: str
-    ) -> ParsedPeriod | None:
+    def _create_fiscal_fallback(self, fiscal_year: int, fiscal_period: str) -> ParsedPeriod | None:
         """
         Create a period from filing fiscal metadata as fallback.
 
@@ -850,7 +939,9 @@ class PeriodInferenceStage:
                 return ParsedPeriod(
                     period_type=PeriodType.QUARTERLY,
                     start=date(fiscal_year, start_month, 1),
-                    end=date(fiscal_year, end_month, self._last_day_of_month(fiscal_year, end_month)),
+                    end=date(
+                        fiscal_year, end_month, self._last_day_of_month(fiscal_year, end_month)
+                    ),
                     confidence=self.FILING_FALLBACK_CONFIDENCE,
                     source="filing_fallback",
                     raw_text=f"{fiscal_period_upper} {fiscal_year}",
@@ -1003,36 +1094,6 @@ class PeriodInferenceStage:
     def _last_day_of_month(self, year: int, month: int) -> int:
         """Get the last day of a month."""
         return calendar.monthrange(year, month)[1]
-
-    def _find_sentence_bounds(self, text: str, position: int) -> tuple[int, int]:
-        """
-        Find sentence boundaries around a given position.
-
-        Args:
-            text: Full text to search
-            position: Character position
-
-        Returns:
-            Tuple of (sentence_start, sentence_end) positions
-        """
-        # Find sentence start (look backwards for sentence boundary)
-        sentence_start = 0
-        boundary_pattern = re.compile(r'[.!?]\s+[A-Z]')
-
-        text_before = text[:position]
-        boundaries_before = list(boundary_pattern.finditer(text_before))
-        if boundaries_before:
-            last_boundary = boundaries_before[-1]
-            sentence_start = last_boundary.end() - 1
-
-        # Find sentence end
-        sentence_end = len(text)
-        text_after = text[position:]
-        boundary_match = boundary_pattern.search(text_after)
-        if boundary_match:
-            sentence_end = position + boundary_match.start() + 1
-
-        return (sentence_start, sentence_end)
 
     def _make_result(
         self,

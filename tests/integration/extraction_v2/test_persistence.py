@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
@@ -27,7 +27,6 @@ from src.extraction_v2.models import (
     MetricFact,
     PeriodType,
     ReviewStatus,
-    Scope,
     SectionType,
     Segment,
     SegmentType,
@@ -37,9 +36,8 @@ from src.extraction_v2.models import (
     Unit,
 )
 from src.extraction_v2.persistence import PersistenceResult, V2PersistenceAdapter
-from src.extraction_v2.pipeline import PipelineResult, StageResult, PipelineStage
+from src.extraction_v2.pipeline import PipelineResult, PipelineStage, StageResult
 from src.infra.db import DatabaseAdapter
-
 
 # Skip all tests if no database connection
 pytestmark = pytest.mark.integration
@@ -83,7 +81,8 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
             company_id = result["company_id"]
 
             # Then create a test filing
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO filings (
                     company_id, cik, accession_number, form_type, filing_date, sec_html_url
                 )
@@ -94,7 +93,9 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
                 ON CONFLICT (company_id, accession_number) DO UPDATE SET
                     form_type = EXCLUDED.form_type
                 RETURNING filing_id
-            """, {"company_id": company_id})
+            """,
+                {"company_id": company_id},
+            )
             result = cur.fetchone()
             return result["filing_id"]
 
@@ -102,36 +103,25 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
 @pytest.fixture(autouse=True)
 def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
     """Clean up V2 tables before and after each test."""
+
     def _cleanup():
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
+                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute(
-                    "DELETE FROM v2_metric_facts WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute(
-                    "DELETE FROM v2_image_assets WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute("""
+                    """
                     DELETE FROM v2_table_cells
                     WHERE table_id IN (
                         SELECT table_id FROM v2_tables WHERE doc_id = %s
                     )
-                """, (test_filing_id,))
-                cur.execute(
-                    "DELETE FROM v2_tables WHERE doc_id = %s",
-                    (test_filing_id,)
+                """,
+                    (test_filing_id,),
                 )
-                cur.execute(
-                    "DELETE FROM v2_segments WHERE doc_id = %s",
-                    (test_filing_id,)
-                )
-                cur.execute(
-                    "DELETE FROM v2_documents WHERE filing_id = %s",
-                    (test_filing_id,)
-                )
+                cur.execute("DELETE FROM v2_tables WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
     yield
@@ -201,7 +191,7 @@ class TestDocumentPersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT segment_count, fact_count FROM v2_documents WHERE filing_id = %s",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 result = cur.fetchone()
                 assert result["segment_count"] == 20
@@ -231,7 +221,7 @@ class TestDocumentPersistence:
                 cur.execute(
                     """SELECT segment_count, table_count, image_count, fact_count, status
                        FROM v2_documents WHERE filing_id = %s""",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 result = cur.fetchone()
                 assert result["segment_count"] == 100
@@ -271,8 +261,7 @@ class TestSegmentPersistence:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s",
-                    (test_filing_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s", (test_filing_id,)
                 )
                 result = cur.fetchone()
                 assert result["cnt"] == 5
@@ -311,7 +300,7 @@ class TestSegmentPersistence:
                     """SELECT segment_text, sequence_idx
                        FROM v2_segments WHERE doc_id = %s
                        ORDER BY sequence_idx""",
-                    (test_filing_id,)
+                    (test_filing_id,),
                 )
                 results = cur.fetchall()
                 assert results[0]["sequence_idx"] == 0
@@ -356,7 +345,7 @@ class TestTablePersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_table_cells WHERE table_id = %s",
-                    (table.table_id,)
+                    (table.table_id,),
                 )
                 result = cur.fetchone()
                 assert result["cnt"] == 6
@@ -374,7 +363,9 @@ class TestTablePersistence:
             col_count=2,
             cells=[
                 Cell(
-                    row=1, col=1, text="100",
+                    row=1,
+                    col=1,
+                    text="100",
                     header_path=["Revenue", "2024"],
                     stub_path=["Q1"],
                 ),
@@ -389,7 +380,7 @@ class TestTablePersistence:
                     """SELECT header_path, stub_path
                        FROM v2_table_cells
                        WHERE table_id = %s AND row_idx = 1 AND col_idx = 1""",
-                    (table.table_id,)
+                    (table.table_id,),
                 )
                 result = cur.fetchone()
                 assert result["header_path"] == ["Revenue", "2024"]
@@ -474,7 +465,7 @@ class TestFactPersistence:
                 cur.execute(
                     """SELECT source_locator, evidence_pack, confidence, review_status
                        FROM v2_metric_facts WHERE fact_id = %s""",
-                    (fact.fact_id,)
+                    (fact.fact_id,),
                 )
                 result = cur.fetchone()
                 assert result["source_locator"]["cell_row"] == 5
@@ -515,14 +506,12 @@ class TestFactPersistence:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE fact_id = %s",
-                    (fact_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE fact_id = %s", (fact_id,)
                 )
                 assert cur.fetchone()["cnt"] == 1
 
                 cur.execute(
-                    "SELECT confidence, value FROM v2_metric_facts WHERE fact_id = %s",
-                    (fact_id,)
+                    "SELECT confidence, value FROM v2_metric_facts WHERE fact_id = %s", (fact_id,)
                 )
                 result = cur.fetchone()
                 assert float(result["confidence"]) == 0.90
@@ -570,7 +559,7 @@ class TestFactPersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT source_locator, evidence_pack FROM v2_metric_facts WHERE fact_id = %s",
-                    (fact.fact_id,)
+                    (fact.fact_id,),
                 )
                 result = cur.fetchone()
 
@@ -654,7 +643,7 @@ class TestImagePersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT chart_data, chart_type FROM v2_image_assets WHERE img_id = %s",
-                    (image.img_id,)
+                    (image.img_id,),
                 )
                 result = cur.fetchone()
                 assert result["chart_type"] == "bar"
@@ -808,14 +797,13 @@ class TestPipelineResultPersistence:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_documents WHERE doc_id = %s",
-                    (doc.doc_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_documents WHERE doc_id = %s", (doc.doc_id,)
                 )
                 assert cur.fetchone()["cnt"] == 0
 
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_segments WHERE segment_id = %s",
-                    (segment.segment_id,)
+                    (segment.segment_id,),
                 )
                 assert cur.fetchone()["cnt"] == 0
 
@@ -837,19 +825,23 @@ class TestConcurrentExtraction:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 for i in range(2):
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO companies (cik, company_name, ticker)
                         VALUES (%(cik)s, %(name)s, %(ticker)s)
                         ON CONFLICT (cik) DO UPDATE SET company_name = EXCLUDED.company_name
                         RETURNING company_id
-                    """, {
-                        "cik": f"777777777{i}",
-                        "name": f"Concurrent Test Co {i}",
-                        "ticker": f"CT{i}",
-                    })
+                    """,
+                        {
+                            "cik": f"777777777{i}",
+                            "name": f"Concurrent Test Co {i}",
+                            "ticker": f"CT{i}",
+                        },
+                    )
                     company_id = cur.fetchone()["company_id"]
 
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO filings (
                             company_id, cik, accession_number, form_type,
                             filing_date, sec_html_url
@@ -860,12 +852,14 @@ class TestConcurrentExtraction:
                         ON CONFLICT (company_id, accession_number) DO UPDATE SET
                             form_type = EXCLUDED.form_type
                         RETURNING filing_id
-                    """, {
-                        "company_id": company_id,
-                        "cik": f"777777777{i}",
-                        "accession": f"777777777{i}-99-99999{i}",
-                        "url": f"https://www.sec.gov/test/concurrent_{i}.htm",
-                    })
+                    """,
+                        {
+                            "company_id": company_id,
+                            "cik": f"777777777{i}",
+                            "accession": f"777777777{i}-99-99999{i}",
+                            "url": f"https://www.sec.gov/test/concurrent_{i}.htm",
+                        },
+                    )
                     filing_ids.append(cur.fetchone()["filing_id"])
 
         def persist_for_filing(fid: int, idx: int) -> PersistenceResult:

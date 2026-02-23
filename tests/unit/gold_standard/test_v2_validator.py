@@ -11,10 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.extraction_v2.models import Document, MetricFact
-from src.extraction_v2.pipeline import PipelineConfig, PipelineResult
+from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineResult
 from src.gold_standard.baseline import BaselineMetrics, MetricScores
 from src.gold_standard.v2_validator import (
     AggregateMetrics,
+    FNDiagnostic,
+    FNRootCause,
     GoldStandardEntry,
     MatchResult,
     V2GoldStandardValidator,
@@ -22,7 +24,6 @@ from src.gold_standard.v2_validator import (
     normalize_metric_id,
     normalize_value,
 )
-
 
 # =============================================================================
 # Helpers
@@ -245,6 +246,23 @@ class TestNormalizeValue:
         """When raw_value already has M multiplier, scale_unit M should not double it."""
         assert normalize_value("10M", scale_unit="M") == 10_000_000.0
 
+    def test_scaled_value_skips_scale_unit_reapplication(self) -> None:
+        """When scaled_value differs from raw_value, scale was already applied in CSV."""
+        # Farfetch pattern: raw="796.3", scaled="796,300", scale_unit="thousands"
+        # scaled_value already incorporates the 1000x, so don't re-apply
+        result = normalize_value("796.3", scaled_value="796,300", scale_unit="THOUSANDS")
+        assert result == pytest.approx(796_300.0)
+
+    def test_scaled_value_same_as_raw_still_applies_scale(self) -> None:
+        """When scaled_value == raw_value, scale_unit should still be applied."""
+        result = normalize_value("100", scaled_value="100", scale_unit="THOUSANDS")
+        assert result == pytest.approx(100_000.0)
+
+    def test_scaled_value_different_with_millions(self) -> None:
+        """Scaled value different from raw with millions scale_unit → no re-application."""
+        result = normalize_value("1.5", scaled_value="1,500,000", scale_unit="MILLIONS")
+        assert result == pytest.approx(1_500_000.0)
+
     def test_empty_value_raises(self) -> None:
         with pytest.raises(ValueError, match="No value to normalize"):
             normalize_value("")
@@ -320,25 +338,43 @@ class TestValidationResult:
 
     def test_precision(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=10,
-            matched=8, missed=2, extra=1,
-            true_positives=8, false_positives=1, false_negatives=2,
+            company_name="X",
+            filing_path="f",
+            total_expected=10,
+            matched=8,
+            missed=2,
+            extra=1,
+            true_positives=8,
+            false_positives=1,
+            false_negatives=2,
         )
         assert r.precision == pytest.approx(8 / 9)
 
     def test_recall(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=10,
-            matched=8, missed=2, extra=1,
-            true_positives=8, false_positives=1, false_negatives=2,
+            company_name="X",
+            filing_path="f",
+            total_expected=10,
+            matched=8,
+            missed=2,
+            extra=1,
+            true_positives=8,
+            false_positives=1,
+            false_negatives=2,
         )
         assert r.recall == pytest.approx(8 / 10)
 
     def test_f1_score(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=10,
-            matched=8, missed=2, extra=1,
-            true_positives=8, false_positives=1, false_negatives=2,
+            company_name="X",
+            filing_path="f",
+            total_expected=10,
+            matched=8,
+            missed=2,
+            extra=1,
+            true_positives=8,
+            false_positives=1,
+            false_negatives=2,
         )
         p = 8 / 9
         rec = 8 / 10
@@ -347,8 +383,12 @@ class TestValidationResult:
 
     def test_all_zeros_no_division_error(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=0,
-            matched=0, missed=0, extra=0,
+            company_name="X",
+            filing_path="f",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
         )
         assert r.precision == 0.0
         assert r.recall == 0.0
@@ -356,9 +396,15 @@ class TestValidationResult:
 
     def test_perfect_scores(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=5,
-            matched=5, missed=0, extra=0,
-            true_positives=5, false_positives=0, false_negatives=0,
+            company_name="X",
+            filing_path="f",
+            total_expected=5,
+            matched=5,
+            missed=0,
+            extra=0,
+            true_positives=5,
+            false_positives=0,
+            false_negatives=0,
         )
         assert r.precision == 1.0
         assert r.recall == 1.0
@@ -366,9 +412,15 @@ class TestValidationResult:
 
     def test_partial_match(self) -> None:
         r = ValidationResult(
-            company_name="X", filing_path="f", total_expected=4,
-            matched=2, missed=2, extra=3,
-            true_positives=2, false_positives=3, false_negatives=2,
+            company_name="X",
+            filing_path="f",
+            total_expected=4,
+            matched=2,
+            missed=2,
+            extra=3,
+            true_positives=2,
+            false_positives=3,
+            false_negatives=2,
         )
         assert r.precision == pytest.approx(2 / 5)
         assert r.recall == pytest.approx(2 / 4)
@@ -433,42 +485,32 @@ class TestFindMatchingFact:
             v.value_tolerance = 0.02
             return v
 
-    def test_matches_on_metric_and_value(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_matches_on_metric_and_value(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [make_fact(canonical_metric_id="cm_dau", value=1000.0)]
         result = validator._find_matching_fact(entry, facts, set())
         assert result is not None
         assert result.fact_id == "fact-1"
 
-    def test_rejects_metric_mismatch(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_rejects_metric_mismatch(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [make_fact(canonical_metric_id="cm_revenue", value=1000.0)]
         result = validator._find_matching_fact(entry, facts, set())
         assert result is None
 
-    def test_rejects_value_outside_tolerance(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_rejects_value_outside_tolerance(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [make_fact(canonical_metric_id="cm_dau", value=2000.0)]
         result = validator._find_matching_fact(entry, facts, set())
         assert result is None
 
-    def test_skips_already_matched(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_skips_already_matched(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [make_fact(fact_id="used", canonical_metric_id="cm_dau", value=1000.0)]
         result = validator._find_matching_fact(entry, facts, {"used"})
         assert result is None
 
-    def test_period_overlap_matches(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_period_overlap_matches(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(
             metric_id="cm_dau",
             raw_value="1000",
@@ -486,9 +528,7 @@ class TestFindMatchingFact:
         result = validator._find_matching_fact(entry, facts, set())
         assert result is not None
 
-    def test_period_non_overlapping_rejected(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_period_non_overlapping_rejected(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(
             metric_id="cm_dau",
             raw_value="1000",
@@ -534,16 +574,12 @@ class TestFindMatchingFact:
         result = validator._find_matching_fact(entry, facts, set())
         assert result is not None
 
-    def test_returns_none_when_no_match(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_returns_none_when_no_match(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         result = validator._find_matching_fact(entry, [], set())
         assert result is None
 
-    def test_first_match_wins(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_first_match_wins(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [
             make_fact(fact_id="first", canonical_metric_id="cm_dau", value=1000.0),
@@ -553,9 +589,7 @@ class TestFindMatchingFact:
         assert result is not None
         assert result.fact_id == "first"
 
-    def test_skips_fact_with_none_value(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_skips_fact_with_none_value(self, validator: V2GoldStandardValidator) -> None:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         facts = [make_fact(canonical_metric_id="cm_dau", value=None)]
         result = validator._find_matching_fact(entry, facts, set())
@@ -822,6 +856,7 @@ class TestValidateFiling:
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             v.value_tolerance = 0.02
             v.min_confidence = 0.50
+            v.fn_diagnostics = False
             v.v2_pipeline = MagicMock()
             return v
 
@@ -883,9 +918,7 @@ class TestValidateFiling:
         assert result.false_negatives == 1
         assert result.missed == 1
 
-    def test_definition_only_entries_skipped(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_definition_only_entries_skipped(self, validator: V2GoldStandardValidator) -> None:
         entries = [
             make_entry(metric_id="cm_dau", raw_value="1000"),
             make_entry(metric_id="cm_definition", raw_value="100", is_definition_only=True),
@@ -955,19 +988,29 @@ class TestComputeMetrics:
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             return v
 
-    def test_aggregates_across_filings(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_aggregates_across_filings(self, validator: V2GoldStandardValidator) -> None:
         results = [
             ValidationResult(
-                company_name="A", filing_path="a.html", total_expected=5,
-                matched=3, missed=2, extra=1,
-                true_positives=3, false_positives=1, false_negatives=2,
+                company_name="A",
+                filing_path="a.html",
+                total_expected=5,
+                matched=3,
+                missed=2,
+                extra=1,
+                true_positives=3,
+                false_positives=1,
+                false_negatives=2,
             ),
             ValidationResult(
-                company_name="B", filing_path="b.html", total_expected=4,
-                matched=4, missed=0, extra=0,
-                true_positives=4, false_positives=0, false_negatives=0,
+                company_name="B",
+                filing_path="b.html",
+                total_expected=4,
+                matched=4,
+                missed=0,
+                extra=0,
+                true_positives=4,
+                false_positives=0,
+                false_negatives=0,
             ),
         ]
 
@@ -979,19 +1022,29 @@ class TestComputeMetrics:
         assert metrics.precision == pytest.approx(7 / 8)
         assert metrics.recall == pytest.approx(7 / 9)
 
-    def test_per_company_breakdown(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_per_company_breakdown(self, validator: V2GoldStandardValidator) -> None:
         results = [
             ValidationResult(
-                company_name="A", filing_path="a.html", total_expected=5,
-                matched=5, missed=0, extra=0,
-                true_positives=5, false_positives=0, false_negatives=0,
+                company_name="A",
+                filing_path="a.html",
+                total_expected=5,
+                matched=5,
+                missed=0,
+                extra=0,
+                true_positives=5,
+                false_positives=0,
+                false_negatives=0,
             ),
             ValidationResult(
-                company_name="B", filing_path="b.html", total_expected=4,
-                matched=2, missed=2, extra=1,
-                true_positives=2, false_positives=1, false_negatives=2,
+                company_name="B",
+                filing_path="b.html",
+                total_expected=4,
+                matched=2,
+                missed=2,
+                extra=1,
+                true_positives=2,
+                false_positives=1,
+                false_negatives=2,
             ),
         ]
 
@@ -1013,9 +1066,15 @@ class TestComputeMetrics:
     def test_single_filing(self, validator: V2GoldStandardValidator) -> None:
         results = [
             ValidationResult(
-                company_name="X", filing_path="x.html", total_expected=10,
-                matched=8, missed=2, extra=1,
-                true_positives=8, false_positives=1, false_negatives=2,
+                company_name="X",
+                filing_path="x.html",
+                total_expected=10,
+                matched=8,
+                missed=2,
+                extra=1,
+                true_positives=8,
+                false_positives=1,
+                false_negatives=2,
             ),
         ]
 
@@ -1027,9 +1086,15 @@ class TestComputeMetrics:
     def test_f1_calculation(self, validator: V2GoldStandardValidator) -> None:
         results = [
             ValidationResult(
-                company_name="X", filing_path="x.html", total_expected=10,
-                matched=6, missed=4, extra=2,
-                true_positives=6, false_positives=2, false_negatives=4,
+                company_name="X",
+                filing_path="x.html",
+                total_expected=10,
+                matched=6,
+                missed=4,
+                extra=2,
+                true_positives=6,
+                false_positives=2,
+                false_negatives=4,
             ),
         ]
 
@@ -1068,16 +1133,24 @@ class TestAggregateMetricsToBaseline:
 
     def test_default_description(self) -> None:
         agg = AggregateMetrics(
-            precision=0.5, recall=0.5, f1=0.5,
-            total_true_positives=1, total_false_positives=1, total_false_negatives=1,
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
         )
         baseline = agg.to_baseline_metrics()
         assert baseline.description == "V2 pipeline validation"
 
     def test_custom_description(self) -> None:
         agg = AggregateMetrics(
-            precision=0.5, recall=0.5, f1=0.5,
-            total_true_positives=1, total_false_positives=1, total_false_negatives=1,
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
         )
         baseline = agg.to_baseline_metrics(description="Custom description")
         assert baseline.description == "Custom description"
@@ -1092,9 +1165,7 @@ class TestFindFilingPath:
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             return v
 
-    def test_finds_filing_in_normalized_dir(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_finds_filing_in_normalized_dir(self, validator: V2GoldStandardValidator) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             gs_dir = Path(tmpdir)
             filing_dir = gs_dir / "Acme_Corp"
@@ -1108,9 +1179,7 @@ class TestFindFilingPath:
             assert result is not None
             assert result.name == "filing.html"
 
-    def test_finds_filing_case_insensitive(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_finds_filing_case_insensitive(self, validator: V2GoldStandardValidator) -> None:
         """The iterdir fallback checks company_name.lower() in subdir.name.lower()."""
         with tempfile.TemporaryDirectory() as tmpdir:
             gs_dir = Path(tmpdir)
@@ -1125,9 +1194,7 @@ class TestFindFilingPath:
 
             assert result is not None
 
-    def test_returns_none_when_not_found(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_returns_none_when_not_found(self, validator: V2GoldStandardValidator) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             gs_dir = Path(tmpdir)
             with patch("src.gold_standard.v2_validator.GOLD_STANDARD_DIR", gs_dir):
@@ -1135,9 +1202,7 @@ class TestFindFilingPath:
 
             assert result is None
 
-    def test_handles_company_with_comma(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_handles_company_with_comma(self, validator: V2GoldStandardValidator) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             gs_dir = Path(tmpdir)
             filing_dir = gs_dir / "Acme_Corp_Inc."
@@ -1151,9 +1216,7 @@ class TestFindFilingPath:
             # The code does .replace(" ", "_").replace(",", "") -> "Acme_Corp_Inc."
             assert result is not None
 
-    def test_handles_exact_company_name_dir(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_handles_exact_company_name_dir(self, validator: V2GoldStandardValidator) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             gs_dir = Path(tmpdir)
             filing_dir = gs_dir / "Acme Corp"
@@ -1176,12 +1239,14 @@ class TestCompareToBaseline:
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             return v
 
-    def test_delegates_to_baseline_module(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_delegates_to_baseline_module(self, validator: V2GoldStandardValidator) -> None:
         metrics = AggregateMetrics(
-            precision=0.85, recall=0.90, f1=0.87,
-            total_true_positives=17, total_false_positives=3, total_false_negatives=2,
+            precision=0.85,
+            recall=0.90,
+            f1=0.87,
+            total_true_positives=17,
+            total_false_positives=3,
+            total_false_negatives=2,
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             baseline_path = Path(tmpdir) / "baseline.json"
@@ -1207,18 +1272,24 @@ class TestCompareToBaseline:
         self, validator: V2GoldStandardValidator
     ) -> None:
         metrics = AggregateMetrics(
-            precision=0.5, recall=0.5, f1=0.5,
-            total_true_positives=1, total_false_positives=1, total_false_negatives=1,
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
         )
         with pytest.raises(FileNotFoundError):
             validator.compare_to_baseline(metrics, "/nonexistent/baseline.json")
 
-    def test_tolerance_passed_through(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_tolerance_passed_through(self, validator: V2GoldStandardValidator) -> None:
         metrics = AggregateMetrics(
-            precision=0.79, recall=0.84, f1=0.81,
-            total_true_positives=16, total_false_positives=4, total_false_negatives=3,
+            precision=0.79,
+            recall=0.84,
+            f1=0.81,
+            total_true_positives=16,
+            total_false_positives=4,
+            total_false_negatives=3,
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             baseline_path = Path(tmpdir) / "baseline.json"
@@ -1251,8 +1322,12 @@ class TestSaveBaseline:
 
     def test_saves_baseline_json(self, validator: V2GoldStandardValidator) -> None:
         metrics = AggregateMetrics(
-            precision=0.85, recall=0.90, f1=0.87,
-            total_true_positives=17, total_false_positives=3, total_false_negatives=2,
+            precision=0.85,
+            recall=0.90,
+            f1=0.87,
+            total_true_positives=17,
+            total_false_positives=3,
+            total_false_negatives=2,
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             baseline_path = Path(tmpdir) / "baseline.json"
@@ -1264,18 +1339,18 @@ class TestSaveBaseline:
             loaded = load_baseline(baseline_path)
             assert loaded.overall.precision == 0.85
 
-    def test_custom_description_included(
-        self, validator: V2GoldStandardValidator
-    ) -> None:
+    def test_custom_description_included(self, validator: V2GoldStandardValidator) -> None:
         metrics = AggregateMetrics(
-            precision=0.5, recall=0.5, f1=0.5,
-            total_true_positives=1, total_false_positives=1, total_false_negatives=1,
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             baseline_path = Path(tmpdir) / "baseline.json"
-            validator.save_baseline(
-                metrics, baseline_path, description="My custom baseline"
-            )
+            validator.save_baseline(metrics, baseline_path, description="My custom baseline")
 
             from src.gold_standard.baseline import load_baseline
 
@@ -1294,8 +1369,12 @@ class TestRunValidation:
         mock_results = [MagicMock()]
         mock_instance.validate_all.return_value = mock_results
         mock_instance.compute_metrics.return_value = AggregateMetrics(
-            precision=0.85, recall=0.90, f1=0.87,
-            total_true_positives=17, total_false_positives=3, total_false_negatives=2,
+            precision=0.85,
+            recall=0.90,
+            f1=0.87,
+            total_true_positives=17,
+            total_false_positives=3,
+            total_false_negatives=2,
         )
 
         from src.gold_standard.v2_validator import run_validation
@@ -1315,8 +1394,12 @@ class TestRunValidation:
         mock_instance = mock_validator_cls.return_value
         mock_instance.validate_all.return_value = []
         mock_metrics = AggregateMetrics(
-            precision=0.5, recall=0.5, f1=0.5,
-            total_true_positives=1, total_false_positives=1, total_false_negatives=1,
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
         )
         mock_instance.compute_metrics.return_value = mock_metrics
 
@@ -1324,9 +1407,7 @@ class TestRunValidation:
 
         run_validation(update_baseline=True, baseline_description="Test save")
 
-        mock_instance.save_baseline.assert_called_once_with(
-            mock_metrics, description="Test save"
-        )
+        mock_instance.save_baseline.assert_called_once_with(mock_metrics, description="Test save")
 
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
     def test_prints_results_to_stdout(
@@ -1335,8 +1416,12 @@ class TestRunValidation:
         mock_instance = mock_validator_cls.return_value
         mock_instance.validate_all.return_value = []
         mock_instance.compute_metrics.return_value = AggregateMetrics(
-            precision=0.75, recall=0.60, f1=0.67,
-            total_true_positives=9, total_false_positives=3, total_false_negatives=6,
+            precision=0.75,
+            recall=0.60,
+            f1=0.67,
+            total_true_positives=9,
+            total_false_positives=3,
+            total_false_negatives=6,
         )
 
         from src.gold_standard.v2_validator import run_validation
@@ -1348,6 +1433,176 @@ class TestRunValidation:
         assert "Precision: 75.0%" in captured.out
         assert "Recall: 60.0%" in captured.out
         assert "TP: 9" in captured.out
+
+
+class TestDeduplicateEntries:
+    """Tests for V2GoldStandardValidator._deduplicate_entries()."""
+
+    def test_removes_duplicate_metric_value_pairs(self) -> None:
+        """3 entries with same (metric, value) → 1 entry."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 1
+        assert result[0].metric_id == "cm_dau"
+
+    def test_preserves_different_values(self) -> None:
+        """Entries with same metric but different values are kept."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="2000"),
+            make_entry(metric_id="cm_dau", raw_value="3000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 3
+
+    def test_preserves_different_metrics(self) -> None:
+        """Entries with different metrics but same value are kept."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_mau", raw_value="1000"),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_definition_only_never_deduped(self) -> None:
+        """Definition-only entries are always preserved, even if duplicated."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000", is_definition_only=True),
+            make_entry(metric_id="cm_dau", raw_value="1000", is_definition_only=True),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_none_normalized_value_preserved(self) -> None:
+        """Entries with unparseable values (normalized_value=None) are preserved."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="some text"),
+            make_entry(metric_id="cm_dau", raw_value="some text"),
+        ]
+        # Both have normalized_value=None, so both should be preserved
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        assert len(result) == 2
+
+    def test_mixed_dedup_and_unique(self) -> None:
+        """Mix of duplicates, uniques, and definition-only entries."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),  # dup
+            make_entry(metric_id="cm_dau", raw_value="2000"),  # diff value
+            make_entry(metric_id="cm_mau", raw_value="5000"),  # diff metric
+            make_entry(metric_id="cm_dau", raw_value="100", is_definition_only=True),
+        ]
+        result = V2GoldStandardValidator._deduplicate_entries(entries)
+        # 1 (dau 1000) + 1 (dau 2000) + 1 (mau 5000) + 1 (definition) = 4
+        assert len(result) == 4
+
+    def test_empty_input(self) -> None:
+        result = V2GoldStandardValidator._deduplicate_entries([])
+        assert result == []
+
+    def test_keeps_first_occurrence(self) -> None:
+        """Verifies the first occurrence is the one kept."""
+        e1 = make_entry(metric_id="cm_dau", raw_value="1000", period="Q1")
+        e2 = make_entry(metric_id="cm_dau", raw_value="1000", period="Q2")
+        result = V2GoldStandardValidator._deduplicate_entries([e1, e2])
+        assert len(result) == 1
+        assert result[0].period == "Q1"
+
+
+class TestDuplicateEntrySkip:
+    """Tests for implicit duplicate-skip logic in validate_filing().
+
+    When a gold standard entry can't find an unmatched fact but a matching
+    fact was already claimed by a prior entry with the same metric+value,
+    the entry is skipped (not counted as FN) and total_expected is reduced.
+    """
+
+    @pytest.fixture()
+    def validator(self) -> V2GoldStandardValidator:
+        with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
+            v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
+            v.value_tolerance = 0.02
+            v.min_confidence = 0.50
+            v.fn_diagnostics = False
+            v.v2_pipeline = MagicMock()
+            return v
+
+    def test_duplicate_entries_skipped_not_fn(self, validator: V2GoldStandardValidator) -> None:
+        """3 identical entries, 1 fact → 1 TP, 2 skipped, 0 FN."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 1
+        assert result.false_negatives == 0
+        assert result.total_expected == 1  # 3 - 2 skipped
+        assert result.recall == 1.0
+        skipped = [m for m in result.match_results if m.match_type == "skipped"]
+        assert len(skipped) == 2
+
+    def test_different_values_not_skipped(self, validator: V2GoldStandardValidator) -> None:
+        """Entries with different values are not treated as duplicates."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="2000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 1
+        assert result.false_negatives == 1  # 2000 not found
+        assert result.total_expected == 2
+
+    def test_entries_matching_different_facts_both_tp(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        """2 identical entries, 2 identical facts → 2 TP, 0 skipped."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_dau", value=1000.0),
+            make_fact(fact_id="f2", canonical_metric_id="cm_dau", value=1000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 2
+        assert result.false_negatives == 0
+        assert result.total_expected == 2
+
+    def test_no_matching_fact_at_all_is_fn(self, validator: V2GoldStandardValidator) -> None:
+        """Entry with no matching fact (even ignoring matched set) is FN."""
+        entries = [
+            make_entry(metric_id="cm_dau", raw_value="1000"),
+        ]
+        facts = [
+            make_fact(fact_id="f1", canonical_metric_id="cm_mau", value=5000.0),
+        ]
+        validator.v2_pipeline.process.return_value = make_pipeline_result(facts=facts)
+
+        result = validator.validate_filing("TestCo", Path("f.html"), entries)
+
+        assert result.true_positives == 0
+        assert result.false_negatives == 1
 
 
 class TestMatchResult:
@@ -1364,8 +1619,10 @@ class TestMatchResult:
     def test_false_negative(self) -> None:
         entry = make_entry()
         mr = MatchResult(
-            entry=entry, matched_fact=None,
-            match_type="false_negative", reason="No matching fact found",
+            entry=entry,
+            matched_fact=None,
+            match_type="false_negative",
+            reason="No matching fact found",
         )
         assert mr.matched_fact is None
         assert mr.reason == "No matching fact found"
@@ -1373,7 +1630,359 @@ class TestMatchResult:
     def test_skipped(self) -> None:
         entry = make_entry(is_definition_only=True)
         mr = MatchResult(
-            entry=entry, matched_fact=None,
-            match_type="skipped", reason="Definition-only entry",
+            entry=entry,
+            matched_fact=None,
+            match_type="skipped",
+            reason="Definition-only entry",
         )
         assert mr.match_type == "skipped"
+
+
+# =============================================================================
+# FN Diagnostics Tests
+# =============================================================================
+
+
+def make_context(
+    *,
+    candidates: list | None = None,
+    bound_values: list | None = None,
+    pre_filter_bound_values: list | None = None,
+    facts: list[MetricFact] | None = None,
+    deduplicated_facts: list[MetricFact] | None = None,
+) -> PipelineContext:
+    """Build a minimal PipelineContext for FN diagnostic testing."""
+    config = PipelineConfig(retain_context=True)
+    ctx = PipelineContext(
+        html_path=Path("/tmp/filing.html"),
+        filing_id=0,
+        config=config,
+    )
+    ctx.candidates = candidates or []
+    ctx.bound_values = bound_values or []
+    ctx._pre_filter_bound_values = pre_filter_bound_values or []
+    ctx.facts = facts or []
+    ctx.deduplicated_facts = deduplicated_facts or []
+    return ctx
+
+
+def make_candidate(metric_id: str = "cm_dau", candidate_id: str = "cand-1") -> MagicMock:
+    """Build a mock candidate with required attributes."""
+    c = MagicMock()
+    c.metric_id = metric_id
+    c.candidate_id = candidate_id
+    return c
+
+
+def make_bound_value(candidate_id: str = "cand-1", bv_id: str = "bv-1") -> MagicMock:
+    """Build a mock BoundValue with required attributes."""
+    bv = MagicMock()
+    bv.candidate_id = candidate_id
+    bv.bound_value_id = bv_id
+    return bv
+
+
+class TestFNRootCause:
+    """Tests for FNRootCause dataclass."""
+
+    def test_creation(self) -> None:
+        rc = FNRootCause(
+            category="no_candidate",
+            detail="No candidates generated",
+            stage="candidate_generation",
+        )
+        assert rc.category == "no_candidate"
+        assert rc.stage == "candidate_generation"
+
+
+class TestFNDiagnostic:
+    """Tests for FNDiagnostic dataclass."""
+
+    def test_creation(self) -> None:
+        entry = make_entry()
+        rc = FNRootCause(category="no_candidate", detail="x", stage="candidate_generation")
+        diag = FNDiagnostic(entry=entry, company_name="TestCo", root_cause=rc)
+        assert diag.company_name == "TestCo"
+        assert diag.candidate_count == 0
+        assert diag.bound_value_count == 0
+        assert diag.closest_fact_value is None
+
+    def test_with_counts(self) -> None:
+        entry = make_entry()
+        rc = FNRootCause(category="fp_filtered", detail="removed", stage="false_positive_filter")
+        diag = FNDiagnostic(
+            entry=entry,
+            company_name="Co",
+            root_cause=rc,
+            candidate_count=3,
+            bound_value_count=2,
+        )
+        assert diag.candidate_count == 3
+        assert diag.bound_value_count == 2
+
+
+class TestDiagnosefalseNegative:
+    """Tests for V2GoldStandardValidator._diagnose_false_negative()."""
+
+    def _validator(self) -> V2GoldStandardValidator:
+        return V2GoldStandardValidator(
+            gold_standard_path="/dev/null",
+            fn_diagnostics=True,
+        )
+
+    def test_no_candidate(self) -> None:
+        """No candidates for metric → no_candidate."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        ctx = make_context(candidates=[])
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
+        assert diag.root_cause.category == "no_candidate"
+        assert diag.candidate_count == 0
+
+    def test_no_value_binding(self) -> None:
+        """Candidate exists but no bound values → no_value_binding."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[],  # No bindings at all
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
+        assert diag.root_cause.category == "no_value_binding"
+        assert diag.candidate_count == 1
+        assert diag.bound_value_count == 0
+
+    def test_fp_filtered(self) -> None:
+        """Pre-filter had binding, post-filter removed it → fp_filtered."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],  # Had binding
+            bound_values=[],  # But filtered out
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
+        assert diag.root_cause.category == "fp_filtered"
+        assert diag.candidate_count == 1
+        assert diag.bound_value_count == 1
+
+    def test_low_confidence(self) -> None:
+        """Fact exists but below confidence threshold → low_confidence."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        # Fact exists but with low confidence (below 0.50 default)
+        low_conf_fact = MetricFact(
+            fact_id="fact-low",
+            canonical_metric_id="cm_dau",
+            value=1000.0,
+            confidence=0.30,
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[low_conf_fact],
+            deduplicated_facts=[low_conf_fact],
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [low_conf_fact])
+        assert diag.root_cause.category == "low_confidence"
+        assert diag.closest_fact_confidence == 0.30
+
+    def test_wrong_period(self) -> None:
+        """Fact value matches but period check failed → wrong_period."""
+        from datetime import date as date_cls
+
+        validator = self._validator()
+        # Entry expects Q4 2022
+        entry = make_entry(
+            metric_id="cm_dau",
+            raw_value="1000",
+            period_start=date_cls(2022, 10, 1),
+            period_end=date_cls(2022, 12, 31),
+        )
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        # Fact has same value but Q4 2020 period — no overlap
+        wrong_period_fact = MetricFact(
+            fact_id="fact-wp",
+            canonical_metric_id="cm_dau",
+            value=1000.0,
+            confidence=0.95,
+            period_start=date_cls(2020, 10, 1),
+            period_end=date_cls(2020, 12, 31),
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[wrong_period_fact],
+            deduplicated_facts=[wrong_period_fact],
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [wrong_period_fact])
+        assert diag.root_cause.category == "wrong_period"
+
+    def test_wrong_value(self) -> None:
+        """Fact exists for metric but value doesn't match → wrong_value."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        # Fact has very different value
+        wrong_value_fact = MetricFact(
+            fact_id="fact-wv",
+            canonical_metric_id="cm_dau",
+            value=9999.0,  # Way off from expected 1000
+            confidence=0.95,
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[wrong_value_fact],
+            deduplicated_facts=[wrong_value_fact],
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [wrong_value_fact])
+        assert diag.root_cause.category == "wrong_value"
+        assert diag.closest_fact_value == 9999.0
+
+    def test_dedup_removed(self) -> None:
+        """Fact in context.facts but not deduplicated_facts → dedup_removed."""
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        pre_dedup_fact = MetricFact(
+            fact_id="fact-dedup",
+            canonical_metric_id="cm_dau",
+            value=1000.0,
+            confidence=0.95,
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[pre_dedup_fact],  # In pre-dedup facts
+            deduplicated_facts=[],  # But removed after dedup
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
+        assert diag.root_cause.category == "dedup_removed"
+
+    def test_retain_context_false_no_context(self) -> None:
+        """With retain_context=False, PipelineResult.context is None."""
+        from src.extraction_v2.models import Document
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[],
+            total_duration_ms=100,
+            success=True,
+            context=None,
+        )
+        assert result.context is None
+
+
+class TestPrintFNDiagnostics:
+    """Tests for V2GoldStandardValidator.print_fn_diagnostics()."""
+
+    def test_empty_diagnostics(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """No FN diagnostics → prints 'No FN diagnostics' message."""
+        result = ValidationResult(
+            company_name="TestCo",
+            filing_path="/tmp/test.html",
+            total_expected=5,
+            matched=5,
+            missed=0,
+            extra=0,
+        )
+        V2GoldStandardValidator.print_fn_diagnostics([result])
+        captured = capsys.readouterr()
+        assert "No FN diagnostics available" in captured.out
+
+    def test_with_diagnostics(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """FN diagnostics present → report is printed."""
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        rc = FNRootCause(category="no_candidate", detail="missing", stage="candidate_generation")
+        diag = FNDiagnostic(entry=entry, company_name="TestCo", root_cause=rc)
+
+        result = ValidationResult(
+            company_name="TestCo",
+            filing_path="/tmp/test.html",
+            total_expected=5,
+            matched=4,
+            missed=1,
+            extra=0,
+            fn_diagnostics=[diag],
+        )
+        V2GoldStandardValidator.print_fn_diagnostics([result])
+        captured = capsys.readouterr()
+        assert "FALSE NEGATIVE ROOT CAUSE ANALYSIS" in captured.out
+        assert "no_candidate" in captured.out.lower()
+        assert "cm_dau" in captured.out
+
+    def test_summary_shows_totals(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Summary section shows correct counts."""
+        entry1 = make_entry(metric_id="cm_dau", raw_value="1000")
+        entry2 = make_entry(metric_id="cm_arr", raw_value="5000")
+        diag1 = FNDiagnostic(
+            entry=entry1,
+            company_name="Co1",
+            root_cause=FNRootCause(category="no_candidate", detail="x", stage="candidate_generation"),
+        )
+        diag2 = FNDiagnostic(
+            entry=entry2,
+            company_name="Co1",
+            root_cause=FNRootCause(category="fp_filtered", detail="y", stage="false_positive_filter"),
+        )
+        result = ValidationResult(
+            company_name="Co1",
+            filing_path="/tmp/test.html",
+            total_expected=10,
+            matched=8,
+            missed=2,
+            extra=0,
+            fn_diagnostics=[diag1, diag2],
+        )
+        V2GoldStandardValidator.print_fn_diagnostics([result])
+        captured = capsys.readouterr()
+        assert "TOTAL" in captured.out
+        assert "SUMMARY" in captured.out
+
+
+class TestValidatorFNDiagnosticsFlag:
+    """Tests that fn_diagnostics flag correctly sets retain_context."""
+
+    def test_fn_diagnostics_true_sets_retain_context(self) -> None:
+        validator = V2GoldStandardValidator(
+            gold_standard_path="/dev/null",
+            fn_diagnostics=True,
+        )
+        assert validator.fn_diagnostics is True
+        assert validator.v2_config.retain_context is True
+
+    def test_fn_diagnostics_false_does_not_set_retain_context(self) -> None:
+        validator = V2GoldStandardValidator(
+            gold_standard_path="/dev/null",
+            fn_diagnostics=False,
+        )
+        assert validator.fn_diagnostics is False
+        assert validator.v2_config.retain_context is False
+
+    def test_custom_config_retain_context_preserved(self) -> None:
+        """When fn_diagnostics=True, retain_context is set regardless of base config."""
+        base_config = PipelineConfig(retain_context=False, enable_image_extraction=False)
+        validator = V2GoldStandardValidator(
+            gold_standard_path="/dev/null",
+            v2_config=base_config,
+            fn_diagnostics=True,
+        )
+        assert validator.v2_config.retain_context is True
+        # Other config values preserved
+        assert validator.v2_config.enable_image_extraction is False

@@ -74,7 +74,9 @@ class TestSegmentValidator:
 
     def test_validate_segment_valid(self):
         """Test valid segment passes validation."""
-        segment = SourceSegment(filing_id=123, sequence_index=0, segment_type="paragraph", raw_text="Test content")
+        segment = SourceSegment(
+            filing_id=123, sequence_index=0, segment_type="paragraph", raw_text="Test content"
+        )
 
         SegmentValidator.validate_segment(segment)
         # Should not raise
@@ -86,7 +88,9 @@ class TestSegmentValidator:
 
     def test_validate_segment_invalid_filing_id(self):
         """Test segment with invalid filing_id raises ValidationError."""
-        segment = SourceSegment(filing_id=0, sequence_index=0, segment_type="paragraph", raw_text="Test")
+        segment = SourceSegment(
+            filing_id=0, sequence_index=0, segment_type="paragraph", raw_text="Test"
+        )
 
         with pytest.raises(ValidationError, match="filing_id must be positive"):
             SegmentValidator.validate_segment(segment)
@@ -100,7 +104,9 @@ class TestSegmentValidator:
 
     def test_validate_segment_negative_sequence_index(self):
         """Test segment with negative sequence_index raises ValidationError."""
-        segment = SourceSegment(filing_id=123, sequence_index=-1, segment_type="paragraph", raw_text="Test content")
+        segment = SourceSegment(
+            filing_id=123, sequence_index=-1, segment_type="paragraph", raw_text="Test content"
+        )
 
         with pytest.raises(ValidationError, match="sequence_index must be >= 0"):
             SegmentValidator.validate_segment(segment)
@@ -196,14 +202,21 @@ class TestClassificationValidator:
 
     def test_validate_segment_for_classification_valid(self):
         """Test valid segment passes classification validation."""
-        segment = SourceSegment(filing_id=123, sequence_index=0, segment_type="paragraph", raw_text="We define DAU as...")
+        segment = SourceSegment(
+            filing_id=123,
+            sequence_index=0,
+            segment_type="paragraph",
+            raw_text="We define DAU as...",
+        )
 
         ClassificationValidator.validate_segment_for_classification(segment)
         # Should not raise
 
     def test_validate_segment_for_classification_missing_raw_text(self):
         """Test segment without raw_text raises ValidationError."""
-        segment = SourceSegment(filing_id=123, sequence_index=0, segment_type="paragraph", raw_text=None)
+        segment = SourceSegment(
+            filing_id=123, sequence_index=0, segment_type="paragraph", raw_text=None
+        )
 
         with pytest.raises(ValidationError, match="must have raw_text for classification"):
             ClassificationValidator.validate_segment_for_classification(segment)

@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 
 from src.extraction_v2.models import (
+    SectionType,
     Segment,
     SegmentType,
-    SectionType,
 )
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.table_reconstruction import TableReconstructionStage
@@ -295,9 +295,7 @@ class TestTableReconstructionStage:
         assert table.col_count == 2
         assert len(table.cells) > 0
 
-    def test_empty_table(
-        self, stage: TableReconstructionStage, context: PipelineContext
-    ) -> None:
+    def test_empty_table(self, stage: TableReconstructionStage, context: PipelineContext) -> None:
         """Test table with no rows."""
         table_html = "<table></table>"
 

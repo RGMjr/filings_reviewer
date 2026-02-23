@@ -15,13 +15,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.extraction_v2.models import (
-    BoundValue,
-    Cell,
     ChartData,
     ChartSeries,
     ChartType,
@@ -31,7 +29,6 @@ from src.extraction_v2.models import (
     MetricCandidate,
     SectionType,
     Segment,
-    SegmentType,
     SourceLocator,
     SourceType,
     Table,
@@ -42,7 +39,6 @@ from src.extraction_v2.stages.candidate_generation import CandidateGenerationSta
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
 from src.llm.vision_client import VisionResponse
-
 
 # =============================================================================
 # Shared Fixtures
@@ -186,9 +182,7 @@ class TestImageDownloading:
 
     def test_downloads_images_without_file_path(self, tmp_path: Path) -> None:
         """Images that passed triage but lack file_path get downloaded."""
-        mock_sec = MockSECClient(
-            image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"}
-        )
+        mock_sec = MockSECClient(image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"})
         stage = OCRExtractionStage(sec_client=mock_sec)
 
         context = MockPipelineContext(
@@ -409,21 +403,24 @@ class TestOCRTableFeeding:
         # Tables list should remain empty
         assert len(context.tables) == 0
 
-
     def test_code_fenced_json_response_parsed_correctly(self, tmp_path: Path) -> None:
         """GPT-4o often wraps JSON in markdown code fences — pipeline should handle it."""
-        fenced_content = '```json\n' + json.dumps(
-            {
-                "raw_text": "Year Revenue\n2023 $50M",
-                "confidence": 0.85,
-                "cells": [
-                    {"row": 0, "col": 0, "text": "Year", "is_header": True},
-                    {"row": 0, "col": 1, "text": "Revenue", "is_header": True},
-                    {"row": 1, "col": 0, "text": "2023", "is_header": False},
-                    {"row": 1, "col": 1, "text": "$50M", "is_header": False},
-                ],
-            }
-        ) + '\n```'
+        fenced_content = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "raw_text": "Year Revenue\n2023 $50M",
+                    "confidence": 0.85,
+                    "cells": [
+                        {"row": 0, "col": 0, "text": "Year", "is_header": True},
+                        {"row": 0, "col": 1, "text": "Revenue", "is_header": True},
+                        {"row": 1, "col": 0, "text": "2023", "is_header": False},
+                        {"row": 1, "col": 1, "text": "$50M", "is_header": False},
+                    ],
+                }
+            )
+            + "\n```"
+        )
         response = VisionResponse(
             content=fenced_content,
             model="gpt-4o-mock",
@@ -471,9 +468,7 @@ class TestChartScanning:
         s._ensure_initialized()
         return s
 
-    def test_scan_chart_finds_metric_in_title(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_scan_chart_finds_metric_in_title(self, stage: CandidateGenerationStage) -> None:
         """Chart title containing metric keyword produces candidates."""
         asset = _make_chart_asset(
             title="Annual Recurring Revenue Growth",
@@ -489,9 +484,7 @@ class TestChartScanning:
         # All should reference the correct img_id
         assert all(c.source_locator.img_id == asset.img_id for c in candidates)
 
-    def test_scan_chart_finds_metric_in_axis_label(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_scan_chart_finds_metric_in_axis_label(self, stage: CandidateGenerationStage) -> None:
         """Metric keyword in y-axis label produces candidates."""
         asset = _make_chart_asset(
             title="Growth Over Time",
@@ -506,9 +499,7 @@ class TestChartScanning:
             f"Expected ARR metric, got: {metric_ids}"
         )
 
-    def test_scan_chart_finds_metric_in_series_name(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_scan_chart_finds_metric_in_series_name(self, stage: CandidateGenerationStage) -> None:
         """Metric keyword in series name produces candidates."""
         asset = _make_chart_asset(
             title="Key Metrics",
@@ -525,9 +516,7 @@ class TestChartScanning:
             f"Expected retention metric, got: {metric_ids}"
         )
 
-    def test_scan_chart_empty_metadata(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_scan_chart_empty_metadata(self, stage: CandidateGenerationStage) -> None:
         """Chart with no title/labels/series produces no candidates."""
         asset = _make_chart_asset(
             title="",
@@ -540,9 +529,7 @@ class TestChartScanning:
 
         assert len(candidates) == 0
 
-    def test_scan_chart_no_chart_data(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_scan_chart_no_chart_data(self, stage: CandidateGenerationStage) -> None:
         """Asset without chart_data produces no candidates."""
         asset = ImageAsset(
             img_id="img-no-chart",
@@ -567,13 +554,10 @@ class TestChartScanning:
         if candidates:
             # Chart candidates should have at least base + structured bonus
             assert all(
-                c.confidence >= stage.BASE_CONFIDENCE + stage.TABLE_SOURCE_BONUS
-                for c in candidates
+                c.confidence >= stage.BASE_CONFIDENCE + stage.TABLE_SOURCE_BONUS for c in candidates
             ), f"Confidence too low: {[c.confidence for c in candidates]}"
 
-    def test_chart_candidates_in_pipeline_context(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_chart_candidates_in_pipeline_context(self, stage: CandidateGenerationStage) -> None:
         """Chart candidates are added to context.candidates during process()."""
         asset = _make_chart_asset(
             title="Annual Recurring Revenue by Cohort",
@@ -586,9 +570,7 @@ class TestChartScanning:
         result = stage.process(context)
 
         assert result.success
-        chart_candidates = [
-            c for c in context.candidates if c.source_type == SourceType.CHART
-        ]
+        chart_candidates = [c for c in context.candidates if c.source_type == SourceType.CHART]
         assert len(chart_candidates) >= 1
 
 
@@ -604,9 +586,7 @@ class TestChartValueBinding:
     def stage(self) -> ValueBindingStage:
         return ValueBindingStage()
 
-    def test_bind_chart_candidate_produces_bound_values(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_produces_bound_values(self, stage: ValueBindingStage) -> None:
         """Chart candidate with data points produces BoundValue per point."""
         asset = _make_chart_asset(
             series_data=[
@@ -637,9 +617,7 @@ class TestChartValueBinding:
         assert bound_values[1].value == 1400.0
         assert bound_values[2].value == 2100.0
 
-    def test_bind_chart_candidate_sets_unit_from_axis(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_sets_unit_from_axis(self, stage: ValueBindingStage) -> None:
         """Unit is inferred from y-axis label."""
         asset = _make_chart_asset(y_axis_label="Revenue ($M)")
 
@@ -654,9 +632,7 @@ class TestChartValueBinding:
 
         assert all(bv.unit == Unit.CURRENCY for bv in bound_values)
 
-    def test_bind_chart_candidate_binding_type(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_binding_type(self, stage: ValueBindingStage) -> None:
         """Bound values have binding_type='chart_label'."""
         asset = _make_chart_asset()
 
@@ -671,9 +647,7 @@ class TestChartValueBinding:
 
         assert all(bv.binding_type == "chart_label" for bv in bound_values)
 
-    def test_bind_chart_candidate_confidence_discount(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_confidence_discount(self, stage: ValueBindingStage) -> None:
         """Chart binding confidence is discounted by 0.9x from asset confidence."""
         asset = _make_chart_asset(confidence=0.85)
 
@@ -687,14 +661,9 @@ class TestChartValueBinding:
         bound_values = stage._bind_chart_candidate(candidate, [asset])
 
         expected_confidence = 0.85 * 0.9
-        assert all(
-            abs(bv.binding_confidence - expected_confidence) < 0.001
-            for bv in bound_values
-        )
+        assert all(abs(bv.binding_confidence - expected_confidence) < 0.001 for bv in bound_values)
 
-    def test_bind_chart_candidate_missing_asset(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_missing_asset(self, stage: ValueBindingStage) -> None:
         """Returns empty when asset is not found."""
         candidate = MetricCandidate(
             metric_id="cm_gmv",
@@ -707,9 +676,7 @@ class TestChartValueBinding:
 
         assert len(bound_values) == 0
 
-    def test_bind_chart_candidate_multiple_series(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_chart_candidate_multiple_series(self, stage: ValueBindingStage) -> None:
         """Multiple series produce bound values from all series."""
         asset = _make_chart_asset(
             series_data=[
@@ -782,9 +749,7 @@ class TestInferUnitFromAxis:
             (None, Unit.OTHER),
         ],
     )
-    def test_infer_unit(
-        self, stage: ValueBindingStage, label: str | None, expected: Unit
-    ) -> None:
+    def test_infer_unit(self, stage: ValueBindingStage, label: str | None, expected: Unit) -> None:
         result = stage._infer_unit_from_axis(label)  # type: ignore[arg-type]
         assert result == expected, f"For label {label!r}: expected {expected}, got {result}"
 
@@ -959,30 +924,32 @@ class TestChartAnnotationExtraction:
 
     def test_annotations_parsed_from_response(self, tmp_path: Path) -> None:
         """GPT-4o response with annotations field populates chart_data.annotations."""
-        chart_response = json.dumps({
-            "chart_type": "area",
-            "title": "Marketplace GMV (USDm) by Consumer Cohort",
-            "x_axis_label": "Year",
-            "y_axis_label": "GMV (USDm)",
-            "confidence": 0.85,
-            "series": [],
-            "annotations": [
-                {
-                    "text": "44.4% New Consumers in 2017",
-                    "value": 44.4,
-                    "unit": "percent",
-                    "category": "New Consumers",
-                    "period": "2017",
-                },
-                {
-                    "text": "55.6% Existing Consumers in 2017",
-                    "value": 55.6,
-                    "unit": "percent",
-                    "category": "Existing Consumers",
-                    "period": "2017",
-                },
-            ],
-        })
+        chart_response = json.dumps(
+            {
+                "chart_type": "area",
+                "title": "Marketplace GMV (USDm) by Consumer Cohort",
+                "x_axis_label": "Year",
+                "y_axis_label": "GMV (USDm)",
+                "confidence": 0.85,
+                "series": [],
+                "annotations": [
+                    {
+                        "text": "44.4% New Consumers in 2017",
+                        "value": 44.4,
+                        "unit": "percent",
+                        "category": "New Consumers",
+                        "period": "2017",
+                    },
+                    {
+                        "text": "55.6% Existing Consumers in 2017",
+                        "value": 55.6,
+                        "unit": "percent",
+                        "category": "Existing Consumers",
+                        "period": "2017",
+                    },
+                ],
+            }
+        )
         response = VisionResponse(
             content=chart_response,
             model="gpt-4o-mock",
@@ -1020,15 +987,17 @@ class TestChartAnnotationExtraction:
 
     def test_empty_series_and_annotations_marks_manual(self, tmp_path: Path) -> None:
         """Chart with no series AND no annotations still marks for manual capture."""
-        chart_response = json.dumps({
-            "chart_type": "area",
-            "title": "Some Chart",
-            "x_axis_label": "",
-            "y_axis_label": "",
-            "confidence": 0.5,
-            "series": [],
-            "annotations": [],
-        })
+        chart_response = json.dumps(
+            {
+                "chart_type": "area",
+                "title": "Some Chart",
+                "x_axis_label": "",
+                "y_axis_label": "",
+                "confidence": 0.5,
+                "series": [],
+                "annotations": [],
+            }
+        )
         response = VisionResponse(
             content=chart_response,
             model="gpt-4o-mock",
@@ -1061,9 +1030,7 @@ class TestChartAnnotationExtraction:
     def test_prompt_includes_nearby_text(self) -> None:
         """Chart extraction prompt includes nearby_text when provided."""
         stage = OCRExtractionStage()
-        prompt = stage._get_chart_extraction_prompt(
-            nearby_text="GMV by consumer cohort for 2017"
-        )
+        prompt = stage._get_chart_extraction_prompt(nearby_text="GMV by consumer cohort for 2017")
 
         assert "SURROUNDING CONTEXT" in prompt
         assert "GMV by consumer cohort" in prompt
@@ -1099,9 +1066,7 @@ class TestChartCandidateFromNearbyText:
         s._ensure_initialized()
         return s
 
-    def test_nearby_text_produces_candidate(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_nearby_text_produces_candidate(self, stage: CandidateGenerationStage) -> None:
         """nearby_text with metric keyword produces chart candidate."""
         from src.extraction_v2.models import ChartAnnotation
 
@@ -1119,9 +1084,7 @@ class TestChartCandidateFromNearbyText:
         metric_ids = {c.metric_id for c in candidates}
         assert "cm_revenue_by_cohort" in metric_ids
 
-    def test_nearby_text_only_match_has_penalty(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_nearby_text_only_match_has_penalty(self, stage: CandidateGenerationStage) -> None:
         """Candidate from nearby_text only gets -0.05 confidence penalty."""
         asset = _make_chart_asset(
             title="Growth",  # No metric keyword
@@ -1144,9 +1107,7 @@ class TestChartCandidateFromNearbyText:
             if meta_arr:
                 assert arr_candidates[0].confidence < meta_arr[0].confidence
 
-    def test_annotation_text_produces_candidate(
-        self, stage: CandidateGenerationStage
-    ) -> None:
+    def test_annotation_text_produces_candidate(self, stage: CandidateGenerationStage) -> None:
         """Annotation text with metric keyword produces candidate without penalty."""
         from src.extraction_v2.models import ChartAnnotation
 
@@ -1193,7 +1154,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1217,7 +1178,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1229,9 +1190,7 @@ class TestAnnotationValueBinding:
         assert len(ann_bvs) == 1
         assert ann_bvs[0].unit == Unit.PERCENT
 
-    def test_annotation_confidence_lower_than_label(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_annotation_confidence_lower_than_label(self, stage: ValueBindingStage) -> None:
         """Annotation binding uses 0.85x multiplier (vs 0.9x for data labels)."""
         from src.extraction_v2.models import ChartAnnotation
 
@@ -1244,7 +1203,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1270,7 +1229,7 @@ class TestAnnotationValueBinding:
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1313,9 +1272,7 @@ class TestGMVCohortKeywords:
             "gross merchandise volume by cohort",
         ],
     )
-    def test_gmv_cohort_patterns_match(
-        self, stage: CandidateGenerationStage, text: str
-    ) -> None:
+    def test_gmv_cohort_patterns_match(self, stage: CandidateGenerationStage, text: str) -> None:
         """GMV-cohort patterns match in cm_revenue_by_cohort."""
         patterns = stage._compiled_patterns.get("cm_revenue_by_cohort", [])
         assert patterns, "cm_revenue_by_cohort patterns not found"

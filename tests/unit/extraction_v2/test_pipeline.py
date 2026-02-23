@@ -2,14 +2,10 @@
 
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.extraction_v2.models import (
     EvidencePack,
     MetricFact,
-    ReviewStatus,
     SourceLocator,
     Unit,
 )
@@ -194,7 +190,9 @@ class TestPipelineResult:
                     duration_ms=50,
                     items_processed=10,
                     items_output=0,
-                    warnings=["Candidate generation not yet implemented - no metric candidates generated"],
+                    warnings=[
+                        "Candidate generation not yet implemented - no metric candidates generated"
+                    ],
                 ),
             ],
             total_duration_ms=150,
@@ -221,7 +219,9 @@ class TestPipelineResult:
                     duration_ms=10,
                     items_processed=10,
                     items_output=10,
-                    warnings=["Section classification not yet implemented - all segments marked UNKNOWN"],
+                    warnings=[
+                        "Section classification not yet implemented - all segments marked UNKNOWN"
+                    ],
                 ),
                 StageResult(
                     stage=PipelineStage.VALUE_BINDING,
@@ -333,8 +333,7 @@ class TestV2Pipeline:
         # Production readiness check
         assert result.success is True
         assert not result.has_stub_warnings, (
-            f"Pipeline has stub warnings - not production ready: "
-            f"{result.stub_stage_warnings}"
+            f"Pipeline has stub warnings - not production ready: {result.stub_stage_warnings}"
         )
 
 
@@ -442,7 +441,6 @@ class TestPipelineReturnsDedupFacts:
 
     def test_pipeline_returns_deduplicated_facts(self, tmp_path: Path) -> None:
         """Pipeline result uses deduplicated_facts from Stage 10, not raw facts."""
-        from src.extraction_v2.models import Document, SourceType
 
         html_file = tmp_path / "test_filing.html"
         html_file.write_text("<html><body><p>Test</p></body></html>")
@@ -500,17 +498,12 @@ class TestPipelineReturnsDedupFacts:
         # Simpler approach: verify through the full pipeline with an HTML that
         # would produce duplicates. Instead, just verify the logic directly:
         # Build a PipelineResult the same way the pipeline does
-        output_facts = (
-            context.deduplicated_facts
-            if context.deduplicated_facts
-            else context.facts
-        )
+        output_facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
         assert len(output_facts) == 1  # Should use deduped, not raw
         assert output_facts[0].fact_id == "dup-1"  # Primary (higher confidence)
 
     def test_pipeline_falls_back_to_raw_facts_when_no_dedup(self) -> None:
         """If deduplicated_facts is empty, falls back to raw facts."""
-        from src.extraction_v2.models import Document
 
         # Simulate a context where dedup stage didn't run
         context = PipelineContext(
@@ -527,11 +520,7 @@ class TestPipelineReturnsDedupFacts:
         context.facts = [fact]
         context.deduplicated_facts = []  # Empty = dedup didn't run
 
-        output_facts = (
-            context.deduplicated_facts
-            if context.deduplicated_facts
-            else context.facts
-        )
+        output_facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
         assert len(output_facts) == 1
         assert output_facts[0].fact_id == "raw-1"
 
@@ -717,3 +706,67 @@ class TestDocumentTypeSupport:
         # Old-style call — no document_type, no document_date
         result = process_filing(html_file, filing_id=1)
         assert result.success is True
+
+
+class TestRetainContext:
+    """Tests for retain_context flag on PipelineConfig and PipelineResult."""
+
+    def test_retain_context_default_false(self) -> None:
+        """retain_context defaults to False."""
+        config = PipelineConfig()
+        assert config.retain_context is False
+
+    def test_retain_context_can_be_set(self) -> None:
+        """retain_context can be set to True."""
+        config = PipelineConfig(retain_context=True)
+        assert config.retain_context is True
+
+    def test_pipeline_result_context_none_by_default(self) -> None:
+        """PipelineResult.context is None by default."""
+        from src.extraction_v2.models import Document
+
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[],
+            total_duration_ms=100,
+            success=True,
+        )
+        assert result.context is None
+
+    def test_pipeline_result_can_hold_context(self) -> None:
+        """PipelineResult.context can hold a PipelineContext."""
+        from src.extraction_v2.models import Document
+
+        config = PipelineConfig(retain_context=True)
+        ctx = PipelineContext(
+            html_path=Path("/test.html"),
+            filing_id=0,
+            config=config,
+        )
+        result = PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[],
+            total_duration_ms=100,
+            success=True,
+            context=ctx,
+        )
+        assert result.context is ctx
+        assert result.context.filing_id == 0
+
+    def test_pipeline_context_pre_filter_default_empty(self) -> None:
+        """PipelineContext._pre_filter_bound_values defaults to empty list."""
+        config = PipelineConfig()
+        ctx = PipelineContext(
+            html_path=Path("/test.html"),
+            filing_id=0,
+            config=config,
+        )
+        assert ctx._pre_filter_bound_values == []
