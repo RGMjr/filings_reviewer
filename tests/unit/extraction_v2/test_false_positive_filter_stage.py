@@ -983,6 +983,38 @@ class TestV2LinearizedTableMarkers:
 
         assert len(ctx.bound_values) == 0, "Linearized table values should be filtered"
 
+    def test_layout_table_prose_kept(self):
+        """Values in layout-table prose (far from [CELL] marker) should NOT be filtered.
+
+        SEC filings use <TABLE> for bullet-point indentation.  The first cell is
+        a bullet character, the second is a prose paragraph.  The paragraph may
+        contain numeric metric values that should be extracted.
+        """
+        # Mirrors the Farfetch LTV/CAC bullet text structure:
+        # "· [CELL] Six month LTV/CAC ratio for years ended ... was 1.42, 1.53 and 1.77"
+        source = (
+            "\xb7 [CELL] Six month LTV/CAC ratio for the years ended "
+            "December 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77, respectively"
+        )
+        bv = _make_bound_value("c1", 1.42, "1.42", Unit.OTHER, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source)
+        assert is_fp is False, f"Layout-table prose value should not be filtered; got {reason}"
+
+    def test_layout_table_bullet_multiple_values_kept(self):
+        """All values in a layout-table prose bullet are kept (not just the first).
+
+        Uses a realistic bullet-point sentence where the numbers appear far
+        from the [CELL] marker (prose text, not columnar data).
+        """
+        source = (
+            "\xb7 [CELL] LTV/CAC ratio for the years ended December 31, 2015, "
+            "2016 and 2017 cohorts was 1.42, 1.53 and 1.77, respectively"
+        )
+        for raw, val in [("1.42", 1.42), ("1.53", 1.53), ("1.77", 1.77)]:
+            bv = _make_bound_value("c1", val, raw, Unit.OTHER, "seg-1")
+            is_fp, reason = _is_v2_false_positive(bv, source)
+            assert is_fp is False, f"Value {raw} should not be filtered; got {reason}"
+
 
 # ============================================================================
 # Test: V2-native — Financial table annotations
