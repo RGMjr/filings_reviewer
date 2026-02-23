@@ -71,6 +71,10 @@ class ValueBindingStage:
     DEFAULT_WORD_PROXIMITY: int = 10  # Max words between keyword and value
     DEFAULT_CHAR_PROXIMITY: int = 100  # Max chars for proximity search
 
+    # Minimum cell text length to trigger prose-cell binding (Strategy 6).
+    # Cells shorter than this are treated as header/stub/data cells, not prose.
+    PROSE_CELL_MIN_LEN: int = 50
+
     # Number parsing constants — defined in stages/number_parsing.py
     NUMBER_PATTERN = _np.NUMBER_PATTERN
     SCALE_MULTIPLIERS = _np.SCALE_MULTIPLIERS
@@ -309,6 +313,16 @@ class ValueBindingStage:
                         )
                     )
 
+        # Strategy 6: Prose cell — candidate cell is a sentence with inline values.
+        # Fires when cell text is long enough to be prose (e.g., "LTV/CAC ratio for
+        # the years ended Dec 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77").
+        # Column/row scans may pick up wrong values from adjacent cells in layout tables,
+        # so prose-cell bindings replace strategy 1-4 results when found.
+        if candidate_cell.text and len(candidate_cell.text) >= self.PROSE_CELL_MIN_LEN:
+            prose_values = self._bind_prose_cell(candidate, candidate_cell)
+            if prose_values:
+                bound_values = prose_values
+
         # Apply table-level scale factor
         # Currency values always get scaled. Count metrics get scaled only when
         # the raw cell contains a decimal point (e.g. "796.3" in a "(in thousands)"
@@ -461,6 +475,74 @@ class ValueBindingStage:
                 )
             )
 
+        return bound_values
+
+    def _bind_prose_cell(
+        self,
+        candidate: MetricCandidate,
+        cell: Cell,
+    ) -> list[BoundValue]:
+        """
+        Bind values from a prose-like table cell containing both keyword and values inline.
+
+        Used by Strategy 6 when the candidate cell is a sentence (e.g., "LTV/CAC ratio
+        for the years ended Dec 31, 2015, 2016 and 2017 was 1.42, 1.53 and 1.77").
+        Only same-sentence numbers are returned; callers can apply FP filter to remove
+        year-like values (2015, 2016) while keeping the true metric values (1.42, 1.53).
+
+        Args:
+            candidate: Table-sourced metric candidate whose cell is prose-like.
+            cell: The candidate cell containing inline prose text.
+
+        Returns:
+            List of BoundValue objects for same-sentence numbers near the keyword,
+            or empty list if the keyword is not found or no numbers are in sentence.
+        """
+        text = cell.text
+        text_lower = text.lower()
+        keyword = candidate.match_text.lower()
+
+        kw_start = text_lower.find(keyword)
+        if kw_start < 0:
+            return []
+        kw_end = kw_start + len(keyword)
+
+        numbers = self._find_numbers_in_proximity(text, kw_start, kw_end, self.proximity_window)
+        if not numbers:
+            return []
+
+        sentence_start, sentence_end = find_sentence_bounds(text, kw_start)
+        context_text = " ".join(cell.header_path + cell.stub_path)
+
+        bound_values: list[BoundValue] = []
+        for num_match, value, unit, raw in numbers:
+            if not (sentence_start <= num_match.start() <= sentence_end):
+                continue
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+            confidence = self._compute_table_confidence(
+                candidate.match_text.lower(),
+                cell.header_path,
+                cell.stub_path,
+                unit,
+            )
+            bound_values.append(
+                BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=value,
+                    value_raw=raw,
+                    unit=unit,
+                    binding_type="table_cell",
+                    binding_confidence=confidence,
+                    source_locator=SourceLocator(
+                        table_id=candidate.source_locator.table_id,
+                        cell_row=cell.row,
+                        cell_col=cell.col,
+                        dom_locator=cell.dom_locator,
+                    ),
+                )
+            )
         return bound_values
 
     def _bind_column_values(

@@ -59,6 +59,12 @@ _SBC_RE = re.compile(r"stock[- ]based\s+compensation", re.IGNORECASE)
 # Linearized table markers injected by the ingestion stage
 _TABLE_MARKER_RE = re.compile(r"\[(?:CELL|ROW)\]")
 
+# Maximum gap (chars) between end of a [CELL] marker and a value position for
+# the value to be treated as a column entry rather than embedded prose text.
+# Layout tables used for bullet indentation produce a [CELL] marker at column 1
+# but the actual prose text (and any numbers within it) appear far to the right.
+_CELL_VALUE_PROXIMITY = 40
+
 # Company ranking names — "Fortune 100", "Forbes 500", "Global 2000", etc.
 _RANKING_NAME_RE = re.compile(
     r"\b(?:Fortune|Forbes|Inc\.?|Global)\s+(\d[\d,]*)\b",
@@ -132,9 +138,37 @@ def _rule_year_fragment(bv: BoundValue, source_text: str, metric_id: str) -> str
 
 
 def _rule_linearized_table(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Text with [CELL]/[ROW] markers is a linearized table duplicate."""
-    if source_text and _TABLE_MARKER_RE.search(source_text):
+    """Suppress values that appear as column entries in linearized tables.
+
+    [CELL]/[ROW] markers are injected by ingestion when a <TABLE> is flattened
+    to text.  Layout tables (e.g., bullet-point indentation) also produce these
+    markers but contain prose paragraphs, not columnar data.
+
+    A value is treated as a column entry — and suppressed — only when it appears
+    within _CELL_VALUE_PROXIMITY characters after a [CELL] or [ROW] marker.
+    Prose values that happen to sit in a layout-table segment are left intact.
+    """
+    if not source_text:
+        return None
+    if not _TABLE_MARKER_RE.search(source_text):
+        return None
+
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        # Cannot locate value in text — suppress conservatively.
         return "v2_linearized_table"
+
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        # Value not found in source text — suppress conservatively.
+        return "v2_linearized_table"
+
+    # Fire only when value_raw is within proximity of a preceding marker.
+    for m in _TABLE_MARKER_RE.finditer(source_text):
+        marker_end = m.end()
+        if marker_end <= value_pos <= marker_end + _CELL_VALUE_PROXIMITY:
+            return "v2_linearized_table"
+
     return None
 
 
