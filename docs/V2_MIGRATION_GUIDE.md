@@ -312,6 +312,62 @@ config = PipelineConfig(
 )
 ```
 
+## Phase B Features (2026-02-24)
+
+Three features added after the original 13-stage pipeline was completed.
+
+### Stage 9.5 — Definition Extraction
+
+`src/extraction_v2/stages/definition_extraction.py` runs between MetricFact Construction (Stage 9) and Deduplication (Stage 10). It scans segments within a ±5 sequence window of each metric candidate for DEFINITION and METHODOLOGY content, normalizes the text, and assesses CMASB canonical alignment (`aligned`, `partial`, `not_aligned`, or `unknown`). Results are available via `PipelineResult.definitions`.
+
+**Migration requirement:** Apply SQL migration 11 before using this feature:
+
+```bash
+python3 scripts/apply_migrations.py  # applies sql/11_v2_definitions.sql
+```
+
+This creates the `v2_metric_definitions` table (UUID primary key, unique constraint on `doc_id + canonical_metric_id`).
+
+### Quality Scoring Adapter
+
+`src/extraction_v2/quality_scoring.py` provides a `V2QualityScorer` class that ports all five V1 quality rubrics (overall, definition, methodology, completeness, comparability) to V2 facts. Scores are written to V1's existing `filing_metric_incidence` table, so downstream analytics queries continue to work without modification.
+
+Quality scoring runs automatically when you use `scripts/run_v2_extraction.py`. To disable:
+
+```bash
+python3 scripts/run_v2_extraction.py --filing-id 123 --skip-quality
+```
+
+### Batch Extraction Script
+
+`scripts/batch_v2_extraction.py` is the recommended way to process large numbers of filings. It uses `ProcessPoolExecutor` for parallel execution.
+
+```bash
+# Basic usage: 4 workers, all pending filings
+python3 scripts/batch_v2_extraction.py
+
+# Common options
+python3 scripts/batch_v2_extraction.py \
+    --workers 8 \
+    --batch-size 50 \
+    --limit 500 \
+    --skip-quality \
+    --no-images
+
+# Resume an interrupted run
+python3 scripts/batch_v2_extraction.py --resume-from 4521
+
+# Single filing (useful for debugging)
+python3 scripts/batch_v2_extraction.py --filing-id 123
+
+# Plan without writing
+python3 scripts/batch_v2_extraction.py --dry-run --limit 100
+```
+
+Progress is checkpointed to `logs/batch_v2_progress.json` after every `--batch-size` filings. SIGINT (Ctrl-C) triggers graceful shutdown, completing the current batch before exiting.
+
+---
+
 ## Troubleshooting
 
 ### V2 extracts fewer facts than V1

@@ -111,11 +111,12 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
                                   QualityScorer → Database
 ```
 
-**V2 Pipeline** (production-ready, 13 stages):
+**V2 Pipeline** (production-ready, 13 stages + Phase B enhancements):
 ```
 Ingestion → SectionClassification → TableReconstruction → ImageTriage
-    → OCR/Chart → CandidateGeneration → ValueBinding → PeriodInference
-    → FactConstruction → FalsePositiveFilter → Deduplication → Validation → Persistence
+    → OCR/Chart → CandidateGeneration → ValueBinding → FalsePositiveFilter
+    → PeriodInference → FactConstruction → DefinitionExtraction
+    → Deduplication → Validation → Persistence
 ```
 See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for details.
 
@@ -160,7 +161,7 @@ filings_reviewer/
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (00-10)
+├── sql/                    # Database schema (00-11)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration
