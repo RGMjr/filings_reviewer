@@ -3,14 +3,14 @@
 # Usage: worker EI-8
 #
 # Add to ~/.zshrc or ~/.bashrc:
-#   alias worker='/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/scripts/gen-worker-prompt.sh'
+#   alias worker='/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings_Analysis/Filings_review_tool/filings_reviewer_v2/scripts/gen-worker-prompt.sh'
 
 set -e
 
 TASK_ID="${1:?Usage: worker <TASK_ID> (e.g., EI-8, GR-5, SEG-3)}"
 TASK_ID=$(echo "$TASK_ID" | tr '[:lower:]' '[:upper:]')
 
-PROJECT_DIR="/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer"
+PROJECT_DIR="/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings_Analysis/Filings_review_tool/filings_reviewer_v2"
 
 echo "Generating worker prompt for ${TASK_ID}..."
 
