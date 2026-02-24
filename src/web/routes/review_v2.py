@@ -6,10 +6,12 @@ V1 review is untouched.
 """
 
 import logging
+import threading
 import time
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for
 
+from src.infra.db import DatabaseAdapter
 from src.web.app import get_db
 
 review_v2_bp = Blueprint("review_v2", __name__, url_prefix="/v2/review")
@@ -35,29 +37,43 @@ def _log_request_start():
 
 @review_v2_bp.after_request
 def _log_request_complete(response):
-    """Log request details to audit table."""
+    """Log request details to audit table asynchronously (fire-and-forget)."""
     try:
         response_time_ms = None
         if hasattr(g, "request_start_time"):
             response_time_ms = int((time.time() - g.request_start_time) * 1000)
 
-        filing_id = request.view_args.get("filing_id") if request.view_args else None
-        db = get_db()
-        db.insert_audit_log(
-            session_id=session.get("_id"),
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get("User-Agent"),
-            route_name=request.endpoint or "unknown",
-            http_method=request.method,
-            url_path=request.path,
-            filing_id=filing_id,
-            candidate_id=None,
-            query_params=dict(request.args) if request.args else None,
-            response_status=response.status_code,
-            response_time_ms=response_time_ms,
-        )
+        # Capture all request context into a plain dict BEFORE spawning thread.
+        # Flask's request/session proxies are not usable across threads.
+        audit_kwargs = {
+            "session_id": session.get("_id"),
+            "ip_address": request.remote_addr,
+            "user_agent": request.headers.get("User-Agent"),
+            "route_name": request.endpoint or "unknown",
+            "http_method": request.method,
+            "url_path": request.path,
+            "filing_id": request.view_args.get("filing_id") if request.view_args else None,
+            "candidate_id": None,
+            "query_params": dict(request.args) if request.args else None,
+            "response_status": response.status_code,
+            "response_time_ms": response_time_ms,
+        }
+        # get_db() returns a per-request adapter tied to Flask g — not safe across threads.
+        # Capture DATABASE_URL and pool ref so the thread creates its own adapter.
+        database_url = current_app.config["DATABASE_URL"]
+        pool = current_app.config.get("_db_pool")
+
+        def _write():
+            try:
+                db = DatabaseAdapter(database_url, pool=pool)
+                db.insert_audit_log(**audit_kwargs)
+            except Exception as exc:
+                logger.error(f"Async audit log write failed: {exc}")
+
+        t = threading.Thread(target=_write, daemon=True)
+        t.start()
     except Exception as e:
-        logger.error(f"Failed to insert audit log: {e}")
+        logger.error(f"Failed to prepare audit log: {e}")
 
     return response
 
@@ -71,18 +87,33 @@ def _log_request_complete(response):
 def filing_list():
     """Display list of filings with V2 extraction results."""
     db = get_db()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(200, max(1, request.args.get("per_page", 50, type=int)))
 
     try:
-        filings = db.get_v2_filings_with_facts()
+        total = db.count_v2_filings_with_facts()
+        filings = db.get_v2_filings_with_facts(
+            limit=per_page, offset=(page - 1) * per_page
+        )
     except Exception as e:
         logger.error(f"Database error in V2 filing list: {e}")
         flash("Error loading V2 filings.", "danger")
         filings = []
+        total = 0
 
-    if not filings:
+    total_pages = max(1, -(-total // per_page))  # ceiling division
+
+    if not filings and page == 1:
         flash("No V2 extractions found. Run scripts/run_v2_extraction.py first.", "info")
 
-    return render_template("v2_filing_list.html", filings=filings)
+    return render_template(
+        "v2_filing_list.html",
+        filings=filings,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages,
+    )
 
 
 @review_v2_bp.route("/<int:filing_id>")
@@ -113,14 +144,26 @@ def review_filing(filing_id: int):
         db_metric = filter_metric if filter_metric != "all" else None
         db_sort = sort_by if sort_by in V2_SORT_OPTIONS else "confidence_desc"
 
-        # Get all facts (unfiltered) for total count
+        # Get all facts (unfiltered) for progress counts and metrics dropdown
         all_facts = db.get_v2_facts_for_filing(filing_id)
         total_facts_unfiltered = len(all_facts)
 
-        # Get filtered facts
-        facts = db.get_v2_facts_for_filing(
-            filing_id, status=db_status, metric_id=db_metric, sort_by=db_sort
+        # Pagination for filtered facts
+        page = max(1, request.args.get("page", 1, type=int))
+        per_page = min(500, max(1, request.args.get("per_page", 100, type=int)))
+
+        total_filtered = db.count_v2_facts_for_filing(
+            filing_id, status=db_status, metric_id=db_metric
         )
+        facts = db.get_v2_facts_for_filing(
+            filing_id,
+            status=db_status,
+            metric_id=db_metric,
+            sort_by=db_sort,
+            limit=per_page,
+            offset=(page - 1) * per_page,
+        )
+        total_pages = max(1, -(-total_filtered // per_page))  # ceiling division
 
         # Get unique metrics for filter dropdown
         available_metrics = sorted(
@@ -172,13 +215,16 @@ def review_filing(filing_id: int):
             existing_decision=existing_decision,
             available_metrics=available_metrics,
             current_filters=current_filters,
-            total_facts=len(facts),
+            total_facts=total_filtered,
             total_facts_unfiltered=total_facts_unfiltered,
             pending_count=pending_count,
             accepted_count=accepted_count,
             rejected_count=rejected_count,
             review_statuses=V2_REVIEW_STATUSES,
             sort_options=V2_SORT_OPTIONS,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
         )
 
     except Exception as e:
