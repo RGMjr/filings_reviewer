@@ -221,7 +221,8 @@ class TestTableReconstructionStage:
 
         result = stage.process(context)
 
-        assert result.success is True
+        # Zero tables processed and there was a table segment → failure
+        assert result.success is False
         assert result.items_processed == 1
         assert result.items_output == 0
         assert len(context.tables) == 0
@@ -400,3 +401,79 @@ class TestTableReconstructionStage:
         assert result.metadata["tables_processed"] == 2
         assert result.metadata["tables_skipped"] == 1
         assert result.duration_ms >= 0
+
+    def test_partial_error_is_success_with_warning(
+        self, stage: TableReconstructionStage, context: PipelineContext
+    ) -> None:
+        """Test that a partial error (some tables succeed) results in success=True with warnings."""
+        good_table_html = "<table><tr><td>Good</td></tr></table>"
+        # Inject a segment that will raise during reconstruction by patching
+        import unittest.mock as mock
+
+        bad_segment = Segment(
+            segment_id="seg-bad",
+            segment_type=SegmentType.TABLE,
+            raw_html="<table><tr><td>Bad</td></tr></table>",
+            text="Bad",
+            dom_locator="//table[2]",
+        )
+        good_segment = Segment(
+            segment_id="seg-good",
+            segment_type=SegmentType.TABLE,
+            raw_html=good_table_html,
+            text="Good",
+            dom_locator="//table[1]",
+        )
+        context.segments = [good_segment, bad_segment]
+
+        original_reconstruct = stage._reconstructor.reconstruct
+        call_count = [0]
+
+        def mock_reconstruct(table_elem):  # type: ignore[no-untyped-def]
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise ValueError("Simulated reconstruction error")
+            return original_reconstruct(table_elem)
+
+        with mock.patch.object(stage._reconstructor, "reconstruct", side_effect=mock_reconstruct):
+            result = stage.process(context)
+
+        assert result.success is True
+        assert len(result.errors) == 0
+        assert len(result.warnings) == 1
+        assert "seg-bad" in result.warnings[0]
+        assert result.metadata["tables_processed"] == 1
+
+    def test_all_errors_results_in_failure(
+        self, stage: TableReconstructionStage, context: PipelineContext
+    ) -> None:
+        """Test that all tables failing results in success=False."""
+        import unittest.mock as mock
+
+        context.segments = [
+            Segment(
+                segment_id="seg-bad-1",
+                segment_type=SegmentType.TABLE,
+                raw_html="<table><tr><td>A</td></tr></table>",
+                text="A",
+                dom_locator="//table[1]",
+            ),
+            Segment(
+                segment_id="seg-bad-2",
+                segment_type=SegmentType.TABLE,
+                raw_html="<table><tr><td>B</td></tr></table>",
+                text="B",
+                dom_locator="//table[2]",
+            ),
+        ]
+
+        with mock.patch.object(
+            stage._reconstructor,
+            "reconstruct",
+            side_effect=ValueError("Simulated error"),
+        ):
+            result = stage.process(context)
+
+        assert result.success is False
+        assert len(result.errors) == 2
+        assert result.metadata["tables_processed"] == 0

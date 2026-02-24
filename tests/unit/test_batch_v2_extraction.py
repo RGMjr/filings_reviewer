@@ -198,3 +198,238 @@ class TestGracefulShutdown:
         assert stats.processed == 0
         assert stats.succeeded == 0
         assert stats.total_filings == 0
+
+
+def _make_filings(n: int) -> list[dict]:
+    return [
+        {
+            "filing_id": i,
+            "company_name": f"Company{i}",
+            "company_id": i,
+            "cik": str(i),
+            "html_storage_path": None,
+        }
+        for i in range(1, n + 1)
+    ]
+
+
+def _success_result(filing_id: int, fact_count: int = 5) -> dict:
+    return {
+        "filing_id": filing_id,
+        "success": True,
+        "fact_count": fact_count,
+        "definition_count": 0,
+        "error": None,
+        "duration_ms": 100,
+    }
+
+
+def _failure_result(filing_id: int) -> dict:
+    return {
+        "filing_id": filing_id,
+        "success": False,
+        "fact_count": 0,
+        "definition_count": 0,
+        "error": "mock error",
+        "duration_ms": 50,
+    }
+
+
+class TestExecutorLifecycle:
+    """Executor is created only once across all batches."""
+
+    def test_executor_created_once_for_multiple_batches(self):
+        """ProcessPoolExecutor should be instantiated once, not per-batch."""
+        config = BatchConfig(workers=2, batch_size=2)
+        runner = BatchV2Runner(config=config, db_url="postgresql://test/db")
+        filings = _make_filings(6)  # 3 batches of 2
+
+        mock_future_results = {f["filing_id"]: _success_result(f["filing_id"]) for f in filings}
+
+        with patch("scripts.batch_v2_extraction.ProcessPoolExecutor") as mock_ppe_cls:
+            mock_executor = MagicMock()
+            mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+            mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+            def submit_side_effect(fn, filing_id, *args, **kwargs):
+                future = MagicMock()
+                future.result.return_value = mock_future_results[filing_id]
+                return future
+
+            mock_executor.submit.side_effect = submit_side_effect
+
+            # as_completed must yield the futures
+            def as_completed_side_effect(futures):
+                yield from futures.keys()
+
+            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+                with patch.object(runner, "_save_checkpoint"):
+                    runner.run(filings)
+
+            # Executor context manager entered exactly once
+            assert mock_ppe_cls.return_value.__enter__.call_count == 1
+
+
+class TestCircuitBreaker:
+    """Circuit breaker aborts run after consecutive failures."""
+
+    def test_circuit_breaker_triggers(self):
+        config = BatchConfig(workers=1, batch_size=20)
+        runner = BatchV2Runner(config=config, db_url="postgresql://test/db")
+        filings = _make_filings(15)
+
+        def submit_side_effect(fn, filing_id, *args, **kwargs):
+            future = MagicMock()
+            future.result.return_value = _failure_result(filing_id)
+            return future
+
+        with patch("scripts.batch_v2_extraction.ProcessPoolExecutor") as mock_ppe_cls:
+            mock_executor = MagicMock()
+            mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+            mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_executor.submit.side_effect = submit_side_effect
+
+            def as_completed_side_effect(futures):
+                yield from futures.keys()
+
+            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+                with patch.object(runner, "_save_checkpoint"):
+                    stats = runner.run(filings, max_consecutive_failures=5)
+
+        assert stats.aborted_by_circuit_breaker is True
+        # Should stop after hitting threshold (5 consecutive), not process all 15
+        assert stats.processed <= 10  # Generous upper bound
+
+    def test_circuit_breaker_resets_on_success(self):
+        config = BatchConfig(workers=1, batch_size=20)
+        runner = BatchV2Runner(config=config, db_url="postgresql://test/db")
+        # 9 filings: 4 failures, 1 success, 4 failures — threshold=5, should NOT abort
+        filings = _make_filings(9)
+
+        results_by_id = {}
+        for f in filings:
+            fid = f["filing_id"]
+            if fid == 5:
+                results_by_id[fid] = _success_result(fid)
+            else:
+                results_by_id[fid] = _failure_result(fid)
+
+        def submit_side_effect(fn, filing_id, *args, **kwargs):
+            future = MagicMock()
+            future.result.return_value = results_by_id[filing_id]
+            return future
+
+        # Force deterministic ordering (filing_id 1..9 in order)
+        def as_completed_side_effect(futures):
+            sorted_futures = sorted(futures.keys(), key=lambda f: futures[f]["filing_id"])
+            yield from sorted_futures
+
+        with patch("scripts.batch_v2_extraction.ProcessPoolExecutor") as mock_ppe_cls:
+            mock_executor = MagicMock()
+            mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+            mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_executor.submit.side_effect = submit_side_effect
+
+            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+                with patch.object(runner, "_save_checkpoint"):
+                    stats = runner.run(filings, max_consecutive_failures=5)
+
+        assert stats.aborted_by_circuit_breaker is False
+
+
+class TestExitCode:
+    """Exit code is 1 when failure rate > 50%."""
+
+    def test_exit_1_when_majority_failed(self, tmp_path):
+        import scripts.batch_v2_extraction as module
+
+        stats = BatchStats(total_filings=10)
+        stats.succeeded = 3
+        stats.failed = 7
+
+        with patch("scripts.batch_v2_extraction.LOGS_DIR", tmp_path):
+            with patch("scripts.batch_v2_extraction.BatchV2Runner") as mock_runner_cls:
+                mock_runner = MagicMock()
+                mock_runner.run.return_value = stats
+                mock_runner.query_filings.return_value = [
+                    {"filing_id": i, "company_name": f"Co{i}", "company_id": i, "cik": str(i)}
+                    for i in range(1, 11)
+                ]
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("sys.argv", ["batch_v2_extraction.py", "--dry-run"]):
+                    with patch.dict(os.environ, {"DATABASE_URL": "postgresql://test/db"}):
+                        with pytest.raises(SystemExit) as exc_info:
+                            module.main()
+                        assert exc_info.value.code == 1
+
+    def test_exit_0_when_majority_succeeded(self, tmp_path):
+        import scripts.batch_v2_extraction as module
+
+        stats = BatchStats(total_filings=10)
+        stats.succeeded = 7
+        stats.failed = 3
+
+        with patch("scripts.batch_v2_extraction.LOGS_DIR", tmp_path):
+            with patch("scripts.batch_v2_extraction.BatchV2Runner") as mock_runner_cls:
+                mock_runner = MagicMock()
+                mock_runner.run.return_value = stats
+                mock_runner.query_filings.return_value = [
+                    {"filing_id": i, "company_name": f"Co{i}", "company_id": i, "cik": str(i)}
+                    for i in range(1, 11)
+                ]
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("sys.argv", ["batch_v2_extraction.py", "--dry-run"]):
+                    with patch.dict(os.environ, {"DATABASE_URL": "postgresql://test/db"}):
+                        # Should not raise SystemExit(1)
+                        try:
+                            module.main()
+                        except SystemExit as e:
+                            assert e.code == 0 or e.code is None
+
+
+class TestSummaryJSON:
+    """Summary JSON is written to logs/ directory."""
+
+    def test_summary_json_written(self, tmp_path):
+        import scripts.batch_v2_extraction as module
+
+        stats = BatchStats(total_filings=2)
+        stats.succeeded = 2
+        stats.failed = 0
+        stats.total_facts = 10
+        stats.filing_results = [
+            {"filing_id": 1, "company_name": "Acme", "success": True, "fact_count": 5, "error": None, "duration_ms": 100},
+            {"filing_id": 2, "company_name": "Beta", "success": True, "fact_count": 5, "error": None, "duration_ms": 200},
+        ]
+
+        with patch("scripts.batch_v2_extraction.LOGS_DIR", tmp_path):
+            with patch("scripts.batch_v2_extraction.BatchV2Runner") as mock_runner_cls:
+                mock_runner = MagicMock()
+                mock_runner.run.return_value = stats
+                mock_runner.query_filings.return_value = [
+                    {"filing_id": 1, "company_name": "Acme", "company_id": 1, "cik": "001"},
+                    {"filing_id": 2, "company_name": "Beta", "company_id": 2, "cik": "002"},
+                ]
+                mock_runner_cls.return_value = mock_runner
+
+                with patch("sys.argv", ["batch_v2_extraction.py", "--dry-run"]):
+                    with patch.dict(os.environ, {"DATABASE_URL": "postgresql://test/db"}):
+                        try:
+                            module.main()
+                        except SystemExit:
+                            pass
+
+        summary_files = list(tmp_path.glob("batch_v2_summary_*.json"))
+        assert len(summary_files) == 1
+
+        data = json.loads(summary_files[0].read_text())
+        assert data["total_filings"] == 2
+        assert data["succeeded"] == 2
+        assert data["failed"] == 0
+        assert data["total_facts"] == 10
+        assert "aborted_by_circuit_breaker" in data
+        assert len(data["per_filing"]) == 2
+        assert "run_date" in data
+        assert "duration_seconds" in data
