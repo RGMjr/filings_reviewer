@@ -2687,3 +2687,139 @@ class TestTableScaleExceptions:
         assert len(context.bound_values) >= 1
         bv = context.bound_values[0]
         assert bv.value == pytest.approx(591.7, rel=1e-3)
+
+
+# ============================================================================
+# Respectively Pattern Binding Tests
+# ============================================================================
+
+
+def _make_prose_table(table_id: str, cell_text: str) -> Table:
+    """Helper: create a single-cell prose table for respectively-pattern tests."""
+    cells = [
+        Cell(
+            row=0,
+            col=0,
+            text=cell_text,
+            header_path=[],
+            stub_path=[],
+        ),
+    ]
+    table = Table(
+        table_id=table_id,
+        row_count=1,
+        col_count=1,
+        header_rows=0,
+        stub_cols=0,
+        cells=cells,
+    )
+    table._grid = [[cells[0]]]
+    return table
+
+
+class TestRespectivelyPatternBinding:
+    """Tests for _bind_respectively_pattern and its fallback wiring."""
+
+    FARFETCH_TEXT = (
+        "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 "
+        "cohorts was 1.42, 1.53 and 1.77, respectively"
+    )
+
+    def test_bind_respectively_pattern_ltv_cac(self, stage: ValueBindingStage) -> None:
+        """Exact Farfetch text yields 3 BoundValues with correct period_hints."""
+        cell = Cell(row=0, col=0, text=self.FARFETCH_TEXT, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-1",
+            metric_id="cm_ltv_to_cac_ratio_by_cohort",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="ff-prose-1"),
+        )
+
+        results = stage._bind_respectively_pattern(candidate, cell)
+
+        assert len(results) == 3
+
+        period_hints = {bv.period_hint for bv in results}
+        assert period_hints == {"2015", "2016", "2017"}
+
+        values = sorted(bv.value for bv in results)
+        assert values == pytest.approx([1.42, 1.53, 1.77], rel=1e-3)
+
+        for bv in results:
+            assert bv.binding_type == "respectively_pattern"
+
+    def test_bind_prose_cell_fallback_to_respectively(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """When normal proximity binding fails, respectively fallback fires."""
+        # Normal proximity window is 100 chars. The values are 150+ chars from the keyword.
+        long_preamble = "X " * 60  # ~120 chars
+        text = (
+            f"LTV/CAC ratio {long_preamble}for 2020, 2021 and 2022 was 1.1, 1.2 and 1.3, respectively"
+        )
+        table = _make_prose_table("ff-prose-2", text)
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-2",
+            metric_id="cm_ltv_to_cac_ratio_by_cohort",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-prose-2",
+                cell_row=0,
+                cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # The respectively parser should fire because normal binding found nothing
+        # (values are all beyond the proximity window)
+        assert len(context.bound_values) == 3
+        for bv in context.bound_values:
+            assert bv.binding_type == "respectively_pattern"
+            assert bv.period_hint in {"2020", "2021", "2022"}
+
+    def test_bind_prose_cell_no_respectively_unchanged(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Prose cell without 'respectively' is unaffected by the new fallback."""
+        text = "LTV/CAC ratio for 2022 was 1.55"
+        table = _make_prose_table("ff-prose-3", text)
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-3",
+            metric_id="cm_ltv_to_cac_ratio_by_cohort",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="ff-prose-3",
+                cell_row=0,
+                cell_col=0,
+            ),
+        )
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        # The normal proximity binding should still find 1.55
+        assert len(context.bound_values) == 1
+        assert context.bound_values[0].binding_type != "respectively_pattern"
+
+    def test_respectively_unit_filtering(self, stage: ValueBindingStage) -> None:
+        """Unit-filtered values in a respectively list are still dropped."""
+        # cm_customers_period_end is COUNT-only; currency values should be filtered out.
+        text = "Paid customers for 2020, 2021 was $1.2M, $2.3M, respectively"
+        cell = Cell(row=0, col=0, text=text, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-ff-4",
+            metric_id="cm_customers_period_end",
+            match_text="Paid customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="ff-prose-4"),
+        )
+
+        results = stage._bind_respectively_pattern(candidate, cell)
+
+        # Currency values must be filtered for a count-only metric
+        assert len(results) == 0

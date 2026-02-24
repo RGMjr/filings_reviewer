@@ -33,6 +33,7 @@ from src.extraction_v2.unit_compatibility import (
     is_unit_compatible,
 )
 from src.review.false_positive_filter import should_treat_as_percentage
+from src.review.respectively_parser import detect_respectively_pattern
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
@@ -509,7 +510,7 @@ class ValueBindingStage:
 
         numbers = self._find_numbers_in_proximity(text, kw_start, kw_end, self.proximity_window)
         if not numbers:
-            return []
+            return self._bind_respectively_pattern(candidate, cell)
 
         sentence_start, sentence_end = find_sentence_bounds(text, kw_start)
         context_text = " ".join(cell.header_path + cell.stub_path)
@@ -535,6 +536,65 @@ class ValueBindingStage:
                     unit=unit,
                     binding_type="table_cell",
                     binding_confidence=confidence,
+                    source_locator=SourceLocator(
+                        table_id=candidate.source_locator.table_id,
+                        cell_row=cell.row,
+                        cell_col=cell.col,
+                        dom_locator=cell.dom_locator,
+                    ),
+                )
+            )
+        if not bound_values:
+            bound_values = self._bind_respectively_pattern(candidate, cell)
+        return bound_values
+
+    def _bind_respectively_pattern(
+        self,
+        candidate: MetricCandidate,
+        cell: Cell,
+    ) -> list[BoundValue]:
+        """
+        Bind values from a prose cell using the 'respectively' parallel-list pattern.
+
+        Handles text like: "LTV/CAC ratio for the years ended December 31, 2015, 2016
+        and 2017 cohorts was 1.42, 1.53 and 1.77, respectively."
+
+        Returns one BoundValue per association, each carrying the period string as
+        period_hint for downstream period inference.
+        """
+        text = cell.text
+        if "respectively" not in text.lower():
+            return []
+
+        match = detect_respectively_pattern(text)
+        if match is None:
+            return []
+
+        context_text = " ".join(cell.header_path + cell.stub_path)
+        bound_values: list[BoundValue] = []
+        for value_str, period_str in match.associations:
+            parsed = _np.parse_number(value_str)
+            if parsed is None:
+                continue
+            value, unit, raw = parsed
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+            confidence = self._compute_table_confidence(
+                candidate.match_text.lower(),
+                cell.header_path,
+                cell.stub_path,
+                unit,
+            )
+            bound_values.append(
+                BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=value,
+                    value_raw=raw,
+                    unit=unit,
+                    binding_type="respectively_pattern",
+                    binding_confidence=confidence,
+                    period_hint=period_str,
                     source_locator=SourceLocator(
                         table_id=candidate.source_locator.table_id,
                         cell_row=cell.row,
@@ -776,6 +836,35 @@ class ValueBindingStage:
                 )
         elif out_of_sentence_best is not None:
             bound_values.append(out_of_sentence_best[0])
+
+        if not bound_values and located is not None:
+            seg = located[0]
+            if "respectively" in seg.text.lower():
+                resp_match = detect_respectively_pattern(seg.text)
+                if resp_match:
+                    for value_str, period_str in resp_match.associations:
+                        parsed = _np.parse_number(value_str)
+                        if parsed is None:
+                            continue
+                        val, unit, raw = parsed
+                        if self._should_filter_unit(candidate.metric_id, unit):
+                            continue
+                        confidence = self._compute_text_confidence(unit, 0.0, True, 0.0)
+                        bound_values.append(
+                            BoundValue(
+                                candidate_id=candidate.candidate_id,
+                                value=val,
+                                value_raw=raw,
+                                unit=unit,
+                                binding_type="respectively_pattern",
+                                binding_confidence=confidence,
+                                period_hint=period_str,
+                                source_locator=SourceLocator(
+                                    segment_id=seg.segment_id,
+                                    dom_locator=seg.dom_locator,
+                                ),
+                            )
+                        )
 
         return bound_values
 

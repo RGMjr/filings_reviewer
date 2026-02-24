@@ -792,7 +792,7 @@ class BoundValue:
     unit: Unit = Unit.OTHER
 
     # Binding metadata
-    binding_type: str = ""  # "table_header", "table_stub", "text_proximity", "chart_label"
+    binding_type: str = ""  # "table_header", "table_stub", "text_proximity", "chart_label", "respectively_pattern"
     binding_confidence: float = 0.5
 
     # Source location (may differ from candidate location)
@@ -805,6 +805,7 @@ class BoundValue:
     period_confidence: float = 0.0  # Confidence in the period inference
     period_source: str = ""  # "header_path", "text_context", "filing_fallback"
     period_ambiguous: bool = False  # True if multiple conflicting periods detected
+    period_hint: str = ""  # Pre-parsed period from respectively pattern (e.g., "2017")
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.utcnow)

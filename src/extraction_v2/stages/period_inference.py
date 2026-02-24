@@ -353,6 +353,12 @@ class PeriodInferenceStage:
         # Note: BoundValue doesn't directly have header_path, but we can get it from the table
         loc = bound_value.source_locator
 
+        # Strategy 0: Use pre-parsed period_hint from respectively pattern
+        if bound_value.period_hint:
+            period = self._parse_period_from_hint(bound_value.period_hint)
+            if period:
+                return period
+
         # Strategy 1: Check table header_path (primary for table values)
         if loc.table_id:
             table = table_lookup.get(loc.table_id)
@@ -379,6 +385,24 @@ class PeriodInferenceStage:
             if period:
                 return period
 
+        return None
+
+    def _parse_period_from_hint(self, hint: str) -> ParsedPeriod | None:
+        """
+        Parse a period from a pre-extracted hint string (e.g., "2017", "Q1").
+
+        Used by Strategy 0 to resolve periods pre-associated by the respectively parser.
+        Sets confidence=0.85 and source="respectively_hint".
+        """
+        # Try standard text patterns first (handles "Q1 2017", "FY 2017", etc.)
+        period = self._try_parse_all_patterns(hint)
+        if period is None:
+            # Fall back to plain year pattern (handles bare "2017")
+            period = self._try_parse_plain_year(hint)
+        if period:
+            period.confidence = 0.85
+            period.source = "respectively_hint"
+            return period
         return None
 
     def _parse_period_from_headers(self, header_path: list[str]) -> ParsedPeriod | None:
