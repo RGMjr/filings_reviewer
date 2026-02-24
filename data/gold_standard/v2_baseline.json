@@ -1,6 +1,6 @@
 {
-  "baseline_date": "2026-02-24T15:47:32.921633+00:00",
-  "description": "post-WP-09 refresh 2026-02-24",
+  "baseline_date": "2026-02-24T22:23:22.932189+00:00",
+  "description": "Baseline refresh 2026-02-24",
   "overall": {
     "precision": 0.7857142857142857,
     "recall": 0.792,
