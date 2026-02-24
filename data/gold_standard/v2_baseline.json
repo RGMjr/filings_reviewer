@@ -1,16 +1,16 @@
 {
-  "baseline_date": "2026-02-18T13:50:38.552491+00:00",
-  "description": "Fix Farfetch: normalize_value double-scale, ratio metric unit compat, table scale exceptions",
+  "baseline_date": "2026-02-24T15:47:32.921633+00:00",
+  "description": "post-WP-09 refresh 2026-02-24",
   "overall": {
-    "precision": 0.819047619047619,
-    "recall": 0.6056338028169014,
-    "f1": 0.6963562753036437
+    "precision": 0.7857142857142857,
+    "recall": 0.792,
+    "f1": 0.7888446215139442
   },
   "by_company": {
     "Slack Technologies": {
-      "precision": 0.6829268292682927,
-      "recall": 0.6363636363636364,
-      "f1": 0.6588235294117647
+      "precision": 0.65625,
+      "recall": 0.9333333333333333,
+      "f1": 0.7706422018348624
     },
     "SAMSARA VISION INC.": {
       "precision": 1.0,
@@ -18,14 +18,14 @@
       "f1": 1.0
     },
     "Farfetch Limited": {
-      "precision": 0.8928571428571429,
-      "recall": 0.5319148936170213,
-      "f1": 0.6666666666666667
+      "precision": 0.92,
+      "recall": 0.6764705882352942,
+      "f1": 0.7796610169491526
     },
     "Snowflake Inc": {
-      "precision": 0.9117647058823529,
-      "recall": 0.6326530612244898,
-      "f1": 0.746987951807229
+      "precision": 0.9142857142857143,
+      "recall": 0.7272727272727273,
+      "f1": 0.810126582278481
     }
   },
   "pipeline_version": "v1"
