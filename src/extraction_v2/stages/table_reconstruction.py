@@ -81,6 +81,18 @@ class TableReconstructionStage:
                     tables_skipped += 1
                     continue
 
+                # Check table size limits before expensive reconstruction
+                rows = table_elem.find_all("tr")
+                cols = max((len(r.find_all(["td", "th"])) for r in rows), default=0)
+                if len(rows) > context.config.max_table_rows or cols > context.config.max_table_cols:
+                    warnings.append(
+                        f"Segment {segment.segment_id} skipped: table too large "
+                        f"({len(rows)} rows, {cols} cols) — "
+                        f"limits are {context.config.max_table_rows}x{context.config.max_table_cols}"
+                    )
+                    tables_skipped += 1
+                    continue
+
                 # Reconstruct table structure
                 table = self._reconstructor.reconstruct(table_elem)
 
