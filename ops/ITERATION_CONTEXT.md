@@ -6,47 +6,39 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**WP-09 LTV/CAC respectively-pattern binding (2026-02-23)**: Integrated V1 `respectively_parser` into V2 value binding + period inference
-- `_bind_respectively_pattern()` method added to ValueBindingStage; fallback fires when prose cell yields no results
-- Strategy 0 in PeriodInferenceStage uses `period_hint` from respectively parser before all other strategies
-- `BoundValue.period_hint` new field carries pre-parsed period string ("2015"/"2016"/"2017")
-- Farfetch TP: 10 → 16, FN: 22 → 16; R: 31.2% → 50.0%; P=88.9%, F1=64.0%
-- Real mechanism: Strategy 1 (column binding) already found the values; the fix correctly assigns distinct annual periods via `period_hint` instead of all landing on 2015-12-31
-- 0 respectively-pattern facts in Snowflake or Slack — no regressions
-- 7 new unit tests added (4 value_binding, 3 period_inference); full suite 4352 passed
+**WP-10–14 Production readiness (2026-02-24)**: Table resilience, batch hardening, review_status preservation, stale metadata fix
+- WP-10: Table reconstruction `success` only False when zero tables processed (errors → warnings)
+- WP-11: Batch executor created once outside loop; `--max-consecutive-failures` flag (default 10); exit 1 when failure rate > 50%
+- WP-12: `review_status` removed from `DO UPDATE SET` — reviewer decisions survive re-extraction
+- WP-13: JSON summary written to `logs/batch_v2_summary_{timestamp}.json` at batch completion
+- WP-14: `v2_baseline.json` `pipeline_version` fixed to `"v2"`; iteration context updated
 
-### Farfetch V2 scores (no image extraction): TP=16, FP=2, FN=16 — P=88.9%, R=50.0%, F1=64.0%
-
-Remaining Farfetch FN breakdown:
-- **8 FNs (charts)**: no_value_binding — requires Vision API
-- **5 FNs (AOV)**: wrong_period — values extracted at correct scale but period inference assigns wrong dates
-- **3 FNs (LTV/CAC)**: remaining after respectively fix (gold standard period overlap edge cases)
+**WI-04/05 async audit + pagination (merged ea365a4)**
+**WI-01–03 (merged earlier)**
 
 ## Current Focus
 
-- AOV wrong_period (5 FNs) — blocked by WP-08 (period inference for non-calendar FY)
-- Slack table binding fix: complex colspan headers (new WP needed)
-- Baseline refresh: v2_baseline.json needs update after all WPs complete
+- AOV wrong_period (5 FNs) — WP-08 in-flight
+- Slack table binding fix: complex colspan headers (WP in-flight)
 
 ## Test Status
 
-- 4,352 unit tests; 82% coverage (as of 2026-02-23)
-- V2 gold standard stored baseline: P=81.9%, R=60.6%, F1=69.6% (as of 2026-02-18, stale — pipeline_version="v1")
-- V1 baseline: P=89.4%, R=63.2%, F1=74.1% (pre-commit hook passes)
+- 4,765 unit tests; 87% coverage (as of 2026-02-24)
+- V2 gold standard baseline: P=78.6%, R=79.2%, F1=78.9% (2026-02-24, pipeline_version="v2")
+- V1 baseline: P=89.4%, R=63.2%, F1=74.1%
 
 ## Key Learnings for Next Iteration
 
-- Farfetch LTV/CAC: respectively parser fix works via period_hint, not via larger proximity window
-- AOV wrong_period: values ARE extracted at correct scale; period mismatch is the gating issue (needs WP-08)
+- Farfetch LTV/CAC: respectively parser fix works via period_hint, not larger proximity window
+- AOV wrong_period: values ARE extracted at correct scale; period mismatch is the gating issue
 - `_is_scale_exception` fires on `(actual)` stub unconditionally; currency-symbol check still gated
-- FN diagnostic `wrong_period` with `closest != None` means value is found but period doesn't overlap
-- V2 baseline (v2_baseline.json) is stale — set Feb-18, pre-WP-02; comparison against it is misleading
-- `_try_parse_plain_year()` handles bare "2017" but isn't in `_try_parse_all_patterns` pattern list
+- FN diagnostic `wrong_period` with `closest != None` means value found but period doesn't overlap
+- V2 FP pattern: 22/27 FPs are value_mismatch on cm_customers_period_end (Snowflake per-tier)
 
 ## Blockers or Warnings
 
-- Stored v2_baseline.json needs refresh after all WPs complete
 - Farfetch chart FNs (8) require Vision API; not addressable in current test environment
+- AOV/Slack WPs in-flight on v2-rewrite branch
 
 ---
 

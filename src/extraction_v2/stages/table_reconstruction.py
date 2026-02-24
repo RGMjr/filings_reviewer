@@ -126,6 +126,11 @@ class TableReconstructionStage:
         end_time = datetime.utcnow()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
+        # Partial errors are warnings if at least one table succeeded
+        if tables_processed > 0 and errors:
+            warnings.extend(errors)
+            errors = []
+
         # Log summary
         logger.info(
             f"Table reconstruction complete: "
@@ -139,7 +144,7 @@ class TableReconstructionStage:
 
         return StageResult(
             stage=PipelineStage.TABLE_RECONSTRUCTION,
-            success=len(errors) == 0,
+            success=tables_processed > 0 or len(table_segments) == 0,
             duration_ms=duration_ms,
             items_processed=len(table_segments),
             items_output=tables_processed,
