@@ -545,10 +545,12 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-18)
-- **V2 overall:** P=81.9%, R=60.6%, F1=69.6%
+### Gold Standard Performance (as of 2026-02-24)
+- **V2 overall:** P=78.6%, R=79.2%, F1=78.9% (confidence >= 0.5)
 - **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
-- V2 precision improved from 58% → 70% → 73% → 81.9% through iterative FP reduction
+- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% through iterative FP/recall tradeoffs
+- V2 recall improved from ~55% → 60.6% → 79.2% through WP-09 binding improvements
+- V2 F1 (78.9%) now exceeds V1 baseline (74.1%)
 
 ## Current Status
 
@@ -568,3 +570,4 @@ All 13 implementation phases are complete. Active work focuses on:
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
 | 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
+| 2026-02-24 | 1.6 | Refreshed gold standard scores post-WP-09: P=78.6%, R=79.2%, F1=78.9% |

@@ -29,7 +29,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 - Bulk re-processing where speed is critical
 - Legacy integrations expecting V1 output format
 
-**Validation status (as of 2026-02-18):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+**Validation status (as of 2026-02-24):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=78.6%, R=79.2%, F1=78.9%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 ## API Differences
 
@@ -206,7 +206,7 @@ Before migrating, validate V2 produces acceptable results:
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
-# Expected scores (as of 2026-02-18): P=81.9%, R=60.6%, F1=69.6%
+# Expected scores (as of 2026-02-24): P=78.6%, R=79.2%, F1=78.9%
 ```
 
 ### Step 2: Parallel Running (Recommended)
