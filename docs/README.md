@@ -153,7 +153,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
-| V2 Gold Standard | ✅ Active | N/A | P=81.9%, R=60.6%, F1=69.6% (as of 2026-02-18) |
+| V2 Gold Standard | ✅ Active | N/A | P=78.6%, R=79.2%, F1=78.9% (as of 2026-02-24) |
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 4,765 tests)
 
@@ -381,7 +381,7 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 - ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
 - ✅ V2 human review interface with fact-by-fact review and evidence packs
 - ✅ V2 false positive filter stage and percentage context detection
-- ✅ Gold standard validator for V2 (P=81.9%, R=60.6%, F1=69.6% as of 2026-02-18)
+- ✅ Gold standard validator for V2 (P=78.6%, R=79.2%, F1=78.9% as of 2026-02-24)
 - ✅ V2 precision tuning: FP reduction, decimal-gated count scaling, unit compatibility
 - ✅ 4,765 tests, 87% coverage
 
