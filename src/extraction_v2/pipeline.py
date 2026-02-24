@@ -37,11 +37,13 @@ from src.extraction_v2.models import (
     Document,
     ImageAsset,
     MetricCandidate,
+    MetricDefinition,
     MetricFact,
     Segment,
     Table,
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
+from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterStage
@@ -70,6 +72,7 @@ class PipelineStage(str, Enum):
     FALSE_POSITIVE_FILTER = "false_positive_filter"
     PERIOD_INFERENCE = "period_inference"
     FACT_CONSTRUCTION = "fact_construction"
+    DEFINITION_EXTRACTION = "definition_extraction"
     DEDUPLICATION = "deduplication"
     VALIDATION = "validation"
 
@@ -138,10 +141,10 @@ class PipelineResult:
     tables: list[Table]
     images: list[ImageAsset]
     segments: list[Segment]
-
     stage_results: list[StageResult]
     total_duration_ms: int
     success: bool
+    definitions: list[MetricDefinition] = field(default_factory=list)
     error_message: str | None = None
     context: Any | None = None  # PipelineContext — only set when retain_context=True
 
@@ -223,6 +226,7 @@ class PipelineContext:
     bound_values: list[BoundValue] = field(default_factory=list)
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
+    definitions: list[MetricDefinition] = field(default_factory=list)
 
     # Diagnostics (only populated when config.retain_context=True)
     _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
@@ -305,6 +309,9 @@ class V2Pipeline:
 
         # Stage 9: MetricFact Construction
         self._stages.append((PipelineStage.FACT_CONSTRUCTION, FactConstructionStage()))
+
+        # Stage 9.5: Definition Extraction
+        self._stages.append((PipelineStage.DEFINITION_EXTRACTION, DefinitionExtractionStage()))
 
         # Stage 10: Deduplication
         self._stages.append((PipelineStage.DEDUPLICATION, DeduplicationStage()))
@@ -400,6 +407,7 @@ class V2Pipeline:
             stage_results=context.stage_results,
             total_duration_ms=total_ms,
             success=True,
+            definitions=context.definitions,
             context=context if self.config.retain_context else None,
         )
 
@@ -422,6 +430,7 @@ class V2Pipeline:
             stage_results=context.stage_results,
             total_duration_ms=total_ms,
             success=False,
+            definitions=[],
             error_message=error_message,
         )
 

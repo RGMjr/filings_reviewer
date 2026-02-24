@@ -241,8 +241,8 @@ class TestV2Pipeline:
     def test_pipeline_initialization(self) -> None:
         """Test pipeline initializes with all stages."""
         pipeline = V2Pipeline()
-        # Should have 12 stages by default (including false positive filter)
-        assert len(pipeline._stages) == 12
+        # Should have 13 stages by default (including false positive filter and definition extraction)
+        assert len(pipeline._stages) == 13
 
     def test_pipeline_with_disabled_features(self) -> None:
         """Test pipeline with disabled optional features."""
@@ -270,7 +270,7 @@ class TestV2Pipeline:
         # Should complete without error (even if no facts extracted)
         assert result.success is True
         assert result.document is not None
-        assert len(result.stage_results) == 12  # All stages executed
+        assert len(result.stage_results) == 13  # All stages executed
 
     def test_pipeline_tracks_stage_durations(self, tmp_path: Path) -> None:
         """Test that stage durations are tracked."""
@@ -286,7 +286,7 @@ class TestV2Pipeline:
     def test_pipeline_no_stub_warnings_all_stages_implemented(self, tmp_path: Path) -> None:
         """Test that all pipeline stages are now fully implemented (no stub warnings).
 
-        All 12 stages are now implemented:
+        All 13 stages are now implemented:
         1. IngestionStage
         2. SectionClassificationStage
         3. TableReconstructionStage
@@ -297,6 +297,7 @@ class TestV2Pipeline:
         8. FalsePositiveFilterStage
         9. PeriodInferenceStage
         10. FactConstructionStage
+        10.5. DefinitionExtractionStage
         11. DeduplicationStage
         12. ValidationStage
         """

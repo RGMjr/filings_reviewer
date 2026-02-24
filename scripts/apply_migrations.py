@@ -37,6 +37,7 @@ MIGRATIONS = [
     "09_create_image_review_schema.sql",
     "09_v2_schema.sql",
     "10_v2_fact_identity_dedup.sql",
+    "11_v2_definitions.sql",
 ]
 
 
