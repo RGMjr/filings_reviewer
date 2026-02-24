@@ -1,9 +1,9 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.5
+**Version**: 1.6
 **Created**: 2026-01-23
-**Updated**: 2026-02-18
-**Status**: Complete (All 13 Phases)
+**Updated**: 2026-02-24
+**Status**: Complete (All 13 Phases + Phase B enhancements)
 
 ## Executive Summary
 
@@ -552,9 +552,45 @@ After all 13 phases were completed, the following enhancements were added:
 - V2 recall improved from ~55% → 60.6% → 79.2% through WP-09 binding improvements
 - V2 F1 (78.9%) now exceeds V1 baseline (74.1%)
 
+## Phase B: Post-Pipeline Enhancements ✅ COMPLETE (2026-02-24)
+
+Three features added to the V2 pipeline after the original 13 phases were shipped:
+
+### Stage 9.5 — Definition Extraction
+
+**File:** `src/extraction_v2/stages/definition_extraction.py`
+
+Finds DEFINITION and METHODOLOGY segments near each metric candidate using a ±5 sequence window. Normalizes text and assesses alignment with CMASB canonical definitions, producing one of four alignment labels: `aligned`, `partial`, `not_aligned`, or `unknown`. Results are attached to `PipelineResult.definitions` as `MetricDefinition` objects.
+
+**Database:** Requires SQL migration 11 (`sql/11_v2_definitions.sql`), which adds the `v2_metric_definitions` table (UUID primary key, unique on `doc_id + canonical_metric_id`).
+
+### Quality Scoring Adapter
+
+**File:** `src/extraction_v2/quality_scoring.py`
+
+`V2QualityScorer` ports all five V1 quality rubrics (overall, definition, methodology, completeness, comparability) for V2 facts. Writes results to V1's `filing_metric_incidence` table, maintaining analytics compatibility with downstream queries. Called automatically from `scripts/run_v2_extraction.py`; use `--skip-quality` to disable.
+
+### Batch Extraction Script
+
+**File:** `scripts/batch_v2_extraction.py`
+
+Parallel V2 extraction via `ProcessPoolExecutor`:
+- `--workers N` (default 4) — number of parallel worker processes
+- `--batch-size N` — checkpoint interval; progress saved to `logs/batch_v2_progress.json`
+- `--limit N` — cap total filings processed
+- `--resume-from ID` — skip filings before this ID (for restarts)
+- `--dry-run` — plan without writing
+- `--skip-quality` — skip quality scoring step
+- `--no-images` — disable OCR/chart extraction
+- `--filing-id ID` — run on a single filing
+
+SIGINT triggers graceful shutdown: completes the current batch before exiting.
+
+---
+
 ## Current Status
 
-All 13 implementation phases are complete. Active work focuses on:
+All 13 implementation phases and Phase B enhancements are complete. Active work focuses on:
 1. **Precision/recall optimization** via gold standard validation
 2. **Keyword tuning** in `config/metric_keywords.yaml`
 3. **FP rule refinement** in the false positive filter stage
@@ -570,4 +606,4 @@ All 13 implementation phases are complete. Active work focuses on:
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
 | 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
-| 2026-02-24 | 1.6 | Refreshed gold standard scores post-WP-09: P=78.6%, R=79.2%, F1=78.9% |
+| 2026-02-24 | 1.6 | Refreshed gold standard scores post-WP-09: P=78.6%, R=79.2%, F1=78.9%; added Phase B section (definition extraction, quality scoring adapter, batch script) |

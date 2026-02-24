@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.4
+**Version:** 2.5
 **Status:** Production Ready
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-24
 
 ---
 
@@ -377,7 +377,14 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.3 (Current - 2026-02-17)
+### Version 2.4 (Current - 2026-02-24)
+- ✅ V2 Stage 9.5 — Definition Extraction (±5-window proximity scan, CMASB alignment scoring)
+- ✅ V2 Quality Scoring Adapter (`V2QualityScorer`) writes all 5 rubrics to `filing_metric_incidence`
+- ✅ Batch extraction script (`scripts/batch_v2_extraction.py`) with parallel workers, checkpointing, graceful shutdown
+- ✅ SQL migration 11: `v2_metric_definitions` table
+- ✅ Gold standard: P=78.6%, R=79.2%, F1=78.9% (confidence >= 0.5, as of 2026-02-24)
+
+### Version 2.3 (2026-02-17)
 - ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
 - ✅ V2 human review interface with fact-by-fact review and evidence packs
 - ✅ V2 false positive filter stage and percentage context detection

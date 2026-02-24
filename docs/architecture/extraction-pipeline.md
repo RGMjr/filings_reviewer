@@ -989,7 +989,7 @@ class ExtractedContext:
 
 The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It runs alongside V1 and is the target for new extraction work.
 
-**Status:** Production-ready (P=81.9%, R=60.6%, F1=69.6% on gold standard)
+**Status:** Production-ready (P=78.6%, R=79.2%, F1=78.9% on gold standard, as of 2026-02-24)
 **See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`
 
 ### Key Architectural Differences
@@ -1002,7 +1002,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Production ready (87% coverage) | Production ready (F1=69.6%) |
+| **Status** | Production ready (87% coverage) | Production ready (F1=78.9%) |
 
 ### V2 Pipeline Stages
 
@@ -1019,6 +1019,7 @@ The V2 pipeline implements a 13-stage extraction workflow, plus post-completion 
 7.5 False Positive Filtering    → unit compatibility, decimal-gated count scaling
 8.  Period Inference            → from header_path or context
 9.  MetricFact Construction     → with complete evidence_pack
+9.5 Definition Extraction       → DEFINITION/METHODOLOGY segments near candidates (±5 window), CMASB alignment scoring
 10. Deduplication               → by identity tuple (metric, period, cohort, value)
 11. Validation & Review Routing → confidence-based (auto-accept/review/reject)
 12. Database Persistence        → v2_* tables with idempotent upserts
@@ -1107,11 +1108,12 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 
 ---
 
-**Last Updated:** 2026-02-20
-**Version:** 2.6
+**Last Updated:** 2026-02-24
+**Version:** 2.7
 **Status:** Production Ready
 
 **Changelog:**
+- v2.7 (2026-02-24): Updated V2 gold standard scores to P=78.6%/R=79.2%/F1=78.9% (post-WP-09); added Stage 9.5 Definition Extraction to V2 stage list
 - v2.6 (2026-02-20): Removed deleted cohort_chart_detector section; updated V2 stage list (13 stages + FP filter); corrected V2Pipeline class name and process() method; removed config/extraction.yaml reference; added extraction-decisions.md cross-reference; updated V2 from alpha to production-ready
 - v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation
 - v2.4 (2025-12-26): Added CandidateDetector (EA-2) - unified candidate detection module
