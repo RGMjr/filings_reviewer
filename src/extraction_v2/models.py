@@ -403,6 +403,39 @@ class MetricFact:
         return abs(self.value - other.value) / abs(other.value) <= value_tolerance
 
 
+@dataclass
+class MetricDefinition:
+    """
+    Definition and methodology text for a metric extracted from a filing.
+
+    Created by Stage 9.5 (Definition Extraction) when DEFINITION/METHODOLOGY
+    segments are found near metric candidates.
+    """
+
+    # Identity
+    definition_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    doc_id: str = ""
+    canonical_metric_id: str = ""
+
+    # Definition text (what the metric means)
+    definition_text: str = ""
+    definition_text_normalized: str = ""
+
+    # Methodology text (how it's calculated)
+    methodology_text: str = ""
+    methodology_text_normalized: str = ""
+
+    # Source segments (UUID references)
+    definition_segment_id: str | None = None
+    methodology_segment_id: str | None = None
+
+    # Alignment with CMASB canonical definitions
+    alignment_flag: str = "unknown"  # aligned/partial/not_aligned/unknown
+
+    # Metadata
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+
 # ============================================================================
 # Table and Cell (for table reconstruction)
 # ============================================================================

@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""
+Batch V2 Extraction Script.
+
+Runs the V2 extraction pipeline on multiple filings in parallel using
+ProcessPoolExecutor. Supports checkpointing, graceful shutdown, and
+quality scoring.
+
+Usage:
+    # Process all filings (4 workers)
+    python3 scripts/batch_v2_extraction.py
+
+    # Process first 10 filings
+    python3 scripts/batch_v2_extraction.py --limit 10
+
+    # Resume from last checkpoint
+    python3 scripts/batch_v2_extraction.py --resume-from 1234
+
+    # Single filing
+    python3 scripts/batch_v2_extraction.py --filing-id 42
+
+    # Dry run (no database writes)
+    python3 scripts/batch_v2_extraction.py --dry-run --limit 5
+
+    # Skip quality scoring
+    python3 scripts/batch_v2_extraction.py --skip-quality
+
+    # Custom workers and batch size
+    python3 scripts/batch_v2_extraction.py --workers 8 --batch-size 20
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import signal
+import sys
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Logs directory for checkpoints
+LOGS_DIR = PROJECT_ROOT / "logs"
+CHECKPOINT_FILE = LOGS_DIR / "batch_v2_progress.json"
+
+# Global shutdown flag (set by SIGINT handler)
+_shutdown_requested = False
+
+
+def _handle_sigint(signum: int, frame: object) -> None:
+    """Handle Ctrl+C gracefully."""
+    global _shutdown_requested
+    logger.info("Shutdown requested (SIGINT). Finishing current batch then stopping...")
+    _shutdown_requested = True
+
+
+@dataclass
+class BatchConfig:
+    """Configuration for batch extraction."""
+
+    workers: int = 4
+    batch_size: int = 10  # Checkpoint interval
+    dry_run: bool = False
+    resume_from: int | None = None  # Skip filing_ids < this value
+    limit: int | None = None
+    skip_quality_scoring: bool = False
+    no_images: bool = False
+    min_confidence: float = 0.90
+
+
+@dataclass
+class BatchStats:
+    """Runtime statistics for batch processing."""
+
+    total_filings: int = 0
+    processed: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    skipped: int = 0
+    total_facts: int = 0
+    start_time: float = field(default_factory=time.time)
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.time() - self.start_time
+
+    @property
+    def rate_per_minute(self) -> float:
+        elapsed = self.elapsed_seconds
+        if elapsed < 1:
+            return 0.0
+        return self.processed / elapsed * 60
+
+    @property
+    def eta_seconds(self) -> float | None:
+        remaining = self.total_filings - self.processed
+        rate = self.rate_per_minute
+        if rate <= 0 or remaining <= 0:
+            return None
+        return remaining / rate * 60
+
+
+def _process_filing_worker(
+    filing_id: int,
+    html_path: str | None,
+    company_name: str,
+    company_id: int,
+    cik: str,
+    db_url: str,
+    config_dict: dict,
+) -> dict:
+    """
+    Worker function for ProcessPoolExecutor.
+
+    Must be a module-level function (not a method) for pickling.
+    Creates its own DB connection and pipeline instance.
+
+    Returns dict with: filing_id, success, fact_count, definition_count, error, duration_ms
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    _PROJECT_ROOT = _Path(__file__).parent.parent
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+    import logging as _logging
+    _logger = _logging.getLogger(__name__)
+
+    start_ms = int(time.time() * 1000)
+
+    try:
+        from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
+        from src.extraction_v2.persistence import V2PersistenceAdapter
+        from src.extraction_v2.quality_scoring import V2QualityScorer
+        from src.infra.db import DatabaseAdapter
+
+        # Resolve HTML path
+        if html_path:
+            resolved_path = _Path(html_path)
+        else:
+            # Try gold standard directory
+            company_slug = company_name.replace(" ", "_")
+            resolved_path = _PROJECT_ROOT / "data" / "gold_standard" / company_slug / "filing.html"
+
+        if not resolved_path.exists():
+            return {
+                "filing_id": filing_id,
+                "success": False,
+                "fact_count": 0,
+                "definition_count": 0,
+                "error": f"HTML not found: {resolved_path}",
+                "duration_ms": 0,
+            }
+
+        # Configure pipeline
+        pipeline_config = PipelineConfig(
+            enable_image_extraction=not config_dict.get("no_images", False),
+            enable_chart_extraction=not config_dict.get("no_images", False),
+            min_confidence_auto_accept=config_dict.get("min_confidence", 0.90),
+        )
+
+        # Run pipeline
+        pipeline = V2Pipeline(config=pipeline_config)
+        result = pipeline.process(
+            html_path=resolved_path,
+            filing_id=filing_id,
+            cik=cik,
+        )
+
+        duration_ms = int(time.time() * 1000) - start_ms
+
+        if config_dict.get("dry_run"):
+            return {
+                "filing_id": filing_id,
+                "success": result.success,
+                "fact_count": result.fact_count,
+                "definition_count": len(result.definitions),
+                "error": result.error_message,
+                "duration_ms": duration_ms,
+            }
+
+        # Persist results
+        db = DatabaseAdapter(db_url)
+        adapter = V2PersistenceAdapter(db)
+        persist_result = adapter.persist_pipeline_result(result, filing_id)
+
+        if not persist_result.success:
+            return {
+                "filing_id": filing_id,
+                "success": False,
+                "fact_count": 0,
+                "definition_count": 0,
+                "error": str(persist_result.errors),
+                "duration_ms": duration_ms,
+            }
+
+        # Quality scoring
+        if not config_dict.get("skip_quality_scoring"):
+            try:
+                scorer = V2QualityScorer()
+                scores = scorer.score_filing(
+                    filing_id=filing_id,
+                    company_id=company_id,
+                    facts=result.facts,
+                    definitions=result.definitions,
+                    segments=result.segments,
+                )
+                adapter.persist_quality_scores(scores, filing_id)
+            except Exception as e:
+                _logger.warning(f"Quality scoring failed for filing {filing_id}: {e}")
+
+        return {
+            "filing_id": filing_id,
+            "success": True,
+            "fact_count": result.fact_count,
+            "definition_count": len(result.definitions),
+            "error": None,
+            "duration_ms": duration_ms,
+        }
+
+    except Exception as e:
+        duration_ms = int(time.time() * 1000) - start_ms
+        return {
+            "filing_id": filing_id,
+            "success": False,
+            "fact_count": 0,
+            "definition_count": 0,
+            "error": str(e),
+            "duration_ms": duration_ms,
+        }
+
+
+class BatchV2Runner:
+    """
+    Batch runner for V2 extraction pipeline.
+
+    Queries filings from the database and processes them in parallel
+    using ProcessPoolExecutor.
+    """
+
+    def __init__(self, config: BatchConfig, db_url: str) -> None:
+        self.config = config
+        self.db_url = db_url
+        self._stats = BatchStats()
+
+    def query_filings(self) -> list[dict]:
+        """Query filings from database."""
+        from src.infra.db import DatabaseAdapter
+
+        db = DatabaseAdapter(self.db_url)
+
+        sql = """
+            SELECT f.filing_id, f.accession_number, f.html_storage_path,
+                   c.company_name, c.company_id, c.cik
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            ORDER BY f.filing_id
+        """
+        filings = db.query(sql)
+
+        # Apply resume filter
+        if self.config.resume_from is not None:
+            filings = [f for f in filings if f["filing_id"] >= self.config.resume_from]
+            logger.info(f"Resuming from filing_id={self.config.resume_from}")
+
+        # Apply limit
+        if self.config.limit is not None:
+            filings = filings[: self.config.limit]
+
+        return list(filings)
+
+    def _save_checkpoint(self, stats: BatchStats, last_filing_id: int) -> None:
+        """Save progress checkpoint to disk."""
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        checkpoint = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "last_filing_id": last_filing_id,
+            "processed": stats.processed,
+            "succeeded": stats.succeeded,
+            "failed": stats.failed,
+            "total_facts": stats.total_facts,
+        }
+        with open(CHECKPOINT_FILE, "w") as f:
+            json.dump(checkpoint, f, indent=2)
+        logger.debug(f"Checkpoint saved: last_filing_id={last_filing_id}")
+
+    def _log_progress(self, stats: BatchStats) -> None:
+        """Log progress with rate and ETA."""
+        rate = stats.rate_per_minute
+        eta = stats.eta_seconds
+        eta_str = f"{eta:.0f}s" if eta is not None else "unknown"
+
+        logger.info(
+            f"Progress: {stats.processed}/{stats.total_filings} "
+            f"({stats.succeeded} ok, {stats.failed} failed) "
+            f"| Rate: {rate:.1f}/min | ETA: {eta_str} "
+            f"| Facts: {stats.total_facts}"
+        )
+
+    def run(self, filings: list[dict]) -> BatchStats:
+        """
+        Run batch extraction with parallel workers.
+
+        Args:
+            filings: List of filing dicts from query_filings()
+
+        Returns:
+            BatchStats with final counts
+        """
+        global _shutdown_requested
+
+        stats = BatchStats(total_filings=len(filings))
+        stats.start_time = time.time()
+
+        if not filings:
+            logger.info("No filings to process")
+            return stats
+
+        logger.info(
+            f"Starting batch V2 extraction: {len(filings)} filings, "
+            f"{self.config.workers} workers, "
+            f"batch_size={self.config.batch_size}"
+        )
+
+        config_dict = {
+            "dry_run": self.config.dry_run,
+            "no_images": self.config.no_images,
+            "min_confidence": self.config.min_confidence,
+            "skip_quality_scoring": self.config.skip_quality_scoring,
+        }
+
+        last_filing_id = 0
+
+        # Process in batches for checkpointing
+        batch_num = 0
+        for batch_start in range(0, len(filings), self.config.batch_size):
+            if _shutdown_requested:
+                logger.info("Shutdown requested, stopping after current batch")
+                break
+
+            batch = filings[batch_start : batch_start + self.config.batch_size]
+            batch_num += 1
+
+            with ProcessPoolExecutor(max_workers=self.config.workers) as executor:
+                futures = {
+                    executor.submit(
+                        _process_filing_worker,
+                        filing["filing_id"],
+                        filing.get("html_storage_path"),
+                        filing["company_name"],
+                        filing["company_id"],
+                        str(filing.get("cik", "")),
+                        self.db_url,
+                        config_dict,
+                    ): filing
+                    for filing in batch
+                }
+
+                for future in as_completed(futures):
+                    filing = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        result = {
+                            "filing_id": filing["filing_id"],
+                            "success": False,
+                            "fact_count": 0,
+                            "definition_count": 0,
+                            "error": str(e),
+                            "duration_ms": 0,
+                        }
+
+                    stats.processed += 1
+                    if result["success"]:
+                        stats.succeeded += 1
+                        stats.total_facts += result.get("fact_count", 0)
+                    else:
+                        stats.failed += 1
+                        logger.warning(
+                            f"Filing {result['filing_id']} failed: {result.get('error', 'unknown')}"
+                        )
+
+                    last_filing_id = max(last_filing_id, result["filing_id"])
+
+                    # Log progress every 10 filings
+                    if stats.processed % 10 == 0:
+                        self._log_progress(stats)
+
+            # Checkpoint after each batch
+            self._save_checkpoint(stats, last_filing_id)
+            logger.info(
+                f"Batch {batch_num} complete: "
+                f"{min(batch_start + self.config.batch_size, len(filings))}/{len(filings)} done"
+            )
+
+        # Final summary
+        elapsed = stats.elapsed_seconds
+        logger.info(
+            f"Batch extraction complete: "
+            f"{stats.succeeded}/{stats.total_filings} succeeded, "
+            f"{stats.failed} failed, "
+            f"{stats.total_facts} total facts, "
+            f"{elapsed:.1f}s elapsed"
+        )
+
+        return stats
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Batch V2 extraction pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("--filing-id", type=int, help="Process a single filing by ID")
+    parser.add_argument("--limit", type=int, help="Maximum number of filings to process")
+    parser.add_argument(
+        "--resume-from", type=int, help="Skip filing_ids less than this value"
+    )
+    parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers (default: 4)")
+    parser.add_argument(
+        "--batch-size", type=int, default=10, help="Checkpoint interval in filings (default: 10)"
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Run without persisting to database")
+    parser.add_argument("--skip-quality", action="store_true", help="Skip quality scoring")
+    parser.add_argument("--no-images", action="store_true", help="Disable image extraction")
+    parser.add_argument(
+        "--min-confidence", type=float, default=0.90, help="Min confidence for auto-accept"
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        print("ERROR: DATABASE_URL environment variable not set", file=sys.stderr)
+        sys.exit(1)
+
+    # Register SIGINT handler for graceful shutdown
+    signal.signal(signal.SIGINT, _handle_sigint)
+
+    config = BatchConfig(
+        workers=args.workers,
+        batch_size=args.batch_size,
+        dry_run=args.dry_run,
+        resume_from=args.resume_from,
+        limit=args.limit,
+        skip_quality_scoring=args.skip_quality,
+        no_images=args.no_images,
+        min_confidence=args.min_confidence,
+    )
+
+    runner = BatchV2Runner(config=config, db_url=db_url)
+
+    # Single filing mode
+    if args.filing_id:
+        from src.infra.db import DatabaseAdapter
+
+        db = DatabaseAdapter(db_url)
+        rows = db.query(
+            """
+            SELECT f.filing_id, f.accession_number, f.html_storage_path,
+                   c.company_name, c.company_id, c.cik
+            FROM filings f
+            JOIN companies c ON f.company_id = c.company_id
+            WHERE f.filing_id = %(filing_id)s
+            """,
+            {"filing_id": args.filing_id},
+        )
+        if not rows:
+            print(f"ERROR: Filing {args.filing_id} not found", file=sys.stderr)
+            sys.exit(1)
+        filings = list(rows)
+    else:
+        filings = runner.query_filings()
+
+    if not filings:
+        logger.info("No filings to process")
+        sys.exit(0)
+
+    logger.info(f"Found {len(filings)} filings to process")
+
+    stats = runner.run(filings)
+
+    # Exit with error if any failures
+    if stats.failed > 0 and stats.succeeded == 0:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
