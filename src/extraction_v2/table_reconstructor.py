@@ -12,6 +12,7 @@ Design source: Claude V2 PRD - Table Reconstruction stage.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -50,6 +51,34 @@ class TableReconstructor:
     - No two source cells claim the same grid position (no overlaps)
     - Spans that extend beyond grid bounds are clipped, not silently dropped
     """
+
+    # Matches financial values: currency symbols, comma-formatted numbers,
+    # parenthesized negatives, and percentages.
+    # Deliberately excludes bare 4-digit years (e.g. "2017") — those have no
+    # comma, currency symbol, paren, or percent and will not match.
+    _FINANCIAL_VALUE_RE = re.compile(
+        r"(?:"
+        r"[$£€]"  # currency symbols
+        r"|\d{1,3}(?:,\d{3})+"  # comma-formatted number: 1,234 or 1,234,567
+        r"|\(\d[\d,.]*\)"  # parenthesized negative: (1,234)
+        r"|\d+(?:\.\d+)?%"  # percentage: 12% or 3.5%
+        r")"
+    )
+
+    def _is_financial_data_row(self, row: list[Cell | None]) -> bool:
+        """Return True if the majority of non-empty cells look like financial values.
+
+        Requires at least 3 non-empty cells to avoid triggering on sparse prose rows.
+        """
+        unique_cells = list(
+            {id(cell): cell for cell in row if cell and cell.text.strip()}.values()
+        )
+        if len(unique_cells) < 3:
+            return False
+        match_count = sum(
+            1 for cell in unique_cells if self._FINANCIAL_VALUE_RE.search(cell.text)
+        )
+        return match_count > len(unique_cells) * 0.5
 
     def _validate_grid(
         self, grid: list[list[Cell | None]], row_count: int, col_count: int
@@ -319,8 +348,11 @@ class TableReconstructor:
         """
         Detect number of header rows at top of table.
 
-        A row is a header if majority of cells are <th> elements.
-        Stop at first non-header row.
+        Primary: a row is a header if majority of cells are <th> elements.
+        Fallback (SEC filings): when no <th> rows are found, scan up to 8 rows
+        for the first row that looks like financial data; all rows before it are
+        treated as headers. This handles the common SEC filing pattern where all
+        cells use <td>, including period headers.
 
         Args:
             grid: Normalized grid from _resolve_spans
@@ -344,6 +376,14 @@ class TableReconstructor:
                 header_row_count += 1
             else:
                 break  # Stop at first non-header row
+
+        # Fallback for <td>-only tables (common in SEC filings): scan for the
+        # first row containing financial values; all preceding rows are headers.
+        if header_row_count == 0:
+            for row_idx, row in enumerate(grid[:8]):
+                if self._is_financial_data_row(row):
+                    header_row_count = row_idx
+                    break
 
         return max(1, header_row_count)  # At least 1 header row
 
