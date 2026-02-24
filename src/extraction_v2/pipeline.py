@@ -33,8 +33,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from src.extraction_v2.models import (
+    BoundValue,
     Document,
     ImageAsset,
+    MetricCandidate,
     MetricFact,
     Segment,
     Table,
@@ -217,13 +219,13 @@ class PipelineContext:
     images: list[ImageAsset] = field(default_factory=list)
 
     # Extraction results
-    candidates: list[Any] = field(default_factory=list)  # MetricCandidate
-    bound_values: list[Any] = field(default_factory=list)  # BoundValue
+    candidates: list[MetricCandidate] = field(default_factory=list)
+    bound_values: list[BoundValue] = field(default_factory=list)
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
 
     # Diagnostics (only populated when config.retain_context=True)
-    _pre_filter_bound_values: list[Any] = field(default_factory=list)  # Before FP filter
+    _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
 
     # SEC filing info (for image downloading)
     cik: str = ""
