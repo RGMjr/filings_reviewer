@@ -97,6 +97,8 @@ class BatchStats:
     skipped: int = 0
     total_facts: int = 0
     start_time: float = field(default_factory=time.time)
+    aborted_by_circuit_breaker: bool = False
+    filing_results: list = field(default_factory=list)
 
     @property
     def elapsed_seconds(self) -> float:
@@ -315,12 +317,13 @@ class BatchV2Runner:
             f"| Facts: {stats.total_facts}"
         )
 
-    def run(self, filings: list[dict]) -> BatchStats:
+    def run(self, filings: list[dict], max_consecutive_failures: int = 10) -> BatchStats:
         """
         Run batch extraction with parallel workers.
 
         Args:
             filings: List of filing dicts from query_filings()
+            max_consecutive_failures: Circuit breaker threshold
 
         Returns:
             BatchStats with final counts
@@ -348,18 +351,22 @@ class BatchV2Runner:
         }
 
         last_filing_id = 0
+        consecutive_failures = 0
 
-        # Process in batches for checkpointing
+        # Process in batches for checkpointing (single executor for all batches)
         batch_num = 0
-        for batch_start in range(0, len(filings), self.config.batch_size):
-            if _shutdown_requested:
-                logger.info("Shutdown requested, stopping after current batch")
-                break
+        with ProcessPoolExecutor(max_workers=self.config.workers) as executor:
+            for batch_start in range(0, len(filings), self.config.batch_size):
+                if _shutdown_requested:
+                    logger.info("Shutdown requested, stopping after current batch")
+                    break
 
-            batch = filings[batch_start : batch_start + self.config.batch_size]
-            batch_num += 1
+                if stats.aborted_by_circuit_breaker:
+                    break
 
-            with ProcessPoolExecutor(max_workers=self.config.workers) as executor:
+                batch = filings[batch_start : batch_start + self.config.batch_size]
+                batch_num += 1
+
                 futures = {
                     executor.submit(
                         _process_filing_worker,
@@ -392,24 +399,45 @@ class BatchV2Runner:
                     if result["success"]:
                         stats.succeeded += 1
                         stats.total_facts += result.get("fact_count", 0)
+                        consecutive_failures = 0
                     else:
                         stats.failed += 1
+                        consecutive_failures += 1
                         logger.warning(
                             f"Filing {result['filing_id']} failed: {result.get('error', 'unknown')}"
                         )
 
+                    # Accumulate per-filing result for summary report
+                    stats.filing_results.append({
+                        "filing_id": result["filing_id"],
+                        "company_name": filing.get("company_name", ""),
+                        "success": result["success"],
+                        "fact_count": result.get("fact_count", 0),
+                        "error": result.get("error"),
+                        "duration_ms": result.get("duration_ms", 0),
+                    })
+
                     last_filing_id = max(last_filing_id, result["filing_id"])
+
+                    # Circuit breaker
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.error(
+                            f"Circuit breaker triggered: {consecutive_failures} consecutive failures. "
+                            "Aborting batch run."
+                        )
+                        stats.aborted_by_circuit_breaker = True
+                        break
 
                     # Log progress every 10 filings
                     if stats.processed % 10 == 0:
                         self._log_progress(stats)
 
-            # Checkpoint after each batch
-            self._save_checkpoint(stats, last_filing_id)
-            logger.info(
-                f"Batch {batch_num} complete: "
-                f"{min(batch_start + self.config.batch_size, len(filings))}/{len(filings)} done"
-            )
+                # Checkpoint after each batch
+                self._save_checkpoint(stats, last_filing_id)
+                logger.info(
+                    f"Batch {batch_num} complete: "
+                    f"{min(batch_start + self.config.batch_size, len(filings))}/{len(filings)} done"
+                )
 
         # Final summary
         elapsed = stats.elapsed_seconds
@@ -446,6 +474,12 @@ def main() -> None:
         "--min-confidence", type=float, default=0.90, help="Min confidence for auto-accept"
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    parser.add_argument(
+        "--max-consecutive-failures",
+        type=int,
+        default=10,
+        help="Abort if this many consecutive failures occur (default: 10)",
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -500,10 +534,31 @@ def main() -> None:
 
     logger.info(f"Found {len(filings)} filings to process")
 
-    stats = runner.run(filings)
+    stats = runner.run(filings, max_consecutive_failures=args.max_consecutive_failures)
 
-    # Exit with error if any failures
+    # Write summary JSON report
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    summary_path = LOGS_DIR / f"batch_v2_summary_{timestamp}.json"
+    summary = {
+        "run_date": datetime.utcnow().isoformat(),
+        "total_filings": stats.total_filings,
+        "succeeded": stats.succeeded,
+        "failed": stats.failed,
+        "skipped": stats.skipped,
+        "total_facts": stats.total_facts,
+        "duration_seconds": round(stats.elapsed_seconds, 1),
+        "aborted_by_circuit_breaker": stats.aborted_by_circuit_breaker,
+        "per_filing": stats.filing_results,
+    }
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    logger.info(f"Summary written to {summary_path}")
+
+    # Exit with error if all failed or majority failed (>50% failure rate)
     if stats.failed > 0 and stats.succeeded == 0:
+        sys.exit(1)
+    if stats.failed > stats.succeeded:
         sys.exit(1)
 
 
