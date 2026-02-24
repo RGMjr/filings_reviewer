@@ -29,6 +29,8 @@ _COUNT_ONLY_METRICS: set[str] = {
     "cm_customers_period_end_by_tenure",
     "cm_purchase_transactions_overall",
     "cm_transactions_by_cohort",
+    # Period-length metric (months): integer count, not currency or percent
+    "cm_cac_payback_period",
 }
 
 # Currency-only metrics: ARR, MRR, etc.
@@ -47,20 +49,25 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_billings",
     "cm_bookings",
     "cm_gmv",
+    "cm_revenue_by_cohort",
 }
 
-# Percent-only metrics: retention rates, churn, ratios
+# Percent-only metrics: pure rates and margins (no bare-decimal ratio form)
 _PERCENT_ONLY_METRICS: set[str] = {
     "cm_net_revenue_retention",
     "cm_gross_revenue_retention",
     "cm_customer_retention_rate",
     "cm_customer_churn_rate",
-    "cm_ltv_to_cac_ratio",
-    "cm_ltv_to_cac_ratio_by_cohort",
     "cm_revenue_concentration",
-    "cm_repeat_purchase_rate",
     "cm_gross_margin_by_cohort",
     "cm_gross_margin_overall",
+}
+
+# Ratio metrics: accept percent, ratio, AND bare decimals (e.g. 1.42x for LTV/CAC)
+_RATIO_METRICS: set[str] = {
+    "cm_ltv_to_cac_ratio",
+    "cm_ltv_to_cac_ratio_by_cohort",
+    "cm_repeat_purchase_rate",
 }
 
 # Build the lookup: metric_id → frozenset of allowed units
@@ -70,10 +77,13 @@ for _m in _COUNT_ONLY_METRICS:
     METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.COUNT, Unit.OTHER})
 
 for _m in _CURRENCY_ONLY_METRICS:
-    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.CURRENCY})
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.CURRENCY, Unit.OTHER})
 
 for _m in _PERCENT_ONLY_METRICS:
     METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO})
+
+for _m in _RATIO_METRICS:
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO, Unit.OTHER})
 
 
 def get_allowed_units(metric_id: str) -> frozenset[Unit] | None:

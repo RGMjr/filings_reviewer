@@ -194,10 +194,6 @@ class TestUnconstrainedMetrics:
     def test_nonexistent_metric_accepts_all(self, unit: Unit) -> None:
         assert is_unit_compatible("cm_totally_fake_metric", unit) is True
 
-    def test_cac_payback_period_unconstrained(self) -> None:
-        assert is_unit_compatible("cm_cac_payback_period", Unit.COUNT) is True
-        assert is_unit_compatible("cm_cac_payback_period", Unit.CURRENCY) is True
-
     @pytest.mark.parametrize(
         "unit",
         [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER],
@@ -256,5 +252,5 @@ class TestGetAllowedUnits:
 
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
-        # Should have count + currency + percent metrics
-        assert len(METRIC_ALLOWED_UNITS) == 7 + 11 + 10  # 28 total
+        # count(8) + currency(12) + percent(7) + ratio(3)
+        assert len(METRIC_ALLOWED_UNITS) == 8 + 12 + 7 + 3  # 30 total

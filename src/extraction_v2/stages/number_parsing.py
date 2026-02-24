@@ -113,7 +113,13 @@ def parse_number(text: str) -> tuple[float, Unit, str] | None:
             unit = Unit.PERCENT
         elif currency:
             unit = Unit.CURRENCY
+        elif suffix or "," in number_str or "." in number_str:
+            # Comma-separated integers, scaled values, or decimals → COUNT
+            # (clearly-scaled quantities or structured numeric forms)
+            unit = Unit.COUNT
         else:
+            # Plain integers without comma/scale/decimal → OTHER
+            # (ambiguous: could be currency amount or count in table context)
             unit = Unit.OTHER
 
         raw = match.group().strip()

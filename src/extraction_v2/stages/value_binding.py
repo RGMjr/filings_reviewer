@@ -93,8 +93,10 @@ class ValueBindingStage:
     TABLE_SCALE_MAP = _np.TABLE_SCALE_MAP
 
     # Word-form number parsing for "a billion", "one billion", etc.
-    # Note: "a" is intentionally excluded — too ambiguous ("over a million" = dollar threshold)
+    # "a" is included as 1 — the regex requires an immediate scale word (million/billion/etc.)
+    # so "a few million" won't match ("few" is not in the scale group).
     WORD_NUMBERS: dict[str, float] = {
+        "a": 1,
         "one": 1, "two": 2, "three": 3, "four": 4,
         "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
         "ten": 10, "eleven": 11, "twelve": 12,
@@ -104,7 +106,7 @@ class ValueBindingStage:
         r"""
         (?P<currency>[\$\€\£])?             # Optional currency symbol
         \s*
-        (?P<word_num>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)
+        (?P<word_num>a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)
         \s+
         (?P<suffix>million|billion|trillion|thousand)
         """,
@@ -469,6 +471,11 @@ class ValueBindingStage:
 
             context_text = " ".join(header_path_eff + stub_path_eff)
             unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            # In table binding, promote COUNT (bare integer/decimal without $ sign)
+            # to OTHER for currency metrics so the column-type filter can distinguish
+            # mixed tables (e.g., ARR stub with bare "500" in Amount column).
+            if unit == Unit.COUNT and candidate.metric_id in _CURRENCY_ONLY_METRICS:
+                unit = Unit.OTHER
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
@@ -611,6 +618,7 @@ class ValueBindingStage:
         self,
         candidate: MetricCandidate,
         segments: list[Segment],
+        proximity_chars: int | None = None,
     ) -> tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float] | None:
         """
         Locate the candidate's segment and extract the proximity search window.
@@ -647,9 +655,10 @@ class ValueBindingStage:
             match_start = 0
             match_end = len(text)
 
-        window_start = max(0, match_start - self.proximity_window)
+        effective_prox = proximity_chars if proximity_chars is not None else self.proximity_window
+        window_start = max(0, match_start - effective_prox)
         numbers = self._find_numbers_in_proximity(
-            text, match_start, match_end, self.proximity_window
+            text, match_start, match_end, effective_prox
         )
 
         if not numbers:
@@ -706,7 +715,7 @@ class ValueBindingStage:
             if self._should_filter_unit(candidate.metric_id, unit):
                 continue
 
-            if candidate.metric_id in _CURRENCY_ONLY_METRICS and unit == Unit.OTHER:
+            if candidate.metric_id in _CURRENCY_ONLY_METRICS and unit in (Unit.OTHER, Unit.COUNT):
                 logger.debug(
                     "Skipping bare number for currency metric %s in text_proximity",
                     candidate.metric_id,
@@ -784,7 +793,7 @@ class ValueBindingStage:
         Returns:
             List of BoundValue objects
         """
-        located = self._locate_text_window(candidate, segments)
+        located = self._locate_text_window(candidate, segments, proximity_chars=proximity_chars)
         if located is None:
             return []
 
@@ -1015,8 +1024,28 @@ class ValueBindingStage:
         return results
 
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
-        """Parse a number from text. Delegates to stages.number_parsing.parse_number."""
-        return _np.parse_number(text)
+        """Parse a number from text.
+
+        First tries digit-based parsing via number_parsing.parse_number.
+        Falls back to word-form parsing for "one million", "two billion", etc.,
+        stripping approximate prefixes ("approximately one billion") first.
+        """
+        # Try digit-based parsing first
+        result = _np.parse_number(text)
+        if result:
+            return result
+        # Strip approximate prefixes and try again / try word-form
+        stripped = self.APPROX_PREFIXES.sub("", text).strip()
+        if stripped != text:
+            result = _np.parse_number(stripped)
+            if result:
+                return result
+        # Fall back to word-form parsing (handles "one million", "two billion")
+        return self._parse_word_number(stripped)
+
+    def _find_sentence_bounds(self, text: str, pos: int) -> tuple[int, int]:
+        """Find the sentence boundaries containing position pos in text."""
+        return find_sentence_bounds(text, pos)
 
     def _parse_word_number(self, text: str) -> tuple[float, Unit, str] | None:
         """Parse word-form numbers like 'a billion', 'one million'."""

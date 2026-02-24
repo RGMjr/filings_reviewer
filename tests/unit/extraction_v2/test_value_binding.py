@@ -1431,8 +1431,14 @@ class TestUnitFiltering:
         for bv in context.bound_values:
             assert bv.unit != Unit.CURRENCY
 
-    def test_currency_metric_rejects_bare_count(self, stage: ValueBindingStage) -> None:
-        """Currency-only metric rejects bare count value."""
+    def test_currency_metric_accepts_bare_value_in_table(self, stage: ValueBindingStage) -> None:
+        """Currency-only metric accepts bare value in table context.
+
+        In table binding, bare numbers (no $ sign) ARE allowed for currency metrics
+        because the table structure (stub = "ARR") provides semantic context.
+        The Unit.OTHER filter only applies to text_proximity binding, not tables.
+        See test_table_binding_still_allows_bare_currency for a parallel test.
+        """
         cells = [
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
@@ -1467,7 +1473,7 @@ class TestUnitFiltering:
         result = stage.process(context)  # type: ignore
 
         assert result.success
-        assert len(context.bound_values) == 0  # Bare count rejected for currency metric
+        assert len(context.bound_values) >= 1  # Bare number in table allowed for currency metric
 
     def test_currency_metric_accepts_dollar_value(self, stage: ValueBindingStage) -> None:
         """Currency-only metric accepts $500M."""
@@ -1956,13 +1962,61 @@ class TestAmbiguityPenaltyPostFilter:
 class TestWordFormNumberParsing:
     """Tests for word-form number parsing (a billion, one million, etc.)."""
 
-    def test_parse_a_billion_excluded(self) -> None:
-        """'a' is excluded as too ambiguous ('over a million' = dollar threshold)."""
+    def test_parse_a_billion(self) -> None:
+        """'a billion' should parse as 1_000_000_000 — 'a' means 1."""
         stage = ValueBindingStage()
         result = stage._parse_number("a billion")
-        # "a" is not in WORD_NUMBERS — should not parse as word-form
-        # (may still parse if digit fallback catches something, but "a billion" has no digits)
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000_000
+        assert unit == Unit.COUNT
+
+    def test_parse_a_million(self) -> None:
+        stage = ValueBindingStage()
+        result = stage._parse_number("a million")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000
+        assert unit == Unit.COUNT
+
+    def test_parse_a_thousand(self) -> None:
+        stage = ValueBindingStage()
+        result = stage._parse_number("a thousand")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000
+        assert unit == Unit.COUNT
+
+    def test_parse_a_few_million_excluded(self) -> None:
+        """'a few million' should not match — 'few' is not a scale word."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("a few million")
+        # "a" followed by "few" (not a scale word) won't match WORD_NUMBER_PATTERN
         assert result is None
+
+    def test_parse_a_couple_billion_excluded(self) -> None:
+        """'a couple billion' should not match — 'couple' is not a scale word."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("a couple billion")
+        assert result is None
+
+    def test_parse_almost_a_billion(self) -> None:
+        """Approximate prefix 'almost' should be stripped, then 'a billion' parsed."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("almost a billion")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000_000
+        assert unit == Unit.COUNT
+
+    def test_parse_more_than_a_billion(self) -> None:
+        """Approximate prefix 'more than' should be stripped, then 'a billion' parsed."""
+        stage = ValueBindingStage()
+        result = stage._parse_number("more than a billion")
+        assert result is not None
+        value, unit, raw = result
+        assert value == 1_000_000_000
+        assert unit == Unit.COUNT
 
     def test_parse_one_million(self) -> None:
         stage = ValueBindingStage()

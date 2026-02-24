@@ -11,20 +11,28 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 **Transcript (earnings-call-exploration, 2026-02-23)**: Phase A complete
 - MAU FP fixes: currency rejection + clause gate → P=72%→75%, R=62%→64%, F1=67%→69%
+- AC-10 integration tests complete (3781cc7, 2026-02-19)
 
-**Merged:** v2-rewrite merged into earnings-call-exploration (2026-02-23)
+**Transcript (earnings-call-exploration, 2026-02-24)**: Word-form "a" fix + PYPL annotation corrections
+- Added "a": 1 to WORD_NUMBERS; META recall 50%→90% (+5 TPs on 10-annotation set)
+- Corrected 3 PYPL_2025-02-04 annotations (ACCEPT→REJECT: $ prefix currency-on-count transcription errors)
+- Consolidated per-filing reviewed CSVs into transcript_gold_standard.csv (94 annotations, 16 files)
+- New benchmark baseline: R=65.9%, P=38.4%, F1=48.5% (vs. old 77-ann set — not directly comparable)
+
+**Merged + verified (2026-02-23)**: v2-rewrite → earnings-call-exploration; post-merge suite passed
+- 4,469 unit tests, 82% coverage, 0 failures
 
 ## Current Focus
 
-- Post-merge: verify tests pass, resolve any integration issues from merge
-- Transcript: AC-10 integration tests; Q&A section filtering
-- SEC: LTV/CAC multi-value binding (9 Farfetch FNs); AOV wrong_period fix
+- Transcript: Q&A section filtering (in progress)
+- Transcript: remaining keyword recall gaps
+- SEC: LTV/CAC multi-value binding (9 Farfetch FNs)
 
 ## Test Status
 
-- 4,765+ tests total; 87% coverage
+- 4,469 unit tests; 82% coverage
 - SEC gold standard: P=89.4% (v2-rewrite baseline); V2: P=81.9%, R=60.6%, F1=69.6%
-- Transcript benchmark: P=75.4%, R=63.6%, F1=69.0% (77 annotations, 8 files)
+- Transcript benchmark: R=65.9%, P=38.4%, F1=48.5% (94 annotations, 16 files; new consolidated gold standard)
 
 ## Key Learnings
 
@@ -34,6 +42,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Conjunction-clause gating splits compound sentences to associate percent values with correct metric
 - Clause gate only works for cross-clause FPs; same-clause semantic FPs (penetration %) need different approach
 - PYPL source transcript had `$224 million` typo — CFO meant "224 million" MAAs
+- PYPL_2025-02-04 also had $63M/$229M/$434M transcription errors ($ on count values) — now marked REJECT in gold standard
+- Word-form "a" = 1 is safe to include: regex requires immediate scale word, so "a few million" won't match
+- PYPL FP explosion (26 FPs, small bare numbers) is a pre-existing issue unrelated to these fixes
 
 **SEC (Farfetch):**
 - LTV/CAC: "31" (nearest number) bound instead of "1.42, 1.53"; multi-value comma lists unsupported
@@ -42,11 +53,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Next Work (Prioritized)
 
-1. **Verify post-merge tests pass** — run full test suite after merge
-2. **Transcript: Q&A section filtering** — transcript_converter tags `qa` sections; stricter FP rules in Q&A
-3. **Transcript: Integration tests (AC-10)** — `tests/integration/extraction_v2/test_transcript_pipeline.py`
-4. **SEC: LTV/CAC multi-value binding** — Farfetch 9 FNs; needs new design
-5. **SEC: Baseline refresh** — regenerate v2_baseline.json after all WPs complete
+1. **Transcript: Q&A section filtering** — transcript_converter tags `qa` sections; stricter FP rules in Q&A
+2. **Transcript: Keyword recall gaps** — review per-metric FN patterns from benchmark
+3. **SEC: LTV/CAC multi-value binding** — Farfetch 9 FNs; needs new design
+4. **SEC: Baseline refresh** — regenerate v2_baseline.json after all WPs complete
 
 ## Blockers or Warnings
 

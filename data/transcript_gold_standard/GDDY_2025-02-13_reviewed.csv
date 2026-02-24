@@ -1,0 +1,11 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+GoDaddy,GDDY,2025-02-13,cm_expansion_revenue,2600000000,currency,FY2024,text,annualized gross payment volume increasing 55% to $2.6 billion,MEDIUM,prepared_remarks,false,REJECT,GPV is not expansion revenue; cm_gmv is deprecated
+GoDaddy,GDDY,2025-02-13,cm_purchase_transactions_overall,,count,FY2024,text,"Aero has become the path where people started GoDaddy and then find their way to websites. Right? With the Aero path sort of providing 50% of website starts.",MEDIUM,q_and_a,false,REJECT,share-of-funnel percentage not a purchase transaction count; no absolute value
+GoDaddy,GDDY,2025-02-13,cm_net_revenue_retention,0.92,percent,Q4 2024,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true,REJECT,trap: gross margin not NRR
+GoDaddy,GDDY,2025-02-13,cm_arr,4000000000,currency,Q4 FY2024,text,Consolidated annual recurring revenue grew 8% to $4 billion.,HIGH,prepared_remarks,false,ACCEPT,
+GoDaddy,GDDY,2025-02-13,cm_customers_period_end,20500000,count,FY2024,text,"By eliminating deep discounts, completing targeted divestitures, and migrating certain offerings our customer base declined to 20.5 million.",HIGH,prepared_remarks,false,ACCEPT,
+GoDaddy,GDDY,2025-02-13,cm_revenue_per_customer,220,currency,FY2024,text,ARPU is also up 8% to $220.,HIGH,prepared_remarks,false,ACCEPT,
+GoDaddy,GDDY,2025-02-13,cm_average_order_value,,percent,FY2024,text,"Average order size, a leading indicator, is 16% higher",HIGH,prepared_remarks,false,REJECT,only YoY growth rate disclosed; no absolute value
+GoDaddy,GDDY,2025-02-13,cm_customer_retention_rate,85,percent,FY2024,text,"nearly all customers are now on our integrated platform, which boasts an impressive 85% plus retention rate",HIGH,prepared_remarks,false,ACCEPT,lower bound (85% plus); integrated-platform customers
+GoDaddy,GDDY,2025-02-13,cm_customer_retention_rate,84,percent,FY2024,text,despite our overall company retention rate dipping slightly to 84%,HIGH,prepared_remarks,false,ACCEPT,overall company retention rate; distinct from integrated-platform figure
+GoDaddy,GDDY,2025-02-13,cm_arr,2000000000,currency,Q4 2024,text,Total revenue for the Q4 2024 was $4 billion,HIGH,prepared_remarks,true,REJECT,trap: total revenue mapped to ARR

@@ -1778,3 +1778,51 @@ class TestV2TableSourcedExemption:
         is_fp, reason = _is_v2_false_positive(bv, source)
         assert is_fp is True
         assert reason == "v2_financial_sbc"
+
+
+# ============================================================================
+# Test: V2-native — Per-share stock price FP rule
+# ============================================================================
+
+
+class TestV2PerShareRule:
+    """Stock price mentions like '$67 per share' should be FP for ARPU/AOV metrics."""
+
+    def test_67_per_share_filtered_for_arpu(self):
+        """'$67 per share' near value for cm_revenue_per_customer → filtered."""
+        source = "the stock was trading at $67 per share during the quarter"
+        bv = _make_bound_value("c1", 67.0, "$67", Unit.CURRENCY, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_revenue_per_customer")
+        assert is_fp is True
+        assert reason == "v2_per_share"
+
+    def test_276_per_share_filtered_for_arpu(self):
+        """'$276 per share' near value for cm_revenue_per_customer → filtered."""
+        source = "shares were priced at approximately $276 per share"
+        bv = _make_bound_value("c1", 276.0, "$276", Unit.CURRENCY, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_revenue_per_customer")
+        assert is_fp is True
+        assert reason == "v2_per_share"
+
+    def test_arpu_without_per_share_not_filtered(self):
+        """'$220 ARPU' without 'per share' → NOT filtered."""
+        source = "ARPU increased to $220 per user in Q4"
+        bv = _make_bound_value("c1", 220.0, "$220", Unit.CURRENCY, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, metric_id="cm_revenue_per_customer")
+        assert is_fp is False
+
+    def test_per_share_wrong_metric_not_filtered(self):
+        """'per share' near value but metric is cm_customers_period_end → NOT filtered."""
+        source = "stock offered at $67 per share"
+        bv = _make_bound_value("c1", 67.0, "$67", Unit.CURRENCY, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, metric_id="cm_customers_period_end")
+        assert is_fp is False
+
+    def test_per_share_wrong_unit_not_filtered(self):
+        """'per share' in text but unit=COUNT → NOT filtered by this rule."""
+        source = "67 million shares outstanding per share calculation"
+        bv = _make_bound_value("c1", 67.0, "67", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_revenue_per_customer")
+        # Not filtered by per_share rule (wrong unit); may pass or fail other rules
+        if is_fp:
+            assert reason != "v2_per_share"

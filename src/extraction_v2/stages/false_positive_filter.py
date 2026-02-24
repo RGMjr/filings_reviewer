@@ -113,6 +113,11 @@ _DEVELOPER_COUNT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "per share" context — stock price references like "$67 per share".
+# Used to suppress cm_revenue_per_customer / cm_average_order_value FPs from
+# equity price mentions in Q&A sections.
+_PER_SHARE_RE = re.compile(r"\bper\s+share\b", re.IGNORECASE)
+
 # "N of the Fortune M" or "N of the Forbes M" — a subset-of-ranking phrase.
 # Used to suppress cm_customers_period_end FPs from Fortune 100 company counts.
 _FORTUNE_SUBSET_RE = re.compile(
@@ -259,6 +264,23 @@ def _rule_ranking_name(bv: BoundValue, source_text: str, metric_id: str) -> str 
     return None
 
 
+def _rule_per_share(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Stock price context — 'per share' near a currency value for ARPU/AOV metrics."""
+    if bv.unit != Unit.CURRENCY:
+        return None
+    if metric_id not in {"cm_revenue_per_customer", "cm_average_order_value"}:
+        return None
+    if not source_text:
+        return None
+    match = _PER_SHARE_RE.search(source_text)
+    if match:
+        raw = (bv.value_raw or "").strip()
+        value_pos = source_text.find(raw) if raw else -1
+        if value_pos < 0 or abs(match.start() - value_pos) <= 150:
+            return "v2_per_share"
+    return None
+
+
 def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Geographic revenue context for cm_revenue_concentration."""
     if not source_text or metric_id != "cm_revenue_concentration":
@@ -318,6 +340,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("financial_annotation", _rule_financial_annotation),
     ("financial_sbc", _rule_financial_sbc),
     ("ranking_name", _rule_ranking_name),
+    ("per_share", _rule_per_share),
     ("geographic_revenue", _rule_geographic_revenue),
     ("developer_count", _rule_developer_count),
     ("fortune_subset", _rule_fortune_subset),
@@ -538,7 +561,7 @@ class FalsePositiveFilterStage:
         relaxed = getattr(context.config, "relaxed_fp_filter", False)
 
         # Snapshot pre-filter state for FN diagnostics (only when requested)
-        if context.config.retain_context:
+        if getattr(context.config, "retain_context", False):
             context._pre_filter_bound_values = list(context.bound_values)
 
         # Build candidate lookup for context text
