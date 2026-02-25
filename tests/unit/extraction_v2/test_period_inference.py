@@ -352,6 +352,39 @@ class TestPeriodEndedPatternParsing:
         assert result is not None
         assert result.period_type == PeriodType.YTD
         assert result.end == date(2024, 6, 30)
+        assert result.start == date(2024, 1, 1)
+
+    def test_six_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Six months ended June 30, 2018 must start Jan 1 2018 (not Dec 1 2017)."""
+        result = stage._try_parse_period_ended("Six months ended June 30, 2018")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2018, 1, 1)
+        assert result.end == date(2018, 6, 30)
+
+    def test_three_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Three months ended June 30, 2024 must start Apr 1 2024 (not Mar 1)."""
+        result = stage._try_parse_period_ended("Three months ended June 30, 2024")
+        assert result is not None
+        assert result.period_type == PeriodType.QUARTERLY
+        assert result.start == date(2024, 4, 1)
+        assert result.end == date(2024, 6, 30)
+
+    def test_nine_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Nine months ended September 30, 2024 must start Jan 1 2024 (not Dec 1 2023)."""
+        result = stage._try_parse_period_ended("Nine Months Ended September 30, 2024")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2024, 1, 1)
+        assert result.end == date(2024, 9, 30)
+
+    def test_six_months_nbsp_header(self, stage: PeriodInferenceStage) -> None:
+        """NBSP in 'six\xa0months ended' header must still parse as YTD (not annual)."""
+        result = stage._try_parse_period_ended("six\xa0months ended June 30, 2018")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2018, 1, 1)
+        assert result.end == date(2018, 6, 30)
 
     def test_period_ended_no_comma(self, stage: PeriodInferenceStage) -> None:
         """Parse without comma: Year Ended December 31 2024."""

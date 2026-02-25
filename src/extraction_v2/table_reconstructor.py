@@ -65,10 +65,22 @@ class TableReconstructor:
         r")"
     )
 
+    # Matches date headers like "April\xa030,\n2017" or "Jan 31, 2020".
+    # These cells contain comma-formatted-looking numbers (e.g. "30, 2017") so
+    # _FINANCIAL_VALUE_RE would falsely classify them as financial data rows.
+    _DATE_HEADER_RE = re.compile(
+        r"(?:January|February|March|April|May|June|July|August|September|"
+        r"October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+        r"[\s\xa0]*\d{1,2}[\s\xa0]*,?[\s\xa0]*\d{4}",
+        re.IGNORECASE,
+    )
+
     def _is_financial_data_row(self, row: list[Cell | None]) -> bool:
         """Return True if the majority of non-empty cells look like financial values.
 
         Requires at least 3 non-empty cells to avoid triggering on sparse prose rows.
+        Cells that match _DATE_HEADER_RE are excluded from financial detection to
+        prevent date-header rows from being misclassified as data rows.
         """
         unique_cells = list(
             {id(cell): cell for cell in row if cell and cell.text.strip()}.values()
@@ -76,7 +88,9 @@ class TableReconstructor:
         if len(unique_cells) < 3:
             return False
         match_count = sum(
-            1 for cell in unique_cells if self._FINANCIAL_VALUE_RE.search(cell.text)
+            1 for cell in unique_cells
+            if self._FINANCIAL_VALUE_RE.search(cell.text)
+            and not self._DATE_HEADER_RE.search(cell.text)
         )
         return match_count > len(unique_cells) * 0.5
 
