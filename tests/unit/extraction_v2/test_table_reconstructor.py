@@ -975,3 +975,64 @@ class TestFallbackHeaderDetection:
         assert not reconstructor._is_financial_data_row(
             make_row(["", "", ""])
         )
+
+
+class TestDateHeaderFix:
+    """Tests for the date-header false-positive fix in _is_financial_data_row."""
+
+    def test_date_header_not_classified_as_financial_data(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Cells with date text like 'April\xa030,\n2017' must not trigger financial detection."""
+        from src.extraction_v2.models import Cell
+        row = [Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate([
+            "April\xa030,\n2017", "July\xa031,\n2017", "October\xa031,\n2017",
+            "January\xa031,\n2018", "April\xa030,\n2018", "July\xa031,\n2018",
+            "October\xa031,\n2018", "January\xa031,\n2019", "April\xa030,\n2019",
+        ])]
+        assert not reconstructor._is_financial_data_row(row)
+
+    def test_financial_data_row_still_detected(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Rows with actual financial values still trigger detection."""
+        from src.extraction_v2.models import Cell
+        row = [Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate([
+            "Paid Customers", "42,000", "47,000", "53,000", "58,000", "64,000",
+            "70,000", "77,000", "84,000", "91,000",
+        ])]
+        assert reconstructor._is_financial_data_row(row)
+
+    def test_date_formats_edge_cases(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Various date format variations should not trigger financial detection."""
+        from src.extraction_v2.models import Cell
+        cases = [
+            "Jan 31, 2020",
+            "Feb\xa028\n2019",
+            "Mar 31 2018",
+            "Dec 31, 2021",
+            "Sep\xa030,\n2019",
+        ]
+        for date_text in cases:
+            row = [Cell(row=0, col=i, text=date_text, is_header=False) for i in range(3)]
+            assert not reconstructor._is_financial_data_row(row), f"Failed for: {date_text!r}"
+
+    def test_slack_quarterly_metrics_table(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Integration: Slack quarterly fixture should have 4 header rows after fix."""
+        import pathlib
+        from bs4 import BeautifulSoup
+        fixture = (
+            pathlib.Path(__file__).parent.parent.parent
+            / "fixtures" / "tables" / "slack_quarterly_metrics.html"
+        )
+        html = fixture.read_text(encoding="utf-8")
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+        table = reconstructor.reconstruct(table_elem)
+        assert table.header_rows == 4
+        assert table.stub_cols >= 1

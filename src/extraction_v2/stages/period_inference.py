@@ -617,8 +617,9 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
-        # Determine period type from the pattern prefix
-        text_lower = text.lower()
+        # Determine period type from the pattern prefix.
+        # Normalize NBSP (\xa0) so "six\xa0months" matches "six months" etc.
+        text_lower = text.lower().replace('\xa0', ' ')
 
         if "year" in text_lower[: match.end()]:
             period_type = PeriodType.ANNUAL
@@ -634,25 +635,13 @@ class PeriodInferenceStage:
                     start = date(year, 1, 1)
         elif any(x in text_lower[: match.end()] for x in ["quarter", "three months", "3 months"]):
             period_type = PeriodType.QUARTERLY
-            # Calculate start as 3 months before end
-            if month >= 4:
-                start = date(year, month - 3, 1)
-            else:
-                start = date(year - 1, month + 9, 1)
+            start = self._period_start(month, year, 3)
         elif any(x in text_lower[: match.end()] for x in ["nine months", "9 months"]):
             period_type = PeriodType.YTD
-            # Calculate start as 9 months before end
-            if month >= 10:
-                start = date(year, month - 9, 1)
-            else:
-                start = date(year - 1, month + 3, 1)
+            start = self._period_start(month, year, 9)
         elif any(x in text_lower[: match.end()] for x in ["six months", "6 months"]):
             period_type = PeriodType.YTD
-            # Calculate start as 6 months before end
-            if month >= 7:
-                start = date(year, month - 6, 1)
-            else:
-                start = date(year - 1, month + 6, 1)
+            start = self._period_start(month, year, 6)
         else:
             # Default to annual
             period_type = PeriodType.ANNUAL
@@ -666,6 +655,19 @@ class PeriodInferenceStage:
             source="",
             raw_text=match.group(0),
         )
+
+    def _period_start(self, end_month: int, end_year: int, n_months: int) -> date:
+        """Return the first day of the period that ends in end_month/end_year and spans n_months.
+
+        Uses start_month = end_month - (n_months - 1) so that the period includes
+        end_month itself (e.g., 3-month period ending June → starts April 1).
+        """
+        start_month = end_month - (n_months - 1)
+        start_year = end_year
+        if start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        return date(start_year, start_month, 1)
 
     def _try_parse_ytd(self, text: str) -> ParsedPeriod | None:
         """
