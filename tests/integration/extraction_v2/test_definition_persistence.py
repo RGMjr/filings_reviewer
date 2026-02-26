@@ -112,6 +112,17 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
+    # Create v2_documents row required by FK on v2_metric_definitions.doc_id
+    with db_adapter.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO v2_documents (filing_id, parse_version, status)
+                VALUES (%s, '2.0.0', 'complete')
+                ON CONFLICT (filing_id) DO NOTHING
+                """,
+                (test_filing_id,),
+            )
     yield
     _cleanup()
 
@@ -309,6 +320,8 @@ class TestDefinitionPipelineResultIntegration:
             images=[],
             segments=[],
             stage_results=[],
+            total_duration_ms=0,
+            success=True,
             definitions=[make_definition("cm_new_customers_acquired")],
         )
 
@@ -339,6 +352,8 @@ class TestDefinitionPipelineResultIntegration:
             images=[],
             segments=[],
             stage_results=[],
+            total_duration_ms=0,
+            success=True,
             definitions=[make_definition("cm_new_customers_acquired")],
         )
 
