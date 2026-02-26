@@ -2,7 +2,8 @@
 Unit tests for scripts/batch_v2_extraction.py.
 
 Covers BatchConfig, BatchStats computed properties, and BatchV2Runner
-circuit-breaker logic using mocks (no database required).
+circuit-breaker logic, timeout handling, and transient retry using mocks
+(no database required).
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import time
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -32,6 +34,8 @@ BatchConfig = batch_v2_extraction.BatchConfig
 BatchStats = batch_v2_extraction.BatchStats
 BatchV2Runner = batch_v2_extraction.BatchV2Runner
 
+# Import exceptions for transient/fatal retry tests
+from src.extraction_v2.exceptions import V2FatalError, V2TransientError  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,6 +98,7 @@ class TestBatchConfig:
         assert config.skip_quality_scoring is False
         assert config.no_images is False
         assert config.min_confidence == 0.90
+        assert config.worker_timeout == 300
 
     def test_custom_values(self) -> None:
         config = BatchConfig(
@@ -250,3 +255,209 @@ class TestBatchV2RunnerCircuitBreaker:
 
         assert stats.aborted_by_circuit_breaker is False
         assert stats.processed == 5
+
+
+# ---------------------------------------------------------------------------
+# TestBatchV2RunnerTimeout
+# ---------------------------------------------------------------------------
+
+
+class TestBatchV2RunnerTimeout:
+    """Per-worker timeout: hung worker gets killed and filing is recorded as failure."""
+
+    def _make_runner(self, worker_timeout: int = 5) -> BatchV2Runner:
+        config = BatchConfig(workers=1, batch_size=20, worker_timeout=worker_timeout)
+        return BatchV2Runner(config=config, db_url="postgresql://test/db")
+
+    def test_timeout_records_failure(self) -> None:
+        """When future.result() raises FuturesTimeoutError, the filing is recorded as failed."""
+        runner = self._make_runner(worker_timeout=1)
+        filings = _make_filings(1)
+
+        # Build a future whose .result(timeout=...) raises FuturesTimeoutError
+        mock_future = MagicMock()
+        mock_future.result.side_effect = FuturesTimeoutError()
+
+        # Executor returns that future; _processes has a fake alive process
+        mock_proc = MagicMock()
+        mock_proc.is_alive.return_value = True
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = mock_future
+        mock_executor._processes = {99999: mock_proc}
+
+        mock_ppe_cls = MagicMock()
+        mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+        mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        def as_completed_se(futures):
+            yield from futures.keys()
+
+        with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
+            with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
+                with patch.object(runner, "_save_checkpoint"):
+                    with patch("os.kill") as mock_kill:
+                        stats = runner.run(filings)
+
+        assert stats.failed == 1
+        assert stats.succeeded == 0
+        # Confirm we attempted to SIGKILL the hung process
+        mock_kill.assert_called_once_with(99999, batch_v2_extraction.signal.SIGKILL)
+        # Per-filing result should note the timeout
+        assert "timeout" in stats.filing_results[0]["error"]
+        assert stats.filing_results[0]["success"] is False
+
+    def test_timeout_result_not_retried(self) -> None:
+        """Timeout failures are not retried (no transient retry for timeout)."""
+        runner = self._make_runner(worker_timeout=1)
+        filings = _make_filings(1)
+
+        mock_future = MagicMock()
+        mock_future.result.side_effect = FuturesTimeoutError()
+
+        mock_proc = MagicMock()
+        mock_proc.is_alive.return_value = True
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = mock_future
+        mock_executor._processes = {12345: mock_proc}
+
+        mock_ppe_cls = MagicMock()
+        mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+        mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        def as_completed_se(futures):
+            yield from futures.keys()
+
+        with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
+            with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
+                with patch.object(runner, "_save_checkpoint"):
+                    with patch("os.kill"):
+                        runner.run(filings)
+
+        # submit called exactly once (no retry)
+        assert mock_executor.submit.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# TestBatchV2RunnerTransientRetry
+# ---------------------------------------------------------------------------
+
+
+class TestBatchV2RunnerTransientRetry:
+    """Transient retry: V2TransientError triggers one retry; V2FatalError does not."""
+
+    def _make_runner(self) -> BatchV2Runner:
+        config = BatchConfig(workers=1, batch_size=20, worker_timeout=300)
+        return BatchV2Runner(config=config, db_url="postgresql://test/db")
+
+    def _build_executor_mock(self, first_exc: Exception | None, retry_result: dict | None):
+        """
+        Build a mock executor where the first submit raises first_exc and the
+        second submit (retry) returns retry_result (or raises if retry_result is None).
+        """
+        call_count = {"n": 0}
+
+        def submit_side_effect(fn, filing_id, *args, **kwargs):
+            call_count["n"] += 1
+            future = MagicMock()
+            if call_count["n"] == 1 and first_exc is not None:
+                future.result.side_effect = first_exc
+            elif retry_result is not None:
+                future.result.return_value = retry_result
+            return future
+
+        mock_executor = MagicMock()
+        mock_executor.submit.side_effect = submit_side_effect
+        mock_executor._processes = {}
+        return mock_executor, call_count
+
+    def test_transient_error_triggers_retry(self) -> None:
+        """V2TransientError on first attempt causes one retry; success on retry is counted."""
+        runner = self._make_runner()
+        filings = _make_filings(1)
+        filing_id = filings[0]["filing_id"]
+
+        transient_exc = V2TransientError("api timeout", stage_name="llm_enrichment")
+        retry_ok = _success_result(filing_id, fact_count=3)
+        retry_ok["retried"] = True
+
+        mock_executor, call_count = self._build_executor_mock(transient_exc, retry_ok)
+
+        mock_ppe_cls = MagicMock()
+        mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+        mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        def as_completed_se(futures):
+            yield from futures.keys()
+
+        with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
+            with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
+                with patch.object(runner, "_save_checkpoint"):
+                    stats = runner.run(filings)
+
+        assert stats.succeeded == 1
+        assert stats.failed == 0
+        # submit called twice: initial + retry
+        assert call_count["n"] == 2
+        assert stats.filing_results[0]["retried"] is True
+
+    def test_transient_error_no_second_retry(self) -> None:
+        """A filing that already retried is not retried again (max 1 retry)."""
+        runner = self._make_runner()
+        filings = _make_filings(1)
+        filing_id = filings[0]["filing_id"]
+
+        # Both first and retry attempts raise transient error
+        transient_exc = V2TransientError("api timeout", stage_name="llm_enrichment")
+        retry_fail = {
+            "filing_id": filing_id,
+            "success": False,
+            "fact_count": 0,
+            "definition_count": 0,
+            "error": "still transient",
+            "duration_ms": 0,
+            "retried": True,
+        }
+
+        mock_executor, call_count = self._build_executor_mock(transient_exc, retry_fail)
+
+        mock_ppe_cls = MagicMock()
+        mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+        mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        def as_completed_se(futures):
+            yield from futures.keys()
+
+        with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
+            with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
+                with patch.object(runner, "_save_checkpoint"):
+                    stats = runner.run(filings)
+
+        assert stats.failed == 1
+        # submit called twice (initial + one retry), not three times
+        assert call_count["n"] == 2
+
+    def test_fatal_error_not_retried(self) -> None:
+        """V2FatalError is NOT retried — submit called only once."""
+        runner = self._make_runner()
+        filings = _make_filings(1)
+
+        fatal_exc = V2FatalError("parse failure", stage_name="html_segmentation")
+        mock_executor, call_count = self._build_executor_mock(fatal_exc, retry_result=None)
+
+        mock_ppe_cls = MagicMock()
+        mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
+        mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        def as_completed_se(futures):
+            yield from futures.keys()
+
+        with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
+            with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
+                with patch.object(runner, "_save_checkpoint"):
+                    stats = runner.run(filings)
+
+        assert stats.failed == 1
+        assert stats.succeeded == 0
+        # Fatal error — no retry
+        assert call_count["n"] == 1
+        assert stats.filing_results[0]["retried"] is False

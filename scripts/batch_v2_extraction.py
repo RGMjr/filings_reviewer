@@ -39,6 +39,7 @@ import signal
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -84,6 +85,7 @@ class BatchConfig:
     skip_quality_scoring: bool = False
     no_images: bool = False
     min_confidence: float = 0.90
+    worker_timeout: int = 300  # Seconds before killing a hung worker
 
 
 @dataclass
@@ -135,7 +137,7 @@ def _process_filing_worker(
     Must be a module-level function (not a method) for pickling.
     Creates its own DB connection and pipeline instance.
 
-    Returns dict with: filing_id, success, fact_count, definition_count, error, duration_ms
+    Returns dict with: filing_id, success, fact_count, definition_count, error, duration_ms, retried
     """
     import sys
     from pathlib import Path as _Path
@@ -144,13 +146,14 @@ def _process_filing_worker(
     sys.path.insert(0, str(_PROJECT_ROOT))
 
     import logging as _logging
+
     _logger = _logging.getLogger(__name__)
 
     start_ms = int(time.time() * 1000)
 
     try:
-        from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
         from src.extraction_v2.persistence import V2PersistenceAdapter
+        from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
         from src.extraction_v2.quality_scoring import V2QualityScorer
         from src.infra.db import DatabaseAdapter
 
@@ -170,6 +173,7 @@ def _process_filing_worker(
                 "definition_count": 0,
                 "error": f"HTML not found: {resolved_path}",
                 "duration_ms": 0,
+                "retried": False,
             }
 
         # Configure pipeline
@@ -197,6 +201,7 @@ def _process_filing_worker(
                 "definition_count": len(result.definitions),
                 "error": result.error_message,
                 "duration_ms": duration_ms,
+                "retried": False,
             }
 
         # Persist results
@@ -212,6 +217,7 @@ def _process_filing_worker(
                 "definition_count": 0,
                 "error": str(persist_result.errors),
                 "duration_ms": duration_ms,
+                "retried": False,
             }
 
         # Quality scoring
@@ -236,6 +242,7 @@ def _process_filing_worker(
             "definition_count": len(result.definitions),
             "error": None,
             "duration_ms": duration_ms,
+            "retried": False,
         }
 
     except Exception as e:
@@ -247,6 +254,7 @@ def _process_filing_worker(
             "definition_count": 0,
             "error": str(e),
             "duration_ms": duration_ms,
+            "retried": False,
         }
 
 
@@ -317,6 +325,24 @@ class BatchV2Runner:
             f"| Facts: {stats.total_facts}"
         )
 
+    def _submit_filing(
+        self,
+        executor: ProcessPoolExecutor,
+        filing: dict,
+        config_dict: dict,
+    ) -> object:
+        """Submit a single filing to the executor and return the future."""
+        return executor.submit(
+            _process_filing_worker,
+            filing["filing_id"],
+            filing.get("html_storage_path"),
+            filing["company_name"],
+            filing["company_id"],
+            str(filing.get("cik", "")),
+            self.db_url,
+            config_dict,
+        )
+
     def run(self, filings: list[dict], max_consecutive_failures: int = 10) -> BatchStats:
         """
         Run batch extraction with parallel workers.
@@ -328,6 +354,8 @@ class BatchV2Runner:
         Returns:
             BatchStats with final counts
         """
+        from src.extraction_v2.exceptions import V2TransientError
+
         global _shutdown_requested
 
         stats = BatchStats(total_filings=len(filings))
@@ -340,7 +368,8 @@ class BatchV2Runner:
         logger.info(
             f"Starting batch V2 extraction: {len(filings)} filings, "
             f"{self.config.workers} workers, "
-            f"batch_size={self.config.batch_size}"
+            f"batch_size={self.config.batch_size}, "
+            f"worker_timeout={self.config.worker_timeout}s"
         )
 
         config_dict = {
@@ -352,6 +381,8 @@ class BatchV2Runner:
 
         last_filing_id = 0
         consecutive_failures = 0
+        # Track which filing_ids have already been retried (max 1 retry)
+        retried_ids: set[int] = set()
 
         # Process in batches for checkpointing (single executor for all batches)
         batch_num = 0
@@ -367,33 +398,65 @@ class BatchV2Runner:
                 batch = filings[batch_start : batch_start + self.config.batch_size]
                 batch_num += 1
 
-                futures = {
-                    executor.submit(
-                        _process_filing_worker,
-                        filing["filing_id"],
-                        filing.get("html_storage_path"),
-                        filing["company_name"],
-                        filing["company_id"],
-                        str(filing.get("cik", "")),
-                        self.db_url,
-                        config_dict,
-                    ): filing
-                    for filing in batch
+                futures: dict[object, dict] = {
+                    self._submit_filing(executor, filing, config_dict): filing for filing in batch
                 }
 
                 for future in as_completed(futures):
                     filing = futures[future]
+                    filing_id = filing["filing_id"]
                     try:
-                        result = future.result()
-                    except Exception as e:
+                        result = future.result(timeout=self.config.worker_timeout)
+                    except FuturesTimeoutError:
+                        # Kill the hung worker process
+                        for pid, proc in executor._processes.items():  # type: ignore[attr-defined]
+                            if proc.is_alive():
+                                logger.warning(
+                                    f"Worker timeout for filing {filing_id} "
+                                    f"(>{self.config.worker_timeout}s), killing pid={pid}"
+                                )
+                                os.kill(pid, signal.SIGKILL)
+                                break
                         result = {
-                            "filing_id": filing["filing_id"],
+                            "filing_id": filing_id,
                             "success": False,
                             "fact_count": 0,
                             "definition_count": 0,
-                            "error": str(e),
-                            "duration_ms": 0,
+                            "error": f"worker timeout after {self.config.worker_timeout}s",
+                            "duration_ms": self.config.worker_timeout * 1000,
+                            "retried": False,
                         }
+                    except Exception as exc:
+                        # Check if this is a transient error eligible for retry
+                        if isinstance(exc, V2TransientError) and filing_id not in retried_ids:
+                            retried_ids.add(filing_id)
+                            logger.warning(
+                                f"Filing {filing_id} raised V2TransientError, retrying once: {exc}"
+                            )
+                            retry_future = self._submit_filing(executor, filing, config_dict)
+                            try:
+                                result = retry_future.result(timeout=self.config.worker_timeout)
+                                result["retried"] = True
+                            except Exception as retry_exc:
+                                result = {
+                                    "filing_id": filing_id,
+                                    "success": False,
+                                    "fact_count": 0,
+                                    "definition_count": 0,
+                                    "error": str(retry_exc),
+                                    "duration_ms": 0,
+                                    "retried": True,
+                                }
+                        else:
+                            result = {
+                                "filing_id": filing_id,
+                                "success": False,
+                                "fact_count": 0,
+                                "definition_count": 0,
+                                "error": str(exc),
+                                "duration_ms": 0,
+                                "retried": False,
+                            }
 
                     stats.processed += 1
                     if result["success"]:
@@ -408,14 +471,17 @@ class BatchV2Runner:
                         )
 
                     # Accumulate per-filing result for summary report
-                    stats.filing_results.append({
-                        "filing_id": result["filing_id"],
-                        "company_name": filing.get("company_name", ""),
-                        "success": result["success"],
-                        "fact_count": result.get("fact_count", 0),
-                        "error": result.get("error"),
-                        "duration_ms": result.get("duration_ms", 0),
-                    })
+                    stats.filing_results.append(
+                        {
+                            "filing_id": result["filing_id"],
+                            "company_name": filing.get("company_name", ""),
+                            "success": result["success"],
+                            "fact_count": result.get("fact_count", 0),
+                            "error": result.get("error"),
+                            "duration_ms": result.get("duration_ms", 0),
+                            "retried": result.get("retried", False),
+                        }
+                    )
 
                     last_filing_id = max(last_filing_id, result["filing_id"])
 
@@ -460,10 +526,10 @@ def main() -> None:
     )
     parser.add_argument("--filing-id", type=int, help="Process a single filing by ID")
     parser.add_argument("--limit", type=int, help="Maximum number of filings to process")
+    parser.add_argument("--resume-from", type=int, help="Skip filing_ids less than this value")
     parser.add_argument(
-        "--resume-from", type=int, help="Skip filing_ids less than this value"
+        "--workers", type=int, default=4, help="Number of parallel workers (default: 4)"
     )
-    parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers (default: 4)")
     parser.add_argument(
         "--batch-size", type=int, default=10, help="Checkpoint interval in filings (default: 10)"
     )
@@ -479,6 +545,12 @@ def main() -> None:
         type=int,
         default=10,
         help="Abort if this many consecutive failures occur (default: 10)",
+    )
+    parser.add_argument(
+        "--worker-timeout",
+        type=int,
+        default=300,
+        help="Seconds before killing a hung worker process (default: 300)",
     )
     args = parser.parse_args()
 
@@ -502,6 +574,7 @@ def main() -> None:
         skip_quality_scoring=args.skip_quality,
         no_images=args.no_images,
         min_confidence=args.min_confidence,
+        worker_timeout=args.worker_timeout,
     )
 
     runner = BatchV2Runner(config=config, db_url=db_url)

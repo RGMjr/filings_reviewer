@@ -19,6 +19,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     BoundValue,
     EvidencePack,
@@ -73,44 +74,49 @@ class FactConstructionStage:
         """
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.utcnow()
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        # Build lookup dicts for O(1) access
-        candidate_lookup: dict[str, MetricCandidate] = {
-            c.candidate_id: c for c in context.candidates
-        }
-        segment_lookup: dict[str, Segment] = {s.segment_id: s for s in context.segments}
-        table_lookup: dict[str, Table] = {t.table_id: t for t in context.tables}
+            # Build lookup dicts for O(1) access
+            candidate_lookup: dict[str, MetricCandidate] = {
+                c.candidate_id: c for c in context.candidates
+            }
+            segment_lookup: dict[str, Segment] = {s.segment_id: s for s in context.segments}
+            table_lookup: dict[str, Table] = {t.table_id: t for t in context.tables}
 
-        # Process each bound value
-        for bv in context.bound_values:
-            try:
-                fact = self._construct_fact(
-                    bv, candidate_lookup, segment_lookup, table_lookup, context
-                )
-                context.facts.append(fact)
-            except Exception as e:
-                error_msg = f"Error constructing fact for {bv.bound_value_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            # Process each bound value
+            for bv in context.bound_values:
+                try:
+                    fact = self._construct_fact(
+                        bv, candidate_lookup, segment_lookup, table_lookup, context
+                    )
+                    context.facts.append(fact)
+                except Exception as e:
+                    error_msg = f"Error constructing fact for {bv.bound_value_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        # Build stage result
-        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-        return StageResult(
-            stage=PipelineStage.FACT_CONSTRUCTION,
-            success=len(errors) == 0,
-            duration_ms=duration_ms,
-            items_processed=len(context.bound_values),
-            items_output=len(context.facts),
-            errors=errors,
-            warnings=warnings,
-            metadata={
-                "avg_confidence": self._compute_avg_confidence(context.facts),
-                "facts_by_source_type": self._count_by_source_type(context.facts),
-            },
-        )
+            # Build stage result
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            return StageResult(
+                stage=PipelineStage.FACT_CONSTRUCTION,
+                success=len(errors) == 0,
+                duration_ms=duration_ms,
+                items_processed=len(context.bound_values),
+                items_output=len(context.facts),
+                errors=errors,
+                warnings=warnings,
+                metadata={
+                    "avg_confidence": self._compute_avg_confidence(context.facts),
+                    "facts_by_source_type": self._count_by_source_type(context.facts),
+                },
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="fact_construction") from e
 
     def _construct_fact(
         self,

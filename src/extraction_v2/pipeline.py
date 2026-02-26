@@ -32,6 +32,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.extraction_v2.exceptions import V2FatalError, V2TransientError
 from src.extraction_v2.models import (
     BoundValue,
     Document,
@@ -43,8 +44,8 @@ from src.extraction_v2.models import (
     Table,
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
-from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
+from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
@@ -365,6 +366,8 @@ class V2Pipeline:
                     if stage_id in {
                         PipelineStage.INGESTION,
                         PipelineStage.TABLE_RECONSTRUCTION,
+                        PipelineStage.CANDIDATE_GENERATION,
+                        PipelineStage.VALUE_BINDING,
                     }:
                         return self._build_failure_result(
                             context,
@@ -372,8 +375,34 @@ class V2Pipeline:
                             f"Critical stage failed: {stage_id.value}",
                         )
 
+            except V2TransientError:
+                # Propagate transient errors (network/API timeouts) for caller retry
+                raise
+            except V2FatalError as e:
+                logger.error(f"Fatal error in stage {stage_id.value}: {e}")
+                context.stage_results.append(
+                    StageResult(
+                        stage=stage_id,
+                        success=False,
+                        duration_ms=0,
+                        items_processed=0,
+                        items_output=0,
+                        errors=[str(e)],
+                    )
+                )
+                if stage_id in {
+                    PipelineStage.INGESTION,
+                    PipelineStage.TABLE_RECONSTRUCTION,
+                    PipelineStage.CANDIDATE_GENERATION,
+                    PipelineStage.VALUE_BINDING,
+                }:
+                    return self._build_failure_result(
+                        context,
+                        start_time,
+                        f"Critical stage fatal error: {stage_id.value}: {e}",
+                    )
             except Exception as e:
-                logger.exception(f"Exception in stage {stage_id.value}: {e}")
+                logger.exception(f"Unhandled exception in stage {stage_id.value}: {e}")
                 context.stage_results.append(
                     StageResult(
                         stage=stage_id,

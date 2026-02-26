@@ -17,6 +17,7 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     BoundValue,
     ImageAsset,
@@ -157,37 +158,42 @@ class ValueBindingStage:
         Returns:
             StageResult with processing metrics
         """
-        start_time = datetime.utcnow()
-        bindings_found = 0
-        errors: list[str] = []
-        warnings: list[str] = []
-        self._unit_filtered_count = 0
+        try:
+            start_time = datetime.utcnow()
+            bindings_found = 0
+            errors: list[str] = []
+            warnings: list[str] = []
+            self._unit_filtered_count = 0
 
-        # Process each candidate
-        for candidate in context.candidates:
-            try:
-                bound_values = self._bind_candidate(candidate, context)
-                for bv in bound_values:
-                    context.bound_values.append(bv)
-                    bindings_found += 1
-            except Exception as e:
-                error_msg = f"Error binding candidate {candidate.candidate_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            # Process each candidate
+            for candidate in context.candidates:
+                try:
+                    bound_values = self._bind_candidate(candidate, context)
+                    for bv in bound_values:
+                        context.bound_values.append(bv)
+                        bindings_found += 1
+                except Exception as e:
+                    error_msg = f"Error binding candidate {candidate.candidate_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        logger.info(
-            f"Value binding complete: {bindings_found} bindings "
-            f"from {len(context.candidates)} candidates "
-            f"({self._unit_filtered_count} unit-filtered)"
-        )
+            logger.info(
+                f"Value binding complete: {bindings_found} bindings "
+                f"from {len(context.candidates)} candidates "
+                f"({self._unit_filtered_count} unit-filtered)"
+            )
 
-        return self._make_result(
-            start_time,
-            len(context.candidates),
-            bindings_found,
-            errors,
-            warnings,
-        )
+            return self._make_result(
+                start_time,
+                len(context.candidates),
+                bindings_found,
+                errors,
+                warnings,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="value_binding") from e
 
     def _bind_candidate(
         self,
@@ -613,7 +619,9 @@ class ValueBindingStage:
         header_path: list[str],
     ) -> list[BoundValue]:
         """Bind values from data cells in the same column (delegates to _bind_cells)."""
-        return self._bind_cells(candidate, table, col, header_path, "table_header", iterate_rows=True)
+        return self._bind_cells(
+            candidate, table, col, header_path, "table_header", iterate_rows=True
+        )
 
     def _bind_row_values(
         self,
@@ -629,7 +637,10 @@ class ValueBindingStage:
         self,
         candidate: MetricCandidate,
         segments: list[Segment],
-    ) -> tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float] | None:
+    ) -> (
+        tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float]
+        | None
+    ):
         """
         Locate the candidate's segment and extract the proximity search window.
 
@@ -804,8 +815,14 @@ class ValueBindingStage:
         segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center = located
 
         same_sentence_candidates, out_of_sentence_best = self._score_text_numbers(
-            candidate, segment, text, window_start, numbers,
-            sentence_start, sentence_end, keyword_center,
+            candidate,
+            segment,
+            text,
+            window_start,
+            numbers,
+            sentence_start,
+            sentence_end,
+            keyword_center,
         )
 
         bound_values: list[BoundValue] = []

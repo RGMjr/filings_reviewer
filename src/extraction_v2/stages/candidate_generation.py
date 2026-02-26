@@ -26,6 +26,7 @@ from src.extraction.keyword_config import (
     get_specific_patterns,
     is_metric_deprecated,
 )
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     ImageAsset,
     MetricCandidate,
@@ -176,66 +177,73 @@ class CandidateGenerationStage:
         Returns:
             StageResult with processing metrics
         """
-        start_time = datetime.utcnow()
-        candidates_found = 0
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.utcnow()
+            candidates_found = 0
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        # Initialize patterns if needed
-        if not self._ensure_initialized():
-            errors.append("Failed to initialize keyword configuration")
-            return self._make_result(start_time, 0, candidates_found, errors, warnings)
+            # Initialize patterns if needed
+            if not self._ensure_initialized():
+                errors.append("Failed to initialize keyword configuration")
+                return self._make_result(start_time, 0, candidates_found, errors, warnings)
 
-        # Scan segments (skip TABLE segments — they are processed via _scan_table)
-        for segment in context.segments:
-            if segment.segment_type == SegmentType.TABLE:
-                continue
-            try:
-                segment_candidates = self._scan_segment(segment)
-                for candidate in segment_candidates:
-                    context.candidates.append(candidate)
-                    candidates_found += 1
-            except Exception as e:
-                error_msg = f"Error scanning segment {segment.segment_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-
-        # Scan table cells
-        for table in context.tables:
-            try:
-                table_candidates = self._scan_table(table)
-                for candidate in table_candidates:
-                    context.candidates.append(candidate)
-                    candidates_found += 1
-            except Exception as e:
-                error_msg = f"Error scanning table {table.table_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-
-        # Scan chart data from processed images
-        charts_scanned = 0
-        for asset in context.images:
-            if asset.chart_data is not None:
+            # Scan segments (skip TABLE segments — they are processed via _scan_table)
+            for segment in context.segments:
+                if segment.segment_type == SegmentType.TABLE:
+                    continue
                 try:
-                    chart_candidates = self._scan_chart(asset)
-                    for candidate in chart_candidates:
+                    segment_candidates = self._scan_segment(segment)
+                    for candidate in segment_candidates:
                         context.candidates.append(candidate)
                         candidates_found += 1
-                    charts_scanned += 1
                 except Exception as e:
-                    error_msg = f"Error scanning chart {asset.img_id}: {e}"
+                    error_msg = f"Error scanning segment {segment.segment_id}: {e}"
                     logger.error(error_msg)
                     errors.append(error_msg)
 
-        items_processed = len(context.segments) + len(context.tables) + charts_scanned
+            # Scan table cells
+            for table in context.tables:
+                try:
+                    table_candidates = self._scan_table(table)
+                    for candidate in table_candidates:
+                        context.candidates.append(candidate)
+                        candidates_found += 1
+                except Exception as e:
+                    error_msg = f"Error scanning table {table.table_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        logger.info(
-            f"Candidate generation complete: {candidates_found} candidates "
-            f"from {len(context.segments)} segments, {len(context.tables)} tables, "
-            f"{charts_scanned} charts"
-        )
+            # Scan chart data from processed images
+            charts_scanned = 0
+            for asset in context.images:
+                if asset.chart_data is not None:
+                    try:
+                        chart_candidates = self._scan_chart(asset)
+                        for candidate in chart_candidates:
+                            context.candidates.append(candidate)
+                            candidates_found += 1
+                        charts_scanned += 1
+                    except Exception as e:
+                        error_msg = f"Error scanning chart {asset.img_id}: {e}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
 
-        return self._make_result(start_time, items_processed, candidates_found, errors, warnings)
+            items_processed = len(context.segments) + len(context.tables) + charts_scanned
+
+            logger.info(
+                f"Candidate generation complete: {candidates_found} candidates "
+                f"from {len(context.segments)} segments, {len(context.tables)} tables, "
+                f"{charts_scanned} charts"
+            )
+
+            return self._make_result(
+                start_time, items_processed, candidates_found, errors, warnings
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="candidate_generation") from e
 
     def _scan_segment(self, segment: Segment) -> list[MetricCandidate]:
         """

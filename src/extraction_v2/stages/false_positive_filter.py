@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import BoundValue, Unit
 from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
@@ -432,107 +433,114 @@ class FalsePositiveFilterStage:
         Iterates through context.bound_values, checks each against the V1
         FalsePositiveFilter, and removes those flagged as false positives.
         """
-        start_time = datetime.utcnow()
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.utcnow()
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        initial_count = len(context.bound_values)
-        filter_reasons: dict[str, int] = {}
+            initial_count = len(context.bound_values)
+            filter_reasons: dict[str, int] = {}
 
-        # Snapshot pre-filter state for FN diagnostics (only when requested)
-        if context.config.retain_context:
-            context._pre_filter_bound_values = list(context.bound_values)
+            # Snapshot pre-filter state for FN diagnostics (only when requested)
+            if context.config.retain_context:
+                context._pre_filter_bound_values = list(context.bound_values)
 
-        # Build candidate lookup for context text
-        candidate_map = {c.candidate_id: c for c in context.candidates}
+            # Build candidate lookup for context text
+            candidate_map = {c.candidate_id: c for c in context.candidates}
 
-        # Filter bound values
-        kept: list[BoundValue] = []
-        for bv in context.bound_values:
-            try:
-                # Get source text for context
-                source_text = _get_source_text(bv, candidate_map, context.segments, context.tables)
+            # Filter bound values
+            kept: list[BoundValue] = []
+            for bv in context.bound_values:
+                try:
+                    # Get source text for context
+                    source_text = _get_source_text(
+                        bv, candidate_map, context.segments, context.tables
+                    )
 
-                if not source_text:
-                    # No context available; keep the value (conservative)
+                    if not source_text:
+                        # No context available; keep the value (conservative)
+                        kept.append(bv)
+                        continue
+
+                    # --- V2-native checks (run first, cheaper than V1) ---
+                    candidate = candidate_map.get(bv.candidate_id)
+                    metric_id = candidate.metric_id if candidate else ""
+                    v2_fp, v2_reason = _is_v2_false_positive(bv, source_text, metric_id)
+                    if v2_fp:
+                        filter_reasons[v2_reason or "v2_unknown"] = (
+                            filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
+                        )
+                        logger.debug(
+                            "V2 FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
+                            bv.bound_value_id,
+                            v2_reason,
+                            bv.value,
+                            bv.value_raw,
+                        )
+                        continue
+
+                    # --- V1 positional filter ---
+                    # Build NumberMatches for all occurrences of the raw
+                    # value in the source text. The value is FP only if ALL
+                    # occurrences are flagged (conservative: if any occurrence
+                    # is in a legitimate context, keep the value).
+                    number_matches = _make_number_matches(bv, source_text)
+
+                    is_fp = True
+                    reason: str | None = None
+                    for nm in number_matches:
+                        fp, r = self._filter.is_false_positive(source_text, nm)
+                        if not fp:
+                            is_fp = False
+                            reason = None
+                            break
+                        reason = r
+
+                    if is_fp:
+                        filter_reasons[reason or "unknown"] = (
+                            filter_reasons.get(reason or "unknown", 0) + 1
+                        )
+                        logger.debug(
+                            "FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
+                            bv.bound_value_id,
+                            reason,
+                            bv.value,
+                            bv.value_raw,
+                        )
+                    else:
+                        kept.append(bv)
+
+                except Exception as e:
+                    error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    # On error, keep the value (fail open for individual items)
                     kept.append(bv)
-                    continue
 
-                # --- V2-native checks (run first, cheaper than V1) ---
-                candidate = candidate_map.get(bv.candidate_id)
-                metric_id = candidate.metric_id if candidate else ""
-                v2_fp, v2_reason = _is_v2_false_positive(bv, source_text, metric_id)
-                if v2_fp:
-                    filter_reasons[v2_reason or "v2_unknown"] = (
-                        filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
-                    )
-                    logger.debug(
-                        "V2 FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
-                        bv.bound_value_id,
-                        v2_reason,
-                        bv.value,
-                        bv.value_raw,
-                    )
-                    continue
+            removed_count = initial_count - len(kept)
+            context.bound_values = kept
 
-                # --- V1 positional filter ---
-                # Build NumberMatches for all occurrences of the raw
-                # value in the source text. The value is FP only if ALL
-                # occurrences are flagged (conservative: if any occurrence
-                # is in a legitimate context, keep the value).
-                number_matches = _make_number_matches(bv, source_text)
+            # Log summary
+            logger.info(
+                "False positive filter: %d/%d removed (%d kept). Reasons: %s",
+                removed_count,
+                initial_count,
+                len(kept),
+                dict(filter_reasons),
+            )
 
-                is_fp = True
-                reason: str | None = None
-                for nm in number_matches:
-                    fp, r = self._filter.is_false_positive(source_text, nm)
-                    if not fp:
-                        is_fp = False
-                        reason = None
-                        break
-                    reason = r
-
-                if is_fp:
-                    filter_reasons[reason or "unknown"] = (
-                        filter_reasons.get(reason or "unknown", 0) + 1
-                    )
-                    logger.debug(
-                        "FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
-                        bv.bound_value_id,
-                        reason,
-                        bv.value,
-                        bv.value_raw,
-                    )
-                else:
-                    kept.append(bv)
-
-            except Exception as e:
-                error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-                # On error, keep the value (fail open for individual items)
-                kept.append(bv)
-
-        removed_count = initial_count - len(kept)
-        context.bound_values = kept
-
-        # Log summary
-        logger.info(
-            "False positive filter: %d/%d removed (%d kept). Reasons: %s",
-            removed_count,
-            initial_count,
-            len(kept),
-            dict(filter_reasons),
-        )
-
-        return self._make_result(
-            start_time,
-            initial_count,
-            len(kept),
-            errors,
-            warnings,
-            filter_reasons,
-        )
+            return self._make_result(
+                start_time,
+                initial_count,
+                len(kept),
+                errors,
+                warnings,
+                filter_reasons,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="false_positive_filter") from e
 
     def _make_result(
         self,
