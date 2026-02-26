@@ -62,7 +62,7 @@ class TestMigrationSafety:
         result = db.query("""
             SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public'
-            AND table_name LIKE 'v2_%'
+            AND table_name LIKE 'v2_%%'
             ORDER BY table_name
         """)
         v2_tables = {r["table_name"] for r in result}
