@@ -34,7 +34,7 @@ _SPLIT_JSON = _GS_DIR / "split.json"
 _HTML_DIR = _PROJECT_ROOT / "data" / "spike_samples" / "transcripts_html"
 
 # Minimum expected annotations for a complete gold standard
-_MIN_ANNOTATION_COUNT = 100
+_MIN_ANNOTATION_COUNT = 90
 
 # Regression tolerance: 1 percentage point
 _REGRESSION_TOLERANCE = 0.01

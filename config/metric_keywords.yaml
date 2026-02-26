@@ -96,6 +96,10 @@ cm_new_customers_acquired:
     - '\bprepaid\s+(?:net\s+)?(?:additions?|adds?)\b'
     # Transcript: "4 million new debit card actives" (PYPL)
     - '\bnew\b[^.;]{0,30}\bdebit\s+card\s+(?:actives?|users?)\b'
+    # Transcript: gaming/entertainment vocabulary (EA)
+    - '\bnew\s+fans?\b'
+    - '\badding\s+(?:new\s+)?fans?\b'
+    - '\bgrowing\s+(?:our\s+)?(?:audience|fan\s+base)\b'
   exclusions:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
@@ -134,11 +138,16 @@ cm_customers_period_end:
     # Transcript: "15 million GitHub Copilot users" — "N [adj] users" with magnitude (0-3 words)
     - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,3}users?\b'
     # Transcript: "organizations have used/now use/have already used" (MSFT)
-    - '\borganizations?\s+(?:have\s+)?(?:\w+\s+)?(?:used?|adopted)\b'
+    # Note: em dashes in text (e.g., "organizations – including X – have used") require
+    # a looser pattern that skips intervening content
+    - '\borganizations?\b[^.]{0,100}\b(?:used?|adopted)\b'
     # Transcript: "70,000 enterprises" (MSFT Foundry)
     - '\b\d[\d,.]*\s+(?:\w+\s+){0,2}enterprises?\b'
     # Transcript: "paid subscriptions grew" (ADBE)
     - '\bpaid\s+subscriptions?\b'
+    # Transcript: gaming vocabulary — "players have signed up" (EA Labs)
+    - '\bplayers?\s+(?:have\s+)?signed\s+up\b'
+    - '\bsigned\s+up\b[^.;]{0,30}\bplayers?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -177,6 +186,8 @@ cm_large_customers_period_end:
     - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
     # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"
     - '\bcustomers?\s+with\s+[\w\s-]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
+    # Transcript: "900,000 have 4 or more workloads" (MSFT) — customers using multiple products
+    - '\bhave\s+\d+\s+or\s+more\s+workloads?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -252,6 +263,8 @@ cm_active_customers_total:
     - '\bprofessionals?\s+use\b'
     # Transcript: "100 million people use WhatsApp" (META)
     - '\bpeople\s+use\b'
+    # Transcript: gaming vocabulary — magnitude-gated to reduce sports FP risk (EA)
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,2}players?\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
@@ -260,6 +273,8 @@ cm_active_customers_total:
     - '\bmonthly\s+active\b'
     # FIX-FP: Postpaid net additions/adds belong to cm_customers_period_end
     - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
+    # FIX-FP: Reactivated players are win-back metrics, not active customer counts (EA)
+    - '\breactivated\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'

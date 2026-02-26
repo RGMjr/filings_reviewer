@@ -155,8 +155,11 @@ class TestRatioMetrics:
         assert is_unit_compatible(metric_id, Unit.CURRENCY) is False
 
     @pytest.mark.parametrize("metric_id", RATIO_METRICS)
-    def test_rejects_count(self, metric_id: str) -> None:
-        assert is_unit_compatible(metric_id, Unit.COUNT) is False
+    def test_accepts_count(self, metric_id: str) -> None:
+        # COUNT is accepted because bare decimals like "1.42" parse as Unit.COUNT.
+        # Year-like integers (2015, 2016) pass this filter but are removed by the
+        # v2_year_value FP rule downstream.
+        assert is_unit_compatible(metric_id, Unit.COUNT) is True
 
 
 class TestNewConstraints:
@@ -239,13 +242,16 @@ class TestGetAllowedUnits:
         assert Unit.OTHER not in allowed
         assert len(allowed) == 2
 
-    def test_ratio_metric_returns_percent_ratio_and_other(self) -> None:
+    def test_ratio_metric_returns_percent_ratio_other_and_count(self) -> None:
+        # COUNT is included so that bare decimals like "1.42" (which parse as
+        # Unit.COUNT) are accepted for ratio metrics like LTV/CAC.
         allowed = get_allowed_units("cm_ltv_to_cac_ratio")
         assert allowed is not None
         assert Unit.PERCENT in allowed
         assert Unit.RATIO in allowed
         assert Unit.OTHER in allowed
-        assert len(allowed) == 3
+        assert Unit.COUNT in allowed
+        assert len(allowed) == 4
 
     def test_unknown_metric_returns_none(self) -> None:
         assert get_allowed_units("cm_unknown_metric") is None

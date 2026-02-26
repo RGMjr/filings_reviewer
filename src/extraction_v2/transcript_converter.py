@@ -260,20 +260,29 @@ def convert_transcript_to_html(
         if not line:
             continue
 
-        # Check for section boundaries
-        section = _detect_section(line)
-        if section:
-            if in_section:
-                html_parts.append("  </section>")
-            current_section = section
-            section_label = section.replace("_", " ").title()
-            html_parts.append(f'  <section data-section-type="{section}">')
-            html_parts.append(f"    <h2>{_escape_html(section_label)}</h2>")
-            in_section = True
-            continue
-
-        # Check for speaker attribution
+        # Check for speaker attribution first (before section detection).
+        # This prevents incidental mentions of "question-and-answer" or
+        # "prepared remarks" inside speaker turns from incorrectly triggering
+        # section changes (e.g., Operator intro: "A question-and-answer session
+        # will follow the formal presentation.").
         match = _SPEAKER_PATTERN.match(line)
+
+        # Check for section boundaries only on non-speaker lines.
+        # Speaker turns may mention section keywords incidentally (e.g., Operator
+        # intro text, IR disclosure boilerplate). Standalone section headers are
+        # short lines with no speaker prefix.
+        if not match:
+            section = _detect_section(line)
+            if section:
+                if in_section:
+                    html_parts.append("  </section>")
+                current_section = section
+                section_label = section.replace("_", " ").title()
+                html_parts.append(f'  <section data-section-type="{section}">')
+                html_parts.append(f"    <h2>{_escape_html(section_label)}</h2>")
+                in_section = True
+                continue
+
         if match:
             speaker = match.group(1).strip()
             content = match.group(2).strip()

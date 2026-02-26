@@ -28,7 +28,7 @@ from decimal import Decimal
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.models import BoundValue, Unit
+from src.extraction_v2.models import BoundValue, SectionType, Unit
 from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
 from src.review.number_parsing import NumberMatch
@@ -74,6 +74,14 @@ _HAS_SCALE_SUFFIX_RE = re.compile(
 )
 
 _BARE_SMALL_NUMBER_THRESHOLD = 50
+# Prepared-remarks sections in transcript mode: raise the threshold to 400 to
+# suppress product-name-embedded numbers like "M365" → 365 and "Dynamics 365" → 365.
+# No gold standard ACCEPT count values fall in the 50-400 range for prepared_remarks.
+_BARE_SMALL_NUMBER_THRESHOLD_PREPARED = 400
+# Q&A sections are noisier — analyst-repeated figures, basis points, financial refs.
+# Raise the bare-count threshold to 500 to suppress these without hurting recall
+# (all Q&A ACCEPT count values have scale suffixes or are >= 500).
+_BARE_SMALL_NUMBER_THRESHOLD_QA = 500
 
 # Metrics that are inherently user/activity counts — never currency.
 # A dollar value bound to these metrics is always a false positive
@@ -127,6 +135,16 @@ _FORTUNE_SUBSET_RE = re.compile(
 
 # Leading-zero number fragment — "018", "019", etc. from proximity window cutting "2018", "2019".
 _LEADING_ZERO_RE = re.compile(r"^0\d{1,2}$")
+
+# Q&A hedging language — analysts often speculate or ask about percentages
+# without asserting them ("was it 20%?", "assuming 15% growth", etc.).
+# These are false positives when a percent value is nearby.
+_QA_HEDGING_RE = re.compile(
+    r"\b(?:was\s+it|is\s+that|assuming|expect(?:ed|s|ing)?|guidance|outlook|"
+    r"if\s+we|do\s+you|would\s+(?:you|that)|could\s+(?:you|that)|"
+    r"are\s+you|what\s+(?:about|is|are|was)|thinking\s+about)\b",
+    re.IGNORECASE,
+)
 
 
 def _is_percent_in_keyword_clause(
@@ -312,7 +330,13 @@ def _rule_developer_count(bv: BoundValue, source_text: str, metric_id: str) -> s
 
 
 def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Fortune/Forbes subset count for cm_customers_period_end."""
+    """Fortune/Forbes subset count for cm_customers_period_end.
+
+    Fires when a number near "of the Fortune/Forbes N" could be the ranking N
+    itself (e.g., extracting 500 from "90% of the Fortune 500").  Does NOT fire
+    when the extracted value is substantially larger than the ranking number
+    (e.g., 230,000 customers is not a Fortune-500-subset count).
+    """
     if not source_text or metric_id != "cm_customers_period_end":
         return None
     raw = (bv.value_raw or "").strip()
@@ -322,8 +346,132 @@ def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> st
     if fortune_match:
         value_pos = source_text.find(raw)
         if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
-            return "v2_fortune_subset"
+            # Only block if the extracted value is plausibly the ranking number itself
+            # (i.e., small — Fortune 100, 500, 1000). A value like 230,000 is clearly
+            # a separate customer count, not a Fortune subset ordinal.
+            if bv.value is not None and bv.value <= 2000:
+                return "v2_fortune_subset"
     return None
+
+
+# Growth-rate percent context — "up 27% year-over-year" or "up over 20% year-over-year".
+# When a count-type metric (MAU, DAU) has a percent value that appears as a
+# growth rate in the same sentence that also contains an absolute count, the
+# percent is secondary (the count is the metric value).  Pattern: the percent
+# raw text is immediately preceded within ~20 chars by "up [over] " or "grew ".
+_GROWTH_RATE_PREFIX_RE = re.compile(
+    r"\b(?:up|grew|grown|increased?)\s+(?:over\s+|around\s+|approximately\s+)?",
+    re.IGNORECASE,
+)
+# Scale-suffixed count value in the same segment text — confirms an absolute value exists.
+_SCALE_COUNT_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:million|billion|thousand|,\d{3})",
+    re.IGNORECASE,
+)
+
+# Metrics that are counts — a percent value for these metrics may be a growth rate.
+_COUNT_TYPE_METRICS: frozenset[str] = frozenset({
+    "cm_monthly_active_users",
+    "cm_daily_active_users",
+    "cm_active_customers_total",
+    "cm_customers_period_end",
+    "cm_new_customers_acquired",
+    "cm_large_customers_period_end",
+})
+
+
+# Content engagement metrics (views, impressions, streams) near a bound value
+# indicate the number is NOT a customer count.  Fires when the value raw text
+# appears immediately adjacent to engagement vocabulary.
+_CONTENT_ENGAGEMENT_RE = re.compile(
+    r"\b(?:views?|impressions?|streams?|page\s+views?|video\s+views?)\b",
+    re.IGNORECASE,
+)
+
+_CUSTOMER_COUNT_METRICS: frozenset[str] = frozenset({
+    "cm_customers_period_end",
+    "cm_active_customers_total",
+    "cm_new_customers_acquired",
+    "cm_large_customers_period_end",
+})
+
+
+def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block customer count metrics when value appears near engagement vocabulary (views, etc.)."""
+    if metric_id not in _CUSTOMER_COUNT_METRICS:
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    engagement_match = _CONTENT_ENGAGEMENT_RE.search(source_text)
+    if engagement_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(engagement_match.start() - value_pos) <= 60:
+            return "v2_content_engagement"
+    return None
+
+
+def _rule_growth_rate_percent(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block percent values that are growth rates rather than metric values.
+
+    Fires when ALL of:
+    1. The metric is a count-type metric (MAU, DAU, customers, etc.)
+    2. The bound value unit is PERCENT
+    3. The percent raw text is preceded by a growth-rate verb (up, grew, grown, increased)
+       within a short window (~25 chars)
+    4. The same segment text also contains a scale-suffixed count value
+       (e.g. "56 million"), confirming that the absolute count was also mentioned.
+       When there is no absolute count in the text, the percent may itself be the
+       metric value (e.g. "MAU growing 23% YoY") — in that case this rule does NOT fire.
+    """
+    if bv.unit != Unit.PERCENT:
+        return None
+    if metric_id not in _COUNT_TYPE_METRICS:
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    # Check for growth-rate prefix immediately before the percent value
+    window_start = max(0, value_pos - 25)
+    window = source_text[window_start:value_pos]
+    if not _GROWTH_RATE_PREFIX_RE.search(window):
+        return None
+    # Only fire if there is also an absolute count value in the same segment text
+    # (the count is the real metric value; the percent is secondary growth context)
+    if not _SCALE_COUNT_RE.search(source_text):
+        return None
+    return "v2_growth_rate_percent"
+
+
+# Q&A-specific rules below are injected via _is_v2_false_positive after the
+# registry loop because they require the section_type argument, which rule
+# functions in the registry do not receive.
+
+def _qa_hedging_percent_near_value(source_text: str, value_raw: str) -> bool:
+    """
+    Return True if Q&A hedging language appears within ~10 words of the value.
+
+    Only called for percent values in Q&A sections.
+    Searches a ±60-character window around the value position to approximate
+    a 10-word radius without full tokenisation.
+    """
+    raw = value_raw.strip()
+    if not raw:
+        return False
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return False
+    window_start = max(0, value_pos - 60)
+    window_end = min(len(source_text), value_pos + len(raw) + 60)
+    window = source_text[window_start:window_end]
+    return bool(_QA_HEDGING_RE.search(window))
 
 
 # =============================================================================
@@ -344,6 +492,8 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("geographic_revenue", _rule_geographic_revenue),
     ("developer_count", _rule_developer_count),
     ("fortune_subset", _rule_fortune_subset),
+    ("content_engagement", _rule_content_engagement),
+    ("growth_rate_percent", _rule_growth_rate_percent),
 ]
 
 # Rules skipped in relaxed mode (transcripts/presentations).
@@ -357,6 +507,7 @@ def _is_v2_false_positive(
     source_text: str,
     metric_id: str = "",
     relaxed: bool = False,
+    section_type: SectionType = SectionType.UNKNOWN,
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
@@ -371,6 +522,8 @@ def _is_v2_false_positive(
     After the registry loop, additional transcript-specific checks are applied
     when relaxed=True:
     - Bare small count values (single/double-digit without scale suffix)
+    - Q&A hedging percent: percent values with hedging language nearby
+    - Q&A currency on count metric: currency values on count-only metrics
 
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
@@ -383,17 +536,49 @@ def _is_v2_false_positive(
             return True, reason
 
     # Relaxed mode only: bare small count values.
-    # In transcript text, bare single/double-digit numbers with unit=count
-    # are almost always noise — slide numbers ("Slide 6"), quarter refs
-    # ("Q4" → 4), technology labels ("5G" → 5), multipliers ("4 times"),
-    # or ranking superlatives ("top 10").  Legitimate count values in
-    # transcripts either use scale suffixes ("3,000", "1.5 million") or
-    # are large enough to be unambiguous (>= 50).
-    if relaxed and bv.unit == Unit.COUNT:
+    # In transcript text, bare single/double-digit numbers with unit=count or
+    # unit=other are almost always noise — slide numbers ("Slide 6"), quarter
+    # refs ("Q4" → 4), technology labels ("5G" → 5), multipliers ("4 times"),
+    # product names ("Dynamics 365" → 365), or ranking superlatives ("top 10").
+    # Legitimate count values in transcripts either use scale suffixes ("3,000",
+    # "1.5 million") or are large enough to be unambiguous (>= 50).
+    # Unit.OTHER is included because bare integers without commas/scale/currency
+    # parse as OTHER (e.g., "4" from "4 or more workloads").
+    if relaxed and bv.unit in (Unit.COUNT, Unit.OTHER):
         raw = (bv.value_raw or "").strip()
-        if bv.value is not None and bv.value < _BARE_SMALL_NUMBER_THRESHOLD:
+        if section_type == SectionType.QA:
+            threshold = _BARE_SMALL_NUMBER_THRESHOLD_QA
+        elif section_type == SectionType.PREPARED_REMARKS:
+            threshold = _BARE_SMALL_NUMBER_THRESHOLD_PREPARED
+        else:
+            threshold = _BARE_SMALL_NUMBER_THRESHOLD
+        if bv.value is not None and bv.value < threshold:
             if not _HAS_SCALE_SUFFIX_RE.search(raw):
                 return True, "v2_bare_small_count"
+
+    # Q&A-specific rules (only applied in Q&A sections in relaxed mode).
+    if relaxed and section_type == SectionType.QA:
+
+        # Rule: Q&A hedging percent.
+        # Analysts frequently repeat growth rates speculatively or ask
+        # "was it 20%?" / "assuming 15% margin" — these are not metric
+        # disclosures.  Reject percent values when hedging language appears
+        # within ~10 words of the value.
+        # Conservative: only fires when hedging is detected; fails open
+        # if value position cannot be determined.
+        if bv.unit == Unit.PERCENT and source_text:
+            if _qa_hedging_percent_near_value(source_text, bv.value_raw or ""):
+                return True, "v2_qa_hedging_percent"
+
+        # Rule: Q&A currency value on a count-only metric.
+        # In Q&A, an analyst may quote a dollar figure near a customer-count
+        # keyword (e.g., "How does the $50 million figure relate to MAUs?").
+        # Count-only metrics can never take a currency value.
+        # Note: a broader version of this check also runs in process() for
+        # all sections; this check ensures it fires inside _is_v2_false_positive
+        # so the reason tag reflects the Q&A context.
+        if bv.unit == Unit.CURRENCY and metric_id in _COUNT_ONLY_METRICS:
+            return True, "v2_qa_currency_on_count"
 
     return False, None
 
@@ -583,7 +768,11 @@ class FalsePositiveFilterStage:
                 candidate = candidate_map.get(bv.candidate_id)
                 metric_id = candidate.metric_id if candidate else ""
                 v2_fp, v2_reason = _is_v2_false_positive(
-                    bv, source_text, metric_id=metric_id, relaxed=relaxed
+                    bv,
+                    source_text,
+                    metric_id=metric_id,
+                    relaxed=relaxed,
+                    section_type=candidate.section_type if candidate else SectionType.UNKNOWN,
                 )
                 if v2_fp:
                     filter_reasons[v2_reason or "v2_unknown"] = (

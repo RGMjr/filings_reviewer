@@ -1826,3 +1826,298 @@ class TestV2PerShareRule:
         # Not filtered by per_share rule (wrong unit); may pass or fail other rules
         if is_fp:
             assert reason != "v2_per_share"
+
+
+# ============================================================================
+# Test: Q&A section-aware bare-count threshold
+# ============================================================================
+
+
+class TestQASectionBareCountThreshold:
+    """Tests for elevated bare-count threshold in Q&A sections."""
+
+    def test_fp_filter_qa_bare_count_threshold_500(self):
+        """Value=200, unit=COUNT, section=QA → rejected (< 500 threshold)."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 200.0, "200", Unit.COUNT)
+        source = "We had 200 customers sign up this quarter"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_bare_small_count"
+
+    def test_fp_filter_prepared_remarks_threshold_50(self):
+        """Value=30, unit=COUNT, section=PREPARED_REMARKS → rejected (< 50 threshold)."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 30.0, "30", Unit.COUNT)
+        source = "We had 30 customers"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_bare_small_count"
+
+    def test_fp_filter_sec_threshold_unchanged(self):
+        """Value=30, unit=COUNT, section=UNKNOWN → rejected via default threshold 50."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 30.0, "30", Unit.COUNT)
+        source = "We had 30 customers"
+        # relaxed=False simulates SEC mode (UNKNOWN section, not relaxed)
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, relaxed=False, section_type=SectionType.UNKNOWN
+        )
+        assert is_fp is False  # bare-count rule only applies in relaxed mode
+
+    def test_qa_threshold_allows_large_count(self):
+        """Value >= 500 in QA → not rejected even without scale suffix."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        source = "approximately 500 customers"
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+    def test_qa_threshold_allows_scale_suffix(self):
+        """Value < 500 in QA but with scale suffix → not rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 4.0, "4 million", Unit.COUNT)
+        source = "4 million active users"
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+
+# ============================================================================
+# Test: Q&A hedging percent rule
+# ============================================================================
+
+
+class TestQAHedgingPercentRule:
+    """Tests for Q&A hedging-language percent filter."""
+
+    def test_qa_hedging_was_it_rejected(self):
+        """Percent value with 'was it' nearby in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 20.0, "20%", Unit.PERCENT)
+        source = "was it 20% growth or higher?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_hedging_percent"
+
+    def test_qa_hedging_assuming_rejected(self):
+        """Percent value with 'assuming' nearby in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 15.0, "15%", Unit.PERCENT)
+        source = "assuming 15% margin improvement, how should we model that?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_gross_margin_overall",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_hedging_percent"
+
+    def test_qa_hedging_guidance_rejected(self):
+        """Percent value with 'guidance' nearby in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 110.0, "110%", Unit.PERCENT)
+        source = "the guidance of 110% NRR going into next year"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_hedging_percent"
+
+    def test_qa_hedging_do_you_rejected(self):
+        """Percent value with 'do you' nearby in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 25.0, "25%", Unit.PERCENT)
+        source = "do you expect 25% growth to continue?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_churn_rate",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_hedging_percent"
+
+    def test_qa_confident_percent_kept(self):
+        """Percent value with no hedging in Q&A → kept (gold standard case)."""
+        from src.extraction_v2.models import SectionType
+
+        # Gold standard: "Our top 10 customers represent 45% of revenue"
+        bv = _make_bound_value("c1", 45.0, "45%", Unit.PERCENT)
+        source = "Our top 10 customers represent 45% of revenue"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+    def test_qa_revenue_concentration_60_kept(self):
+        """Gold standard: 'Top 5 customers contributed 60% of ARR' → kept."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 60.0, "60%", Unit.PERCENT)
+        source = "Top 5 customers contributed 60% of ARR"
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+    def test_qa_nrr_100_range_kept(self):
+        """Gold standard: NRR range 100%-110% in Q&A → kept."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 100.0, "100%", Unit.PERCENT)
+        source = (
+            "in the modeling guidelines, we've provided a view on how we are "
+            "thinking about fiscal '26, which is basically the same as it was "
+            "in fiscal '25. It's a range of 100% to 110%."
+        )
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+    def test_qa_hedging_not_fired_in_prepared_remarks(self):
+        """Hedging language in PREPARED_REMARKS section → rule does NOT fire."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 20.0, "20%", Unit.PERCENT)
+        source = "was it 20% growth or higher?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        # Should NOT fire the QA hedging rule in prepared remarks
+        assert reason != "v2_qa_hedging_percent"
+
+    def test_qa_hedging_not_fired_in_non_relaxed_mode(self):
+        """Hedging language in SEC filing (non-relaxed) → rule does NOT fire."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 20.0, "20%", Unit.PERCENT)
+        source = "was it 20% growth or higher?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=False, section_type=SectionType.QA
+        )
+        assert reason != "v2_qa_hedging_percent"
+
+    def test_qa_hedging_hedging_far_from_value_not_fired(self):
+        """Hedging language >60 chars from value → rule does NOT fire."""
+        from src.extraction_v2.models import SectionType
+
+        # Pad text so hedging is well beyond the 60-char window
+        padding = "A" * 100
+        bv = _make_bound_value("c1", 45.0, "45%", Unit.PERCENT)
+        source = f"Was it ever possible? {padding} The answer is 45% retention."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert reason != "v2_qa_hedging_percent"
+
+
+# ============================================================================
+# Test: Q&A currency on count metric rule
+# ============================================================================
+
+
+class TestQACurrencyOnCountRule:
+    """Tests for Q&A currency-value-on-count-metric filter."""
+
+    def test_qa_currency_on_mau_rejected(self):
+        """Currency value bound to MAU metric in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 50_000_000.0, "$50 million", Unit.CURRENCY)
+        source = "How does the $50 million figure relate to monthly active users?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_currency_on_count"
+
+    def test_qa_currency_on_customers_period_end_rejected(self):
+        """Currency value bound to customers_period_end in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 100_000_000.0, "$100 million", Unit.CURRENCY)
+        source = "When we talk about $100 million customers, we mean customer value"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_currency_on_count"
+
+    def test_qa_currency_on_new_customers_rejected(self):
+        """Currency value bound to new_customers_acquired in Q&A → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 25_000_000.0, "$25 million", Unit.CURRENCY)
+        source = "Did $25 million in new customer acquisition costs surprise you?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_new_customers_acquired",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is True
+        assert reason == "v2_qa_currency_on_count"
+
+    def test_qa_count_on_count_metric_kept(self):
+        """Count value bound to MAU metric in Q&A → kept."""
+        from src.extraction_v2.models import SectionType
+
+        # Gold standard: 4 million new debit card active
+        bv = _make_bound_value("c1", 4_000_000.0, "4 million", Unit.COUNT)
+        source = "4 million new debit card active, so really starting to see strong demand"
+        is_fp, _ = _is_v2_false_positive(
+            bv, source, metric_id="cm_new_customers_acquired",
+            relaxed=True, section_type=SectionType.QA
+        )
+        assert is_fp is False
+
+    def test_qa_currency_on_non_count_metric_not_filtered_by_qa_rule(self):
+        """Currency value on a non-count metric (ARR) in Q&A → NOT filtered by QA rule."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 578_000_000.0, "$578 million", Unit.CURRENCY)
+        source = "we achieved net new ARR of $578 million"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr",
+            relaxed=True, section_type=SectionType.QA
+        )
+        # QA currency-on-count rule should NOT fire for cm_arr (not a count metric)
+        assert reason != "v2_qa_currency_on_count"
+
+    def test_qa_currency_on_count_not_fired_in_prepared_remarks(self):
+        """Currency value on count metric in PREPARED_REMARKS → QA rule does NOT fire."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 50_000_000.0, "$50 million", Unit.CURRENCY)
+        source = "How does the $50 million figure relate to monthly active users?"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        # QA-specific rule must NOT fire for prepared remarks
+        assert reason != "v2_qa_currency_on_count"

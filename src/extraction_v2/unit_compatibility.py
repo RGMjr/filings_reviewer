@@ -83,7 +83,10 @@ for _m in _PERCENT_ONLY_METRICS:
     METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO})
 
 for _m in _RATIO_METRICS:
-    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO, Unit.OTHER})
+    # COUNT is included because bare decimals (e.g. "1.42") parse as Unit.COUNT.
+    # Year-like integers (2015, 2016) pass through this filter but are removed
+    # downstream by the v2_year_value / v2_year_fragment FP rules.
+    METRIC_ALLOWED_UNITS[_m] = frozenset({Unit.PERCENT, Unit.RATIO, Unit.OTHER, Unit.COUNT})
 
 
 def get_allowed_units(metric_id: str) -> frozenset[Unit] | None:

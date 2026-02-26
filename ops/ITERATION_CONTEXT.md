@@ -6,57 +6,43 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**SEC (v2-rewrite, 2026-02-20)**: WP-09 Farfetch CSV cleanup + `(actual)` stub scale exemption
-- Farfetch FN: 24 → 22; AOV `wrong_period` FNs remain; LTV/CAC multi-value unsupported
+**Phase A+ (earnings-call-exploration, 2026-02-26)**: 3-workstream parallel team (phase-a-plus)
+- **WS-1 Q&A FP filtering**: `_qa_hedging_percent` + `_qa_currency_on_count` rules; 17 new tests
+- **WS-2 Keyword recall**: EA 0%→100% (gaming vocab); MSFT 62%→92% (converter speaker-ordering bug fixed); 22 HTML files regenerated; FP rules for MSFT product-name numbers
+- **WS-3 LTV/CAC**: Root cause = `_RATIO_METRICS` missing `Unit.COUNT`; bare decimals (1.42, 1.53) now accepted; 4 new binding tests
+- **Baselines refreshed**: SEC P=88.9% R=63.7% F1=74.2%; Transcript R=71.8% P=48.4% F1=57.8%
 
-**Transcript (earnings-call-exploration, 2026-02-23)**: Phase A complete
-- MAU FP fixes: currency rejection + clause gate → P=72%→75%, R=62%→64%, F1=67%→69%
-- AC-10 integration tests complete (3781cc7, 2026-02-19)
-
-**Transcript (earnings-call-exploration, 2026-02-24)**: Word-form "a" fix + PYPL annotation corrections
-- Added "a": 1 to WORD_NUMBERS; META recall 50%→90% (+5 TPs on 10-annotation set)
-- Corrected 3 PYPL_2025-02-04 annotations (ACCEPT→REJECT: $ prefix currency-on-count transcription errors)
-- Consolidated per-filing reviewed CSVs into transcript_gold_standard.csv (94 annotations, 16 files)
-- New benchmark baseline: R=65.9%, P=38.4%, F1=48.5% (vs. old 77-ann set — not directly comparable)
-
-**Merged + verified (2026-02-23)**: v2-rewrite → earnings-call-exploration; post-merge suite passed
-- 4,469 unit tests, 82% coverage, 0 failures
+**Transcript baseline**: R=65.9%→71.8% (+4.7%), P=38.4%→48.4% (+10%), F1=48.5%→57.8% (+9.3%)
 
 ## Current Focus
 
-- Transcript: Q&A section filtering (in progress)
-- Transcript: remaining keyword recall gaps
-- SEC: LTV/CAC multi-value binding (9 Farfetch FNs)
+- Transcript: PYPL FP explosion (45 small-bare-number FPs, pre-existing) — major precision blocker
+- SEC: AOV wrong_period — period mismatch gating (needs WP-08)
 
 ## Test Status
 
-- 4,469 unit tests; 82% coverage
-- SEC gold standard: P=89.4% (v2-rewrite baseline); V2: P=81.9%, R=60.6%, F1=69.6%
-- Transcript benchmark: R=65.9%, P=38.4%, F1=48.5% (94 annotations, 16 files; new consolidated gold standard)
+- 4,507 unit tests; 0 failures
+- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-26)
+- Transcript benchmark: R=71.8%, P=48.4%, F1=57.8% (94 annotations, 16 files; baseline 2026-02-26)
 
 ## Key Learnings
 
 **Transcript:**
-- Bare small numbers (<50 without scale suffix) are almost always noise in transcript text
-- Currency values on count-only metrics must be REJECTED, not converted ($ prefix = dollar amount)
-- Conjunction-clause gating splits compound sentences to associate percent values with correct metric
-- Clause gate only works for cross-clause FPs; same-clause semantic FPs (penetration %) need different approach
-- PYPL source transcript had `$224 million` typo — CFO meant "224 million" MAAs
-- PYPL_2025-02-04 also had $63M/$229M/$434M transcription errors ($ on count values) — now marked REJECT in gold standard
-- Word-form "a" = 1 is safe to include: regex requires immediate scale word, so "a few million" won't match
-- PYPL FP explosion (26 FPs, small bare numbers) is a pre-existing issue unrelated to these fixes
+- MSFT converter bug: speaker-pattern check must run BEFORE section detection — operator intro lines triggered premature QA classification, dropping entire prepared remarks
+- `_RATIO_METRICS` in unit_compatibility.py must include `Unit.COUNT` for bare decimals (1.42x LTV/CAC)
+- Q&A hedging rules (±60 char window around value) safe with `relaxed=True and section_type==QA` guard
+- PYPL FP explosion (15 FPs, small bare numbers) is pre-existing; _BARE_SMALL_NUMBER_THRESHOLD raised to 400 for prepared_remarks only
+- ADSK 3 FNs are phantom annotations (text not in transcript) — unfixable; META 1 FN is dedup artifact
 
 **SEC (Farfetch):**
-- LTV/CAC: "31" (nearest number) bound instead of "1.42, 1.53"; multi-value comma lists unsupported
+- LTV/CAC fix was unit_compatibility not value_binding — Strategy 6 was firing correctly
 - AOV wrong_period: values extracted at correct scale; period mismatch is gating issue (needs WP-08)
-- `_is_scale_exception` now fires on `(actual)` stub unconditionally; currency-symbol check still gated
 
 ## Next Work (Prioritized)
 
-1. **Transcript: Q&A section filtering** — transcript_converter tags `qa` sections; stricter FP rules in Q&A
-2. **Transcript: Keyword recall gaps** — review per-metric FN patterns from benchmark
-3. **SEC: LTV/CAC multi-value binding** — Farfetch 9 FNs; needs new design
-4. **SEC: Baseline refresh** — regenerate v2_baseline.json after all WPs complete
+1. **Transcript: PYPL FP explosion** — 15 small-bare-number FPs dragging precision to 25%; needs targeted rule
+2. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
+3. **SEC: Farfetch chart FNs** — 8 FNs require Vision API; blocked on environment
 
 ## Blockers or Warnings
 
