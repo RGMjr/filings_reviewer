@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     BoundValue,
     PeriodType,
@@ -267,66 +268,75 @@ class PeriodInferenceStage:
         Returns:
             StageResult with processing metrics
         """
-        start_time = datetime.utcnow()
-        periods_inferred = 0
-        ambiguous_count = 0
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.utcnow()
+            periods_inferred = 0
+            ambiguous_count = 0
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        # Get filing fiscal period for fallback
-        fiscal_year = context.document.fiscal_year if context.document else None
-        fiscal_period = context.document.fiscal_period if context.document else ""
+            # Get filing fiscal period for fallback
+            fiscal_year = context.document.fiscal_year if context.document else None
+            fiscal_period = context.document.fiscal_period if context.document else ""
 
-        # Load fiscal year end metadata from document (set by IngestionStage)
-        self._fy_end_month = context.document.fiscal_year_end_month if context.document else None
-        self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
+            # Load fiscal year end metadata from document (set by IngestionStage)
+            self._fy_end_month = (
+                context.document.fiscal_year_end_month if context.document else None
+            )
+            self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
 
-        # Build lookup for segments and tables
-        segment_lookup = {s.segment_id: s for s in context.segments}
-        table_lookup = {t.table_id: t for t in context.tables}
+            # Build lookup for segments and tables
+            segment_lookup = {s.segment_id: s for s in context.segments}
+            table_lookup = {t.table_id: t for t in context.tables}
 
-        # Process each bound value
-        for bound_value in context.bound_values:
-            try:
-                period = self._infer_period(
-                    bound_value,
-                    segment_lookup,
-                    table_lookup,
-                    fiscal_year,
-                    fiscal_period,
-                )
-                if period:
-                    bound_value.period_type = period.period_type
-                    bound_value.period_start = period.start
-                    bound_value.period_end = period.end
-                    bound_value.period_confidence = period.confidence
-                    bound_value.period_source = period.source
-                    bound_value.period_ambiguous = False
-                    periods_inferred += 1
-                else:
-                    # No period found - flag as ambiguous
-                    bound_value.period_type = PeriodType.OTHER
-                    bound_value.period_ambiguous = True
-                    ambiguous_count += 1
-                    warnings.append(f"No period found for bound value {bound_value.bound_value_id}")
-            except Exception as e:
-                error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            # Process each bound value
+            for bound_value in context.bound_values:
+                try:
+                    period = self._infer_period(
+                        bound_value,
+                        segment_lookup,
+                        table_lookup,
+                        fiscal_year,
+                        fiscal_period,
+                    )
+                    if period:
+                        bound_value.period_type = period.period_type
+                        bound_value.period_start = period.start
+                        bound_value.period_end = period.end
+                        bound_value.period_confidence = period.confidence
+                        bound_value.period_source = period.source
+                        bound_value.period_ambiguous = False
+                        periods_inferred += 1
+                    else:
+                        # No period found - flag as ambiguous
+                        bound_value.period_type = PeriodType.OTHER
+                        bound_value.period_ambiguous = True
+                        ambiguous_count += 1
+                        warnings.append(
+                            f"No period found for bound value {bound_value.bound_value_id}"
+                        )
+                except Exception as e:
+                    error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        logger.info(
-            f"Period inference complete: {periods_inferred} inferred, "
-            f"{ambiguous_count} ambiguous from {len(context.bound_values)} values"
-        )
+            logger.info(
+                f"Period inference complete: {periods_inferred} inferred, "
+                f"{ambiguous_count} ambiguous from {len(context.bound_values)} values"
+            )
 
-        return self._make_result(
-            start_time,
-            len(context.bound_values),
-            periods_inferred,
-            errors,
-            warnings,
-            ambiguous_count,
-        )
+            return self._make_result(
+                start_time,
+                len(context.bound_values),
+                periods_inferred,
+                errors,
+                warnings,
+                ambiguous_count,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="period_inference") from e
 
     def _infer_period(
         self,
@@ -619,7 +629,7 @@ class PeriodInferenceStage:
 
         # Determine period type from the pattern prefix.
         # Normalize NBSP (\xa0) so "six\xa0months" matches "six months" etc.
-        text_lower = text.lower().replace('\xa0', ' ')
+        text_lower = text.lower().replace("\xa0", " ")
 
         if "year" in text_lower[: match.end()]:
             period_type = PeriodType.ANNUAL

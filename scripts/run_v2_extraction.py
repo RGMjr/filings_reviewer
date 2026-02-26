@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -44,6 +45,14 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class PipelineTimeoutError(Exception):
+    """Raised when the pipeline exceeds the configured timeout."""
+
+
+def _sigalrm_handler(signum: int, frame: object) -> None:
+    raise PipelineTimeoutError("pipeline timed out")
 
 
 def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | None) -> dict:
@@ -128,7 +137,7 @@ def print_summary(result, filing: dict) -> None:
         high = sum(1 for f in result.facts if f.confidence >= 0.85)
         medium = sum(1 for f in result.facts if 0.50 <= f.confidence < 0.85)
         low = sum(1 for f in result.facts if f.confidence < 0.50)
-        print(f"\n  Confidence Distribution:")
+        print("\n  Confidence Distribution:")
         print(f"    High (>=0.85):  {high}")
         print(f"    Medium:         {medium}")
         print(f"    Low (<0.50):    {low}")
@@ -136,8 +145,10 @@ def print_summary(result, filing: dict) -> None:
         # Metrics breakdown
         metric_counts: dict[str, int] = {}
         for fact in result.facts:
-            metric_counts[fact.canonical_metric_id] = metric_counts.get(fact.canonical_metric_id, 0) + 1
-        print(f"\n  Metrics Extracted:")
+            metric_counts[fact.canonical_metric_id] = (
+                metric_counts.get(fact.canonical_metric_id, 0) + 1
+            )
+        print("\n  Metrics Extracted:")
         for metric_id, count in sorted(metric_counts.items(), key=lambda x: -x[1]):
             print(f"    {metric_id}: {count}")
 
@@ -147,7 +158,7 @@ def print_summary(result, filing: dict) -> None:
     # Stage results summary
     failed_stages = [sr for sr in result.stage_results if not sr.success]
     if failed_stages:
-        print(f"\n  Failed Stages:")
+        print("\n  Failed Stages:")
         for sr in failed_stages:
             print(f"    {sr.stage.value}: {sr.errors}")
 
@@ -163,11 +174,26 @@ def main():
     group.add_argument("--filing-id", type=int, help="Filing ID from database")
     group.add_argument("--accession", type=str, help="SEC accession number")
 
-    parser.add_argument("--dry-run", action="store_true", help="Run pipeline but don't persist to database")
-    parser.add_argument("--min-confidence", type=float, default=0.90, help="Min confidence for auto-accept (default: 0.90)")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Run pipeline but don't persist to database"
+    )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.90,
+        help="Min confidence for auto-accept (default: 0.90)",
+    )
     parser.add_argument("--no-images", action="store_true", help="Disable image extraction")
-    parser.add_argument("--skip-quality", action="store_true", help="Skip quality scoring (filing_metric_incidence)")
+    parser.add_argument(
+        "--skip-quality", action="store_true", help="Skip quality scoring (filing_metric_incidence)"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Seconds before aborting the pipeline run (default: 300, Unix/macOS only)",
+    )
 
     args = parser.parse_args()
 
@@ -206,14 +232,27 @@ def main():
         min_confidence_auto_accept=args.min_confidence,
     )
 
-    # Run pipeline
+    # Run pipeline (with optional SIGALRM-based timeout)
     pipeline = V2Pipeline(config=config)
-    result = pipeline.process(
-        html_path=html_path,
-        filing_id=filing["filing_id"],
-        cik=str(filing.get("cik", "")),
-        accession_number=filing.get("accession_number", ""),
-    )
+    if args.timeout > 0:
+        signal.signal(signal.SIGALRM, _sigalrm_handler)
+        signal.alarm(args.timeout)
+    try:
+        result = pipeline.process(
+            html_path=html_path,
+            filing_id=filing["filing_id"],
+            cik=str(filing.get("cik", "")),
+            accession_number=filing.get("accession_number", ""),
+        )
+    except PipelineTimeoutError:
+        print(
+            f"ERROR: pipeline exceeded timeout of {args.timeout}s for filing {filing['filing_id']}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    finally:
+        if args.timeout > 0:
+            signal.alarm(0)  # Cancel any pending alarm
 
     # Print summary
     print_summary(result, filing)

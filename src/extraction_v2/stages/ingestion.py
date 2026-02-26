@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from lxml import etree, html
 
-from src.extraction_v2.text_utils import normalize_text
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
@@ -30,6 +30,7 @@ from src.extraction_v2.models import (
     Segment,
     SegmentType,
 )
+from src.extraction_v2.text_utils import normalize_text
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -942,15 +943,7 @@ class IngestionStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.exception(f"Ingestion stage failed: {e}")
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            return StageResult(
-                stage=PipelineStage.INGESTION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=0,
-                items_output=0,
-                errors=[str(e)],
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="ingestion") from e

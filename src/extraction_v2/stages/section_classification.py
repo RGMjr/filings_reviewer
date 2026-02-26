@@ -17,6 +17,7 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import SectionType, Segment
 from src.extraction_v2.text_utils import normalize_text
 
@@ -306,18 +307,7 @@ class SectionClassificationStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.error(f"Section classification failed: {e}", exc_info=True)
-            errors.append(str(e))
-
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-
-            return StageResult(
-                stage=PipelineStage.SECTION_CLASSIFICATION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=len(context.segments) if context.segments else 0,
-                items_output=0,
-                errors=errors,
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="section_classification") from e

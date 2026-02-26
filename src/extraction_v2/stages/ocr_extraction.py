@@ -23,6 +23,7 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Cell,
     ChartAnnotation,
@@ -842,27 +843,7 @@ time periods, or definitions that help interpret the chart's data.
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            # Catastrophic error - fail the stage
-            error_msg = f"OCR extraction stage failed: {str(e)}"
-            errors.append(error_msg)
-            logger.error(error_msg, exc_info=True)
-
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-
-            return StageResult(
-                stage=PipelineStage.OCR_CHART_EXTRACTION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=processed_count,
-                items_output=processed_count,
-                errors=errors,
-                warnings=warnings,
-                metadata={
-                    "ocr_calls": self._ocr_call_count,
-                    "chart_calls": self._chart_call_count,
-                    "total_api_calls": self._api_call_count,
-                    "manual_capture_count": manual_capture_count,
-                    "skipped_count": skipped_count,
-                },
-            )
+            raise V2FatalError(str(e), stage_name="ocr_chart_extraction") from e

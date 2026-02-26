@@ -140,8 +140,13 @@ class V2PersistenceAdapter:
         with self._db.transaction() as conn:
             with conn.cursor() as cur:
                 self._persist_document_in_tx(
-                    cur, document, filing_id,
-                    segment_count, table_count, image_count, fact_count,
+                    cur,
+                    document,
+                    filing_id,
+                    segment_count,
+                    table_count,
+                    image_count,
+                    fact_count,
                     status,
                 )
         logger.debug(f"Upserted document: filing_id={filing_id}, doc_id={document.doc_id}")
@@ -281,6 +286,7 @@ class V2PersistenceAdapter:
                         len(result.images),
                         len(result.facts),
                         "complete" if result.success else "failed",
+                        result.error_message,
                     )
 
                     # 2. Persist segments
@@ -298,9 +304,7 @@ class V2PersistenceAdapter:
                     fact_count = self._persist_facts_in_tx(cur, result.facts, filing_id)
 
                     # 6. Persist definitions
-                    def_count = self._persist_definitions_in_tx(
-                        cur, result.definitions, filing_id
-                    )
+                    def_count = self._persist_definitions_in_tx(cur, result.definitions, filing_id)
 
             logger.info(
                 f"Persisted pipeline result for filing_id={filing_id}: "
@@ -334,18 +338,19 @@ class V2PersistenceAdapter:
         image_count: int,
         fact_count: int,
         status: str,
+        error_message: str | None = None,
     ) -> int:
         """Persist document within an existing transaction."""
         sql = """
             INSERT INTO v2_documents (
                 doc_id, filing_id, parse_version,
                 segment_count, table_count, image_count, fact_count,
-                status, parse_completed_at, extract_completed_at, created_at
+                status, error_message, parse_completed_at, extract_completed_at, created_at
             )
             VALUES (
                 %(doc_id)s, %(filing_id)s, %(parse_version)s,
                 %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s,
-                %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW()
+                %(status)s, %(error_message)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW()
             )
             ON CONFLICT (filing_id) DO UPDATE SET
                 parse_version = EXCLUDED.parse_version,
@@ -354,6 +359,7 @@ class V2PersistenceAdapter:
                 image_count = EXCLUDED.image_count,
                 fact_count = EXCLUDED.fact_count,
                 status = EXCLUDED.status,
+                error_message = EXCLUDED.error_message,
                 extract_completed_at = EXCLUDED.extract_completed_at,
                 updated_at = NOW()
         """
@@ -367,6 +373,7 @@ class V2PersistenceAdapter:
             "image_count": image_count,
             "fact_count": fact_count,
             "status": status,
+            "error_message": error_message,
             "parse_completed_at": document.created_at,
             "extract_completed_at": datetime.utcnow(),
         }
