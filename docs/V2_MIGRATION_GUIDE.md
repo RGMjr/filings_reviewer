@@ -312,6 +312,90 @@ config = PipelineConfig(
 )
 ```
 
+## Transcript & Presentation Support
+
+The V2 pipeline supports non-SEC document types via document-type-aware `PipelineConfig` presets. Phase A (transcript support) is complete as of 2026-02-19.
+
+### Config Presets
+
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+
+# SEC filings — default behavior (unchanged)
+pipeline = V2Pipeline(config=PipelineConfig())
+
+# Earnings call transcripts — wider proximity windows, relaxed FP filter, period inference
+pipeline = V2Pipeline(config=PipelineConfig.for_transcript())
+
+# Investor presentations — images enabled, relaxed FP filter
+pipeline = V2Pipeline(config=PipelineConfig.for_presentation())
+```
+
+Key differences from the default SEC config:
+
+| Setting | SEC default | Transcript | Presentation |
+|---------|-------------|------------|--------------|
+| `document_type` | `sec_filing` | `transcript` | `presentation` |
+| `value_binding_proximity_words` | 15 | 30 | 20 |
+| `sentence_level_binding` | False | True | False |
+| `fp_filter_relaxed` | False | True | True |
+| `enable_image_extraction` | False | False | True |
+| `min_paragraph_chars` | 50 | 30 | 50 |
+
+### Transcript Conversion
+
+Plain-text transcripts must be converted to HTML before processing:
+
+```bash
+python3 scripts/spike/convert_transcript_to_html.py \
+    --input transcript.txt \
+    --output transcript.html \
+    --document-date 2025-02-04 \
+    --ticker PYPL
+```
+
+The converter splits large paragraphs into sentences and tags speaker turns.
+
+### Processing Transcripts
+
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
+from datetime import date
+
+config = PipelineConfig.for_transcript()
+pipeline = V2Pipeline(config=config)
+
+result = pipeline.process(
+    html_path=Path("transcript.html"),
+    filing_id=None,                       # transcripts may not have a filing ID
+    document_date=date(2025, 2, 4),       # used for period inference fallback
+    ticker="PYPL",
+)
+
+print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+```
+
+### Gold Standard & Benchmarking
+
+The transcript gold standard lives in `data/transcript_gold_standard/` as per-filing `*_reviewed.csv` files (94 annotations, 16 files as of 2026-02-24).
+
+```bash
+# Consolidate annotations
+python3 scripts/merge_transcript_annotations.py
+
+# Run benchmark
+python3 scripts/validate_transcript_extraction.py
+```
+
+Current performance (2026-02-24): R=65.9%, P=38.4%, F1=48.5%.
+
+### HuggingFace Source
+
+The `DocumentSource` implementation for the `kurry/earnings-call-transcripts` dataset is in `src/extraction_v2/sources/huggingface_source.py`. Use `scripts/spike/collect_samples.py` to download sample transcripts.
+
+---
+
 ## Troubleshooting
 
 ### V2 extracts fewer facts than V1

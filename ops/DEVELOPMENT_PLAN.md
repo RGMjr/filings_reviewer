@@ -2,7 +2,7 @@
 
 **Task ID**: BEYOND-SEC-PHASE-A
 **Task Name**: Transcript Support (Beyond SEC — Phase A)
-**Status**: NEARLY COMPLETE (11/12 ACs met)
+**Status**: COMPLETE (12/12 ACs met)
 **Design Doc**: `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 ---
@@ -18,7 +18,7 @@
 - [x] AC-7 | Transcript converter (text→HTML) hardened from spike version, splits large paragraphs into sentences
 - [x] AC-8 | HuggingFace `DocumentSource` implementation for kurry dataset
 - [x] AC-9 | Schema migration: `document_type`, `ticker`, `document_date`, `transcript_source` on `filings`; relaxed constraints
-- [ ] AC-10 | Integration tests: end-to-end transcript pipeline on 5+ transcripts
+- [x] AC-10 | Integration tests: end-to-end transcript pipeline on 5+ transcripts (3781cc7, 2026-02-19)
 - [x] AC-11 | Measured recall >= 50% on existing 77 manual annotations (achieved: 59.7%)
 - [x] AC-12 | Precision remains >= 60% (achieved: 69.7%)
 
@@ -32,6 +32,8 @@
 | 0cdcd9d | AC-11, AC-12 | Done | R=54.5%, P=60.0%, F1=57.1% |
 | 5a1c2ee | AC-12 hardened | Done | P=71.9% via 4 FP rules, 32 new tests |
 | c733aef | Phase A+ recall | Done | R=53%→60%, keyword expansion + binding fixes |
+| 3781cc7 | AC-10 | Done | Integration tests: 5 transcripts end-to-end (2026-02-19) |
+| c8049ad | Phase A+ word-form + gold standard | Done | Word-form binding, unit disambiguation, expanded to 94 annotations/16 files |
 
 ---
 
@@ -50,7 +52,7 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 ## Remaining Work
 
 ### Phase A Cleanup
-- **AC-10**: Integration tests for transcript pipeline (not yet created)
+- **AC-10**: Integration tests complete (3781cc7, 2026-02-19) ✅
 
 ### Phase A+ (Recall Improvement — In Progress)
 - [x] **Non-SaaS keyword expansion** (c733aef): TMUS postpaid/prepaid, PYPL debit card, MSFT enterprises/organizations, META magnitude patterns — R=53%→60%
@@ -60,7 +62,8 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 - [ ] **PYPL $224M transcript bug**: converter produces "$224 million" for MAU count
 - [ ] **Q&A section stricter filtering**: analyst questions contain speculative numbers
 - [ ] **Remaining keyword gaps**: META family-of-apps, MSFT (text missing from HTML), ADSK vocabulary
-- Current: R=59.7%, P=69.7%, F1=64.3% | Target: R≥65%, P≥70%, F1≥67%
+- Consolidated benchmark (94 annotations, 16 files): R=65.9%, P=38.4%, F1=48.5% — note: not directly comparable to the 77-annotation baseline above (expanded annotation scope affects precision)
+- Target: R≥65% (met), P≥70% (not yet met on consolidated benchmark), F1≥67%
 
 ### Phase B (Expanded Coverage)
 - FMP API source (`FMPTranscriptSource`) for broader transcript corpus

@@ -118,10 +118,10 @@ See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_I
 ## Beyond SEC: Transcript & Presentation Support
 
 **Branch:** `earnings-call-exploration` (worktree: `filings_reviewer_beyond_sec`)
-**Status:** Research spike complete, Phase A not started
+**Status:** Phase A complete (12/12 ACs), Phase A+ in progress
 **Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
-The V2 pipeline is being extended to extract customer metrics from earnings call transcripts and investor presentations. A research spike (Feb 2026) confirmed the pipeline is architecturally compatible — it processes transcripts with no code changes at 72ms/file, achieving 22.1% recall / 63.0% precision on 77 manually annotated metrics.
+The V2 pipeline has been extended to extract customer metrics from earnings call transcripts and investor presentations. Phase A is complete: all 12 acceptance criteria met, with R=65.9%, P=38.4%, F1=48.5% on the consolidated gold standard (94 annotations, 16 files). The original spike baseline was 22.1% recall / 63.0% precision on 77 annotated metrics.
 
 **Document-type-aware config (implemented):**
 ```python
@@ -135,7 +135,9 @@ config = PipelineConfig.for_presentation()
 config = PipelineConfig()
 ```
 
-**Phase A roadmap (NOT started):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration. Target: >= 50% recall on transcripts. See `ops/DEVELOPMENT_PLAN.md` for acceptance criteria.
+**Phase A (complete):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration — all 12 ACs met. Achieved R=65.9% (target: ≥50%) on consolidated gold standard. See `ops/DEVELOPMENT_PLAN.md` for full AC list.
+
+**Phase A+ (in progress):** Precision hardening and recall improvements beyond the Phase A target. Current focus: PYPL $-prefix transcript bug, Q&A section filtering, remaining keyword gaps (META family-of-apps, ADSK vocabulary). Target: R≥65%, P≥70%, F1≥67%.
 
 **Spike scripts:**
 - `scripts/spike/collect_samples.py` — HuggingFace dataset downloader
@@ -143,3 +145,5 @@ config = PipelineConfig()
 - `scripts/spike/run_poc.py` — pipeline POC runner
 
 **Spike data:** `data/spike_samples/` (22 transcripts, 77 annotations), `data/spike_results/` (per-file results)
+
+**Gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 94 annotations, 16 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.

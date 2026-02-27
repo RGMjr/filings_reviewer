@@ -561,11 +561,12 @@ A research spike (`earnings-call-exploration` branch, Feb 2026) confirmed the V2
 | Phase | Name | Status | Target |
 |-------|------|--------|--------|
 | Spike | Research: transcripts POC + design docs | Complete (8a033b2) | R=22.1%, P=63.0% measured |
-| A | Transcript Support (P0) | **In progress** | >= 50% recall |
+| A | Transcript Support (P0) | **Complete (12/12 ACs)** | R=65.9%, P=38.4%, F1=48.5% (94 annotations, 16 files) |
+| A+ | Precision hardening + recall gaps | **In progress** | Target: R≥65%, P≥70%, F1≥67% |
 | B | Expanded Coverage (P1) | Not started | Section classification, FMP API, web UI |
 | C | Presentation Support (P2) | Not started | >= 40% recall on presentations |
 
-Phase A acceptance criteria are in `ops/DEVELOPMENT_PLAN.md`.
+Phase A acceptance criteria and A+ progress are tracked in `ops/DEVELOPMENT_PLAN.md`. Phase A+ iteration context in `ops/ITERATION_CONTEXT.md`.
 
 ---
 
@@ -579,3 +580,4 @@ Phase A acceptance criteria are in `ops/DEVELOPMENT_PLAN.md`.
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
 | 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
 | 2026-02-23 | 1.6 | Add Beyond SEC phases (Spike complete, Phase A in progress, Phase B-C roadmap). |
+| 2026-02-26 | 1.7 | Phase A complete (12/12 ACs, R=65.9% on 94-annotation gold standard). Add Phase A+ row. |
