@@ -50,7 +50,7 @@ class SegmentType(str, Enum):
 
 
 class SectionType(str, Enum):
-    """Semantic section classification for SEC filings."""
+    """Semantic section classification for SEC filings and transcripts."""
 
     COVER = "cover"
     RISK_FACTORS = "risk_factors"
@@ -62,6 +62,9 @@ class SectionType(str, Enum):
     SIGNATURES = "signatures"
     OTHER = "other"
     UNKNOWN = "unknown"
+    # Transcript-specific section types
+    QA = "qa"
+    PREPARED_REMARKS = "prepared_remarks"
 
 
 class ImageClassification(str, Enum):

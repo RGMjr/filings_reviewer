@@ -570,3 +570,18 @@ class TestDocument:
         assert doc.accession == "0001193125-24-012345"
         assert doc.filing_type == "10-K"
         assert doc.fiscal_year == 2023
+
+
+class TestSectionTypeTranscriptValues:
+    """Tests for transcript-specific SectionType enum values."""
+
+    def test_section_type_enum_has_qa(self):
+        """QA and PREPARED_REMARKS exist in SectionType enum."""
+        assert SectionType.QA == "qa"
+        assert SectionType.PREPARED_REMARKS == "prepared_remarks"
+
+    def test_qa_is_distinct_from_other_types(self):
+        """QA is not equal to any SEC filing section type."""
+        assert SectionType.QA != SectionType.MDA
+        assert SectionType.QA != SectionType.UNKNOWN
+        assert SectionType.QA != SectionType.BUSINESS

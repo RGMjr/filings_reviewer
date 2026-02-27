@@ -36,6 +36,32 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Mapping of data-section-type attribute values to SectionType enum.
+# "operator_instructions" maps to QA as a workaround for a converter bug
+# that puts Q&A content under that label in some transcripts (e.g., PYPL, CRM).
+_HTML_SECTION_TYPE_MAP: dict[str, SectionType] = {
+    "qa": SectionType.QA,
+    "prepared_remarks": SectionType.PREPARED_REMARKS,
+    "operator_instructions": SectionType.QA,
+}
+
+
+def _read_html_section_type(element: etree._Element) -> SectionType:
+    """
+    Walk lxml ancestor chain to find a <section data-section-type="..."> attribute.
+
+    Returns the corresponding SectionType if found, otherwise UNKNOWN.
+    SEC filing HTML has no data-section-type attributes, so they always return UNKNOWN.
+    Transcript HTML (emitted by the transcript converter) uses these to mark Q&A vs
+    prepared remarks sections.
+    """
+    for ancestor in element.iterancestors():
+        if ancestor.tag == "section":
+            section_attr = ancestor.get("data-section-type", "")
+            if section_attr in _HTML_SECTION_TYPE_MAP:
+                return _HTML_SECTION_TYPE_MAP[section_attr]
+    return SectionType.UNKNOWN
+
 
 class IngestionStage:
     """
@@ -457,7 +483,7 @@ class IngestionStage:
                 text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
                 raw_html=raw_html,  # Original HTML for table reconstruction
                 dom_locator=xpath,
-                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+                section_type=_read_html_section_type(element),
             )
 
             segments.append((segment, element))
@@ -542,7 +568,7 @@ class IngestionStage:
                 text=normalized_text,
                 raw_html=raw_html,  # Original HTML
                 dom_locator=xpath,
-                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+                section_type=_read_html_section_type(element),
             )
 
             segments.append((segment, element))
@@ -828,7 +854,7 @@ class IngestionStage:
                 height=height,
                 dom_locator=xpath,
                 nearby_text=nearby_text,
-                section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
+                section_type=_read_html_section_type(element),
                 classification=ImageClassification.UNKNOWN,  # Will be classified in Stage 4
                 relevance_score=relevance,
             )

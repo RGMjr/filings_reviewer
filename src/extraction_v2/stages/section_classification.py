@@ -263,6 +263,14 @@ class SectionClassificationStage:
 
             # Process each segment
             for segment in context.segments:
+                # Skip heading detection for segments with a pre-set section type
+                # (e.g., transcript segments tagged by ingestion via data-section-type).
+                # SEC filing segments arrive as UNKNOWN, so they always go through
+                # the heading classifier below.
+                if segment.section_type != SectionType.UNKNOWN:
+                    segment.section_path = self._build_section_path(segment.section_type)
+                    continue
+
                 # Check if this segment starts a new section
                 if self._is_section_heading(segment):
                     detected_section = self._detect_section_type(segment.text)
