@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.5
+**Version:** 2.6
 **Status:** Production Ready
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-02-26
 
 ---
 
@@ -64,6 +64,7 @@ Instructions for setting up, running, and maintaining the system.
 |----------|-------------|----------|
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
 | **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
+| **[v2-deployment-guide.md](operations/v2-deployment-guide.md)** | V2 pipeline deployment: pre-flight checks, batch extraction, cutover, rollback | DevOps |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 
 ### Analysis (Task Outputs & Reports)
@@ -377,7 +378,17 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.4 (Current - 2026-02-24)
+### Version 2.5 (Current - 2026-02-26)
+- ✅ V2 pipeline promoted to `2.0.0-rc1` (was alpha)
+- ✅ V2 exception architecture: `V2FatalError` / `V2TransientError` hierarchy; all stages raise typed exceptions instead of swallowing errors
+- ✅ Pipeline error handling hardened: `CANDIDATE_GENERATION` and `VALUE_BINDING` added to critical-stage set; `V2TransientError` propagates for caller retry
+- ✅ Bug fix: Slack colspan and date-header parsing (commit `bb0ed5a`)
+- ✅ Bug fix: `period_start_date` extraction (commit `bb0ed5a`)
+- ✅ V2 integration test coverage expanded (commits `41d752b`, `0045d93`)
+- ✅ New unit tests: `test_number_parsing.py` (year non-splitting regression, scale multipliers) and `test_text_utils.py` (normalize_text, find_sentence_bounds)
+- ✅ V2 deployment guide added: `docs/operations/v2-deployment-guide.md`
+
+### Version 2.4 (2026-02-24)
 - ✅ V2 Stage 9.5 — Definition Extraction (±5-window proximity scan, CMASB alignment scoring)
 - ✅ V2 Quality Scoring Adapter (`V2QualityScorer`) writes all 5 rubrics to `filing_metric_incidence`
 - ✅ Batch extraction script (`scripts/batch_v2_extraction.py`) with parallel workers, checkpointing, graceful shutdown

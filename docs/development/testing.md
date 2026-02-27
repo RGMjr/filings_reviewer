@@ -1,7 +1,7 @@
 # Testing Strategy
 
-**Version:** 3.1
-**Last Updated:** 2026-02-20
+**Version:** 3.2
+**Last Updated:** 2026-02-26
 
 ---
 
@@ -51,7 +51,7 @@ tests/
 ├── performance/         # Performance benchmarks (2 files)
 ├── unit/               # Unit tests (70+ files)
 │   ├── extraction/      # 27 test files
-│   ├── extraction_v2/   # 17 test files
+│   ├── extraction_v2/   # 25 test files
 │   ├── filing_fetcher/  # 2 test files
 │   ├── gold_standard/   # 3 test files
 │   ├── infra/           # 7 test files
@@ -822,7 +822,7 @@ pytest --cov=src --cov-report=term-missing
 
 ### Quality Metrics (Gold Standard)
 
-Current V2 scores as of 2026-02-18: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+Current V2 scores as of 2026-02-24: P=78.6%, R=79.2%, F1=78.9%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 | Metric | Target | Formula |
 |--------|--------|---------|

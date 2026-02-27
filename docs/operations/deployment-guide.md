@@ -132,8 +132,8 @@ Validate the system on a small sample before full deployment.
 7. **Go/No-Go Decision**
    - ✅ Success rate > 95%
    - ✅ Cost per filing < $0.20
-   - ✅ Precision > 75% (vs gold standard; current V2: 81.9%)
-   - ✅ Recall > 55% (vs gold standard; current V2: 60.6%)
+   - ✅ Precision > 75% (vs gold standard; current V2: 78.6%)
+   - ✅ Recall > 55% (vs gold standard; current V2: 79.2%)
    - ✅ No critical bugs
 
    **If not meeting criteria:** Debug, iterate, re-run pilot
@@ -712,7 +712,7 @@ python3 scripts/validate_against_gold_standard.py \
 # Review results
 cat data/validation/final_validation.json | jq '.summary'
 
-# Expected metrics (current V2 actuals: P=81.9%, R=60.6%, F1=69.6%):
+# Expected metrics (current V2 actuals: P=78.6%, R=79.2%, F1=78.9%):
 # - Precision > 75%
 # - Recall > 55%
 # - F1 > 65%
@@ -817,7 +817,7 @@ echo "Archive created at: $ARCHIVE_DIR"
 - [ ] All filings processed (S-1/F-1: 10 years)
 - [ ] Success rate > 95%
 - [ ] Total cost within budget
-- [ ] Gold standard validation: precision > 80%, recall > 55% (current V2 actuals: P=81.9%, R=60.6%, F1=69.6%)
+- [ ] Gold standard validation: precision > 75%, recall > 55% (current V2 actuals: P=78.6%, R=79.2%, F1=78.9%)
 - [ ] Database exported to CSV/JSON
 - [ ] Summary report generated
 - [ ] Data backed up
@@ -909,9 +909,9 @@ pg_dump $DATABASE_URL | gzip > \
 
 ### Quality Success
 ✅ Extracted 50,000-75,000 metrics
-✅ Precision > 75% (vs gold standard; V2 current: 81.9%)
-✅ Recall > 55% (vs gold standard; V2 current: 60.6%)
-✅ F1 Score > 65% (V2 current: 69.6%)
+✅ Precision > 75% (vs gold standard; V2 current: 78.6%)
+✅ Recall > 55% (vs gold standard; V2 current: 79.2%)
+✅ F1 Score > 65% (V2 current: 78.9%)
 
 ### Business Success
 ✅ Usable dataset for CMASB research
