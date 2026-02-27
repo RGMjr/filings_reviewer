@@ -989,8 +989,9 @@ class ExtractedContext:
 
 The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It runs alongside V1 and is the target for new extraction work.
 
+**Version:** `2.0.0-rc1`
 **Status:** Production-ready (P=78.6%, R=79.2%, F1=78.9% on gold standard, as of 2026-02-24)
-**See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`
+**See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`, `docs/operations/v2-deployment-guide.md`
 
 ### Key Architectural Differences
 
@@ -1108,11 +1109,12 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 
 ---
 
-**Last Updated:** 2026-02-24
-**Version:** 2.7
+**Last Updated:** 2026-02-26
+**Version:** 2.8
 **Status:** Production Ready
 
 **Changelog:**
+- v2.8 (2026-02-26): V2 promoted to 2.0.0-rc1; noted exception architecture (V2FatalError/V2TransientError); added v2-deployment-guide cross-reference
 - v2.7 (2026-02-24): Updated V2 gold standard scores to P=78.6%/R=79.2%/F1=78.9% (post-WP-09); added Stage 9.5 Definition Extraction to V2 stage list
 - v2.6 (2026-02-20): Removed deleted cohort_chart_detector section; updated V2 stage list (13 stages + FP filter); corrected V2Pipeline class name and process() method; removed config/extraction.yaml reference; added extraction-decisions.md cross-reference; updated V2 from alpha to production-ready
 - v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation

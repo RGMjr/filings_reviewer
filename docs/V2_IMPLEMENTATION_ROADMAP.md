@@ -1,8 +1,8 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.6
+**Version**: 1.7
 **Created**: 2026-01-23
-**Updated**: 2026-02-24
+**Updated**: 2026-02-26
 **Status**: Complete (All 13 Phases + Phase B enhancements)
 
 ## Executive Summary
@@ -590,10 +590,17 @@ SIGINT triggers graceful shutdown: completes the current batch before exiting.
 
 ## Current Status
 
-All 13 implementation phases and Phase B enhancements are complete. Active work focuses on:
+All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`.
+
+Active work focuses on:
 1. **Precision/recall optimization** via gold standard validation
 2. **Keyword tuning** in `config/metric_keywords.yaml`
 3. **FP rule refinement** in the false positive filter stage
+
+Recent hardening work (2026-02-26):
+- Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions instead of returning failed `StageResult` objects; the pipeline dispatcher re-raises transient errors for caller retry and treats fatal errors in critical stages as pipeline-aborting
+- Critical stage set expanded to include `CANDIDATE_GENERATION` and `VALUE_BINDING`
+- Bug fixes: Slack colspan and date-header parsing; `period_start_date` extraction
 
 ---
 
@@ -607,3 +614,4 @@ All 13 implementation phases and Phase B enhancements are complete. Active work 
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
 | 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
 | 2026-02-24 | 1.6 | Refreshed gold standard scores post-WP-09: P=78.6%, R=79.2%, F1=78.9%; added Phase B section (definition extraction, quality scoring adapter, batch script) |
+| 2026-02-26 | 1.7 | Pipeline promoted to 2.0.0-rc1; exception architecture (V2FatalError/V2TransientError) added across all stages; CANDIDATE_GENERATION and VALUE_BINDING added to critical-stage set; Slack colspan/period-start-date bug fixes; new unit tests for number_parsing and text_utils; v2-deployment-guide added |
