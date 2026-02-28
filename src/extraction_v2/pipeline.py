@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Protocol
@@ -238,7 +238,7 @@ class PipelineContext:
 
     # Tracking
     stage_results: list[StageResult] = field(default_factory=list)
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Counters
     llm_calls: int = 0
@@ -340,7 +340,7 @@ class V2Pipeline:
             PipelineResult with extracted facts and metadata
         """
         html_path = Path(html_path)
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # Initialize context
         context = PipelineContext(
@@ -415,7 +415,7 @@ class V2Pipeline:
                 )
 
         # Build result
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Use deduplicated facts if available (Stage 10 output), else raw facts
@@ -447,7 +447,7 @@ class V2Pipeline:
         error_message: str,
     ) -> PipelineResult:
         """Build a failure result."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
         return PipelineResult(

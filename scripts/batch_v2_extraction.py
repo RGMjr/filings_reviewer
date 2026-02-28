@@ -41,7 +41,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add project root to path
@@ -49,13 +49,11 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
+from src.extraction_v2.logging_config import configure_logging  # noqa: E402
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Logs directory for checkpoints
@@ -164,6 +162,17 @@ def _process_filing_worker(
             # Try gold standard directory
             company_slug = company_name.replace(" ", "_")
             resolved_path = _PROJECT_ROOT / "data" / "gold_standard" / company_slug / "filing.html"
+            if os.environ.get("APP_ENV") == "production":
+                _logger.warning(
+                    f"Filing {filing_id}: no html_storage_path set; refusing gold-standard fallback in production"
+                )
+                raise RuntimeError(
+                    f"Filing {filing_id} has no html_storage_path and APP_ENV=production forbids gold-standard fallback"
+                )
+            else:
+                _logger.warning(
+                    f"Filing {filing_id}: no html_storage_path set; falling back to gold-standard path {resolved_path}"
+                )
 
         if not resolved_path.exists():
             return {
@@ -301,7 +310,7 @@ class BatchV2Runner:
         """Save progress checkpoint to disk."""
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         checkpoint = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "last_filing_id": last_filing_id,
             "processed": stats.processed,
             "succeeded": stats.succeeded,
@@ -408,15 +417,13 @@ class BatchV2Runner:
                     try:
                         result = future.result(timeout=self.config.worker_timeout)
                     except FuturesTimeoutError:
-                        # Kill the hung worker process
-                        for pid, proc in executor._processes.items():  # type: ignore[attr-defined]
-                            if proc.is_alive():
-                                logger.warning(
-                                    f"Worker timeout for filing {filing_id} "
-                                    f"(>{self.config.worker_timeout}s), killing pid={pid}"
-                                )
-                                os.kill(pid, signal.SIGKILL)
-                                break
+                        # Cancel the future and log; the worker process will be
+                        # reaped when the executor shuts down.
+                        future.cancel()
+                        logger.warning(
+                            f"Worker timeout for filing {filing_id} "
+                            f"(>{self.config.worker_timeout}s); future cancelled"
+                        )
                         result = {
                             "filing_id": filing_id,
                             "success": False,
@@ -611,10 +618,10 @@ def main() -> None:
 
     # Write summary JSON report
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     summary_path = LOGS_DIR / f"batch_v2_summary_{timestamp}.json"
     summary = {
-        "run_date": datetime.utcnow().isoformat(),
+        "run_date": datetime.now(timezone.utc).isoformat(),
         "total_filings": stats.total_filings,
         "succeeded": stats.succeeded,
         "failed": stats.failed,

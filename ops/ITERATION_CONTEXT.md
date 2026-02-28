@@ -6,39 +6,43 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**WP-10–14 Production readiness (2026-02-24)**: Table resilience, batch hardening, review_status preservation, stale metadata fix
-- WP-10: Table reconstruction `success` only False when zero tables processed (errors → warnings)
-- WP-11: Batch executor created once outside loop; `--max-consecutive-failures` flag (default 10); exit 1 when failure rate > 50%
-- WP-12: `review_status` removed from `DO UPDATE SET` — reviewer decisions survive re-extraction
-- WP-13: JSON summary written to `logs/batch_v2_summary_{timestamp}.json` at batch completion
-- WP-14: `v2_baseline.json` `pipeline_version` fixed to `"v2"`; iteration context updated
+**WP-15–22.5 Production readiness Phase 1–3 (2026-02-28)**:
+- WP-15: `_rule_tier_qualifier` in `false_positive_filter.py` — Snowflake tier FPs 22→3
+- WP-16: Closed (AOV period FNs already fixed by 44a1e81 off-by-one fix)
+- WP-17: `_rule_dollar_threshold_customer` — Slack "Paid Customers >$100K" FPs eliminated; Slack F1 77.1%→92.3%
+- Gold standard validated: **P=92.8%, R=77.6%, F1=84.5%** (all per-company gates passed)
+- WP-18+19: Batch script hardened (private API removed, production guard, datetime.utcnow→timezone.utc, .env.template updated)
+- WP-20: `src/extraction_v2/logging_config.py` — JSON structured logging, optional Sentry hook
+- WP-22: `scripts/compare_v1_v2_results.py` — V1/V2 DB-based comparison script
+- WP-22.5: Consumer audit complete (see Blockers)
 
-**WI-04/05 async audit + pagination (merged ea365a4)**
-**WI-01–03 (merged earlier)**
+**WP-10–14 (2026-02-24)**: Table resilience, batch hardening, review_status preservation
 
 ## Current Focus
 
-- AOV wrong_period (5 FNs) — WP-08 in-flight
-- Slack table binding fix: complex colspan headers (WP in-flight)
+- WP-21: Review UI V2 verification (feature parity check for v2 review routes/templates)
+- WP-23: Batch V2 extraction on remaining 8 filings (depends on WP-15–18 complete ✓)
+- Migration 12: `sql/12_drop_v1_fk_constraints.sql` — drop FK deps on source_segments before cutover
 
 ## Test Status
 
-- 4,765 unit tests; 87% coverage (as of 2026-02-24)
-- V2 gold standard baseline: P=78.6%, R=79.2%, F1=78.9% (2026-02-24, pipeline_version="v2")
+- Unit tests: 1,110 extraction_v2; full suite ~4,765 (coverage 87%)
+- V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17)
 - V1 baseline: P=89.4%, R=63.2%, F1=74.1%
 
 ## Key Learnings for Next Iteration
 
-- Farfetch LTV/CAC: respectively parser fix works via period_hint, not larger proximity window
-- AOV wrong_period: values ARE extracted at correct scale; period mismatch is the gating issue
-- `_is_scale_exception` fires on `(actual)` stub unconditionally; currency-symbol check still gated
-- FN diagnostic `wrong_period` with `closest != None` means value found but period doesn't overlap
-- V2 FP pattern: 22/27 FPs are value_mismatch on cm_customers_period_end (Snowflake per-tier)
+- `_rule_dollar_threshold_customer`: check source_text for ">$100,000" proximity — simpler than colspan fix
+- AOV wrong_period FNs: were already fixed in 44a1e81 (period start off-by-one). Always re-check before investigating.
+- `source_segments` has FK deps in migrations 07/08/09 — cannot drop without migration 12 first
+- `metric_values` has NO FK dependents — safe to drop/rename independently
+- WP-22 comparison script uses `resolve_to_canonical()` from `src/extraction/keyword_config.py` (not metric_registry)
 
 ## Blockers or Warnings
 
-- Farfetch chart FNs (8) require Vision API; not addressable in current test environment
-- AOV/Slack WPs in-flight on v2-rewrite branch
+- **Migration 12 required**: Drop `review_candidates`/`suppressed_candidates`/`image_review_candidates` FKs on `source_segments` before V1 table removal
+- Farfetch chart FNs (8) require Vision API; accepted gap unless production has OPENAI_API_KEY
+- 3 residual Snowflake FPs (value_mismatch 702 vs 948, 1 duplicate) — separate pattern, low priority
 
 ---
 
@@ -52,4 +56,4 @@ At the END of each iteration, before committing:
 4. Add any technical discoveries to "Key Learnings"
 5. Note any blockers for next iteration
 
-Keep this file under 60 lines - distill, don't dump.
+Keep this file under 65 lines - distill, don't dump.

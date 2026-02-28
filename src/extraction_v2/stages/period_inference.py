@@ -18,7 +18,7 @@ import calendar
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -269,7 +269,7 @@ class PeriodInferenceStage:
             StageResult with processing metrics
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             periods_inferred = 0
             ambiguous_count = 0
             errors: list[str] = []
@@ -966,7 +966,7 @@ class PeriodInferenceStage:
         ambiguous_count: int,
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import
