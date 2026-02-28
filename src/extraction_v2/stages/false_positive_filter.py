@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -91,6 +91,23 @@ _DEVELOPER_COUNT_RE = re.compile(
 # Used to suppress cm_customers_period_end FPs from Fortune 100 company counts.
 _FORTUNE_SUBSET_RE = re.compile(
     r"\bof\s+(?:the\s+)?(?:Fortune|Forbes)\s+\d+\b",
+    re.IGNORECASE,
+)
+
+# Subscription tier qualifier keywords.
+# Used to suppress cm_customers_period_end FPs from per-tier customer counts
+# (e.g., Snowflake's Free/Standard/Enterprise/Business Critical tier breakdowns).
+_TIER_QUALIFIER_RE = re.compile(
+    r"\b(?:Free|Standard|Enterprise|Premium|Essentials|Business\s+Critical|VPS)\b",
+    re.IGNORECASE,
+)
+
+# Dollar threshold customer qualifier — "Paid Customers >$100,000" or similar.
+# Used to suppress FPs when a cell/proximity value comes from a threshold-qualified
+# large-customer row (e.g., Slack's ">$100K ARR" rows) that should map to
+# cm_large_customers_period_end, not cm_customers_period_end or NRR.
+_DOLLAR_THRESHOLD_CUSTOMER_RE = re.compile(
+    r"(?:Paid\s+)?[Cc]ustomers?\s*[>≥]\s*\$[\d,]+",
     re.IGNORECASE,
 )
 
@@ -256,6 +273,50 @@ def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> st
     return None
 
 
+def _rule_tier_qualifier(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Per-tier customer counts for cm_customers_period_end.
+
+    Suppresses FPs where the source context (stub_path for table cells,
+    or surrounding prose) contains a subscription tier keyword such as
+    "Enterprise", "Free", "Business Critical", etc.  These are per-tier
+    breakdowns, not aggregate customer counts.
+    """
+    if not source_text or metric_id != "cm_customers_period_end":
+        return None
+    if _TIER_QUALIFIER_RE.search(source_text):
+        return "v2_tier_qualifier"
+    return None
+
+
+def _rule_dollar_threshold_customer(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Dollar-threshold customer subset counts.
+
+    Suppresses FPs where source context contains a dollar threshold customer
+    qualifier such as "Paid Customers >$100,000" — indicating the value is a
+    large-customer (threshold-qualified) count extracted for the wrong metric.
+
+    This pattern appears in Slack's quarterly key metrics table where ">$100K
+    ARR" customer rows are adjacent to NRR and total customer rows, causing
+    proximity binding to cm_customers_period_end and cm_net_revenue_retention.
+
+    Does NOT fire for cm_large_customers_period_end — threshold-qualified
+    customer counts are the correct values for that metric.
+    """
+    if not source_text or metric_id == "cm_large_customers_period_end":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    threshold_match = _DOLLAR_THRESHOLD_CUSTOMER_RE.search(source_text)
+    if threshold_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(threshold_match.start() - value_pos) <= 400:
+            return "v2_dollar_threshold_customer"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # =============================================================================
@@ -272,6 +333,8 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("geographic_revenue", _rule_geographic_revenue),
     ("developer_count", _rule_developer_count),
     ("fortune_subset", _rule_fortune_subset),
+    ("tier_qualifier", _rule_tier_qualifier),
+    ("dollar_threshold_customer", _rule_dollar_threshold_customer),
 ]
 
 
@@ -434,7 +497,7 @@ class FalsePositiveFilterStage:
         FalsePositiveFilter, and removes those flagged as false positives.
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             errors: list[str] = []
             warnings: list[str] = []
 
@@ -552,7 +615,7 @@ class FalsePositiveFilterStage:
         filter_reasons: dict[str, int],
     ) -> StageResult:
         """Create a StageResult with timing and filter statistics."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         from src.extraction_v2.pipeline import PipelineStage, StageResult

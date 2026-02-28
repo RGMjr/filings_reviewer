@@ -1205,3 +1205,97 @@ class TestV2TableSourcedExemption:
         is_fp, reason = _is_v2_false_positive(bv, source)
         assert is_fp is True
         assert reason == "v2_financial_sbc"
+
+
+# ============================================================================
+# Test: V2-native — Tier qualifier suppression
+# ============================================================================
+
+
+class TestV2TierQualifier:
+    """Per-tier customer counts should be suppressed for cm_customers_period_end."""
+
+    def test_enterprise_tier_suppressed(self):
+        """'Enterprise' tier keyword in source text suppresses cm_customers_period_end."""
+        source = "Enterprise 4,500"
+        bv = _make_bound_value("c1", 4500.0, "4,500", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is True
+        assert reason == "v2_tier_qualifier"
+
+    def test_free_tier_suppressed(self):
+        """'Free' tier keyword in source text suppresses cm_customers_period_end."""
+        source = "Free 12,000"
+        bv = _make_bound_value("c1", 12000.0, "12,000", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is True
+        assert reason == "v2_tier_qualifier"
+
+    def test_business_critical_tier_suppressed(self):
+        """'Business Critical' tier keyword suppresses cm_customers_period_end."""
+        source = "Business Critical 850"
+        bv = _make_bound_value("c1", 850.0, "850", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is True
+        assert reason == "v2_tier_qualifier"
+
+    def test_tier_keyword_different_metric_not_suppressed(self):
+        """Tier keyword for a different metric (cm_arr_total) is NOT suppressed."""
+        source = "Enterprise 4,500,000"
+        bv = _make_bound_value("c1", 4500000.0, "4,500,000", Unit.CURRENCY, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, "cm_arr_total")
+        assert is_fp is False
+
+    def test_customers_period_end_no_tier_keyword_not_suppressed(self):
+        """cm_customers_period_end without a tier keyword is NOT suppressed."""
+        source = "Total customers at period end: 45,000"
+        bv = _make_bound_value("c1", 45000.0, "45,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is False
+
+
+# ============================================================================
+# Test: V2-native — Dollar threshold customer suppression
+# ============================================================================
+
+
+class TestV2DollarThresholdCustomer:
+    """Threshold-qualified customer counts should be suppressed for non-large-customer metrics."""
+
+    def test_table_cell_paid_customers_threshold_suppressed_for_total(self):
+        """'Paid Customers >$100,000 298' suppresses cm_customers_period_end."""
+        source = "As of January 31, 2018 Paid Customers >$100,000 298"
+        bv = _make_bound_value("c1", 298.0, "298", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is True
+        assert reason == "v2_dollar_threshold_customer"
+
+    def test_prose_threshold_suppressed(self):
+        """Prose 'we had 575 Paid Customers >$100,000 of ARR' suppresses cm_customers_period_end."""
+        source = "As of January 31, 2019, we had 575 Paid Customers >$100,000 of ARR"
+        bv = _make_bound_value("c1", 575.0, "575", Unit.COUNT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is True
+        assert reason == "v2_dollar_threshold_customer"
+
+    def test_threshold_suppresses_nrr_too(self):
+        """Dollar threshold context also suppresses cm_net_revenue_retention FPs."""
+        source = "Paid Customers >$100,000 135 298 575 Net Dollar Retention Rate 171% 152% 143%"
+        bv = _make_bound_value("c1", 298.0, "298", Unit.PERCENT, "seg-1")
+        is_fp, reason = _is_v2_false_positive(bv, source, "cm_net_revenue_retention")
+        assert is_fp is True
+        assert reason == "v2_dollar_threshold_customer"
+
+    def test_large_customer_metric_not_suppressed(self):
+        """cm_large_customers_period_end is NOT suppressed by dollar threshold rule."""
+        source = "As of January 31, 2018 Paid Customers >$100,000 298"
+        bv = _make_bound_value("c1", 298.0, "298", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, "cm_large_customers_period_end")
+        assert is_fp is False
+
+    def test_total_customers_no_threshold_not_suppressed(self):
+        """Total customer count without threshold pattern is NOT suppressed."""
+        source = "As of January 31, 2019, we had 95,000 Paid Customers"
+        bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, "cm_customers_period_end")
+        assert is_fp is False
