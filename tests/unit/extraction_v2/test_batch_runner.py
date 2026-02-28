@@ -278,12 +278,8 @@ class TestBatchV2RunnerTimeout:
         mock_future = MagicMock()
         mock_future.result.side_effect = FuturesTimeoutError()
 
-        # Executor returns that future; _processes has a fake alive process
-        mock_proc = MagicMock()
-        mock_proc.is_alive.return_value = True
         mock_executor = MagicMock()
         mock_executor.submit.return_value = mock_future
-        mock_executor._processes = {99999: mock_proc}
 
         mock_ppe_cls = MagicMock()
         mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
@@ -295,13 +291,12 @@ class TestBatchV2RunnerTimeout:
         with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
             with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
                 with patch.object(runner, "_save_checkpoint"):
-                    with patch("os.kill") as mock_kill:
-                        stats = runner.run(filings)
+                    stats = runner.run(filings)
 
         assert stats.failed == 1
         assert stats.succeeded == 0
-        # Confirm we attempted to SIGKILL the hung process
-        mock_kill.assert_called_once_with(99999, batch_v2_extraction.signal.SIGKILL)
+        # Confirm the hung future was cancelled
+        mock_future.cancel.assert_called_once()
         # Per-filing result should note the timeout
         assert "timeout" in stats.filing_results[0]["error"]
         assert stats.filing_results[0]["success"] is False
@@ -314,11 +309,8 @@ class TestBatchV2RunnerTimeout:
         mock_future = MagicMock()
         mock_future.result.side_effect = FuturesTimeoutError()
 
-        mock_proc = MagicMock()
-        mock_proc.is_alive.return_value = True
         mock_executor = MagicMock()
         mock_executor.submit.return_value = mock_future
-        mock_executor._processes = {12345: mock_proc}
 
         mock_ppe_cls = MagicMock()
         mock_ppe_cls.return_value.__enter__ = MagicMock(return_value=mock_executor)
@@ -330,8 +322,7 @@ class TestBatchV2RunnerTimeout:
         with patch.object(batch_v2_extraction, "ProcessPoolExecutor", mock_ppe_cls):
             with patch.object(batch_v2_extraction, "as_completed", side_effect=as_completed_se):
                 with patch.object(runner, "_save_checkpoint"):
-                    with patch("os.kill"):
-                        runner.run(filings)
+                    runner.run(filings)
 
         # submit called exactly once (no retry)
         assert mock_executor.submit.call_count == 1
@@ -367,7 +358,6 @@ class TestBatchV2RunnerTransientRetry:
 
         mock_executor = MagicMock()
         mock_executor.submit.side_effect = submit_side_effect
-        mock_executor._processes = {}
         return mock_executor, call_count
 
     def test_transient_error_triggers_retry(self) -> None:
