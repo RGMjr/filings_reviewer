@@ -114,6 +114,14 @@ _GEOGRAPHIC_REVENUE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# CapEx context — "capex", "capital expenditure", "opex" etc.
+# Used to suppress cm_revenue_concentration FPs from CapEx-as-%-of-revenue sentences
+# (e.g., "CapEx for the fiscal year to be approximately 2% of revenue").
+_CAPEX_REVENUE_RE = re.compile(
+    r"\b(?:cap(?:ex|ital\s+expenditure)s?|opex|depreciation|amortization)\b",
+    re.IGNORECASE,
+)
+
 # Developer/engineer count context.
 # Used to suppress cm_daily_active_users FPs from developer registration counts.
 _DEVELOPER_COUNT_RE = re.compile(
@@ -300,17 +308,27 @@ def _rule_per_share(bv: BoundValue, source_text: str, metric_id: str) -> str | N
 
 
 def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Geographic revenue context for cm_revenue_concentration."""
+    """Geographic or CapEx revenue context for cm_revenue_concentration.
+
+    Fires when the percent value is near geographic breakdown language
+    (e.g., "international revenue") or CapEx-as-%-of-revenue language
+    (e.g., "CapEx for the fiscal year to be approximately 2% of revenue").
+    Both indicate the percent is NOT customer revenue concentration.
+    """
     if not source_text or metric_id != "cm_revenue_concentration":
         return None
     raw = (bv.value_raw or "").strip()
     if not raw:
         return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
     geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
-    if geo_match:
-        value_pos = source_text.find(raw)
-        if value_pos >= 0 and abs(geo_match.start() - value_pos) <= 200:
-            return "v2_geographic_revenue"
+    if geo_match and abs(geo_match.start() - value_pos) <= 200:
+        return "v2_geographic_revenue"
+    capex_match = _CAPEX_REVENUE_RE.search(source_text)
+    if capex_match and abs(capex_match.start() - value_pos) <= 200:
+        return "v2_capex_revenue"
     return None
 
 
@@ -379,6 +397,15 @@ _COUNT_TYPE_METRICS: frozenset[str] = frozenset({
     "cm_large_customers_period_end",
 })
 
+# Pure count metrics — MAU, DAU.  For these, a percent value with a growth-rate
+# verb prefix is ALWAYS a growth rate (not the metric value), even when no
+# scale-suffixed count appears in the same segment.  Unlike generic count metrics,
+# MAU/DAU are never reported as percentages in earnings disclosures.
+_PURE_COUNT_METRICS: frozenset[str] = frozenset({
+    "cm_monthly_active_users",
+    "cm_daily_active_users",
+})
+
 
 # Content engagement metrics (views, impressions, streams) near a bound value
 # indicate the number is NOT a customer count.  Fires when the value raw text
@@ -421,10 +448,12 @@ def _rule_growth_rate_percent(bv: BoundValue, source_text: str, metric_id: str) 
     2. The bound value unit is PERCENT
     3. The percent raw text is preceded by a growth-rate verb (up, grew, grown, increased)
        within a short window (~25 chars)
-    4. The same segment text also contains a scale-suffixed count value
-       (e.g. "56 million"), confirming that the absolute count was also mentioned.
-       When there is no absolute count in the text, the percent may itself be the
-       metric value (e.g. "MAU growing 23% YoY") — in that case this rule does NOT fire.
+    4a. For MAU/DAU (pure count metrics): always fires — these are never reported as
+        percentages in earnings calls, so a percent with a growth prefix is always a
+        growth rate (e.g. "monthly actives grew 30%").
+    4b. For other count metrics: only fires when a scale-suffixed count value also
+        appears in the same segment (e.g. "56 million"), confirming that the absolute
+        count is available and the percent is secondary growth context.
     """
     if bv.unit != Unit.PERCENT:
         return None
@@ -443,11 +472,55 @@ def _rule_growth_rate_percent(bv: BoundValue, source_text: str, metric_id: str) 
     window = source_text[window_start:value_pos]
     if not _GROWTH_RATE_PREFIX_RE.search(window):
         return None
-    # Only fire if there is also an absolute count value in the same segment text
-    # (the count is the real metric value; the percent is secondary growth context)
+    # For MAU/DAU: percent with growth prefix is always a growth rate (no scale count needed)
+    if metric_id in _PURE_COUNT_METRICS:
+        return "v2_growth_rate_percent"
+    # For other count metrics: only fire when an absolute count exists in the text
     if not _SCALE_COUNT_RE.search(source_text):
         return None
     return "v2_growth_rate_percent"
+
+
+def _rule_arpu_percent(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Percent values for currency-denominated metrics are always growth rates, not metric values.
+
+    Covers:
+    - cm_revenue_per_customer: ARPA/ARPU is always a dollar amount;
+      "ARPA grew 3%" or "ARPU growth of 4%" is a growth rate, not the ARPA value.
+    - cm_expansion_revenue: expansion revenue is always in dollars;
+      "transactions per account grew 4%" is a growth rate, not an expansion revenue value.
+    """
+    if bv.unit == Unit.PERCENT and metric_id in (
+        "cm_revenue_per_customer",
+        "cm_expansion_revenue",
+    ):
+        return "v2_arpu_percent"
+    return None
+
+
+# "per day" context near a MAU value — signals a daily rate (e.g., "1 million sign-ups
+# per day"), not a monthly active user count.  Only applies to cm_monthly_active_users.
+_PER_DAY_RE = re.compile(r"\bper\s+day\b", re.IGNORECASE)
+
+
+def _rule_mau_daily_rate(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block MAU values described as a 'per day' rate rather than a monthly count.
+
+    Fires when 'per day' appears within ~50 chars of the value for
+    cm_monthly_active_users — e.g., 'adding more than 1 million sign-ups per day'
+    is a daily signup rate, not a monthly active user count.
+    """
+    if metric_id != "cm_monthly_active_users" or not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    per_day_match = _PER_DAY_RE.search(source_text)
+    if per_day_match:
+        if value_pos < 0 or abs(per_day_match.start() - value_pos) <= 50:
+            return "v2_mau_daily_rate"
+    return None
 
 
 # Q&A-specific rules below are injected via _is_v2_false_positive after the
@@ -494,6 +567,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("fortune_subset", _rule_fortune_subset),
     ("content_engagement", _rule_content_engagement),
     ("growth_rate_percent", _rule_growth_rate_percent),
+    ("arpu_percent", _rule_arpu_percent),
 ]
 
 # Rules skipped in relaxed mode (transcripts/presentations).

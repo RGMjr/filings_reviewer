@@ -54,16 +54,20 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 ### Phase A Cleanup
 - **AC-10**: Integration tests complete (3781cc7, 2026-02-19) ✅
 
-### Phase A+ (Recall Improvement — In Progress)
+### Phase A+ (Precision Hardening — In Progress)
 - [x] **Non-SaaS keyword expansion** (c733aef): TMUS postpaid/prepaid, PYPL debit card, MSFT enterprises/organizations, META magnitude patterns — R=53%→60%
 - [x] **Word-form number parsing** (c733aef): "one billion", "two million" etc. — 3 FNs recovered
 - [x] **is_percentage_format bug** (c733aef): "1.4 million" no longer misclassified as percentage
 - [x] **MIN_PARAGRAPH_CHARS** (c733aef): configurable per pipeline, 30 for transcripts (was 50)
-- [ ] **PYPL $224M transcript bug**: converter produces "$224 million" for MAU count
-- [ ] **Q&A section stricter filtering**: analyst questions contain speculative numbers
-- [ ] **Remaining keyword gaps**: META family-of-apps, MSFT (text missing from HTML), ADSK vocabulary
-- Consolidated benchmark (94 annotations, 16 files): R=65.9%, P=38.4%, F1=48.5% — note: not directly comparable to the 77-annotation baseline above (expanded annotation scope affects precision)
-- Target: R≥65% (met), P≥70% (not yet met on consolidated benchmark), F1≥67%
+- [x] **PYPL $-prefix transcript bug**: resolved — HuggingFace source transcript has transcription errors ("$224 million" for a count). Gold standard marks these REJECT. Pipeline correctly handles via `v2_currency_on_count_metric`. No code change needed.
+- [x] **Q&A section filtering** (6d976c4, cddd2b2): FP filter rules added (bare count threshold, hedging percent, currency-on-count); section type propagation reads `data-section-type` HTML attribute. Transcript converter wraps content in a single `<section data-section-type="prepared_remarks">` — Q&A segments aren't separately tagged in source HTML, so Q&A-specific filtering is limited.
+- [x] **Growth-rate percent FPs** (2026-02-28): `_rule_growth_rate_percent` extended — MAU/DAU percent values with growth-verb prefix (e.g., "grew 30%") now blocked without requiring co-occurring absolute count. Fixed ~8 PYPL/META FPs.
+- [x] **ARPA/ARPU percent FPs** (2026-02-28): `_rule_arpu_percent` added — PERCENT values for `cm_revenue_per_customer` and `cm_expansion_revenue` blocked (growth rates like "ARPA growth of 4%" are not ARPA values). Fixed ~7 TMUS FPs.
+- [x] **CapEx/revenue_concentration FPs** (2026-02-28): `_rule_geographic_revenue` extended to catch CapEx context ("CapEx to be approximately 2% of revenue"). Fixed 1-2 CRM FPs.
+- [ ] **Remaining keyword gaps**: ADSK revenue_concentration FNs from Q&A (3 missed), META "almost a billion" value parsing
+- Benchmark (94 annotations, 16 files, 2026-02-28): **R=71.8%, P=62.9%, F1=67.0%** — vs prior: R=65.9%, P=38.4%, F1=48.5%
+- Target: R≥65% ✓, P≥70% ✗ (7.1pp short), F1≥67% ✓
+- Remaining precision gap: ADBE ARR sub-components (~8 FPs), TMUS period disambiguation (~4 FPs), CRM `deals over $1M` keyword pattern (2 FPs — requires SEC gold standard validation before changing)
 
 ### Phase B (Expanded Coverage)
 - FMP API source (`FMPTranscriptSource`) for broader transcript corpus

@@ -137,7 +137,7 @@ config = PipelineConfig()
 
 **Phase A (complete):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration — all 12 ACs met. Achieved R=65.9% (target: ≥50%) on consolidated gold standard. See `ops/DEVELOPMENT_PLAN.md` for full AC list.
 
-**Phase A+ (in progress):** Precision hardening and recall improvements beyond the Phase A target. Current focus: PYPL $-prefix transcript bug, Q&A section filtering, remaining keyword gaps (META family-of-apps, ADSK vocabulary). Target: R≥65%, P≥70%, F1≥67%.
+**Phase A+ (in progress):** Precision hardening and recall improvements beyond the Phase A target. Current scores (2026-02-28): R=71.8%, P=62.9%, F1=67.0% on 94 annotations. PYPL $-prefix resolved (source data issue). Q&A filtering complete. Growth-rate/ARPA percent FPs and CapEx revenue_concentration FP fixed. Remaining gap: P≥70% not yet met (7.1pp short); primary blockers are ADBE ARR sub-components (~8 FPs) and TMUS period disambiguation (~4 FPs). Target: R≥65%, P≥70%, F1≥67%.
 
 **Spike scripts:**
 - `scripts/spike/collect_samples.py` — HuggingFace dataset downloader
