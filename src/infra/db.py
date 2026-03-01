@@ -3904,9 +3904,7 @@ class DatabaseAdapter:
     # V2 Extraction Review Methods
     # =============================================================================
 
-    def get_v2_filings_with_facts(
-        self, limit: int | None = None, offset: int = 0
-    ) -> list[dict]:
+    def get_v2_filings_with_facts(self, limit: int | None = None, offset: int = 0) -> list[dict]:
         """
         Get filings that have V2 extraction results, with fact counts and review progress.
 
@@ -4196,6 +4194,82 @@ class DatabaseAdapter:
         )
 
         return {"fact_id": str(fact_id), "filing_id": filing_id}
+
+    def get_v2_review_stats(self) -> dict:
+        """
+        Return aggregate V2 review statistics across all companies/filings.
+
+        Returns a dict with:
+          - ``per_company``: list of per-company rows (company_name, cik,
+            filing_count, fact_count, reviewed_count, pending_count,
+            accepted_count, rejected_count, auto_accepted_count)
+          - ``totals``: aggregate totals across all companies
+          - ``confidence_bands``: counts for high (>=0.9), medium (0.7-0.9),
+            low (<0.7) confidence facts
+        """
+        per_company_sql = """
+            SELECT
+                c.company_name,
+                c.cik,
+                COUNT(DISTINCT f.filing_id)                                         AS filing_count,
+                COUNT(mf.fact_id)                                                   AS fact_count,
+                COUNT(CASE WHEN mf.review_status != 'pending_review' THEN 1 END)   AS reviewed_count,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END)    AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END)          AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END)          AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END)         AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END)     AS auto_accepted_count
+            FROM companies c
+            JOIN filings f ON f.company_id = c.company_id
+            JOIN v2_documents d ON d.filing_id = f.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            GROUP BY c.company_id, c.company_name, c.cik
+            ORDER BY c.company_name
+        """
+        per_company = self.query(per_company_sql)
+
+        totals_sql = """
+            SELECT
+                COUNT(DISTINCT f.filing_id)                                         AS filing_count,
+                COUNT(mf.fact_id)                                                   AS fact_count,
+                COUNT(CASE WHEN mf.review_status != 'pending_review' THEN 1 END)   AS reviewed_count,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END)    AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END)          AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END)          AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END)         AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END)     AS auto_accepted_count
+            FROM filings f
+            JOIN v2_documents d ON d.filing_id = f.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+        """
+        totals_rows = self.query(totals_sql)
+        totals = dict(totals_rows[0]) if totals_rows else {}
+
+        bands_sql = """
+            SELECT
+                COUNT(CASE WHEN mf.confidence >= 0.9 THEN 1 END)                   AS high_count,
+                COUNT(CASE WHEN mf.confidence >= 0.7 AND mf.confidence < 0.9 THEN 1 END) AS medium_count,
+                COUNT(CASE WHEN mf.confidence < 0.7 THEN 1 END)                    AS low_count,
+                COUNT(mf.fact_id)                                                   AS total_count
+            FROM v2_metric_facts mf
+        """
+        bands_rows = self.query(bands_sql)
+        confidence_bands = (
+            dict(bands_rows[0])
+            if bands_rows
+            else {
+                "high_count": 0,
+                "medium_count": 0,
+                "low_count": 0,
+                "total_count": 0,
+            }
+        )
+
+        return {
+            "per_company": [dict(r) for r in per_company],
+            "totals": totals,
+            "confidence_bands": confidence_bands,
+        }
 
 
 # =============================================================================

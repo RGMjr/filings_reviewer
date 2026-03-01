@@ -9,7 +9,18 @@ import logging
 import threading
 import time
 
-from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 from src.infra.db import DatabaseAdapter
 from src.web.app import get_db
@@ -92,9 +103,7 @@ def filing_list():
 
     try:
         total = db.count_v2_filings_with_facts()
-        filings = db.get_v2_filings_with_facts(
-            limit=per_page, offset=(page - 1) * per_page
-        )
+        filings = db.get_v2_filings_with_facts(limit=per_page, offset=(page - 1) * per_page)
     except Exception as e:
         logger.error(f"Database error in V2 filing list: {e}")
         flash("Error loading V2 filings.", "danger")
@@ -113,6 +122,25 @@ def filing_list():
         per_page=per_page,
         total=total,
         total_pages=total_pages,
+    )
+
+
+@review_v2_bp.route("/stats")
+def stats():
+    """Display aggregate V2 review statistics."""
+    db = get_db()
+    try:
+        data = db.get_v2_review_stats()
+    except Exception as e:
+        logger.error(f"Error loading V2 stats: {e}")
+        flash("Error loading V2 statistics.", "danger")
+        return redirect(url_for("review_v2.filing_list"))
+
+    return render_template(
+        "v2_stats.html",
+        per_company=data["per_company"],
+        totals=data["totals"],
+        confidence_bands=data["confidence_bands"],
     )
 
 
