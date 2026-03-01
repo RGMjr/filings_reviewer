@@ -16,7 +16,9 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -24,6 +26,7 @@ from src.extraction_v2.models import (
     BoundValue,
     EvidencePack,
     ExtractionMethod,
+    ImageAsset,
     MetricFact,
     ReviewStatus,
     SectionType,
@@ -32,7 +35,7 @@ from src.extraction_v2.models import (
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import MetricCandidate, Segment, Table
-    from src.extraction_v2.pipeline import PipelineContext, StageResult
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +78,7 @@ class FactConstructionStage:
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             errors: list[str] = []
             warnings: list[str] = []
 
@@ -85,12 +88,13 @@ class FactConstructionStage:
             }
             segment_lookup: dict[str, Segment] = {s.segment_id: s for s in context.segments}
             table_lookup: dict[str, Table] = {t.table_id: t for t in context.tables}
+            image_lookup: dict[str, ImageAsset] = {img.img_id: img for img in context.images}
 
             # Process each bound value
             for bv in context.bound_values:
                 try:
                     fact = self._construct_fact(
-                        bv, candidate_lookup, segment_lookup, table_lookup, context
+                        bv, candidate_lookup, segment_lookup, table_lookup, image_lookup, context
                     )
                     context.facts.append(fact)
                 except Exception as e:
@@ -99,7 +103,7 @@ class FactConstructionStage:
                     errors.append(error_msg)
 
             # Build stage result
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
             return StageResult(
                 stage=PipelineStage.FACT_CONSTRUCTION,
                 success=len(errors) == 0,
@@ -124,6 +128,7 @@ class FactConstructionStage:
         candidate_lookup: dict[str, MetricCandidate],
         segment_lookup: dict[str, Segment],
         table_lookup: dict[str, Table],
+        image_lookup: dict[str, ImageAsset],
         context: PipelineContext,
     ) -> MetricFact:
         """
@@ -153,7 +158,9 @@ class FactConstructionStage:
         confidence = self._compute_confidence(bv, candidate, source_type)
 
         # Generate evidence pack
-        evidence = self._generate_evidence(bv, segment_lookup, table_lookup)
+        evidence = self._generate_evidence(
+            bv, segment_lookup, table_lookup, image_lookup, context.config
+        )
 
         # Build the fact
         return MetricFact(
@@ -258,6 +265,8 @@ class FactConstructionStage:
         bv: BoundValue,
         segment_lookup: dict[str, Segment],
         table_lookup: dict[str, Table],
+        image_lookup: dict[str, ImageAsset],
+        config: PipelineConfig,
     ) -> EvidencePack:
         """
         Generate evidence pack for audit/review.
@@ -318,8 +327,40 @@ class FactConstructionStage:
                 context_before = text[max(0, start - 200) : start].strip()
                 context_after = text[end : end + 200].strip()
 
-        # Chart sources: stub for future implementation
-        # screenshot_path will remain None for now
+        # Chart sources: wire screenshot and snippet
+        screenshot_path: str | None = None
+        if loc.img_id:
+            asset = image_lookup.get(loc.img_id)
+            if asset is not None:
+                # Build snippet from chart title
+                chart_title = ""
+                if asset.chart_data and asset.chart_data.title:
+                    chart_title = asset.chart_data.title
+                snippet_html = (
+                    f"<figure><figcaption>{chart_title}</figcaption>"
+                    f"<mark>{bv.value_raw}</mark></figure>"
+                    if chart_title
+                    else f"<mark>{bv.value_raw}</mark>"
+                )
+                # Populate context_before from nearby text
+                if asset.nearby_text:
+                    context_before = asset.nearby_text[:200].strip()
+                # Copy screenshot if configured
+                if config.save_evidence_screenshots and asset.file_path:
+                    src_path = Path(asset.file_path)
+                    if src_path.exists():
+                        try:
+                            dest_dir = Path(config.evidence_screenshot_dir)
+                            dest_dir.mkdir(parents=True, exist_ok=True)
+                            ext = src_path.suffix or ".png"
+                            dest_name = f"{loc.img_id}_{bv.bound_value_id[:8]}{ext}"
+                            dest_path = dest_dir / dest_name
+                            shutil.copy2(src_path, dest_path)
+                            screenshot_path = str(dest_path)
+                        except Exception as copy_err:
+                            logger.warning(
+                                f"Failed to copy chart screenshot for {loc.img_id}: {copy_err}"
+                            )
 
         return EvidencePack(
             snippet_html=snippet_html,
@@ -328,6 +369,7 @@ class FactConstructionStage:
             context_before=context_before,
             context_after=context_after,
             raw_value_text=bv.value_raw,
+            screenshot_path=screenshot_path,
         )
 
     def _compute_avg_confidence(self, facts: list[MetricFact]) -> float:
