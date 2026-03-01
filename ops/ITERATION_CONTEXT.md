@@ -6,24 +6,25 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**Phase A+ (earnings-call-exploration, 2026-02-26)**: 3-workstream parallel team (phase-a-plus)
-- **WS-1 Q&A FP filtering**: `_qa_hedging_percent` + `_qa_currency_on_count` rules; 17 new tests
-- **WS-2 Keyword recall**: EA 0%→100% (gaming vocab); MSFT 62%→92% (converter speaker-ordering bug fixed); 22 HTML files regenerated; FP rules for MSFT product-name numbers
-- **WS-3 LTV/CAC**: Root cause = `_RATIO_METRICS` missing `Unit.COUNT`; bare decimals (1.42, 1.53) now accepted; 4 new binding tests
-- **Baselines refreshed**: SEC P=88.9% R=63.7% F1=74.2%; Transcript R=71.8% P=48.4% F1=57.8%
+**Stabilization (earnings-call-exploration, 2026-02-28)**: Committed Phase A+ work, added infrastructure tests
+- **Phase A+ precision hardening**: 3 FP rules (revenue_as_arr, forward_guidance, arpu_as_aov); trailblazers exclusion; deals-over tightening
+- **Final Phase A+ scores**: R=71.8%, P=70.1%, F1=70.9% — all targets met (R≥65% ✓, P≥70% ✓, F1≥67% ✓)
+- **Infrastructure tests**: test_company_mapping.py (13 tests), test_fmp_source.py (23 tests), test_ingest_transcripts.py (17 tests)
+- **New infra**: FMPTranscriptSource, company_mapping registry, ingest_transcripts batch script
 
-**Transcript baseline**: R=65.9%→71.8% (+4.7%), P=38.4%→48.4% (+10%), F1=48.5%→57.8% (+9.3%)
+**Transcript baseline**: R=71.8%, P=70.1%, F1=70.9% (94 annotations, 16 files; 2026-02-28)
 
 ## Current Focus
 
-- Transcript: PYPL FP explosion (45 small-bare-number FPs, pre-existing) — major precision blocker
+Phase B preparation:
+- Transcript: PYPL FP explosion (small-bare-number FPs) — major precision blocker for Phase B
 - SEC: AOV wrong_period — period mismatch gating (needs WP-08)
 
 ## Test Status
 
-- 4,507 unit tests; 0 failures
-- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-26)
-- Transcript benchmark: R=71.8%, P=48.4%, F1=57.8% (94 annotations, 16 files; baseline 2026-02-26)
+- ~4,560 unit tests; 0 failures (added 53 new tests this session)
+- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28)
+- Transcript benchmark: R=71.8%, P=70.1%, F1=70.9% (94 annotations, 16 files; 2026-02-28)
 
 ## Key Learnings
 
