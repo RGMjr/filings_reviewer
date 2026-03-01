@@ -278,8 +278,8 @@ class MetricData(TypedDict):
 
 @review_bp.route("/")
 def index():
-    """Redirect root to filing list."""
-    return redirect(url_for("review.filing_list"))
+    """Redirect root to V2 filing list."""
+    return redirect(url_for("review_v2.filing_list"))
 
 
 @review_bp.route("/filings")
