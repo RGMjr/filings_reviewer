@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -159,11 +159,15 @@ class ValueBindingStage:
             StageResult with processing metrics
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             bindings_found = 0
             errors: list[str] = []
             warnings: list[str] = []
             self._unit_filtered_count = 0
+
+            # Build lookup dicts once to avoid O(n) linear search per candidate
+            self._tables_by_id: dict[str, Table] = {t.table_id: t for t in context.tables}
+            self._segments_by_id: dict[str, Segment] = {s.segment_id: s for s in context.segments}
 
             # Process each candidate
             for candidate in context.candidates:
@@ -1252,6 +1256,9 @@ class ValueBindingStage:
         """Find a table by ID."""
         if not table_id:
             return None
+        # Use pre-built lookup dict when available (set in process())
+        if hasattr(self, "_tables_by_id"):
+            return self._tables_by_id.get(table_id)
         for table in tables:
             if table.table_id == table_id:
                 return table
@@ -1267,6 +1274,9 @@ class ValueBindingStage:
         """Find a segment by ID."""
         if not segment_id:
             return None
+        # Use pre-built lookup dict when available (set in process())
+        if hasattr(self, "_segments_by_id"):
+            return self._segments_by_id.get(segment_id)
         for segment in segments:
             if segment.segment_id == segment_id:
                 return segment
@@ -1281,7 +1291,7 @@ class ValueBindingStage:
         warnings: list[str],
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import

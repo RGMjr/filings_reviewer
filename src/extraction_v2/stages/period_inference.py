@@ -18,7 +18,7 @@ import calendar
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -233,6 +233,8 @@ class PeriodInferenceStage:
         # Fiscal year end metadata — set from document in process()
         self._fy_end_month: int | None = None
         self._fy_end_day: int | None = None
+        # Filing date — set from document in process(); used instead of date.today()
+        self._filing_date: date | None = None
 
         # Pattern registries: list of (parser_method, confidence_offset) tuples.
         # Ordered by specificity — first match wins.
@@ -269,7 +271,7 @@ class PeriodInferenceStage:
             StageResult with processing metrics
         """
         try:
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now(UTC)
             periods_inferred = 0
             ambiguous_count = 0
             errors: list[str] = []
@@ -284,18 +286,15 @@ class PeriodInferenceStage:
                 context.document.fiscal_year_end_month if context.document else None
             )
             self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
-
-            # Build lookup for segments and tables
-            segment_lookup = {s.segment_id: s for s in context.segments}
-            table_lookup = {t.table_id: t for t in context.tables}
+            # Prefer filing date from document over date.today() for determinism
+            self._filing_date = context.document.filing_date if context.document else None
 
             # Process each bound value
             for bound_value in context.bound_values:
                 try:
                     period = self._infer_period(
                         bound_value,
-                        segment_lookup,
-                        table_lookup,
+                        context,
                         fiscal_year,
                         fiscal_period,
                     )
@@ -341,8 +340,7 @@ class PeriodInferenceStage:
     def _infer_period(
         self,
         bound_value: BoundValue,
-        segment_lookup: dict[str, Segment],
-        table_lookup: dict[str, Table],
+        context: PipelineContext,
         fiscal_year: int | None,
         fiscal_period: str,
     ) -> ParsedPeriod | None:
@@ -351,8 +349,7 @@ class PeriodInferenceStage:
 
         Args:
             bound_value: The bound value to process
-            segment_lookup: Segment ID -> Segment mapping
-            table_lookup: Table ID -> Table mapping
+            context: Pipeline context with segment_by_id and table_by_id lookups
             fiscal_year: Filing fiscal year for fallback
             fiscal_period: Filing fiscal period for fallback
 
@@ -371,7 +368,7 @@ class PeriodInferenceStage:
 
         # Strategy 1: Check table header_path (primary for table values)
         if loc.table_id:
-            table = table_lookup.get(loc.table_id)
+            table = context.table_by_id.get(loc.table_id)
             if table and loc.cell_col is not None:
                 header_path = table.get_header_path(loc.cell_col)
                 period = self._parse_period_from_headers(header_path)
@@ -380,7 +377,7 @@ class PeriodInferenceStage:
 
         # Strategy 2: Check text context for text-bound values
         if loc.segment_id:
-            segment = segment_lookup.get(loc.segment_id)
+            segment = context.segment_by_id.get(loc.segment_id)
             if segment and segment.text:
                 period = self._parse_period_from_text(
                     segment.text,
@@ -698,12 +695,13 @@ class PeriodInferenceStage:
         if year_match:
             year = int(year_match.group(1))
         else:
-            # Use current year as fallback
-            year = date.today().year
+            # Use filing date (or date.today() as last resort) for determinism
+            reference = self._filing_date or date.today()
+            year = reference.year
 
         # Determine period length from pattern
         text_lower = match.group(0).lower()
-        today = date.today()
+        reference = self._filing_date or date.today()
 
         if "nine" in text_lower or "9" in text_lower:
             # Nine months YTD (typically ends Sep 30)
@@ -716,7 +714,7 @@ class PeriodInferenceStage:
             end_month = 3
         else:
             # Generic YTD - use current quarter end or filing date
-            end_month = ((today.month - 1) // 3 + 1) * 3
+            end_month = ((reference.month - 1) // 3 + 1) * 3
 
         try:
             start = date(year, 1, 1)
@@ -756,14 +754,13 @@ class PeriodInferenceStage:
             if month:
                 try:
                     end = date(year, month, day)
-                    # TTM is 12 months trailing
-                    start = (
-                        date(year - 1, month, day + 1)
-                        if day < 28
-                        else date(year - 1, month + 1, 1)
-                        if month < 12
-                        else date(year - 1, 1, 1)
-                    )
+                    # TTM is 12 months trailing: start is the day after the
+                    # same date one year prior. Clamp day to the last valid
+                    # day of that month (handles Feb 29 → Feb 28 in non-leap).
+                    prev_year = year - 1
+                    max_day = calendar.monthrange(prev_year, month)[1]
+                    same_day_prev_year = date(prev_year, month, min(day, max_day))
+                    start = same_day_prev_year + timedelta(days=1)
                     return ParsedPeriod(
                         period_type=PeriodType.TRAILING,
                         start=start,
@@ -775,14 +772,16 @@ class PeriodInferenceStage:
                 except ValueError:
                     pass
 
-        # Without a reference date, we can't determine the exact period
-        # Return a placeholder with today's date (will be lower confidence)
-        today = date.today()
-        start = date(today.year - 1, today.month, today.day)
+        # Without a reference date, use filing date (or date.today() as last resort)
+        reference = self._filing_date or date.today()
+        prev_year = reference.year - 1
+        max_day = calendar.monthrange(prev_year, reference.month)[1]
+        same_day_prev_year = date(prev_year, reference.month, min(reference.day, max_day))
+        start = same_day_prev_year + timedelta(days=1)
         return ParsedPeriod(
             period_type=PeriodType.TRAILING,
             start=start,
-            end=today,
+            end=reference,
             confidence=0.0,
             source="",
             raw_text=match.group(0),
@@ -966,7 +965,7 @@ class PeriodInferenceStage:
         ambiguous_count: int,
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import
