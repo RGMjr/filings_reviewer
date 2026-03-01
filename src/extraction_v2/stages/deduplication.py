@@ -15,7 +15,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -67,7 +67,7 @@ class DeduplicationStage:
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             initial_count = len(context.facts)
 
             # Use tolerance from config if available
@@ -105,7 +105,7 @@ class DeduplicationStage:
             context.deduplicated_facts = primaries
 
             # Build result
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
             duplicates_removed = initial_count - len(primaries)
 
             return StageResult(
@@ -287,8 +287,23 @@ class DeduplicationStage:
                     result.append(group[0])
                 else:
                     primary = self._select_primary(group)
+                    # Transfer period from a period-having fact when primary lacks period.
+                    # This preserves period data when a higher-quality source (e.g. HTML_TABLE)
+                    # is merged with a lower-quality source that has period context (e.g. TEXT).
+                    if not (primary.period_start and primary.period_end):
+                        period_donors = [
+                            f for f in group
+                            if f.period_start and f.period_end and f.fact_id != primary.fact_id
+                        ]
+                        if period_donors:
+                            donor = period_donors[0]
+                            primary.period_start = donor.period_start
+                            primary.period_end = donor.period_end
+                            primary.period_type = donor.period_type
+                    new_ids = [f.fact_id for f in group if f.fact_id != primary.fact_id]
+                    existing = set(primary.alternate_evidence)
                     primary.alternate_evidence.extend(
-                        f.fact_id for f in group if f.fact_id != primary.fact_id
+                        fid for fid in dict.fromkeys(new_ids) if fid not in existing
                     )
                     result.append(primary)
                     removed += len(group) - 1

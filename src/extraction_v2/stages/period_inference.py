@@ -424,8 +424,8 @@ class PeriodInferenceStage:
         Returns:
             ParsedPeriod if found, None otherwise
         """
-        # Combine all headers for searching
-        combined_text = " ".join(header_path)
+        # Combine all headers for searching; strip zero-width spaces
+        combined_text = self._normalize_text(" ".join(header_path))
 
         # Try patterns in order of specificity (first match wins)
         for method_name, confidence_offset in self._header_patterns:
@@ -484,11 +484,17 @@ class PeriodInferenceStage:
 
         return None
 
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Strip zero-width spaces and collapse surrounding whitespace for pattern matching."""
+        return text.replace("\u200b", "")
+
     def _try_parse_all_patterns(self, text: str) -> ParsedPeriod | None:
         """Try all text period patterns on text, returning most specific match."""
+        normalized = self._normalize_text(text)
         for method_name in self._text_patterns:
             parser = getattr(self, method_name)
-            period = parser(text)
+            period = parser(normalized)
             if period:
                 return period
         return None

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 
@@ -193,21 +193,21 @@ class SourceLocator:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON storage."""
         result: dict[str, Any] = {}
-        if self.segment_id:
+        if self.segment_id is not None:
             result["segment_id"] = self.segment_id
-        if self.table_id:
+        if self.table_id is not None:
             result["table_id"] = self.table_id
         if self.cell_row is not None:
             result["cell_row"] = self.cell_row
         if self.cell_col is not None:
             result["cell_col"] = self.cell_col
-        if self.text_span:
+        if self.text_span is not None:
             result["text_span"] = list(self.text_span)
-        if self.img_id:
+        if self.img_id is not None:
             result["img_id"] = self.img_id
-        if self.bbox:
+        if self.bbox is not None:
             result["bbox"] = self.bbox.to_dict()
-        if self.dom_locator:
+        if self.dom_locator is not None:
             result["dom_locator"] = self.dom_locator
         return result
 
@@ -330,7 +330,7 @@ class MetricFact:
     alternate_evidence: list[str] = field(default_factory=list)  # Other fact_ids
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     pipeline_version: str = "2.0.0"
 
     def identity_tuple(
@@ -433,7 +433,7 @@ class MetricDefinition:
     alignment_flag: str = "unknown"  # aligned/partial/not_aligned/unknown
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ============================================================================
@@ -751,7 +751,7 @@ class Document:
 
     # Processing metadata
     parse_version: str = "2.0.0"
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Computed statistics (populated after processing)
     segment_count: int = 0
@@ -795,7 +795,7 @@ class MetricCandidate:
     section_type: SectionType = SectionType.UNKNOWN
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ============================================================================
@@ -825,7 +825,9 @@ class BoundValue:
     unit: Unit = Unit.OTHER
 
     # Binding metadata
-    binding_type: str = ""  # "table_header", "table_stub", "text_proximity", "chart_label", "respectively_pattern"
+    binding_type: str = (
+        ""  # "table_header", "table_stub", "text_proximity", "chart_label", "respectively_pattern"
+    )
     binding_confidence: float = 0.5
 
     # Source location (may differ from candidate location)
@@ -841,4 +843,4 @@ class BoundValue:
     period_hint: str = ""  # Pre-parsed period from respectively pattern (e.g., "2017")
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import (
@@ -90,6 +90,16 @@ def _serialize_chart_data(chart_data: ChartData | None) -> str | None:
                     ],
                 }
                 for s in chart_data.series
+            ],
+            "annotations": [
+                {
+                    "text": a.text,
+                    "value": a.value,
+                    "unit": a.unit,
+                    "category": a.category,
+                    "period": a.period,
+                }
+                for a in chart_data.annotations
             ],
         }
     )
@@ -375,7 +385,7 @@ class V2PersistenceAdapter:
             "status": status,
             "error_message": error_message,
             "parse_completed_at": document.created_at,
-            "extract_completed_at": datetime.utcnow(),
+            "extract_completed_at": datetime.now(UTC),
         }
 
         cur.execute(sql, params)
@@ -629,9 +639,16 @@ class V2PersistenceAdapter:
         facts: list[MetricFact],
         filing_id: int,
     ) -> int:
-        """Persist facts within an existing transaction using identity-based upsert."""
+        """Persist facts within an existing transaction using delete-then-insert."""
         if not facts:
             return 0
+
+        # Delete existing facts for this filing before inserting fresh results.
+        # This is idempotent and handles re-runs correctly without requiring a
+        # complex unique index across nullable expression columns.
+        cur.execute(
+            "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s", {"filing_id": filing_id}
+        )
 
         sql = """
             INSERT INTO v2_metric_facts (
@@ -652,29 +669,6 @@ class V2PersistenceAdapter:
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
                 %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
             )
-            ON CONFLICT (
-                doc_id, canonical_metric_id,
-                COALESCE(period_start, '1900-01-01'::date),
-                COALESCE(period_end, '1900-01-01'::date),
-                unit, scope,
-                COALESCE(cohort_def, ''),
-                COALESCE(customer_type, '')
-            ) DO UPDATE SET
-                value = EXCLUDED.value,
-                value_raw = EXCLUDED.value_raw,
-                currency = EXCLUDED.currency,
-                period_type = EXCLUDED.period_type,
-                source_type = EXCLUDED.source_type,
-                source_locator = EXCLUDED.source_locator,
-                evidence_pack = EXCLUDED.evidence_pack,
-                confidence = EXCLUDED.confidence,
-                extraction_method = EXCLUDED.extraction_method,
-                requires_review = EXCLUDED.requires_review,
-                review_reason = EXCLUDED.review_reason,
-                alternate_evidence = EXCLUDED.alternate_evidence,
-                primary_fact_id = EXCLUDED.primary_fact_id,
-                pipeline_version = EXCLUDED.pipeline_version,
-                updated_at = NOW()
         """
 
         count = 0

@@ -13,7 +13,7 @@ Design source: V2 PRD - Phase 3 (Table Reconstruction)
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
@@ -58,7 +58,7 @@ class TableReconstructionStage:
             StageResult with processing metrics and any errors
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             tables_processed = 0
             tables_skipped = 0
             errors: list[str] = []
@@ -132,7 +132,7 @@ class TableReconstructionStage:
                     tables_skipped += 1
 
             # Calculate duration
-            end_time = datetime.utcnow()
+            end_time = datetime.now(UTC)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
             # Partial errors are warnings if at least one table succeeded

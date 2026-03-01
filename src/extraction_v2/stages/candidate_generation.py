@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from src.extraction.keyword_config import (
@@ -178,7 +178,7 @@ class CandidateGenerationStage:
             StageResult with processing metrics
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
             candidates_found = 0
             errors: list[str] = []
             warnings: list[str] = []
@@ -802,7 +802,7 @@ class CandidateGenerationStage:
         warnings: list[str],
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import
@@ -810,7 +810,7 @@ class CandidateGenerationStage:
 
         return StageResult(
             stage=PipelineStage.CANDIDATE_GENERATION,
-            success=len(errors) == 0,
+            success=(items_output > 0 or len(errors) == 0),
             duration_ms=duration_ms,
             items_processed=items_processed,
             items_output=items_output,

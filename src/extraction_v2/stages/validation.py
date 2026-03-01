@@ -15,7 +15,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -68,7 +68,7 @@ class ValidationStage:
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(UTC)
 
             # Use deduplicated facts if available, otherwise facts
             facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
@@ -141,7 +141,7 @@ class ValidationStage:
                     stats["pending_review"] += 1
 
             # Build result
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             logger.info(
                 f"Validation complete: {stats['auto_accepted']} auto-accepted, "
