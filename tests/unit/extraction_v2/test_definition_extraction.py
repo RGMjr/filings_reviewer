@@ -32,7 +32,6 @@ from src.extraction_v2.stages.definition_extraction import (
     DefinitionExtractionStage,
 )
 
-
 # ============================================================================
 # Helpers / Mock objects
 # ============================================================================

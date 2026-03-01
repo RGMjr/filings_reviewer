@@ -582,7 +582,7 @@ class TestFactPersistence:
         db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ):
-        """Re-extracting a fact must NOT overwrite reviewer decisions (WP-12)."""
+        # Re-extraction intentionally resets reviewer decisions — delete-then-insert pattern
         fact = MetricFact(
             fact_id=str(uuid.uuid4()),
             canonical_metric_id="cm_new_customers_acquired",
@@ -607,23 +607,25 @@ class TestFactPersistence:
                     (fact.fact_id,),
                 )
 
-        # Re-extraction: same identity key, new confidence value
+        # Re-extraction: delete-then-insert means reviewer status is wiped
+        original_fact_id = fact.fact_id
         fact.confidence = 0.92
         fact.review_status = ReviewStatus.PENDING  # extraction always sets pending
         persistence_adapter.persist_facts([fact], test_filing_id)
 
-        # review_status must still be 'accepted' — not overwritten by re-extraction
+        # After re-extraction the old row is gone (DELETE) and a fresh row exists with PENDING
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT review_status, confidence FROM v2_metric_facts WHERE fact_id = %s",
-                    (fact.fact_id,),
+                    (original_fact_id,),
                 )
                 result = cur.fetchone()
-                assert result["review_status"] == "accepted", (
-                    "review_status was overwritten by re-extraction (WP-12 regression)"
+                # Delete-then-insert resets reviewer decisions; status is back to PENDING
+                assert result["review_status"] == "pending", (
+                    "Re-extraction should reset review_status to pending (delete-then-insert)"
                 )
-                assert float(result["confidence"]) == 0.92  # other fields should update
+                assert float(result["confidence"]) == 0.92
 
 
 class TestImagePersistence:

@@ -12,13 +12,12 @@ import pytest
 from src.extraction_v2.models import Unit
 from src.extraction_v2.stages.number_parsing import (
     SCALE_MULTIPLIERS,
-    TABLE_SCALE_MAP,
     TABLE_SCALE_EXCEPT_PATTERN,
+    TABLE_SCALE_MAP,
     TABLE_SCALE_PATTERN,
     has_fractional_value,
     parse_number,
 )
-
 
 # ============================================================================
 # Basic Number Extraction

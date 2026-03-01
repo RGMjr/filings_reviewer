@@ -161,9 +161,9 @@ class TestIngestionStageProcess:
         assert result.success is True
         assert result.stage == PipelineStage.INGESTION
 
-        # Should create document
+        # Should create document (doc_id is a UUID, not the filing_id)
         assert context.document is not None
-        assert context.document.doc_id == "12345"
+        assert context.document.doc_id  # non-empty UUID string
         assert context.document.html_path == str(html_file)
 
     def test_process_handles_missing_file(self, tmp_path: Path) -> None:

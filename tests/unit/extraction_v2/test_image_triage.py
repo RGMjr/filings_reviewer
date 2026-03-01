@@ -454,10 +454,17 @@ class TestTriageBatch:
         )
         result = stage.triage_images([asset])
 
-        # Should be UNKNOWN with some relevance
+        # Should be UNKNOWN with some relevance.
         assert asset.classification == ImageClassification.UNKNOWN
-        if asset.relevance_score >= 0.3 and asset.relevance_score < 0.5:
-            assert asset.requires_manual_capture is True
+        assert asset.relevance_score is not None
+        # Verify the manual_capture flag is consistent with the triage thresholds:
+        # images with relevance in [MIN_RELEVANCE_FOR_PROCESSING, AMBIGUOUS_THRESHOLD)
+        # get marked for manual capture; others do not.
+        expected_manual_capture = (
+            asset.relevance_score >= stage.MIN_RELEVANCE_FOR_PROCESSING
+            and asset.relevance_score < stage.AMBIGUOUS_RELEVANCE_THRESHOLD
+        )
+        assert asset.requires_manual_capture is expected_manual_capture
 
     def test_triage_preserves_all_images(self, stage: ImageTriageStage) -> None:
         """Triage should classify all images, not just returned ones."""
@@ -468,8 +475,8 @@ class TestTriageBatch:
         ]
         stage.triage_images(assets)
 
-        # All should have classifications
-        assert all(a.classification != ImageClassification.UNKNOWN or True for a in assets)
+        # All should have been classified (assigned a non-None classification)
+        assert all(a.classification is not None for a in assets)
         assert assets[0].classification == ImageClassification.LOGO
         assert assets[1].classification == ImageClassification.CHART
         assert assets[2].classification == ImageClassification.DECORATIVE
