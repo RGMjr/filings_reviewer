@@ -2,12 +2,17 @@
 Data models for metric extraction pipeline.
 
 These models represent extracted data before it's written to the database.
+
+Note: FilingMetricIncidence has been moved to src.shared.models.
+It is re-exported here for backward compatibility.
 """
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+from src.shared.models import FilingMetricIncidence as FilingMetricIncidence  # noqa: F401
 
 
 @dataclass

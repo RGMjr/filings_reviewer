@@ -17,7 +17,7 @@ import logging
 from datetime import date
 from typing import TYPE_CHECKING
 
-from src.extraction.models import FilingMetricIncidence
+from src.shared.models import FilingMetricIncidence
 from src.extraction_v2.models import MetricDefinition, MetricFact, Segment
 
 if TYPE_CHECKING:

@@ -93,7 +93,7 @@ def _compare_filing(
     resolve_fn,
 ) -> dict:
     """Compare V1 and V2 results for a single filing."""
-    from src.extraction.keyword_config import resolve_to_canonical
+    from src.shared.keyword_config import resolve_to_canonical
 
     # Resolve V1 metric names to canonical IDs
     v1_resolved = [
@@ -198,7 +198,7 @@ def main() -> None:
         print("ERROR: psycopg3 not installed (pip install psycopg[binary])", file=sys.stderr)
         sys.exit(1)
 
-    from src.extraction.keyword_config import resolve_to_canonical
+    from src.shared.keyword_config import resolve_to_canonical
 
     try:
         conn = psycopg.connect(db_url, autocommit=True)
