@@ -1,0 +1,110 @@
+name: Gold Standard Validation
+
+# Trigger on PRs that modify extraction-related files
+on:
+  pull_request:
+    paths:
+      - 'src/extraction/**'
+      - 'src/extraction_v2/**'
+      - 'config/metric_keywords.yaml'
+      - 'config/metric_keywords/**'
+
+jobs:
+  gold-standard-check:
+    name: Gold Standard Regression Check
+    runs-on: ubuntu-latest
+    # Non-blocking: always continue even if this fails
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: filings_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Initialize test database
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/filings_test
+        run: |
+          # Apply schema migrations
+          for sql_file in sql/*.sql; do
+            if [ -f "$sql_file" ]; then
+              psql "$TEST_DATABASE_URL" -f "$sql_file" || true
+            fi
+          done
+
+      - name: Check for gold standard baseline
+        id: baseline-check
+        run: |
+          if [ -f "data/gold_standard/baseline.json" ]; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            echo "::warning::Gold standard baseline not found. Skipping validation."
+          fi
+
+      - name: Run gold standard validation
+        if: steps.baseline-check.outputs.baseline_exists == 'true'
+        id: gold-standard
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/filings_test
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        continue-on-error: true
+        run: |
+          # Run gold standard tests in fresh mode
+          pytest -m gold_standard --gold-standard-mode=fresh -v 2>&1 | tee gold_standard_output.txt
+
+          # Capture exit code
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+      - name: Report results
+        if: steps.baseline-check.outputs.baseline_exists == 'true'
+        run: |
+          if [ "${{ steps.gold-standard.outputs.exit_code }}" != "0" ]; then
+            echo "::warning file=src/extraction::Gold standard validation detected potential regressions. Review the test output before merging."
+            echo ""
+            echo "## Gold Standard Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Warning - Potential regression detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This is a non-blocking check. Please review the gold standard output to ensure extraction quality is maintained." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Actions to Consider" >> $GITHUB_STEP_SUMMARY
+            echo "- If intentional: Update baseline with \`pytest -m gold_standard --gold-standard-mode=fresh --update-baseline\`" >> $GITHUB_STEP_SUMMARY
+            echo "- If unintentional: Review changes to extraction logic" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Gold Standard Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Passed - No regressions detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload test output
+        if: always() && steps.baseline-check.outputs.baseline_exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-standard-output
+          path: gold_standard_output.txt
+          retention-days: 7
