@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pathlib import Path
+
 from src.extraction_v2.models import (
     BoundValue,
     Cell,
@@ -27,6 +29,7 @@ from src.extraction_v2.models import (
     SourceLocator,
     Table,
 )
+from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
 from src.extraction_v2.stages.period_inference import (
     PeriodInferenceStage,
 )
@@ -43,12 +46,13 @@ def stage() -> PeriodInferenceStage:
 
 
 @pytest.fixture
-def mock_context() -> MagicMock:
-    """Create a mock PipelineContext."""
-    context = MagicMock()
-    context.bound_values = []
-    context.segments = []
-    context.tables = []
+def mock_context() -> PipelineContext:
+    """Create a real PipelineContext for period inference tests."""
+    context = PipelineContext(
+        html_path=Path("/dev/null"),
+        filing_id=0,
+        config=PipelineConfig(),
+    )
     context.document = Document(fiscal_year=2024, fiscal_period="FY")
     return context
 

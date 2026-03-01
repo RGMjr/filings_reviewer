@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -89,7 +90,7 @@ class DefinitionExtractionStage:
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
         try:
-            start = datetime.utcnow()
+            start = datetime.now(UTC)
 
             if not context.facts:
                 return StageResult(
@@ -99,9 +100,6 @@ class DefinitionExtractionStage:
                     items_processed=0,
                     items_output=0,
                 )
-
-            # Build segment lookup by segment_id
-            seg_by_id: dict[str, object] = {s.segment_id: s for s in context.segments}
 
             # Build sequence index for segments
             seg_by_seq: dict[int, object] = {s.sequence: s for s in context.segments}
@@ -178,7 +176,7 @@ class DefinitionExtractionStage:
 
             context.definitions = definitions
 
-            end = datetime.utcnow()
+            end = datetime.now(UTC)
             duration_ms = int((end - start).total_seconds() * 1000)
 
             logger.info(
