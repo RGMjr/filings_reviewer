@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import (
@@ -252,6 +252,10 @@ class V2PersistenceAdapter:
         self,
         result: PipelineResult,
         filing_id: int,
+        document_type: str = "sec_filing",
+        ticker: str | None = None,
+        document_date: date | None = None,
+        transcript_source: str | None = None,
     ) -> PersistenceResult:
         """
         Persist a complete pipeline result in a single transaction.
@@ -278,6 +282,10 @@ class V2PersistenceAdapter:
                         len(result.images),
                         len(result.facts),
                         "complete" if result.success else "failed",
+                        document_type=document_type,
+                        ticker=ticker,
+                        document_date=document_date,
+                        transcript_source=transcript_source,
                     )
 
                     # 2. Persist segments
@@ -325,18 +333,24 @@ class V2PersistenceAdapter:
         image_count: int,
         fact_count: int,
         status: str,
+        document_type: str = "sec_filing",
+        ticker: str | None = None,
+        document_date: date | None = None,
+        transcript_source: str | None = None,
     ) -> int:
         """Persist document within an existing transaction."""
         sql = """
             INSERT INTO v2_documents (
                 doc_id, filing_id, parse_version,
                 segment_count, table_count, image_count, fact_count,
-                status, parse_completed_at, extract_completed_at, created_at
+                status, parse_completed_at, extract_completed_at, created_at,
+                document_type, ticker, document_date, transcript_source
             )
             VALUES (
                 %(doc_id)s, %(filing_id)s, %(parse_version)s,
                 %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s,
-                %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW()
+                %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW(),
+                %(document_type)s, %(ticker)s, %(document_date)s, %(transcript_source)s
             )
             ON CONFLICT (filing_id) DO UPDATE SET
                 parse_version = EXCLUDED.parse_version,
@@ -346,6 +360,10 @@ class V2PersistenceAdapter:
                 fact_count = EXCLUDED.fact_count,
                 status = EXCLUDED.status,
                 extract_completed_at = EXCLUDED.extract_completed_at,
+                document_type = EXCLUDED.document_type,
+                ticker = EXCLUDED.ticker,
+                document_date = EXCLUDED.document_date,
+                transcript_source = EXCLUDED.transcript_source,
                 updated_at = NOW()
         """
 
@@ -360,6 +378,10 @@ class V2PersistenceAdapter:
             "status": status,
             "parse_completed_at": document.created_at,
             "extract_completed_at": datetime.utcnow(),
+            "document_type": document_type,
+            "ticker": ticker,
+            "document_date": document_date,
+            "transcript_source": transcript_source,
         }
 
         cur.execute(sql, params)
