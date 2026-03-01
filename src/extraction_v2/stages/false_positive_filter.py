@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -276,16 +276,28 @@ def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> st
 def _rule_tier_qualifier(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Per-tier customer counts for cm_customers_period_end.
 
-    Suppresses FPs where the source context (stub_path for table cells,
-    or surrounding prose) contains a subscription tier keyword such as
-    "Enterprise", "Free", "Business Critical", etc.  These are per-tier
-    breakdowns, not aggregate customer counts.
+    Suppresses FPs where the tier keyword appears in stub_path (for table
+    cells) or within 150 characters of the numeric value position in prose.
+    Avoids over-triggering on long segments that merely mention "Enterprise"
+    in a different sentence from the value.
     """
     if not source_text or metric_id != "cm_customers_period_end":
         return None
-    if _TIER_QUALIFIER_RE.search(source_text):
-        return "v2_tier_qualifier"
-    return None
+    tier_match = _TIER_QUALIFIER_RE.search(source_text)
+    if not tier_match:
+        return None
+    # For text-sourced values, require the tier keyword to be within 150
+    # characters of the value position to avoid false suppression on long
+    # segments that mention tier names in passing.
+    loc = bv.source_locator
+    if loc.table_id is None and loc.segment_id is not None:
+        # Text segment: check proximity between tier keyword and value
+        raw = (bv.value_raw or "").strip()
+        if raw:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0 and abs(tier_match.start() - value_pos) > 150:
+                return None
+    return "v2_tier_qualifier"
 
 
 def _rule_dollar_threshold_customer(
@@ -497,7 +509,7 @@ class FalsePositiveFilterStage:
         FalsePositiveFilter, and removes those flagged as false positives.
         """
         try:
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now(UTC)
             errors: list[str] = []
             warnings: list[str] = []
 
@@ -615,7 +627,7 @@ class FalsePositiveFilterStage:
         filter_reasons: dict[str, int],
     ) -> StageResult:
         """Create a StageResult with timing and filter statistics."""
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         from src.extraction_v2.pipeline import PipelineStage, StageResult

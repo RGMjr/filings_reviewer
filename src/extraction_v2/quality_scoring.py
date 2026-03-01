@@ -76,13 +76,6 @@ class V2QualityScorer:
         for defn in definitions:
             definitions_by_metric.setdefault(defn.canonical_metric_id, []).append(defn)
 
-        # Count definition/methodology segments per metric
-        # A segment is "definition" if its type is DEFINITION, "methodology" if METHODOLOGY
-        from src.extraction_v2.models import SegmentType
-        num_def_segs: dict[str, int] = {}
-        num_meth_segs: dict[str, int] = {}
-        num_numeric_segs: dict[str, int] = {}
-
         results = []
 
         for metric_id in sorted(metric_ids):

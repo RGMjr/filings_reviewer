@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
@@ -238,7 +238,7 @@ class SectionClassificationStage:
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -291,7 +291,7 @@ class SectionClassificationStage:
             logger.info(f"Section classification complete. Detected sections: {sections_detected}")
 
             # Calculate duration
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.SECTION_CLASSIFICATION,

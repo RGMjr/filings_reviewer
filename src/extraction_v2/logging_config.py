@@ -2,8 +2,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 _SKIP_FIELDS = frozenset({
     "msg", "args", "exc_info", "exc_text", "stack_info",
@@ -19,7 +18,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -29,7 +28,7 @@ class JsonFormatter(logging.Formatter):
         for key, val in record.__dict__.items():
             if key not in _SKIP_FIELDS:
                 log_data[key] = val
-        return json.dumps(log_data)
+        return json.dumps(log_data, default=str)
 
 
 def configure_logging(

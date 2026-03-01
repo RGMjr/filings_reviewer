@@ -249,9 +249,14 @@ class TableReconstructor:
         row_count = len(rows)
         col_count = 0
 
-        # Track rowspans to accurately calculate max columns
-        # This handles cases where earlier rows have rowspans that affect
-        # how many columns later rows appear to have
+        # TODO (M7): This first-pass column count sums colspans per row but does
+        # not account for cells from earlier rows that are still "occupying" columns
+        # via rowspan. A row with an active rowspan-1 cell from the previous row
+        # will appear to have fewer physical cells than actual grid columns, so
+        # col_count may be underestimated. Full fix requires rowspan simulation in
+        # the first pass (mirroring the second-pass grid-fill logic). Deferring
+        # because the second pass clips spans to col_count, so underestimation
+        # causes truncation rather than a crash — an acceptable degradation for now.
         for tr in rows:
             cells = tr.find_all(["td", "th"])
             total_cols = sum(int(str(cell.get("colspan", "1"))) for cell in cells)
@@ -339,15 +344,16 @@ class TableReconstructor:
                         target_col = col_idx + c
                         # Double-check bounds (should always be within bounds due to clipping)
                         if target_row < row_count and target_col < col_count:
-                            # Check for overlap - another cell already here
+                            # Check for overlap - keep the first cell (don't overwrite)
                             if grid[target_row][target_col] is not None:
                                 existing = grid[target_row][target_col]
                                 logger.warning(
                                     f"Grid overlap at ({target_row}, {target_col}): "
                                     f"existing cell from ({existing.row}, {existing.col}) "
-                                    f"would be overwritten by cell from ({tr_idx}, {col_idx})"
+                                    f"will be kept; skipping cell from ({tr_idx}, {col_idx})"
                                 )
-                            grid[target_row][target_col] = cell
+                            else:
+                                grid[target_row][target_col] = cell
 
                 # Move to next column (use original colspan for positioning)
                 col_idx += colspan
