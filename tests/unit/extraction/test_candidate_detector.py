@@ -126,7 +126,7 @@ class TestBasicDetection:
         assert len(customer_candidates) >= 1
         # The number "100" should be at position 8
         pos = customer_candidates[0].value_position
-        assert text[pos:pos + 3] == "100"
+        assert text[pos : pos + 3] == "100"
 
     def test_keyword_position_is_correct(self, detector: CandidateDetector) -> None:
         """Test that keyword_position correctly points to the keyword."""
@@ -136,7 +136,7 @@ class TestBasicDetection:
         customer_candidates = [c for c in candidates if "customer" in c.keyword.lower()]
         assert len(customer_candidates) >= 1
         pos = customer_candidates[0].keyword_position
-        assert "customer" in text[pos:pos + 10].lower()
+        assert "customer" in text[pos : pos + 10].lower()
 
 
 # =============================================================================
@@ -196,9 +196,7 @@ class TestFalsePositiveFiltering:
             if "customer" in c.keyword.lower():
                 assert c.value != Decimal("73")
 
-    def test_disabled_filter_allows_years(
-        self, detector_no_fp_filter: CandidateDetector
-    ) -> None:
+    def test_disabled_filter_allows_years(self, detector_no_fp_filter: CandidateDetector) -> None:
         """Test that years are detected when filter is disabled."""
         text = "In 2023 we had 50 million customers."
         candidates = detector_no_fp_filter.detect(text)
@@ -218,9 +216,7 @@ class TestFalsePositiveFiltering:
         assert len(customer_candidates) >= 1
         assert customer_candidates[0].value == Decimal("50000000")
 
-    def test_small_numbers_below_threshold_filtered(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_small_numbers_below_threshold_filtered(self, detector: CandidateDetector) -> None:
         """Test that very small numbers are filtered by default."""
         text = "We have 3 customers and 5 users."
         candidates = detector.detect(text)
@@ -239,9 +235,7 @@ class TestFalsePositiveFiltering:
 class TestTableAwareDetection:
     """Tests for table-aware detection with StructureParser."""
 
-    def test_keywords_and_values_in_same_row_accepted(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_keywords_and_values_in_same_row_accepted(self, detector: CandidateDetector) -> None:
         """Test that keyword-value pairs in same row are accepted."""
         html = """
         <table>
@@ -256,9 +250,7 @@ class TestTableAwareDetection:
         # Should find candidates for both rows
         assert len(candidates) >= 1
 
-    def test_cross_row_keyword_value_matches_rejected(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_cross_row_keyword_value_matches_rejected(self, detector: CandidateDetector) -> None:
         """Test that keyword in one row doesn't match value in another row."""
         html = """
         <table>
@@ -291,9 +283,7 @@ class TestTableAwareDetection:
             # Note: same_cell detection depends on position mapping
             assert customer_candidates[0].same_row is True
 
-    def test_non_table_segments_handle_gracefully(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_non_table_segments_handle_gracefully(self, detector: CandidateDetector) -> None:
         """Test that non-table segments work without HTML."""
         text = "We have 1000 active customers."
 
@@ -304,9 +294,7 @@ class TestTableAwareDetection:
         customer_candidates = [c for c in candidates if "customer" in c.keyword.lower()]
         assert len(customer_candidates) >= 1
 
-    def test_missing_html_handled_with_fallback(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_missing_html_handled_with_fallback(self, detector: CandidateDetector) -> None:
         """Test that missing HTML for table segment is handled gracefully."""
         text = "Revenue [CELL] 1000 [ROW] "
 
@@ -316,9 +304,7 @@ class TestTableAwareDetection:
         # Should still detect candidates, just without row validation
         assert len(candidates) >= 0  # May or may not find revenue depending on keywords
 
-    def test_invalid_html_handled_gracefully(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_invalid_html_handled_gracefully(self, detector: CandidateDetector) -> None:
         """Test that invalid HTML is handled gracefully."""
         text = "We have 50000 customers."
         html = "<<<not valid html>>>"
@@ -343,9 +329,7 @@ class TestTableAwareDetection:
         """
         text = "Active customers [CELL]  [ROW]  [CELL] 1000 [ROW] "
 
-        candidates = detector_no_row_validation.detect(
-            text=text, html=html, segment_type="table"
-        )
+        candidates = detector_no_row_validation.detect(text=text, html=html, segment_type="table")
 
         # With row validation disabled, cross-row match should be allowed
         customer_candidates = [c for c in candidates if "customer" in c.keyword.lower()]
@@ -398,9 +382,7 @@ class TestTableAwareDetection:
 class TestConfidenceScoring:
     """Tests for confidence scoring functionality."""
 
-    def test_close_proximity_increases_confidence(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_close_proximity_increases_confidence(self, detector: CandidateDetector) -> None:
         """Test that closer keyword-value pairs have higher confidence."""
         # Close proximity: keyword right next to value
         text_close = "100 customers"
@@ -416,9 +398,7 @@ class TestConfidenceScoring:
             # Close proximity should have higher or equal confidence
             assert close_conf >= far_conf
 
-    def test_same_cell_increases_confidence(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_same_cell_increases_confidence(self, detector: CandidateDetector) -> None:
         """Test that same-cell matches have higher confidence."""
         html = """
         <table>
@@ -473,9 +453,7 @@ class TestConfidenceScoring:
 class TestStructureParserIntegration:
     """Tests for integration with StructureParser."""
 
-    def test_structure_parser_used_when_html_available(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_structure_parser_used_when_html_available(self, detector: CandidateDetector) -> None:
         """Test that StructureParser is used when HTML is provided."""
         html = """
         <table>
@@ -528,9 +506,7 @@ class TestStructureParserIntegration:
         if user_candidates:
             assert user_candidates[0].value == Decimal("2000")
 
-    def test_detect_in_segment_convenience_method(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_detect_in_segment_convenience_method(self, detector: CandidateDetector) -> None:
         """Test the detect_in_segment convenience method."""
         segment: dict[str, object] = {
             "raw_text": "We have 1000 customers",
@@ -575,9 +551,7 @@ class TestEdgeCases:
         for c in candidates:
             assert c.value != Decimal("5")
 
-    def test_percentages_vs_absolute_numbers(
-        self, detector: CandidateDetector
-    ) -> None:
+    def test_percentages_vs_absolute_numbers(self, detector: CandidateDetector) -> None:
         """Test distinction between percentages and absolute numbers."""
         text = "Retention rate was 95% with 1000 customers."
         candidates = detector.detect(text)

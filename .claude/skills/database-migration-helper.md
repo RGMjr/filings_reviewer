@@ -1,3 +1,7 @@
+---
+description: Generate PostgreSQL migration files following project conventions and create corresponding db.py adapter methods with tests
+---
+
 # Database Migration Helper Skill
 
 **Purpose:** Generate PostgreSQL migration files following project conventions and create corresponding db.py adapter methods with tests.

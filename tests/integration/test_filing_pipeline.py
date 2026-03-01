@@ -20,9 +20,7 @@ class TestRealWorldEdgeCases:
     def fetcher(self, tmp_path):
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
-        return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
-        )
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"), sec_client=sec_client)
 
     @pytest.fixture
     def valid_filing_html(self):
@@ -75,9 +73,7 @@ class TestRealWorldEdgeCases:
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
             # Also patch fetcher's session for the actual filing download
-            with patch.object(
-                fetcher.session, "get", return_value=mock_filing_response
-            ):
+            with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -112,9 +108,7 @@ class TestRealWorldEdgeCases:
 
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
-            with patch.object(
-                fetcher.session, "get", return_value=mock_filing_response
-            ):
+            with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -190,9 +184,7 @@ class TestRealWorldEdgeCases:
 
             mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
-            with patch.object(
-                fetcher.session, "get", return_value=mock_filing_response
-            ):
+            with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
         assert content is not None
@@ -205,9 +197,7 @@ class TestErrorRecovery:
     def fetcher(self, tmp_path):
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
-        return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
-        )
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"), sec_client=sec_client)
 
     def test_retry_after_validation_failure(self, fetcher):
         """Test that invalid content is properly rejected and not saved."""
@@ -312,9 +302,7 @@ class TestBatchProcessing:
     def fetcher(self, tmp_path):
         """Create a full filing fetcher setup."""
         sec_client = SECClient(user_agent="test-client test@example.com")
-        return FilingFetcher(
-            storage_root=str(tmp_path / "test_filings"), sec_client=sec_client
-        )
+        return FilingFetcher(storage_root=str(tmp_path / "test_filings"), sec_client=sec_client)
 
     @pytest.fixture
     def valid_filing_html(self):

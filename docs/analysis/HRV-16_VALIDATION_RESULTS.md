@@ -206,7 +206,7 @@ This is an intentional trade-off for a human review system - fewer but higher-qu
 
 1. **Create Baseline**: Run `--update-baseline` to establish Phase 4 metrics as baseline
    ```bash
-   python scripts/validate_against_gold_standard.py --all --mode db --update-baseline
+   python3 scripts/validate_against_gold_standard.py --all --mode db --update-baseline
    ```
 
 2. **Fix Samsara Metric ID**: Add alias to `config/metric_keywords.yaml`:

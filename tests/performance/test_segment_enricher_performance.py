@@ -30,9 +30,9 @@ from src.extraction.segment_enricher import SegmentEnricher
 # =============================================================================
 # Throughput Thresholds (segments/second)
 # =============================================================================
-MIN_THROUGHPUT_SMALL = 5000    # 100 segments: fast warm-up test
-MIN_THROUGHPUT_MEDIUM = 3000   # 1000 segments: typical filing size
-MIN_THROUGHPUT_LARGE = 300     # 25K segments: stress test (includes overhead)
+MIN_THROUGHPUT_SMALL = 5000  # 100 segments: fast warm-up test
+MIN_THROUGHPUT_MEDIUM = 3000  # 1000 segments: typical filing size
+MIN_THROUGHPUT_LARGE = 300  # 25K segments: stress test (includes overhead)
 
 
 # =============================================================================
@@ -131,7 +131,11 @@ def create_mixed_segments(count: int, paragraph_ratio: float = 0.7) -> list[Sour
                         f"Net Dollar Retention was 130%. ARR grew {15 + i % 30}% to ${i}M."
                     ),
                     raw_html=f"<p>We had {i * 1000} daily active users...</p>",
-                    candidate_metric_ids=["cm_active_users_daily", "cm_net_revenue_retention", "cm_arr"],
+                    candidate_metric_ids=[
+                        "cm_active_users_daily",
+                        "cm_net_revenue_retention",
+                        "cm_arr",
+                    ],
                     classifier_confidence=0.85,
                     sequence_index=i,
                 )
@@ -533,7 +537,11 @@ class TestOverheadValidation:
                 filing_id=1,
                 segment_type="paragraph",
                 raw_text=large_text,
-                candidate_metric_ids=["cm_active_users_daily", "cm_net_revenue_retention", "cm_arr"],
+                candidate_metric_ids=[
+                    "cm_active_users_daily",
+                    "cm_net_revenue_retention",
+                    "cm_arr",
+                ],
                 classifier_confidence=0.85,
                 sequence_index=i,
             )
@@ -545,9 +553,7 @@ class TestOverheadValidation:
         elapsed = time.perf_counter() - start
 
         # Should complete in under 5 seconds even with large segments
-        assert elapsed < 5.0, (
-            f"Large text segments took {elapsed:.1f}s, should complete in < 5s"
-        )
+        assert elapsed < 5.0, f"Large text segments took {elapsed:.1f}s, should complete in < 5s"
 
         # Verify all segments were enriched
         assert all(seg.richness_score is not None for seg in segments)
@@ -628,6 +634,5 @@ class TestScalability:
         # Note: We only check that performance is reasonable, not exact
         # because CI environments have variable performance
         assert mixed_time < table_time * 1.5, (
-            f"Mixed batch ({mixed_time:.3f}s) took too long compared to "
-            f"tables ({table_time:.3f}s)"
+            f"Mixed batch ({mixed_time:.3f}s) took too long compared to tables ({table_time:.3f}s)"
         )

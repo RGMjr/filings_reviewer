@@ -71,6 +71,7 @@ class TestGridValidation:
         assert table_elem is not None
 
         import logging
+
         with caplog.at_level(logging.WARNING):
             table = reconstructor.reconstruct(table_elem, validate=True)
 
@@ -736,9 +737,7 @@ class TestEdgeCases:
 class TestIntegrationSECFiling:
     """Integration tests with real SEC filing table HTML."""
 
-    def test_sec_financial_table_from_slack_filing(
-        self, reconstructor: TableReconstructor
-    ) -> None:
+    def test_sec_financial_table_from_slack_filing(self, reconstructor: TableReconstructor) -> None:
         """Test reconstruction of real SEC financial table with colspan and rowspan.
 
         This table is extracted from Slack Technologies S-1 filing and contains:
@@ -819,3 +818,222 @@ class TestIntegrationSECFiling:
         # Basic sanity: cells count should be less than row_count * col_count
         # because spans reduce the number of unique cells
         assert len(table.cells) < table.row_count * table.col_count
+
+
+class TestFallbackHeaderDetection:
+    """Tests for the <td>-only fallback header detection heuristic."""
+
+    def test_td_only_table_with_period_headers(self, reconstructor: TableReconstructor) -> None:
+        """Multi-tier <td> period headers are detected via fallback (Farfetch-like)."""
+        html = """
+        <table>
+            <tr><td></td><td colspan="2">Six months ended June 30,</td></tr>
+            <tr><td></td><td>2017</td><td>2016</td></tr>
+            <tr><td>Average order value</td><td>$238</td><td>$209</td></tr>
+            <tr><td>Orders placed</td><td>4,123,456</td><td>3,987,654</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # Fallback should detect rows 0 and 1 as headers (row 2 is first financial row)
+        assert table.header_rows == 2
+
+        # Data cells should have header_path populated with period info
+        aov_cell = table.get_cell(2, 1)
+        assert aov_cell is not None
+        assert aov_cell.header_path  # Should have period context, not empty
+
+    def test_bare_years_not_treated_as_financial_data(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Bare 4-digit years in a row should not trigger data detection."""
+        html = """
+        <table>
+            <tr><td></td><td colspan="3">Year ended December 31,</td></tr>
+            <tr><td></td><td>2021</td><td>2022</td><td>2023</td></tr>
+            <tr><td>Revenue</td><td>1,000</td><td>1,500</td><td>2,000</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # Row 1 (bare years) must NOT be treated as financial data,
+        # so both rows 0 and 1 should be headers
+        assert table.header_rows == 2
+
+    def test_fallback_does_not_fire_when_th_rows_exist(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Fallback should not override existing <th>-based detection."""
+        html = """
+        <table>
+            <tr><th>Period</th><th>Value</th></tr>
+            <tr><td>Q1 2023</td><td>$1,234</td></tr>
+            <tr><td>Q2 2023</td><td>$5,678</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # <th>-based detection finds 1 header row; fallback must not interfere
+        assert table.header_rows == 1
+
+    def test_scan_cap_of_8_rows(self, reconstructor: TableReconstructor) -> None:
+        """Fallback scan stops at 8 rows; defaults to 1 if no financial row found."""
+        # 10 rows of prose labels, no financial data in first 8
+        rows = "".join(
+            f"<tr><td>Label {i}</td><td>Label {i} B</td><td>Label {i} C</td></tr>"
+            for i in range(10)
+        )
+        html = f"<table>{rows}</table>"
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # No financial data in first 8 rows → defaults to 1
+        assert table.header_rows == 1
+
+    def test_financial_row_at_index_zero_defaults_to_one(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """When the very first row is financial, default to 1 header row."""
+        html = """
+        <table>
+            <tr><td>Revenue</td><td>$1,234</td><td>$5,678</td></tr>
+            <tr><td>Profit</td><td>$234</td><td>$678</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # row_idx=0 → header_row_count=0 → max(1, 0)=1
+        assert table.header_rows == 1
+
+    def test_is_financial_data_row_positives(self, reconstructor: TableReconstructor) -> None:
+        """_is_financial_data_row returns True for rows with financial values."""
+        from src.extraction_v2.models import Cell
+
+        def make_row(texts: list[str]) -> list[Cell | None]:
+            return [
+                Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate(texts)
+            ]
+
+        # Dollar amounts
+        assert reconstructor._is_financial_data_row(
+            make_row(["$1,234", "$5,678", "$9,012"])
+        )
+        # Comma-formatted numbers
+        assert reconstructor._is_financial_data_row(
+            make_row(["1,234", "5,678", "9,012"])
+        )
+        # Percentages
+        assert reconstructor._is_financial_data_row(
+            make_row(["12%", "34%", "56%"])
+        )
+        # Parenthesized negatives
+        assert reconstructor._is_financial_data_row(
+            make_row(["(1,234)", "(5,678)", "(9,012)"])
+        )
+
+    def test_is_financial_data_row_negatives(self, reconstructor: TableReconstructor) -> None:
+        """_is_financial_data_row returns False for prose/year rows."""
+        from src.extraction_v2.models import Cell
+
+        def make_row(texts: list[str]) -> list[Cell | None]:
+            return [
+                Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate(texts)
+            ]
+
+        # Bare 4-digit years (must not trigger)
+        assert not reconstructor._is_financial_data_row(
+            make_row(["2021", "2022", "2023"])
+        )
+        # Prose labels
+        assert not reconstructor._is_financial_data_row(
+            make_row(["Revenue", "Profit", "Loss"])
+        )
+        # Fewer than 3 non-empty cells (sparse row)
+        assert not reconstructor._is_financial_data_row(
+            make_row(["$1,234", "$5,678"])
+        )
+        # Empty cells
+        assert not reconstructor._is_financial_data_row(
+            make_row(["", "", ""])
+        )
+
+
+class TestDateHeaderFix:
+    """Tests for the date-header false-positive fix in _is_financial_data_row."""
+
+    def test_date_header_not_classified_as_financial_data(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Cells with date text like 'April\xa030,\n2017' must not trigger financial detection."""
+        from src.extraction_v2.models import Cell
+        row = [Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate([
+            "April\xa030,\n2017", "July\xa031,\n2017", "October\xa031,\n2017",
+            "January\xa031,\n2018", "April\xa030,\n2018", "July\xa031,\n2018",
+            "October\xa031,\n2018", "January\xa031,\n2019", "April\xa030,\n2019",
+        ])]
+        assert not reconstructor._is_financial_data_row(row)
+
+    def test_financial_data_row_still_detected(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Rows with actual financial values still trigger detection."""
+        from src.extraction_v2.models import Cell
+        row = [Cell(row=0, col=i, text=t, is_header=False) for i, t in enumerate([
+            "Paid Customers", "42,000", "47,000", "53,000", "58,000", "64,000",
+            "70,000", "77,000", "84,000", "91,000",
+        ])]
+        assert reconstructor._is_financial_data_row(row)
+
+    def test_date_formats_edge_cases(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Various date format variations should not trigger financial detection."""
+        from src.extraction_v2.models import Cell
+        cases = [
+            "Jan 31, 2020",
+            "Feb\xa028\n2019",
+            "Mar 31 2018",
+            "Dec 31, 2021",
+            "Sep\xa030,\n2019",
+        ]
+        for date_text in cases:
+            row = [Cell(row=0, col=i, text=date_text, is_header=False) for i in range(3)]
+            assert not reconstructor._is_financial_data_row(row), f"Failed for: {date_text!r}"
+
+    def test_slack_quarterly_metrics_table(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Integration: Slack quarterly fixture should have 4 header rows after fix."""
+        import pathlib
+
+        from bs4 import BeautifulSoup
+        fixture = (
+            pathlib.Path(__file__).parent.parent.parent
+            / "fixtures" / "tables" / "slack_quarterly_metrics.html"
+        )
+        html = fixture.read_text(encoding="utf-8")
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+        table = reconstructor.reconstruct(table_elem)
+        assert table.header_rows == 4
+        assert table.stub_cols >= 1

@@ -22,7 +22,9 @@ class SourceSegment:
     filing_id: int
 
     # Segment metadata
-    segment_type: str  # 'paragraph', 'table', 'footnote', 'definition_block', 'methodology_block', 'other'
+    segment_type: (
+        str  # 'paragraph', 'table', 'footnote', 'definition_block', 'methodology_block', 'other'
+    )
     section_path: str | None = None  # e.g., "Item 1. Business > Customers"
     section_heading: str | None = None
     sequence_index: int = 0  # Order within filing (0-based)
@@ -58,7 +60,9 @@ class SourceSegment:
     contains_cohort_breakdown: bool = False  # True if segment contains cohort analysis patterns
     image_count: int = 0  # Count of meaningful images/charts in segment
     richness_score: float | None = None  # Composite score 0-10 (computed by enricher)
-    extra_metadata: dict[str, Any] | None = None  # Additional enrichment metadata (e.g., SaaS indicators)
+    extra_metadata: dict[str, Any] | None = (
+        None  # Additional enrichment metadata (e.g., SaaS indicators)
+    )
 
     # Database fields (populated after insert)
     source_segment_id: int | None = None
@@ -128,9 +132,7 @@ class MetricValue:
     # Time dimensions
     period_start: date | None = None
     period_end: date | None = None
-    period_type: str | None = (
-        None  # 'fy', 'quarter', 'month', 'ttm', 'since_inception'
-    )
+    period_type: str | None = None  # 'fy', 'quarter', 'month', 'ttm', 'since_inception'
 
     # Cohort dimensions
     cohort_type: str | None = None  # 'acquisition', 'tenure', 'other'
@@ -138,17 +140,13 @@ class MetricValue:
     cohort_bucket_normalized: str | None = None  # Standardized bucket
 
     # Customer segmentation dimensions
-    segment_dimension: str | None = (
-        None  # e.g., 'customer_type', 'product', 'geography'
-    )
+    segment_dimension: str | None = None  # e.g., 'customer_type', 'product', 'geography'
     segment_value: str | None = None  # e.g., 'enterprise', 'SMB', 'US'
 
     # Quality / alignment
     qa_status: str = "unreviewed"  # 'unreviewed', 'pass', 'warning', 'fail'
     qa_notes: str | None = None
-    alignment_flag: str | None = (
-        None  # 'aligned', 'partial', 'not_aligned', 'unknown'
-    )
+    alignment_flag: str | None = None  # 'aligned', 'partial', 'not_aligned', 'unknown'
 
     # Database fields
     metric_value_id: int | None = None
@@ -209,9 +207,7 @@ class MetricDefinition:
     methodology_segment_id: int | None = None
 
     # Alignment
-    alignment_flag: str | None = (
-        None  # 'aligned', 'partial', 'not_aligned', 'unknown'
-    )
+    alignment_flag: str | None = None  # 'aligned', 'partial', 'not_aligned', 'unknown'
     alignment_notes: str | None = None
 
     # Database fields

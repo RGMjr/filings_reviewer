@@ -249,9 +249,7 @@ class FeatureExtractor:
         is_in_table = (segment_type == "table") if segment_type else False
 
         # Check for risk factors section
-        is_in_risk_factors = self._check_risk_factors(
-            context_text, section_heading, section_path
-        )
+        is_in_risk_factors = self._check_risk_factors(context_text, section_heading, section_path)
 
         # Get section name
         section_name = section_heading if section_heading else None
@@ -340,9 +338,7 @@ class FeatureExtractor:
             return "decimal"
         return "integer"
 
-    def _compute_value_magnitude(
-        self, number_value: Decimal | None
-    ) -> float | None:
+    def _compute_value_magnitude(self, number_value: Decimal | None) -> float | None:
         """
         Compute log10 of absolute value.
 

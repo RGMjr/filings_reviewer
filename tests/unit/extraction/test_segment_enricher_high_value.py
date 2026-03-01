@@ -293,9 +293,7 @@ class TestFormulaIntegration:
         assert segment.richness_score is not None
         assert segment.richness_score == 10.0  # Capped at maximum
 
-    def test_regression_without_high_value_metrics(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_regression_without_high_value_metrics(self, enricher: SegmentEnricher) -> None:
         """Segments without high-value metrics still score correctly (regression)."""
         segment = make_segment(
             candidate_metric_ids=["cm_arr", "cm_mrr", "cm_active_customers_total"],

@@ -10,7 +10,6 @@ Test categories:
 4. Edge Cases - Empty text, single rows, boundary conditions
 """
 
-
 from src.review.marker_row_parser import MarkerRow, MarkerRowParser
 
 

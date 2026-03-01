@@ -211,6 +211,12 @@ LABEL_EMBEDDED_VALUE_PATTERN: Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# Ambiguous magnitude suffix pattern
+# Detects "375 b", "610 b" etc. where a space precedes a single-letter suffix.
+# Real magnitude suffixes are typically attached ("375B", "$610M") or spelled out
+# ("375 billion"). A space + single letter usually means a column label or footnote.
+AMBIGUOUS_MAGNITUDE_SUFFIX: Pattern[str] = re.compile(r"^\d[\d,]*\s+[bmkBMK]$")
+
 # Year range - numbers in this range are likely years, not metrics
 # (imported from config.py for centralized configuration)
 YEAR_MIN = YEAR_MIN
@@ -241,7 +247,7 @@ TOC_HEADERS = [
 # Dot leader pattern - indicates page number in table of contents
 # Matches patterns like "... 12" or "........ 23" (3+ dots followed by optional whitespace)
 # Updated to handle whitespace before number more flexibly
-TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
+TOC_DOT_LEADER_PATTERN = re.compile(r"\.{3,}\s*$")
 
 
 # =============================================================================
@@ -251,58 +257,88 @@ TOC_DOT_LEADER_PATTERN = re.compile(r'\.{3,}\s*$')
 # Financial statement header patterns
 FINANCIAL_STATEMENT_HEADERS: list[Pattern[str]] = [
     # Income statement / P&L variations
-    re.compile(r'\bconsolidated\s+statements?\s+of\s+(?:operations|income)', re.IGNORECASE),
-    re.compile(r'\bincome\s+statements?', re.IGNORECASE),
-    re.compile(r'\bstatements?\s+of\s+(?:operations|earnings|income)', re.IGNORECASE),
-    re.compile(r'\bconsolidated\s+results?\s+of\s+operations', re.IGNORECASE),
-
+    re.compile(r"\bconsolidated\s+statements?\s+of\s+(?:operations|income)", re.IGNORECASE),
+    re.compile(r"\bincome\s+statements?", re.IGNORECASE),
+    re.compile(r"\bstatements?\s+of\s+(?:operations|earnings|income)", re.IGNORECASE),
+    re.compile(r"\bconsolidated\s+results?\s+of\s+operations", re.IGNORECASE),
     # Balance sheet variations
-    re.compile(r'\bconsolidated\s+balance\s+sheets?', re.IGNORECASE),
-    re.compile(r'\bstatements?\s+of\s+financial\s+position', re.IGNORECASE),
-    re.compile(r'\bbalance\s+sheet\s+data', re.IGNORECASE),
-
+    re.compile(r"\bconsolidated\s+balance\s+sheets?", re.IGNORECASE),
+    re.compile(r"\bstatements?\s+of\s+financial\s+position", re.IGNORECASE),
+    re.compile(r"\bbalance\s+sheet\s+data", re.IGNORECASE),
     # Cash flow statement variations
-    re.compile(r'\bconsolidated\s+statements?\s+of\s+cash\s+flows?', re.IGNORECASE),
-    re.compile(r'\bstatements?\s+of\s+cash\s+flows?', re.IGNORECASE),
-
+    re.compile(r"\bconsolidated\s+statements?\s+of\s+cash\s+flows?", re.IGNORECASE),
+    re.compile(r"\bstatements?\s+of\s+cash\s+flows?", re.IGNORECASE),
     # Summary financial data tables
-    re.compile(r'\bsummary\s+(?:consolidated\s+)?(?:financial|operating)\s+data', re.IGNORECASE),
-    re.compile(r'\bselected\s+financial\s+data', re.IGNORECASE),
+    re.compile(r"\bsummary\s+(?:consolidated\s+)?(?:financial|operating)\s+data", re.IGNORECASE),
+    re.compile(r"\bselected\s+financial\s+data", re.IGNORECASE),
 ]
 
 # Financial statement line item keywords that should NOT be treated as customer metrics
 FINANCIAL_LINE_ITEM_KEYWORDS: list[str] = [
     # Income statement line items
-    'revenue', 'total revenue', 'net revenue', 'revenues',
-    'cost of revenue', 'cost of sales', 'cost of goods sold', 'cogs',
-    'gross profit', 'gross income',
-    'operating expenses', 'operating income', 'operating loss',
-    'research and development', 'r&d expenses',
-    'sales and marketing', 'general and administrative',
-    'net income', 'net loss', 'net earnings',
-    'income from operations', 'loss from operations',
-    'earnings per share', 'eps', 'diluted eps', 'basic eps',
-
+    "revenue",
+    "total revenue",
+    "net revenue",
+    "revenues",
+    "cost of revenue",
+    "cost of sales",
+    "cost of goods sold",
+    "cogs",
+    "gross profit",
+    "gross income",
+    "operating expenses",
+    "operating income",
+    "operating loss",
+    "research and development",
+    "r&d expenses",
+    "sales and marketing",
+    "general and administrative",
+    "net income",
+    "net loss",
+    "net earnings",
+    "income from operations",
+    "loss from operations",
+    "earnings per share",
+    "eps",
+    "diluted eps",
+    "basic eps",
     # Balance sheet line items
-    'total assets', 'current assets', 'non-current assets',
-    'cash and cash equivalents', 'cash equivalents', 'marketable securities',
-    'accounts receivable', 'inventory', 'prepaid expenses',
-    'property and equipment', 'intangible assets', 'goodwill',
-    'total liabilities', 'current liabilities', 'long-term liabilities',
-    'accounts payable', 'accrued expenses', 'accrued liabilities',
-    'deferred revenue', 'unearned revenue',
-    'working capital',
-    'stockholders equity', 'shareholders equity', 'total equity',
-
+    "total assets",
+    "current assets",
+    "non-current assets",
+    "cash and cash equivalents",
+    "cash equivalents",
+    "marketable securities",
+    "accounts receivable",
+    "inventory",
+    "prepaid expenses",
+    "property and equipment",
+    "intangible assets",
+    "goodwill",
+    "total liabilities",
+    "current liabilities",
+    "long-term liabilities",
+    "accounts payable",
+    "accrued expenses",
+    "accrued liabilities",
+    "deferred revenue",
+    "unearned revenue",
+    "working capital",
+    "stockholders equity",
+    "shareholders equity",
+    "total equity",
     # Cash flow line items
-    'cash flows from operating activities',
-    'cash flows from investing activities',
-    'cash flows from financing activities',
-    'free cash flow', 'operating cash flow',
-
+    "cash flows from operating activities",
+    "cash flows from investing activities",
+    "cash flows from financing activities",
+    "free cash flow",
+    "operating cash flow",
     # Common financial ratios and changes
-    '$ change', '% change', 'percent change',
-    'increase', 'decrease',
+    "$ change",
+    "% change",
+    "percent change",
+    "increase",
+    "decrease",
 ]
 
 # Proximity threshold for financial statement context (characters)
@@ -315,37 +351,39 @@ FINANCIAL_STATEMENT_PROXIMITY_CHARS = 500
 
 # Metrics that should ONLY be percentages (not raw counts or dollar amounts)
 PERCENTAGE_ONLY_METRICS: set[str] = {
-    'cm_net_revenue_retention',  # NDR should be 143%, not 143 or $143
-    'cm_gross_retention_rate',
-    'cm_customer_retention_rate',
-    'cm_customer_churn_rate',
-    'cm_ltv_cac_ratio',  # Ratio, expect decimal or %
+    "cm_net_revenue_retention",  # NDR should be 143%, not 143 or $143
+    "cm_gross_retention_rate",
+    "cm_customer_retention_rate",
+    "cm_customer_churn_rate",
+    "cm_ltv_cac_ratio",  # Ratio, expect decimal or %
 }
 
 # Metrics that should ONLY be dollar amounts (not percentages or plain counts)
 DOLLAR_ONLY_METRICS: set[str] = {
-    'cm_arr',  # ARR should be $X million, not 40% or 100
-    'cm_mrr',  # MRR should be $X million, not 40% or 100
-    'cm_tcv',  # Total contract value
-    'cm_acv',  # Annual contract value
-    'cm_ltv',  # Lifetime value
-    'cm_cac',  # Customer acquisition cost
-    'cm_arpu',  # Average revenue per user
+    "cm_arr",  # ARR should be $X million, not 40% or 100
+    "cm_mrr",  # MRR should be $X million, not 40% or 100
+    "cm_tcv",  # Total contract value
+    "cm_acv",  # Annual contract value
+    "cm_ltv",  # Lifetime value
+    "cm_cac",  # Customer acquisition cost
+    "cm_arpu",  # Average revenue per user
+    "cm_average_order_value",  # AOV should be $X, not percentages
 }
 
 # Metrics that should ONLY be counts (not percentages or dollars)
 COUNT_ONLY_METRICS: set[str] = {
-    'cm_customer',  # Customer count
-    'cm_daily_active_users',  # DAU count
-    'cm_weekly_active_users',  # WAU count
-    'cm_monthly_active_users',  # MAU count
-    'cm_paid_users',
-    'cm_subscribers',
+    "cm_customer",  # Customer count
+    "cm_daily_active_users",  # DAU count
+    "cm_weekly_active_users",  # WAU count
+    "cm_monthly_active_users",  # MAU count
+    "cm_paid_users",
+    "cm_subscribers",
     # Customer count metrics (added 2026-01-07 - were missing, causing % false matches)
-    'cm_customers_period_end',
-    'cm_active_customers_total',
-    'cm_large_customers_period_end',
-    'cm_new_customers_acquired',
+    "cm_customers_period_end",
+    "cm_active_customers_total",
+    "cm_large_customers_period_end",
+    "cm_new_customers_acquired",
+    "cm_purchase_transactions_overall",  # Order count, not percentages
 }
 
 
@@ -382,15 +420,15 @@ def is_percentage_format(raw_text: str, unit: str) -> bool:
     since metrics like NRR are often expressed as decimals (e.g., 1.25 = 125%).
     """
     # Explicit percentage format
-    if '%' in raw_text or unit == 'percentage':
+    if "%" in raw_text or unit == "percentage":
         return True
 
     # Decimal ratio format (common for retention rates like 1.25 = 125%)
     # Accept values in 0.5 to 2.5 range with decimal point
-    if '.' in raw_text and unit == 'count':
+    if "." in raw_text and unit == "count":
         try:
             # Remove any non-numeric chars except decimal point
-            cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
+            cleaned = "".join(c for c in raw_text if c.isdigit() or c == ".")
             val = float(cleaned)
             # Retention rates typically 0.5 (50%) to 2.0 (200%)
             if 0.5 <= val <= 2.5:
@@ -401,7 +439,9 @@ def is_percentage_format(raw_text: str, unit: str) -> bool:
     return False
 
 
-def should_treat_as_percentage(metric_id: str, raw_text: str, unit: str, context_text: str | None = None) -> bool:
+def should_treat_as_percentage(
+    metric_id: str, raw_text: str, unit: str, context_text: str | None = None
+) -> bool:
     """
     Context-based percentage detection for retention metrics.
 
@@ -437,14 +477,27 @@ def should_treat_as_percentage(metric_id: str, raw_text: str, unit: str, context
 
     # FIX-A: Retention metrics with retention context are percentages
     # This handles values like "138" that should be "138%" in retention contexts
-    if metric_id in {'cm_net_revenue_retention', 'cm_gross_revenue_retention', 'cm_gross_retention_rate'}:
+    if metric_id in {
+        "cm_net_revenue_retention",
+        "cm_gross_revenue_retention",
+        "cm_gross_retention_rate",
+    }:
         if context_text:
             context_lower = context_text.lower()
             # Check for retention-related keywords in context
             retention_keywords = [
-                'retention', 'retained', 'churn', 'renewal', 'renewals',
-                'net dollar retention', 'ndr', 'net revenue retention', 'nrr',
-                'gross retention', 'grr', 'dollar-based net expansion'
+                "retention",
+                "retained",
+                "churn",
+                "renewal",
+                "renewals",
+                "net dollar retention",
+                "ndr",
+                "net revenue retention",
+                "nrr",
+                "gross retention",
+                "grr",
+                "dollar-based net expansion",
             ]
             if any(keyword in context_lower for keyword in retention_keywords):
                 return True
@@ -454,12 +507,12 @@ def should_treat_as_percentage(metric_id: str, raw_text: str, unit: str, context
 
 def is_dollar_format(raw_text: str, unit: str) -> bool:
     """Check if a number is in dollar format."""
-    return '$' in raw_text or unit in ('currency', 'usd')
+    return "$" in raw_text or unit in ("currency", "usd")
 
 
 def is_count_format(raw_text: str, unit: str) -> bool:
     """Check if a number is a plain count (not percentage or dollar)."""
-    return unit == 'count' and '%' not in raw_text and '$' not in raw_text
+    return unit == "count" and "%" not in raw_text and "$" not in raw_text
 
 
 # =============================================================================
@@ -468,9 +521,7 @@ def is_count_format(raw_text: str, unit: str) -> bool:
 
 
 def is_in_financial_statement_context(
-    text: str,
-    number_position: int,
-    proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS
+    text: str, number_position: int, proximity_chars: int = FINANCIAL_STATEMENT_PROXIMITY_CHARS
 ) -> bool:
     """
     Check if a number appears within a financial statement context.
@@ -555,9 +606,7 @@ def contains_financial_line_item_keyword(text: str) -> str | None:
 
 
 def is_near_table_of_contents(
-    text: str,
-    number_position: int,
-    proximity_chars: int = TOC_PROXIMITY_CHARS
+    text: str, number_position: int, proximity_chars: int = TOC_PROXIMITY_CHARS
 ) -> bool:
     """
     Check if a number appears near a "Table of Contents" header.
@@ -602,9 +651,7 @@ def is_near_table_of_contents(
 
 
 def is_toc_page_reference(
-    text: str,
-    number_position: int,
-    window_chars: int = TOC_DOT_LEADER_WINDOW
+    text: str, number_position: int, window_chars: int = TOC_DOT_LEADER_WINDOW
 ) -> bool:
     """
     Check if a number is part of a TOC page reference with dot leaders.
@@ -660,8 +707,7 @@ def is_toc_page_reference(
     # Matches: "Item 1A.", "Part II", "Section 3", "Chapter 5"
     # Look for these patterns anywhere in the preceding text (not just at end)
     section_heading_pattern = re.compile(
-        r'(?:Item|Part|Section|Chapter)\s+[IVX0-9]+[A-Z]?\b',
-        re.IGNORECASE
+        r"(?:Item|Part|Section|Chapter)\s+[IVX0-9]+[A-Z]?\b", re.IGNORECASE
     )
     if section_heading_pattern.search(preceding_text):
         return True
@@ -719,9 +765,7 @@ class FalsePositiveFilter:
         self.filter_financial_statements = filter_financial_statements
         self.financial_statement_proximity_chars = financial_statement_proximity_chars
 
-    def is_false_positive(
-        self, text: str, number: NumberMatch
-    ) -> tuple[bool, str | None]:
+    def is_false_positive(self, text: str, number: NumberMatch) -> tuple[bool, str | None]:
         """
         Check if a number match is likely a false positive.
 
@@ -749,13 +793,21 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, decimals, and spelled-out)
+        # Check minimum value threshold (skip for percentages, currency, and decimals)
         # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
-        # Spelled-out numbers like "six" are intentionally written - likely meaningful
+        # Note: Spelled-out numbers ("three", "one") are no longer exempted because
+        # bare spelled-out words below min_value are almost always narrative noise
+        # (e.g., "three main factors"), while meaningful ones ("six million") have
+        # values far above min_value after magnitude parsing.
         if number.unit == "count" and value is not None:
             is_decimal = "." in number.raw_text
-            if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
+            if not is_decimal and abs(float(value)) < self.min_value:
                 return True, "below_min_value"
+
+        # Check for ambiguous magnitude suffix (e.g., "375 b", "610 b")
+        # A space before a single-letter suffix usually means a column label, not "billion"
+        if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
+            return True, "ambiguous_magnitude_suffix"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":
@@ -772,11 +824,11 @@ class FalsePositiveFilter:
         is_integer_format = "." not in number.raw_text
         is_small_value = value is not None and abs(float(value)) < 1000
 
-        if is_plain_count and is_integer_format and is_small_value and not is_spelled_out_number(number.raw_text):
+        if is_plain_count and is_integer_format and is_small_value:
             if is_near_table_of_contents(text, start, self.toc_proximity_chars):
                 logger.debug(
                     f"TOC proximity filter: number={number.raw_text} "
-                    f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+                    f"context={text[max(0, start - 30) : min(len(text), end + 30)]!r}"
                 )
                 return True, "toc_proximity"
 
@@ -784,7 +836,7 @@ class FalsePositiveFilter:
         if is_toc_page_reference(text, start, self.toc_dot_leader_window):
             logger.debug(
                 f"TOC dot leader filter: number={number.raw_text} "
-                f"context={text[max(0, start-30):min(len(text), end+30)]!r}"
+                f"context={text[max(0, start - 30) : min(len(text), end + 30)]!r}"
             )
             return True, "toc_page_reference"
 
@@ -819,7 +871,7 @@ class FalsePositiveFilter:
         if self._is_label_embedded_value(text, number):
             logger.debug(
                 f"Label-embedded value filter: number={number.raw_text} "
-                f"context={text[max(0, start-30):min(len(text), end+10)]!r}"
+                f"context={text[max(0, start - 30) : min(len(text), end + 10)]!r}"
             )
             return True, "label_embedded_value"
 
@@ -838,7 +890,7 @@ class FalsePositiveFilter:
                     logger.debug(
                         f"Financial statement filter: number={number.raw_text} "
                         f"keyword={financial_keyword!r} "
-                        f"context={text[max(0, start-50):min(len(text), end+50)]!r}"
+                        f"context={text[max(0, start - 50) : min(len(text), end + 50)]!r}"
                     )
                     return True, f"financial_line_item:{financial_keyword}"
 

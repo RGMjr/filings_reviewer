@@ -7,7 +7,6 @@ including segmentation, classification, value extraction, and quality scoring.
 Requires: PostgreSQL database (TEST_DATABASE_URL environment variable)
 """
 
-
 from src.extraction.extraction_pipeline import ExtractionPipeline
 from src.extraction.html_segmenter import HTMLSegmenter
 from src.extraction.metric_classifier import MetricClassifier
@@ -39,7 +38,7 @@ class TestExtractionPipelineIntegration:
         # Verify segments were written to database
         segments = db.query(
             "SELECT * FROM source_segments WHERE filing_id = %(filing_id)s",
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
         assert len(segments) == result.num_segments
 
@@ -70,7 +69,7 @@ class TestExtractionPipelineIntegration:
         # Get segment count
         segments1 = db.query(
             "SELECT COUNT(*) as count FROM source_segments WHERE filing_id = %(filing_id)s",
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
         count1 = segments1[0]["count"]
 
@@ -81,7 +80,7 @@ class TestExtractionPipelineIntegration:
         # Get segment count after re-run
         segments2 = db.query(
             "SELECT COUNT(*) as count FROM source_segments WHERE filing_id = %(filing_id)s",
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
         count2 = segments2[0]["count"]
 
@@ -101,7 +100,7 @@ class TestExtractionPipelineIntegration:
         # Check for extracted values in database
         values = db.query(
             "SELECT * FROM metric_values WHERE filing_id = %(filing_id)s",
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
 
         # Should have extracted some values (MAUs, customer count, etc.)
@@ -123,7 +122,7 @@ class TestExtractionPipelineIntegration:
         # Check for incidence records (quality scores)
         incidences = db.query(
             "SELECT * FROM filing_metric_incidence WHERE filing_id = %(filing_id)s",
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
 
         # Should have incidence records
@@ -153,7 +152,7 @@ class TestExtractionPipelineIntegration:
             WHERE filing_id = %(filing_id)s
             LIMIT 1
             """,
-            {"filing_id": filing_info["filing_id"]}
+            {"filing_id": filing_info["filing_id"]},
         )
 
         assert len(segments) > 0
@@ -222,11 +221,10 @@ class TestMetricClassifierIntegration:
 
         # Find segments with MAU-related metrics
         mau_segments = [
-            s for s in classified
-            if s.candidate_metric_ids and any(
-                "active" in m.lower() or "mau" in m.lower()
-                for m in s.candidate_metric_ids
-            )
+            s
+            for s in classified
+            if s.candidate_metric_ids
+            and any("active" in m.lower() or "mau" in m.lower() for m in s.candidate_metric_ids)
         ]
 
         # Should identify at least one MAU-related segment

@@ -19,7 +19,7 @@ cd "$REPO_ROOT"
 # Check if docs sync script exists
 if [ -f "scripts/check_docs_sync.py" ]; then
     # Run docs check (quiet mode, don't fail on warnings)
-    python scripts/check_docs_sync.py --quiet 2>/dev/null || {
+    python3 scripts/check_docs_sync.py --quiet 2>/dev/null || {
         echo ""
         echo "⚠️  Documentation may be stale. Run 'make docs-check' for details."
         echo "   (Commit continues - this is just a warning)"

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Conditional import for charset-normalizer (graceful degradation)
 try:
     from charset_normalizer import from_bytes
+
     CHARSET_NORMALIZER_AVAILABLE = True
 except ImportError:
     CHARSET_NORMALIZER_AVAILABLE = False
@@ -258,11 +259,12 @@ class HTMLSegmenter:
 
         # Extract all segments
         for element in main_content.find_all(
-            ["p", "table", "div", "ul", "ol", "blockquote", "pre", "figure"],
-            recursive=True
+            ["p", "table", "div", "ul", "ol", "blockquote", "pre", "figure"], recursive=True
         ):
             # Skip if element is nested inside a table (we'll capture the whole table)
-            if element.name in ("p", "blockquote", "pre", "figure") and element.find_parent("table"):
+            if element.name in ("p", "blockquote", "pre", "figure") and element.find_parent(
+                "table"
+            ):
                 continue
 
             # Skip list items nested inside another list (we'll handle from outer list)
@@ -511,8 +513,7 @@ class HTMLSegmenter:
                 return None
 
             logger.debug(
-                f"Auto-detected encoding {encoding} for {path} "
-                f"(confidence: {confidence:.2f})"
+                f"Auto-detected encoding {encoding} for {path} (confidence: {confidence:.2f})"
             )
             return encoding
 
@@ -689,7 +690,7 @@ class HTMLSegmenter:
         # from truncated HTML to ensure consistency.
         if segment_type == "table" or element.name == "table":
             # Tables: extract from FULL element, let _handle_large_table handle summarization
-            raw_html = full_html[:self.TABLE_MAX_LENGTH]
+            raw_html = full_html[: self.TABLE_MAX_LENGTH]
             raw_text = self._extract_table_text_with_markers(element)
         else:
             # Non-tables: HRV-22 FIX - truncate HTML first, then extract text
@@ -793,9 +794,7 @@ class HTMLSegmenter:
         return True
 
     def _split_composite_segment(
-        self,
-        segment: SourceSegment,
-        parsed_element: Tag | None = None
+        self, segment: SourceSegment, parsed_element: Tag | None = None
     ) -> list[SourceSegment]:
         """
         Split a segment containing both text and tables into separate segments.
@@ -1150,7 +1149,9 @@ class HTMLSegmenter:
 
         except Exception as e:
             # Any error in table parsing should fall back to standard normalization
-            logger.warning(f"Error extracting table text with markers: {e}, falling back to standard normalization")
+            logger.warning(
+                f"Error extracting table text with markers: {e}, falling back to standard normalization"
+            )
             return self._normalize_text(element.get_text())
 
     # =========================================================================
@@ -1250,7 +1251,7 @@ class HTMLSegmenter:
         # No complete sentence fits - fall back to truncation at max_length
         # This should be rare (would mean first sentence is > max_length)
         logger.debug(
-            f"No complete sentence fits within {max_length} chars, " f"truncating mid-sentence"
+            f"No complete sentence fits within {max_length} chars, truncating mid-sentence"
         )
         return text[:max_length]
 
@@ -1276,8 +1277,10 @@ class HTMLSegmenter:
         stripped = text.rstrip()
         if stripped and stripped[-1] in ".!?":
             # Text already ends at sentence boundary
-            return text if len(text) <= max_length else self._truncate_at_sentence_boundary(
-                text, max_length
+            return (
+                text
+                if len(text) <= max_length
+                else self._truncate_at_sentence_boundary(text, max_length)
             )
 
         # Text was cut mid-sentence - find the last complete sentence
@@ -1294,8 +1297,10 @@ class HTMLSegmenter:
         if last_sentence_text and last_sentence_text[-1] in ".!?":
             # Last sentence is complete - return up to its end
             result = text[: last_boundary.end].rstrip()
-            return result if len(result) <= max_length else self._truncate_at_sentence_boundary(
-                result, max_length
+            return (
+                result
+                if len(result) <= max_length
+                else self._truncate_at_sentence_boundary(result, max_length)
             )
 
         # Last sentence is incomplete - find the previous complete sentence
@@ -1303,8 +1308,10 @@ class HTMLSegmenter:
             sentence_text = text[boundary.start : boundary.end].rstrip()
             if sentence_text and sentence_text[-1] in ".!?":
                 result = text[: boundary.end].rstrip()
-                return result if len(result) <= max_length else self._truncate_at_sentence_boundary(
-                    result, max_length
+                return (
+                    result
+                    if len(result) <= max_length
+                    else self._truncate_at_sentence_boundary(result, max_length)
                 )
 
         # No complete sentences found - return original
@@ -1430,7 +1437,6 @@ class HTMLSegmenter:
                 and merge_count < self.DEFINITION_LOOKAHEAD_MAX
                 and len(merged_text) < self.DEFINITION_MAX_COMBINED_LENGTH
             ):
-
                 next_seg = segments[j]
 
                 # Only merge same-type segments that look like continuations
@@ -1462,8 +1468,7 @@ class HTMLSegmenter:
                     segment.raw_html = None
                 segment.definition_merged_count = merge_count
                 logger.debug(
-                    f"Merged {merge_count} segments into definition "
-                    f"({len(segment.raw_text)} chars)"
+                    f"Merged {merge_count} segments into definition ({len(segment.raw_text)} chars)"
                 )
 
             merged.append(segment)
@@ -1573,9 +1578,7 @@ class HTMLSegmenter:
             sample_size = 1000
 
             # Beginning sample (~1000 chars)
-            first_sample = self._truncate_at_word_boundary(
-                raw_text[:sample_size], sample_size
-            )
+            first_sample = self._truncate_at_word_boundary(raw_text[:sample_size], sample_size)
 
             # Calculate middle position, ensuring no overlap with beginning
             text_len = len(raw_text)
@@ -1599,7 +1602,7 @@ class HTMLSegmenter:
                 # Find first space after position 0 to start at word boundary
                 first_space = last_sample.find(" ")
                 if 0 < first_space < 100:
-                    last_sample = last_sample[first_space + 1:]
+                    last_sample = last_sample[first_space + 1 :]
 
             # Build the summary with markers
             summary_parts.append(first_sample)

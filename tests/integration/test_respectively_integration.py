@@ -104,10 +104,10 @@ class TestRespectivelyEndToEnd:
         assert len(candidates) >= 3, f"Expected at least 3 candidates, got {len(candidates)}"
 
         # Verify all three periods are represented
-        periods = {
-            c.features.detected_period for c in candidates if c.features
-        }
-        assert periods == {"2015", "2016", "2017"}, f"Expected periods {{2015, 2016, 2017}}, got {periods}"
+        periods = {c.features.detected_period for c in candidates if c.features}
+        assert periods == {"2015", "2016", "2017"}, (
+            f"Expected periods {{2015, 2016, 2017}}, got {periods}"
+        )
 
         # Verify all three values are represented
         values = {c.parsed_value for c in candidates}
@@ -119,8 +119,9 @@ class TestRespectivelyEndToEnd:
         for candidate in candidates:
             assert candidate.features is not None
             assert candidate.features.respectively_confidence is not None
-            assert candidate.features.respectively_confidence >= 0.8, \
+            assert candidate.features.respectively_confidence >= 0.8, (
                 f"Expected high confidence (>=0.8), got {candidate.features.respectively_confidence}"
+            )
 
     def test_farfetch_margin_end_to_end(self, clean_db, farfetch_margin_data):
         """Test end-to-end: Gross margin with period associations."""
@@ -139,7 +140,9 @@ class TestRespectivelyEndToEnd:
 
         # Verify all three periods are represented
         periods = {c.features.detected_period for c in candidates if c.features}
-        assert periods == {"2015", "2016", "2017"}, f"Expected periods {{2015, 2016, 2017}}, got {periods}"
+        assert periods == {"2015", "2016", "2017"}, (
+            f"Expected periods {{2015, 2016, 2017}}, got {periods}"
+        )
 
         # Verify percentage values (divide by 100 since parsed as decimals)
         values = {c.parsed_value for c in candidates}
@@ -183,9 +186,7 @@ class TestRespectivelyEndToEnd:
                 "source_segment_id": None,
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
-                "raw_text": (
-                    "Revenue for 2015, 2020, 2025 was 33, 35, 43 respectively"
-                ),
+                "raw_text": ("Revenue for 2015, 2020, 2025 was 33, 35, 43 respectively"),
                 "section_heading": "Test",
                 "section_path": "/Test",
             }
@@ -224,8 +225,7 @@ class TestDatabasePersistence:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for 2015, 2016 and 2017 was "
-                    "33%, 35% and 43%, respectively."
+                    "Gross margin for 2015, 2016 and 2017 was 33%, 35% and 43%, respectively."
                 ),
                 "section_heading": "Test",
                 "section_path": "/Test",
@@ -256,8 +256,7 @@ class TestDatabasePersistence:
 
         # Verify all three periods are represented
         retrieved_periods = {
-            r["features"].get("detected_period") for r in retrieved
-            if r["features"]
+            r["features"].get("detected_period") for r in retrieved if r["features"]
         }
         assert "2015" in retrieved_periods
         assert "2016" in retrieved_periods
@@ -315,8 +314,7 @@ class TestDeduplicationStrategy:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for 2015, 2016 and 2017 was "
-                    "35%, 40% and 45%, respectively."
+                    "Gross margin for 2015, 2016 and 2017 was 35%, 40% and 45%, respectively."
                 ),
                 "section_heading": "Test",
                 "section_path": "/Test",
@@ -344,7 +342,9 @@ class TestDeduplicationStrategy:
         }
 
         # Should have all 3 unique combinations
-        assert len(value_period_pairs) >= 3, f"Expected 3 unique (value, period) pairs, got {value_period_pairs}"
+        assert len(value_period_pairs) >= 3, (
+            f"Expected 3 unique (value, period) pairs, got {value_period_pairs}"
+        )
 
         # Verify all three periods present
         periods = {period for _, period in value_period_pairs}
@@ -383,7 +383,11 @@ class TestDeduplicationStrategy:
 
         # Extract unique (value, period, metric) tuples
         unique_candidates = {
-            (c.parsed_value, c.features.detected_period if c.features else None, c.suggested_metric_id)
+            (
+                c.parsed_value,
+                c.features.detected_period if c.features else None,
+                c.suggested_metric_id,
+            )
             for c in candidates
         }
 
@@ -403,10 +407,7 @@ class TestInteractionWithE2Filtering:
                 "source_segment_id": None,
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
-                "raw_text": (
-                    "Revenue for 2015, 2016 and 2017 was "
-                    "$1M, $2M and $3M, respectively."
-                ),
+                "raw_text": ("Revenue for 2015, 2016 and 2017 was $1M, $2M and $3M, respectively."),
                 "section_heading": "Test",
                 "section_path": "/Test",
             }
@@ -443,10 +444,7 @@ class TestInteractionWithE2Filtering:
                 "source_segment_id": None,
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
-                "raw_text": (
-                    "GMV for 2015, 2016 and 2017 was "
-                    "$50M, $75M and $100M, respectively."
-                ),
+                "raw_text": ("GMV for 2015, 2016 and 2017 was $50M, $75M and $100M, respectively."),
                 "section_heading": "Business Metrics",
                 "section_path": "/Business Metrics",
             }
@@ -542,7 +540,9 @@ class TestEdgeCases:
 
         # Some candidates should have periods (margin values from pattern)
         with_periods = [c for c in candidates if c.features and c.features.detected_period]
-        without_periods = [c for c in candidates if not c.features or not c.features.detected_period]
+        without_periods = [
+            c for c in candidates if not c.features or not c.features.detected_period
+        ]
 
         # At least one should have a period (from respectively pattern)
         assert len(with_periods) >= 1, f"Expected at least 1 with period, got {len(with_periods)}"

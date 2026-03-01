@@ -469,7 +469,7 @@ def main():
 
     if not filings:
         logger.warning("⚠️  No fetched filings found")
-        logger.info("   Run batch download first: python scripts/batch_download_filings.py")
+        logger.info("   Run batch download first: python3 scripts/batch_download_filings.py")
         sys.exit(0)
 
     logger.info(f"✅ Found {len(filings)} filings to process")

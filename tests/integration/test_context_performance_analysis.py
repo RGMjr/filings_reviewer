@@ -248,13 +248,16 @@ class TestContextPerformanceAnalysis:
             precision = stats["precision"]
 
             # Total should equal accepted + rejected
-            assert total == accepted + rejected, f"Context {context_type}: total != accepted + rejected"
+            assert total == accepted + rejected, (
+                f"Context {context_type}: total != accepted + rejected"
+            )
 
             # Precision should be correct
             if total > 0:
                 expected_precision = accepted / total
-                assert abs(precision - expected_precision) < 0.001, \
+                assert abs(precision - expected_precision) < 0.001, (
                     f"Context {context_type}: precision mismatch"
+                )
 
     def test_direction_breakdown(self, db, analyzer, sample_candidates):
         """Direction breakdown sums to total for each context."""
@@ -266,20 +269,18 @@ class TestContextPerformanceAnalysis:
             by_direction = stats["by_direction"]
 
             # Sum of direction totals should equal context total
-            direction_total = sum(
-                by_direction[d]["total"]
-                for d in ["before", "after", "unknown"]
-            )
-            assert direction_total == total, \
+            direction_total = sum(by_direction[d]["total"] for d in ["before", "after", "unknown"])
+            assert direction_total == total, (
                 f"Context {context_type}: direction totals don't sum to context total"
+            )
 
             # Sum of direction accepts should equal context accepts
             direction_accepts = sum(
-                by_direction[d]["accepted"]
-                for d in ["before", "after", "unknown"]
+                by_direction[d]["accepted"] for d in ["before", "after", "unknown"]
             )
-            assert direction_accepts == stats["accepted"], \
+            assert direction_accepts == stats["accepted"], (
                 f"Context {context_type}: direction accepts don't sum to context accepts"
+            )
 
     def test_table_context_high_precision(self, db, analyzer, sample_candidates):
         """Table context should show high precision (all accepted)."""
@@ -313,8 +314,9 @@ class TestContextPerformanceAnalysis:
             paren_stats = context_stats["parenthetical"]
             # Should be neither 0% nor 100% (has both accepts and rejects)
             # Note: aggregate precision may vary due to other test data in database
-            assert 0.0 < paren_stats["precision"] < 1.0, \
+            assert 0.0 < paren_stats["precision"] < 1.0, (
                 "Parenthetical context should have mixed precision (not 0% or 100%)"
+            )
 
     def test_filter_by_filing_id(self, db, analyzer, sample_candidates):
         """Filtering by filing_id returns only decisions for that filing."""

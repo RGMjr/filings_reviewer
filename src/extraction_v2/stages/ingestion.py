@@ -15,20 +15,22 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from lxml import etree, html
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
     ImageClassification,
+    SectionType,
     Segment,
     SegmentType,
-    SectionType,
 )
+from src.extraction_v2.text_utils import normalize_text
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -71,12 +73,15 @@ class IngestionStage:
 
     # Decorative image patterns (ported from V1)
     DECORATIVE_IMAGE_PATTERNS = [
-        r'\blogo\b',
-        r'\bicon\b',
-        r'\bbullet\b',
-        r'\bbanner\b',
-        r'\bheader\b',
-        r'\bfooter\b',
+        r"\blogo\b",
+        r"\bicon\b",
+        r"\bbullet\b",
+        r"\bbanner\b",
+        r"\bheader\b",
+        r"\bfooter\b",
+    ]
+    _DECORATIVE_IMAGE_PATTERNS_RE: list[re.Pattern[str]] = [
+        re.compile(p, re.IGNORECASE) for p in DECORATIVE_IMAGE_PATTERNS
     ]
 
     def __init__(self) -> None:
@@ -169,20 +174,6 @@ class IngestionStage:
         # Prepend / for absolute path
         return "/" + "/".join(path_parts)
 
-    def _normalize_text(self, text: str) -> str:
-        """
-        Normalize text by collapsing whitespace.
-
-        Args:
-            text: Raw text content
-
-        Returns:
-            Normalized text with collapsed whitespace
-        """
-        # Replace multiple whitespace (including newlines) with single space
-        normalized = re.sub(r'\s+', ' ', text)
-        return normalized.strip()
-
     def _get_element_position(self, tree: etree._Element, element: etree._Element) -> int:
         """
         Get position of element in document order.
@@ -245,7 +236,7 @@ class IngestionStage:
             return SegmentType.METHODOLOGY
 
         # Default based on element tag
-        if element_tag == 'table':
+        if element_tag == "table":
             return SegmentType.TABLE
         else:
             return SegmentType.PARAGRAPH
@@ -265,21 +256,21 @@ class IngestionStage:
             True if element should be extracted as paragraph
         """
         # Check tag type
-        if element.tag not in ('p', 'div', 'blockquote', 'pre', 'figure'):
+        if element.tag not in ("p", "div", "blockquote", "pre", "figure"):
             return False
 
         # Skip if nested inside a table
         parent = element.getparent()
         while parent is not None:
-            if parent.tag == 'table':
+            if parent.tag == "table":
                 return False
             parent = parent.getparent()
 
         # Skip divs that contain paragraph elements (we'll extract the <p> tags instead)
-        if element.tag == 'div':
+        if element.tag == "div":
             # Check if div contains any paragraph-like children
             for child in element:
-                if child.tag in ('p', 'blockquote', 'pre', 'figure'):
+                if child.tag in ("p", "blockquote", "pre", "figure"):
                     return False
 
         return True
@@ -298,17 +289,21 @@ class IngestionStage:
         Returns:
             True if div should be skipped (contains only a table)
         """
-        if div_element.tag != 'div':
+        if div_element.tag != "div":
             return False
 
         # Find all table children
-        tables = div_element.xpath('.//table')
+        tables = div_element.xpath(".//table")
         if not tables:
             return False
 
         # Get text from div and from first table
-        div_text = self._normalize_text(div_element.text_content() if hasattr(div_element, 'text_content') else '')
-        table_text = self._normalize_text(tables[0].text_content() if hasattr(tables[0], 'text_content') else '')
+        div_text = normalize_text(
+            div_element.text_content() if hasattr(div_element, "text_content") else ""
+        )
+        table_text = normalize_text(
+            tables[0].text_content() if hasattr(tables[0], "text_content") else ""
+        )
 
         # If div text equals table text, the div adds nothing beyond the table
         return div_text == table_text
@@ -346,22 +341,30 @@ class IngestionStage:
         """
         try:
             # Find the table element (may be element itself or nested)
-            table = table_element if table_element.tag == 'table' else table_element.xpath('.//table')[0] if table_element.xpath('.//table') else None
+            table = (
+                table_element
+                if table_element.tag == "table"
+                else table_element.xpath(".//table")[0]
+                if table_element.xpath(".//table")
+                else None
+            )
 
             if table is None:
                 # No table found - fall back to standard normalization
                 logger.debug("No table found in element, using standard normalization")
-                return self._normalize_text(table_element.text_content() if hasattr(table_element, 'text_content') else '')
+                return normalize_text(
+                    table_element.text_content() if hasattr(table_element, "text_content") else ""
+                )
 
             # Extract rows and cells
             row_texts: list[str] = []
 
             # Find all rows (tr elements)
-            rows = table.xpath('.//tr')
+            rows = table.xpath(".//tr")
 
             for row in rows:
                 # Find all cells in this row (both td and th)
-                cells = row.xpath('./td | ./th')
+                cells = row.xpath("./td | ./th")
 
                 if not cells:
                     # Empty row - skip
@@ -370,7 +373,9 @@ class IngestionStage:
                 # Extract and normalize text from each cell
                 cell_texts = []
                 for cell in cells:
-                    cell_text = self._normalize_text(cell.text_content() if hasattr(cell, 'text_content') else '')
+                    cell_text = normalize_text(
+                        cell.text_content() if hasattr(cell, "text_content") else ""
+                    )
                     # Skip empty cells (no empty markers)
                     if cell_text:
                         cell_texts.append(cell_text)
@@ -389,8 +394,12 @@ class IngestionStage:
 
         except Exception as e:
             # Any error in table parsing should fall back to standard normalization
-            logger.warning(f"Error extracting table text with markers: {e}, falling back to standard normalization")
-            return self._normalize_text(table_element.text_content() if hasattr(table_element, 'text_content') else '')
+            logger.warning(
+                f"Error extracting table text with markers: {e}, falling back to standard normalization"
+            )
+            return normalize_text(
+                table_element.text_content() if hasattr(table_element, "text_content") else ""
+            )
 
     def _extract_table_segments_with_elements(
         self, tree: etree._Element, filing_id: int
@@ -415,13 +424,13 @@ class IngestionStage:
 
         # Find all table elements
         for element in tree.iter():
-            if element.tag != 'table':
+            if element.tag != "table":
                 continue
 
             # Skip if parent is a div that only wraps this table
             # The div wrapper will be skipped, so we extract the table directly
             parent = element.getparent()
-            if parent is not None and parent.tag == 'div':
+            if parent is not None and parent.tag == "div":
                 if self._should_skip_div_wrapper(parent):
                     # This table is in a div-wrapper that will be skipped
                     # Extract the table directly
@@ -442,12 +451,15 @@ class IngestionStage:
             # Generate XPath locator
             xpath = self._generate_xpath(element)
 
+            # Convert element to HTML string for table reconstruction
+            raw_html = etree.tostring(element, encoding="unicode", method="html")
+
             # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_tbl_{len(segments)}",
                 segment_type=SegmentType.TABLE,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,  # Has [ROW]/[CELL] markers for row-aware matching
+                raw_html=raw_html,  # Original HTML for table reconstruction
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
@@ -457,9 +469,7 @@ class IngestionStage:
         logger.info(f"Extracted {len(segments)} table segments from filing {filing_id}")
         return segments
 
-    def _extract_table_segments(
-        self, tree: etree._Element, filing_id: int
-    ) -> list[Segment]:
+    def _extract_table_segments(self, tree: etree._Element, filing_id: int) -> list[Segment]:
         """
         Extract table segments from HTML tree.
 
@@ -507,31 +517,34 @@ class IngestionStage:
                 continue
 
             # AC-6: Skip div that only wraps a table (deduplication)
-            if element.tag == 'div' and self._should_skip_div_wrapper(element):
+            if element.tag == "div" and self._should_skip_div_wrapper(element):
                 continue
 
             # Extract text content
-            text_content = element.text_content() if hasattr(element, 'text_content') else ''
-            normalized_text = self._normalize_text(text_content)
+            text_content = element.text_content() if hasattr(element, "text_content") else ""
+            normalized_text = normalize_text(text_content)
 
             # Apply length filters
             if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
                 continue
             if len(normalized_text) > self.MAX_PARAGRAPH_CHARS:
-                normalized_text = normalized_text[:self.MAX_PARAGRAPH_CHARS]
+                normalized_text = normalized_text[: self.MAX_PARAGRAPH_CHARS]
 
             # Generate XPath locator
             xpath = self._generate_xpath(element)
+
+            # Convert element to HTML string
+            raw_html = etree.tostring(element, encoding="unicode", method="html")
 
             # AC-8: Classify segment type (detects definition/methodology blocks)
             segment_type = self._classify_segment_type(normalized_text, element.tag)
 
             # Create segment (sequence will be assigned after sorting)
             segment = Segment(
-                segment_id=f"{filing_id}_seg_{len(segments)}",
                 segment_type=segment_type,
                 sequence=0,  # Will be updated after sorting
                 text=normalized_text,
+                raw_html=raw_html,  # Original HTML
                 dom_locator=xpath,
                 section_type=SectionType.UNKNOWN,  # Will be classified in Stage 2
             )
@@ -541,9 +554,7 @@ class IngestionStage:
         logger.info(f"Extracted {len(segments)} paragraph segments from filing {filing_id}")
         return segments
 
-    def _extract_paragraph_segments(
-        self, tree: etree._Element, filing_id: int
-    ) -> list[Segment]:
+    def _extract_paragraph_segments(self, tree: etree._Element, filing_id: int) -> list[Segment]:
         """
         Extract paragraph segments from HTML tree.
 
@@ -575,16 +586,15 @@ class IngestionStage:
             True if image is likely decorative
         """
         # Check src attribute for decorative patterns
-        src = img_element.get('src', '').lower()
-        for pattern_str in self.DECORATIVE_IMAGE_PATTERNS:
-            pattern = re.compile(pattern_str, re.IGNORECASE)
+        src = img_element.get("src", "").lower()
+        for pattern in self._DECORATIVE_IMAGE_PATTERNS_RE:
             if pattern.search(src):
                 return True
 
         # Check width/height attributes
         try:
-            width_str = img_element.get('width', '')
-            height_str = img_element.get('height', '')
+            width_str = img_element.get("width", "")
+            height_str = img_element.get("height", "")
 
             if width_str and width_str.isdigit():
                 width = int(width_str)
@@ -619,28 +629,25 @@ class IngestionStage:
 
         # 1. Look for caption in parent figure element
         parent = img_element.getparent()
-        if parent is not None and parent.tag == 'figure':
+        if parent is not None and parent.tag == "figure":
             # Find figcaption
-            captions = parent.xpath('.//figcaption')
+            captions = parent.xpath(".//figcaption")
             for caption in captions:
-                text = caption.text_content() if hasattr(caption, 'text_content') else ''
-                text = self._normalize_text(text)
+                text = caption.text_content() if hasattr(caption, "text_content") else ""
+                text = normalize_text(text)
                 if text:
                     nearby_parts.append(text)
 
-        # 2. Get context from nearby siblings
-        # Get parent element (or use tree root if img is at top level)
-        context_root = parent if parent is not None else tree
-
+        # 2. Get context from nearby siblings — only process if parent exists
         # Get previous siblings (up to 2)
         if parent is not None:
             prev_siblings: list[str] = []
             current = img_element.getprevious()
             count = 0
             while current is not None and count < 2:
-                if current.tag in ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-                    text = current.text_content() if hasattr(current, 'text_content') else ''
-                    text = self._normalize_text(text)
+                if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
+                    text = current.text_content() if hasattr(current, "text_content") else ""
+                    text = normalize_text(text)
                     if text:
                         prev_siblings.insert(0, text)
                         count += 1
@@ -654,9 +661,9 @@ class IngestionStage:
             current = img_element.getnext()
             count = 0
             while current is not None and count < 2:
-                if current.tag in ('p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-                    text = current.text_content() if hasattr(current, 'text_content') else ''
-                    text = self._normalize_text(text)
+                if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
+                    text = current.text_content() if hasattr(current, "text_content") else ""
+                    text = normalize_text(text)
                     if text:
                         next_siblings.append(text)
                         count += 1
@@ -664,8 +671,41 @@ class IngestionStage:
 
             nearby_parts.extend(next_siblings)
 
+        # 4. Fallback: if no text found and img is only child of parent (e.g. <P><IMG/></P>),
+        # walk up to parent and check parent's siblings for context
+        if not nearby_parts and parent is not None:
+            _block_tags = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6")
+
+            # Check parent's previous siblings (up to 2)
+            parent_prev: list[str] = []
+            current = parent.getprevious()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
+                    text = current.text_content() if hasattr(current, "text_content") else ""
+                    text = normalize_text(text)
+                    if text:
+                        parent_prev.insert(0, text)
+                        count += 1
+                current = current.getprevious()
+            nearby_parts.extend(parent_prev)
+
+            # Check parent's next siblings (up to 2)
+            parent_next: list[str] = []
+            current = parent.getnext()
+            count = 0
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
+                    text = current.text_content() if hasattr(current, "text_content") else ""
+                    text = normalize_text(text)
+                    if text:
+                        parent_next.append(text)
+                        count += 1
+                current = current.getnext()
+            nearby_parts.extend(parent_next)
+
         # Combine all parts
-        return ' '.join(nearby_parts)
+        return " ".join(nearby_parts)
 
     def _compute_initial_relevance(self, nearby_text: str, filename: str) -> float:
         """
@@ -694,8 +734,16 @@ class IngestionStage:
 
         # High-value keywords (from V1 cohort detection)
         high_value_keywords = [
-            'cohort', 'retention', 'churn', 'ltv', 'cac',
-            'arr', 'mrr', 'revenue', 'growth', 'customers'
+            "cohort",
+            "retention",
+            "churn",
+            "ltv",
+            "cac",
+            "arr",
+            "mrr",
+            "revenue",
+            "growth",
+            "customers",
         ]
 
         for keyword in high_value_keywords:
@@ -705,7 +753,7 @@ class IngestionStage:
                 score += 0.1
 
         # Chart/table indicators
-        chart_keywords = ['chart', 'graph', 'figure', 'table', 'exhibit']
+        chart_keywords = ["chart", "graph", "figure", "table", "exhibit"]
         for keyword in chart_keywords:
             if keyword in text_lower:
                 score += 0.1
@@ -714,9 +762,7 @@ class IngestionStage:
         # Cap at 1.0
         return min(1.0, score)
 
-    def _extract_image_assets(
-        self, tree: etree._Element, filing_id: int
-    ) -> list[ImageAsset]:
+    def _extract_image_assets(self, tree: etree._Element, filing_id: int) -> list[ImageAsset]:
         """
         Extract ImageAsset objects from HTML tree.
 
@@ -740,7 +786,7 @@ class IngestionStage:
 
         # Find all img elements
         for element in tree.iter():
-            if element.tag != 'img':
+            if element.tag != "img":
                 continue
 
             # Filter decorative images
@@ -748,7 +794,7 @@ class IngestionStage:
                 continue
 
             # Get image attributes
-            src = element.get('src', '')
+            src = element.get("src", "")
             if not src:
                 continue
 
@@ -756,8 +802,8 @@ class IngestionStage:
             width = 0
             height = 0
             try:
-                width_str = element.get('width', '0')
-                height_str = element.get('height', '0')
+                width_str = element.get("width", "0")
+                height_str = element.get("height", "0")
                 if width_str.isdigit():
                     width = int(width_str)
                 if height_str.isdigit():
@@ -776,7 +822,6 @@ class IngestionStage:
 
             # Create ImageAsset
             asset = ImageAsset(
-                img_id=f"{filing_id}_img_{sequence}",
                 doc_id=str(filing_id),
                 filename=src,
                 width=width,
@@ -807,7 +852,7 @@ class IngestionStage:
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -825,23 +870,38 @@ class IngestionStage:
 
             # AC-5: Port paragraph detection from V1
             logger.info(f"Extracting paragraph segments from filing {context.filing_id}")
-            paragraph_segments_with_elements = self._extract_paragraph_segments_with_elements(tree, context.filing_id)
+            paragraph_segments_with_elements = self._extract_paragraph_segments_with_elements(
+                tree, context.filing_id
+            )
 
             # AC-6: Port table detection with div-wrapper deduplication
             logger.info(f"Extracting table segments from filing {context.filing_id}")
-            table_segments_with_elements = self._extract_table_segments_with_elements(tree, context.filing_id)
+            table_segments_with_elements = self._extract_table_segments_with_elements(
+                tree, context.filing_id
+            )
 
             # AC-8: Definition/methodology detection integrated into paragraph extraction
             # AC-9: Extract ImageAsset objects with context
             logger.info(f"Extracting image assets from filing {context.filing_id}")
             image_assets = self._extract_image_assets(tree, context.filing_id)
 
-            # AC-10: Combine all segment types and sort by document order
-            all_segments_with_elements = paragraph_segments_with_elements + table_segments_with_elements
+            # Resolve local image paths relative to the HTML file's directory
+            for asset in image_assets:
+                if not asset.file_path:
+                    local_path = context.html_path.parent / asset.filename
+                    if local_path.exists():
+                        asset.file_path = str(local_path)
 
-            # Sort by tree position to maintain document order
-            # lxml elements can be compared for document order using < operator
-            all_segments_with_elements.sort(key=lambda x: self._get_element_position(tree, x[1]))
+            # AC-10: Combine all segment types and sort by document order
+            all_segments_with_elements = (
+                paragraph_segments_with_elements + table_segments_with_elements
+            )
+
+            # Sort by tree position to maintain document order.
+            # Pre-build position index once (O(n)) to avoid O(n^2) from calling
+            # _get_element_position() repeatedly inside the sort key.
+            _position_index = {elem: idx for idx, elem in enumerate(tree.iter())}
+            all_segments_with_elements.sort(key=lambda x: _position_index.get(x[1], 0))
 
             # Assign unified sequence numbers
             for idx, (segment, _) in enumerate(all_segments_with_elements):
@@ -853,17 +913,18 @@ class IngestionStage:
 
             context.segments = all_segments
 
-            # AC-11: Create Document object
+            # AC-11: Create Document object (doc_id is a UUID, filing_id is separate)
             doc = Document(
-                doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
+                fiscal_year_end_month=context.config.fiscal_year_end_month,
+                fiscal_year_end_day=context.config.fiscal_year_end_day,
             )
             context.document = doc
 
             # Store image assets in context
             context.images = image_assets
 
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.INGESTION,
@@ -880,15 +941,7 @@ class IngestionStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.exception(f"Ingestion stage failed: {e}")
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            return StageResult(
-                stage=PipelineStage.INGESTION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=0,
-                items_output=0,
-                errors=[str(e)],
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="ingestion") from e

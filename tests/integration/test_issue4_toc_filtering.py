@@ -14,9 +14,7 @@ from src.review.candidate_generator import CandidateGenerator
 class TestIssue4StandaloneTOCFiltering:
     """Integration tests for Issue 4 standalone TOC pattern filtering."""
 
-    def _make_segment(
-        self, text: str, segment_type: str = "paragraph"
-    ) -> dict[str, Any]:
+    def _make_segment(self, text: str, segment_type: str = "paragraph") -> dict[str, Any]:
         """Create a test segment dict."""
         return {
             "source_segment_id": 1,
@@ -56,8 +54,8 @@ class TestIssue4StandaloneTOCFiltering:
 
     def test_toc_abbreviation_filtered(self) -> None:
         """Test that TOC abbreviation pattern is filtered."""
-        # Use recognized metric keyword "gross margin"
-        text = "Gross margin was 25% year-over-year.\n73 TOC\nCustomer Metrics"
+        # Use recognized metric keyword "net revenue retention"
+        text = "Net revenue retention was 25% year-over-year.\n73 TOC\nCustomer Metrics"
         segment = self._make_segment(text)
 
         generator = CandidateGenerator()
@@ -74,7 +72,7 @@ class TestIssue4StandaloneTOCFiltering:
             f"Got candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
         )
 
-        # Should create candidate for "25%" (gross margin - valid metric)
+        # Should create candidate for "25%" (net revenue retention - valid metric)
         assert Decimal("0.25") in values, (
             f"Valid metric should not be filtered. "
             f"Got candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
@@ -142,13 +140,13 @@ class TestIssue4StandaloneTOCFiltering:
         values = [c.parsed_value for c in candidates]
 
         # Should filter TOC page number
-        assert Decimal("73") not in values, (
-            "TOC page number should be filtered"
-        )
+        assert Decimal("73") not in values, "TOC page number should be filtered"
 
         # Should keep valid metrics
         # 45 dollars (CAC), 52.3% gross margin, 50,000 customers
-        assert Decimal("45") in values or Decimal("0.523") in values or Decimal("50000") in values, (
+        assert (
+            Decimal("45") in values or Decimal("0.523") in values or Decimal("50000") in values
+        ), (
             f"Valid metrics should not be filtered. "
             f"Got candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
         )
@@ -157,7 +155,7 @@ class TestIssue4StandaloneTOCFiltering:
         """Test TOC pattern filtering with different whitespace."""
         test_cases = [
             "was 50%.\n73 Table of Contents\nNext",  # newline
-            "was 50%. 73 Table of Contents. Next",    # spaces
+            "was 50%. 73 Table of Contents. Next",  # spaces
             "was 50%.\n73  Table of Contents\nNext",  # multiple spaces
         ]
 

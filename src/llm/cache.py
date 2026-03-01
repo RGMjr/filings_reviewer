@@ -16,7 +16,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +26,12 @@ class CacheConfig:
     """Configuration for LLM response cache."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get("LLM_CACHE_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: os.environ.get("LLM_CACHE_ENABLED", "true").lower() == "true"
     )
     db_path: str = field(
-        default_factory=lambda: os.environ.get(
-            "LLM_CACHE_PATH", "data/llm_cache.db"
-        )
+        default_factory=lambda: os.environ.get("LLM_CACHE_PATH", "data/llm_cache.db")
     )
-    cache_version: str = field(
-        default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v1")
-    )
+    cache_version: str = field(default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v1"))
     max_age_days: int = 30
 
 
@@ -58,7 +53,7 @@ class LLMCache:
     For production with multiple workers, consider upgrading to Redis or Postgres.
     """
 
-    def __init__(self, config: Optional[CacheConfig] = None):
+    def __init__(self, config: CacheConfig | None = None):
         """
         Initialize the LLM cache.
 
@@ -66,7 +61,7 @@ class LLMCache:
             config: Cache configuration. If None, uses defaults from environment.
         """
         self.config = config or CacheConfig()
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: sqlite3.Connection | None = None
         self._lock = threading.Lock()
 
         # Statistics
@@ -99,9 +94,7 @@ class LLMCache:
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cache_version ON llm_cache(cache_version)"
             )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_at ON llm_cache(created_at)"
-            )
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON llm_cache(created_at)")
             self._conn.commit()
             logger.info(f"LLM cache initialized at {self.config.db_path}")
         except sqlite3.Error as e:
@@ -160,7 +153,7 @@ class LLMCache:
         temperature: float,
         max_tokens: int,
         **kwargs: Any,
-    ) -> Optional[CachedResponse]:
+    ) -> CachedResponse | None:
         """
         Get a cached response if it exists and is valid.
 

@@ -5,7 +5,6 @@ Tests ExtractedContext dataclass and ContextExtractor class,
 including paragraph and table context extraction.
 """
 
-
 from src.extraction.context_extractor import ContextExtractor, ExtractedContext
 from src.extraction.structure_parser import StructureParser
 
@@ -281,9 +280,7 @@ class TestContextFormatting:
         extractor = ContextExtractor(include_headers=True)
 
         formatted = extractor.format_table_context(
-            row_text="Revenue [CELL] 100 [CELL] 150",
-            column_header="2024",
-            row_header="Revenue"
+            row_text="Revenue [CELL] 100 [CELL] 150", column_header="2024", row_header="Revenue"
         )
 
         assert "[2024]" in formatted
@@ -297,9 +294,7 @@ class TestContextFormatting:
         extractor = ContextExtractor(include_headers=False)
 
         formatted = extractor.format_table_context(
-            row_text="Revenue [CELL] 100 [CELL] 150",
-            column_header=None,
-            row_header=None
+            row_text="Revenue [CELL] 100 [CELL] 150", column_header=None, row_header=None
         )
 
         assert "Revenue" in formatted

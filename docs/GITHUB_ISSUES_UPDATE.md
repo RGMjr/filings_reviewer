@@ -40,7 +40,7 @@ This issue has been fully addressed through the HRV (Human Review Validation) wo
 ### Usage:
 ```bash
 # Quick validation
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 
 # Formal test run
 pytest -m gold_standard --gold-standard-mode=fresh -v

@@ -101,7 +101,6 @@ cm_customers_period_end:
     - '\bcustomers?\s+\(?period\s*end\)?\b'
     - '\bend[- ]of[- ]period\s+customers?\b'
     - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
-    - '\bactive\s+consumers?\b'
     # Total customer count patterns (moved from cm_active_customers_total 2026-01-07)
     # "Total customers" represents a stock count, not engagement-based "active" customers
     - '\btotal\s+customers?\b'
@@ -122,6 +121,8 @@ cm_customers_period_end:
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
     # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
+    # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
+    - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -138,6 +139,10 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
+    # Snowflake-style patterns: "customers that contributed more than $X"
+    - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
+    # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"
+    - '\bcustomers?\s+with\s+[\w\s-]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -162,6 +167,9 @@ cm_revenue_by_cohort:
     - '\bcohort\s+revenue\b'
     - '\brevenue[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\brevenue\b'
+    - '\bgmv[^.;]{0,100}\bcohort\b'
+    - '\bcohort[^.;]{0,100}\bgmv\b'
+    - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
 
 cm_transactions_by_cohort:
   patterns:
@@ -205,6 +213,9 @@ cm_active_customers_total:
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
+    # FIX-FP: DAU/MAU context belongs to dedicated metrics, not generic "active"
+    - '\bdaily\s+active\b'
+    - '\bmonthly\s+active\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -316,10 +327,14 @@ cm_gross_margin_by_cohort:
   # Only patterns that explicitly require "cohort" or "vintage" context
   # REMOVED (2026-01-02): '\border\s+contribution\s+margin\b' and
   # '\bplatform\s+order\s+contribution(?:\s+margin)?\b' - not cohort-specific
+  # ADDED BACK (2026-02-09): Order Contribution Margin with cohort context qualifier
   patterns:
     - '\bgross\s+margin\s+by\s+cohort\b'
     - '\bcohort\s+(?:gross\s+)?margin\b'
     - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+    # Order Contribution Margin only when cohort context (new/existing consumers) is nearby
+    - '\border\s+contribution\s+margin[^.;]{0,80}\b(?:new|existing|cohort|consumer|customer)\b'
+    - '\b(?:new|existing)\s+(?:consumer|customer)[^.;]{0,80}\border\s+contribution\s+margin\b'
 
 cm_arr:
   patterns:
@@ -359,6 +374,19 @@ cm_revenue_concentration:
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
     - '\bcustomer\s+[A-D]\b'
+    # Snowflake-style: "contributed approximately X% of our revenue"
+    - '\bcontributed\s+(?:approximately\s+)?\d+%'
+    # Snowflake-style: "representing approximately X% of our [product] revenue"
+    - '\brepresenting\s+(?:approximately\s+)?\d+%[^.;]{0,30}\brevenue\b'
+    # Snowflake-style: "represented X% or more of revenue"
+    - '\brepresented\s+\d+%\s+or\s+more\s+of\s+revenue\b'
+    # Snowflake-style: "generated X% of our revenue"
+    - '\bgenerated\s+\d+%\s+of\s+(?:our\s+)?revenue\b'
+  exclusions:
+    # FIX-FP: Exclude business segment revenue share (not customer concentration)
+    - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform)\s+revenue\b'
+    - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
+    - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
 
 # =============================================================================
 # Revenue Predictability Metrics (DEPRECATED 2026-01-07)
@@ -368,51 +396,12 @@ cm_revenue_concentration:
 # in the database and excluded from UI dropdowns.
 
 cm_bookings:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbookings\b'
-    - '\btotal\s+bookings\b'
-    - '\bnew\s+bookings\b'
-    - '\bcontract\s+bookings\b'
-    - '\bnet\s+new\s+bookings\b'
-    - '\bquarterly\s+bookings\b'
-    - '\bannual\s+bookings\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_billings:
   status: deprecated
-  deprecation_reason: "GAAP financial metric, not customer-specific. Use ARR/MRR for recurring revenue metrics."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbillings\b'
-    - '\btotal\s+billings\b'
-    - '\bcalculated\s+billings\b'
-    - '\badjusted\s+billings\b'
-  exclusions:
-    # Cash flow metrics (from Slack table - these appear in same segment as "Calculated Billings")
-    - '\bfree\s+cash\s+flows?\b'
-    - '\badjusted\s+free\s+cash\s+flows?\b'
-    - '\bcash\s+flows?\b'
-    - '\boperating\s+(?:activities|cash|assets)\b'
-    - '\bnet\s+loss\b'
-    # Cash flow statement line items (common accounting terms)
-    - '\bnon[- ]cash\s+charges?\b'
-    - '\bdepreciation\s+and\s+amortization\b'
-    - '\bstock[- ]based\s+compensation\b'
-    - '\baccounts\s+(?:payable|receivable)\b'
-    - '\bprepaid\s+expenses?\b'
-    - '\baccrued\s+expenses?\b'
-    # Tender offer / compensation items
-    - '\btender\s+offer\b'
-    - '\brepurchases?\s+deemed\s+compensation\b'
-    # Revenue line items (general financial statements)
-    - '\brevenue\b'
-    - '\bdeferred\s+revenue\b'
-    - '\bcost\s+of\s+(?:revenue|sales)\b'
-    - '\bnet\s+revenue\b'
-    # Period markers (accounting context)
-    - '\b(?:beginning|end)\s+of\s+period\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # E-Commerce / Consumer Metrics
@@ -446,18 +435,8 @@ cm_repeat_purchase_rate:
 # Patterns retained for historical data interpretation but metric is deprecated.
 
 cm_gmv:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bgmv\b'
-    - '\bgross\s+merchandise\s+value\b'
-    - '\bgross\s+merchandise\s+volume\b'
-    - '\bgross\s+booking\s+value\b'
-    - '\bgross\s+bookings\s+value\b'
-    - '\bgross\s+transaction\s+value\b'
-    - '\btotal\s+transaction\s+value\b'
-    - '\bgross\s+order\s+value\b'
-    - '\bplatform\s+(?:transaction\s+)?volume\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # cm_take_rate: REMOVED (2026-01-02)
 # Rationale: Take rate is a platform/marketplace revenue metric, not a customer metric.
@@ -470,24 +449,12 @@ cm_gmv:
 # Patterns retained for historical data interpretation but metrics are deprecated.
 
 cm_acv:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bacv\b'
-    - '\bannual\s+contract\s+value\b'
-    - '\baverage\s+contract\s+value\b'
-    - '\bannualized\s+contract\s+value\b'
-    - '\baverage\s+annual\s+contract\b'
-    - '\bcontract\s+value\s+per\s+customer\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_tcv:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\btcv\b'
-    - '\btotal\s+contract\s+value\b'
-    - '\blifetime\s+contract\s+value\b'
-    - '\bcontract\s+lifetime\s+value\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # Customer Value Metrics
@@ -520,15 +487,22 @@ cm_ltv_to_cac_ratio:
 
 cm_ltv_to_cac_ratio_by_cohort:
   # LTV/CAC ratio analyzed by acquisition cohort (added 2026-01-07)
+  # Updated 2026-02-09: Added temporal cohort patterns and widened proximity window
   patterns:
     - '\bltv\s*[:/]\s*cac\s+by\s+cohort\b'
     - '\bltv\s+to\s+cac\s+(?:ratio\s+)?by\s+cohort\b'
     - '\bcohort\s+ltv\s*[:/]\s*cac\b'
-    - '\bltv[:/]cac[^.;]{0,50}\bcohort\b'
-    - '\bcohort[^.;]{0,50}\bltv[:/]cac\b'
+    # Widened from 50 to 80 chars to capture "LTV/CAC ratio for the years ended...cohorts"
+    - '\bltv[:/]cac[^.;]{0,80}\bcohort\b'
+    - '\bcohort[^.;]{0,80}\bltv[:/]cac\b'
+    # Temporal prefix: "Six month LTV/CAC ratio", "12 month LTV/CAC ratio"
+    - '\b(?:\d+|six|twelve|twenty[- ]?four)\s+months?\s+ltv\s*[:/]\s*cac\b'
+    # Temporal suffix: "LTV/CAC after 6 months"
+    - '\bltv\s*[:/]\s*cac\s+after\s+\d+\s+months?\b'
   specific_patterns:
     - 'ltv\s*[:/]\s*cac\s+by\s+cohort'
     - 'cohort\s+ltv\s*[:/]\s*cac'
+    - 'ltv\s*[:/]\s*cac\s+after\s+\d+\s+months?'
 
 # =============================================================================
 # Growth Metrics - INTENTIONALLY NOT DETECTED

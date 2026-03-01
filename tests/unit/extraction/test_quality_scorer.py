@@ -251,9 +251,7 @@ def test_compute_overall_quality_score_3_excellent():
             methodology_text_normalized="Calculated as (active end / active start) * 100",
         )
     ]
-    score = scorer._compute_overall_quality(
-        values, definitions, has_cohort_breakdown=True
-    )
+    score = scorer._compute_overall_quality(values, definitions, has_cohort_breakdown=True)
     assert score == 3
 
 

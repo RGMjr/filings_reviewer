@@ -843,11 +843,7 @@ class TestVerifyQuoteInSource:
     def test_short_quote_in_long_source(self):
         """Critical test: short quote should be found in very long source."""
         quote = "monthly active users"
-        source = (
-            "x" * 5000
-            + " We define monthly active users as unique visitors. "
-            + "y" * 5000
-        )
+        source = "x" * 5000 + " We define monthly active users as unique visitors. " + "y" * 5000
         assert verify_quote_in_source(quote, source) is True
 
     def test_no_match_returns_false(self):
@@ -963,9 +959,7 @@ class TestFalsePositiveFiltering:
         # Test the filter directly to verify it can detect years
         # The extract_from_text logic extracts first number which might be partial
         is_fp, reason = extractor._is_false_positive_value(
-            value_str="2020",
-            position=segment.raw_text.find("2020"),
-            context_text=segment.raw_text
+            value_str="2020", position=segment.raw_text.find("2020"), context_text=segment.raw_text
         )
 
         # Should detect 2020 as a year (likely_year)
@@ -1073,9 +1067,7 @@ class TestFalsePositiveFiltering:
 
         # Test the filter directly - it requires both dot leaders AND TOC context
         is_fp, reason = extractor._is_false_positive_value(
-            value_str="23",
-            position=segment.raw_text.find("23"),
-            context_text=segment.raw_text
+            value_str="23", position=segment.raw_text.find("23"), context_text=segment.raw_text
         )
         # Should be detected as a TOC reference (has both TOC header and dot leaders)
         assert is_fp is True
@@ -1094,9 +1086,7 @@ class TestFalsePositiveFiltering:
         # Test that the filter correctly identifies date components
         # "31" from "December 31, 2023" should be detected as part_of_date
         is_fp_31, reason_31 = extractor._is_false_positive_value(
-            value_str="31",
-            position=segment.raw_text.find("31"),
-            context_text=segment.raw_text
+            value_str="31", position=segment.raw_text.find("31"), context_text=segment.raw_text
         )
 
         # Should be detected as part of a date

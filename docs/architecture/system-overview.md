@@ -111,7 +111,7 @@ The system is organized into six logical layers:
                             │
                 ┌───────────▼───────────┐
                 │   CLI Interface       │
-                │   (main.py)          │
+                │   (scripts/)         │
                 └───────────┬───────────┘
                             │
         ┌───────────────────┼───────────────────┐
@@ -234,13 +234,6 @@ The system is organized into six logical layers:
 **Output:** `metric_definitions` table rows
 **Technology:** LLM-enhanced extraction with quote verification
 **Status:** Complete (89% test coverage)
-
-### 6.5. Cohort Chart Detector
-**Purpose:** Identify cohort analysis charts and visualizations
-**Input:** Filing HTML content
-**Output:** Cohort chart candidates with confidence scores
-**Technology:** HTML parsing with keyword proximity detection
-**Status:** Complete (21 tests covering detection and scoring)
 
 ### 7. Quality Scorer
 **Purpose:** Assess disclosure quality on 0-3 scale
@@ -446,8 +439,7 @@ The component graph remains the same; only configuration and some extraction rul
 | `python-dotenv` | Environment config | ≥1.0.0 |
 | `psycopg[binary]` | PostgreSQL adapter | ≥3.1.0 |
 | `pytest` | Testing framework | ≥7.4.0 |
-| `black` | Code formatting | ≥23.0.0 |
-| `ruff` | Linting | ≥0.1.0 |
+| `ruff` | Linting + formatting | ≥0.9.0 |
 
 ---
 
@@ -465,7 +457,6 @@ The component graph remains the same; only configuration and some extraction rul
 | SegmentEnricher | Complete | 98% |
 | ValueExtractor | Complete | 66% |
 | DefinitionExtractor | Complete | 89% |
-| CohortChartDetector | Complete | 100% (21 tests) |
 | QualityScorer | Complete | 100% |
 | ExtractionPipeline | Complete | 91% |
 | OpenAIClient | Complete | 88% |
@@ -543,6 +534,27 @@ Re-running any stage is safe (upserts, not inserts)
 
 ---
 
+## V2 Extraction Pipeline
+
+A ground-up redesign of the extraction pipeline is available in `src/extraction_v2/`. The V2 pipeline is production-ready (all 13 phases complete as of 2026-02-04) and offers key improvements over V1:
+
+- **10x faster parsing** via lxml (vs BeautifulSoup)
+- **Stable XPath locators** for every source element
+- **Full table reconstruction** with header_path/stub_path binding
+- **Image/OCR integration** for chart extraction
+- **EvidencePack** with highlighted HTML and context
+
+**Post-completion enhancements (2026-02-05 to 2026-02-17):**
+- **False positive filter stage** (`src/extraction_v2/stages/false_positive_filter.py`): V2-native FP filtering with decimal-gated count scaling and percentage context detection
+- **Unit compatibility checking** (`src/extraction_v2/unit_compatibility.py`): Cross-unit validation to reduce false positives (e.g., dollar values matched to percentage metrics)
+- **Fact identity deduplication** (`sql/10_v2_fact_identity_dedup.sql`): Database-level deduplication for idempotent fact storage
+
+**Gold standard performance (as of 2026-02-28):** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements; all per-company gates passed)
+
+See `docs/V2_MIGRATION_GUIDE.md` for migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap.
+
+---
+
 ## Related Documentation
 
 - **Data Model:** `docs/architecture/data-model.md` - Database schemas, relationships
@@ -551,9 +563,11 @@ Re-running any stage is safe (upserts, not inserts)
 - **Requirements:** `docs/requirements/analytic-requirements.md` - Business requirements
 - **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
 - **Testing:** `docs/development/testing.md` - Test strategy
+- **V2 Migration:** `docs/V2_MIGRATION_GUIDE.md` - V2 pipeline migration guide
+- **V2 Roadmap:** `docs/V2_IMPLEMENTATION_ROADMAP.md` - V2 implementation phases
 
 ---
 
-**Last Updated:** 2026-01-07
-**Version:** 2.3
+**Last Updated:** 2026-02-20
+**Version:** 2.4
 **Status:** Production Ready

@@ -164,9 +164,7 @@ def execute_batch(
                     )
                     failures.append(failure)
 
-                    logger.error(
-                        f"Task {task_index} ({task_desc}) failed: {type(e).__name__}: {e}"
-                    )
+                    logger.error(f"Task {task_index} ({task_desc}) failed: {type(e).__name__}: {e}")
 
                     if fail_fast:
                         # Cancel remaining futures
