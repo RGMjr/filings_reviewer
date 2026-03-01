@@ -35,10 +35,15 @@ _ABBREV_PATTERN = re.compile(
 _SPEAKER_PATTERN = re.compile(r"^([A-Z][a-zA-Z\s\-'\.,]+?):\s*(.+)", re.DOTALL)
 
 # Section boundary patterns
+# Keys map directly to SectionType enum values (and data-section-type attributes).
 _SECTION_PATTERNS = {
     "qa": re.compile(r"question[- ]and[- ]answer|q\s*&\s*a", re.IGNORECASE),
     "prepared_remarks": re.compile(r"prepared\s+remarks", re.IGNORECASE),
-    "operator_instructions": re.compile(r"operator\s+instructions?", re.IGNORECASE),
+    "operator": re.compile(r"operator\s+instructions?", re.IGNORECASE),
+    # Disclaimer: only match standalone header lines, not incidental mentions.
+    # Pattern anchored to start/end (no trailing sentence content) to avoid
+    # triggering on "CEO: This call contains forward-looking statements..." etc.
+    "disclaimer": re.compile(r"^\s*(?:safe\s+harbor|disclaimer)\s*$", re.IGNORECASE),
 }
 
 # Speaker role patterns (title keywords)

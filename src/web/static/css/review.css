@@ -1415,3 +1415,26 @@
         display: none;
     }
 }
+
+/* =============================================================================
+   Transcript Review Styles
+   ============================================================================= */
+.section-badge-qa {
+    background-color: #0dcaf0;
+    color: #000;
+}
+
+.section-badge-prepared {
+    background-color: #6f42c1;
+    color: #fff;
+}
+
+.section-badge-operator {
+    background-color: #6c757d;
+    color: #fff;
+}
+
+.speaker-name {
+    font-weight: bold;
+    color: #212529;
+}

@@ -29,6 +29,7 @@ from src.extraction_v2.models import (
     BoundValue,
     MetricCandidate,
     Segment,
+    SectionType,
     SegmentType,
     SourceLocator,
     SourceType,
@@ -2365,5 +2366,55 @@ class TestArpuAsAovRule:
         source = "ARPU is $220 per customer."
         is_fp, reason = _is_v2_false_positive(
             bv, source, metric_id="cm_arpu", relaxed=True
+        )
+        assert is_fp is False
+
+
+# ============================================================================
+# Test: V2-native — Suppressed section types (OPERATOR, DISCLAIMER)
+# ============================================================================
+
+
+class TestSuppressedSectionTypes:
+    """Values from OPERATOR or DISCLAIMER sections should always be suppressed."""
+
+    def test_operator_section_suppressed(self):
+        """Any value extracted from OPERATOR section is filtered."""
+        bv = _make_bound_value("c1", 1000.0, "1,000", Unit.COUNT)
+        source = "Thank you for joining us. We have 1,000 participants on the line."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end",
+            section_type=SectionType.OPERATOR,
+        )
+        assert is_fp is True
+        assert reason == "v2_suppressed_section"
+
+    def test_disclaimer_section_suppressed(self):
+        """Any value extracted from DISCLAIMER section is filtered."""
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        source = "This presentation contains forward-looking statements for 500 days."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end",
+            section_type=SectionType.DISCLAIMER,
+        )
+        assert is_fp is True
+        assert reason == "v2_suppressed_section"
+
+    def test_prepared_remarks_not_suppressed(self):
+        """PREPARED_REMARKS section values are NOT blanket-suppressed."""
+        bv = _make_bound_value("c1", 50000.0, "50,000", Unit.COUNT)
+        source = "We ended the quarter with 50,000 paying customers."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end",
+            section_type=SectionType.PREPARED_REMARKS,
+        )
+        assert is_fp is False
+
+    def test_unknown_section_not_suppressed(self):
+        """UNKNOWN section (default) is not blanket-suppressed."""
+        bv = _make_bound_value("c1", 50000.0, "50,000", Unit.COUNT)
+        source = "We ended the quarter with 50,000 paying customers."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end",
         )
         assert is_fp is False

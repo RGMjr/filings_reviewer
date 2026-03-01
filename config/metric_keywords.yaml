@@ -293,6 +293,12 @@ cm_revenue_per_customer:
     # Transcript vocabulary (telecom)
     - '\barpa\b'
     - '\baverage\s+revenue\s+per\s+account\b'
+    # Telecom ARPU variants
+    - '\bpostpaid\s+arpu\b'
+    - '\bbroadband\s+arpu\b'
+    - '\bprepaid\s+arpu\b'
+    # Telecom: average margin per user (close substitute for ARPU in some carriers)
+    - '\bampu\b'
   exclusions:
     - '\bcost\s+per\s+customer\b'
     - '\bcost\s+per\s+user\b'

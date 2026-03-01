@@ -37,12 +37,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Mapping of data-section-type attribute values to SectionType enum.
-# "operator_instructions" maps to QA as a workaround for a converter bug
-# that puts Q&A content under that label in some transcripts (e.g., PYPL, CRM).
+# "operator_instructions" (legacy) maps to OPERATOR for backwards compatibility
+# with pre-existing HTML files produced by earlier converter versions.
 _HTML_SECTION_TYPE_MAP: dict[str, SectionType] = {
     "qa": SectionType.QA,
     "prepared_remarks": SectionType.PREPARED_REMARKS,
-    "operator_instructions": SectionType.QA,
+    "operator": SectionType.OPERATOR,
+    "operator_instructions": SectionType.OPERATOR,  # legacy alias
+    "disclaimer": SectionType.DISCLAIMER,
+    "presentation_slide": SectionType.PRESENTATION_SLIDE,
 }
 
 

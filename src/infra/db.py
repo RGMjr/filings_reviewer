@@ -3904,14 +3904,23 @@ class DatabaseAdapter:
     # V2 Extraction Review Methods
     # =============================================================================
 
-    def get_v2_filings_with_facts(self) -> list[dict]:
+    def get_v2_filings_with_facts(self, document_type: str | None = None) -> list[dict]:
         """
         Get filings that have V2 extraction results, with fact counts and review progress.
+
+        Args:
+            document_type: Optional filter — "sec_filing" or "earnings_call".
 
         Returns:
             List of dicts with filing metadata and V2 extraction stats.
         """
-        sql = """
+        where_clause = ""
+        params: dict[str, Any] = {}
+        if document_type is not None:
+            where_clause = "WHERE d.document_type = %(document_type)s"
+            params["document_type"] = document_type
+
+        sql = f"""
             SELECT
                 f.filing_id,
                 c.company_name,
@@ -3920,6 +3929,7 @@ class DatabaseAdapter:
                 f.form_type,
                 f.filing_date,
                 d.doc_id,
+                d.document_type,
                 d.status AS extraction_status,
                 d.fact_count,
                 d.segment_count,
@@ -3935,13 +3945,14 @@ class DatabaseAdapter:
             JOIN filings f ON d.filing_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            {where_clause}
             GROUP BY f.filing_id, c.company_name, c.cik, f.accession_number,
-                     f.form_type, f.filing_date, d.doc_id, d.status,
+                     f.form_type, f.filing_date, d.doc_id, d.document_type, d.status,
                      d.fact_count, d.segment_count, d.table_count, d.image_count,
                      d.extract_completed_at
             ORDER BY d.extract_completed_at DESC NULLS LAST
         """
-        return self.query(sql)
+        return self.query(sql, params if params else None)
 
     def get_v2_facts_for_filing(
         self,

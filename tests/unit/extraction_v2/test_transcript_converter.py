@@ -99,7 +99,17 @@ class TestSectionDetection:
         assert _detect_section("Prepared Remarks") == "prepared_remarks"
 
     def test_detects_operator_instructions(self):
-        assert _detect_section("Operator Instructions") == "operator_instructions"
+        assert _detect_section("Operator Instructions") == "operator"
+
+    def test_detects_disclaimer_safe_harbor(self):
+        assert _detect_section("Safe Harbor") == "disclaimer"
+
+    def test_detects_standalone_disclaimer(self):
+        assert _detect_section("Disclaimer") == "disclaimer"
+
+    def test_no_disclaimer_for_inline_mention(self):
+        # "forward-looking statements" within sentence text should NOT trigger section break
+        assert _detect_section("This call contains forward-looking statements.") == ""
 
     def test_no_section_for_regular_text(self):
         assert _detect_section("Revenue grew 25% year over year.") == ""
@@ -195,6 +205,22 @@ class TestConvertTranscriptToHtml:
         html, meta = convert_transcript_to_html(text)
         assert 'data-section-type="prepared_remarks"' in html
         assert 'data-section-type="qa"' in html
+
+    def test_operator_section_type_in_output(self):
+        text = (
+            "Operator Instructions\n"
+            "Operator: Thank you for holding."
+        )
+        html, meta = convert_transcript_to_html(text)
+        assert 'data-section-type="operator"' in html
+
+    def test_disclaimer_section_type_in_output(self):
+        text = (
+            "Safe Harbor\n"
+            "These statements are subject to risks and uncertainties."
+        )
+        html, meta = convert_transcript_to_html(text)
+        assert 'data-section-type="disclaimer"' in html
 
     def test_speaker_role_in_output(self):
         text = "John Smith, CEO: Revenue grew 25%."

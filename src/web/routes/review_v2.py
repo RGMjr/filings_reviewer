@@ -67,13 +67,19 @@ def _log_request_complete(response):
 # =============================================================================
 
 
+VALID_DOCUMENT_TYPES = ("sec_filing", "earnings_call")
+
+
 @review_v2_bp.route("/filings")
 def filing_list():
     """Display list of filings with V2 extraction results."""
     db = get_db()
 
+    raw_type = request.args.get("document_type")
+    document_type = raw_type if raw_type in VALID_DOCUMENT_TYPES else None
+
     try:
-        filings = db.get_v2_filings_with_facts()
+        filings = db.get_v2_filings_with_facts(document_type=document_type)
     except Exception as e:
         logger.error(f"Database error in V2 filing list: {e}")
         flash("Error loading V2 filings.", "danger")
@@ -82,7 +88,11 @@ def filing_list():
     if not filings:
         flash("No V2 extractions found. Run scripts/run_v2_extraction.py first.", "info")
 
-    return render_template("v2_filing_list.html", filings=filings)
+    return render_template(
+        "v2_filing_list.html",
+        filings=filings,
+        current_document_type=document_type or "all",
+    )
 
 
 @review_v2_bp.route("/<int:filing_id>")
@@ -91,17 +101,21 @@ def review_filing(filing_id: int):
     db = get_db()
 
     try:
-        # Get filing metadata
+        # Get filing metadata (include document_type from v2_documents)
         filing_sql = """
-            SELECT f.*, c.company_name, c.cik
+            SELECT f.*, c.company_name, c.cik,
+                   d.document_type
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_documents d ON d.filing_id = f.filing_id
             WHERE f.filing_id = %(filing_id)s
+            LIMIT 1
         """
         filing_result = db.query(filing_sql, {"filing_id": filing_id})
         if not filing_result:
             abort(404)
         filing = dict(filing_result[0])
+        document_type = filing.get("document_type") or "sec_filing"
 
         # Parse filter parameters
         filter_status = request.args.get("status", "all")
@@ -164,8 +178,13 @@ def review_filing(filing_id: int):
             or sort_by != "confidence_desc",
         }
 
+        template = (
+            "v2_review_transcript.html"
+            if document_type == "earnings_call"
+            else "v2_review.html"
+        )
         return render_template(
-            "v2_review.html",
+            template,
             filing=filing,
             facts=facts,
             current_fact=current_fact,
@@ -179,6 +198,7 @@ def review_filing(filing_id: int):
             rejected_count=rejected_count,
             review_statuses=V2_REVIEW_STATUSES,
             sort_options=V2_SORT_OPTIONS,
+            document_type=document_type,
         )
 
     except Exception as e:

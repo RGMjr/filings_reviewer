@@ -65,6 +65,9 @@ class SectionType(str, Enum):
     # Transcript-specific section types
     QA = "qa"
     PREPARED_REMARKS = "prepared_remarks"
+    OPERATOR = "operator"          # Operator boilerplate in transcripts (suppress extraction)
+    PRESENTATION_SLIDE = "presentation_slide"  # Investor presentation slides
+    DISCLAIMER = "disclaimer"      # Legal disclaimers (suppress extraction)
 
 
 class ImageClassification(str, Enum):

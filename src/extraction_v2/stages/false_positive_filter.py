@@ -705,6 +705,11 @@ def _is_v2_false_positive(
     Returns:
         Tuple of (is_false_positive, reason) — reason is None if not FP.
     """
+    # Always suppress extraction from operator boilerplate and legal disclaimers.
+    # These sections contain no meaningful metric disclosures.
+    if section_type in (SectionType.OPERATOR, SectionType.DISCLAIMER):
+        return True, "v2_suppressed_section"
+
     for tag, rule_fn in _FP_RULES:
         if relaxed and tag in _RELAXED_SKIP_TAGS:
             continue
