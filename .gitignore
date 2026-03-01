@@ -50,6 +50,7 @@ htmlcov/
 
 # Claude setup
 .claude.json
+.claude/agent-memory/
 
 # But keep project-specific Claude settings
 !.claude/settings.json
