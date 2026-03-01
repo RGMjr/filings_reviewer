@@ -6,10 +6,7 @@ Tests find_sentence_bounds() and normalize_text().
 
 from __future__ import annotations
 
-import pytest
-
 from src.extraction_v2.text_utils import find_sentence_bounds, normalize_text
-
 
 # ============================================================================
 # normalize_text()

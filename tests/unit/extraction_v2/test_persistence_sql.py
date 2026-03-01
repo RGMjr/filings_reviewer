@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 
 class TestFactUpsertSQL:
-    """Verify the DO UPDATE SET clause in _upsert_facts does not include review_status."""
+    """Verify the delete-then-insert pattern in _persist_facts_in_tx."""
 
-    def _get_upsert_sql(self) -> str:
-        """Extract the raw SQL string from V2PersistenceAdapter._persist_facts_in_tx."""
+    def _get_persist_sql(self) -> str:
+        """Extract the raw source of V2PersistenceAdapter._persist_facts_in_tx."""
         # Import here so the module loads without a DB connection
         import inspect
 
@@ -21,33 +19,39 @@ class TestFactUpsertSQL:
         return source
 
     def test_review_status_not_in_do_update_set(self):
-        """review_status must NOT appear in the DO UPDATE SET clause (WP-12)."""
-        source = self._get_upsert_sql()
+        """persistence uses delete-then-insert, not DO UPDATE SET (WP-12)."""
+        source = self._get_persist_sql()
 
-        # Isolate the DO UPDATE SET block
-        do_update_match = re.search(
-            r"DO UPDATE SET\s*(.*?)(?=\"\"\"|''')",
-            source,
-            re.DOTALL | re.IGNORECASE,
+        # The new pattern must not use ON CONFLICT DO UPDATE at all
+        assert "DO UPDATE SET" not in source.upper(), (
+            "_persist_facts_in_tx must not use ON CONFLICT DO UPDATE SET — "
+            "delete-then-insert is the required pattern"
         )
-        assert do_update_match, "Could not find DO UPDATE SET block in _upsert_facts SQL"
 
-        do_update_block = do_update_match.group(1)
-        assert "review_status" not in do_update_block, (
-            "review_status must NOT be in DO UPDATE SET — it would overwrite reviewer decisions"
+    def test_delete_before_insert(self):
+        """DELETE FROM v2_metric_facts WHERE doc_id must precede INSERT (WP-12)."""
+        source = self._get_persist_sql()
+
+        assert "DELETE FROM v2_metric_facts WHERE doc_id" in source, (
+            "_persist_facts_in_tx must DELETE existing facts before inserting fresh results"
         )
+
+        # DELETE should appear before INSERT in the source
+        delete_pos = source.index("DELETE FROM v2_metric_facts WHERE doc_id")
+        insert_pos = source.index("INSERT INTO v2_metric_facts")
+        assert delete_pos < insert_pos, "DELETE must precede INSERT in _persist_facts_in_tx"
 
     def test_review_status_in_insert_columns(self):
         """review_status must appear in the INSERT column list (WP-12)."""
-        source = self._get_upsert_sql()
+        source = self._get_persist_sql()
 
-        # Isolate the INSERT ... VALUES block (before ON CONFLICT)
+        # Isolate the INSERT ... VALUES block
         insert_match = re.search(
             r"INSERT INTO v2_metric_facts\s*\((.*?)\)\s*VALUES",
             source,
             re.DOTALL | re.IGNORECASE,
         )
-        assert insert_match, "Could not find INSERT column list in _upsert_facts SQL"
+        assert insert_match, "Could not find INSERT column list in _persist_facts_in_tx SQL"
 
         insert_columns = insert_match.group(1)
         assert "review_status" in insert_columns, (
@@ -55,17 +59,17 @@ class TestFactUpsertSQL:
         )
 
     def test_review_reason_in_do_update_set(self):
-        """review_reason (machine-generated) should remain in DO UPDATE SET."""
-        source = self._get_upsert_sql()
+        """review_reason must appear in INSERT columns under delete-then-insert pattern."""
+        source = self._get_persist_sql()
 
-        do_update_match = re.search(
-            r"DO UPDATE SET\s*(.*?)(?=\"\"\"|''')",
+        insert_match = re.search(
+            r"INSERT INTO v2_metric_facts\s*\((.*?)\)\s*VALUES",
             source,
             re.DOTALL | re.IGNORECASE,
         )
-        assert do_update_match, "Could not find DO UPDATE SET block in _upsert_facts SQL"
+        assert insert_match, "Could not find INSERT column list in _persist_facts_in_tx SQL"
 
-        do_update_block = do_update_match.group(1)
-        assert "review_reason" in do_update_block, (
-            "review_reason (machine-generated) should be updated on re-extraction"
+        insert_columns = insert_match.group(1)
+        assert "review_reason" in insert_columns, (
+            "review_reason (machine-generated) must be included in INSERT columns"
         )

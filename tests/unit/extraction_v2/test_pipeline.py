@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from src.extraction_v2.models import (
     EvidencePack,
     MetricFact,
@@ -241,8 +243,9 @@ class TestV2Pipeline:
     def test_pipeline_initialization(self) -> None:
         """Test pipeline initializes with all stages."""
         pipeline = V2Pipeline()
-        # Should have 13 stages by default (including false positive filter and definition extraction)
-        assert len(pipeline._stages) == 13
+        # 11 mandatory stages + up to 2 optional (image triage, OCR/chart) depending
+        # on whether OPENAI_API_KEY is set. Assert the mandatory floor.
+        assert len(pipeline._stages) >= 11
 
     def test_pipeline_with_disabled_features(self) -> None:
         """Test pipeline with disabled optional features."""
@@ -270,7 +273,7 @@ class TestV2Pipeline:
         # Should complete without error (even if no facts extracted)
         assert result.success is True
         assert result.document is not None
-        assert len(result.stage_results) == 13  # All stages executed
+        assert len(result.stage_results) == len(pipeline._stages)  # All configured stages executed
 
     def test_pipeline_tracks_stage_durations(self, tmp_path: Path) -> None:
         """Test that stage durations are tracked."""
@@ -642,3 +645,40 @@ class TestRetainContext:
             config=config,
         )
         assert ctx._pre_filter_bound_values == []
+
+
+class TestPipelineApiKeyCheck:
+    """Tests for automatic disabling of chart/image extraction when API key is missing."""
+
+    def test_chart_extraction_disabled_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pipeline should auto-disable chart and image extraction when OPENAI_API_KEY is unset."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
+        pipeline = V2Pipeline(config=config)
+        # Both flags should be False after initialization
+        assert pipeline.config.enable_chart_extraction is False
+        assert pipeline.config.enable_image_extraction is False
+        # Neither Stage 4 nor Stage 5 should be in the stage list
+        stage_ids = [s for s, _ in pipeline._stages]
+        assert PipelineStage.IMAGE_TRIAGE not in stage_ids
+        assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
+
+    def test_chart_extraction_enabled_when_api_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pipeline should keep chart extraction enabled when OPENAI_API_KEY is set."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-12345")
+        config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
+        pipeline = V2Pipeline(config=config)
+        assert pipeline.config.enable_chart_extraction is True
+        assert pipeline.config.enable_image_extraction is True
+        stage_ids = [s for s, _ in pipeline._stages]
+        assert PipelineStage.IMAGE_TRIAGE in stage_ids
+        assert PipelineStage.OCR_CHART_EXTRACTION in stage_ids
+
+    def test_no_warning_when_chart_extraction_already_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No warning should be issued when chart extraction is already disabled."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        # When chart extraction is already disabled, no warning needed
+        config = PipelineConfig(enable_chart_extraction=False)
+        pipeline = V2Pipeline(config=config)
+        # Should not raise, and chart extraction stays disabled
+        assert pipeline.config.enable_chart_extraction is False

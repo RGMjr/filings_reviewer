@@ -149,8 +149,8 @@ class TestE2ESlackFiling:
         assert slack_result.document is not None
         assert slack_result.total_duration_ms > 0
 
-    def test_e2e_slack_all_12_stages_executed(self, slack_result: PipelineResult):
-        """Test that all 12 pipeline stages were executed."""
+    def test_e2e_slack_all_13_stages_executed(self, slack_result: PipelineResult):
+        """Test that all 13 pipeline stages were executed."""
         executed_stages = {result.stage for result in slack_result.stage_results}
 
         expected_stages = {
@@ -164,6 +164,7 @@ class TestE2ESlackFiling:
             PipelineStage.FALSE_POSITIVE_FILTER,
             PipelineStage.PERIOD_INFERENCE,
             PipelineStage.FACT_CONSTRUCTION,
+            PipelineStage.DEFINITION_EXTRACTION,
             PipelineStage.DEDUPLICATION,
             PipelineStage.VALIDATION,
         }

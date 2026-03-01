@@ -1024,6 +1024,7 @@ class TestDateHeaderFix:
     ) -> None:
         """Integration: Slack quarterly fixture should have 4 header rows after fix."""
         import pathlib
+
         from bs4 import BeautifulSoup
         fixture = (
             pathlib.Path(__file__).parent.parent.parent

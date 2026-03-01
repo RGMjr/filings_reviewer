@@ -5,11 +5,10 @@ Unit tests for V2 Quality Scoring Adapter.
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock
 
 import pytest
 
-from src.extraction_v2.models import MetricDefinition, MetricFact, Segment, SegmentType, Unit
+from src.extraction_v2.models import MetricDefinition, MetricFact
 from src.extraction_v2.quality_scoring import V2QualityScorer
 
 
