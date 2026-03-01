@@ -502,6 +502,107 @@ def _rule_arpu_percent(bv: BoundValue, source_text: str, metric_id: str) -> str 
 # per day"), not a monthly active user count.  Only applies to cm_monthly_active_users.
 _PER_DAY_RE = re.compile(r"\bper\s+day\b", re.IGNORECASE)
 
+# ARPU context for cm_average_order_value.
+# When "ARPU" or "average revenue per user" appears within ±30 chars of a value
+# that's bound to cm_average_order_value, the value is really an ARPU figure,
+# not an average order value.
+_ARPU_LABEL_RE = re.compile(
+    r"\b(?:ARPU|average\s+revenue\s+per\s+(?:user|account|subscriber))\b",
+    re.IGNORECASE,
+)
+
+
+def _rule_arpu_as_aov(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block ARPU values from binding to cm_average_order_value.
+
+    Fires when metric_id == 'cm_average_order_value' and 'ARPU' or
+    'average revenue per user/account/subscriber' appears within ±30 chars
+    of the value — indicating the value is an ARPU figure rather than a
+    genuine average order value.
+    """
+    if metric_id != "cm_average_order_value" or not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    window_start = max(0, value_pos - 30)
+    window_end = min(len(source_text), value_pos + len(raw) + 30)
+    window = source_text[window_start:window_end]
+    if _ARPU_LABEL_RE.search(window):
+        return "v2_arpu_as_aov"
+    return None
+
+
+# Revenue-as-ARR detection — GAAP revenue values near cm_arr keywords.
+# Fires when text in ±60-char window contains "revenue" (or variants) WITHOUT
+# "recurring" or "ARR" (which would indicate it really is ARR context).
+# Pattern matches "revenue of $X" and "$X revenue" structures.
+_REVENUE_LABEL_RE = re.compile(
+    r"\brevenue\b",
+    re.IGNORECASE,
+)
+_ARR_QUALIFIER_RE = re.compile(
+    r"\b(?:recurring|ARR|annual\s+recurring)\b",
+    re.IGNORECASE,
+)
+
+
+def _rule_revenue_as_arr(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block GAAP revenue values from binding to cm_arr.
+
+    Fires when metric_id == 'cm_arr' and the IMMEDIATE context (±20 chars)
+    around the value contains 'revenue' but NOT 'recurring' or 'ARR'.
+
+    Uses a tight ±20-char window for both the revenue detection and the ARR
+    qualifier escape.  This prevents false escapes from ARR mentions in the
+    same sentence but farther away (e.g., "ARR of $578M and revenue of $4.15B"
+    — "ARR" is >20 chars from the $4.15B value, so the escape does not fire
+    and the revenue value is correctly rejected).
+
+    Does NOT fire when:
+    - 'recurring' or 'ARR' appears within ±20 chars of the value
+    - No 'revenue' in the ±20-char window
+    """
+    if metric_id != "cm_arr" or not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    # ±35-char window: "revenue" must be within 35 chars of the value.
+    # This captures "document cloud revenue" (revenue ~30 chars after value).
+    rev_start = max(0, value_pos - 35)
+    rev_end = min(len(source_text), value_pos + len(raw) + 35)
+    rev_window = source_text[rev_start:rev_end]
+    if not _REVENUE_LABEL_RE.search(rev_window):
+        return None  # "revenue" not adjacent — not a revenue-as-ARR FP
+    # ±35-char escape: if ARR/recurring appears within 35 chars, it qualifies the value.
+    # 35 chars is sufficient for "recurring revenue of $X" (recurring ~23 chars out)
+    # but excludes "ARR of $Y and revenue of $X" where ARR is ~36+ chars away.
+    arr_start = max(0, value_pos - 35)
+    arr_end = min(len(source_text), value_pos + len(raw) + 35)
+    arr_window = source_text[arr_start:arr_end]
+    if _ARR_QUALIFIER_RE.search(arr_window):
+        return None  # ARR/recurring qualifier near value — genuine ARR context
+    return "v2_revenue_as_arr"
+
+
+# Forward guidance detection — applies in relaxed mode (transcripts/presentations).
+# Fires when present-tense guidance language appears within ±80 chars of the value,
+# indicating a projected figure rather than a reported actual.
+_FORWARD_GUIDANCE_RE = re.compile(
+    r"\b(?:we\s+expect|our\s+expectation|our\s+outlook|we\s+guide|"
+    r"we\s+project|we\s+anticipate|we\s+forecast|"
+    r"guidance\s+(?:of|is|for|at)|full[- ]year\s+guidance|"
+    r"expect(?:ing)?\s+to\s+(?:add|reach|achieve|deliver|generate))\b",
+    re.IGNORECASE,
+)
+
 
 def _rule_mau_daily_rate(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block MAU values described as a 'per day' rate rather than a monthly count.
@@ -568,6 +669,8 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("content_engagement", _rule_content_engagement),
     ("growth_rate_percent", _rule_growth_rate_percent),
     ("arpu_percent", _rule_arpu_percent),
+    ("arpu_as_aov", _rule_arpu_as_aov),
+    ("revenue_as_arr", _rule_revenue_as_arr),
 ]
 
 # Rules skipped in relaxed mode (transcripts/presentations).
@@ -653,6 +756,31 @@ def _is_v2_false_positive(
         # so the reason tag reflects the Q&A context.
         if bv.unit == Unit.CURRENCY and metric_id in _COUNT_ONLY_METRICS:
             return True, "v2_qa_currency_on_count"
+
+    # Relaxed mode: forward guidance detection (all sections).
+    # Earnings calls sometimes contain forward guidance figures mixed with
+    # reported actuals.  When present-tense guidance language ("we expect",
+    # "our outlook", "we guide") appears within ±100 chars of the value,
+    # the figure is projected rather than reported — reject it.
+    # Uses ±100 chars (wider than ±80) to handle range-guidance phrasing like
+    # "we expect ... between X and Y" where X may be ~90 chars before Y.
+    if relaxed and source_text:
+        raw = (bv.value_raw or "").strip()
+        if raw:
+            # Prefer the span from source_locator if available to avoid
+            # mis-positioning when raw is a short string (e.g., "6") that
+            # appears multiple times in the segment.
+            text_span = bv.source_locator.text_span
+            if text_span is not None:
+                value_pos = text_span[0]
+            else:
+                value_pos = source_text.find(raw)
+            if value_pos >= 0:
+                window_start = max(0, value_pos - 100)
+                window_end = min(len(source_text), value_pos + len(raw) + 100)
+                window = source_text[window_start:window_end]
+                if _FORWARD_GUIDANCE_RE.search(window):
+                    return True, "v2_forward_guidance"
 
     return False, None
 

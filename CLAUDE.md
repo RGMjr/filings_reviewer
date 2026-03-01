@@ -118,7 +118,7 @@ See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_I
 ## Beyond SEC: Transcript & Presentation Support
 
 **Branch:** `earnings-call-exploration` (worktree: `filings_reviewer_beyond_sec`)
-**Status:** Phase A complete (12/12 ACs), Phase A+ in progress
+**Status:** Phase A complete (12/12 ACs), Phase A+ complete (all targets met)
 **Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 The V2 pipeline has been extended to extract customer metrics from earnings call transcripts and investor presentations. Phase A is complete: all 12 acceptance criteria met, with R=65.9%, P=38.4%, F1=48.5% on the consolidated gold standard (94 annotations, 16 files). The original spike baseline was 22.1% recall / 63.0% precision on 77 annotated metrics.
@@ -137,7 +137,7 @@ config = PipelineConfig()
 
 **Phase A (complete):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration — all 12 ACs met. Achieved R=65.9% (target: ≥50%) on consolidated gold standard. See `ops/DEVELOPMENT_PLAN.md` for full AC list.
 
-**Phase A+ (in progress):** Precision hardening and recall improvements beyond the Phase A target. Current scores (2026-02-28): R=71.8%, P=62.9%, F1=67.0% on 94 annotations. PYPL $-prefix resolved (source data issue). Q&A filtering complete. Growth-rate/ARPA percent FPs and CapEx revenue_concentration FP fixed. Remaining gap: P≥70% not yet met (7.1pp short); primary blockers are ADBE ARR sub-components (~8 FPs) and TMUS period disambiguation (~4 FPs). Target: R≥65%, P≥70%, F1≥67%.
+**Phase A+ (complete):** Precision hardening. Final scores (2026-02-28): R=71.8%, P=70.1%, F1=70.9% on 94 annotations. All targets met (R≥65% ✓, P≥70% ✓, F1≥67% ✓). Rules added: revenue_as_arr, forward_guidance, arpu_as_aov. Keywords tightened: deals-over pattern, trailblazers exclusion.
 
 **Spike scripts:**
 - `scripts/spike/collect_samples.py` — HuggingFace dataset downloader

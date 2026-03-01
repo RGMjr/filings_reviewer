@@ -1,6 +1,6 @@
 # Extraction Implementer Memory
 
-## Last updated: 2026-02-18
+## Last updated: 2026-02-26
 
 ## Key Files
 
@@ -44,6 +44,11 @@
 - `cm_customers_period_end` vs `cm_active_customers_total` are separate metrics, NOT aliases
 - Revenue synonym metrics need cohort/per-customer context to pass filter
 - Bare numbers without context should be rejected for currency metrics
+- NUMBER_PATTERN has no left-side word boundary — "M365" → extracts "365", "Dynamics 365" → extracts "365" (Unit.OTHER). The `_BARE_SMALL_NUMBER_THRESHOLD_PREPARED` (400) in relaxed mode suppresses these.
+- Growth rate percents ("up N% year-over-year") are ONLY filtered by `_rule_growth_rate_percent` when a scale count (N million/thousand) also appears in the same segment. If the sentence has no absolute count, the percent is treated as the metric value (some companies report only growth rates).
+- `_rule_fortune_subset` has a `bv.value <= 2000` guard to avoid blocking large customer counts near "Fortune 500" text.
+- `_rule_content_engagement` blocks customer count metrics when "views/impressions/streams" appears within 60 chars of the value raw text.
+- Transcript converter: speaker-pattern check must run BEFORE section detection; otherwise Operator intro lines containing "question-and-answer" incidentally trigger QA section detection and drop prepared-remarks speaker turns.
 
 ## Filing-Specific Quirks
 

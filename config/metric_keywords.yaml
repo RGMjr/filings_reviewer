@@ -162,6 +162,8 @@ cm_customers_period_end:
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
     # FIX-FP: monthly/daily active users/people belong to MAU/DAU metrics, not stock count
     - '\b(?:monthly|daily)\s+active\s+(?:users?|people)\b'
+    # FIX-FP: Salesforce "trailblazers" are community members, not paying customers
+    - '\btrailblazers?\b'
     # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
     - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
   specific_patterns:
@@ -180,8 +182,9 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
-    # Transcript: "400 deals over a million" (CRM)
-    - '\bdeals?\s+over\b'
+    # Transcript: "400 deals over $1 million" (CRM) — require $ sign to avoid extracting
+    # the deal count (400) or the non-dollar threshold ("deals over a million")
+    - '\bdeals?\s+over\s+\$'
     # Snowflake-style patterns: "customers that contributed more than $X"
     - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
     # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"

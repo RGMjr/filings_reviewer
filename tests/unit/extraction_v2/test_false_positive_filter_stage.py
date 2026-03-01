@@ -1179,9 +1179,10 @@ class TestRelaxedMode:
 
     def test_relaxed_via_stage_config(self, stage):
         """Stage reads relaxed_fp_filter from config."""
-        source = "(In millions) Revenue 400.5 500.2"
+        # Use cm_net_revenue_retention so _rule_revenue_as_arr doesn't fire
+        source = "(In millions) Net Revenue Retention 400.5 500.2"
         segment = _make_text_segment("seg-1", source)
-        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        candidate = _make_candidate("c1", "cm_net_revenue_retention", "seg-1")
         bv = _make_bound_value("c1", 400.5, "400.5", Unit.CURRENCY, "seg-1")
 
         # Default config: filtered
@@ -1576,17 +1577,21 @@ class TestPercentClauseGateStage:
 
     def test_same_clause_percent_kept_in_relaxed(self, stage):
         """Percent value in same clause as keyword kept in relaxed mode."""
-        text = "TPV grew 50% and MAAs grew 30%"
+        # Use non-growth-rate prefix ("at") so V1 doesn't catch it; clause gate decides.
+        # "Revenue retention was 115% and MAAs at 30% penetration"
+        #  - "115%" is in clause 0 (before "and"), MAAs and "30%" are in clause 1.
+        #  - Clause gate: same clause → keep.
+        text = "Revenue retention was 115% and MAAs at 30% penetration"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
             candidate_id="c1",
             metric_id="cm_monthly_active_users",
             match_text="MAAs",
-            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(31, 35)),
             source_type=SourceType.TEXT,
             context_text=text,
         )
-        # "30%" is in the same clause as "MAAs"
+        # "30%" is in the same clause as "MAAs" (both in clause after "and")
         bv = _make_bound_value("c1", 30.0, "30%", Unit.PERCENT, "seg-1")
 
         ctx = MockPipelineContext(
@@ -1600,17 +1605,20 @@ class TestPercentClauseGateStage:
 
     def test_clause_gate_not_applied_in_normal_mode(self, stage):
         """Clause gate only applies in relaxed mode; normal mode keeps all."""
-        text = "TPV grew 50% and MAAs grew 30%"
+        # "90%" would be rejected by clause gate in relaxed mode (wrong clause),
+        # but normal mode skips the clause gate entirely → value is kept.
+        # No growth-rate prefix ("was") so V1 also passes.
+        text = "Revenue retention was 90% and MAAs totaled 250M"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
             candidate_id="c1",
             metric_id="cm_monthly_active_users",
             match_text="MAAs",
-            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(30, 34)),
             source_type=SourceType.TEXT,
             context_text=text,
         )
-        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+        bv = _make_bound_value("c1", 90.0, "90%", Unit.PERCENT, "seg-1")
 
         ctx = MockPipelineContext(
             segments=[segment],
@@ -1693,17 +1701,19 @@ class TestPercentClauseGateStage:
 
     def test_clause_gate_rejection_tracked(self, stage):
         """Clause gate rejection reason tracked in metadata."""
-        text = "TPV grew 50% and MAAs grew 30%"
+        # "90%" is in wrong clause (before "and"), MAAs is in clause after "and".
+        # No growth-rate prefix ("was") so V1 passes; clause gate fires → v2_percent_wrong_clause.
+        text = "Revenue retention was 90% and MAAs totaled 250M"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
             candidate_id="c1",
             metric_id="cm_monthly_active_users",
             match_text="MAAs",
-            source_locator=SourceLocator(segment_id="seg-1", text_span=(17, 21)),
+            source_locator=SourceLocator(segment_id="seg-1", text_span=(30, 34)),
             source_type=SourceType.TEXT,
             context_text=text,
         )
-        bv = _make_bound_value("c1", 50.0, "50%", Unit.PERCENT, "seg-1")
+        bv = _make_bound_value("c1", 90.0, "90%", Unit.PERCENT, "seg-1")
 
         ctx = MockPipelineContext(
             segments=[segment],
@@ -2121,3 +2131,239 @@ class TestQACurrencyOnCountRule:
         )
         # QA-specific rule must NOT fire for prepared remarks
         assert reason != "v2_qa_currency_on_count"
+
+
+# ============================================================================
+# Test: Revenue-as-ARR rule (A+.1 — ADBE FP hardening)
+# ============================================================================
+
+
+class TestRevenueAsArrRule:
+    """Tests for the _rule_revenue_as_arr FP filter (cm_arr metric only)."""
+
+    def test_gaap_revenue_value_rejected_for_arr(self):
+        """'$4.85B revenue' near cm_arr → rejected (GAAP revenue, not ARR)."""
+        bv = _make_bound_value("c1", 4_850_000_000.0, "4.85", Unit.CURRENCY)
+        source = "Total revenue was $4.85 billion for fiscal 2023."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_revenue_as_arr"
+
+    def test_segment_revenue_rejected_for_arr(self):
+        """'$843M document cloud revenue' near cm_arr → rejected."""
+        bv = _make_bound_value("c1", 843_000_000.0, "843", Unit.CURRENCY)
+        source = "$843 million document cloud revenue grew 13% year over year."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_revenue_as_arr"
+
+    def test_recurring_revenue_not_rejected(self):
+        """'recurring revenue' near cm_arr → kept (genuine ARR context)."""
+        bv = _make_bound_value("c1", 578_000_000.0, "578", Unit.CURRENCY)
+        source = "Annual recurring revenue of $578 million, up 18% year over year."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert reason != "v2_revenue_as_arr"
+
+    def test_arr_label_adjacent_not_rejected(self):
+        """'ARR' immediately before value (within ±20 chars) → kept (genuine ARR)."""
+        bv = _make_bound_value("c1", 500_000_000.0, "500", Unit.CURRENCY)
+        source = "We closed the year with ARR of $500 million, up 25%."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert reason != "v2_revenue_as_arr"
+
+    def test_arr_far_away_does_not_escape_rule(self):
+        """'ARR' >20 chars before a GAAP revenue value does NOT suppress the rule."""
+        bv = _make_bound_value("c1", 4_150_000_000.0, "4.15", Unit.CURRENCY)
+        # "ARR" is ~40 chars before "4.15" — outside the ±20-char escape window
+        source = "net new digital media ARR of $578 million and revenue of $4.15 billion"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_revenue_as_arr"
+
+    def test_no_revenue_in_window_not_rejected(self):
+        """No 'revenue' word in window near cm_arr → kept (fail-open)."""
+        bv = _make_bound_value("c1", 250_000_000.0, "250", Unit.CURRENCY)
+        source = "We ended the quarter at $250 million, growing 30% year over year."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=True
+        )
+        assert reason != "v2_revenue_as_arr"
+
+    def test_rule_does_not_fire_for_non_arr_metric(self):
+        """Revenue-as-ARR rule is cm_arr-specific; other metrics unaffected."""
+        bv = _make_bound_value("c1", 1_000_000_000.0, "1 billion", Unit.CURRENCY)
+        source = "Product revenue of $1 billion exceeded expectations."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention", relaxed=True
+        )
+        assert reason != "v2_revenue_as_arr"
+
+    def test_rule_fires_in_non_relaxed_mode_too(self):
+        """Revenue-as-ARR rule is in the registry and fires for SEC filings too."""
+        bv = _make_bound_value("c1", 5_000_000_000.0, "5", Unit.CURRENCY)
+        source = "Total revenue of $5 billion including subscription revenue."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr", relaxed=False
+        )
+        assert is_fp is True
+        assert reason == "v2_revenue_as_arr"
+
+
+# ============================================================================
+# Test: Forward guidance rule (A+.2 — TMUS FP hardening)
+# ============================================================================
+
+
+class TestForwardGuidanceRule:
+    """Tests for the forward guidance FP filter in relaxed mode."""
+
+    def test_we_expect_phrase_rejects_value(self):
+        """'we expect 5.5 million net additions' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 5_500_000.0, "5.5 million", Unit.COUNT)
+        source = "For the full year we expect 5.5 million net additions to our base."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+    def test_our_outlook_phrase_rejects_value(self):
+        """'our outlook of 3.2 million' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 3_200_000.0, "3.2 million", Unit.COUNT)
+        source = "Our outlook remains 3.2 million postpaid phone net additions."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+    def test_guidance_of_phrase_rejects_value(self):
+        """'guidance of $X' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 700_000_000.0, "700", Unit.CURRENCY)
+        source = "We are reaffirming guidance of $700 million in free cash flow."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_free_cash_flow",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+    def test_reported_actual_not_rejected(self):
+        """Past tense reporting language → kept (actual result)."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 5_500_000.0, "5.5 million", Unit.COUNT)
+        source = "We delivered 5.5 million net additions in Q4, our best quarter ever."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert reason != "v2_forward_guidance"
+
+    def test_guidance_far_from_value_not_fired(self):
+        """Guidance language >100 chars from value → rule does NOT fire."""
+        from src.extraction_v2.models import SectionType
+
+        padding = "X" * 200
+        bv = _make_bound_value("c1", 5_500_000.0, "5.5", Unit.COUNT)
+        source = f"We expect strong performance. {padding} We added 5.5 million customers."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert reason != "v2_forward_guidance"
+
+    def test_forward_guidance_not_fired_in_non_relaxed_mode(self):
+        """Forward guidance rule is relaxed-only; SEC filings unaffected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 5_500_000.0, "5.5 million", Unit.COUNT)
+        source = "For the full year we expect 5.5 million net additions."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=False, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert reason != "v2_forward_guidance"
+
+    def test_expecting_to_add_phrase_rejects_value(self):
+        """'expecting to add X million' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 2_000_000.0, "2 million", Unit.COUNT)
+        source = "We are expecting to add 2 million subscribers in the next quarter."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_additions",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+
+class TestArpuAsAovRule:
+    """Tests for _rule_arpu_as_aov — blocks ARPU values from cm_average_order_value."""
+
+    def test_arpu_label_adjacent_rejects_aov_value(self):
+        """'ARPU is up to $220' near cm_average_order_value → rejected."""
+        bv = _make_bound_value("c1", 220.0, "220", Unit.CURRENCY)
+        source = "ARPU is up 8% to $220 per customer."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_average_order_value", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_as_aov"
+
+    def test_average_revenue_per_user_label_rejects_value(self):
+        """'average revenue per user' near cm_average_order_value → rejected."""
+        bv = _make_bound_value("c1", 225.0, "225", Unit.CURRENCY)
+        source = "average revenue per user of $225 for the quarter."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_average_order_value", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_as_aov"
+
+    def test_genuine_aov_without_arpu_label_kept(self):
+        """No ARPU label near value → kept as genuine AOV."""
+        bv = _make_bound_value("c1", 220.0, "220", Unit.CURRENCY)
+        source = "Average order value increased to $220 driven by premium product mix."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_average_order_value", relaxed=True
+        )
+        assert is_fp is False
+
+    def test_arpu_far_from_value_not_rejected(self):
+        """ARPU label too far (>30 chars) from value → not rejected."""
+        bv = _make_bound_value("c1", 220.0, "220", Unit.CURRENCY)
+        # "ARPU" is ~50 chars before "220" — outside ±30-char window
+        source = "ARPU grew significantly this quarter. Average order size was $220."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_average_order_value", relaxed=True
+        )
+        assert is_fp is False
+
+    def test_rule_does_not_fire_for_non_aov_metric(self):
+        """ARPU label near value but wrong metric → not filtered."""
+        bv = _make_bound_value("c1", 220.0, "220", Unit.CURRENCY)
+        source = "ARPU is $220 per customer."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arpu", relaxed=True
+        )
+        assert is_fp is False
