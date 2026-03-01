@@ -6,6 +6,15 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**V2 Production Promotion (2026-03-01)**:
+- Merged PR #27 (v2-rewrite → main) via merge commit `2dd707e` — 155 commits
+- UI cutover: `GET /` now redirects to `/v2/review/filings`; navbar updated (V2 primary, V1 secondary)
+- Shared modules extracted: `src/shared/keyword_config.py`, `src/shared/models.py`
+- V1 retirement: 12 extraction modules deleted, 8 scripts deleted, 31 test files deleted
+- Kept for later migration: `src/extraction/{html_segmenter,exceptions,validators}.py` (fresh_extractor.py dependency)
+- Gold standard: P=89.4%, R=63.2%, F1=74.1% (V1 baseline — no regression from code moves)
+- Unit tests: 3280 passed, 8 skipped, 78.96% coverage (75% minimum met)
+
 **WP-24: Register Farfetch + Snowflake + re-run full batch (2026-02-28)**:
 - Created `sql/register_gold_standard_filings.sql` to register Farfetch (filing_id=297, F-1) and Snowflake (filing_id=298, S-1)
 - Batch ran 4/4 filings, 0 failures, 111 total facts in 14.4s
@@ -34,7 +43,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-- Next: Promote V2 to production (merge v2-rewrite → main, cut over review UI, retire V1 extraction)
+- Migrate `src/gold_standard/fresh_extractor.py` from V1 HTMLSegmenter to V2 pipeline
+- Full universe batch run (12 production filings beyond the 4 gold standard)
+- Delete remaining V1 shims in `src/extraction/` once fresh_extractor is migrated
 
 ## Test Status
 
