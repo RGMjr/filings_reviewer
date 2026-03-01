@@ -341,13 +341,13 @@ class V2PersistenceAdapter:
         """Persist document within an existing transaction."""
         sql = """
             INSERT INTO v2_documents (
-                doc_id, filing_id, parse_version,
+                filing_id, parse_version,
                 segment_count, table_count, image_count, fact_count,
                 status, parse_completed_at, extract_completed_at, created_at,
                 document_type, ticker, document_date, transcript_source
             )
             VALUES (
-                %(doc_id)s, %(filing_id)s, %(parse_version)s,
+                %(filing_id)s, %(parse_version)s,
                 %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s,
                 %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW(),
                 %(document_type)s, %(ticker)s, %(document_date)s, %(transcript_source)s
@@ -368,7 +368,6 @@ class V2PersistenceAdapter:
         """
 
         params = {
-            "doc_id": document.doc_id,
             "filing_id": filing_id,
             "parse_version": document.parse_version,
             "segment_count": segment_count,

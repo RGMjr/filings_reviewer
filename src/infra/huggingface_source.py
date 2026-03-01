@@ -96,8 +96,8 @@ class HuggingFaceTranscriptSource:
             for i, row in enumerate(dataset):
                 entry = {
                     "idx": i,
-                    "ticker": row.get("ticker", ""),
-                    "company_name": row.get("company", row.get("company_name", "")),
+                    "ticker": row.get("symbol", row.get("ticker", "")),
+                    "company_name": row.get("company_name", row.get("company", "")),
                     "date": row.get("date", ""),
                     "title": row.get("title", ""),
                     "quarter": row.get("quarter", ""),
@@ -184,7 +184,7 @@ class HuggingFaceTranscriptSource:
 
             dataset = load_dataset(self.dataset_name, split="train")
             row = dataset[entry["idx"]]
-            raw_text = row.get("text", row.get("transcript", ""))
+            raw_text = row.get("content", row.get("text", row.get("transcript", "")))
         except ImportError:
             raise ImportError("datasets package not installed. Run: pip install datasets")
 
@@ -211,7 +211,11 @@ class HuggingFaceTranscriptSource:
             try:
                 doc_date = datetime.strptime(entry["date"], "%Y-%m-%d").date()
             except (ValueError, TypeError):
-                pass
+                # Dataset uses datetime strings like "2020-11-23 16:30:00"
+                try:
+                    doc_date = datetime.strptime(entry["date"], "%Y-%m-%d %H:%M:%S").date()
+                except (ValueError, TypeError):
+                    pass
 
         fiscal_year = None
         if entry.get("year"):
@@ -219,6 +223,15 @@ class HuggingFaceTranscriptSource:
                 fiscal_year = int(entry["year"])
             except (ValueError, TypeError):
                 pass
+
+        # Convert integer quarter (1-4) to "Q1"/"Q2"/"Q3"/"Q4" string
+        fiscal_period = None
+        raw_quarter = entry.get("quarter")
+        if raw_quarter is not None:
+            try:
+                fiscal_period = f"Q{int(raw_quarter)}"
+            except (ValueError, TypeError):
+                fiscal_period = str(raw_quarter) if raw_quarter else None
 
         return DocumentMetadata(
             source_id=entry["source_id"],
@@ -229,7 +242,7 @@ class HuggingFaceTranscriptSource:
             document_date=doc_date,
             title=entry.get("title"),
             fiscal_year=fiscal_year,
-            fiscal_period=entry.get("quarter"),
+            fiscal_period=fiscal_period,
             form_type="earnings_call",
         )
 

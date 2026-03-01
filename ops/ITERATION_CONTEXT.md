@@ -6,48 +6,49 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**Stabilization (earnings-call-exploration, 2026-02-28)**: Committed Phase A+ work, added infrastructure tests
-- **Phase A+ precision hardening**: 3 FP rules (revenue_as_arr, forward_guidance, arpu_as_aov); trailblazers exclusion; deals-over tightening
-- **Final Phase A+ scores**: R=71.8%, P=70.1%, F1=70.9% — all targets met (R≥65% ✓, P≥70% ✓, F1≥67% ✓)
-- **Infrastructure tests**: test_company_mapping.py (13 tests), test_fmp_source.py (23 tests), test_ingest_transcripts.py (17 tests)
-- **New infra**: FMPTranscriptSource, company_mapping registry, ingest_transcripts batch script
+**Batch Ingestion E2E Test (earnings-call-exploration, 2026-03-01)**
+- `scripts/ingest_transcripts.py` tested end-to-end with HuggingFace source
+- 3 bugs fixed during E2E: field mapping (`symbol` not `ticker`), company upsert (partial unique index), persistence (v2_documents.doc_id is UUID, not filing_id)
+- Added migration 13: expanded v2_segments section_type CHECK to include transcript types
+- 6 transcripts (CRM + MSFT) persisted to local DB, 11 unique facts extracted
+- FMP deferred; HuggingFace free source validated as working path
 
-**Transcript baseline**: R=71.8%, P=70.1%, F1=70.9% (94 annotations, 16 files; 2026-02-28)
+**Phase B complete. All targets met: R=72.9%, P=71.3%, F1=72.1%**
 
 ## Current Focus
 
-Phase B preparation:
-- Transcript: PYPL FP explosion (small-bare-number FPs) — major precision blocker for Phase B
-- SEC: AOV wrong_period — period mismatch gating (needs WP-08)
+Phase C: Presentation Support
+- PDF-to-HTML converter (pdfplumber or docling)
+- SEC 8-K presentation source
+- Chart pipeline tuning for presentation charts
+- Target: >40% recall on presentations
 
 ## Test Status
 
-- ~4,560 unit tests; 0 failures (added 53 new tests this session)
+- Unit tests: 346+ pass (gold standard 6/6 pass); no regressions
 - SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28)
-- Transcript benchmark: R=71.8%, P=70.1%, F1=70.9% (94 annotations, 16 files; 2026-02-28)
+- Transcript benchmark: R=72.9%, P=71.3%, F1=72.1% (94 annotations, 16 files; 2026-03-01)
 
 ## Key Learnings
 
-**Transcript:**
-- MSFT converter bug: speaker-pattern check must run BEFORE section detection — operator intro lines triggered premature QA classification, dropping entire prepared remarks
-- `_RATIO_METRICS` in unit_compatibility.py must include `Unit.COUNT` for bare decimals (1.42x LTV/CAC)
-- Q&A hedging rules (±60 char window around value) safe with `relaxed=True and section_type==QA` guard
-- PYPL FP explosion (15 FPs, small bare numbers) is pre-existing; _BARE_SMALL_NUMBER_THRESHOLD raised to 400 for prepared_remarks only
-- ADSK 3 FNs are phantom annotations (text not in transcript) — unfixable; META 1 FN is dedup artifact
+**Phase B:**
+- OPERATOR section suppression cleanly eliminates boilerplate FPs without affecting transcript metrics
+- Gaming/fintech keywords skipped — no matching canonical metrics exist; adding keywords without metrics is a no-op
+- Baseline discrepancy: transcript_baseline.json showed P=62.9% vs CLAUDE.md's 70.1% — baseline.json was stale; re-anchor after each A+ session
 
-**SEC (Farfetch):**
-- LTV/CAC fix was unit_compatibility not value_binding — Strategy 6 was firing correctly
-- AOV wrong_period: values extracted at correct scale; period mismatch is gating issue (needs WP-08)
+**Transcript (from Phase A+):**
+- MSFT converter bug: speaker-pattern check must run BEFORE section detection
+- PYPL FP explosion (15 FPs, small bare numbers) — _BARE_SMALL_NUMBER_THRESHOLD raised to 400 for prepared_remarks
 
 ## Next Work (Prioritized)
 
-1. **Transcript: PYPL FP explosion** — 15 small-bare-number FPs dragging precision to 25%; needs targeted rule
+1. **Phase C: Presentation Support** — PDF-to-HTML, 8-K source, chart tuning
 2. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
-3. **SEC: Farfetch chart FNs** — 8 FNs require Vision API; blocked on environment
 
 ## Blockers or Warnings
 
 - Farfetch chart FNs (8) require Vision API; not addressable in current test environment
+- Production DB migration: run on staging first, verify SEC data unaffected
 
 ---
 

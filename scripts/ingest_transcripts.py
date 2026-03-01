@@ -103,7 +103,7 @@ class IngestSummary:
         if self.results:
             print("  Per-transcript breakdown:")
             for r in self.results:
-                period = r.fiscal_period or "?"
+                period = str(r.fiscal_period) if r.fiscal_period is not None else "?"
                 date_str = r.document_date.isoformat() if r.document_date else "?"
                 if r.status == "ingested":
                     print(
@@ -132,15 +132,20 @@ def _get_or_create_company(conn: Any, ticker: str, company_name: str) -> int:
         if row:
             return row["company_id"]
 
-        # Create a minimal company record for transcript companies
+        # Create a minimal company record for transcript companies.
+        # cik is NOT NULL+UNIQUE; use synthetic value for non-SEC companies.
+        # The unique index on ticker is partial (WHERE ticker IS NOT NULL),
+        # so we must include the WHERE clause in ON CONFLICT.
+        synthetic_cik = f"transcript:{ticker}"
         cur.execute(
             """
-            INSERT INTO companies (company_name, ticker, created_at)
-            VALUES (%(company_name)s, %(ticker)s, NOW())
-            ON CONFLICT (ticker) DO UPDATE SET company_name = EXCLUDED.company_name
+            INSERT INTO companies (company_name, ticker, cik, created_at)
+            VALUES (%(company_name)s, %(ticker)s, %(cik)s, NOW())
+            ON CONFLICT (ticker) WHERE ticker IS NOT NULL
+            DO UPDATE SET company_name = EXCLUDED.company_name
             RETURNING company_id
             """,
-            {"company_name": company_name, "ticker": ticker},
+            {"company_name": company_name, "ticker": ticker, "cik": synthetic_cik},
         )
         row = cur.fetchone()
         return row["company_id"]

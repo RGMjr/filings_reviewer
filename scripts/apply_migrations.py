@@ -36,6 +36,10 @@ MIGRATIONS = [
     "08_add_suppressed_candidates.sql",
     "09_create_image_review_schema.sql",
     "09_v2_schema.sql",
+    "10_v2_fact_identity_dedup.sql",
+    "11_transcript_support.sql",
+    "12_v2_documents_transcript_columns.sql",
+    "13_transcript_section_types.sql",
 ]
 
 

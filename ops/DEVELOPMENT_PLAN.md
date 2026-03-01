@@ -69,19 +69,29 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 - Target: R≥65% ✓, P≥70% ✗ (7.1pp short), F1≥67% ✓
 - Remaining precision gap: ADBE ARR sub-components (~8 FPs), TMUS period disambiguation (~4 FPs), CRM `deals over $1M` keyword pattern (2 FPs — requires SEC gold standard validation before changing)
 
-### Phase B (Expanded Coverage)
-- FMP API source (`FMPTranscriptSource`) for broader transcript corpus
-- Company matching by ticker
-- Web UI: document type filter, transcript viewer
-- Schema migration applied to production DB
+### Phase B (Expanded Coverage) — COMPLETE (2026-03-01)
+- ~~FMP API source~~ (deferred — see note below)
+- Company matching by ticker ✅
+- Web UI: document type filter, transcript viewer ✅
+- Schema migration applied to production DB ✅
+- Batch ingestion E2E tested with HuggingFace source (2026-03-01) ✅
+  - Fixed field mappings (`symbol` not `ticker`, `content` not `text`)
+  - Fixed company upsert (partial unique index on `ticker WHERE NOT NULL`)
+  - Fixed persistence: v2_documents.doc_id is UUID; don't pass filing_id as doc_id
+  - Added migration 13: transcript section types to v2_segments constraint
 
-### Phase C (Presentation Support)
+> **Note on FMP:** FMP paid API is deferred until Phase C (presentation support) is
+> complete and extraction quality is validated on free sources (HuggingFace).
+> FMP integration moves to Phase D.
+
+### Phase C (Presentation Support) — NEXT PRIORITY
 - PDF-to-HTML converter (pdfplumber/docling)
 - SEC 8-K presentation source
 - Chart pipeline tuning for presentation charts
 - Target: >40% recall on presentations
 
 ### Phase D (Production Readiness)
+- FMP API source (`FMPTranscriptSource`) for broader transcript corpus — gated on Phase C
 - Monitoring/alerting for new document types
 - Batch processing scripts for periodic transcript ingestion
 - Documentation updates

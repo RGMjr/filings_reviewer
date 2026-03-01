@@ -27,6 +27,9 @@ env/
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/
 
+# HuggingFace transcript cache (downloaded on demand)
+data/transcripts/
+
 # But keep fixture metadata
 !data/fixtures/*.json
 
