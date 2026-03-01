@@ -545,12 +545,12 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-24)
-- **V2 overall:** P=78.6%, R=79.2%, F1=78.9% (confidence >= 0.5)
+### Gold Standard Performance (as of 2026-02-28)
+- **V2 overall:** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements)
 - **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
-- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% through iterative FP/recall tradeoffs
-- V2 recall improved from ~55% → 60.6% → 79.2% through WP-09 binding improvements
-- V2 F1 (78.9%) now exceeds V1 baseline (74.1%)
+- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% through iterative FP rule tightening
+- V2 recall: 77.6% (Farfetch chart FNs accepted gap — require Vision API)
+- V2 F1 (84.5%) substantially exceeds V1 baseline (74.1%); all per-company gates passed
 
 ## Phase B: Post-Pipeline Enhancements ✅ COMPLETE (2026-02-24)
 
@@ -590,17 +590,18 @@ SIGINT triggers graceful shutdown: completes the current batch before exiting.
 
 ## Current Status
 
-All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`.
+All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`. Gold standard F1=84.5% (all per-company gates passed as of 2026-02-28).
 
-Active work focuses on:
-1. **Precision/recall optimization** via gold standard validation
-2. **Keyword tuning** in `config/metric_keywords.yaml`
-3. **FP rule refinement** in the false positive filter stage
-
-Recent hardening work (2026-02-26):
-- Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions instead of returning failed `StageResult` objects; the pipeline dispatcher re-raises transient errors for caller retry and treats fatal errors in critical stages as pipeline-aborting
+Completed hardening work (2026-02-26 to 2026-02-28):
+- Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions; pipeline dispatcher re-raises transient errors for caller retry; fatal errors in critical stages abort the pipeline
 - Critical stage set expanded to include `CANDIDATE_GENERATION` and `VALUE_BINDING`
 - Bug fixes: Slack colspan and date-header parsing; `period_start_date` extraction
+- FP rules: `_rule_tier_qualifier` (Snowflake tier FPs 22→3); `_rule_dollar_threshold_customer` (Slack ">$100K" FPs eliminated)
+- WP-21: V2 review UI at full feature parity (`review_v2.py`, `api_v2.py`, `v2_stats.html`)
+- Migration 12: `sql/12_drop_v1_fk_constraints.sql` drops FK deps on `source_segments` before cutover
+
+Remaining:
+- WP-23: Batch V2 extraction on remaining 8 filings (runtime execution only; scripts ready)
 
 ---
 
@@ -608,6 +609,7 @@ Recent hardening work (2026-02-26):
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created, WP-23 pending |
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |

@@ -990,7 +990,7 @@ class ExtractedContext:
 The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It runs alongside V1 and is the target for new extraction work.
 
 **Version:** `2.0.0-rc1`
-**Status:** Production-ready (P=78.6%, R=79.2%, F1=78.9% on gold standard, as of 2026-02-24)
+**Status:** Production-ready (P=92.8%, R=77.6%, F1=84.5% on gold standard, as of 2026-02-28)
 **See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`, `docs/operations/v2-deployment-guide.md`
 
 ### Key Architectural Differences
@@ -1003,7 +1003,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Production ready (87% coverage) | Production ready (F1=78.9%) |
+| **Status** | Production ready (87% coverage) | Production ready (F1=84.5%) |
 
 ### V2 Pipeline Stages
 

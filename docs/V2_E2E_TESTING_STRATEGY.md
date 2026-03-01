@@ -23,9 +23,10 @@ This document outlines the end-to-end testing strategy for merging the V2-rewrit
 
 | Gap | Risk Level | Description |
 |-----|------------|-------------|
-| Web UI with V2 data | **High** | Review UI needs to display V2 MetricFacts |
-| API endpoints for V2 | **High** | `/api/v2/facts`, `/api/v2/filings/{id}/facts` |
-| Migration path testing | **Medium** | V1 → V2 data coexistence or migration |
+| Web UI with V2 data | ~~**High**~~ **COMPLETE** | `review_v2.py`, `api_v2.py`, `v2_filing_list.html`, `v2_review.html`, `v2_stats.html` — all implemented (WP-21, 2026-02-28) |
+| API endpoints for V2 | ~~**High**~~ **COMPLETE** | `POST /api/v2/decisions`, `DELETE /api/v2/decisions/<id>` implemented in `api_v2.py` |
+| Migration 12 | ~~**High**~~ **COMPLETE** | `sql/12_drop_v1_fk_constraints.sql` created (2026-02-28) |
+| WP-23: Batch extraction | **Medium** | Run batch extraction on remaining 8 filings — scripts ready, runtime execution pending |
 | Error recovery | **Medium** | Pipeline failures, partial extractions |
 | Browser E2E | **Low** | Playwright tests (skeletons exist) |
 

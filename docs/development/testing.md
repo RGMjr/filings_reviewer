@@ -822,7 +822,7 @@ pytest --cov=src --cov-report=term-missing
 
 ### Quality Metrics (Gold Standard)
 
-Current V2 scores as of 2026-02-24: P=78.6%, R=79.2%, F1=78.9%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+Current V2 scores as of 2026-02-28: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 | Metric | Target | Formula |
 |--------|--------|---------|
