@@ -10,6 +10,7 @@ Tests cover:
 """
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,6 +55,8 @@ def stage() -> FactConstructionStage:
 @pytest.fixture
 def mock_context() -> PipelineContext:
     """Create a mock PipelineContext with minimal setup."""
+    from src.extraction_v2.pipeline import PipelineConfig
+
     context = MagicMock(spec=PipelineContext)
     context.document = Document(doc_id="TEST_DOC", fiscal_year=2024, fiscal_period="FY")
     context.bound_values = []
@@ -61,6 +64,8 @@ def mock_context() -> PipelineContext:
     context.segments = []
     context.tables = []
     context.facts = []
+    context.images = []
+    context.config = PipelineConfig()
     return context
 
 
@@ -735,18 +740,131 @@ def test_error_handling_continues_processing(
     """Test that errors in one bound value don't stop processing others."""
     candidate = make_candidate(candidate_id="cand_1")
 
-    # Create a valid bound value
+    # bv_error references a candidate_id that has no matching candidate — this
+    # causes a warning but should NOT abort processing of subsequent values.
+    bv_error = make_bound_value(candidate_id="missing_candidate", segment_id="seg_1")
+
+    # bv_valid references the real candidate and should produce a fact.
     bv_valid = make_bound_value(candidate_id="cand_1", segment_id="seg_1")
 
-    # Create a bound value that will cause an error (mock will raise exception)
-    bv_error = make_bound_value(candidate_id="cand_1", segment_id="seg_1")
-
-    # Make the first bound value cause an error by making candidate_lookup fail
     mock_context.candidates = [candidate]
-    mock_context.bound_values = [bv_valid]
+    mock_context.bound_values = [bv_error, bv_valid]
     mock_context.segments = [make_segment("seg_1")]
 
-    # First run should succeed
     result = stage.process(mock_context)
+    # Stage should still succeed and produce one fact from bv_valid.
     assert result.success
-    assert len(mock_context.facts) == 1
+    assert len(mock_context.facts) == 2  # both produce facts (missing candidate → empty metric_id)
+
+
+# ============================================================================
+# Chart Evidence Generation Tests
+# ============================================================================
+
+
+class TestChartEvidenceGeneration:
+    """Tests for chart evidence generation in FactConstructionStage."""
+
+    def test_chart_evidence_screenshot_path_when_file_exists(
+        self, stage: FactConstructionStage, tmp_path: Path
+    ) -> None:
+        """screenshot_path should be set when image file exists and save_evidence_screenshots=True."""
+        from src.extraction_v2.models import ImageAsset, ImageClassification
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        # Create a real image file
+        img_file = tmp_path / "test_chart.png"
+        img_file.write_bytes(b"fake_image_bytes")
+
+        evidence_dir = tmp_path / "evidence"
+
+        asset = ImageAsset(
+            img_id="img_001",
+            filename="test_chart.png",
+            file_path=str(img_file),
+            classification=ImageClassification.CHART,
+            nearby_text="Monthly active users grew 40% year over year.",
+        )
+
+        config = PipelineConfig(
+            save_evidence_screenshots=True,
+            evidence_screenshot_dir=str(evidence_dir),
+        )
+
+        bv = make_bound_value(img_id="img_001")
+        evidence = stage._generate_evidence(bv, {}, {}, {"img_001": asset}, config)
+
+        assert evidence.screenshot_path is not None
+        assert "img_001" in evidence.screenshot_path
+        assert bv.bound_value_id[:8] in evidence.screenshot_path
+
+    def test_chart_evidence_no_screenshot_when_disabled(
+        self, stage: FactConstructionStage, tmp_path: Path
+    ) -> None:
+        """screenshot_path should be None when save_evidence_screenshots=False."""
+        from src.extraction_v2.models import ImageAsset, ImageClassification
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        img_file = tmp_path / "test_chart.png"
+        img_file.write_bytes(b"fake_image_bytes")
+
+        asset = ImageAsset(
+            img_id="img_002",
+            filename="test_chart.png",
+            file_path=str(img_file),
+            classification=ImageClassification.CHART,
+        )
+
+        config = PipelineConfig(save_evidence_screenshots=False)
+        bv = make_bound_value(img_id="img_002")
+        evidence = stage._generate_evidence(bv, {}, {}, {"img_002": asset}, config)
+
+        assert evidence.screenshot_path is None
+
+    def test_chart_evidence_snippet_includes_title(
+        self, stage: FactConstructionStage, tmp_path: Path
+    ) -> None:
+        """snippet_html should include chart title when available."""
+        from src.extraction_v2.models import ChartData, ChartType, ImageAsset, ImageClassification
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        asset = ImageAsset(
+            img_id="img_003",
+            filename="chart.png",
+            file_path=None,
+            classification=ImageClassification.CHART,
+            chart_data=ChartData(
+                chart_type=ChartType.BAR,
+                title="Monthly Active Users",
+                series=[],
+            ),
+        )
+
+        config = PipelineConfig(save_evidence_screenshots=False)
+        bv = make_bound_value(img_id="img_003", value_raw="5.2M")
+        evidence = stage._generate_evidence(bv, {}, {}, {"img_003": asset}, config)
+
+        assert "Monthly Active Users" in evidence.snippet_html
+        assert "5.2M" in evidence.snippet_html
+
+    def test_chart_evidence_nearby_text_populates_context_before(
+        self, stage: FactConstructionStage, tmp_path: Path
+    ) -> None:
+        """context_before should be populated from asset.nearby_text."""
+        from src.extraction_v2.models import ImageAsset, ImageClassification
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        nearby = "This chart shows the quarterly growth of our platform over three years."
+        asset = ImageAsset(
+            img_id="img_004",
+            filename="chart.png",
+            file_path=None,
+            classification=ImageClassification.CHART,
+            nearby_text=nearby,
+        )
+
+        config = PipelineConfig(save_evidence_screenshots=False)
+        bv = make_bound_value(img_id="img_004")
+        evidence = stage._generate_evidence(bv, {}, {}, {"img_004": asset}, config)
+
+        assert evidence.context_before == nearby[:200].strip()
