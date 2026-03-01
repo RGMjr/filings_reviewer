@@ -601,7 +601,7 @@ Completed hardening work (2026-02-26 to 2026-02-28):
 - Migration 12: `sql/12_drop_v1_fk_constraints.sql` drops FK deps on `source_segments` before cutover
 
 Remaining:
-- WP-23: Batch V2 extraction on remaining 8 filings (runtime execution only; scripts ready)
+- ~~WP-23: Batch V2 extraction on remaining 8 filings~~ ✅ COMPLETE (2026-03-01)
 
 ---
 
@@ -609,6 +609,7 @@ Remaining:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-01 | 1.9 | WP-23 complete: batch extraction ran on 2 DB filings (Slack 43 facts, Samsara 2 facts); fixed 3 persistence bugs (doc_id UUID, ON CONFLICT expression, v2_metric_definitions missing table); applied migration 11 |
 | 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created, WP-23 pending |
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
