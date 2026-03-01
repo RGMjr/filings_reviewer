@@ -18,7 +18,7 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from src.extraction.keyword_config import (
+from src.shared.keyword_config import (
     KeywordConfigError,
     get_exclusion_patterns,
     get_metric_keywords,
