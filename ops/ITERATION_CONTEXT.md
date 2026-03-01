@@ -6,23 +6,21 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**WP-15–22.5 Production readiness Phase 1–3 (2026-02-28)**:
-- WP-15: `_rule_tier_qualifier` in `false_positive_filter.py` — Snowflake tier FPs 22→3
-- WP-16: Closed (AOV period FNs already fixed by 44a1e81 off-by-one fix)
-- WP-17: `_rule_dollar_threshold_customer` — Slack "Paid Customers >$100K" FPs eliminated; Slack F1 77.1%→92.3%
-- Gold standard validated: **P=92.8%, R=77.6%, F1=84.5%** (all per-company gates passed)
-- WP-18+19: Batch script hardened (private API removed, production guard, datetime.utcnow→timezone.utc, .env.template updated)
-- WP-20: `src/extraction_v2/logging_config.py` — JSON structured logging, optional Sentry hook
-- WP-22: `scripts/compare_v1_v2_results.py` — V1/V2 DB-based comparison script
-- WP-22.5: Consumer audit complete (see Blockers)
+**WP-15–22.5 + WP-21 + Migration 12 (2026-02-28)**:
+- WP-15: `_rule_tier_qualifier` — Snowflake tier FPs 22→3
+- WP-17: `_rule_dollar_threshold_customer` — Slack ">$100K" FPs eliminated; Slack F1 77.1%→92.3%
+- Gold standard: **P=92.8%, R=77.6%, F1=84.5%** (all per-company gates passed)
+- WP-18+19: Batch script hardened; `.env.template` updated
+- WP-20: `logging_config.py` — JSON structured logging, optional Sentry hook
+- WP-21: V2 review UI parity — `review_v2.py`, `api_v2.py`, `v2_stats.html` complete
+- WP-22: `compare_v1_v2_results.py` — V1/V2 DB-based comparison script
+- Migration 12: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments`
 
 **WP-10–14 (2026-02-24)**: Table resilience, batch hardening, review_status preservation
 
 ## Current Focus
 
-- WP-21: Review UI V2 verification (feature parity check for v2 review routes/templates)
-- WP-23: Batch V2 extraction on remaining 8 filings (depends on WP-15–18 complete ✓)
-- Migration 12: `sql/12_drop_v1_fk_constraints.sql` — drop FK deps on source_segments before cutover
+- WP-23: Batch V2 extraction on remaining 8 filings (all prerequisites complete ✓)
 
 ## Test Status
 
@@ -40,7 +38,7 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Blockers or Warnings
 
-- **Migration 12 required**: Drop `review_candidates`/`suppressed_candidates`/`image_review_candidates` FKs on `source_segments` before V1 table removal
+- **Migration 12 created but not yet applied**: Run `python3 scripts/apply_migrations.py` before V1 table removal
 - Farfetch chart FNs (8) require Vision API; accepted gap unless production has OPENAI_API_KEY
 - 3 residual Snowflake FPs (value_mismatch 702 vs 948, 1 duplicate) — separate pattern, low priority
 

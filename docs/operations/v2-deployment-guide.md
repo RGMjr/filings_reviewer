@@ -1,7 +1,7 @@
 # V2 Deployment Guide
 
-**Version:** 1.0
-**Last Updated:** 2026-02-26
+**Version:** 1.1
+**Last Updated:** 2026-02-28
 **Pipeline Version:** 2.0.0-rc1
 
 ---
@@ -20,7 +20,7 @@ V2 writes exclusively to `v2_*` tables and does not modify V1 data. Rollback is 
 
 ### Database Migrations
 
-All migrations 09-11 must be applied before running V2 extraction:
+All migrations 09-12 must be applied before running V2 extraction. Migration 12 (`sql/12_drop_v1_fk_constraints.sql`) drops FK constraints on `source_segments` from `review_candidates`, `suppressed_candidates`, and `image_review_candidates` — required before V1 table removal and before cutover.
 
 ```bash
 python3 scripts/apply_migrations.py
@@ -97,9 +97,9 @@ Before promoting V2 to primary, validate extraction quality against the gold sta
 
 | Metric | Minimum | Current Baseline |
 |--------|---------|-----------------|
-| Precision | 75% | 78.6% |
-| Recall | 55% | 79.2% |
-| F1 Score | 65% | 78.9% |
+| Precision | 75% | 92.8% |
+| Recall | 55% | 77.6% |
+| F1 Score | 65% | 84.5% |
 
 ### Run Gold Standard Validation
 
@@ -268,13 +268,13 @@ pytest -m gold_standard --gold-standard-mode=fresh -v
 
 ### Step 3: Confirm V2 Review UI Is Primary
 
-The V2 review interface is accessible at `http://localhost:5000/v2/review/filings` when the review server is running:
+The V2 review interface is fully implemented (WP-21 complete, 2026-02-28) and accessible at `http://localhost:5000/v2/review/filings` when the review server is running:
 
 ```bash
 python3 scripts/run_review_server.py
 ```
 
-Verify that the V2 review routes are functional and that no V1-only routes are being actively promoted to users. The V1 routes remain accessible but should not be the primary entry point.
+Verify that the V2 review routes (`review_v2.py`, `api_v2.py`) and templates (`v2_filing_list.html`, `v2_review.html`, `v2_stats.html`) are functional. The V1 routes remain accessible but should not be the primary entry point for users after cutover.
 
 ### Step 4: Update Ops Context
 

@@ -87,12 +87,13 @@ A database trigger (`v2_review_decision_updates_fact`) automatically updates `v2
 
 ```
 src/web/routes/
-├── review_v2.py        # Page routes (/v2/review/filings, /v2/review/<filing_id>)
+├── review_v2.py        # Page routes (/v2/review/filings, /v2/review/<filing_id>, /v2/stats)
 └── api_v2.py           # JSON API (POST /api/v2/decisions, DELETE /api/v2/decisions/<id>)
 
 src/web/templates/
 ├── v2_filing_list.html # Filing list with fact counts and review progress
-└── v2_review.html      # Fact-by-fact review interface with evidence display
+├── v2_review.html      # Fact-by-fact review interface with evidence display
+└── v2_stats.html       # Aggregate review statistics and quality metrics
 
 src/infra/db.py         # V2 database methods:
                         #   get_v2_filings_with_facts()

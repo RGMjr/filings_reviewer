@@ -29,7 +29,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 - Bulk re-processing where speed is critical
 - Legacy integrations expecting V1 output format
 
-**Validation status (as of 2026-02-24):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=78.6%, R=79.2%, F1=78.9%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+**Validation status (as of 2026-02-28):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 ## API Differences
 
@@ -206,7 +206,7 @@ Before migrating, validate V2 produces acceptable results:
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
-# Expected scores (as of 2026-02-24): P=78.6%, R=79.2%, F1=78.9%
+# Expected scores (as of 2026-02-28): P=92.8%, R=77.6%, F1=84.5%
 ```
 
 ### Step 2: Parallel Running (Recommended)
@@ -252,12 +252,14 @@ for fact in facts:
 
 ### Step 4: Update Review UI
 
-The review UI may need updates for V2 evidence format:
+The V2 review UI is complete and at full feature parity (WP-21, 2026-02-28). The following are already implemented:
 
-- Display `evidence_pack.snippet_html` with highlighting
-- Show `header_path` / `stub_path` breadcrumbs
-- Display confidence scores
-- Handle new review statuses
+- `evidence_pack.snippet_html` displayed with highlighting
+- `header_path` / `stub_path` breadcrumb navigation
+- Confidence scores with color-coded badges
+- All review statuses (`auto_accepted`, `pending_review`, `accepted`, `rejected`, `corrected`)
+
+Access via `http://localhost:5000/v2/review/filings`. See `docs/V2_HUMAN_REVIEW_GUIDE.md` for full UI documentation.
 
 ### Step 5: Cutover
 
