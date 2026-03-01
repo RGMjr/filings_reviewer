@@ -5,7 +5,6 @@ Tests the end-to-end workflow of learned pattern filtering during
 candidate generation.
 """
 
-
 import pytest
 
 from src.review.candidate_generator import CandidateGenerator
@@ -104,9 +103,7 @@ class TestE2CandidateFiltering:
             metric_id=None,  # Global pattern
             pattern_name="Test: Filter risk factors",
             pattern_definition={
-                "conditions": [
-                    {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                ]
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
             },
             precision_score=0.95,
             recall_score=0.80,
@@ -118,7 +115,7 @@ class TestE2CandidateFiltering:
         # We need to update to 'approved' for E2 to apply them
         clean_db.execute(
             "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %(pattern_id)s",
-            {"pattern_id": pattern_id}
+            {"pattern_id": pattern_id},
         )
 
         # Use segments from fixture
@@ -136,9 +133,7 @@ class TestE2CandidateFiltering:
 
         # Verify filtering occurred
         # All candidates should NOT be in risk factors
-        risk_factors_candidates = [
-            c for c in candidates if c.features.is_in_risk_factors
-        ]
+        risk_factors_candidates = [c for c in candidates if c.features.is_in_risk_factors]
         assert len(risk_factors_candidates) == 0, (
             "Expected all risk factors candidates to be filtered"
         )
@@ -154,9 +149,7 @@ class TestE2CandidateFiltering:
             metric_id=None,
             pattern_name="Test: Filter risk factors",
             pattern_definition={
-                "conditions": [
-                    {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                ]
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
             },
             precision_score=0.95,
             recall_score=0.80,
@@ -166,7 +159,7 @@ class TestE2CandidateFiltering:
         # Approve the pattern
         clean_db.execute(
             "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %(pattern_id)s",
-            {"pattern_id": pattern_id}
+            {"pattern_id": pattern_id},
         )
 
         # Use segments from fixture
@@ -205,9 +198,7 @@ class TestE2CandidateFiltering:
             metric_id=None,
             pattern_name="Test: Should not apply",
             pattern_definition={
-                "conditions": [
-                    {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                ]
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
             },
             precision_score=0.95,
             recall_score=0.80,
@@ -217,7 +208,7 @@ class TestE2CandidateFiltering:
         # Approve the pattern
         clean_db.execute(
             "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %(pattern_id)s",
-            {"pattern_id": pattern_id}
+            {"pattern_id": pattern_id},
         )
 
         # Use segments from fixture
@@ -346,7 +337,7 @@ class TestE2CandidateFiltering:
                 "segment_type": "paragraph",
                 "raw_text": "Revenue was $50 million.",
                 # Missing section_heading/path
-            }
+            },
         ]
 
         # Should handle malformed data gracefully
@@ -406,7 +397,8 @@ class TestE2CandidateFiltering:
         # Verify deduplication occurred
         # All three segments mention "10,000 customers" - should be deduplicated
         customer_candidates = [
-            c for c in candidates
+            c
+            for c in candidates
             if c.raw_number_text == "10,000" and "customer" in c.context_text.lower()
         ]
 
@@ -448,14 +440,16 @@ class TestE2CandidateFiltering:
         for i in range(500):
             value = 100 + (i * 10) % 1000
             template = templates[i % len(templates)]
-            segments.append({
-                "source_segment_id": i + 1,
-                "filing_id": filing_id,
-                "segment_type": "paragraph",
-                "raw_text": template.format(value=value),
-                "section_heading": f"Section {i % 10}",
-                "section_path": f"/Section{i % 10}",
-            })
+            segments.append(
+                {
+                    "source_segment_id": i + 1,
+                    "filing_id": filing_id,
+                    "segment_type": "paragraph",
+                    "raw_text": template.format(value=value),
+                    "section_heading": f"Section {i % 10}",
+                    "section_path": f"/Section{i % 10}",
+                }
+            )
 
         # Time the processing
         start_time = time.time()
@@ -480,7 +474,7 @@ class TestE2CandidateFiltering:
         print("\n  Large filing performance:")
         print(f"    Segments: {stats.segments_processed}")
         print(f"    Time: {elapsed:.2f}s")
-        print(f"    Throughput: {stats.segments_processed/elapsed:.1f} seg/sec")
+        print(f"    Throughput: {stats.segments_processed / elapsed:.1f} seg/sec")
 
     def test_learned_rules_filtering_precision(self, clean_db, sample_filing_data):
         """Test precision of learned rule filtering."""
@@ -490,9 +484,7 @@ class TestE2CandidateFiltering:
             metric_id=None,
             pattern_name="High Precision: Risk Factors",
             pattern_definition={
-                "conditions": [
-                    {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                ]
+                "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
             },
             precision_score=0.98,  # Very high precision
             recall_score=0.85,
@@ -502,7 +494,7 @@ class TestE2CandidateFiltering:
         # Approve pattern
         clean_db.execute(
             "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %(pattern_id)s",
-            {"pattern_id": pattern_id}
+            {"pattern_id": pattern_id},
         )
 
         segments = sample_filing_data["segments"]
@@ -535,9 +527,7 @@ class TestE2CandidateFiltering:
                 "metric_id": None,
                 "pattern_name": "Filter risk factors",
                 "pattern_definition": {
-                    "conditions": [
-                        {"field": "is_in_risk_factors", "op": "eq", "value": True}
-                    ]
+                    "conditions": [{"field": "is_in_risk_factors", "op": "eq", "value": True}]
                 },
                 "precision_score": 0.95,
                 "recall_score": 0.80,
@@ -548,14 +538,12 @@ class TestE2CandidateFiltering:
                 "metric_id": None,
                 "pattern_name": "Filter small numbers",
                 "pattern_definition": {
-                    "conditions": [
-                        {"field": "value_magnitude", "op": "lt", "value": 100}
-                    ]
+                    "conditions": [{"field": "value_magnitude", "op": "lt", "value": 100}]
                 },
                 "precision_score": 0.90,
                 "recall_score": 0.75,
                 "sample_count": 40,
-            }
+            },
         ]
 
         # Insert patterns
@@ -564,11 +552,13 @@ class TestE2CandidateFiltering:
             # Approve each pattern
             clean_db.execute(
                 "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %(pattern_id)s",
-                {"pattern_id": pattern_id}
+                {"pattern_id": pattern_id},
             )
 
         # Verify patterns are in database
-        patterns_from_db = clean_db.get_learned_patterns(pattern_type="reject_rule", status="approved")
+        patterns_from_db = clean_db.get_learned_patterns(
+            pattern_type="reject_rule", status="approved"
+        )
         assert len(patterns_from_db) >= 2, "Should load patterns from database"
 
         # Generate candidates with learned rules
@@ -606,7 +596,7 @@ class TestE2CandidateFiltering:
                 "raw_text": "   ",  # Only whitespace
                 "section_heading": "Whitespace Section",
                 "section_path": "/Whitespace",
-            }
+            },
         ]
 
         all_segments = sample_filing_data["segments"] + empty_segments
@@ -644,7 +634,7 @@ class TestE2CandidateFiltering:
                 "raw_text": "Our mission is to revolutionize the industry with innovative technology.",
                 "section_heading": "Mission Statement",
                 "section_path": "/Mission",
-            }
+            },
         ]
 
         all_segments = sample_filing_data["segments"] + text_only_segments
@@ -682,7 +672,7 @@ class TestE2CandidateFiltering:
                 "raw_text": "We have offices in 7 cities across 3 continents.",
                 "section_heading": "Locations",
                 "section_path": "/Locations",
-            }
+            },
         ]
 
         all_segments = sample_filing_data["segments"] + no_keyword_segments

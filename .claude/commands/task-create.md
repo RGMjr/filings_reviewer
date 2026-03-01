@@ -1,3 +1,8 @@
+---
+description: Generate a structured worker prompt document for a task
+argument-hint: "<task-id>"
+---
+
 # Create Worker Prompt
 
 You are creating a worker prompt for a task. You will generate the prompt and STOP - do not execute.

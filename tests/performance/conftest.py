@@ -25,9 +25,7 @@ def test_db_url():
     Set TEST_DATABASE_URL environment variable to a test database.
     Default: postgresql://localhost/filings_analysis_test
     """
-    return os.getenv(
-        "TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test"
-    )
+    return os.getenv("TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test")
 
 
 @pytest.fixture(scope="session")
@@ -340,32 +338,30 @@ def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> lis
                 op = "eq"
                 value = random.choice([True, False])
 
-            conditions.append({
-                "field": field_name,
-                "op": op,
-                "value": value
-            })
+            conditions.append({"field": field_name, "op": op, "value": value})
 
         pattern_definition = {
             "conditions": conditions,
-            "logic": random.choice(["and", "or"]) if len(conditions) > 1 else "and"
+            "logic": random.choice(["and", "or"]) if len(conditions) > 1 else "and",
         }
 
         # Status: approved_ratio of patterns are approved
         status = "approved" if random.random() < approved_ratio else "candidate"
 
-        patterns.append({
-            "pattern_type": pattern_type,
-            "pattern_name": f"synthetic_pattern_{i}",
-            "pattern_description": f"Synthetic pattern {i} for stress testing",
-            "pattern_definition": pattern_definition,
-            "metric_id": random.choice(metrics),
-            "precision_score": random.uniform(0.6, 0.99),
-            "recall_score": random.uniform(0.1, 0.5),
-            "f1_score": random.uniform(0.2, 0.7),
-            "sample_count": random.randint(10, 500),
-            "status": status,
-        })
+        patterns.append(
+            {
+                "pattern_type": pattern_type,
+                "pattern_name": f"synthetic_pattern_{i}",
+                "pattern_description": f"Synthetic pattern {i} for stress testing",
+                "pattern_definition": pattern_definition,
+                "metric_id": random.choice(metrics),
+                "precision_score": random.uniform(0.6, 0.99),
+                "recall_score": random.uniform(0.1, 0.5),
+                "f1_score": random.uniform(0.2, 0.7),
+                "sample_count": random.randint(10, 500),
+                "status": status,
+            }
+        )
 
     return patterns
 
@@ -397,7 +393,7 @@ def db_with_1000_patterns(benchmark_db):
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE learned_patterns SET status = 'approved' WHERE pattern_id = %s",
-                        (pattern_id,)
+                        (pattern_id,),
                     )
             approved_count += 1
 

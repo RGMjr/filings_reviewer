@@ -165,7 +165,7 @@ This task affects metric identification logic. Gold standard validation is **req
 
 ```bash
 # Quick check during development
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 
 # Formal validation (must pass before commit)
 pytest -m gold_standard --gold-standard-mode=fresh -v
@@ -175,7 +175,7 @@ pytest -m gold_standard --gold-standard-mode=fresh -v
 
 - If precision/recall/F1 drops: investigate before proceeding
 - If trade-off is intentional: document rationale in commit message
-- If baseline needs updating: `python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline`
+- If baseline needs updating: `python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline`
 
 ## Acceptance Criteria
 

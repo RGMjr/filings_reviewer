@@ -165,7 +165,9 @@ class TestFetchFiling:
         )
 
         # Mock SEC client to resolve URL
-        fetcher.sec_client.resolve_primary_document_url.return_value = "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        fetcher.sec_client.resolve_primary_document_url.return_value = (
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        )
 
         # Mock HTTP response
         mock_response = Mock()

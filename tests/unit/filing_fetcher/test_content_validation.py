@@ -164,9 +164,7 @@ Some random text that has nothing to do with SEC filings
         assert is_valid is False
         # Should fail on either structure or SEC indicators check
         assert (
-            "structure" in error.lower()
-            or "sec" in error.lower()
-            or "indicator" in error.lower()
+            "structure" in error.lower() or "sec" in error.lower() or "indicator" in error.lower()
         )
 
     def test_sgml_filing_format(self, fetcher):

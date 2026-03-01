@@ -33,8 +33,7 @@ def test_review_module_passes_mypy_strict():
     if result.returncode != 0:
         # Parse output to see if errors are only in excluded modules
         errors_in_review = any(
-            "src/review/" in line and "error:" in line
-            for line in result.stdout.split("\n")
+            "src/review/" in line and "error:" in line for line in result.stdout.split("\n")
         )
 
         if errors_in_review:
@@ -86,6 +85,4 @@ def test_mypy_in_requirements():
     req_path = Path(__file__).parent.parent.parent / "requirements.txt"
     requirements = req_path.read_text()
 
-    assert "mypy" in requirements.lower(), (
-        "mypy not found in requirements.txt\n" "Add: mypy>=1.0.0"
-    )
+    assert "mypy" in requirements.lower(), "mypy not found in requirements.txt\nAdd: mypy>=1.0.0"

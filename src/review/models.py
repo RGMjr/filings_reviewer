@@ -10,12 +10,13 @@ Schema alignment: sql/07_create_review_schema.sql
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 if TYPE_CHECKING:
+    from src.review.boundary_detection import TextBoundary
     from src.review.keyword_matching import KeywordMatch
     from src.review.number_parsing import NumberMatch
 
@@ -244,7 +245,9 @@ class CandidateFeatures:
     respectively_confidence: float | None = None  # Pattern confidence 0.0-1.0
 
     # L4: Context-dependent multiplier tracking (E1 optimization)
-    context_type: str | None = None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
+    context_type: str | None = (
+        None  # 'table' | 'parenthetical' | 'bullet' | 'copula' | 'preposition' | 'default'
+    )
 
     # P1.6: Same-sentence tracking for deduplication preference
     is_same_sentence: bool = False  # True if keyword and value are in the same sentence
@@ -261,12 +264,18 @@ class CandidateFeatures:
             )
         if self.number_format not in NUMBER_FORMATS:
             raise ValueError(
-                f"Invalid number_format '{self.number_format}'. "
-                f"Must be one of: {NUMBER_FORMATS}"
+                f"Invalid number_format '{self.number_format}'. Must be one of: {NUMBER_FORMATS}"
             )
         # Validate context_type if provided
         if self.context_type is not None:
-            valid_context_types = {'table', 'parenthetical', 'bullet', 'copula', 'preposition', 'default'}
+            valid_context_types = {
+                "table",
+                "parenthetical",
+                "bullet",
+                "copula",
+                "preposition",
+                "default",
+            }
             if self.context_type not in valid_context_types:
                 raise ValueError(
                     f"Invalid context_type '{self.context_type}'. "
@@ -295,16 +304,14 @@ class CandidateFeatures:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CandidateFeatures":
+    def from_dict(cls, data: dict[str, Any]) -> CandidateFeatures:
         """Create from dictionary (e.g., from JSONB)."""
         return cls(
             keyword_distance=data.get("keyword_distance", 0),
             keyword_position=data.get("keyword_position", "after"),
             is_in_table=data.get("is_in_table", False),
             is_in_risk_factors=data.get("is_in_risk_factors", False),
-            contains_definition_language=data.get(
-                "contains_definition_language", False
-            ),
+            contains_definition_language=data.get("contains_definition_language", False),
             has_period_mention=data.get("has_period_mention", False),
             number_format=data.get("number_format", "integer"),
             value_magnitude=data.get("value_magnitude"),
@@ -315,7 +322,9 @@ class CandidateFeatures:
             respectively_confidence=data.get("respectively_confidence"),  # L1
             context_type=data.get("context_type"),  # L4: Context multiplier type
             is_same_sentence=data.get("is_same_sentence", False),  # P1.6: Same-sentence tracking
-            from_context_prefix=data.get("from_context_prefix", False),  # Phase 7: Context prefix matching
+            from_context_prefix=data.get(
+                "from_context_prefix", False
+            ),  # Phase 7: Context prefix matching
         )
 
 
@@ -378,8 +387,7 @@ class ReviewCandidate:
             )
         if self.review_status not in REVIEW_STATUSES:
             raise ValueError(
-                f"Invalid review_status '{self.review_status}'. "
-                f"Must be one of: {REVIEW_STATUSES}"
+                f"Invalid review_status '{self.review_status}'. Must be one of: {REVIEW_STATUSES}"
             )
         if self.suggestion_confidence is not None:
             if not (0 <= self.suggestion_confidence <= 1):
@@ -410,12 +418,10 @@ class ReviewCandidate:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ReviewCandidate":
+    def from_row(cls, row: dict[str, Any]) -> ReviewCandidate:
         """Create from database row."""
         features_data = row.get("features")
-        features = (
-            CandidateFeatures.from_dict(features_data) if features_data else None
-        )
+        features = CandidateFeatures.from_dict(features_data) if features_data else None
 
         return cls(
             candidate_id=row.get("candidate_id"),
@@ -476,22 +482,16 @@ class ReviewDecision:
         """Validate decision type, rejection category, and business rules."""
         if self.decision not in DECISION_TYPES:
             raise ValueError(
-                f"Invalid decision '{self.decision}'. "
-                f"Must be one of: {DECISION_TYPES}"
+                f"Invalid decision '{self.decision}'. Must be one of: {DECISION_TYPES}"
             )
-        if (
-            self.rejection_category
-            and self.rejection_category not in REJECTION_CATEGORIES
-        ):
+        if self.rejection_category and self.rejection_category not in REJECTION_CATEGORIES:
             raise ValueError(
                 f"Invalid rejection_category '{self.rejection_category}'. "
                 f"Must be one of: {REJECTION_CATEGORIES}"
             )
         # Business rule: accept/reclassify require assigned_metric_id
         if self.decision in ("accept", "reclassify") and not self.assigned_metric_id:
-            raise ValueError(
-                f"Decision '{self.decision}' requires assigned_metric_id"
-            )
+            raise ValueError(f"Decision '{self.decision}' requires assigned_metric_id")
         # Business rule: rejection_category only makes sense for reject
         if self.decision != "reject" and self.rejection_category:
             raise ValueError(
@@ -512,7 +512,7 @@ class ReviewDecision:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ReviewDecision":
+    def from_row(cls, row: dict[str, Any]) -> ReviewDecision:
         """Create from database row."""
         return cls(
             decision_id=row.get("decision_id"),
@@ -572,14 +572,10 @@ class LearnedPattern:
         """Validate pattern type and status."""
         if self.pattern_type not in PATTERN_TYPES:
             raise ValueError(
-                f"Invalid pattern_type '{self.pattern_type}'. "
-                f"Must be one of: {PATTERN_TYPES}"
+                f"Invalid pattern_type '{self.pattern_type}'. Must be one of: {PATTERN_TYPES}"
             )
         if self.status not in PATTERN_STATUSES:
-            raise ValueError(
-                f"Invalid status '{self.status}'. "
-                f"Must be one of: {PATTERN_STATUSES}"
-            )
+            raise ValueError(f"Invalid status '{self.status}'. Must be one of: {PATTERN_STATUSES}")
         # Validate score ranges
         for score_name, score_val in [
             ("precision_score", self.precision_score),
@@ -587,9 +583,7 @@ class LearnedPattern:
             ("f1_score", self.f1_score),
         ]:
             if score_val is not None and not (0 <= score_val <= 1):
-                raise ValueError(
-                    f"{score_name} must be between 0 and 1, got {score_val}"
-                )
+                raise ValueError(f"{score_name} must be between 0 and 1, got {score_val}")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion."""
@@ -609,7 +603,7 @@ class LearnedPattern:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "LearnedPattern":
+    def from_row(cls, row: dict[str, Any]) -> LearnedPattern:
         """Create from database row."""
         return cls(
             pattern_id=row.get("pattern_id"),
@@ -670,37 +664,17 @@ class LearnedPattern:
             elif op == "ne":
                 results.append(actual != expected)
             elif op == "gt":
-                results.append(
-                    actual is not None
-                    and expected is not None
-                    and actual > expected
-                )
+                results.append(actual is not None and expected is not None and actual > expected)
             elif op == "lt":
-                results.append(
-                    actual is not None
-                    and expected is not None
-                    and actual < expected
-                )
+                results.append(actual is not None and expected is not None and actual < expected)
             elif op == "gte":
-                results.append(
-                    actual is not None
-                    and expected is not None
-                    and actual >= expected
-                )
+                results.append(actual is not None and expected is not None and actual >= expected)
             elif op == "lte":
-                results.append(
-                    actual is not None
-                    and expected is not None
-                    and actual <= expected
-                )
+                results.append(actual is not None and expected is not None and actual <= expected)
             elif op == "in":
                 results.append(actual in expected if expected else False)
             elif op == "contains":
-                results.append(
-                    expected in actual
-                    if actual and isinstance(actual, str)
-                    else False
-                )
+                results.append(expected in actual if actual and isinstance(actual, str) else False)
             else:
                 # Unknown operator - treat as non-match
                 results.append(False)
@@ -759,13 +733,9 @@ class ProcessingStats:
             f"candidates={self.candidates_generated}"
         )
         if self.segments_failed > 0:
-            logger.warning(
-                f"Filing {filing_id}: {self.segments_failed} segments failed to process"
-            )
+            logger.warning(f"Filing {filing_id}: {self.segments_failed} segments failed to process")
         if self.numbers_failed > 0:
-            logger.warning(
-                f"Filing {filing_id}: {self.numbers_failed} numbers failed to process"
-            )
+            logger.warning(f"Filing {filing_id}: {self.numbers_failed} numbers failed to process")
         if self.duplicates_removed > 0:
             logger.debug(
                 f"Filing {filing_id}: {self.duplicates_removed} duplicate candidates removed"
@@ -803,8 +773,8 @@ class SegmentProcessingContext:
     word_positions: tuple[tuple[int, int, str], ...] | None  # For context extraction
 
     # Boundary detection results
-    boundaries: tuple[tuple[int, int], ...] | None  # Semantic boundaries
-    sentence_boundaries: tuple[tuple[int, int], ...] | None  # Sentence boundaries
+    boundaries: tuple[TextBoundary, ...] | None  # Semantic boundaries
+    sentence_boundaries: tuple[TextBoundary, ...] | None  # Sentence boundaries
 
     # Table parsing (optional, only for table segments)
     # Note: Can't be frozen since parsers are mutable, stored as Any

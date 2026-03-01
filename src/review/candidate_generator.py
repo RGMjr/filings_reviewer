@@ -152,7 +152,6 @@ from src.review.false_positive_filter import (
     FalsePositiveFilter,
     is_count_format,
     is_dollar_format,
-    is_percentage_format,
     should_treat_as_percentage,
 )
 from src.review.feature_extractor import (
@@ -411,11 +410,7 @@ class CandidateGenerator:
 
         for segment in segments:
             # Safely get segment_id for logging (segment might not be a dict)
-            segment_id = (
-                segment.get("source_segment_id")
-                if isinstance(segment, dict)
-                else None
-            )
+            segment_id = segment.get("source_segment_id") if isinstance(segment, dict) else None
             try:
                 segment_candidates, segment_stats = self._process_segment(
                     filing_id=filing_id,
@@ -427,12 +422,8 @@ class CandidateGenerator:
                 stats.segments_processed += 1
                 stats.numbers_found += segment_stats.get("numbers_found", 0)
                 stats.numbers_failed += segment_stats.get("numbers_failed", 0)
-                stats.false_positives_filtered += segment_stats.get(
-                    "false_positives_filtered", 0
-                )
-                stats.filtered_by_learned_rules += segment_stats.get(
-                    "filtered_by_learned_rules", 0
-                )
+                stats.false_positives_filtered += segment_stats.get("false_positives_filtered", 0)
+                stats.filtered_by_learned_rules += segment_stats.get("filtered_by_learned_rules", 0)
                 stats.candidates_generated += len(segment_candidates)
             except SegmentProcessingError as e:
                 # Known segment-level error (validation failures, etc.)
@@ -499,9 +490,7 @@ class CandidateGenerator:
         """
         # Validate segment dict
         if not isinstance(segment, dict):
-            raise SegmentProcessingError(
-                f"Segment must be a dict, got {type(segment).__name__}"
-            )
+            raise SegmentProcessingError(f"Segment must be a dict, got {type(segment).__name__}")
 
         text = segment.get("raw_text", "")
         if not text:
@@ -518,8 +507,7 @@ class CandidateGenerator:
         if segment.get("contains_definition_flag"):
             source_segment_id = segment.get("source_segment_id")
             logger.debug(
-                f"Skipping definition segment {source_segment_id}: "
-                "contains_definition_flag is True"
+                f"Skipping definition segment {source_segment_id}: contains_definition_flag is True"
             )
             return None
 
@@ -545,7 +533,7 @@ class CandidateGenerator:
             SegmentProcessingContext with pre-computed data, or None if no numbers found
         """
         # Import boundary detector here to avoid circular import at module level
-        from src.review.boundary_detection import BoundaryDetector
+        from src.review.boundary_detection import BoundaryDetector, TextBoundary
 
         source_segment_id = segment.get("source_segment_id")
 
@@ -561,7 +549,7 @@ class CandidateGenerator:
         word_positions = self._context_extractor.parse_text_into_words(text)
 
         # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
-        boundaries: list[tuple[int, int]] | None = None
+        boundaries: list[TextBoundary] | None = None
         detector: BoundaryDetector | None = None
         if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
@@ -569,7 +557,7 @@ class CandidateGenerator:
             logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
 
         # Pre-compute sentence boundaries for P1.5 sentence-aware filtering
-        sentence_boundaries: list[tuple[int, int]] | None = None
+        sentence_boundaries: list[TextBoundary] | None = None
         if self.config.detect_sentences:
             if detector is None:
                 detector = BoundaryDetector()
@@ -580,9 +568,7 @@ class CandidateGenerator:
             else:
                 sentence_boundaries = detector.find_sentence_boundaries(text, segment_type)
                 if sentence_boundaries:
-                    logger.debug(
-                        f"Detected {len(sentence_boundaries)} sentences in segment"
-                    )
+                    logger.debug(f"Detected {len(sentence_boundaries)} sentences in segment")
 
         # Pre-compute table row structure for table row filtering
         table_row_parser: MarkerRowParser | TableRowParser | None = None
@@ -591,9 +577,11 @@ class CandidateGenerator:
         # Check for markers first (more reliable when present)
         if " [ROW] " in text or " [CELL] " in text:
             from src.review.marker_row_parser import MarkerRowParser
+
             table_row_parser = MarkerRowParser(text)
-        elif raw_html and ('<table' in raw_html.lower()):
+        elif raw_html and ("<table" in raw_html.lower()):
             from src.review.table_structure import TableRowParser
+
             table_row_parser = TableRowParser(raw_html, text)
 
         if table_row_parser is not None and table_row_parser.is_table():
@@ -838,8 +826,7 @@ class CandidateGenerator:
             if from_context_prefix and confidence is not None:
                 confidence = confidence * 0.8
                 logger.debug(
-                    f"Applied 0.8x confidence penalty for context_prefix match: "
-                    f"{confidence:.3f}"
+                    f"Applied 0.8x confidence penalty for context_prefix match: {confidence:.3f}"
                 )
 
         return ReviewCandidate(
@@ -890,9 +877,7 @@ class CandidateGenerator:
             if applicator is not None:
                 filtered_candidates = []
                 for candidate in candidates:
-                    should_filter, reason = applicator.should_filter(
-                        candidate, candidate.features
-                    )
+                    should_filter, reason = applicator.should_filter(candidate, candidate.features)
                     if should_filter:
                         stats.inc("filtered_by_learned_rules")
                         logger.debug(
@@ -1009,9 +994,7 @@ class CandidateGenerator:
 
     # _parse_number method removed - now part of NumberParser (P1.3)
 
-    def _is_likely_false_positive(
-        self, text: str, number: NumberMatch
-    ) -> tuple[bool, str | None]:
+    def _is_likely_false_positive(self, text: str, number: NumberMatch) -> tuple[bool, str | None]:
         """
         Check if a number match is likely a false positive.
 
@@ -1193,14 +1176,12 @@ class CandidateGenerator:
         if self.config.detect_all_respectively_patterns:
             # Detect ALL patterns in segment
             patterns = detect_all_respectively_patterns(
-                segment_text,
-                min_confidence=self.config.respectively_min_confidence
+                segment_text, min_confidence=self.config.respectively_min_confidence
             )
         else:
             # Backward compatible: detect only first pattern
             pattern = detect_respectively_pattern(
-                segment_text,
-                min_confidence=self.config.respectively_min_confidence
+                segment_text, min_confidence=self.config.respectively_min_confidence
             )
             patterns = [pattern] if pattern else []
 
@@ -1227,9 +1208,7 @@ class CandidateGenerator:
         enriched_count = 0
         for candidate in candidates:
             # Try to match candidate value to pattern value
-            normalized_candidate = self._normalize_value_text(
-                candidate.raw_number_text or ""
-            )
+            normalized_candidate = self._normalize_value_text(candidate.raw_number_text or "")
 
             if normalized_candidate in value_to_period:
                 period, confidence = value_to_period[normalized_candidate]

@@ -7,7 +7,6 @@ Tests verify the end-to-end flow:
 3. Multiplier recommendations
 """
 
-
 import pytest
 
 from src.infra.db import DatabaseAdapter
@@ -243,9 +242,7 @@ class TestE1MultiplierOptimization:
                 )
 
         # Generate recommendations
-        recommendations = analyzer.generate_multiplier_recommendations(
-            min_sample_size=10
-        )
+        recommendations = analyzer.generate_multiplier_recommendations(min_sample_size=10)
 
         # Table context should have low precision (all rejected) and recommend higher multiplier
         if "table" in recommendations["recommendations"]:
@@ -310,7 +307,9 @@ class TestE1MultiplierOptimization:
 
                 # Get candidate to check context
                 candidate = db.get_review_candidate(candidate_id)
-                _context_type = candidate["features"].get("context_type") if candidate["features"] else None
+                _context_type = (
+                    candidate["features"].get("context_type") if candidate["features"] else None
+                )
 
                 # For simplicity, reject all in this test
                 # (Testing the flow, not precision values)
@@ -338,7 +337,7 @@ class TestE1MultiplierOptimization:
         # Test with non-existent filing ID (no decisions)
         recommendations = analyzer.generate_multiplier_recommendations(
             filing_id=99999,  # Non-existent filing
-            min_sample_size=10
+            min_sample_size=10,
         )
 
         # Should handle empty case gracefully
@@ -424,9 +423,19 @@ class TestE1RegressionPrevention:
         )
 
         test_cases = [
-            ("table", "table", "Gross margin 52%", "<table><tr><td>Gross margin</td><td>52%</td></tr></table>"),
+            (
+                "table",
+                "table",
+                "Gross margin 52%",
+                "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            ),
             ("bullet", "paragraph", "• Gross margin was 52%", "<p>• Gross margin was 52%</p>"),
-            ("parenthetical", "paragraph", "We achieved (52% gross margin)", "<p>We achieved (52% gross margin)</p>"),
+            (
+                "parenthetical",
+                "paragraph",
+                "We achieved (52% gross margin)",
+                "<p>We achieved (52% gross margin)</p>",
+            ),
         ]
 
         for expected_context, segment_type, raw_text, raw_html in test_cases:

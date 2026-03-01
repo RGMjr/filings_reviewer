@@ -348,13 +348,11 @@ class TestBulkEdgeCases:
         import psycopg.errors
 
         # Mock candidate retrieval to pass filing check
-        mock_db.get_review_candidate.side_effect = [
-            {"candidate_id": 1, "filing_id": 100}
-        ]
+        mock_db.get_review_candidate.side_effect = [{"candidate_id": 1, "filing_id": 100}]
 
         # Mock bulk insert to raise foreign key violation
-        mock_db.insert_bulk_review_decisions.side_effect = (
-            psycopg.errors.ForeignKeyViolation("metric_id constraint")
+        mock_db.insert_bulk_review_decisions.side_effect = psycopg.errors.ForeignKeyViolation(
+            "metric_id constraint"
         )
 
         response = client.post(

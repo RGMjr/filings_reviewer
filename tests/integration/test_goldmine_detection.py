@@ -89,7 +89,7 @@ def metric_rich_filing_path(data_dir: Path) -> str | None:
 @pytest.fixture
 def farfetch_filing_path(data_dir: Path) -> str | None:
     """Return path to Farfetch filing (gold standard) as string."""
-    path = data_dir / "0001740915" / "000119312518252315" / "primary.htm"
+    path = Path("data/gold_standard") / "Farfetch_Limited" / "filing.html"
     if not path.exists():
         return None
     return str(path)
@@ -220,17 +220,13 @@ class TestPipelineIntegration:
         RICHNESS_THRESHOLD = 6.0
         MEDIUM_THRESHOLD = 4.0
 
-        high_richness = [
-            s for s in classified if (s.richness_score or 0) >= RICHNESS_THRESHOLD
-        ]
+        high_richness = [s for s in classified if (s.richness_score or 0) >= RICHNESS_THRESHOLD]
         medium_richness = [
             s
             for s in classified
             if MEDIUM_THRESHOLD <= (s.richness_score or 0) < RICHNESS_THRESHOLD
         ]
-        low_richness = [
-            s for s in classified if (s.richness_score or 0) < MEDIUM_THRESHOLD
-        ]
+        low_richness = [s for s in classified if (s.richness_score or 0) < MEDIUM_THRESHOLD]
 
         logger.info(
             f"Tiered breakdown: {len(high_richness)} high, "
@@ -314,8 +310,7 @@ class TestGoldmineQuality:
         )
 
         logger.info(
-            f"Elevated segments: {len(elevated)}, "
-            f"with metric content: {len(metric_related)}"
+            f"Elevated segments: {len(elevated)}, with metric content: {len(metric_related)}"
         )
 
     def test_elevated_segments_have_enrichment_flags(
@@ -334,9 +329,9 @@ class TestGoldmineQuality:
         enricher.enrich_batch(classified)
 
         # Get top 20 richness segments for analysis
-        sorted_by_richness = sorted(
-            classified, key=lambda s: s.richness_score or 0, reverse=True
-        )[:20]
+        sorted_by_richness = sorted(classified, key=lambda s: s.richness_score or 0, reverse=True)[
+            :20
+        ]
 
         if not sorted_by_richness:
             pytest.skip("No segments found")
@@ -406,13 +401,11 @@ class TestGoldmineQuality:
             pytest.skip("No definition segments found")
 
         # Definition segments should get a richness boost
-        avg_definition_richness = sum(
-            s.richness_score or 0 for s in definition_segments
-        ) / len(definition_segments)
+        avg_definition_richness = sum(s.richness_score or 0 for s in definition_segments) / len(
+            definition_segments
+        )
 
-        non_definition_segments = [
-            s for s in classified if not s.contains_definition_flag
-        ]
+        non_definition_segments = [s for s in classified if not s.contains_definition_flag]
         avg_non_definition_richness = (
             sum(s.richness_score or 0 for s in non_definition_segments)
             / len(non_definition_segments)
@@ -470,8 +463,8 @@ class TestPerformance:
             overhead = 0
 
         logger.info(
-            f"Classification: {classify_time*1000:.1f}ms, "
-            f"Enrichment: {enrich_time*1000:.1f}ms, "
+            f"Classification: {classify_time * 1000:.1f}ms, "
+            f"Enrichment: {enrich_time * 1000:.1f}ms, "
             f"Overhead: {overhead:.1%}"
         )
 
@@ -504,12 +497,10 @@ class TestPerformance:
 
         logger.info(
             f"Processed {len(segments)} segments in {total_time:.2f}s "
-            f"({len(segments)/total_time:.0f} segments/sec)"
+            f"({len(segments) / total_time:.0f} segments/sec)"
         )
 
-        assert total_time < 30, (
-            f"Processing took {total_time:.1f}s, exceeds 30s limit"
-        )
+        assert total_time < 30, f"Processing took {total_time:.1f}s, exceeds 30s limit"
 
     def test_clustering_performance(
         self,
@@ -533,11 +524,11 @@ class TestPerformance:
 
         logger.info(
             f"Clustered {len(classified)} segments into {len(clusters)} clusters "
-            f"in {cluster_time*1000:.1f}ms"
+            f"in {cluster_time * 1000:.1f}ms"
         )
 
         # Clustering should be very fast (<100ms)
-        assert cluster_time < 0.1, f"Clustering took {cluster_time*1000:.1f}ms"
+        assert cluster_time < 0.1, f"Clustering took {cluster_time * 1000:.1f}ms"
 
         # Verify cluster summaries work
         for cluster in clusters:
@@ -554,16 +545,12 @@ class TestPerformance:
 class TestValidation:
     """Validation tests against gold standard labels."""
 
-    def _get_threshold_for_filing(
-        self, expected_sections: list[dict[str, Any]]
-    ) -> float:
+    def _get_threshold_for_filing(self, expected_sections: list[dict[str, Any]]) -> float:
         """Get minimum richness threshold from gold labels."""
         if not expected_sections:
             return 6.0  # Default goldmine threshold
         # Use the minimum of all expected min_richness values
-        min_thresholds = [
-            section.get("min_richness", 6.0) for section in expected_sections
-        ]
+        min_thresholds = [section.get("min_richness", 6.0) for section in expected_sections]
         return min(min_thresholds) if min_thresholds else 6.0
 
     def test_expected_sections_have_elevated_richness(
@@ -584,9 +571,7 @@ class TestValidation:
 
         if filing_key not in gold_labels.get("filings", {}):
             available_keys = list(gold_labels.get("filings", {}).keys())
-            pytest.skip(
-                f"No gold labels for {filing_key}. Available: {available_keys}"
-            )
+            pytest.skip(f"No gold labels for {filing_key}. Available: {available_keys}")
 
         labels = gold_labels["filings"][filing_key]
         expected_sections = labels.get("expected_goldmine_sections", [])
@@ -606,9 +591,7 @@ class TestValidation:
             min_richness = expected.get("min_richness", 4.0)
 
             # Find segments containing this text
-            matching_segments = [
-                s for s in classified if search_text in (s.raw_text or "").lower()
-            ]
+            matching_segments = [s for s in classified if search_text in (s.raw_text or "").lower()]
 
             if matching_segments:
                 max_richness = max(s.richness_score or 0 for s in matching_segments)
@@ -653,9 +636,7 @@ class TestValidation:
 
         if filing_key not in gold_labels.get("filings", {}):
             available_keys = list(gold_labels.get("filings", {}).keys())
-            pytest.skip(
-                f"No gold labels for {filing_key}. Available: {available_keys}"
-            )
+            pytest.skip(f"No gold labels for {filing_key}. Available: {available_keys}")
 
         labels = gold_labels["filings"][filing_key]
         expected_sections = labels.get("expected_goldmine_sections", [])
@@ -728,8 +709,7 @@ class TestValidation:
 
         # Customer metric sections should have at least medium richness
         assert max_richness >= 3.0, (
-            f"Customer metric sections have max richness {max_richness:.2f}, "
-            f"expected >= 3.0"
+            f"Customer metric sections have max richness {max_richness:.2f}, expected >= 3.0"
         )
 
 

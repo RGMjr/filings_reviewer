@@ -22,7 +22,6 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
     IMAGE_REVIEW_STATUSES,
-    IMAGE_TIER_PRIORITY,
     KEYWORD_POSITIONS,
     PATTERN_STATUSES,
     PATTERN_TYPES,
@@ -344,9 +343,7 @@ class DatabaseAdapter:
                 result = cur.fetchone()
                 filing_id = result["filing_id"]
 
-        logger.debug(
-            f"Upserted filing: accession={accession_number}, filing_id={filing_id}"
-        )
+        logger.debug(f"Upserted filing: accession={accession_number}, filing_id={filing_id}")
         return filing_id
 
     def execute(
@@ -617,9 +614,7 @@ class DatabaseAdapter:
             FROM source_segments
             WHERE source_segment_id = %(source_segment_id)s
         """
-        segment_results = self.query(
-            segment_sql, {"source_segment_id": source_segment_id}
-        )
+        segment_results = self.query(segment_sql, {"source_segment_id": source_segment_id})
 
         if not segment_results:
             # Source segment not found - return current context
@@ -663,9 +658,7 @@ class DatabaseAdapter:
             }
 
         # Concatenate all segment texts with separator
-        expanded_text = " ... ".join(
-            seg["raw_text"] for seg in adjacent_results if seg["raw_text"]
-        )
+        expanded_text = " ... ".join(seg["raw_text"] for seg in adjacent_results if seg["raw_text"])
 
         return {
             "expanded_context": expanded_text,
@@ -836,12 +829,12 @@ class DatabaseAdapter:
         # - Number appears in context_prefix from a different segment
         # - HTML markup inflates size, causing earlier truncation than raw_text
         for result in results:
-            segment_html = result.get('segment_html')
-            raw_number_text = result.get('raw_number_text')
-            triggering_keyword = result.get('triggering_keyword')
+            segment_html = result.get("segment_html")
+            raw_number_text = result.get("raw_number_text")
+            triggering_keyword = result.get("triggering_keyword")
 
             # Initialize dual display field
-            result['segment_html_table_only'] = None
+            result["segment_html_table_only"] = None
 
             # Check any segment with HTML (regardless of segment_type)
             if segment_html and raw_number_text and triggering_keyword:
@@ -854,7 +847,7 @@ class DatabaseAdapter:
                 if not (has_value and has_keyword):
                     # Check if the HTML contains a table - if so, preserve it for dual display
                     # This allows showing table structure alongside context_text with highlighting
-                    has_table = '<table' in segment_html.lower()
+                    has_table = "<table" in segment_html.lower()
 
                     if has_table and has_keyword:
                         # Table structure is useful even without the value highlighted
@@ -863,7 +856,7 @@ class DatabaseAdapter:
                             f"Segment HTML for candidate {result.get('candidate_id')} has table "
                             f"with keyword but value is truncated. Enabling dual display mode."
                         )
-                        result['segment_html_table_only'] = segment_html
+                        result["segment_html_table_only"] = segment_html
                     else:
                         logger.debug(
                             f"Segment HTML for candidate {result.get('candidate_id')} doesn't contain "
@@ -871,8 +864,8 @@ class DatabaseAdapter:
                         )
 
                     # Clear segment_html to force display of context_text instead
-                    result['segment_html'] = None
-                    result['segment_type'] = None
+                    result["segment_html"] = None
+                    result["segment_type"] = None
 
         return results
 
@@ -996,9 +989,7 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
-    def update_candidate_status(
-        self, candidate_id: int, status: str
-    ) -> bool:
+    def update_candidate_status(self, candidate_id: int, status: str) -> bool:
         """
         Update a candidate's review status.
 
@@ -1021,9 +1012,7 @@ class DatabaseAdapter:
             WHERE candidate_id = %(candidate_id)s
             RETURNING candidate_id
         """
-        result = self.execute(
-            sql, {"candidate_id": candidate_id, "status": status}, fetch=True
-        )
+        result = self.execute(sql, {"candidate_id": candidate_id, "status": status}, fetch=True)
         updated = bool(result)
         if updated:
             logger.debug(f"Updated candidate {candidate_id} status to {status}")
@@ -1031,9 +1020,7 @@ class DatabaseAdapter:
             logger.warning(f"No candidate found with id {candidate_id}")
         return updated
 
-    def bulk_update_candidate_status(
-        self, candidate_ids: list[int], status: str
-    ) -> int:
+    def bulk_update_candidate_status(self, candidate_ids: list[int], status: str) -> int:
         """
         Update status for multiple candidates efficiently.
 
@@ -1069,9 +1056,7 @@ class DatabaseAdapter:
                 )
                 rows_updated = cur.rowcount
 
-        logger.debug(
-            f"Bulk updated {rows_updated} candidates to status '{status}'"
-        )
+        logger.debug(f"Bulk updated {rows_updated} candidates to status '{status}'")
         return rows_updated
 
     # =========================================================================
@@ -1324,9 +1309,7 @@ class DatabaseAdapter:
         # position_key = (filing_id, source_segment_id, char_position)
         from collections import defaultdict
 
-        position_groups: dict[tuple, list[tuple[int, dict[str, Any]]]] = defaultdict(
-            list
-        )
+        position_groups: dict[tuple, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
 
         for idx, candidate in enumerate(candidates):
             position_key = (
@@ -1401,9 +1384,7 @@ class DatabaseAdapter:
                         "keyword_distance": runner_cand["keyword_distance"],
                         "keyword_position": runner_cand["keyword_position"],
                         "suggested_metric_id": runner_cand.get("suggested_metric_id"),
-                        "suggestion_confidence": runner_cand.get(
-                            "suggestion_confidence"
-                        ),
+                        "suggestion_confidence": runner_cand.get("suggestion_confidence"),
                         "features": runner_cand.get("features"),
                         "winner_candidate_id": winner_id,
                         "suppression_reason": "runner_up",
@@ -1593,9 +1574,9 @@ class DatabaseAdapter:
                 # Candidates to insert (batch winners that don't lose to DB)
                 to_insert: list[tuple[int, dict[str, Any]]] = []
                 # Candidates to update (batch winners that beat DB)
-                to_update: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = (
-                    []
-                )  # (input_idx, existing_id, new_cand, old_cand)
+                to_update: list[
+                    tuple[int, int, dict[str, Any], dict[str, Any]]
+                ] = []  # (input_idx, existing_id, new_cand, old_cand)
 
                 # Process with-segment candidates
                 for input_idx, ukey in with_segment_keys:
@@ -1610,9 +1591,7 @@ class DatabaseAdapter:
 
                         if new_conf > existing_conf:
                             # New wins: update existing row, log old as suppressed
-                            to_update.append(
-                                (input_idx, existing_id, candidate, existing)
-                            )
+                            to_update.append((input_idx, existing_id, candidate, existing))
                             final_ids[input_idx] = existing_id
                         else:
                             # Existing wins: skip insert, log new as suppressed
@@ -1649,9 +1628,7 @@ class DatabaseAdapter:
 
                         if new_conf > existing_conf:
                             # New wins
-                            to_update.append(
-                                (input_idx, existing_id, candidate, existing)
-                            )
+                            to_update.append((input_idx, existing_id, candidate, existing))
                             final_ids[input_idx] = existing_id
                         else:
                             # Existing wins
@@ -1713,18 +1690,12 @@ class DatabaseAdapter:
                                 "triggering_keyword": old_cand["triggering_keyword"],
                                 "keyword_distance": old_cand["keyword_distance"],
                                 "keyword_position": old_cand["keyword_position"],
-                                "suggested_metric_id": old_cand.get(
-                                    "suggested_metric_id"
-                                ),
-                                "suggestion_confidence": old_cand.get(
-                                    "suggestion_confidence"
-                                ),
+                                "suggested_metric_id": old_cand.get("suggested_metric_id"),
+                                "suggestion_confidence": old_cand.get("suggestion_confidence"),
                                 "features": old_cand.get("features"),
                                 "winner_candidate_id": existing_id,
                                 "suppression_reason": "lower_confidence",
-                                "winner_confidence": new_cand.get(
-                                    "suggestion_confidence"
-                                ),
+                                "winner_confidence": new_cand.get("suggestion_confidence"),
                                 "input_index": None,  # From DB, not input
                             }
                         )
@@ -1753,9 +1724,7 @@ class DatabaseAdapter:
                                     **loser_cand,
                                     "winner_candidate_id": winner_id,
                                     "suppression_reason": "lower_confidence",
-                                    "winner_confidence": winner_cand.get(
-                                        "suggestion_confidence"
-                                    ),
+                                    "winner_confidence": winner_cand.get("suggestion_confidence"),
                                     "input_index": loser_idx,
                                 }
                             )
@@ -1772,20 +1741,18 @@ class DatabaseAdapter:
                 # 'lower_confidence' in that it has a DIFFERENT metric_id than the winner.
                 if log_suppressed:
                     # Sanity check: all candidates should have a final_id by now
-                    assert all(
-                        fid is not None for fid in final_ids
-                    ), "All final_ids must be set"
+                    assert all(fid is not None for fid in final_ids), "All final_ids must be set"
 
                     runner_ups = self._identify_runner_ups(
-                        candidates, final_ids, winner_metrics  # type: ignore
+                        candidates,
+                        final_ids,
+                        winner_metrics,  # type: ignore
                     )
                     suppression_entries.extend(runner_ups)
 
                     # Bulk insert all suppression records (lower_confidence + runner_up)
                     if suppression_entries:
-                        suppressed_ids = self._bulk_log_suppressed(
-                            cur, suppression_entries
-                        )
+                        suppressed_ids = self._bulk_log_suppressed(cur, suppression_entries)
                         # Annotate entries with their DB IDs for return value
                         for i, entry in enumerate(suppression_entries):
                             entry["suppressed_id"] = suppressed_ids[i]
@@ -1806,9 +1773,7 @@ class DatabaseAdapter:
             return result_ids, suppression_entries
         return result_ids
 
-    def _execute_bulk_insert(
-        self, cur, candidates: list[dict[str, Any]]
-    ) -> list[int]:
+    def _execute_bulk_insert(self, cur, candidates: list[dict[str, Any]]) -> list[int]:
         """Execute bulk insert and return candidate_ids in order."""
         if not candidates:
             return []
@@ -1916,9 +1881,7 @@ class DatabaseAdapter:
         results = cur.fetchall()
         return [row["candidate_id"] for row in results]
 
-    def _execute_update(
-        self, cur, candidate_id: int, candidate: dict[str, Any]
-    ) -> None:
+    def _execute_update(self, cur, candidate_id: int, candidate: dict[str, Any]) -> None:
         """Update an existing candidate with new values."""
         features = candidate.get("features")
         features_json = json.dumps(features) if features else None
@@ -2004,15 +1967,11 @@ class DatabaseAdapter:
 
         # Validate rejection_category if provided
         if rejection_category is not None:
-            validate_enum(
-                rejection_category, REJECTION_CATEGORIES, "rejection_category"
-            )
+            validate_enum(rejection_category, REJECTION_CATEGORIES, "rejection_category")
 
         # Business rule: accept/reclassify require assigned_metric_id
         if decision in ("accept", "reclassify") and not assigned_metric_id:
-            raise ValidationError(
-                f"Decision '{decision}' requires assigned_metric_id"
-            )
+            raise ValidationError(f"Decision '{decision}' requires assigned_metric_id")
 
         # Business rule: rejection_category only valid for reject
         if decision != "reject" and rejection_category:
@@ -2129,9 +2088,7 @@ class DatabaseAdapter:
 
         # Validate rejection_category if provided
         if rejection_category is not None:
-            validate_enum(
-                rejection_category, REJECTION_CATEGORIES, "rejection_category"
-            )
+            validate_enum(rejection_category, REJECTION_CATEGORIES, "rejection_category")
 
         decision_ids = []
         failed_candidates = []
@@ -2216,9 +2173,7 @@ class DatabaseAdapter:
 
                     except Exception as e:
                         # If any unexpected error, let it bubble up to rollback entire transaction
-                        logger.error(
-                            f"Error inserting decision for candidate {candidate_id}: {e}"
-                        )
+                        logger.error(f"Error inserting decision for candidate {candidate_id}: {e}")
                         raise
 
         logger.info(
@@ -2286,7 +2241,7 @@ class DatabaseAdapter:
                 # Get candidate_id before deleting
                 cur.execute(
                     "SELECT candidate_id FROM review_decisions WHERE decision_id = %s",
-                    (decision_id,)
+                    (decision_id,),
                 )
                 result = cur.fetchone()
 
@@ -2297,20 +2252,15 @@ class DatabaseAdapter:
                 candidate_id = result["candidate_id"]
 
                 # Delete decision
-                cur.execute(
-                    "DELETE FROM review_decisions WHERE decision_id = %s",
-                    (decision_id,)
-                )
+                cur.execute("DELETE FROM review_decisions WHERE decision_id = %s", (decision_id,))
 
                 # Reset candidate status to pending
                 cur.execute(
                     "UPDATE review_candidates SET review_status = 'pending', updated_at = now() WHERE candidate_id = %s",
-                    (candidate_id,)
+                    (candidate_id,),
                 )
 
-        logger.info(
-            f"Deleted decision {decision_id}, reset candidate {candidate_id} to pending"
-        )
+        logger.info(f"Deleted decision {decision_id}, reset candidate {candidate_id} to pending")
         return True
 
     def get_decisions_for_filing(self, filing_id: int) -> list[dict]:
@@ -2333,9 +2283,7 @@ class DatabaseAdapter:
         """
         return self.query(sql, {"filing_id": filing_id})
 
-    def get_decision_statistics(
-        self, filing_id: int | None = None
-    ) -> dict[str, Any]:
+    def get_decision_statistics(self, filing_id: int | None = None) -> dict[str, Any]:
         """
         Get statistics on review decisions.
 
@@ -2490,9 +2438,7 @@ class DatabaseAdapter:
     # Analysis View Methods
     # =========================================================================
 
-    def get_decision_stats_by_metric(
-        self, metric_id: str | None = None
-    ) -> list[dict]:
+    def get_decision_stats_by_metric(self, metric_id: str | None = None) -> list[dict]:
         """
         Get decision statistics grouped by suggested metric.
 
@@ -2521,9 +2467,7 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
-    def get_rejection_reasons(
-        self, metric_id: str | None = None
-    ) -> list[dict]:
+    def get_rejection_reasons(self, metric_id: str | None = None) -> list[dict]:
         """
         Get rejection reason statistics grouped by metric.
 
@@ -3155,9 +3099,7 @@ class DatabaseAdapter:
             "filings_with_pending": row["filings_with_pending"] or 0,
         }
 
-    def get_next_candidate_for_review(
-        self, filing_id: int | None = None
-    ) -> dict | None:
+    def get_next_candidate_for_review(self, filing_id: int | None = None) -> dict | None:
         """
         Get the next candidate needing review.
 
@@ -3676,6 +3618,7 @@ class DatabaseAdapter:
         # Validate detection_tier if provided
         if detection_tier is not None:
             from src.review.models import IMAGE_DETECTION_TIERS
+
             validate_enum(detection_tier, IMAGE_DETECTION_TIERS, "detection_tier")
 
         sql = """
@@ -3782,15 +3725,11 @@ class DatabaseAdapter:
 
         # Business rule: relevant requires chart_type
         if decision == "relevant" and not chart_type:
-            raise ValidationError(
-                "Decision 'relevant' requires chart_type"
-            )
+            raise ValidationError("Decision 'relevant' requires chart_type")
 
         # Business rule: not_relevant requires rejection_reason
         if decision == "not_relevant" and not rejection_reason:
-            raise ValidationError(
-                "Decision 'not_relevant' requires rejection_reason"
-            )
+            raise ValidationError("Decision 'not_relevant' requires rejection_reason")
 
         insert_sql = """
             INSERT INTO image_review_decisions (
@@ -3961,6 +3900,377 @@ class DatabaseAdapter:
         )
         return len(result) > 0
 
+    # =============================================================================
+    # V2 Extraction Review Methods
+    # =============================================================================
+
+    def get_v2_filings_with_facts(self, limit: int | None = None, offset: int = 0) -> list[dict]:
+        """
+        Get filings that have V2 extraction results, with fact counts and review progress.
+
+        Args:
+            limit: Maximum number of rows to return. None returns all rows.
+            offset: Number of rows to skip (for pagination).
+
+        Returns:
+            List of dicts with filing metadata and V2 extraction stats.
+        """
+        sql = """
+            SELECT
+                f.filing_id,
+                c.company_name,
+                c.cik,
+                f.accession_number,
+                f.form_type,
+                f.filing_date,
+                d.doc_id,
+                d.status AS extraction_status,
+                d.fact_count,
+                d.segment_count,
+                d.table_count,
+                d.image_count,
+                d.extract_completed_at,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END) AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END) AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END) AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END) AS auto_accepted_count
+            FROM v2_documents d
+            JOIN filings f ON d.filing_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            GROUP BY f.filing_id, c.company_name, c.cik, f.accession_number,
+                     f.form_type, f.filing_date, d.doc_id, d.status,
+                     d.fact_count, d.segment_count, d.table_count, d.image_count,
+                     d.extract_completed_at
+            ORDER BY d.extract_completed_at DESC NULLS LAST
+        """
+        if limit is not None:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            return self.query(sql, {"limit": limit, "offset": offset})
+        return self.query(sql)
+
+    def count_v2_filings_with_facts(self) -> int:
+        """Return total count of filings with V2 extraction results."""
+        sql = """
+            SELECT COUNT(*) AS cnt
+            FROM v2_documents d
+            JOIN filings f ON d.filing_id = f.filing_id
+        """
+        result = self.query(sql)
+        return result[0]["cnt"] if result else 0
+
+    def get_v2_facts_for_filing(
+        self,
+        filing_id: int,
+        status: str | None = None,
+        metric_id: str | None = None,
+        sort_by: str = "confidence_desc",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        """
+        Get V2 metric facts for a filing with optional review decisions.
+
+        Args:
+            filing_id: Filing ID
+            status: Optional review_status filter ('pending_review', 'accepted', 'rejected', 'corrected', 'auto_accepted')
+            metric_id: Optional canonical_metric_id filter
+            sort_by: Sort order ('confidence_desc', 'confidence_asc', 'metric', 'period')
+            limit: Maximum number of rows to return. None returns all rows.
+            offset: Number of rows to skip (for pagination).
+
+        Returns:
+            List of fact dicts with LEFT JOINed review decision data.
+        """
+        conditions = ["mf.doc_id = %(filing_id)s"]
+        params: dict[str, Any] = {"filing_id": filing_id}
+
+        if status:
+            conditions.append("mf.review_status = %(status)s")
+            params["status"] = status
+
+        if metric_id:
+            conditions.append("mf.canonical_metric_id = %(metric_id)s")
+            params["metric_id"] = metric_id
+
+        where_clause = " AND ".join(conditions)
+
+        # Sort options (safe - no user input in SQL)
+        sort_map = {
+            "confidence_desc": "mf.confidence DESC, mf.canonical_metric_id",
+            "confidence_asc": "mf.confidence ASC, mf.canonical_metric_id",
+            "metric": "mf.canonical_metric_id, mf.confidence DESC",
+            "period": "mf.period_end DESC NULLS LAST, mf.canonical_metric_id",
+        }
+        order_clause = sort_map.get(sort_by, sort_map["confidence_desc"])
+
+        sql = f"""
+            SELECT
+                mf.fact_id,
+                mf.doc_id,
+                mf.canonical_metric_id,
+                mf.value,
+                mf.value_raw,
+                mf.unit,
+                mf.currency,
+                mf.period_type,
+                mf.period_start,
+                mf.period_end,
+                mf.scope,
+                mf.scope_detail,
+                mf.cohort_def,
+                mf.customer_type,
+                mf.source_type,
+                mf.source_locator,
+                mf.evidence_pack,
+                mf.confidence,
+                mf.extraction_method,
+                mf.requires_review,
+                mf.review_reason,
+                mf.review_status,
+                mf.pipeline_version,
+                mf.created_at,
+                mf.updated_at,
+                rd.decision_id,
+                rd.decision,
+                rd.assigned_metric_id AS decision_metric_id,
+                rd.corrected_value,
+                rd.rejection_reason,
+                rd.rejection_category,
+                rd.reviewer_id,
+                rd.reviewer_notes,
+                rd.review_time_seconds,
+                rd.created_at AS decision_created_at
+            FROM v2_metric_facts mf
+            LEFT JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
+            WHERE {where_clause}
+            ORDER BY {order_clause}
+        """
+        if limit is not None:
+            sql += " LIMIT %(limit)s OFFSET %(offset)s"
+            params["limit"] = limit
+            params["offset"] = offset
+        return self.query(sql, params)
+
+    def count_v2_facts_for_filing(
+        self,
+        filing_id: int,
+        status: str | None = None,
+        metric_id: str | None = None,
+    ) -> int:
+        """Return count of V2 metric facts for a filing, with optional filters."""
+        conditions = ["mf.doc_id = %(filing_id)s"]
+        params: dict[str, Any] = {"filing_id": filing_id}
+        if status:
+            conditions.append("mf.review_status = %(status)s")
+            params["status"] = status
+        if metric_id:
+            conditions.append("mf.canonical_metric_id = %(metric_id)s")
+            params["metric_id"] = metric_id
+        where_clause = " AND ".join(conditions)
+        sql = f"SELECT COUNT(*) AS cnt FROM v2_metric_facts mf WHERE {where_clause}"
+        result = self.query(sql, params)
+        return result[0]["cnt"] if result else 0
+
+    def get_v2_fact_by_id(self, fact_id: str) -> dict | None:
+        """Get a single V2 fact by its UUID."""
+        rows = self.query(
+            """
+            SELECT mf.*, rd.decision_id, rd.decision, rd.reviewer_id, rd.created_at AS decision_created_at
+            FROM v2_metric_facts mf
+            LEFT JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
+            WHERE mf.fact_id = %(fact_id)s
+            """,
+            {"fact_id": fact_id},
+        )
+        return rows[0] if rows else None
+
+    def insert_v2_review_decision(
+        self,
+        fact_id: str,
+        decision: str,
+        reviewer_id: str = "web_reviewer",
+        assigned_metric_id: str | None = None,
+        corrected_value: float | None = None,
+        rejection_reason: str | None = None,
+        rejection_category: str | None = None,
+        reviewer_notes: str | None = None,
+        review_time_seconds: int | None = None,
+    ) -> str:
+        """
+        Insert a V2 review decision. The DB trigger auto-updates review_status on v2_metric_facts.
+
+        Args:
+            fact_id: UUID of the metric fact being reviewed
+            decision: 'accept', 'reject', or 'correct'
+            reviewer_id: Identifier for the reviewer
+            assigned_metric_id: If corrected to a different metric
+            corrected_value: If value was corrected
+            rejection_reason: Free-text reason for rejection
+            rejection_category: Category of rejection
+            reviewer_notes: Additional notes
+            review_time_seconds: Time spent reviewing
+
+        Returns:
+            decision_id (UUID) of the inserted decision
+        """
+        sql = """
+            INSERT INTO v2_review_decisions (
+                fact_id, decision, assigned_metric_id, corrected_value,
+                rejection_reason, rejection_category,
+                reviewer_id, reviewer_notes, review_time_seconds
+            )
+            VALUES (
+                %(fact_id)s, %(decision)s, %(assigned_metric_id)s, %(corrected_value)s,
+                %(rejection_reason)s, %(rejection_category)s,
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+            )
+            RETURNING decision_id
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    {
+                        "fact_id": fact_id,
+                        "decision": decision,
+                        "assigned_metric_id": assigned_metric_id,
+                        "corrected_value": corrected_value,
+                        "rejection_reason": rejection_reason,
+                        "rejection_category": rejection_category,
+                        "reviewer_id": reviewer_id,
+                        "reviewer_notes": reviewer_notes,
+                        "review_time_seconds": review_time_seconds,
+                    },
+                )
+                result = cur.fetchone()
+                return str(result["decision_id"])
+
+    def delete_v2_review_decision(self, decision_id: str) -> dict | None:
+        """
+        Delete a V2 review decision (undo). Resets fact review_status to pending_review.
+
+        Args:
+            decision_id: UUID of the decision to delete
+
+        Returns:
+            Dict with fact_id and filing_id if deleted, None if not found
+        """
+        # Get fact_id before deleting
+        decision = self.query(
+            """
+            SELECT rd.decision_id, rd.fact_id, mf.doc_id AS filing_id
+            FROM v2_review_decisions rd
+            JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+            WHERE rd.decision_id = %(decision_id)s
+            """,
+            {"decision_id": decision_id},
+        )
+        if not decision:
+            return None
+
+        fact_id = decision[0]["fact_id"]
+        filing_id = decision[0]["filing_id"]
+
+        # Delete decision
+        self.execute(
+            "DELETE FROM v2_review_decisions WHERE decision_id = %(decision_id)s",
+            {"decision_id": decision_id},
+        )
+
+        # Reset fact status (trigger only fires on INSERT, not DELETE)
+        self.execute(
+            """
+            UPDATE v2_metric_facts
+            SET review_status = CASE
+                WHEN requires_review THEN 'pending_review'
+                ELSE 'auto_accepted'
+            END,
+            updated_at = NOW()
+            WHERE fact_id = %(fact_id)s
+            """,
+            {"fact_id": fact_id},
+        )
+
+        return {"fact_id": str(fact_id), "filing_id": filing_id}
+
+    def get_v2_review_stats(self) -> dict:
+        """
+        Return aggregate V2 review statistics across all companies/filings.
+
+        Returns a dict with:
+          - ``per_company``: list of per-company rows (company_name, cik,
+            filing_count, fact_count, reviewed_count, pending_count,
+            accepted_count, rejected_count, auto_accepted_count)
+          - ``totals``: aggregate totals across all companies
+          - ``confidence_bands``: counts for high (>=0.9), medium (0.7-0.9),
+            low (<0.7) confidence facts
+        """
+        per_company_sql = """
+            SELECT
+                c.company_name,
+                c.cik,
+                COUNT(DISTINCT f.filing_id)                                         AS filing_count,
+                COUNT(mf.fact_id)                                                   AS fact_count,
+                COUNT(CASE WHEN mf.review_status != 'pending_review' THEN 1 END)   AS reviewed_count,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END)    AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END)          AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END)          AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END)         AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END)     AS auto_accepted_count
+            FROM companies c
+            JOIN filings f ON f.company_id = c.company_id
+            JOIN v2_documents d ON d.filing_id = f.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            GROUP BY c.company_id, c.company_name, c.cik
+            ORDER BY c.company_name
+        """
+        per_company = self.query(per_company_sql)
+
+        totals_sql = """
+            SELECT
+                COUNT(DISTINCT f.filing_id)                                         AS filing_count,
+                COUNT(mf.fact_id)                                                   AS fact_count,
+                COUNT(CASE WHEN mf.review_status != 'pending_review' THEN 1 END)   AS reviewed_count,
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END)    AS pending_count,
+                COUNT(CASE WHEN mf.review_status = 'accepted' THEN 1 END)          AS accepted_count,
+                COUNT(CASE WHEN mf.review_status = 'rejected' THEN 1 END)          AS rejected_count,
+                COUNT(CASE WHEN mf.review_status = 'corrected' THEN 1 END)         AS corrected_count,
+                COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END)     AS auto_accepted_count
+            FROM filings f
+            JOIN v2_documents d ON d.filing_id = f.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+        """
+        totals_rows = self.query(totals_sql)
+        totals = dict(totals_rows[0]) if totals_rows else {}
+
+        bands_sql = """
+            SELECT
+                COUNT(CASE WHEN mf.confidence >= 0.9 THEN 1 END)                   AS high_count,
+                COUNT(CASE WHEN mf.confidence >= 0.7 AND mf.confidence < 0.9 THEN 1 END) AS medium_count,
+                COUNT(CASE WHEN mf.confidence < 0.7 THEN 1 END)                    AS low_count,
+                COUNT(mf.fact_id)                                                   AS total_count
+            FROM v2_metric_facts mf
+        """
+        bands_rows = self.query(bands_sql)
+        confidence_bands = (
+            dict(bands_rows[0])
+            if bands_rows
+            else {
+                "high_count": 0,
+                "medium_count": 0,
+                "low_count": 0,
+                "total_count": 0,
+            }
+        )
+
+        return {
+            "per_company": [dict(r) for r in per_company],
+            "totals": totals,
+            "confidence_bands": confidence_bands,
+        }
+
 
 # =============================================================================
 # Convenience Functions
@@ -3998,8 +4308,7 @@ def create_pooled_adapter(connection_string: str | None = None) -> DatabaseAdapt
         connection_string = os.environ.get("DATABASE_URL", "")
         if not connection_string:
             raise ValueError(
-                "connection_string not provided and DATABASE_URL environment "
-                "variable not set"
+                "connection_string not provided and DATABASE_URL environment variable not set"
             )
 
     pool = get_shared_pool(connection_string)

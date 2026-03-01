@@ -157,14 +157,14 @@ Include:
 pytest -m gold_standard --gold-standard-mode=fresh
 
 # If intentional changes occurred, update baseline
-python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
 ```
 
 ### Step 7: Verify in UI
 
 ```bash
 # Start Flask app
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" python -m flask --app src.web.app run
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" python3 -m flask --app src.web.app run
 
 # Navigate to review interface
 # Confirm metric appears in dropdown at correct position
@@ -479,7 +479,7 @@ Use this checklist when making metric changes:
 3. Restart Flask app to pick up code changes
 
 ### Gold standard validation failing
-1. Run `python scripts/validate_against_gold_standard.py --all --mode fresh --baseline` to see delta
+1. Run `python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline` to see delta
 2. Check if patterns are too broad or too narrow
 3. Review false positives/negatives in output
 

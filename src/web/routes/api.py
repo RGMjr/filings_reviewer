@@ -49,15 +49,13 @@ def _check_api_key():
 
     if not api_key:
         logger.warning(
-            f"Missing API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Missing API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "API key required"}), 401
 
     if not hmac.compare_digest(api_key, expected_key):
         logger.warning(
-            f"Invalid API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Invalid API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
 
@@ -308,9 +306,7 @@ def create_decision():
 
         # Transaction commits automatically if no exceptions
 
-        logger.info(
-            f"Created decision {decision_id} for candidate {candidate_id}: {decision}"
-        )
+        logger.info(f"Created decision {decision_id} for candidate {candidate_id}: {decision}")
 
         # Get next candidate (outside transaction - read-only)
         # Extract filter parameters from request to maintain navigation consistency
@@ -633,12 +629,7 @@ def undo_decision(decision_id: int):
         if not decision:
             logger.warning(f"Decision not found for undo: {decision_id}")
             return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Decision not found"
-                    }
-                ),
+                jsonify({"status": "error", "message": "Decision not found"}),
                 404,
             )
 
@@ -651,12 +642,7 @@ def undo_decision(decision_id: int):
         if not success:
             logger.error(f"Failed to delete decision {decision_id}")
             return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Failed to undo decision"
-                    }
-                ),
+                jsonify({"status": "error", "message": "Failed to undo decision"}),
                 500,
             )
 
@@ -668,7 +654,7 @@ def undo_decision(decision_id: int):
                     "status": "success",
                     "message": "Decision reverted",
                     "candidate_id": candidate_id,
-                    "candidate_url": f"/review/{filing_id}/candidate/{candidate_id}"
+                    "candidate_url": f"/review/{filing_id}/candidate/{candidate_id}",
                 }
             ),
             200,
@@ -950,12 +936,7 @@ def get_expanded_context(candidate_id: int):
         if result is None:
             logger.warning(f"Candidate not found for context expansion: {candidate_id}")
             return (
-                jsonify(
-                    {
-                        "status": "error",
-                        "message": "Candidate not found"
-                    }
-                ),
+                jsonify({"status": "error", "message": "Candidate not found"}),
                 404,
             )
 
@@ -1099,9 +1080,7 @@ def _validate_decision_request(data: dict[str, Any]) -> dict[str, str]:
         errors.update(decision_errors)
 
     # Validate optional fields
-    if error := _validate_text_field(
-        data.get("reviewer_notes"), "reviewer_notes", max_length=1000
-    ):
+    if error := _validate_text_field(data.get("reviewer_notes"), "reviewer_notes", max_length=1000):
         errors["reviewer_notes"] = error
 
     if error := _validate_review_time(data.get("review_time_seconds")):
@@ -1149,9 +1128,7 @@ def _validate_bulk_decision_request(data: dict[str, Any]) -> dict[str, str]:
         if not data.get("rejection_category"):
             errors["rejection_category"] = "Required for bulk reject"
         elif data["rejection_category"] not in REJECTION_CATEGORIES:
-            errors["rejection_category"] = (
-                f"Must be one of: {', '.join(REJECTION_CATEGORIES)}"
-            )
+            errors["rejection_category"] = f"Must be one of: {', '.join(REJECTION_CATEGORIES)}"
 
     # Validate optional rejection_reason
     if error := _validate_text_field(
@@ -1196,9 +1173,7 @@ def _validate_decision_type(value: Any) -> str | None:
     return None
 
 
-def _validate_decision_specific_fields(
-    decision: str, data: dict[str, Any]
-) -> dict[str, str]:
+def _validate_decision_specific_fields(decision: str, data: dict[str, Any]) -> dict[str, str]:
     """
     Validate fields specific to the decision type.
 
@@ -1216,9 +1191,7 @@ def _validate_decision_specific_fields(
     return {}
 
 
-def _validate_accept_or_reclassify_decision(
-    decision: str, data: dict[str, Any]
-) -> dict[str, str]:
+def _validate_accept_or_reclassify_decision(decision: str, data: dict[str, Any]) -> dict[str, str]:
     """
     Validate fields required for accept or reclassify decisions.
 
@@ -1231,9 +1204,7 @@ def _validate_accept_or_reclassify_decision(
     """
     errors: dict[str, str] = {}
 
-    if error := _validate_assigned_metric_id(
-        data.get("assigned_metric_id"), decision
-    ):
+    if error := _validate_assigned_metric_id(data.get("assigned_metric_id"), decision):
         errors["assigned_metric_id"] = error
 
     return errors
@@ -1293,15 +1264,11 @@ def _validate_rejection_category(value: Any) -> str | None:
     if not value:
         return "Required for reject decision"
     if value not in REJECTION_CATEGORIES:
-        return (
-            f"Must be one of: {', '.join(REJECTION_CATEGORIES)}. Got: {value}"
-        )
+        return f"Must be one of: {', '.join(REJECTION_CATEGORIES)}. Got: {value}"
     return None
 
 
-def _validate_text_field(
-    value: Any, field_name: str, max_length: int
-) -> str | None:
+def _validate_text_field(value: Any, field_name: str, max_length: int) -> str | None:
     """
     Validate optional text field with maximum length.
 
@@ -1368,10 +1335,18 @@ def _get_next_candidate_info(
     sort_by = filters.get("sort", "position")
 
     # Convert to database query parameters
-    db_status = filter_status if filter_status in ("pending", "reviewed", "skipped", "in_progress") else None
+    db_status = (
+        filter_status
+        if filter_status in ("pending", "reviewed", "skipped", "in_progress")
+        else None
+    )
     db_metric_id = filter_metric if filter_metric != "all" else None
     db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
-    db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
+    db_sort_by = (
+        sort_by
+        if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc")
+        else "position"
+    )
 
     # When navigating "next", we always look for pending candidates (unless status filter is set)
     # This ensures we skip reviewed candidates during normal review flow

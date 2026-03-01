@@ -53,9 +53,7 @@ class TestArrMrrPatterns:
         result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
-    def test_annual_recurring_revenue_spelled_out(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_annual_recurring_revenue_spelled_out(self, enricher: SegmentEnricher) -> None:
         """Matches 'annual recurring revenue increased'."""
         segment = _make_segment("Our annual recurring revenue increased by 40%.")
         result = enricher._detect_saas_indicators(segment.raw_text)
@@ -67,9 +65,7 @@ class TestArrMrrPatterns:
         result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
-    def test_monthly_recurring_revenue_spelled_out(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_monthly_recurring_revenue_spelled_out(self, enricher: SegmentEnricher) -> None:
         """Matches 'monthly recurring revenue'."""
         segment = _make_segment("Monthly recurring revenue accelerated in Q2.")
         result = enricher._detect_saas_indicators(segment.raw_text)
@@ -162,13 +158,9 @@ class TestNetExpansionPatterns:
 class TestEnterpriseCustomerPatterns:
     """Tests for enterprise customer threshold patterns."""
 
-    def test_paid_customers_threshold_greater_than(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_paid_customers_threshold_greater_than(self, enricher: SegmentEnricher) -> None:
         """Matches 'Paid Customers > $100,000 of ARR'."""
-        segment = _make_segment(
-            "We had 575 Paid Customers > $100,000 of ARR as of January."
-        )
+        segment = _make_segment("We had 575 Paid Customers > $100,000 of ARR as of January.")
         result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
@@ -240,9 +232,7 @@ class TestNegativeCases:
 
     def test_generic_business_text_no_match(self, enricher: SegmentEnricher) -> None:
         """Generic business text without SaaS indicators returns False."""
-        segment = _make_segment(
-            "Our customers are satisfied with our products and services."
-        )
+        segment = _make_segment("Our customers are satisfied with our products and services.")
         result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is False
 
@@ -273,9 +263,7 @@ class TestNegativeCases:
 class TestRealS1Snippets:
     """Tests using actual text from S-1 filings (GI-1 analysis)."""
 
-    def test_slack_paid_customers_arr_threshold(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_slack_paid_customers_arr_threshold(self, enricher: SegmentEnricher) -> None:
         """Slack S-1: Paid Customers > $100,000 of ARR."""
         segment = _make_segment(
             "We measure the number of Paid Customers > $100,000 of annual recurring "
@@ -344,9 +332,7 @@ class TestEdgeCasesAndVariations:
         """Pattern in middle of long text."""
         prefix = "Lorem ipsum dolor sit amet. " * 50
         suffix = " Consectetur adipiscing elit." * 50
-        segment = _make_segment(
-            f"{prefix}Our ARR of $100 million grew 50%.{suffix}"
-        )
+        segment = _make_segment(f"{prefix}Our ARR of $100 million grew 50%.{suffix}")
         result = enricher._detect_saas_indicators(segment.raw_text)
         assert result is True
 
@@ -416,13 +402,9 @@ class TestRichnessScoreIntegration:
         segment = SourceSegment(
             filing_id=1,
             segment_type="paragraph",
-            raw_text=(
-                "Our Net Dollar Retention Rate was 143%. "
-                "ARR of $100 million was achieved."
-            ),
+            raw_text=("Our Net Dollar Retention Rate was 143%. ARR of $100 million was achieved."),
             raw_html=(
-                "<p>Our Net Dollar Retention Rate was 143%. "
-                "ARR of $100 million was achieved.</p>"
+                "<p>Our Net Dollar Retention Rate was 143%. ARR of $100 million was achieved.</p>"
             ),
             candidate_metric_ids=[],
             classifier_confidence=1.0,  # Base: 3.0 points
@@ -472,7 +454,6 @@ class TestPatternCount:
     def test_saas_patterns_are_compiled(self, enricher: SegmentEnricher) -> None:
         """Verify all patterns are compiled regex objects."""
         import re
+
         for pattern in enricher.SAAS_PATTERNS:
-            assert isinstance(pattern, re.Pattern), (
-                f"Pattern {pattern} is not a compiled regex"
-            )
+            assert isinstance(pattern, re.Pattern), f"Pattern {pattern} is not a compiled regex"

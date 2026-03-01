@@ -9,7 +9,6 @@ Tests the tiered usage bonus enhancement that differentiates between:
 Test coverage target: >= 95% for _detect_usage_with_count() and tiered bonus logic.
 """
 
-
 import pytest
 
 from src.extraction.models import SourceSegment
@@ -74,16 +73,12 @@ class TestUsageWithCountDetection:
 
     def test_dau_with_percentage_growth(self, enricher: SegmentEnricher) -> None:
         """Detect 'daily active users grew 50%'."""
-        segment = make_segment(
-            raw_text="Our daily active users grew 50% year-over-year."
-        )
+        segment = make_segment(raw_text="Our daily active users grew 50% year-over-year.")
         assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_organizations_with_dau_count(self, enricher: SegmentEnricher) -> None:
         """Detect '600,000 organizations with daily active users'."""
-        segment = make_segment(
-            raw_text="We serve 600,000 organizations with daily active users."
-        )
+        segment = make_segment(raw_text="We serve 600,000 organizations with daily active users.")
         assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_dau_of_millions(self, enricher: SegmentEnricher) -> None:
@@ -98,16 +93,12 @@ class TestUsageWithCountDetection:
 
     def test_percentage_growth_in_wau(self, enricher: SegmentEnricher) -> None:
         """Detect '35% growth in weekly active users'."""
-        segment = make_segment(
-            raw_text="We saw 35% growth in weekly active users this quarter."
-        )
+        segment = make_segment(raw_text="We saw 35% growth in weekly active users this quarter.")
         assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_basic_dau_keyword_no_count(self, enricher: SegmentEnricher) -> None:
         """Basic 'daily active users' without count should return False."""
-        segment = make_segment(
-            raw_text="We measure daily active users as a key metric."
-        )
+        segment = make_segment(raw_text="We measure daily active users as a key metric.")
         assert enricher._detect_usage_with_count(segment.raw_text) is False
 
     def test_dau_acronym_alone(self, enricher: SegmentEnricher) -> None:
@@ -128,16 +119,12 @@ class TestUsageWithCountDetection:
 
     def test_over_prefix(self, enricher: SegmentEnricher) -> None:
         """Detect 'over 20 million monthly active users'."""
-        segment = make_segment(
-            raw_text="Our platform has over 20 million monthly active users."
-        )
+        segment = make_segment(raw_text="Our platform has over 20 million monthly active users.")
         assert enricher._detect_usage_with_count(segment.raw_text) is True
 
     def test_approximately_prefix(self, enricher: SegmentEnricher) -> None:
         """Detect 'approximately 15M daily active users'."""
-        segment = make_segment(
-            raw_text="The network has approximately 15M daily active users."
-        )
+        segment = make_segment(raw_text="The network has approximately 15M daily active users.")
         assert enricher._detect_usage_with_count(segment.raw_text) is True
 
 
@@ -162,9 +149,7 @@ class TestTieredUsageBonus:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(1.0, abs=0.01)
 
-    def test_usage_keyword_with_definition_gets_0_75(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_usage_keyword_with_definition_gets_0_75(self, enricher: SegmentEnricher) -> None:
         """Usage keyword + definition flag should get +0.75 bonus."""
         segment = make_segment(
             raw_text="We define daily active users as authenticated users who log in.",
@@ -179,9 +164,7 @@ class TestTieredUsageBonus:
         # Expected: 1.0 (definition) + 0.75 (usage mid-tier) = 1.75
         assert score == pytest.approx(1.75, abs=0.01)
 
-    def test_usage_keyword_with_metric_gets_0_75(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_usage_keyword_with_metric_gets_0_75(self, enricher: SegmentEnricher) -> None:
         """Usage keyword + metric_count >= 1 should get +0.75 bonus."""
         segment = make_segment(
             raw_text="Daily active users and retention are key metrics.",
@@ -196,9 +179,7 @@ class TestTieredUsageBonus:
         # 0.5 (metric count) + 0.75 (usage mid-tier) = 1.25
         assert score == pytest.approx(1.25, abs=0.01)
 
-    def test_basic_usage_keyword_only_gets_0_5(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_basic_usage_keyword_only_gets_0_5(self, enricher: SegmentEnricher) -> None:
         """Basic usage keyword alone should get +0.5 bonus."""
         segment = make_segment(
             raw_text="Our platform tracks daily active users.",
@@ -226,9 +207,7 @@ class TestTieredUsageBonus:
         score = enricher._compute_richness_score(segment)
         assert score == pytest.approx(0.0, abs=0.01)
 
-    def test_tiers_are_mutually_exclusive_highest_wins(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_tiers_are_mutually_exclusive_highest_wins(self, enricher: SegmentEnricher) -> None:
         """When multiple tiers match, highest tier should win (not cumulative)."""
         segment = make_segment(
             raw_text="We define DAU as users logging in daily. We had 10 million DAU.",
@@ -245,9 +224,7 @@ class TestTieredUsageBonus:
         # The usage tiers are mutually exclusive (only +1.0, not +1.0 + 0.75)
         assert score == pytest.approx(2.5, abs=0.01)
 
-    def test_usage_with_count_ignores_definition_flag(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_usage_with_count_ignores_definition_flag(self, enricher: SegmentEnricher) -> None:
         """Usage with count gets +1.0 regardless of definition flag."""
         segment = make_segment(
             raw_text="10 million daily active users",
@@ -262,9 +239,7 @@ class TestTieredUsageBonus:
         # 1.0 (definition) + 1.0 (usage with count) = 2.0
         assert score == pytest.approx(2.0, abs=0.01)
 
-    def test_missing_extra_metadata_defaults_to_zero(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_missing_extra_metadata_defaults_to_zero(self, enricher: SegmentEnricher) -> None:
         """Missing extra_metadata should default to no bonus."""
         segment = make_segment(
             raw_text="Some text",
@@ -300,9 +275,7 @@ class TestIntegrationWithFullScore:
         # Expect: 2.4 (conf) + 0.5 (metric) + 1.0 (temporal) + 1.0 (usage count) = 4.9
         assert score >= 4.5  # Should be significantly higher than old 3.9
 
-    def test_usage_count_temporal_definition_combination(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_usage_count_temporal_definition_combination(self, enricher: SegmentEnricher) -> None:
         """Segment with usage count + temporal + definition should score high."""
         segment = make_segment(
             raw_text="In 2018, we had 5 million daily active users. We define DAU as users "
@@ -399,9 +372,7 @@ class TestIntegrationWithFullScore:
 class TestEdgeCases:
     """Test edge cases for tiered usage bonus."""
 
-    def test_both_usage_patterns_only_counts_once(
-        self, enricher: SegmentEnricher
-    ) -> None:
+    def test_both_usage_patterns_only_counts_once(self, enricher: SegmentEnricher) -> None:
         """Segment with both base and count patterns should only count highest tier."""
         segment = make_segment(
             raw_text="Daily active users are important. We had 10 million daily active users.",

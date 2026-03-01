@@ -60,9 +60,7 @@ def table_with_header_text() -> str:
 class TestBasicRowMapping:
     """Tests for basic table row parsing."""
 
-    def test_simple_table_three_rows(
-        self, simple_table_html: str, simple_table_text: str
-    ) -> None:
+    def test_simple_table_three_rows(self, simple_table_html: str, simple_table_text: str) -> None:
         """Simple 3-row table maps correctly."""
         parser = TableRowParser(simple_table_html, simple_table_text)
         rows = parser.get_rows()
@@ -216,9 +214,7 @@ text </td><td>100</td></tr>
 class TestPositionMappingAccuracy:
     """Tests for accurate position-to-row mapping."""
 
-    def test_first_char_of_each_row(
-        self, simple_table_html: str, simple_table_text: str
-    ) -> None:
+    def test_first_char_of_each_row(self, simple_table_html: str, simple_table_text: str) -> None:
         """First character of each row maps correctly."""
         parser = TableRowParser(simple_table_html, simple_table_text)
         rows = parser.get_rows()
@@ -233,9 +229,7 @@ class TestPositionMappingAccuracy:
             assert mapped_row is not None
             assert mapped_row.row_index == row.row_index
 
-    def test_last_char_of_each_row(
-        self, simple_table_html: str, simple_table_text: str
-    ) -> None:
+    def test_last_char_of_each_row(self, simple_table_html: str, simple_table_text: str) -> None:
         """Last character of each row maps correctly."""
         parser = TableRowParser(simple_table_html, simple_table_text)
         rows = parser.get_rows()
@@ -320,9 +314,7 @@ class TestPositionMappingAccuracy:
 class TestAreInSameRow:
     """Tests for are_in_same_row() method."""
 
-    def test_same_row_returns_true(
-        self, simple_table_html: str, simple_table_text: str
-    ) -> None:
+    def test_same_row_returns_true(self, simple_table_html: str, simple_table_text: str) -> None:
         """Two positions in same row return True."""
         parser = TableRowParser(simple_table_html, simple_table_text)
         rows = parser.get_rows()

@@ -8,7 +8,6 @@ import pytest
 from src.llm.cache import CacheConfig
 from src.llm.openai_client import CostTracker, LLMResponse, OpenAIClient
 
-
 # Use disabled cache for all tests unless explicitly testing cache
 DISABLED_CACHE_CONFIG = CacheConfig(enabled=False)
 
@@ -208,7 +207,9 @@ class TestOpenAIClientInitialization:
                 mock_tik.encoding_for_model.side_effect = KeyError("Unknown model")
                 mock_tik.get_encoding.return_value = MagicMock()
 
-                OpenAIClient(api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG)
+                OpenAIClient(
+                    api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG
+                )
 
                 mock_tik.get_encoding.assert_called_once_with("cl100k_base")
 
@@ -253,7 +254,9 @@ class TestCostCalculation:
     def test_calculate_cost_gpt4o_mini(self, mock_tiktoken):
         """Test cost calculation for gpt-4o-mini."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key", model="gpt-4o-mini", cache_config=DISABLED_CACHE_CONFIG)
+            client = OpenAIClient(
+                api_key="test-key", model="gpt-4o-mini", cache_config=DISABLED_CACHE_CONFIG
+            )
 
             # 1000 input tokens, 500 output tokens
             # Input: (1000 / 1_000_000) * 0.15 = 0.00015
@@ -266,7 +269,9 @@ class TestCostCalculation:
     def test_calculate_cost_gpt4o(self, mock_tiktoken):
         """Test cost calculation for gpt-4o."""
         with patch("src.llm.openai_client.OpenAI"):
-            client = OpenAIClient(api_key="test-key", model="gpt-4o", cache_config=DISABLED_CACHE_CONFIG)
+            client = OpenAIClient(
+                api_key="test-key", model="gpt-4o", cache_config=DISABLED_CACHE_CONFIG
+            )
 
             # 1000 input tokens, 500 output tokens
             # Input: (1000 / 1_000_000) * 2.50 = 0.0025
@@ -283,7 +288,9 @@ class TestCostCalculation:
                 mock_tik.encoding_for_model.side_effect = KeyError()
                 mock_tik.get_encoding.return_value = MagicMock()
 
-                client = OpenAIClient(api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG)
+                client = OpenAIClient(
+                    api_key="test-key", model="unknown-model", cache_config=DISABLED_CACHE_CONFIG
+                )
 
                 cost = client.calculate_cost(input_tokens=1000, output_tokens=500)
 
@@ -395,7 +402,9 @@ class TestComplete:
             mock_openai_class.return_value = mock_instance
 
             with patch("time.sleep"):
-                client = OpenAIClient(api_key="test-key", max_retries=3, cache_config=DISABLED_CACHE_CONFIG)
+                client = OpenAIClient(
+                    api_key="test-key", max_retries=3, cache_config=DISABLED_CACHE_CONFIG
+                )
 
                 with pytest.raises(RateLimitError):
                     client.complete("Test prompt")
@@ -507,9 +516,7 @@ class TestCompleteBatch:
                 assert len(responses) == 3
                 assert mock_instance.chat.completions.create.call_count == 3
 
-    def test_complete_batch_with_system_message(
-        self, mock_tiktoken, mock_openai_response
-    ):
+    def test_complete_batch_with_system_message(self, mock_tiktoken, mock_openai_response):
         """Test batch processing with system message."""
         with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
             mock_instance = MagicMock()
@@ -607,7 +614,6 @@ class TestCacheIntegration:
 
     def test_cache_hit_returns_cached_response(self, mock_tiktoken, mock_openai_response, tmp_path):
         """Test that cache hits return cached responses without API call."""
-        import tempfile
         import os
 
         with patch("src.llm.openai_client.OpenAI") as mock_openai_class:

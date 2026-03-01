@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     ChartType,
     ImageAsset,
@@ -58,53 +59,68 @@ class ImageTriageStage:
 
     # Filename patterns for classification
     LOGO_PATTERNS = [
-        r'\blogo\b',
-        r'\bicon\b',
-        r'\bbrand\b',
-        r'\bemblem\b',
+        r"\blogo\b",
+        r"\bicon\b",
+        r"\bbrand\b",
+        r"\bemblem\b",
     ]
 
     SIGNATURE_PATTERNS = [
-        r'\bsignature\b',
-        r'\bsign[_-]?\d*\b',
-        r'\bautograph\b',
+        r"\bsignature\b",
+        r"\bsign[_-]?\d*\b",
+        r"\bautograph\b",
     ]
 
     CHART_PATTERNS = [
-        r'\bchart\b',
-        r'\bgraph\b',
-        r'\bfigure\b',
-        r'\bexhibit\b',
-        r'\bdiagram\b',
-        r'\bplot\b',
+        r"\bchart\b",
+        r"\bgraph\b",
+        r"\bfigures?\b",
+        r"\bexhibit\b",
+        r"\bdiagram\b",
+        r"\bplot\b",
     ]
 
     DECORATIVE_PATTERNS = [
-        r'\bbullet\b',
-        r'\bbanner\b',
-        r'\bheader\b',
-        r'\bfooter\b',
-        r'\bspacer\b',
-        r'\bdivider\b',
-        r'\bbackground\b',
-        r'\bwatermark\b',
+        r"\bbullet\b",
+        r"\bbanner\b",
+        r"\bheader\b",
+        r"\bfooter\b",
+        r"\bspacer\b",
+        r"\bdivider\b",
+        r"\bbackground\b",
+        r"\bwatermark\b",
     ]
 
     # Chart type detection keywords
     CHART_TYPE_PATTERNS: dict[ChartType, list[str]] = {
-        ChartType.BAR: ['bar chart', 'bar graph', 'histogram', 'column chart'],
-        ChartType.STACKED_BAR: ['stacked bar', 'stacked chart', 'stacked column'],
-        ChartType.LINE: ['line chart', 'line graph', 'trend line', 'time series'],
-        ChartType.PIE: ['pie chart', 'pie graph', 'donut chart', 'distribution'],
-        ChartType.AREA: ['area chart', 'area graph', 'filled line'],
+        ChartType.BAR: ["bar chart", "bar graph", "histogram", "column chart"],
+        ChartType.STACKED_BAR: ["stacked bar", "stacked chart", "stacked column"],
+        ChartType.LINE: ["line chart", "line graph", "trend line", "time series"],
+        ChartType.PIE: ["pie chart", "pie graph", "donut chart", "distribution"],
+        ChartType.AREA: ["area chart", "area graph", "filled line"],
     }
 
     # High-value metric keywords for relevance scoring
     HIGH_VALUE_KEYWORDS = [
-        'cohort', 'retention', 'churn', 'ltv', 'cac',
-        'arr', 'mrr', 'nrr', 'revenue', 'customers',
-        'subscribers', 'users', 'dau', 'mau', 'engagement',
-        'conversion', 'growth', 'arpu', 'gmv',
+        "cohort",
+        "retention",
+        "churn",
+        "ltv",
+        "cac",
+        "arr",
+        "mrr",
+        "nrr",
+        "revenue",
+        "customers",
+        "subscribers",
+        "users",
+        "dau",
+        "mau",
+        "engagement",
+        "conversion",
+        "growth",
+        "arpu",
+        "gmv",
     ]
 
     # Section relevance bonuses
@@ -166,7 +182,10 @@ class ImageTriageStage:
 
         # Small square-ish images are likely logos/icons (but not too small)
         if asset.width > 0 and asset.height > 0:
-            if 50 <= asset.width <= self.LOGO_MAX_WIDTH and 50 <= asset.height <= self.LOGO_MAX_HEIGHT:
+            if (
+                50 <= asset.width <= self.LOGO_MAX_WIDTH
+                and 50 <= asset.height <= self.LOGO_MAX_HEIGHT
+            ):
                 aspect = asset.width / asset.height if asset.height > 0 else 1.0
                 if 0.5 <= aspect <= 2.0:  # Roughly square
                     return True
@@ -176,7 +195,7 @@ class ImageTriageStage:
     def _is_signature(self, asset: ImageAsset) -> bool:
         """Detect if image is a signature."""
         # Normalize filename for matching (replace underscores/hyphens with spaces)
-        filename_normalized = asset.filename.lower().replace('_', ' ').replace('-', ' ')
+        filename_normalized = asset.filename.lower().replace("_", " ").replace("-", " ")
 
         # Check filename patterns (use normalized version)
         if self._matches_any_pattern(filename_normalized, self._signature_patterns):
@@ -184,7 +203,7 @@ class ImageTriageStage:
 
         # Also check original filename for patterns without word boundaries
         filename_lower = asset.filename.lower()
-        if 'signature' in filename_lower or 'sign' in filename_lower:
+        if "signature" in filename_lower or "sign" in filename_lower:
             return True
 
         # Check nearby text
@@ -203,7 +222,7 @@ class ImageTriageStage:
         - Have metric-related keywords nearby
         """
         # Normalize filename for matching (replace underscores/hyphens with spaces)
-        filename_normalized = asset.filename.lower().replace('_', ' ').replace('-', ' ')
+        filename_normalized = asset.filename.lower().replace("_", " ").replace("-", " ")
         combined_text = f"{filename_normalized} {asset.nearby_text}"
 
         # Check chart patterns
@@ -216,10 +235,22 @@ class ImageTriageStage:
             if any(kw in text_lower for kw in patterns):
                 return True
 
-        # Large images with metric keywords are likely charts
-        if asset.width >= self.LARGE_IMAGE_MIN_WIDTH or asset.height >= self.LARGE_IMAGE_MIN_HEIGHT:
+        # Large images (or dimensionless images from SEC filings) with metric keywords are likely charts
+        has_known_dimensions = asset.width > 0 or asset.height > 0
+        is_large = (
+            asset.width >= self.LARGE_IMAGE_MIN_WIDTH or asset.height >= self.LARGE_IMAGE_MIN_HEIGHT
+        )
+        if is_large or not has_known_dimensions:
             text_lower = asset.nearby_text.lower()
-            metric_keywords = ['retention', 'cohort', 'revenue', 'growth', 'customers', 'arr', 'mrr']
+            metric_keywords = [
+                "retention",
+                "cohort",
+                "revenue",
+                "growth",
+                "customers",
+                "arr",
+                "mrr",
+            ]
             if any(kw in text_lower for kw in metric_keywords):
                 return True
 
@@ -235,11 +266,11 @@ class ImageTriageStage:
         - Have tabular content indicators
         """
         # Normalize filename for matching
-        filename_normalized = asset.filename.lower().replace('_', ' ').replace('-', ' ')
+        filename_normalized = asset.filename.lower().replace("_", " ").replace("-", " ")
         combined_text = f"{filename_normalized} {asset.nearby_text}".lower()
 
         # Explicit table references (in text or filename)
-        table_keywords = ['table', 'schedule', 'summary of', 'breakdown']
+        table_keywords = ["table", "schedule", "summary of", "breakdown"]
         if any(kw in combined_text for kw in table_keywords):
             # Make sure it's not already classified as a chart
             if not self._is_chart(asset):
@@ -251,7 +282,7 @@ class ImageTriageStage:
             if aspect >= 2.0:  # Significantly wider than tall
                 # And has financial/metric keywords
                 text_lower = asset.nearby_text.lower()
-                financial_keywords = ['revenue', 'income', 'expense', 'total', 'period', 'year']
+                financial_keywords = ["revenue", "income", "expense", "total", "period", "year"]
                 if any(kw in text_lower for kw in financial_keywords):
                     return True
 
@@ -353,7 +384,7 @@ class ImageTriageStage:
             return ChartType.UNKNOWN
 
         # Normalize filename for matching
-        filename_normalized = asset.filename.lower().replace('_', ' ').replace('-', ' ')
+        filename_normalized = asset.filename.lower().replace("_", " ").replace("-", " ")
         combined_text = f"{filename_normalized} {asset.nearby_text}".lower()
 
         # Check patterns in priority order (more specific patterns first)
@@ -472,7 +503,7 @@ class ImageTriageStage:
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -480,7 +511,7 @@ class ImageTriageStage:
             # Handle empty images list
             if not context.images:
                 logger.info("No images to triage")
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
                 return StageResult(
                     stage=PipelineStage.IMAGE_TRIAGE,
                     success=True,
@@ -501,7 +532,7 @@ class ImageTriageStage:
                 cls_name = asset.classification.value
                 classification_counts[cls_name] = classification_counts.get(cls_name, 0) + 1
 
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.IMAGE_TRIAGE,
@@ -521,15 +552,7 @@ class ImageTriageStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.exception(f"Image triage stage failed: {e}")
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            return StageResult(
-                stage=PipelineStage.IMAGE_TRIAGE,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=0,
-                items_output=0,
-                errors=[str(e)],
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="image_triage") from e

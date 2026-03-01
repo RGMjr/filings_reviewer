@@ -55,7 +55,7 @@ class TestContextTypeTracking:
         assert len(candidates) > 0, "Expected at least one candidate"
         # Check first candidate has table context
         assert candidates[0].features is not None
-        assert candidates[0].features.context_type == 'table'
+        assert candidates[0].features.context_type == "table"
 
     def test_bullet_context_type(self, db, generator):
         """Bullet points should have context_type='bullet'."""
@@ -80,7 +80,7 @@ class TestContextTypeTracking:
         assert len(candidates) > 0, "Expected at least one candidate"
         # Check first candidate has bullet context
         assert candidates[0].features is not None
-        assert candidates[0].features.context_type == 'bullet'
+        assert candidates[0].features.context_type == "bullet"
 
     def test_parenthetical_context_type(self, db, generator):
         """Parenthetical text (NUMBER in parentheses) should have context_type='parenthetical'."""
@@ -106,7 +106,7 @@ class TestContextTypeTracking:
         assert len(candidates) > 0, "Expected at least one candidate"
         # Check first candidate has parenthetical context
         assert candidates[0].features is not None
-        assert candidates[0].features.context_type == 'parenthetical'
+        assert candidates[0].features.context_type == "parenthetical"
 
     def test_copula_context_type(self, db, generator):
         """Copula verb pattern should have context_type='copula'."""
@@ -131,7 +131,7 @@ class TestContextTypeTracking:
         assert len(candidates) > 0, "Expected at least one candidate"
         # Check first candidate has copula context
         assert candidates[0].features is not None
-        assert candidates[0].features.context_type == 'copula'
+        assert candidates[0].features.context_type == "copula"
 
     def test_default_context_type(self, db, generator):
         """No special context should have context_type='default'."""
@@ -156,7 +156,7 @@ class TestContextTypeTracking:
         assert len(candidates) > 0, "Expected at least one candidate"
         # Check first candidate has default context
         assert candidates[0].features is not None
-        assert candidates[0].features.context_type == 'default'
+        assert candidates[0].features.context_type == "default"
 
     def test_context_type_serialization(self, db, generator):
         """Context type should survive serialization round-trip."""
@@ -181,14 +181,15 @@ class TestContextTypeTracking:
         assert len(candidates) > 0
         candidate = candidates[0]
         assert candidate.features is not None
-        assert candidate.features.context_type == 'bullet'
+        assert candidate.features.context_type == "bullet"
 
         # Serialize to dict and back
         features_dict = candidate.features.to_dict()
-        assert 'context_type' in features_dict
-        assert features_dict['context_type'] == 'bullet'
+        assert "context_type" in features_dict
+        assert features_dict["context_type"] == "bullet"
 
         # Deserialize from dict
         from src.review.models import CandidateFeatures
+
         features_restored = CandidateFeatures.from_dict(features_dict)
-        assert features_restored.context_type == 'bullet'
+        assert features_restored.context_type == "bullet"

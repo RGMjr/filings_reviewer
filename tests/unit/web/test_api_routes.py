@@ -383,8 +383,8 @@ class TestCreateDecision:
             "review_status": "pending",
         }
         mock_db.get_decision_for_candidate.return_value = None
-        mock_db.insert_review_decision.side_effect = (
-            psycopg.errors.ForeignKeyViolation("Foreign key violation")
+        mock_db.insert_review_decision.side_effect = psycopg.errors.ForeignKeyViolation(
+            "Foreign key violation"
         )
 
         # Make request
@@ -668,9 +668,7 @@ class TestCreateDecision:
         }
         mock_db.get_decision_for_candidate.return_value = None
         # Simulate foreign key constraint violation
-        mock_db.insert_review_decision.side_effect = Exception(
-            "foreign key constraint violation"
-        )
+        mock_db.insert_review_decision.side_effect = Exception("foreign key constraint violation")
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):

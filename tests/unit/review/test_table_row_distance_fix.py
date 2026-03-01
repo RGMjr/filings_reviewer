@@ -4,11 +4,10 @@ values are >100 characters from the row heading keyword.
 
 This is a regression test for FIX-5 (Slack validation regression).
 """
+
 from decimal import Decimal
 
-import pytest
-
-from src.review.keyword_matching import KeywordMatcher, KeywordMatch
+from src.review.keyword_matching import KeywordMatch, KeywordMatcher
 from src.review.marker_row_parser import MarkerRowParser
 from src.review.number_parsing import NumberMatch
 
@@ -74,11 +73,21 @@ def test_wide_table_extracts_all_row_values():
     # Check results
     # CURRENT BEHAVIOR (broken): Only last 2 values (575, 645) are extracted
     # EXPECTED BEHAVIOR (fixed): All 5 values should be extracted
-    assert results[0][1] == 1, f"Value 135 should match keyword (got {results[0][1]} matches, dist={results[0][2]})"
-    assert results[1][1] == 1, f"Value 298 should match keyword (got {results[1][1]} matches, dist={results[1][2]})"
-    assert results[2][1] == 1, f"Value 575 should match keyword (got {results[2][1]} matches, dist={results[2][2]})"
-    assert results[3][1] == 1, f"Value 351 should match keyword (got {results[3][1]} matches, dist={results[3][2]})"
-    assert results[4][1] == 1, f"Value 645 should match keyword (got {results[4][1]} matches, dist={results[4][2]})"
+    assert results[0][1] == 1, (
+        f"Value 135 should match keyword (got {results[0][1]} matches, dist={results[0][2]})"
+    )
+    assert results[1][1] == 1, (
+        f"Value 298 should match keyword (got {results[1][1]} matches, dist={results[1][2]})"
+    )
+    assert results[2][1] == 1, (
+        f"Value 575 should match keyword (got {results[2][1]} matches, dist={results[2][2]})"
+    )
+    assert results[3][1] == 1, (
+        f"Value 351 should match keyword (got {results[3][1]} matches, dist={results[3][2]})"
+    )
+    assert results[4][1] == 1, (
+        f"Value 645 should match keyword (got {results[4][1]} matches, dist={results[4][2]})"
+    )
 
 
 def test_multi_row_table_prevents_cross_row_matches():
@@ -88,10 +97,7 @@ def test_multi_row_table_prevents_cross_row_matches():
     Scenario: Multi-row table with keywords in different rows.
     Expected: Values should only match keywords from their own row.
     """
-    text = (
-        "Paid Customers [CELL] 37,000 [ROW] "
-        "Large Customers [CELL] 575"
-    )
+    text = "Paid Customers [CELL] 37,000 [ROW] Large Customers [CELL] 575"
 
     keywords = [
         KeywordMatch(

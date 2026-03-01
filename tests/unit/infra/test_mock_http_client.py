@@ -14,7 +14,13 @@ class TestMockHTTPClient:
 
     def test_predefined_response(self):
         """Test mock returns predefined response for URL."""
-        response = HTTPResponse(status_code=200, content=b"test data", headers={}, url="https://example.com", elapsed_seconds=0.1)
+        response = HTTPResponse(
+            status_code=200,
+            content=b"test data",
+            headers={},
+            url="https://example.com",
+            elapsed_seconds=0.1,
+        )
 
         mock = MockHTTPClient(responses={"https://example.com": response})
 
@@ -26,7 +32,9 @@ class TestMockHTTPClient:
 
     def test_predefined_failure(self):
         """Test mock raises predefined exception for URL."""
-        mock = MockHTTPClient(failures={"https://error.com": requests.HTTPError("500 Server Error")})
+        mock = MockHTTPClient(
+            failures={"https://error.com": requests.HTTPError("500 Server Error")}
+        )
 
         with pytest.raises(requests.HTTPError, match="500"):
             mock.get("https://error.com")
@@ -41,7 +49,11 @@ class TestMockHTTPClient:
         mock.get("https://example.com/2")
         mock.get("https://example.com/1")  # Duplicate
 
-        assert mock.request_history == ["https://example.com/1", "https://example.com/2", "https://example.com/1"]
+        assert mock.request_history == [
+            "https://example.com/1",
+            "https://example.com/2",
+            "https://example.com/1",
+        ]
         assert mock.get_request_count() == 3
         assert mock.get_request_count("https://example.com/1") == 2
         assert mock.get_request_count("https://example.com/2") == 1
@@ -50,7 +62,13 @@ class TestMockHTTPClient:
         """Test mock uses response factory for unmocked URLs."""
 
         def factory(url: str) -> HTTPResponse:
-            return HTTPResponse(status_code=200, content=f"Dynamic: {url}".encode(), headers={}, url=url, elapsed_seconds=0.1)
+            return HTTPResponse(
+                status_code=200,
+                content=f"Dynamic: {url}".encode(),
+                headers={},
+                url=url,
+                elapsed_seconds=0.1,
+            )
 
         mock = MockHTTPClient(response_factory=factory)
 
@@ -70,7 +88,12 @@ class TestMockHTTPClient:
     def test_add_response_helper(self):
         """Test add_response helper creates HTTPResponse."""
         mock = MockHTTPClient()
-        mock.add_response("https://example.com/api", 201, b'{"created": true}', headers={"Content-Type": "application/json"})
+        mock.add_response(
+            "https://example.com/api",
+            201,
+            b'{"created": true}',
+            headers={"Content-Type": "application/json"},
+        )
 
         result = mock.get("https://example.com/api")
 

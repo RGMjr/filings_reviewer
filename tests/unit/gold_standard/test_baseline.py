@@ -126,12 +126,8 @@ class TestSerializationRoundTrip:
             description=None,
             overall=MetricScores(precision=0.5, recall=0.5, f1=0.5),
             by_company={
-                "O'Brien & Associates, Inc.": MetricScores(
-                    precision=0.75, recall=0.80, f1=0.77
-                ),
-                'Company with "Quotes"': MetricScores(
-                    precision=0.65, recall=0.70, f1=0.67
-                ),
+                "O'Brien & Associates, Inc.": MetricScores(precision=0.75, recall=0.80, f1=0.77),
+                'Company with "Quotes"': MetricScores(precision=0.65, recall=0.70, f1=0.67),
                 "Société Générale": MetricScores(precision=0.85, recall=0.90, f1=0.87),
             },
         )
@@ -334,9 +330,7 @@ class TestComparisonLogic:
         current = BaselineMetrics(
             baseline_date="2024-12-31",
             description=None,
-            overall=MetricScores(
-                precision=0.85, recall=0.60, f1=0.70
-            ),  # precision up, recall down
+            overall=MetricScores(precision=0.85, recall=0.60, f1=0.70),  # precision up, recall down
             by_company={},
         )
 

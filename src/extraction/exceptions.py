@@ -50,7 +50,11 @@ class EncodingError(ExtractionError):
     """
 
     def __init__(
-        self, message: str, file_path: str, attempted_encodings: list[str] | None = None, position: int | None = None
+        self,
+        message: str,
+        file_path: str,
+        attempted_encodings: list[str] | None = None,
+        position: int | None = None,
     ):
         """Initialize encoding error.
 
@@ -78,7 +82,9 @@ class ValidationError(ExtractionError):
     - Confidence score out of [0, 1] range
     """
 
-    def __init__(self, message: str, field_name: str | None = None, invalid_value: Any | None = None):
+    def __init__(
+        self, message: str, field_name: str | None = None, invalid_value: Any | None = None
+    ):
         """Initialize validation error.
 
         Args:

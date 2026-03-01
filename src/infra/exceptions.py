@@ -136,7 +136,9 @@ class PoolExecutionError(InfrastructureError):
         Returns:
             Multi-line string with error details
         """
-        lines = [f"Pool execution failed: {len(self.failures)} errors out of {self.total_count} tasks"]
+        lines = [
+            f"Pool execution failed: {len(self.failures)} errors out of {self.total_count} tasks"
+        ]
 
         for _, failure in enumerate(self.failures[:max_errors]):
             lines.append(

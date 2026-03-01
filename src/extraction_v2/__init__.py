@@ -41,4 +41,27 @@ Design Principles (from PRD synthesis):
 See: /Users/rgmarkey/.claude/plans/deep-conjuring-treehouse.md for full architecture
 """
 
-__version__ = "2.0.0-alpha"
+__version__ = "2.0.0-rc1"
+
+# Exceptions
+from src.extraction_v2.exceptions import (
+    V2FatalError,
+    V2PipelineError,
+    V2StageError,
+    V2TransientError,
+)
+
+# Persistence layer
+from src.extraction_v2.persistence import (
+    PersistenceResult,
+    V2PersistenceAdapter,
+)
+
+__all__ = [
+    "V2FatalError",
+    "V2PipelineError",
+    "V2StageError",
+    "V2TransientError",
+    "PersistenceResult",
+    "V2PersistenceAdapter",
+]
