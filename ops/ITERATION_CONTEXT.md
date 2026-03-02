@@ -6,11 +6,16 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Phase A+ Cleanup: Scoring Bug Fix (earnings-call-exploration, 2026-03-02)**
+- Fixed date key mismatch bug in transcript validator: added `_normalize_date()` to handle `M/DD/YY` format and strip `_HH_MM_SS` time suffixes from HTML filenames
+- Normalized dates in ADSK_2025-02-27 and MSFT_2025-01-29 gold standard CSVs (was `2/27/25`, `1/29/25`)
+- Previously, 4 files were silently unmatched (MSFT_2025-01-29, ADSK_2025-02-27, CRM_2019-12-03, CRM_2020-02-25); now 20/22 files match annotations
+- Corrected benchmark (91 annotations, 20 files): **R=74.7%, P=70.1%, F1=72.3%** — all Phase A+ targets met (R≥65% ✓, P≥70% ✓, F1≥67% ✓)
+
 **Phase A+ Stragglers (earnings-call-exploration, 2026-03-02)**
 - Removed 3 phantom ADSK revenue_concentration annotations (text absent from HuggingFace transcript HTML)
 - Added `almost` to APPROX_PREFIXES in value_binding.py — recovers META "almost a billion" FN
 - Resolved 6 git merge conflicts across persistence.py, pipeline.py, value_binding.py, period_inference.py, false_positive_filter.py, db.py — all files parse cleanly
-- Transcript benchmark (91 annotations): **R=75.6%, P=71.3%, F1=73.4%** (was R=72.9%/P=71.3%/F1=72.1% at 94 annotations)
 
 **Batch Ingestion E2E Test (earnings-call-exploration, 2026-03-01)**
 - `scripts/ingest_transcripts.py` tested end-to-end with HuggingFace source
@@ -41,7 +46,7 @@ Phase C: Presentation Support
 
 - Unit tests: 346+ pass (gold standard 6/6 pass); no regressions
 - SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28)
-- Transcript benchmark: R=75.6%, P=71.3%, F1=73.4% (91 annotations, 16 files; 2026-03-02)
+- Transcript benchmark: R=74.7%, P=70.1%, F1=72.3% (91 annotations, 20 files; 2026-03-02, corrected scoring)
 
 ## Key Learnings
 
