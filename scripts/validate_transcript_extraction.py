@@ -39,6 +39,7 @@ import argparse
 import csv
 import json
 import logging
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -75,6 +76,24 @@ TEST_BASELINE_PATH = RESULTS_DIR / "transcript_baseline_test.json"
 
 # Tolerance for value matching (5%)
 VALUE_TOLERANCE = 0.05
+
+
+def _normalize_date(raw: str) -> str:
+    """Normalize date strings to YYYY-MM-DD format.
+
+    Handles:
+    - Trailing _HH_MM_SS time suffixes: '2019-12-03_17_00_00' -> '2019-12-03'
+    - M/DD/YY format: '1/29/25' -> '2025-01-29'
+    - Already-normalized strings: '2025-01-29' -> '2025-01-29' (unchanged)
+    """
+    # Strip trailing time suffix _HH_MM_SS
+    normalized = re.sub(r"_\d{2}_\d{2}_\d{2}$", "", raw)
+    # Parse M/DD/YY or MM/DD/YY format
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2})$", normalized)
+    if m:
+        month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return f"{2000 + year:04d}-{month:02d}-{day:02d}"
+    return normalized
 
 
 def load_split() -> dict[str, str] | None:
@@ -125,7 +144,7 @@ def load_annotations(
                 if row_split != split_filter:
                     continue
 
-            key = f"{ticker}_{row['date']}"
+            key = f"{ticker}_{_normalize_date(row['date'])}"
             annotations.setdefault(key, []).append(row)
 
     return annotations
@@ -221,7 +240,7 @@ def run_validation(
         parts = stem.split("_", 1)
         ticker = parts[0] if parts else stem
         date_str = parts[1] if len(parts) > 1 else ""
-        ann_key = f"{ticker}_{date_str}"
+        ann_key = f"{ticker}_{_normalize_date(date_str)}"
 
         try:
             result = pipeline.process(html_path=html_file, filing_id=-1)
