@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pathlib import Path
+
 from src.extraction_v2.models import (
     BoundValue,
     Cell,
@@ -27,6 +29,7 @@ from src.extraction_v2.models import (
     SourceLocator,
     Table,
 )
+from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
 from src.extraction_v2.stages.period_inference import (
     PeriodInferenceStage,
 )
@@ -43,12 +46,13 @@ def stage() -> PeriodInferenceStage:
 
 
 @pytest.fixture
-def mock_context() -> MagicMock:
-    """Create a mock PipelineContext."""
-    context = MagicMock()
-    context.bound_values = []
-    context.segments = []
-    context.tables = []
+def mock_context() -> PipelineContext:
+    """Create a real PipelineContext for period inference tests."""
+    context = PipelineContext(
+        html_path=Path("/dev/null"),
+        filing_id=0,
+        config=PipelineConfig(),
+    )
     context.document = Document(fiscal_year=2024, fiscal_period="FY")
     return context
 
@@ -352,6 +356,39 @@ class TestPeriodEndedPatternParsing:
         assert result is not None
         assert result.period_type == PeriodType.YTD
         assert result.end == date(2024, 6, 30)
+        assert result.start == date(2024, 1, 1)
+
+    def test_six_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Six months ended June 30, 2018 must start Jan 1 2018 (not Dec 1 2017)."""
+        result = stage._try_parse_period_ended("Six months ended June 30, 2018")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2018, 1, 1)
+        assert result.end == date(2018, 6, 30)
+
+    def test_three_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Three months ended June 30, 2024 must start Apr 1 2024 (not Mar 1)."""
+        result = stage._try_parse_period_ended("Three months ended June 30, 2024")
+        assert result is not None
+        assert result.period_type == PeriodType.QUARTERLY
+        assert result.start == date(2024, 4, 1)
+        assert result.end == date(2024, 6, 30)
+
+    def test_nine_months_ended_start_date(self, stage: PeriodInferenceStage) -> None:
+        """Nine months ended September 30, 2024 must start Jan 1 2024 (not Dec 1 2023)."""
+        result = stage._try_parse_period_ended("Nine Months Ended September 30, 2024")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2024, 1, 1)
+        assert result.end == date(2024, 9, 30)
+
+    def test_six_months_nbsp_header(self, stage: PeriodInferenceStage) -> None:
+        """NBSP in 'six\xa0months ended' header must still parse as YTD (not annual)."""
+        result = stage._try_parse_period_ended("six\xa0months ended June 30, 2018")
+        assert result is not None
+        assert result.period_type == PeriodType.YTD
+        assert result.start == date(2018, 1, 1)
+        assert result.end == date(2018, 6, 30)
 
     def test_period_ended_no_comma(self, stage: PeriodInferenceStage) -> None:
         """Parse without comma: Year Ended December 31 2024."""
@@ -879,3 +916,93 @@ class TestEdgeCases:
         """Year out of reasonable range returns None."""
         assert stage._normalize_year("1800") is None
         assert stage._normalize_year("2200") is None
+
+
+# ============================================================================
+# Respectively Pattern Period Hint Tests
+# ============================================================================
+
+
+class TestPeriodHintFromRespectively:
+    """Tests for Strategy 0: period_hint pre-parsed by the respectively parser."""
+
+    def test_period_hint_respected(
+        self, stage: PeriodInferenceStage, mock_context: MagicMock
+    ) -> None:
+        """BoundValue with period_hint='2016' gets correct annual period."""
+        bound_value = BoundValue(
+            candidate_id="cand-resp-1",
+            value=1.53,
+            value_raw="1.53",
+            binding_type="respectively_pattern",
+            period_hint="2016",
+            source_locator=SourceLocator(),
+        )
+        mock_context.bound_values = [bound_value]
+        mock_context.segments = []
+        mock_context.tables = []
+
+        stage.process(mock_context)
+
+        assert bound_value.period_type == PeriodType.ANNUAL
+        assert bound_value.period_start == date(2016, 1, 1)
+        assert bound_value.period_end == date(2016, 12, 31)
+        assert bound_value.period_source == "respectively_hint"
+        assert bound_value.period_confidence == pytest.approx(0.85)
+
+    def test_period_hint_takes_priority_over_text_context(
+        self, stage: PeriodInferenceStage, mock_context: MagicMock
+    ) -> None:
+        """Strategy 0 fires before Strategy 2 (text context)."""
+        segment = Segment(
+            segment_id="s-resp",
+            doc_id="doc-1",
+            text="Revenue for 2020 was high.",
+        )
+        mock_context.segments = [segment]
+        mock_context.tables = []
+
+        # BoundValue carries hint "2016" — should win over text context "2020"
+        bound_value = BoundValue(
+            candidate_id="cand-resp-2",
+            value=1.42,
+            value_raw="1.42",
+            binding_type="respectively_pattern",
+            period_hint="2016",
+            source_locator=SourceLocator(segment_id="s-resp"),
+        )
+        mock_context.bound_values = [bound_value]
+
+        stage.process(mock_context)
+
+        assert bound_value.period_start == date(2016, 1, 1)
+        assert bound_value.period_end == date(2016, 12, 31)
+
+    def test_empty_period_hint_falls_through_to_normal_strategies(
+        self, stage: PeriodInferenceStage, mock_context: MagicMock
+    ) -> None:
+        """An empty period_hint does not interfere with normal period inference."""
+        segment = Segment(
+            segment_id="s-normal",
+            doc_id="doc-1",
+            text="In Q1 2024, we had strong results.",
+        )
+        mock_context.segments = [segment]
+        mock_context.tables = []
+
+        bound_value = BoundValue(
+            candidate_id="cand-normal-1",
+            value=100.0,
+            value_raw="100",
+            period_hint="",  # empty — no respectively hint
+            source_locator=SourceLocator(
+                segment_id="s-normal",
+                text_span=(7, 15),
+            ),
+        )
+        mock_context.bound_values = [bound_value]
+
+        stage.process(mock_context)
+
+        # Normal strategies should still find Q1 2024 from text context
+        assert bound_value.period_type == PeriodType.QUARTERLY

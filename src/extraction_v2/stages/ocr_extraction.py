@@ -19,10 +19,12 @@ Key responsibilities:
 from __future__ import annotations
 
 import logging
+import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Cell,
     ChartAnnotation,
@@ -82,6 +84,11 @@ class OCRExtractionStage:
     def vision_client(self) -> Any:
         """Lazy-load vision client to avoid import errors in tests."""
         if self._vision_client is None:
+            if not os.environ.get("OPENAI_API_KEY", "").strip():
+                raise V2FatalError(
+                    "OPENAI_API_KEY is not set. Cannot initialize VisionClient for OCR/chart extraction.",
+                    stage_name="ocr_chart_extraction",
+                )
             # Import here to avoid circular dependency
             from src.llm.vision_client import VisionClient
 
@@ -730,7 +737,7 @@ time periods, or definitions that help interpret the chart's data.
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -753,7 +760,7 @@ time periods, or definitions that help interpret the chart's data.
             # Handle empty images list
             if not context.images:
                 logger.info("No images to process")
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
                 return StageResult(
                     stage=PipelineStage.OCR_CHART_EXTRACTION,
                     success=True,
@@ -772,19 +779,24 @@ time periods, or definitions that help interpret the chart's data.
                     skipped_count += 1
                     continue
 
-                # Check API call limits
+                # Check API call limits per type — use continue so other types
+                # still get processed (break would skip all remaining images).
                 if asset.classification == ImageClassification.TABLE_IMAGE:
                     if self._ocr_call_count >= self.MAX_OCR_CALLS_PER_DOCUMENT:
                         msg = f"OCR call limit ({self.MAX_OCR_CALLS_PER_DOCUMENT}) reached"
-                        warnings.append(msg)
-                        logger.warning(msg)
-                        break
+                        if msg not in warnings:
+                            warnings.append(msg)
+                            logger.warning(msg)
+                        skipped_count += 1
+                        continue
                 elif asset.classification == ImageClassification.CHART:
                     if self._chart_call_count >= self.MAX_CHART_CALLS_PER_DOCUMENT:
                         msg = f"Chart call limit ({self.MAX_CHART_CALLS_PER_DOCUMENT}) reached"
-                        warnings.append(msg)
-                        logger.warning(msg)
-                        break
+                        if msg not in warnings:
+                            warnings.append(msg)
+                            logger.warning(msg)
+                        skipped_count += 1
+                        continue
 
                 # Process based on classification
                 try:
@@ -823,7 +835,7 @@ time periods, or definitions that help interpret the chart's data.
                     asset.confidence = 0.0
                     manual_capture_count += 1
 
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.OCR_CHART_EXTRACTION,
@@ -842,27 +854,7 @@ time periods, or definitions that help interpret the chart's data.
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            # Catastrophic error - fail the stage
-            error_msg = f"OCR extraction stage failed: {str(e)}"
-            errors.append(error_msg)
-            logger.error(error_msg, exc_info=True)
-
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-
-            return StageResult(
-                stage=PipelineStage.OCR_CHART_EXTRACTION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=processed_count,
-                items_output=processed_count,
-                errors=errors,
-                warnings=warnings,
-                metadata={
-                    "ocr_calls": self._ocr_call_count,
-                    "chart_calls": self._chart_call_count,
-                    "total_api_calls": self._api_call_count,
-                    "manual_capture_count": manual_capture_count,
-                    "skipped_count": skipped_count,
-                },
-            )
+            raise V2FatalError(str(e), stage_name="ocr_chart_extraction") from e

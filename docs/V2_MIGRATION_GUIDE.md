@@ -29,7 +29,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 - Bulk re-processing where speed is critical
 - Legacy integrations expecting V1 output format
 
-**Validation status (as of 2026-02-18):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+**Validation status (as of 2026-02-28):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 ## API Differences
 
@@ -206,7 +206,7 @@ Before migrating, validate V2 produces acceptable results:
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
-# Expected scores (as of 2026-02-18): P=81.9%, R=60.6%, F1=69.6%
+# Expected scores (as of 2026-02-28): P=92.8%, R=77.6%, F1=84.5%
 ```
 
 ### Step 2: Parallel Running (Recommended)
@@ -252,12 +252,14 @@ for fact in facts:
 
 ### Step 4: Update Review UI
 
-The review UI may need updates for V2 evidence format:
+The V2 review UI is complete and at full feature parity (WP-21, 2026-02-28). The following are already implemented:
 
-- Display `evidence_pack.snippet_html` with highlighting
-- Show `header_path` / `stub_path` breadcrumbs
-- Display confidence scores
-- Handle new review statuses
+- `evidence_pack.snippet_html` displayed with highlighting
+- `header_path` / `stub_path` breadcrumb navigation
+- Confidence scores with color-coded badges
+- All review statuses (`auto_accepted`, `pending_review`, `accepted`, `rejected`, `corrected`)
+
+Access via `http://localhost:5000/v2/review/filings`. See `docs/V2_HUMAN_REVIEW_GUIDE.md` for full UI documentation.
 
 ### Step 5: Cutover
 
@@ -388,11 +390,67 @@ python3 scripts/merge_transcript_annotations.py
 python3 scripts/validate_transcript_extraction.py
 ```
 
-Current performance (2026-02-24): R=65.9%, P=38.4%, F1=48.5%.
+Current performance (2026-02-28): R=71.8%, P=70.1%, F1=70.9% (all targets met).
 
 ### HuggingFace Source
 
 The `DocumentSource` implementation for the `kurry/earnings-call-transcripts` dataset is in `src/extraction_v2/sources/huggingface_source.py`. Use `scripts/spike/collect_samples.py` to download sample transcripts.
+
+---
+
+## Phase B Features (2026-02-24)
+
+Three features added after the original 13-stage pipeline was completed.
+
+### Stage 9.5 — Definition Extraction
+
+`src/extraction_v2/stages/definition_extraction.py` runs between MetricFact Construction (Stage 9) and Deduplication (Stage 10). It scans segments within a ±5 sequence window of each metric candidate for DEFINITION and METHODOLOGY content, normalizes the text, and assesses CMASB canonical alignment (`aligned`, `partial`, `not_aligned`, or `unknown`). Results are available via `PipelineResult.definitions`.
+
+**Migration requirement:** Apply SQL migration 11 before using this feature:
+
+```bash
+python3 scripts/apply_migrations.py  # applies sql/11_v2_definitions.sql
+```
+
+This creates the `v2_metric_definitions` table (UUID primary key, unique constraint on `doc_id + canonical_metric_id`).
+
+### Quality Scoring Adapter
+
+`src/extraction_v2/quality_scoring.py` provides a `V2QualityScorer` class that ports all five V1 quality rubrics (overall, definition, methodology, completeness, comparability) to V2 facts. Scores are written to V1's existing `filing_metric_incidence` table, so downstream analytics queries continue to work without modification.
+
+Quality scoring runs automatically when you use `scripts/run_v2_extraction.py`. To disable:
+
+```bash
+python3 scripts/run_v2_extraction.py --filing-id 123 --skip-quality
+```
+
+### Batch Extraction Script
+
+`scripts/batch_v2_extraction.py` is the recommended way to process large numbers of filings. It uses `ProcessPoolExecutor` for parallel execution.
+
+```bash
+# Basic usage: 4 workers, all pending filings
+python3 scripts/batch_v2_extraction.py
+
+# Common options
+python3 scripts/batch_v2_extraction.py \
+    --workers 8 \
+    --batch-size 50 \
+    --limit 500 \
+    --skip-quality \
+    --no-images
+
+# Resume an interrupted run
+python3 scripts/batch_v2_extraction.py --resume-from 4521
+
+# Single filing (useful for debugging)
+python3 scripts/batch_v2_extraction.py --filing-id 123
+
+# Plan without writing
+python3 scripts/batch_v2_extraction.py --dry-run --limit 100
+```
+
+Progress is checkpointed to `logs/batch_v2_progress.json` after every `--batch-size` filings. SIGINT (Ctrl-C) triggers graceful shutdown, completing the current batch before exiting.
 
 ---
 

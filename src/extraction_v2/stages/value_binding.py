@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     BoundValue,
     ImageAsset,
@@ -33,6 +34,7 @@ from src.extraction_v2.unit_compatibility import (
     is_unit_compatible,
 )
 from src.review.false_positive_filter import should_treat_as_percentage
+from src.review.respectively_parser import detect_respectively_pattern
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
@@ -80,7 +82,7 @@ class ValueBindingStage:
 
     # Approximate value prefixes to strip before number parsing
     APPROX_PREFIXES = re.compile(
-        r"\b(?:about|roughly|approximately|nearly|around|over|more\s+than|"
+        r"\b(?:about|roughly|approximately|nearly|almost|around|over|more\s+than|"
         r"close\s+to|just\s+under|just\s+over|exceeded|surpassed|topped)\s+",
         re.IGNORECASE,
     )
@@ -187,37 +189,46 @@ class ValueBindingStage:
         Returns:
             StageResult with processing metrics
         """
-        start_time = datetime.utcnow()
-        bindings_found = 0
-        errors: list[str] = []
-        warnings: list[str] = []
-        self._unit_filtered_count = 0
+        try:
+            start_time = datetime.now(UTC)
+            bindings_found = 0
+            errors: list[str] = []
+            warnings: list[str] = []
+            self._unit_filtered_count = 0
 
-        # Process each candidate
-        for candidate in context.candidates:
-            try:
-                bound_values = self._bind_candidate(candidate, context)
-                for bv in bound_values:
-                    context.bound_values.append(bv)
-                    bindings_found += 1
-            except Exception as e:
-                error_msg = f"Error binding candidate {candidate.candidate_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            # Build lookup dicts once to avoid O(n) linear search per candidate
+            self._tables_by_id: dict[str, Table] = {t.table_id: t for t in context.tables}
+            self._segments_by_id: dict[str, Segment] = {s.segment_id: s for s in context.segments}
 
-        logger.info(
-            f"Value binding complete: {bindings_found} bindings "
-            f"from {len(context.candidates)} candidates "
-            f"({self._unit_filtered_count} unit-filtered)"
-        )
+            # Process each candidate
+            for candidate in context.candidates:
+                try:
+                    bound_values = self._bind_candidate(candidate, context)
+                    for bv in bound_values:
+                        context.bound_values.append(bv)
+                        bindings_found += 1
+                except Exception as e:
+                    error_msg = f"Error binding candidate {candidate.candidate_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        return self._make_result(
-            start_time,
-            len(context.candidates),
-            bindings_found,
-            errors,
-            warnings,
-        )
+            logger.info(
+                f"Value binding complete: {bindings_found} bindings "
+                f"from {len(context.candidates)} candidates "
+                f"({self._unit_filtered_count} unit-filtered)"
+            )
+
+            return self._make_result(
+                start_time,
+                len(context.candidates),
+                bindings_found,
+                errors,
+                warnings,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="value_binding") from e
 
     def _bind_candidate(
         self,
@@ -558,7 +569,7 @@ class ValueBindingStage:
 
         numbers = self._find_numbers_in_proximity(text, kw_start, kw_end, self.proximity_window)
         if not numbers:
-            return []
+            return self._bind_respectively_pattern(candidate, cell)
 
         sentence_start, sentence_end = find_sentence_bounds(text, kw_start)
         context_text = " ".join(cell.header_path + cell.stub_path)
@@ -592,6 +603,65 @@ class ValueBindingStage:
                     ),
                 )
             )
+        if not bound_values:
+            bound_values = self._bind_respectively_pattern(candidate, cell)
+        return bound_values
+
+    def _bind_respectively_pattern(
+        self,
+        candidate: MetricCandidate,
+        cell: Cell,
+    ) -> list[BoundValue]:
+        """
+        Bind values from a prose cell using the 'respectively' parallel-list pattern.
+
+        Handles text like: "LTV/CAC ratio for the years ended December 31, 2015, 2016
+        and 2017 cohorts was 1.42, 1.53 and 1.77, respectively."
+
+        Returns one BoundValue per association, each carrying the period string as
+        period_hint for downstream period inference.
+        """
+        text = cell.text
+        if "respectively" not in text.lower():
+            return []
+
+        match = detect_respectively_pattern(text)
+        if match is None:
+            return []
+
+        context_text = " ".join(cell.header_path + cell.stub_path)
+        bound_values: list[BoundValue] = []
+        for value_str, period_str in match.associations:
+            parsed = _np.parse_number(value_str)
+            if parsed is None:
+                continue
+            value, unit, raw = parsed
+            unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
+            if self._should_filter_unit(candidate.metric_id, unit):
+                continue
+            confidence = self._compute_table_confidence(
+                candidate.match_text.lower(),
+                cell.header_path,
+                cell.stub_path,
+                unit,
+            )
+            bound_values.append(
+                BoundValue(
+                    candidate_id=candidate.candidate_id,
+                    value=value,
+                    value_raw=raw,
+                    unit=unit,
+                    binding_type="respectively_pattern",
+                    binding_confidence=confidence,
+                    period_hint=period_str,
+                    source_locator=SourceLocator(
+                        table_id=candidate.source_locator.table_id,
+                        cell_row=cell.row,
+                        cell_col=cell.col,
+                        dom_locator=cell.dom_locator,
+                    ),
+                )
+            )
         return bound_values
 
     def _bind_column_values(
@@ -602,7 +672,9 @@ class ValueBindingStage:
         header_path: list[str],
     ) -> list[BoundValue]:
         """Bind values from data cells in the same column (delegates to _bind_cells)."""
-        return self._bind_cells(candidate, table, col, header_path, "table_header", iterate_rows=True)
+        return self._bind_cells(
+            candidate, table, col, header_path, "table_header", iterate_rows=True
+        )
 
     def _bind_row_values(
         self,
@@ -800,8 +872,14 @@ class ValueBindingStage:
         segment, text, window_start, numbers, sentence_start, sentence_end, keyword_center = located
 
         same_sentence_candidates, out_of_sentence_best = self._score_text_numbers(
-            candidate, segment, text, window_start, numbers,
-            sentence_start, sentence_end, keyword_center,
+            candidate,
+            segment,
+            text,
+            window_start,
+            numbers,
+            sentence_start,
+            sentence_end,
+            keyword_center,
         )
 
         bound_values: list[BoundValue] = []
@@ -855,6 +933,35 @@ class ValueBindingStage:
                         source_locator=bv.source_locator,
                     )
             bound_values.append(bv)
+
+        if not bound_values and located is not None:
+            seg = located[0]
+            if "respectively" in seg.text.lower():
+                resp_match = detect_respectively_pattern(seg.text)
+                if resp_match:
+                    for value_str, period_str in resp_match.associations:
+                        parsed = _np.parse_number(value_str)
+                        if parsed is None:
+                            continue
+                        val, unit, raw = parsed
+                        if self._should_filter_unit(candidate.metric_id, unit):
+                            continue
+                        confidence = self._compute_text_confidence(unit, 0.0, True, 0.0)
+                        bound_values.append(
+                            BoundValue(
+                                candidate_id=candidate.candidate_id,
+                                value=val,
+                                value_raw=raw,
+                                unit=unit,
+                                binding_type="respectively_pattern",
+                                binding_confidence=confidence,
+                                period_hint=period_str,
+                                source_locator=SourceLocator(
+                                    segment_id=seg.segment_id,
+                                    dom_locator=seg.dom_locator,
+                                ),
+                            )
+                        )
 
         return bound_values
 
@@ -1273,6 +1380,9 @@ class ValueBindingStage:
         """Find a table by ID."""
         if not table_id:
             return None
+        # Use pre-built lookup dict when available (set in process())
+        if hasattr(self, "_tables_by_id"):
+            return self._tables_by_id.get(table_id)
         for table in tables:
             if table.table_id == table_id:
                 return table
@@ -1288,6 +1398,9 @@ class ValueBindingStage:
         """Find a segment by ID."""
         if not segment_id:
             return None
+        # Use pre-built lookup dict when available (set in process())
+        if hasattr(self, "_segments_by_id"):
+            return self._segments_by_id.get(segment_id)
         for segment in segments:
             if segment.segment_id == segment_id:
                 return segment
@@ -1302,7 +1415,7 @@ class ValueBindingStage:
         warnings: list[str],
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import

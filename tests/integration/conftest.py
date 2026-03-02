@@ -5,7 +5,9 @@ Provides database setup/teardown and fixture loading utilities.
 """
 
 import json
+import json as _json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,11 @@ from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import FilingMetadata, MockSECClient
+
+# Make scripts/ importable for migration runner
+_REPO_ROOT = Path(__file__).parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 # =============================================================================
 # Test Data Helper Functions
@@ -291,6 +298,134 @@ def create_test_image_decision(
     return company_id, filing_id, image_candidate_id, decision_id
 
 
+def create_test_v2_document(
+    db: DatabaseAdapter,
+    filing_id: int,
+    **overrides,
+) -> str:
+    """
+    Create a V2 document record and return doc_id (UUID string).
+
+    The v2_documents table tracks filing-level processing metadata.
+    """
+    params: dict = {
+        "filing_id": filing_id,
+        "parse_version": "2.0.0",
+        "status": "complete",
+        "segment_count": 10,
+        "table_count": 2,
+        "image_count": 0,
+        "fact_count": 1,
+    }
+    params.update(overrides)
+
+    rows = db.query(
+        """
+        INSERT INTO v2_documents (filing_id, parse_version, status, segment_count, table_count, image_count, fact_count)
+        VALUES (%(filing_id)s, %(parse_version)s, %(status)s, %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s)
+        ON CONFLICT (filing_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+        RETURNING doc_id::text
+        """,
+        params,
+    )
+    return rows[0]["doc_id"]
+
+
+def create_test_v2_fact(
+    db: DatabaseAdapter,
+    filing_id: int,
+    **overrides,
+) -> str:
+    """
+    Create a V2 metric fact and return fact_id (UUID string).
+
+    Note: doc_id in v2_metric_facts is a BIGINT FK to filings.filing_id.
+    Uses cm_customers_period_end as default metric (seeded by 04_seed_metrics_taxonomy.sql).
+    """
+    params: dict = {
+        "doc_id": filing_id,
+        "canonical_metric_id": "cm_customers_period_end",
+        "value": 10000,
+        "value_raw": "10,000",
+        "unit": "count",
+        "currency": None,
+        "period_type": "point_in_time",
+        "period_start": "2023-01-01",
+        "period_end": "2023-12-31",
+        "source_type": "html_table",
+        "source_locator": _json.dumps({"dom_locator": "/html/body/table[1]"}),
+        "evidence_pack": _json.dumps({"snippet_html": "<td>10,000</td>", "context_before": "We had"}),
+        "confidence": 0.85,
+        "extraction_method": "exact_match",
+        "requires_review": True,
+        "review_status": "pending_review",
+    }
+    params.update(overrides)
+
+    # Ensure JSONB fields are serialized if caller passed dicts
+    if isinstance(params.get("source_locator"), dict):
+        params["source_locator"] = _json.dumps(params["source_locator"])
+    if isinstance(params.get("evidence_pack"), dict):
+        params["evidence_pack"] = _json.dumps(params["evidence_pack"])
+
+    rows = db.query(
+        """
+        INSERT INTO v2_metric_facts (
+            doc_id, canonical_metric_id, value, value_raw, unit, currency,
+            period_type, period_start, period_end, source_type, source_locator,
+            evidence_pack, confidence, extraction_method, requires_review, review_status
+        ) VALUES (
+            %(doc_id)s, %(canonical_metric_id)s, %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
+            %(period_type)s, %(period_start)s, %(period_end)s, %(source_type)s, %(source_locator)s,
+            %(evidence_pack)s, %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_status)s
+        )
+        RETURNING fact_id::text
+        """,
+        params,
+    )
+    return rows[0]["fact_id"]
+
+
+def create_test_v2_decision(
+    db: DatabaseAdapter,
+    fact_id: str,
+    decision: str = "accept",
+    **overrides,
+) -> str:
+    """
+    Create a V2 review decision and return decision_id (UUID string).
+
+    The v2_review_decision_updates_fact trigger will update v2_metric_facts.review_status.
+    """
+    params: dict = {
+        "fact_id": fact_id,
+        "decision": decision,
+        "assigned_metric_id": None,
+        "corrected_value": None,
+        "rejection_reason": None,
+        "rejection_category": None,
+        "reviewer_id": "test_reviewer",
+        "reviewer_notes": None,
+        "review_time_seconds": None,
+    }
+    params.update(overrides)
+
+    rows = db.query(
+        """
+        INSERT INTO v2_review_decisions (
+            fact_id, decision, assigned_metric_id, corrected_value,
+            rejection_reason, rejection_category, reviewer_id, reviewer_notes, review_time_seconds
+        ) VALUES (
+            %(fact_id)s, %(decision)s, %(assigned_metric_id)s, %(corrected_value)s,
+            %(rejection_reason)s, %(rejection_category)s, %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+        )
+        RETURNING decision_id::text
+        """,
+        params,
+    )
+    return rows[0]["decision_id"]
+
+
 # Load environment
 load_dotenv()
 
@@ -319,6 +454,24 @@ def test_db_adapter(test_db_url):
     This is session-scoped, so one adapter is shared across all tests.
     """
     return DatabaseAdapter(test_db_url)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _apply_migrations_to_test_db(test_db_url):
+    """Apply all migrations to test DB at session start (idempotent)."""
+    if not os.getenv("TEST_DATABASE_URL"):
+        return  # Skip if no test DB configured
+
+    from scripts.apply_migrations import MIGRATIONS, apply_migration, bootstrap_ledger
+
+    db = DatabaseAdapter(test_db_url)
+    sql_dir = Path(__file__).parent.parent.parent / "sql"
+
+    bootstrap_ledger(db)
+    for migration_name in MIGRATIONS:
+        sql_file = sql_dir / migration_name
+        if sql_file.exists():
+            apply_migration(db, sql_dir, migration_name)
 
 
 @pytest.fixture(scope="function")
@@ -371,6 +524,24 @@ def clean_db(test_db_adapter):
                 END $$;
                 """
             )
+            # V2 tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE v2_review_decisions CASCADE;
+                    TRUNCATE TABLE v2_metric_facts CASCADE;
+                    TRUNCATE TABLE v2_metric_definitions CASCADE;
+                    TRUNCATE TABLE v2_image_assets CASCADE;
+                    TRUNCATE TABLE v2_table_cells CASCADE;
+                    TRUNCATE TABLE v2_tables CASCADE;
+                    TRUNCATE TABLE v2_segments CASCADE;
+                    TRUNCATE TABLE v2_documents CASCADE;
+                EXCEPTION WHEN undefined_table THEN
+                    NULL;
+                END $$;
+                """
+            )
             cur.execute("TRUNCATE TABLE filings CASCADE")
             cur.execute("TRUNCATE TABLE companies CASCADE")
 
@@ -408,6 +579,24 @@ def clean_db(test_db_adapter):
                     TRUNCATE TABLE image_review_candidates CASCADE;
                 EXCEPTION WHEN undefined_table THEN
                     -- Tables don't exist yet, ignore
+                    NULL;
+                END $$;
+                """
+            )
+            # V2 tables (if they exist)
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    TRUNCATE TABLE v2_review_decisions CASCADE;
+                    TRUNCATE TABLE v2_metric_facts CASCADE;
+                    TRUNCATE TABLE v2_metric_definitions CASCADE;
+                    TRUNCATE TABLE v2_image_assets CASCADE;
+                    TRUNCATE TABLE v2_table_cells CASCADE;
+                    TRUNCATE TABLE v2_tables CASCADE;
+                    TRUNCATE TABLE v2_segments CASCADE;
+                    TRUNCATE TABLE v2_documents CASCADE;
+                EXCEPTION WHEN undefined_table THEN
                     NULL;
                 END $$;
                 """

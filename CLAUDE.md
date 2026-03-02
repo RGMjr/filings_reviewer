@@ -56,6 +56,7 @@ BEFORE planning or implementing ANY task, you MUST:
 |---|---|
 | Single file, <3 changes | Interactive session |
 | Multi-file, defined acceptance criteria | `/ralph develop --isolated` |
+| Non-extraction multi-file changes | `dev-implementer` agent or `/ralph develop` |
 | Investigation/debugging | `/ralph analyze`, then `/ralph implement` |
 | Extraction code + keyword changes | `/ralph develop` + gold-standard-validator agent |
 | Large refactor (>10 files) | Team: implementer + test-runner + reviewer |
@@ -68,12 +69,14 @@ Skipping methodology selection is a blocking error. State your choice before pro
 
 ## Extraction Team Workflow
 
-For changes to extraction code, keyword config, or FP rules, use the 2-agent pattern:
+For changes to extraction code, keyword config, or FP rules, use the multi-agent pattern:
 
-1. **Create team**: `TeamCreate` with `extraction-implementer` + `gold-standard-validator`
-2. **Structure tasks**: Alternate implement → validate tasks with `blockedBy` dependencies
+1. **Create team**: `TeamCreate` with `extraction-implementer` + `keyword-config-checker` + `gold-standard-validator` (+ `pipeline-debugger` if regression expected)
+2. **Structure tasks**: implement → check keywords → validate gold standard (with `blockedBy` dependencies)
 3. **Implementer** makes changes, self-tests, marks task complete
-4. **Validator** runs gold standard, reports regressions, blocks merge if scores drop
+4. **Keyword checker** validates regex compilation, pattern overlaps, and REQUIRE_BOTH logic (fast, seconds)
+5. **Validator** runs gold standard, reports regressions, blocks merge if scores drop
+6. **On regression**: Add `pipeline-debugger` task to trace the root cause through V2 stages, then loop back to implementer
 
 Use this pattern for: keyword changes, classifier logic, FP filter rules, new gold standard filings.
 

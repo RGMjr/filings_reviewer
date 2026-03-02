@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree, html
 
-from src.extraction_v2.text_utils import normalize_text
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Document,
     ImageAsset,
@@ -30,6 +30,7 @@ from src.extraction_v2.models import (
     Segment,
     SegmentType,
 )
+from src.extraction_v2.text_utils import normalize_text
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -107,6 +108,9 @@ class IngestionStage:
         r"\bbanner\b",
         r"\bheader\b",
         r"\bfooter\b",
+    ]
+    _DECORATIVE_IMAGE_PATTERNS_RE: list[re.Pattern[str]] = [
+        re.compile(p, re.IGNORECASE) for p in DECORATIVE_IMAGE_PATTERNS
     ]
 
     def __init__(self, min_paragraph_chars: int | None = None) -> None:
@@ -612,8 +616,7 @@ class IngestionStage:
         """
         # Check src attribute for decorative patterns
         src = img_element.get("src", "").lower()
-        for pattern_str in self.DECORATIVE_IMAGE_PATTERNS:
-            pattern = re.compile(pattern_str, re.IGNORECASE)
+        for pattern in self._DECORATIVE_IMAGE_PATTERNS_RE:
             if pattern.search(src):
                 return True
 
@@ -664,10 +667,7 @@ class IngestionStage:
                 if text:
                     nearby_parts.append(text)
 
-        # 2. Get context from nearby siblings
-        # Get parent element (or use tree root if img is at top level)
-        context_root = parent if parent is not None else tree
-
+        # 2. Get context from nearby siblings — only process if parent exists
         # Get previous siblings (up to 2)
         if parent is not None:
             prev_siblings: list[str] = []
@@ -881,7 +881,7 @@ class IngestionStage:
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -942,9 +942,8 @@ class IngestionStage:
 
             context.segments = all_segments
 
-            # AC-11: Create Document object with filing_id as doc_id
+            # AC-11: Create Document object (doc_id is a UUID, filing_id is separate)
             doc = Document(
-                doc_id=str(context.filing_id),
                 html_path=str(context.html_path),
                 fiscal_year_end_month=context.config.fiscal_year_end_month,
                 fiscal_year_end_day=context.config.fiscal_year_end_day,
@@ -954,7 +953,7 @@ class IngestionStage:
             # Store image assets in context
             context.images = image_assets
 
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.INGESTION,
@@ -971,15 +970,7 @@ class IngestionStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.exception(f"Ingestion stage failed: {e}")
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            return StageResult(
-                stage=PipelineStage.INGESTION,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=0,
-                items_output=0,
-                errors=[str(e)],
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="ingestion") from e

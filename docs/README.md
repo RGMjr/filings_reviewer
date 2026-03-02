@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.4
+**Version:** 2.6
 **Status:** Production Ready
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-28
 
 ---
 
@@ -64,6 +64,16 @@ Instructions for setting up, running, and maintaining the system.
 |----------|-------------|----------|
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
 | **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
+| **[v2-deployment-guide.md](operations/v2-deployment-guide.md)** | V2 pipeline deployment: pre-flight checks, batch extraction, cutover, rollback | DevOps |
+
+### V2 Pipeline Documentation
+
+| Document | Description | Audience |
+|----------|-------------|----------|
+| **[V2_IMPLEMENTATION_ROADMAP.md](V2_IMPLEMENTATION_ROADMAP.md)** | All 13 phases + Phase B — complete with changelog | Developers |
+| **[V2_MIGRATION_GUIDE.md](V2_MIGRATION_GUIDE.md)** | API differences, data model mapping, migration steps | Developers |
+| **[V2_HUMAN_REVIEW_GUIDE.md](V2_HUMAN_REVIEW_GUIDE.md)** | V2 fact review UI, API reference, keyboard shortcuts | Developers |
+| **[V2_E2E_TESTING_STRATEGY.md](V2_E2E_TESTING_STRATEGY.md)** | E2E testing coverage, merge readiness checklist | Developers, QA |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 
 ### Analysis (Task Outputs & Reports)
@@ -78,11 +88,12 @@ See [analysis/README.md](analysis/README.md) for full file listing.
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
-Human-in-the-loop system for validating and improving extraction quality.
+Human-in-the-loop system for validating and improving extraction quality. Both V1 (candidate-based) and V2 (fact-based) review interfaces are operational.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | System design, usage, configuration | Developers |
+| **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | V1 candidate review system design, usage, configuration | Developers |
+| **[V2_HUMAN_REVIEW_GUIDE.md](V2_HUMAN_REVIEW_GUIDE.md)** | V2 fact-by-fact review workflow, API reference, UI guide | Developers |
 
 ### Active Improvement Plans
 
@@ -153,7 +164,8 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
-| V2 Gold Standard | ✅ Active | N/A | P=81.9%, R=60.6%, F1=69.6% (as of 2026-02-18) |
+| V2 Gold Standard | ✅ Active | N/A | P=92.8%, R=77.6%, F1=84.5% (as of 2026-02-28, post-WP-15+17) |
+| V2 Review UI | ✅ Complete | N/A | [V2 Human Review Guide](V2_HUMAN_REVIEW_GUIDE.md) — WP-21 complete |
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 4,765 tests)
 
@@ -377,11 +389,35 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.3 (Current - 2026-02-17)
+### Version 2.6 (Current - 2026-02-28)
+- ✅ WP-21 complete: V2 review UI at full feature parity (`review_v2.py`, `api_v2.py`, `v2_filing_list.html`, `v2_review.html`, `v2_stats.html`)
+- ✅ Migration 12 created: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments` before V1 table removal
+- ✅ FP rules hardened: WP-15 `_rule_tier_qualifier` (Snowflake tier FPs 22→3); WP-17 `_rule_dollar_threshold_customer` (Slack ">$100K" FPs eliminated)
+- ✅ Gold standard improved: P=92.8%, R=77.6%, F1=84.5% (all per-company gates passed, post-WP-15+17)
+- ✅ WP-23 pending: Batch V2 extraction on remaining 8 filings (runtime execution only)
+
+### Version 2.5 (2026-02-26)
+- ✅ V2 pipeline promoted to `2.0.0-rc1` (was alpha)
+- ✅ V2 exception architecture: `V2FatalError` / `V2TransientError` hierarchy; all stages raise typed exceptions instead of swallowing errors
+- ✅ Pipeline error handling hardened: `CANDIDATE_GENERATION` and `VALUE_BINDING` added to critical-stage set; `V2TransientError` propagates for caller retry
+- ✅ Bug fix: Slack colspan and date-header parsing (commit `bb0ed5a`)
+- ✅ Bug fix: `period_start_date` extraction (commit `bb0ed5a`)
+- ✅ V2 integration test coverage expanded (commits `41d752b`, `0045d93`)
+- ✅ New unit tests: `test_number_parsing.py` (year non-splitting regression, scale multipliers) and `test_text_utils.py` (normalize_text, find_sentence_bounds)
+- ✅ V2 deployment guide added: `docs/operations/v2-deployment-guide.md`
+
+### Version 2.4 (2026-02-24)
+- ✅ V2 Stage 9.5 — Definition Extraction (±5-window proximity scan, CMASB alignment scoring)
+- ✅ V2 Quality Scoring Adapter (`V2QualityScorer`) writes all 5 rubrics to `filing_metric_incidence`
+- ✅ Batch extraction script (`scripts/batch_v2_extraction.py`) with parallel workers, checkpointing, graceful shutdown
+- ✅ SQL migration 11: `v2_metric_definitions` table
+- ✅ Gold standard: P=78.6%, R=79.2%, F1=78.9% (confidence >= 0.5, as of 2026-02-24)
+
+### Version 2.3 (2026-02-17)
 - ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
 - ✅ V2 human review interface with fact-by-fact review and evidence packs
 - ✅ V2 false positive filter stage and percentage context detection
-- ✅ Gold standard validator for V2 (P=81.9%, R=60.6%, F1=69.6% as of 2026-02-18)
+- ✅ Gold standard validator for V2 (P=78.6%, R=79.2%, F1=78.9% as of 2026-02-24)
 - ✅ V2 precision tuning: FP reduction, decimal-gated count scaling, unit compatibility
 - ✅ 4,765 tests, 87% coverage
 

@@ -18,12 +18,14 @@ import calendar
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     BoundValue,
     PeriodType,
+    SectionType,
 )
 from src.extraction_v2.text_utils import find_sentence_bounds
 
@@ -169,6 +171,17 @@ class PeriodInferenceStage:
         re.VERBOSE | re.IGNORECASE,
     )
 
+    # Slide title patterns — common in investor presentations.
+    # Handles "Q4 FY2025", "Q4 FY 2025", "FY2025", "Full Year 2024".
+    # Note: FISCAL_YEAR_PATTERN already handles "FY 2024" and "Full Year 2024";
+    # this combined pattern handles the "Q4 FY2025" form that embeds a quarter
+    # prefix before the FY notation (not matched by QUARTER_PATTERN alone, which
+    # expects a bare year after Q#).
+    SLIDE_TITLE_QUARTER_FY_PATTERN = re.compile(
+        r"\bQ([1-4])\s+FY\s*(\d{4})\b",
+        re.IGNORECASE,
+    )
+
     # Quarter-without-year pattern — standalone Q1, Q2, Q3, Q4 (no year attached)
     # Used in transcripts where "in Q4" is said without specifying the year
     QUARTER_STANDALONE_PATTERN = re.compile(
@@ -245,6 +258,8 @@ class PeriodInferenceStage:
         # Fiscal year end metadata — set from document in process()
         self._fy_end_month: int | None = None
         self._fy_end_day: int | None = None
+        # Filing date — set from document in process(); used instead of date.today()
+        self._filing_date: date | None = None
 
         # Pattern registries: list of (parser_method, confidence_offset) tuples.
         # Ordered by specificity — first match wins.
@@ -280,77 +295,81 @@ class PeriodInferenceStage:
         Returns:
             StageResult with processing metrics
         """
-        start_time = datetime.utcnow()
-        periods_inferred = 0
-        ambiguous_count = 0
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.now(UTC)
+            periods_inferred = 0
+            ambiguous_count = 0
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        # Get filing fiscal period for fallback
-        fiscal_year = context.document.fiscal_year if context.document else None
-        fiscal_period = context.document.fiscal_period if context.document else ""
+            # Get filing fiscal period for fallback
+            fiscal_year = context.document.fiscal_year if context.document else None
+            fiscal_period = context.document.fiscal_period if context.document else ""
 
-        # Get document_date for transcript quarter inference (must be a real date)
-        raw_doc_date = getattr(context, "document_date", None)
-        document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
+            # Get document_date for transcript quarter inference (must be a real date)
+            raw_doc_date = getattr(context, "document_date", None)
+            document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
 
-        # Load fiscal year end metadata from document (set by IngestionStage)
-        self._fy_end_month = context.document.fiscal_year_end_month if context.document else None
-        self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
+            # Load fiscal year end metadata from document (set by IngestionStage)
+            self._fy_end_month = (
+                context.document.fiscal_year_end_month if context.document else None
+            )
+            self._fy_end_day = context.document.fiscal_year_end_day if context.document else None
+            # Prefer filing date from document over date.today() for determinism
+            self._filing_date = context.document.filing_date if context.document else None
 
-        # Build lookup for segments and tables
-        segment_lookup = {s.segment_id: s for s in context.segments}
-        table_lookup = {t.table_id: t for t in context.tables}
+            # Process each bound value
+            for bound_value in context.bound_values:
+                try:
+                    period = self._infer_period(
+                        bound_value,
+                        context,
+                        fiscal_year,
+                        fiscal_period,
+                    )
+                    if period:
+                        bound_value.period_type = period.period_type
+                        bound_value.period_start = period.start
+                        bound_value.period_end = period.end
+                        bound_value.period_confidence = period.confidence
+                        bound_value.period_source = period.source
+                        bound_value.period_ambiguous = False
+                        periods_inferred += 1
+                    else:
+                        # No period found - flag as ambiguous
+                        bound_value.period_type = PeriodType.OTHER
+                        bound_value.period_ambiguous = True
+                        ambiguous_count += 1
+                        warnings.append(
+                            f"No period found for bound value {bound_value.bound_value_id}"
+                        )
+                except Exception as e:
+                    error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
 
-        # Process each bound value
-        for bound_value in context.bound_values:
-            try:
-                period = self._infer_period(
-                    bound_value,
-                    segment_lookup,
-                    table_lookup,
-                    fiscal_year,
-                    fiscal_period,
-                    document_date=document_date,
-                )
-                if period:
-                    bound_value.period_type = period.period_type
-                    bound_value.period_start = period.start
-                    bound_value.period_end = period.end
-                    bound_value.period_confidence = period.confidence
-                    bound_value.period_source = period.source
-                    bound_value.period_ambiguous = False
-                    periods_inferred += 1
-                else:
-                    # No period found - flag as ambiguous
-                    bound_value.period_type = PeriodType.OTHER
-                    bound_value.period_ambiguous = True
-                    ambiguous_count += 1
-                    warnings.append(f"No period found for bound value {bound_value.bound_value_id}")
-            except Exception as e:
-                error_msg = f"Error inferring period for {bound_value.bound_value_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+            logger.info(
+                f"Period inference complete: {periods_inferred} inferred, "
+                f"{ambiguous_count} ambiguous from {len(context.bound_values)} values"
+            )
 
-        logger.info(
-            f"Period inference complete: {periods_inferred} inferred, "
-            f"{ambiguous_count} ambiguous from {len(context.bound_values)} values"
-        )
-
-        return self._make_result(
-            start_time,
-            len(context.bound_values),
-            periods_inferred,
-            errors,
-            warnings,
-            ambiguous_count,
-        )
+            return self._make_result(
+                start_time,
+                len(context.bound_values),
+                periods_inferred,
+                errors,
+                warnings,
+                ambiguous_count,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="period_inference") from e
 
     def _infer_period(
         self,
         bound_value: BoundValue,
-        segment_lookup: dict[str, Segment],
-        table_lookup: dict[str, Table],
+        context: PipelineContext,
         fiscal_year: int | None,
         fiscal_period: str,
         document_date: date | None = None,
@@ -360,8 +379,7 @@ class PeriodInferenceStage:
 
         Args:
             bound_value: The bound value to process
-            segment_lookup: Segment ID -> Segment mapping
-            table_lookup: Table ID -> Table mapping
+            context: Pipeline context with segment_by_id and table_by_id lookups
             fiscal_year: Filing fiscal year for fallback
             fiscal_period: Filing fiscal period for fallback
             document_date: Document date (for transcript quarter inference)
@@ -373,9 +391,15 @@ class PeriodInferenceStage:
         # Note: BoundValue doesn't directly have header_path, but we can get it from the table
         loc = bound_value.source_locator
 
+        # Strategy 0: Use pre-parsed period_hint from respectively pattern
+        if bound_value.period_hint:
+            period = self._parse_period_from_hint(bound_value.period_hint)
+            if period:
+                return period
+
         # Strategy 1: Check table header_path (primary for table values)
         if loc.table_id:
-            table = table_lookup.get(loc.table_id)
+            table = context.table_by_id.get(loc.table_id)
             if table and loc.cell_col is not None:
                 header_path = table.get_header_path(loc.cell_col)
                 period = self._parse_period_from_headers(header_path)
@@ -384,12 +408,14 @@ class PeriodInferenceStage:
 
         # Strategy 2: Check text context for text-bound values
         if loc.segment_id:
-            segment = segment_lookup.get(loc.segment_id)
+            segment = context.segment_by_id.get(loc.segment_id)
             if segment and segment.text:
+                section_type = getattr(bound_value, "section_type", SectionType.UNKNOWN)
                 period = self._parse_period_from_text(
                     segment.text,
                     loc.text_span,
                     document_date=document_date,
+                    section_type=section_type,
                 )
                 if period:
                     return period
@@ -408,6 +434,24 @@ class PeriodInferenceStage:
 
         return None
 
+    def _parse_period_from_hint(self, hint: str) -> ParsedPeriod | None:
+        """
+        Parse a period from a pre-extracted hint string (e.g., "2017", "Q1").
+
+        Used by Strategy 0 to resolve periods pre-associated by the respectively parser.
+        Sets confidence=0.85 and source="respectively_hint".
+        """
+        # Try standard text patterns first (handles "Q1 2017", "FY 2017", etc.)
+        period = self._try_parse_all_patterns(hint)
+        if period is None:
+            # Fall back to plain year pattern (handles bare "2017")
+            period = self._try_parse_plain_year(hint)
+        if period:
+            period.confidence = 0.85
+            period.source = "respectively_hint"
+            return period
+        return None
+
     def _parse_period_from_headers(self, header_path: list[str]) -> ParsedPeriod | None:
         """
         Parse period from table header path.
@@ -420,8 +464,8 @@ class PeriodInferenceStage:
         Returns:
             ParsedPeriod if found, None otherwise
         """
-        # Combine all headers for searching
-        combined_text = " ".join(header_path)
+        # Combine all headers for searching; strip zero-width spaces
+        combined_text = self._normalize_text(" ".join(header_path))
 
         # Try patterns in order of specificity (first match wins)
         for method_name, confidence_offset in self._header_patterns:
@@ -434,11 +478,20 @@ class PeriodInferenceStage:
 
         return None
 
+    # Presentation section types for which slide-title period patterns are applied.
+    _PRESENTATION_SECTION_TYPES: frozenset[SectionType] = frozenset({
+        SectionType.PRESENTATION_SLIDE,
+        SectionType.KEY_METRICS,
+        SectionType.FINANCIAL_OVERVIEW,
+        SectionType.GUIDANCE,
+    })
+
     def _parse_period_from_text(
         self,
         text: str,
         text_span: tuple[int, int] | None,
         document_date: date | None = None,
+        section_type: SectionType = SectionType.UNKNOWN,
     ) -> ParsedPeriod | None:
         """
         Parse period from text context around a value.
@@ -447,10 +500,13 @@ class PeriodInferenceStage:
             text: Full segment text
             text_span: (start, end) character offsets of the value
             document_date: Document date for resolving standalone quarters and relative periods
+            section_type: Section type for document-type-specific pattern selection
 
         Returns:
             ParsedPeriod if found, None otherwise
         """
+        is_presentation_section = section_type in self._PRESENTATION_SECTION_TYPES
+
         if text_span:
             start, end = text_span
             # Search in window around the value
@@ -487,6 +543,14 @@ class PeriodInferenceStage:
                     period.confidence = self.SAME_SENTENCE_CONFIDENCE
                     return period
 
+            # Try presentation-specific patterns (slide title quarter+FY notation)
+            if is_presentation_section:
+                period = self._try_parse_slide_title_quarter_fy(same_sentence_text)
+                if period:
+                    period.source = "text_context"
+                    period.confidence = self.SAME_SENTENCE_CONFIDENCE
+                    return period
+
         # Try extended context (lower confidence)
         period = self._try_parse_all_patterns(search_text)
         if period:
@@ -508,13 +572,27 @@ class PeriodInferenceStage:
                 period.confidence = self.EXTENDED_CONTEXT_CONFIDENCE
                 return period
 
+        # Try presentation-specific patterns in extended context
+        if is_presentation_section:
+            period = self._try_parse_slide_title_quarter_fy(search_text)
+            if period:
+                period.source = "text_context"
+                period.confidence = self.EXTENDED_CONTEXT_CONFIDENCE
+                return period
+
         return None
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Strip zero-width spaces and collapse surrounding whitespace for pattern matching."""
+        return text.replace("\u200b", "")
 
     def _try_parse_all_patterns(self, text: str) -> ParsedPeriod | None:
         """Try all text period patterns on text, returning most specific match."""
+        normalized = self._normalize_text(text)
         for method_name in self._text_patterns:
             parser = getattr(self, method_name)
-            period = parser(text)
+            period = parser(normalized)
             if period:
                 return period
         return None
@@ -650,8 +728,9 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
-        # Determine period type from the pattern prefix
-        text_lower = text.lower()
+        # Determine period type from the pattern prefix.
+        # Normalize NBSP (\xa0) so "six\xa0months" matches "six months" etc.
+        text_lower = text.lower().replace("\xa0", " ")
 
         if "year" in text_lower[: match.end()]:
             period_type = PeriodType.ANNUAL
@@ -667,25 +746,13 @@ class PeriodInferenceStage:
                     start = date(year, 1, 1)
         elif any(x in text_lower[: match.end()] for x in ["quarter", "three months", "3 months"]):
             period_type = PeriodType.QUARTERLY
-            # Calculate start as 3 months before end
-            if month >= 4:
-                start = date(year, month - 3, 1)
-            else:
-                start = date(year - 1, month + 9, 1)
+            start = self._period_start(month, year, 3)
         elif any(x in text_lower[: match.end()] for x in ["nine months", "9 months"]):
             period_type = PeriodType.YTD
-            # Calculate start as 9 months before end
-            if month >= 10:
-                start = date(year, month - 9, 1)
-            else:
-                start = date(year - 1, month + 3, 1)
+            start = self._period_start(month, year, 9)
         elif any(x in text_lower[: match.end()] for x in ["six months", "6 months"]):
             period_type = PeriodType.YTD
-            # Calculate start as 6 months before end
-            if month >= 7:
-                start = date(year, month - 6, 1)
-            else:
-                start = date(year - 1, month + 6, 1)
+            start = self._period_start(month, year, 6)
         else:
             # Default to annual
             period_type = PeriodType.ANNUAL
@@ -699,6 +766,19 @@ class PeriodInferenceStage:
             source="",
             raw_text=match.group(0),
         )
+
+    def _period_start(self, end_month: int, end_year: int, n_months: int) -> date:
+        """Return the first day of the period that ends in end_month/end_year and spans n_months.
+
+        Uses start_month = end_month - (n_months - 1) so that the period includes
+        end_month itself (e.g., 3-month period ending June → starts April 1).
+        """
+        start_month = end_month - (n_months - 1)
+        start_year = end_year
+        if start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        return date(start_year, start_month, 1)
 
     def _try_parse_ytd(self, text: str) -> ParsedPeriod | None:
         """
@@ -719,12 +799,13 @@ class PeriodInferenceStage:
         if year_match:
             year = int(year_match.group(1))
         else:
-            # Use current year as fallback
-            year = date.today().year
+            # Use filing date (or date.today() as last resort) for determinism
+            reference = self._filing_date or date.today()
+            year = reference.year
 
         # Determine period length from pattern
         text_lower = match.group(0).lower()
-        today = date.today()
+        reference = self._filing_date or date.today()
 
         if "nine" in text_lower or "9" in text_lower:
             # Nine months YTD (typically ends Sep 30)
@@ -737,7 +818,7 @@ class PeriodInferenceStage:
             end_month = 3
         else:
             # Generic YTD - use current quarter end or filing date
-            end_month = ((today.month - 1) // 3 + 1) * 3
+            end_month = ((reference.month - 1) // 3 + 1) * 3
 
         try:
             start = date(year, 1, 1)
@@ -777,14 +858,13 @@ class PeriodInferenceStage:
             if month:
                 try:
                     end = date(year, month, day)
-                    # TTM is 12 months trailing
-                    start = (
-                        date(year - 1, month, day + 1)
-                        if day < 28
-                        else date(year - 1, month + 1, 1)
-                        if month < 12
-                        else date(year - 1, 1, 1)
-                    )
+                    # TTM is 12 months trailing: start is the day after the
+                    # same date one year prior. Clamp day to the last valid
+                    # day of that month (handles Feb 29 → Feb 28 in non-leap).
+                    prev_year = year - 1
+                    max_day = calendar.monthrange(prev_year, month)[1]
+                    same_day_prev_year = date(prev_year, month, min(day, max_day))
+                    start = same_day_prev_year + timedelta(days=1)
                     return ParsedPeriod(
                         period_type=PeriodType.TRAILING,
                         start=start,
@@ -796,14 +876,16 @@ class PeriodInferenceStage:
                 except ValueError:
                     pass
 
-        # Without a reference date, we can't determine the exact period
-        # Return a placeholder with today's date (will be lower confidence)
-        today = date.today()
-        start = date(today.year - 1, today.month, today.day)
+        # Without a reference date, use filing date (or date.today() as last resort)
+        reference = self._filing_date or date.today()
+        prev_year = reference.year - 1
+        max_day = calendar.monthrange(prev_year, reference.month)[1]
+        same_day_prev_year = date(prev_year, reference.month, min(reference.day, max_day))
+        start = same_day_prev_year + timedelta(days=1)
         return ParsedPeriod(
             period_type=PeriodType.TRAILING,
             start=start,
-            end=today,
+            end=reference,
             confidence=0.0,
             source="",
             raw_text=match.group(0),
@@ -1038,6 +1120,45 @@ class PeriodInferenceStage:
         except ValueError:
             return None
 
+    def _try_parse_slide_title_quarter_fy(self, text: str) -> ParsedPeriod | None:
+        """
+        Parse "Q# FY YYYY" slide title patterns (e.g., "Q4 FY2025", "Q4 FY 2025").
+
+        This handles a common investor presentation title format that combines a
+        quarter prefix with fiscal year notation.  The standard QUARTER_PATTERN
+        does not match this form because it expects a bare year (not "FY YYYY").
+
+        Args:
+            text: Text to search
+
+        Returns:
+            ParsedPeriod with QUARTERLY type, or None
+        """
+        match = self.SLIDE_TITLE_QUARTER_FY_PATTERN.search(text)
+        if not match:
+            return None
+
+        quarter = int(match.group(1))
+        year = self._normalize_year(match.group(2))
+        if not year:
+            return None
+
+        try:
+            start_month = self.QUARTER_START_MONTHS[quarter]
+            end_month = self.QUARTER_END_MONTHS[quarter]
+            start = date(year, start_month, 1)
+            end = date(year, end_month, self._last_day_of_month(year, end_month))
+            return ParsedPeriod(
+                period_type=PeriodType.QUARTERLY,
+                start=start,
+                end=end,
+                confidence=0.0,  # Set by caller
+                source="",
+                raw_text=match.group(0),
+            )
+        except ValueError:
+            return None
+
     def _create_document_date_fallback(
         self, document_date: date
     ) -> ParsedPeriod | None:
@@ -1105,7 +1226,7 @@ class PeriodInferenceStage:
         ambiguous_count: int,
     ) -> StageResult:
         """Create a StageResult with timing info."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Import at runtime to avoid circular import

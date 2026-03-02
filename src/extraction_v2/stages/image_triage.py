@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     ChartType,
     ImageAsset,
@@ -502,7 +503,7 @@ class ImageTriageStage:
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -510,7 +511,7 @@ class ImageTriageStage:
             # Handle empty images list
             if not context.images:
                 logger.info("No images to triage")
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
                 return StageResult(
                     stage=PipelineStage.IMAGE_TRIAGE,
                     success=True,
@@ -531,7 +532,7 @@ class ImageTriageStage:
                 cls_name = asset.classification.value
                 classification_counts[cls_name] = classification_counts.get(cls_name, 0) + 1
 
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.IMAGE_TRIAGE,
@@ -551,15 +552,7 @@ class ImageTriageStage:
                 },
             )
 
+        except V2FatalError:
+            raise
         except Exception as e:
-            logger.exception(f"Image triage stage failed: {e}")
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-            return StageResult(
-                stage=PipelineStage.IMAGE_TRIAGE,
-                success=False,
-                duration_ms=duration_ms,
-                items_processed=0,
-                items_output=0,
-                errors=[str(e)],
-                warnings=warnings,
-            )
+            raise V2FatalError(str(e), stage_name="image_triage") from e

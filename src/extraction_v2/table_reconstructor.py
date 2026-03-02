@@ -12,6 +12,7 @@ Design source: Claude V2 PRD - Table Reconstruction stage.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -50,6 +51,48 @@ class TableReconstructor:
     - No two source cells claim the same grid position (no overlaps)
     - Spans that extend beyond grid bounds are clipped, not silently dropped
     """
+
+    # Matches financial values: currency symbols, comma-formatted numbers,
+    # parenthesized negatives, and percentages.
+    # Deliberately excludes bare 4-digit years (e.g. "2017") — those have no
+    # comma, currency symbol, paren, or percent and will not match.
+    _FINANCIAL_VALUE_RE = re.compile(
+        r"(?:"
+        r"[$£€]"  # currency symbols
+        r"|\d{1,3}(?:,\d{3})+"  # comma-formatted number: 1,234 or 1,234,567
+        r"|\(\d[\d,.]*\)"  # parenthesized negative: (1,234)
+        r"|\d+(?:\.\d+)?%"  # percentage: 12% or 3.5%
+        r")"
+    )
+
+    # Matches date headers like "April\xa030,\n2017" or "Jan 31, 2020".
+    # These cells contain comma-formatted-looking numbers (e.g. "30, 2017") so
+    # _FINANCIAL_VALUE_RE would falsely classify them as financial data rows.
+    _DATE_HEADER_RE = re.compile(
+        r"(?:January|February|March|April|May|June|July|August|September|"
+        r"October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+        r"[\s\xa0]*\d{1,2}[\s\xa0]*,?[\s\xa0]*\d{4}",
+        re.IGNORECASE,
+    )
+
+    def _is_financial_data_row(self, row: list[Cell | None]) -> bool:
+        """Return True if the majority of non-empty cells look like financial values.
+
+        Requires at least 3 non-empty cells to avoid triggering on sparse prose rows.
+        Cells that match _DATE_HEADER_RE are excluded from financial detection to
+        prevent date-header rows from being misclassified as data rows.
+        """
+        unique_cells = list(
+            {id(cell): cell for cell in row if cell and cell.text.strip()}.values()
+        )
+        if len(unique_cells) < 3:
+            return False
+        match_count = sum(
+            1 for cell in unique_cells
+            if self._FINANCIAL_VALUE_RE.search(cell.text)
+            and not self._DATE_HEADER_RE.search(cell.text)
+        )
+        return match_count > len(unique_cells) * 0.5
 
     def _validate_grid(
         self, grid: list[list[Cell | None]], row_count: int, col_count: int
@@ -206,9 +249,14 @@ class TableReconstructor:
         row_count = len(rows)
         col_count = 0
 
-        # Track rowspans to accurately calculate max columns
-        # This handles cases where earlier rows have rowspans that affect
-        # how many columns later rows appear to have
+        # TODO (M7): This first-pass column count sums colspans per row but does
+        # not account for cells from earlier rows that are still "occupying" columns
+        # via rowspan. A row with an active rowspan-1 cell from the previous row
+        # will appear to have fewer physical cells than actual grid columns, so
+        # col_count may be underestimated. Full fix requires rowspan simulation in
+        # the first pass (mirroring the second-pass grid-fill logic). Deferring
+        # because the second pass clips spans to col_count, so underestimation
+        # causes truncation rather than a crash — an acceptable degradation for now.
         for tr in rows:
             cells = tr.find_all(["td", "th"])
             total_cols = sum(int(str(cell.get("colspan", "1"))) for cell in cells)
@@ -296,15 +344,16 @@ class TableReconstructor:
                         target_col = col_idx + c
                         # Double-check bounds (should always be within bounds due to clipping)
                         if target_row < row_count and target_col < col_count:
-                            # Check for overlap - another cell already here
+                            # Check for overlap - keep the first cell (don't overwrite)
                             if grid[target_row][target_col] is not None:
                                 existing = grid[target_row][target_col]
                                 logger.warning(
                                     f"Grid overlap at ({target_row}, {target_col}): "
                                     f"existing cell from ({existing.row}, {existing.col}) "
-                                    f"would be overwritten by cell from ({tr_idx}, {col_idx})"
+                                    f"will be kept; skipping cell from ({tr_idx}, {col_idx})"
                                 )
-                            grid[target_row][target_col] = cell
+                            else:
+                                grid[target_row][target_col] = cell
 
                 # Move to next column (use original colspan for positioning)
                 col_idx += colspan
@@ -319,8 +368,11 @@ class TableReconstructor:
         """
         Detect number of header rows at top of table.
 
-        A row is a header if majority of cells are <th> elements.
-        Stop at first non-header row.
+        Primary: a row is a header if majority of cells are <th> elements.
+        Fallback (SEC filings): when no <th> rows are found, scan up to 8 rows
+        for the first row that looks like financial data; all rows before it are
+        treated as headers. This handles the common SEC filing pattern where all
+        cells use <td>, including period headers.
 
         Args:
             grid: Normalized grid from _resolve_spans
@@ -344,6 +396,14 @@ class TableReconstructor:
                 header_row_count += 1
             else:
                 break  # Stop at first non-header row
+
+        # Fallback for <td>-only tables (common in SEC filings): scan for the
+        # first row containing financial values; all preceding rows are headers.
+        if header_row_count == 0:
+            for row_idx, row in enumerate(grid[:8]):
+                if self._is_financial_data_row(row):
+                    header_row_count = row_idx
+                    break
 
         return max(1, header_row_count)  # At least 1 header row
 

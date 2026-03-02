@@ -161,13 +161,17 @@ class TestIngestionStageProcess:
         assert result.success is True
         assert result.stage == PipelineStage.INGESTION
 
-        # Should create document
+        # Should create document (doc_id is a UUID, not the filing_id)
         assert context.document is not None
-        assert context.document.doc_id == "12345"
+        assert context.document.doc_id  # non-empty UUID string
         assert context.document.html_path == str(html_file)
 
     def test_process_handles_missing_file(self, tmp_path: Path) -> None:
-        """Test that process() handles missing HTML file gracefully."""
+        """Test that process() raises V2FatalError for missing HTML file."""
+        import pytest
+
+        from src.extraction_v2.exceptions import V2FatalError
+
         html_file = tmp_path / "missing.html"
 
         context = PipelineContext(
@@ -177,12 +181,11 @@ class TestIngestionStageProcess:
         )
 
         stage = IngestionStage()
-        result = stage.process(context)
+        with pytest.raises(V2FatalError) as exc_info:
+            stage.process(context)
 
-        # Should fail gracefully
-        assert result.success is False
-        assert len(result.errors) > 0
-        assert "not found" in result.errors[0].lower()
+        assert "not found" in str(exc_info.value).lower()
+        assert exc_info.value.stage_name == "ingestion"
 
     def test_process_reports_metrics(self, tmp_path: Path) -> None:
         """Test that process() reports correct metrics."""

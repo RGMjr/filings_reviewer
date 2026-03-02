@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.models import (
@@ -24,6 +24,7 @@ from src.extraction_v2.models import (
     ChartData,
     Document,
     ImageAsset,
+    MetricDefinition,
     MetricFact,
     Segment,
     Table,
@@ -47,6 +48,7 @@ class PersistenceResult:
     cells_upserted: int = 0
     images_upserted: int = 0
     facts_upserted: int = 0
+    definitions_upserted: int = 0
     errors: list[str] | None = None
 
     @property
@@ -59,6 +61,7 @@ class PersistenceResult:
             + self.cells_upserted
             + self.images_upserted
             + self.facts_upserted
+            + self.definitions_upserted
         )
 
 
@@ -87,6 +90,16 @@ def _serialize_chart_data(chart_data: ChartData | None) -> str | None:
                     ],
                 }
                 for s in chart_data.series
+            ],
+            "annotations": [
+                {
+                    "text": a.text,
+                    "value": a.value,
+                    "unit": a.unit,
+                    "category": a.category,
+                    "period": a.period,
+                }
+                for a in chart_data.annotations
             ],
         }
     )
@@ -137,8 +150,13 @@ class V2PersistenceAdapter:
         with self._db.transaction() as conn:
             with conn.cursor() as cur:
                 self._persist_document_in_tx(
-                    cur, document, filing_id,
-                    segment_count, table_count, image_count, fact_count,
+                    cur,
+                    document,
+                    filing_id,
+                    segment_count,
+                    table_count,
+                    image_count,
+                    fact_count,
                     status,
                 )
         logger.debug(f"Upserted document: filing_id={filing_id}, doc_id={document.doc_id}")
@@ -282,6 +300,7 @@ class V2PersistenceAdapter:
                         len(result.images),
                         len(result.facts),
                         "complete" if result.success else "failed",
+                        error_message=result.error_message,
                         document_type=document_type,
                         ticker=ticker,
                         document_date=document_date,
@@ -302,10 +321,13 @@ class V2PersistenceAdapter:
                     # 5. Persist facts
                     fact_count = self._persist_facts_in_tx(cur, result.facts, filing_id)
 
+                    # 6. Persist definitions
+                    def_count = self._persist_definitions_in_tx(cur, result.definitions, filing_id)
+
             logger.info(
                 f"Persisted pipeline result for filing_id={filing_id}: "
                 f"{seg_count} segments, {table_count} tables, {cell_count} cells, "
-                f"{img_count} images, {fact_count} facts"
+                f"{img_count} images, {fact_count} facts, {def_count} definitions"
             )
 
             return PersistenceResult(
@@ -316,6 +338,7 @@ class V2PersistenceAdapter:
                 cells_upserted=cell_count,
                 images_upserted=img_count,
                 facts_upserted=fact_count,
+                definitions_upserted=def_count,
             )
 
         except Exception as e:
@@ -333,6 +356,7 @@ class V2PersistenceAdapter:
         image_count: int,
         fact_count: int,
         status: str,
+        error_message: str | None = None,
         document_type: str = "sec_filing",
         ticker: str | None = None,
         document_date: date | None = None,
@@ -343,13 +367,13 @@ class V2PersistenceAdapter:
             INSERT INTO v2_documents (
                 filing_id, parse_version,
                 segment_count, table_count, image_count, fact_count,
-                status, parse_completed_at, extract_completed_at, created_at,
+                status, error_message, parse_completed_at, extract_completed_at, created_at,
                 document_type, ticker, document_date, transcript_source
             )
             VALUES (
                 %(filing_id)s, %(parse_version)s,
                 %(segment_count)s, %(table_count)s, %(image_count)s, %(fact_count)s,
-                %(status)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW(),
+                %(status)s, %(error_message)s, %(parse_completed_at)s, %(extract_completed_at)s, NOW(),
                 %(document_type)s, %(ticker)s, %(document_date)s, %(transcript_source)s
             )
             ON CONFLICT (filing_id) DO UPDATE SET
@@ -359,6 +383,7 @@ class V2PersistenceAdapter:
                 image_count = EXCLUDED.image_count,
                 fact_count = EXCLUDED.fact_count,
                 status = EXCLUDED.status,
+                error_message = EXCLUDED.error_message,
                 extract_completed_at = EXCLUDED.extract_completed_at,
                 document_type = EXCLUDED.document_type,
                 ticker = EXCLUDED.ticker,
@@ -375,8 +400,9 @@ class V2PersistenceAdapter:
             "image_count": image_count,
             "fact_count": fact_count,
             "status": status,
+            "error_message": error_message,
             "parse_completed_at": document.created_at,
-            "extract_completed_at": datetime.utcnow(),
+            "extract_completed_at": datetime.now(UTC),
             "document_type": document_type,
             "ticker": ticker,
             "document_date": document_date,
@@ -634,9 +660,16 @@ class V2PersistenceAdapter:
         facts: list[MetricFact],
         filing_id: int,
     ) -> int:
-        """Persist facts within an existing transaction using identity-based upsert."""
+        """Persist facts within an existing transaction using delete-then-insert."""
         if not facts:
             return 0
+
+        # Delete existing facts for this filing before inserting fresh results.
+        # This is idempotent and handles re-runs correctly without requiring a
+        # complex unique index across nullable expression columns.
+        cur.execute(
+            "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s", {"filing_id": filing_id}
+        )
 
         sql = """
             INSERT INTO v2_metric_facts (
@@ -657,29 +690,6 @@ class V2PersistenceAdapter:
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
                 %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
             )
-            ON CONFLICT (
-                doc_id, canonical_metric_id,
-                COALESCE(period_start, '1900-01-01'::date),
-                COALESCE(period_end, '1900-01-01'::date),
-                unit, scope,
-                COALESCE(cohort_def, ''),
-                COALESCE(customer_type, '')
-            ) DO UPDATE SET
-                value = EXCLUDED.value,
-                value_raw = EXCLUDED.value_raw,
-                currency = EXCLUDED.currency,
-                period_type = EXCLUDED.period_type,
-                source_type = EXCLUDED.source_type,
-                source_locator = EXCLUDED.source_locator,
-                evidence_pack = EXCLUDED.evidence_pack,
-                confidence = EXCLUDED.confidence,
-                extraction_method = EXCLUDED.extraction_method,
-                requires_review = EXCLUDED.requires_review,
-                review_reason = EXCLUDED.review_reason,
-                alternate_evidence = EXCLUDED.alternate_evidence,
-                primary_fact_id = EXCLUDED.primary_fact_id,
-                pipeline_version = EXCLUDED.pipeline_version,
-                updated_at = NOW()
         """
 
         count = 0
@@ -688,4 +698,143 @@ class V2PersistenceAdapter:
             cur.execute(sql, params)
             count += 1
 
+        return count
+
+    def persist_definitions(
+        self,
+        definitions: list[MetricDefinition],
+        filing_id: int,
+    ) -> int:
+        """
+        Upsert V2 metric definitions.
+
+        Args:
+            definitions: List of MetricDefinition models from pipeline
+            filing_id: Database filing ID (foreign key)
+
+        Returns:
+            Number of definitions upserted
+        """
+        if not definitions:
+            return 0
+        with self._db.transaction() as conn:
+            with conn.cursor() as cur:
+                count = self._persist_definitions_in_tx(cur, definitions, filing_id)
+        logger.debug(f"Upserted {count} definitions for filing_id={filing_id}")
+        return count
+
+    def persist_quality_scores(
+        self,
+        scores: list[Any],
+        filing_id: int,
+    ) -> int:
+        """
+        Persist quality scores to V1's filing_metric_incidence table.
+
+        Uses DELETE + INSERT for idempotency (matches V1 pattern).
+
+        Args:
+            scores: List of FilingMetricIncidence objects from V2QualityScorer
+            filing_id: Database filing ID
+
+        Returns:
+            Number of rows inserted
+        """
+        if not scores:
+            return 0
+
+        with self._db.transaction() as conn:
+            with conn.cursor() as cur:
+                # Delete existing scores for this filing
+                cur.execute(
+                    "DELETE FROM filing_metric_incidence WHERE filing_id = %(filing_id)s",
+                    {"filing_id": filing_id},
+                )
+
+                # Insert new scores
+                sql = """
+                    INSERT INTO filing_metric_incidence (
+                        filing_id, company_id, metric_id,
+                        metric_disclosed_flag,
+                        num_numeric_segments, num_definition_segments, num_methodology_segments,
+                        primary_definition_segment_id, primary_methodology_segment_id,
+                        quality_overall_score, quality_definition_score,
+                        quality_methodology_score, quality_completeness_score,
+                        quality_comparability_score,
+                        alignment_flag, quality_notes,
+                        has_cohort_breakdown_flag, has_tenure_breakdown_flag,
+                        has_acquisition_cohort_flag
+                    )
+                    VALUES (
+                        %(filing_id)s, %(company_id)s, %(metric_id)s,
+                        %(metric_disclosed_flag)s,
+                        %(num_numeric_segments)s, %(num_definition_segments)s, %(num_methodology_segments)s,
+                        %(primary_definition_segment_id)s, %(primary_methodology_segment_id)s,
+                        %(quality_overall_score)s, %(quality_definition_score)s,
+                        %(quality_methodology_score)s, %(quality_completeness_score)s,
+                        %(quality_comparability_score)s,
+                        %(alignment_flag)s, %(quality_notes)s,
+                        %(has_cohort_breakdown_flag)s, %(has_tenure_breakdown_flag)s,
+                        %(has_acquisition_cohort_flag)s
+                    )
+                """
+                count = 0
+                for score in scores:
+                    cur.execute(sql, score.to_dict())
+                    count += 1
+
+        logger.debug(f"Inserted {count} quality scores for filing_id={filing_id}")
+        return count
+
+    def _persist_definitions_in_tx(
+        self,
+        cur: Any,
+        definitions: list[MetricDefinition],
+        filing_id: int,
+    ) -> int:
+        """Persist definitions within an existing transaction."""
+        if not definitions:
+            return 0
+
+        sql = """
+            INSERT INTO v2_metric_definitions (
+                definition_id, doc_id, canonical_metric_id,
+                definition_text, definition_text_normalized,
+                methodology_text, methodology_text_normalized,
+                definition_segment_id, methodology_segment_id,
+                alignment_flag, created_at
+            )
+            VALUES (
+                %(definition_id)s, %(doc_id)s, %(canonical_metric_id)s,
+                %(definition_text)s, %(definition_text_normalized)s,
+                %(methodology_text)s, %(methodology_text_normalized)s,
+                %(definition_segment_id)s, %(methodology_segment_id)s,
+                %(alignment_flag)s, NOW()
+            )
+            ON CONFLICT (doc_id, canonical_metric_id) DO UPDATE SET
+                definition_text = EXCLUDED.definition_text,
+                definition_text_normalized = EXCLUDED.definition_text_normalized,
+                methodology_text = EXCLUDED.methodology_text,
+                methodology_text_normalized = EXCLUDED.methodology_text_normalized,
+                definition_segment_id = EXCLUDED.definition_segment_id,
+                methodology_segment_id = EXCLUDED.methodology_segment_id,
+                alignment_flag = EXCLUDED.alignment_flag,
+                updated_at = NOW()
+        """
+        count = 0
+        for defn in definitions:
+            params = {
+                "definition_id": defn.definition_id,
+                "doc_id": filing_id,
+                "canonical_metric_id": defn.canonical_metric_id,
+                "definition_text": defn.definition_text,
+                "definition_text_normalized": defn.definition_text_normalized,
+                "methodology_text": defn.methodology_text,
+                "methodology_text_normalized": defn.methodology_text_normalized,
+                "definition_segment_id": defn.definition_segment_id,
+                "methodology_segment_id": defn.methodology_segment_id,
+                "alignment_flag": defn.alignment_flag,
+            }
+            cur.execute(sql, params)
+            count += 1
         return count

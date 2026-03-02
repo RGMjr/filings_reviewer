@@ -1,8 +1,8 @@
 # Customer Metrics Filings Analysis
 
-**Version:** 2.3
+**Version:** 2.4
 **Status:** Production Ready
-**Last Updated:** 2026-02-17
+**Last Updated:** 2026-02-26
 
 A system for systematically analyzing SEC filings to assess how companies disclose customer-related metrics.
 
@@ -17,18 +17,35 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 
 ## Current Status
 
+### V2 Pipeline (Primary)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Ingestion (lxml) | ✅ Complete | 10x faster than V1 |
+| Section Classification | ✅ Complete | |
+| Table Reconstruction | ✅ Complete | header_path/stub_path binding |
+| Image Triage + OCR | ✅ Complete | Chart extraction |
+| Candidate Generation | ✅ Complete | |
+| Value Binding | ✅ Complete | Stable XPath locators |
+| False Positive Filter | ✅ Complete | |
+| Period Inference | ✅ Complete | |
+| Fact Construction | ✅ Complete | EvidencePack with highlighted HTML |
+| Definition Extraction | ✅ Complete | Stage 9.5 |
+| Deduplication | ✅ Complete | |
+| Validation + Persistence | ✅ Complete | |
+| Batch Runner | ✅ Complete | `scripts/batch_v2_extraction.py` |
+
+**Gold Standard (V2):** Precision=78.6%, Recall=79.2%, F1=78.9% (surpasses V1 F1=74.1%)
+
+### Infrastructure
+
 | Component | Status | Test Coverage |
 |-----------|--------|---------------|
 | Universe Builder | ✅ Complete | 93% |
 | Filing Fetcher | ✅ Complete | 94% |
-| HTML Segmenter | ✅ Complete | 80% |
-| Metric Classifier | ✅ Complete | 98% |
-| Value Extractor | ✅ Complete | 66% |
-| Definition Extractor | ✅ Complete | 89% |
-| Quality Scorer | ✅ Complete | 100% |
-| Extraction Pipeline | ✅ Complete | 91% |
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
+| V1 Extraction Pipeline | ✅ Legacy | Maintained for comparison |
 
 **Overall:** 87% overall test coverage (4,765 tests)
 
@@ -87,6 +104,23 @@ pytest tests/unit/ -v
 TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test pytest tests/integration/ -v
 ```
 
+### Running the V2 Pipeline
+
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
+
+config = PipelineConfig(enable_image_extraction=True, min_confidence_auto_accept=0.90)
+pipeline = V2Pipeline(config=config)
+result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
+
+print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+for fact in result.facts:
+    print(f"  {fact.canonical_metric_id}: {fact.value} ({fact.confidence:.1%})")
+```
+
+For bulk extraction across many filings, use `scripts/batch_v2_extraction.py`. See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for full details.
+
 ## Architecture
 
 ```
@@ -94,15 +128,24 @@ src/
 ├── infra/          # Database, SEC API client, validation
 ├── universe/       # Filing discovery and classification
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction pipeline (V1)
-├── extraction_v2/  # V2 extraction pipeline (production-ready)
+├── extraction_v2/  # V2 extraction pipeline (primary)
+├── extraction/     # V1 extraction pipeline (legacy)
 ├── review/         # Human-in-the-loop review system
 ├── web/            # Flask web application
 ├── llm/            # OpenAI GPT-4o-mini integration
 └── gold_standard/  # Gold standard validation
 ```
 
-**V1 Pipeline Flow:**
+**V2 Pipeline** (primary, 13 stages + Phase B enhancements):
+```
+Ingestion → SectionClassification → TableReconstruction → ImageTriage
+    → OCR/Chart → CandidateGeneration → ValueBinding → FalsePositiveFilter
+    → PeriodInference → FactConstruction → DefinitionExtraction
+    → Deduplication → Validation → Persistence
+```
+See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for details.
+
+**V1 Pipeline** (legacy):
 ```
 UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
                                         ↓
@@ -110,14 +153,6 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
                                         ↓
                                   QualityScorer → Database
 ```
-
-**V2 Pipeline** (production-ready, 13 stages):
-```
-Ingestion → SectionClassification → TableReconstruction → ImageTriage
-    → OCR/Chart → CandidateGeneration → ValueBinding → PeriodInference
-    → FactConstruction → FalsePositiveFilter → Deduplication → Validation → Persistence
-```
-See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for details.
 
 ## Documentation
 
@@ -144,8 +179,8 @@ filings_reviewer/
 │   ├── infra/             # Infrastructure (db.py, sec_client.py)
 │   ├── universe/          # Filing discovery
 │   ├── filing_fetcher/    # Document retrieval
-│   ├── extraction/        # Metric extraction (V1)
-│   ├── extraction_v2/     # V2 extraction pipeline
+│   ├── extraction_v2/     # V2 extraction pipeline (primary)
+│   ├── extraction/        # V1 extraction pipeline (legacy)
 │   ├── review/            # Human review system
 │   ├── web/               # Flask application
 │   ├── llm/               # LLM integration
@@ -160,7 +195,7 @@ filings_reviewer/
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (00-10)
+├── sql/                    # Database schema (00-11)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration

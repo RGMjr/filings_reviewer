@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
-from decimal import Decimal
 from collections.abc import Callable
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import BoundValue, SectionType, Unit
 from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
@@ -138,6 +139,23 @@ _PER_SHARE_RE = re.compile(r"\bper\s+share\b", re.IGNORECASE)
 # Used to suppress cm_customers_period_end FPs from Fortune 100 company counts.
 _FORTUNE_SUBSET_RE = re.compile(
     r"\bof\s+(?:the\s+)?(?:Fortune|Forbes)\s+\d+\b",
+    re.IGNORECASE,
+)
+
+# Subscription tier qualifier keywords.
+# Used to suppress cm_customers_period_end FPs from per-tier customer counts
+# (e.g., Snowflake's Free/Standard/Enterprise/Business Critical tier breakdowns).
+_TIER_QUALIFIER_RE = re.compile(
+    r"\b(?:Free|Standard|Enterprise|Premium|Essentials|Business\s+Critical|VPS)\b",
+    re.IGNORECASE,
+)
+
+# Dollar threshold customer qualifier — "Paid Customers >$100,000" or similar.
+# Used to suppress FPs when a cell/proximity value comes from a threshold-qualified
+# large-customer row (e.g., Slack's ">$100K ARR" rows) that should map to
+# cm_large_customers_period_end, not cm_customers_period_end or NRR.
+_DOLLAR_THRESHOLD_CUSTOMER_RE = re.compile(
+    r"(?:Paid\s+)?[Cc]ustomers?\s*[>≥]\s*\$[\d,]+",
     re.IGNORECASE,
 )
 
@@ -369,6 +387,62 @@ def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> st
             # a separate customer count, not a Fortune subset ordinal.
             if bv.value is not None and bv.value <= 2000:
                 return "v2_fortune_subset"
+    return None
+
+
+def _rule_tier_qualifier(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Per-tier customer counts for cm_customers_period_end.
+
+    Suppresses FPs where the tier keyword appears in stub_path (for table
+    cells) or within 150 characters of the numeric value position in prose.
+    Avoids over-triggering on long segments that merely mention "Enterprise"
+    in a different sentence from the value.
+    """
+    if not source_text or metric_id != "cm_customers_period_end":
+        return None
+    tier_match = _TIER_QUALIFIER_RE.search(source_text)
+    if not tier_match:
+        return None
+    # For text-sourced values, require the tier keyword to be within 150
+    # characters of the value position to avoid false suppression on long
+    # segments that mention tier names in passing.
+    loc = bv.source_locator
+    if loc.table_id is None and loc.segment_id is not None:
+        # Text segment: check proximity between tier keyword and value
+        raw = (bv.value_raw or "").strip()
+        if raw:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0 and abs(tier_match.start() - value_pos) > 150:
+                return None
+    return "v2_tier_qualifier"
+
+
+def _rule_dollar_threshold_customer(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Dollar-threshold customer subset counts.
+
+    Suppresses FPs where source context contains a dollar threshold customer
+    qualifier such as "Paid Customers >$100,000" — indicating the value is a
+    large-customer (threshold-qualified) count extracted for the wrong metric.
+
+    This pattern appears in Slack's quarterly key metrics table where ">$100K
+    ARR" customer rows are adjacent to NRR and total customer rows, causing
+    proximity binding to cm_customers_period_end and cm_net_revenue_retention.
+
+    Does NOT fire for cm_large_customers_period_end — threshold-qualified
+    customer counts are the correct values for that metric.
+    """
+    if not source_text or metric_id == "cm_large_customers_period_end":
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    threshold_match = _DOLLAR_THRESHOLD_CUSTOMER_RE.search(source_text)
+    if threshold_match:
+        value_pos = source_text.find(raw)
+        if value_pos >= 0 and abs(threshold_match.start() - value_pos) <= 400:
+            return "v2_dollar_threshold_customer"
     return None
 
 
@@ -648,6 +722,7 @@ def _qa_hedging_percent_near_value(source_text: str, value_raw: str) -> bool:
     return bool(_QA_HEDGING_RE.search(window))
 
 
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -666,6 +741,8 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("geographic_revenue", _rule_geographic_revenue),
     ("developer_count", _rule_developer_count),
     ("fortune_subset", _rule_fortune_subset),
+    ("tier_qualifier", _rule_tier_qualifier),
+    ("dollar_threshold_customer", _rule_dollar_threshold_customer),
     ("content_engagement", _rule_content_engagement),
     ("growth_rate_percent", _rule_growth_rate_percent),
     ("arpu_percent", _rule_arpu_percent),
@@ -709,6 +786,24 @@ def _is_v2_false_positive(
     # These sections contain no meaningful metric disclosures.
     if section_type in (SectionType.OPERATOR, SectionType.DISCLAIMER):
         return True, "v2_suppressed_section"
+
+    # Suppress facts from title slides and appendix slides.
+    # Title slides typically contain dates, company names, and non-metric numbers
+    # (e.g., copyright year, address numbers). Appendix slides contain supplemental
+    # detail that may produce FPs from footnotes and reference numbers.
+    if section_type in (SectionType.TITLE_SLIDE, SectionType.APPENDIX):
+        return True, "v2_presentation_suppressed_section"
+
+    # Suppress bare small integers from presentation slides (likely page numbers).
+    # Slide numbers, footnote references, and other ordinals appear as small
+    # integers (< 1000) in presentation context without scale suffixes.
+    if (
+        section_type in (SectionType.PRESENTATION_SLIDE, SectionType.TITLE_SLIDE, SectionType.APPENDIX)
+        and bv.value is not None
+        and bv.value < 1000
+        and bv.unit in (Unit.COUNT, Unit.OTHER)
+    ):
+        return True, "v2_presentation_page_number"
 
     for tag, rule_fn in _FP_RULES:
         if relaxed and tag in _RELAXED_SKIP_TAGS:
@@ -941,181 +1036,188 @@ class FalsePositiveFilterStage:
         Iterates through context.bound_values, checks each against the V1
         FalsePositiveFilter, and removes those flagged as false positives.
         """
-        start_time = datetime.utcnow()
-        errors: list[str] = []
-        warnings: list[str] = []
+        try:
+            start_time = datetime.now(UTC)
+            errors: list[str] = []
+            warnings: list[str] = []
 
-        initial_count = len(context.bound_values)
-        filter_reasons: dict[str, int] = {}
-        conversion_reasons: dict[str, int] = {}
+            initial_count = len(context.bound_values)
+            filter_reasons: dict[str, int] = {}
+            conversion_reasons: dict[str, int] = {}
 
-        # Read relaxed mode from config (for transcripts/presentations)
-        relaxed = getattr(context.config, "relaxed_fp_filter", False)
+            # Read relaxed mode from config (for transcripts/presentations)
+            relaxed = getattr(context.config, "relaxed_fp_filter", False)
 
-        # Snapshot pre-filter state for FN diagnostics (only when requested)
-        if getattr(context.config, "retain_context", False):
-            context._pre_filter_bound_values = list(context.bound_values)
+            # Snapshot pre-filter state for FN diagnostics (only when requested)
+            if getattr(context.config, "retain_context", False):
+                context._pre_filter_bound_values = list(context.bound_values)
 
-        # Build candidate lookup for context text
-        candidate_map = {c.candidate_id: c for c in context.candidates}
+            # Build candidate lookup for context text
+            candidate_map = {c.candidate_id: c for c in context.candidates}
 
-        # Filter bound values
-        kept: list[BoundValue] = []
-        for bv in context.bound_values:
-            try:
-                # Get source text for context
-                source_text = _get_source_text(bv, candidate_map, context.segments, context.tables)
-
-                if not source_text:
-                    # No context available; keep the value (conservative)
-                    kept.append(bv)
-                    continue
-
-                # --- V2-native checks (run first, cheaper than V1) ---
-                candidate = candidate_map.get(bv.candidate_id)
-                metric_id = candidate.metric_id if candidate else ""
-                v2_fp, v2_reason = _is_v2_false_positive(
-                    bv,
-                    source_text,
-                    metric_id=metric_id,
-                    relaxed=relaxed,
-                    section_type=candidate.section_type if candidate else SectionType.UNKNOWN,
-                )
-                if v2_fp:
-                    filter_reasons[v2_reason or "v2_unknown"] = (
-                        filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
+            # Filter bound values
+            kept: list[BoundValue] = []
+            for bv in context.bound_values:
+                try:
+                    # Get source text for context
+                    source_text = _get_source_text(
+                        bv, candidate_map, context.segments, context.tables
                     )
-                    logger.debug(
-                        "V2 FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
-                        bv.bound_value_id,
-                        v2_reason,
-                        bv.value,
-                        bv.value_raw,
+
+                    if not source_text:
+                        # No context available; keep the value (conservative)
+                        kept.append(bv)
+                        continue
+
+                    # --- V2-native checks (run first, cheaper than V1) ---
+                    candidate = candidate_map.get(bv.candidate_id)
+                    metric_id = candidate.metric_id if candidate else ""
+                    v2_fp, v2_reason = _is_v2_false_positive(
+                        bv,
+                        source_text,
+                        metric_id=metric_id,
+                        relaxed=relaxed,
+                        section_type=candidate.section_type if candidate else SectionType.UNKNOWN,
                     )
-                    continue
-
-                # --- V1 positional filter ---
-                # Build NumberMatches for all occurrences of the raw
-                # value in the source text. The value is FP only if ALL
-                # occurrences are flagged (conservative: if any occurrence
-                # is in a legitimate context, keep the value).
-                # Use relaxed filter for transcripts (skips financial
-                # statement context and TOC proximity checks).
-                v1_filter = self._filter_relaxed if relaxed else self._filter
-                number_matches = _make_number_matches(bv, source_text)
-
-                is_fp = True
-                reason: str | None = None
-                for nm in number_matches:
-                    fp, r = v1_filter.is_false_positive(source_text, nm)
-                    if not fp:
-                        is_fp = False
-                        reason = None
-                        break
-                    reason = r
-
-                if is_fp:
-                    filter_reasons[reason or "unknown"] = (
-                        filter_reasons.get(reason or "unknown", 0) + 1
-                    )
-                    logger.debug(
-                        "FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
-                        bv.bound_value_id,
-                        reason,
-                        bv.value,
-                        bv.value_raw,
-                    )
-                    continue
-
-                # --- Clause gate for percent on MAU/DAU (relaxed mode) ---
-                # In transcript text like "TPV grew 50% and MAAs grew 30%",
-                # both percents are in the proximity window but only "30%"
-                # belongs to MAU.  Split on conjunctions and verify the
-                # percent is in the same clause as the keyword.
-                if relaxed and bv.unit == Unit.PERCENT:
-                    cand_gate = candidate_map.get(bv.candidate_id)
-                    if (
-                        cand_gate
-                        and cand_gate.metric_id in _PERCENT_CLAUSE_GATE_METRICS
-                    ):
-                        if not _is_percent_in_keyword_clause(
-                            source_text,
-                            cand_gate.source_locator.text_span,
-                            bv.value_raw or "",
-                        ):
-                            reason_str = "v2_percent_wrong_clause"
-                            filter_reasons[reason_str] = (
-                                filter_reasons.get(reason_str, 0) + 1
-                            )
-                            logger.debug(
-                                "FP filter rejected percent in wrong clause "
-                                "for %s: %s raw=%r",
-                                cand_gate.metric_id,
-                                bv.value,
-                                bv.value_raw,
-                            )
-                            continue
-
-                # --- Currency on count-only metrics: reject as FP ---
-                # Metrics like MAU/DAU/active_customers are always counts.
-                # An explicit $/EUR/GBP prefix strongly signals a dollar
-                # amount, not a user count.  Reject rather than convert.
-                # Runs after V1 to let label-embedded filters (">$100,000")
-                # remove true FPs first.
-                if bv.unit == Unit.CURRENCY:
-                    if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
-                        reason_str = "v2_currency_on_count_metric"
-                        filter_reasons[reason_str] = (
-                            filter_reasons.get(reason_str, 0) + 1
+                    if v2_fp:
+                        filter_reasons[v2_reason or "v2_unknown"] = (
+                            filter_reasons.get(v2_reason or "v2_unknown", 0) + 1
                         )
                         logger.debug(
-                            "FP filter rejected currency on count metric %s: %s raw=%r",
-                            candidate.metric_id,
+                            "V2 FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
+                            bv.bound_value_id,
+                            v2_reason,
                             bv.value,
                             bv.value_raw,
                         )
                         continue
 
-                kept.append(bv)
+                    # --- V1 positional filter ---
+                    # Build NumberMatches for all occurrences of the raw
+                    # value in the source text. The value is FP only if ALL
+                    # occurrences are flagged (conservative: if any occurrence
+                    # is in a legitimate context, keep the value).
+                    # Use relaxed filter for transcripts (skips financial
+                    # statement context and TOC proximity checks).
+                    v1_filter = self._filter_relaxed if relaxed else self._filter
+                    number_matches = _make_number_matches(bv, source_text)
 
-            except Exception as e:
-                error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-                # On error, keep the value (fail open for individual items)
-                kept.append(bv)
+                    is_fp = True
+                    reason: str | None = None
+                    for nm in number_matches:
+                        fp, r = v1_filter.is_false_positive(source_text, nm)
+                        if not fp:
+                            is_fp = False
+                            reason = None
+                            break
+                        reason = r
 
-        # --- Cross-metric dedup: same value + same segment → keep best ---
-        # When the same raw value from the same segment is bound to multiple
-        # metric IDs, only the highest-confidence binding is meaningful.
-        # E.g., "20 million" → customers_period_end (0.46) AND
-        #        large_customers_period_end (0.46) from the same segment.
-        kept = self._cross_metric_dedup(kept, candidate_map, filter_reasons)
+                    if is_fp:
+                        filter_reasons[reason or "unknown"] = (
+                            filter_reasons.get(reason or "unknown", 0) + 1
+                        )
+                        logger.debug(
+                            "FP filter removed BoundValue %s: reason=%s value=%s raw=%r",
+                            bv.bound_value_id,
+                            reason,
+                            bv.value,
+                            bv.value_raw,
+                        )
+                        continue
 
-        removed_count = initial_count - len(kept)
-        context.bound_values = kept
+                    # --- Clause gate for percent on MAU/DAU (relaxed mode) ---
+                    # In transcript text like "TPV grew 50% and MAAs grew 30%",
+                    # both percents are in the proximity window but only "30%"
+                    # belongs to MAU.  Split on conjunctions and verify the
+                    # percent is in the same clause as the keyword.
+                    if relaxed and bv.unit == Unit.PERCENT:
+                        cand_gate = candidate_map.get(bv.candidate_id)
+                        if (
+                            cand_gate
+                            and cand_gate.metric_id in _PERCENT_CLAUSE_GATE_METRICS
+                        ):
+                            if not _is_percent_in_keyword_clause(
+                                source_text,
+                                cand_gate.source_locator.text_span,
+                                bv.value_raw or "",
+                            ):
+                                reason_str = "v2_percent_wrong_clause"
+                                filter_reasons[reason_str] = (
+                                    filter_reasons.get(reason_str, 0) + 1
+                                )
+                                logger.debug(
+                                    "FP filter rejected percent in wrong clause "
+                                    "for %s: %s raw=%r",
+                                    cand_gate.metric_id,
+                                    bv.value,
+                                    bv.value_raw,
+                                )
+                                continue
 
-        # Log summary
-        logger.info(
-            "False positive filter: %d/%d removed, %d converted (%d kept). "
-            "Reasons: %s. Conversions: %s",
-            removed_count,
-            initial_count,
-            sum(conversion_reasons.values()),
-            len(kept),
-            dict(filter_reasons),
-            dict(conversion_reasons),
-        )
+                    # --- Currency on count-only metrics: reject as FP ---
+                    # Metrics like MAU/DAU/active_customers are always counts.
+                    # An explicit $/EUR/GBP prefix strongly signals a dollar
+                    # amount, not a user count.  Reject rather than convert.
+                    # Runs after V1 to let label-embedded filters (">$100,000")
+                    # remove true FPs first.
+                    if bv.unit == Unit.CURRENCY:
+                        if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
+                            reason_str = "v2_currency_on_count_metric"
+                            filter_reasons[reason_str] = (
+                                filter_reasons.get(reason_str, 0) + 1
+                            )
+                            logger.debug(
+                                "FP filter rejected currency on count metric %s: %s raw=%r",
+                                candidate.metric_id,
+                                bv.value,
+                                bv.value_raw,
+                            )
+                            continue
 
-        return self._make_result(
-            start_time,
-            initial_count,
-            len(kept),
-            errors,
-            warnings,
-            filter_reasons,
-            conversion_reasons,
-        )
+                    kept.append(bv)
+
+                except Exception as e:
+                    error_msg = f"Error filtering BoundValue {bv.bound_value_id}: {e}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    # On error, keep the value (fail open for individual items)
+                    kept.append(bv)
+
+            # --- Cross-metric dedup: same value + same segment → keep best ---
+            # When the same raw value from the same segment is bound to multiple
+            # metric IDs, only the highest-confidence binding is meaningful.
+            # E.g., "20 million" → customers_period_end (0.46) AND
+            #        large_customers_period_end (0.46) from the same segment.
+            kept = self._cross_metric_dedup(kept, candidate_map, filter_reasons)
+
+            removed_count = initial_count - len(kept)
+            context.bound_values = kept
+
+            # Log summary
+            logger.info(
+                "False positive filter: %d/%d removed, %d converted (%d kept). "
+                "Reasons: %s. Conversions: %s",
+                removed_count,
+                initial_count,
+                sum(conversion_reasons.values()),
+                len(kept),
+                dict(filter_reasons),
+                dict(conversion_reasons),
+            )
+
+            return self._make_result(
+                start_time,
+                initial_count,
+                len(kept),
+                errors,
+                warnings,
+                filter_reasons,
+                conversion_reasons,
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="false_positive_filter") from e
 
     @staticmethod
     def _cross_metric_dedup(
@@ -1195,7 +1297,7 @@ class FalsePositiveFilterStage:
         conversion_reasons: dict[str, int] | None = None,
     ) -> StageResult:
         """Create a StageResult with timing and filter statistics."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
         from src.extraction_v2.pipeline import PipelineStage, StageResult

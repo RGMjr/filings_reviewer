@@ -796,10 +796,15 @@ class TestV2PipelineSecClient:
         pipeline = V2Pipeline(sec_client=mock_client)
         assert pipeline._sec_client is mock_client
 
-    def test_pipeline_passes_sec_client_to_ocr_stage(self) -> None:
+    def test_pipeline_passes_sec_client_to_ocr_stage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """V2Pipeline passes sec_client through to OCRExtractionStage."""
+        import pytest
         from src.extraction_v2.pipeline import V2Pipeline
 
+        # Provide a fake API key so image/chart extraction is not disabled
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         mock_client = MagicMock()
         pipeline = V2Pipeline(sec_client=mock_client)
 

@@ -190,8 +190,8 @@
         </div>
 
         {# Evidence Pack #}
-        {% set evidence = current_fact.evidence_pack %}
-        {% if evidence %}
+        {% set evidence = current_fact.evidence_pack if current_fact.evidence_pack is mapping else {} %}
+        {% if evidence and (evidence.snippet_html or evidence.header_path or evidence.stub_path or evidence.context_before or evidence.context_after or evidence.highlighted_html) %}
         <div class="mb-3">
           <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">Evidence</label>
 
@@ -200,7 +200,7 @@
           <div class="breadcrumb-path mb-1">
             <span class="text-muted">Headers:</span>
             {% for h in evidence.header_path %}
-            <span class="badge bg-light text-dark border">{{ h }}</span>
+            <span class="badge bg-light text-dark border">{{ h | default('') }}</span>
             {% if not loop.last %}&rsaquo;{% endif %}
             {% endfor %}
           </div>
@@ -209,7 +209,7 @@
           <div class="breadcrumb-path mb-2">
             <span class="text-muted">Row:</span>
             {% for s in evidence.stub_path %}
-            <span class="badge bg-light text-dark border">{{ s }}</span>
+            <span class="badge bg-light text-dark border">{{ s | default('') }}</span>
             {% if not loop.last %}&rsaquo;{% endif %}
             {% endfor %}
           </div>
@@ -217,19 +217,23 @@
 
           {# Context Before #}
           {% if evidence.context_before %}
-          <div class="context-text mb-1">...{{ evidence.context_before }}</div>
+          <div class="context-text mb-1">...{{ evidence.context_before | default('') }}</div>
           {% endif %}
 
-          {# Snippet HTML #}
-          {% if evidence.snippet_html %}
+          {# Highlighted HTML (preferred) or plain snippet #}
+          {% if evidence.highlighted_html %}
           <div class="evidence-snippet">
-            {{ evidence.snippet_html|safe }}
+            {{ evidence.highlighted_html | safe }}
+          </div>
+          {% elif evidence.snippet_html %}
+          <div class="evidence-snippet">
+            {{ evidence.snippet_html | safe }}
           </div>
           {% endif %}
 
           {# Context After #}
           {% if evidence.context_after %}
-          <div class="context-text mt-1">{{ evidence.context_after }}...</div>
+          <div class="context-text mt-1">{{ evidence.context_after | default('') }}...</div>
           {% endif %}
         </div>
         {% endif %}

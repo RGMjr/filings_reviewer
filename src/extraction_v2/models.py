@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 
@@ -199,21 +199,21 @@ class SourceLocator:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON storage."""
         result: dict[str, Any] = {}
-        if self.segment_id:
+        if self.segment_id is not None:
             result["segment_id"] = self.segment_id
-        if self.table_id:
+        if self.table_id is not None:
             result["table_id"] = self.table_id
         if self.cell_row is not None:
             result["cell_row"] = self.cell_row
         if self.cell_col is not None:
             result["cell_col"] = self.cell_col
-        if self.text_span:
+        if self.text_span is not None:
             result["text_span"] = list(self.text_span)
-        if self.img_id:
+        if self.img_id is not None:
             result["img_id"] = self.img_id
-        if self.bbox:
+        if self.bbox is not None:
             result["bbox"] = self.bbox.to_dict()
-        if self.dom_locator:
+        if self.dom_locator is not None:
             result["dom_locator"] = self.dom_locator
         return result
 
@@ -336,7 +336,7 @@ class MetricFact:
     alternate_evidence: list[str] = field(default_factory=list)  # Other fact_ids
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     pipeline_version: str = "2.0.0"
 
     def identity_tuple(
@@ -407,6 +407,39 @@ class MetricFact:
 
         # Standard relative tolerance comparison
         return abs(self.value - other.value) / abs(other.value) <= value_tolerance
+
+
+@dataclass
+class MetricDefinition:
+    """
+    Definition and methodology text for a metric extracted from a filing.
+
+    Created by Stage 9.5 (Definition Extraction) when DEFINITION/METHODOLOGY
+    segments are found near metric candidates.
+    """
+
+    # Identity
+    definition_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    doc_id: str = ""
+    canonical_metric_id: str = ""
+
+    # Definition text (what the metric means)
+    definition_text: str = ""
+    definition_text_normalized: str = ""
+
+    # Methodology text (how it's calculated)
+    methodology_text: str = ""
+    methodology_text_normalized: str = ""
+
+    # Source segments (UUID references)
+    definition_segment_id: str | None = None
+    methodology_segment_id: str | None = None
+
+    # Alignment with CMASB canonical definitions
+    alignment_flag: str = "unknown"  # aligned/partial/not_aligned/unknown
+
+    # Metadata
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ============================================================================
@@ -724,7 +757,7 @@ class Document:
 
     # Processing metadata
     parse_version: str = "2.0.0"
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Computed statistics (populated after processing)
     segment_count: int = 0
@@ -768,7 +801,7 @@ class MetricCandidate:
     section_type: SectionType = SectionType.UNKNOWN
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ============================================================================
@@ -798,7 +831,9 @@ class BoundValue:
     unit: Unit = Unit.OTHER
 
     # Binding metadata
-    binding_type: str = ""  # "table_header", "table_stub", "text_proximity", "chart_label"
+    binding_type: str = (
+        ""  # "table_header", "table_stub", "text_proximity", "chart_label", "respectively_pattern"
+    )
     binding_confidence: float = 0.5
 
     # Source location (may differ from candidate location)
@@ -811,6 +846,7 @@ class BoundValue:
     period_confidence: float = 0.0  # Confidence in the period inference
     period_source: str = ""  # "header_path", "text_context", "filing_fallback"
     period_ambiguous: bool = False  # True if multiple conflicting periods detected
+    period_hint: str = ""  # Pre-parsed period from respectively pattern (e.g., "2017")
 
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

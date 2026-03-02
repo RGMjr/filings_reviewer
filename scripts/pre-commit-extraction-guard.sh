@@ -15,7 +15,7 @@ staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 
 # ─── Guard 1: Docs structure ───────────────────────────────────────────────────
 # Allowed top-level dirs under docs/ (plus root-level files)
-DOCS_ALLOWED_DIRS="analysis|architecture|archive|development|operations|requirements|worker-prompts"
+DOCS_ALLOWED_DIRS="analysis|architecture|archive|development|operations|requirements|worker-prompts|antigravity_version|codex_version|claude_version"
 # Allowed subdirs under docs/archive/
 ARCHIVE_ALLOWED_DIRS="extraction-validation|worker-prompts"
 

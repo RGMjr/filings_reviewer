@@ -576,6 +576,57 @@ class TestFactPersistence:
                 assert ep["stub_path"] == ["Product A", "Enterprise"]
                 assert "growing by 20%" in ep["context_after"]
 
+    def test_review_status_preserved_on_re_extraction(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Re-extraction intentionally resets reviewer decisions — delete-then-insert pattern
+        fact = MetricFact(
+            fact_id=str(uuid.uuid4()),
+            canonical_metric_id="cm_new_customers_acquired",
+            value=500.0,
+            value_raw="500",
+            unit=Unit.COUNT,
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(dom_locator="/p[2]"),
+            evidence_pack=EvidencePack(snippet_html="<p>500</p>"),
+            confidence=0.85,
+            review_status=ReviewStatus.PENDING,
+        )
+
+        # Initial insert with PENDING
+        persistence_adapter.persist_facts([fact], test_filing_id)
+
+        # Simulate a reviewer accepting the fact directly in DB
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE v2_metric_facts SET review_status = 'accepted' WHERE fact_id = %s",
+                    (fact.fact_id,),
+                )
+
+        # Re-extraction: delete-then-insert means reviewer status is wiped
+        original_fact_id = fact.fact_id
+        fact.confidence = 0.92
+        fact.review_status = ReviewStatus.PENDING  # extraction always sets pending
+        persistence_adapter.persist_facts([fact], test_filing_id)
+
+        # After re-extraction the old row is gone (DELETE) and a fresh row exists with PENDING
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT review_status, confidence FROM v2_metric_facts WHERE fact_id = %s",
+                    (original_fact_id,),
+                )
+                result = cur.fetchone()
+                # Delete-then-insert resets reviewer decisions; status is back to PENDING
+                assert result["review_status"] == "pending", (
+                    "Re-extraction should reset review_status to pending (delete-then-insert)"
+                )
+                assert float(result["confidence"]) == 0.92
+
 
 class TestImagePersistence:
     """Tests for image asset persistence."""

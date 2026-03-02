@@ -1,9 +1,9 @@
 # V2 Extraction Pipeline Implementation Roadmap
 
-**Version**: 1.5
+**Version**: 1.7
 **Created**: 2026-01-23
-**Updated**: 2026-02-18
-**Status**: Complete (All 13 Phases)
+**Updated**: 2026-02-26
+**Status**: Complete (All 13 Phases + Phase B enhancements)
 
 ## Executive Summary
 
@@ -545,10 +545,48 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-18)
-- **V2 overall:** P=81.9%, R=60.6%, F1=69.6%
+### Gold Standard Performance (as of 2026-02-28)
+- **V2 overall:** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements)
 - **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
-- V2 precision improved from 58% → 70% → 73% → 81.9% through iterative FP reduction
+- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% through iterative FP rule tightening
+- V2 recall: 77.6% (Farfetch chart FNs accepted gap — require Vision API)
+- V2 F1 (84.5%) substantially exceeds V1 baseline (74.1%); all per-company gates passed
+
+## Phase B: Post-Pipeline Enhancements ✅ COMPLETE (2026-02-24)
+
+Three features added to the V2 pipeline after the original 13 phases were shipped:
+
+### Stage 9.5 — Definition Extraction
+
+**File:** `src/extraction_v2/stages/definition_extraction.py`
+
+Finds DEFINITION and METHODOLOGY segments near each metric candidate using a ±5 sequence window. Normalizes text and assesses alignment with CMASB canonical definitions, producing one of four alignment labels: `aligned`, `partial`, `not_aligned`, or `unknown`. Results are attached to `PipelineResult.definitions` as `MetricDefinition` objects.
+
+**Database:** Requires SQL migration 11 (`sql/11_v2_definitions.sql`), which adds the `v2_metric_definitions` table (UUID primary key, unique on `doc_id + canonical_metric_id`).
+
+### Quality Scoring Adapter
+
+**File:** `src/extraction_v2/quality_scoring.py`
+
+`V2QualityScorer` ports all five V1 quality rubrics (overall, definition, methodology, completeness, comparability) for V2 facts. Writes results to V1's `filing_metric_incidence` table, maintaining analytics compatibility with downstream queries. Called automatically from `scripts/run_v2_extraction.py`; use `--skip-quality` to disable.
+
+### Batch Extraction Script
+
+**File:** `scripts/batch_v2_extraction.py`
+
+Parallel V2 extraction via `ProcessPoolExecutor`:
+- `--workers N` (default 4) — number of parallel worker processes
+- `--batch-size N` — checkpoint interval; progress saved to `logs/batch_v2_progress.json`
+- `--limit N` — cap total filings processed
+- `--resume-from ID` — skip filings before this ID (for restarts)
+- `--dry-run` — plan without writing
+- `--skip-quality` — skip quality scoring step
+- `--no-images` — disable OCR/chart extraction
+- `--filing-id ID` — run on a single filing
+
+SIGINT triggers graceful shutdown: completes the current batch before exiting.
+
+---
 
 ## Next Steps: Beyond SEC Filings
 
@@ -562,11 +600,19 @@ A research spike (`earnings-call-exploration` branch, Feb 2026) confirmed the V2
 |-------|------|--------|--------|
 | Spike | Research: transcripts POC + design docs | Complete (8a033b2) | R=22.1%, P=63.0% measured |
 | A | Transcript Support (P0) | **Complete (12/12 ACs)** | R=65.9%, P=38.4%, F1=48.5% (94 annotations, 16 files) |
-| A+ | Precision hardening + recall gaps | **In progress** | Target: R≥65%, P≥70%, F1≥67% |
+| A+ | Precision hardening + recall gaps | **Complete** | R=71.8%, P=70.1%, F1=70.9% (all targets met) |
 | B | Expanded Coverage (P1) | Not started | Section classification, FMP API, web UI |
 | C | Presentation Support (P2) | Not started | >= 40% recall on presentations |
 
 Phase A acceptance criteria and A+ progress are tracked in `ops/DEVELOPMENT_PLAN.md`. Phase A+ iteration context in `ops/ITERATION_CONTEXT.md`.
+
+Completed hardening work (2026-02-26 to 2026-02-28):
+- Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions; pipeline dispatcher re-raises transient errors for caller retry; fatal errors in critical stages abort the pipeline
+- Critical stage set expanded to include `CANDIDATE_GENERATION` and `VALUE_BINDING`
+- Bug fixes: Slack colspan and date-header parsing; `period_start_date` extraction
+- FP rules: `_rule_tier_qualifier` (Snowflake tier FPs 22→3); `_rule_dollar_threshold_customer` (Slack ">$100K" FPs eliminated)
+- WP-21: V2 review UI at full feature parity (`review_v2.py`, `api_v2.py`, `v2_stats.html`)
+- Migration 12: `sql/12_drop_v1_fk_constraints.sql` drops FK deps on `source_segments` before cutover
 
 ---
 
@@ -574,10 +620,13 @@ Phase A acceptance criteria and A+ progress are tracked in `ops/DEVELOPMENT_PLAN
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-01 | 1.9 | WP-23 complete: batch extraction ran on 2 DB filings (Slack 43 facts, Samsara 2 facts); fixed 3 persistence bugs (doc_id UUID, ON CONFLICT expression, v2_metric_definitions missing table); applied migration 11 |
+| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created, WP-23 pending |
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |
 | 2026-02-17 | 1.4 | Added post-completion enhancements: FP filter stage, unit compatibility, fact identity dedup SQL, gold standard performance |
 | 2026-02-18 | 1.5 | Updated gold standard scores: P=81.9%, R=60.6%, F1=69.6% |
 | 2026-02-23 | 1.6 | Add Beyond SEC phases (Spike complete, Phase A in progress, Phase B-C roadmap). |
-| 2026-02-26 | 1.7 | Phase A complete (12/12 ACs, R=65.9% on 94-annotation gold standard). Add Phase A+ row. |
+| 2026-02-24 | 1.6 | Refreshed gold standard scores post-WP-09: P=78.6%, R=79.2%, F1=78.9%; added Phase B section (definition extraction, quality scoring adapter, batch script) |
+| 2026-02-26 | 1.7 | Phase A complete (12/12 ACs, R=65.9% on 94-annotation gold standard). Add Phase A+ row. Pipeline promoted to 2.0.0-rc1; exception architecture (V2FatalError/V2TransientError) added across all stages; CANDIDATE_GENERATION and VALUE_BINDING added to critical-stage set; Slack colspan/period-start-date bug fixes; new FP rules tier_qualifier and dollar_threshold_customer. |

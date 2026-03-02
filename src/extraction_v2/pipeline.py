@@ -25,22 +25,30 @@ Design principles:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import os
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.extraction_v2.exceptions import V2FatalError, V2TransientError
 from src.extraction_v2.models import (
+    BoundValue,
     Document,
     ImageAsset,
+    MetricCandidate,
+    MetricDefinition,
     MetricFact,
     Segment,
     Table,
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
+from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
@@ -73,6 +81,7 @@ class PipelineStage(str, Enum):
     FALSE_POSITIVE_FILTER = "false_positive_filter"
     PERIOD_INFERENCE = "period_inference"
     FACT_CONSTRUCTION = "fact_construction"
+    DEFINITION_EXTRACTION = "definition_extraction"
     DEDUPLICATION = "deduplication"
     VALIDATION = "validation"
 
@@ -139,11 +148,14 @@ class PipelineConfig:
 
     @classmethod
     def for_presentation(cls, **overrides) -> PipelineConfig:
-        """Create a config tuned for investor presentations."""
+        """Create a config tuned for investor presentation PDFs."""
         defaults = {
             "document_type": DOC_TYPE_PRESENTATION,
-            "text_proximity_chars": 200,
             "relaxed_fp_filter": True,
+            "min_paragraph_chars": 20,
+            "enable_image_extraction": True,
+            "enable_chart_extraction": True,
+            "text_proximity_chars": 150,
         }
         defaults.update(overrides)
         return cls(**defaults)
@@ -172,10 +184,10 @@ class PipelineResult:
     tables: list[Table]
     images: list[ImageAsset]
     segments: list[Segment]
-
     stage_results: list[StageResult]
     total_duration_ms: int
     success: bool
+    definitions: list[MetricDefinition] = field(default_factory=list)
     error_message: str | None = None
     context: Any | None = None  # PipelineContext — only set when retain_context=True
 
@@ -257,13 +269,14 @@ class PipelineContext:
     images: list[ImageAsset] = field(default_factory=list)
 
     # Extraction results
-    candidates: list[Any] = field(default_factory=list)  # MetricCandidate
-    bound_values: list[Any] = field(default_factory=list)  # BoundValue
+    candidates: list[MetricCandidate] = field(default_factory=list)
+    bound_values: list[BoundValue] = field(default_factory=list)
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
+    definitions: list[MetricDefinition] = field(default_factory=list)
 
     # Diagnostics (only populated when config.retain_context=True)
-    _pre_filter_bound_values: list[Any] = field(default_factory=list)  # Before FP filter
+    _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
 
     # SEC filing info (for image downloading)
     cik: str = ""
@@ -271,12 +284,24 @@ class PipelineContext:
 
     # Tracking
     stage_results: list[StageResult] = field(default_factory=list)
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Counters
     llm_calls: int = 0
     ocr_calls: int = 0
     vision_calls: int = 0
+
+    @cached_property
+    def segment_by_id(self) -> dict[str, Segment]:
+        return {s.segment_id: s for s in self.segments}
+
+    @cached_property
+    def table_by_id(self) -> dict[str, Table]:
+        return {t.table_id: t for t in self.tables}
+
+    @cached_property
+    def image_by_id(self) -> dict[str, ImageAsset]:
+        return {img.img_id: img for img in self.images}
 
 
 class V2Pipeline:
@@ -297,13 +322,24 @@ class V2Pipeline:
             config: Pipeline configuration
             sec_client: Optional SECClient instance for image downloading
         """
-        self.config = config or PipelineConfig()
+        self.config = dataclasses.replace(config) if config is not None else PipelineConfig()
         self._sec_client = sec_client
         self._stages: list[tuple[PipelineStage, StageProcessor]] = []
         self._setup_stages()
 
+    def _check_vision_api_availability(self) -> None:
+        """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""
+        if self.config.enable_chart_extraction and not os.environ.get("OPENAI_API_KEY", "").strip():
+            logger.warning(
+                "OPENAI_API_KEY is not set. Disabling image and chart extraction "
+                "(Stages 4 and 5). Text extraction will proceed normally."
+            )
+            self.config.enable_image_extraction = False
+            self.config.enable_chart_extraction = False
+
     def _setup_stages(self) -> None:
         """Initialize pipeline stages."""
+        self._check_vision_api_availability()
         # Stage 1: Ingestion & Parsing
         self._stages.append((PipelineStage.INGESTION, IngestionStage(
             min_paragraph_chars=self.config.min_paragraph_chars,
@@ -346,6 +382,9 @@ class V2Pipeline:
         # Stage 9: MetricFact Construction
         self._stages.append((PipelineStage.FACT_CONSTRUCTION, FactConstructionStage()))
 
+        # Stage 9.5: Definition Extraction
+        self._stages.append((PipelineStage.DEFINITION_EXTRACTION, DefinitionExtractionStage()))
+
         # Stage 10: Deduplication
         self._stages.append((PipelineStage.DEDUPLICATION, DeduplicationStage()))
 
@@ -376,7 +415,7 @@ class V2Pipeline:
             PipelineResult with extracted facts and metadata
         """
         html_path = Path(html_path)
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         # Initialize context
         context = PipelineContext(
@@ -404,6 +443,8 @@ class V2Pipeline:
                     if stage_id in {
                         PipelineStage.INGESTION,
                         PipelineStage.TABLE_RECONSTRUCTION,
+                        PipelineStage.CANDIDATE_GENERATION,
+                        PipelineStage.VALUE_BINDING,
                     }:
                         return self._build_failure_result(
                             context,
@@ -411,8 +452,34 @@ class V2Pipeline:
                             f"Critical stage failed: {stage_id.value}",
                         )
 
+            except V2TransientError:
+                # Propagate transient errors (network/API timeouts) for caller retry
+                raise
+            except V2FatalError as e:
+                logger.error(f"Fatal error in stage {stage_id.value}: {e}")
+                context.stage_results.append(
+                    StageResult(
+                        stage=stage_id,
+                        success=False,
+                        duration_ms=0,
+                        items_processed=0,
+                        items_output=0,
+                        errors=[str(e)],
+                    )
+                )
+                if stage_id in {
+                    PipelineStage.INGESTION,
+                    PipelineStage.TABLE_RECONSTRUCTION,
+                    PipelineStage.CANDIDATE_GENERATION,
+                    PipelineStage.VALUE_BINDING,
+                }:
+                    return self._build_failure_result(
+                        context,
+                        start_time,
+                        f"Critical stage fatal error: {stage_id.value}: {e}",
+                    )
             except Exception as e:
-                logger.exception(f"Exception in stage {stage_id.value}: {e}")
+                logger.exception(f"Unhandled exception in stage {stage_id.value}: {e}")
                 context.stage_results.append(
                     StageResult(
                         stage=stage_id,
@@ -425,11 +492,13 @@ class V2Pipeline:
                 )
 
         # Build result
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
         # Use deduplicated facts if available (Stage 10 output), else raw facts
-        output_facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
+        output_facts = (
+            context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
+        )
 
         logger.info(
             f"V2 pipeline complete for filing {filing_id}: "
@@ -446,6 +515,7 @@ class V2Pipeline:
             stage_results=context.stage_results,
             total_duration_ms=total_ms,
             success=True,
+            definitions=context.definitions,
             context=context if self.config.retain_context else None,
         )
 
@@ -456,7 +526,7 @@ class V2Pipeline:
         error_message: str,
     ) -> PipelineResult:
         """Build a failure result."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         total_ms = int((end_time - start_time).total_seconds() * 1000)
 
         return PipelineResult(
@@ -468,6 +538,7 @@ class V2Pipeline:
             stage_results=context.stage_results,
             total_duration_ms=total_ms,
             success=False,
+            definitions=[],
             error_message=error_message,
         )
 

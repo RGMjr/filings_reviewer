@@ -15,9 +15,10 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import MetricFact, SourceType
 
 if TYPE_CHECKING:
@@ -65,60 +66,65 @@ class DeduplicationStage:
         """
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.utcnow()
-        initial_count = len(context.facts)
+        try:
+            start_time = datetime.now(UTC)
+            initial_count = len(context.facts)
 
-        # Use tolerance from config if available
-        tolerance = getattr(context.config, "value_tolerance", self.value_tolerance)
+            # Use tolerance from config if available
+            tolerance = getattr(context.config, "value_tolerance", self.value_tolerance)
 
-        # Group duplicates
-        groups = self._group_duplicates(context.facts, tolerance)
+            # Group duplicates
+            groups = self._group_duplicates(context.facts, tolerance)
 
-        # Select primaries and link alternates
-        primaries: list[MetricFact] = []
-        groups_with_alternates = 0
+            # Select primaries and link alternates
+            primaries: list[MetricFact] = []
+            groups_with_alternates = 0
 
-        for group in groups:
-            primary = self._select_primary(group)
+            for group in groups:
+                primary = self._select_primary(group)
 
-            if len(group) > 1:
-                # Link alternates to primary
-                primary.alternate_evidence = [
-                    f.fact_id for f in group if f.fact_id != primary.fact_id
-                ]
-                groups_with_alternates += 1
-                logger.debug(
-                    f"Merged {len(group)} duplicates for {primary.canonical_metric_id}, "
-                    f"primary source: {primary.source_type.value}"
-                )
+                if len(group) > 1:
+                    # Link alternates to primary
+                    primary.alternate_evidence = [
+                        f.fact_id for f in group if f.fact_id != primary.fact_id
+                    ]
+                    groups_with_alternates += 1
+                    logger.debug(
+                        f"Merged {len(group)} duplicates for {primary.canonical_metric_id}, "
+                        f"primary source: {primary.source_type.value}"
+                    )
 
-            primaries.append(primary)
+                primaries.append(primary)
 
-        # Second pass: collapse same-value facts with different periods
-        after_identity = len(primaries)
-        primaries = self._fuzzy_period_dedup(primaries, tolerance)
-        fuzzy_removed = after_identity - len(primaries)
+            # Second pass: collapse same-value facts with different periods
+            after_identity = len(primaries)
+            primaries = self._fuzzy_period_dedup(primaries, tolerance)
+            fuzzy_removed = after_identity - len(primaries)
 
-        # Store deduplicated facts
-        context.deduplicated_facts = primaries
+            # Store deduplicated facts
+            context.deduplicated_facts = primaries
 
-        # Build result
-        duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
-        duplicates_removed = initial_count - len(primaries)
+            # Build result
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+            duplicates_removed = initial_count - len(primaries)
 
-        return StageResult(
-            stage=PipelineStage.DEDUPLICATION,
-            success=True,
-            duration_ms=duration_ms,
-            items_processed=initial_count,
-            items_output=len(primaries),
-            metadata={
-                "duplicates_removed": duplicates_removed,
-                "groups_with_alternates": groups_with_alternates,
-                "total_groups": len(groups),
-                "fuzzy_period_removed": fuzzy_removed,
-            },
-        )
+            return StageResult(
+                stage=PipelineStage.DEDUPLICATION,
+                success=True,
+                duration_ms=duration_ms,
+                items_processed=initial_count,
+                items_output=len(primaries),
+                metadata={
+                    "duplicates_removed": duplicates_removed,
+                    "groups_with_alternates": groups_with_alternates,
+                    "total_groups": len(groups),
+                    "fuzzy_period_removed": fuzzy_removed,
+                },
+            )
+        except V2FatalError:
+            raise
+        except Exception as e:
+            raise V2FatalError(str(e), stage_name="deduplication") from e
 
     def _group_duplicates(
         self, facts: list[MetricFact], tolerance: float
@@ -281,8 +287,23 @@ class DeduplicationStage:
                     result.append(group[0])
                 else:
                     primary = self._select_primary(group)
+                    # Transfer period from a period-having fact when primary lacks period.
+                    # This preserves period data when a higher-quality source (e.g. HTML_TABLE)
+                    # is merged with a lower-quality source that has period context (e.g. TEXT).
+                    if not (primary.period_start and primary.period_end):
+                        period_donors = [
+                            f for f in group
+                            if f.period_start and f.period_end and f.fact_id != primary.fact_id
+                        ]
+                        if period_donors:
+                            donor = period_donors[0]
+                            primary.period_start = donor.period_start
+                            primary.period_end = donor.period_end
+                            primary.period_type = donor.period_type
+                    new_ids = [f.fact_id for f in group if f.fact_id != primary.fact_id]
+                    existing = set(primary.alternate_evidence)
                     primary.alternate_evidence.extend(
-                        f.fact_id for f in group if f.fact_id != primary.fact_id
+                        fid for fid in dict.fromkeys(new_ids) if fid not in existing
                     )
                     result.append(primary)
                     removed += len(group) - 1

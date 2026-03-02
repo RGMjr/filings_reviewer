@@ -118,5 +118,65 @@
     </div>
   </div>
 </div>
+
+{# Pagination Controls #}
+{% if total_pages > 1 %}
+<div class="row mt-4">
+  <div class="col-12">
+    <nav aria-label="Filings pagination">
+      <ul class="pagination justify-content-center">
+        {# Previous button #}
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          {% if page > 1 %}
+          <a class="page-link"
+             href="{{ url_for('review_v2.filing_list', page=page - 1, per_page=per_page) }}">
+            &laquo; Previous
+          </a>
+          {% else %}
+          <span class="page-link">&laquo; Previous</span>
+          {% endif %}
+        </li>
+
+        {# Page numbers (show current page +/- 2, always show first and last) #}
+        {% for page_num in range(1, total_pages + 1) %}
+          {% if page_num == 1 or page_num == total_pages or (page_num >= page - 2 and page_num <= page + 2) %}
+          <li class="page-item {% if page_num == page %}active{% endif %}">
+            <a class="page-link"
+               href="{{ url_for('review_v2.filing_list', page=page_num, per_page=per_page) }}">
+              {{ page_num }}
+            </a>
+          </li>
+          {% elif page_num == page - 3 or page_num == page + 3 %}
+          <li class="page-item disabled">
+            <span class="page-link">...</span>
+          </li>
+          {% endif %}
+        {% endfor %}
+
+        {# Next button #}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          {% if page < total_pages %}
+          <a class="page-link"
+             href="{{ url_for('review_v2.filing_list', page=page + 1, per_page=per_page) }}">
+            Next &raquo;
+          </a>
+          {% else %}
+          <span class="page-link">Next &raquo;</span>
+          {% endif %}
+        </li>
+      </ul>
+
+      {# Page info text #}
+      <p class="text-center text-muted">
+        Page {{ page }} of {{ total_pages }}
+        &bull;
+        Showing {{ [(page - 1) * per_page + 1, total]|min }}&ndash;{{ [page * per_page, total]|min }}
+        of {{ total }} filings
+      </p>
+    </nav>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}
 {% endblock %}

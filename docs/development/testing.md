@@ -1,7 +1,7 @@
 # Testing Strategy
 
-**Version:** 3.1
-**Last Updated:** 2026-02-20
+**Version:** 3.2
+**Last Updated:** 2026-02-26
 
 ---
 
@@ -51,7 +51,7 @@ tests/
 ├── performance/         # Performance benchmarks (2 files)
 ├── unit/               # Unit tests (70+ files)
 │   ├── extraction/      # 27 test files
-│   ├── extraction_v2/   # 17 test files
+│   ├── extraction_v2/   # 25 test files
 │   ├── filing_fetcher/  # 2 test files
 │   ├── gold_standard/   # 3 test files
 │   ├── infra/           # 7 test files
@@ -822,7 +822,7 @@ pytest --cov=src --cov-report=term-missing
 
 ### Quality Metrics (Gold Standard)
 
-Current V2 scores as of 2026-02-18: P=81.9%, R=60.6%, F1=69.6%. V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+Current V2 scores as of 2026-02-28: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
 
 | Metric | Target | Formula |
 |--------|--------|---------|
@@ -872,6 +872,53 @@ For validating extraction on new filings:
    print(f"Recall: {recall:.1%}")
    print(f"F1 Score: {f1:.1%}")
    ```
+
+---
+
+## Coverage Targets by Module
+
+This section documents coverage targets and current state by module category. These are **visibility targets**, not CI gates - use this as a prioritization guide when writing tests.
+
+### Coverage Target Tiers
+
+| Tier | Target | Rationale |
+|------|--------|-----------|
+| **Critical** | 90-100% | Core business logic, data integrity |
+| **Standard** | 85-95% | Most production code |
+| **Acceptable** | 75-85% | Infrastructure, utilities |
+| **Minimum** | 75% | CI enforcement threshold |
+
+### Module Coverage Dashboard
+
+| Module Category | Target | Current Status | Priority |
+|-----------------|--------|----------------|----------|
+| **Core Extraction** | | | |
+| `src/extraction_v2/` | 85% | Production | High |
+| **Review System** | | | |
+| `src/review/` | 95% | ~95% | Maintained |
+| **Web Routes** | | | |
+| `src/web/routes/` | 90% | 30-97% (uneven) | High |
+| **Infrastructure** | | | |
+| `src/infra/db.py` | 90% | ~85% | Medium |
+| `src/infra/sec_client.py` | 80% | Varies | Low |
+| **LLM Integration** | | | |
+| `src/llm/` | 75% | ~75% | Low (expensive to test) |
+| **Universe Builder** | | | |
+| `src/universe/` | 85% | Varies | Medium |
+
+### Viewing Current Coverage
+
+```bash
+# Full coverage report with missing lines
+pytest --cov=src --cov-report=term-missing
+
+# HTML report for detailed exploration
+pytest --cov=src --cov-report=html
+# Open htmlcov/index.html in browser
+
+# Coverage for specific module
+pytest --cov=src/web/routes --cov-report=term-missing tests/unit/web/
+```
 
 ---
 

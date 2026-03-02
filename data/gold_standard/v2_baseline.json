@@ -1,16 +1,16 @@
 {
-  "baseline_date": "2026-02-12T19:43:44.651043+00:00",
-  "description": "V2 baseline: confidence>=0.50 threshold + Samsara fix + local image resolution + Farfetch chart annotations",
+  "baseline_date": "2026-02-24T22:23:22.932189+00:00",
+  "description": "Baseline refresh 2026-02-24",
   "overall": {
-    "precision": 0.08360128617363344,
-    "recall": 0.36792452830188677,
-    "f1": 0.13624454148471615
+    "precision": 0.7857142857142857,
+    "recall": 0.792,
+    "f1": 0.7888446215139442
   },
   "by_company": {
     "Slack Technologies": {
-      "precision": 0.1497326203208556,
-      "recall": 0.5833333333333334,
-      "f1": 0.2382978723404255
+      "precision": 0.65625,
+      "recall": 0.9333333333333333,
+      "f1": 0.7706422018348624
     },
     "SAMSARA VISION INC.": {
       "precision": 0.07142857142857142,
@@ -18,15 +18,15 @@
       "f1": 0.13333333333333333
     },
     "Farfetch Limited": {
-      "precision": 0.060085836909871244,
-      "recall": 0.22580645161290322,
-      "f1": 0.09491525423728812
+      "precision": 0.92,
+      "recall": 0.6764705882352942,
+      "f1": 0.7796610169491526
     },
     "Snowflake Inc": {
-      "precision": 0.07006369426751592,
-      "recall": 0.3333333333333333,
-      "f1": 0.11578947368421053
+      "precision": 0.9142857142857143,
+      "recall": 0.7272727272727273,
+      "f1": 0.810126582278481
     }
   },
-  "pipeline_version": "v1"
+  "pipeline_version": "v2"
 }

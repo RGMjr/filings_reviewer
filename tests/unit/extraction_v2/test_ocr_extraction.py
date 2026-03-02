@@ -861,3 +861,44 @@ class TestTableReconstruction:
         assert table.row_count == 2
         assert table.col_count == 2
         assert len(table.cells) == 4
+
+
+class TestVisionClientApiKeyCheck:
+    """Tests for API key validation in vision_client property."""
+
+    def test_vision_client_raises_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """vision_client property should raise V2FatalError when OPENAI_API_KEY is missing."""
+        from src.extraction_v2.exceptions import V2FatalError
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        stage = OCRExtractionStage()  # No pre-set vision_client
+        with pytest.raises(V2FatalError) as exc_info:
+            _ = stage.vision_client
+        assert "OPENAI_API_KEY" in str(exc_info.value)
+        assert exc_info.value.stage_name == "ocr_chart_extraction"
+
+    def test_vision_client_does_not_raise_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """vision_client property should not raise when OPENAI_API_KEY is present."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+        stage = OCRExtractionStage()
+        # The import of VisionClient will succeed (even if OpenAI SDK complains about key validity)
+        # We just verify no V2FatalError is raised for missing key
+        from src.extraction_v2.exceptions import V2FatalError
+
+        try:
+            _ = stage.vision_client
+        except V2FatalError as e:
+            if "OPENAI_API_KEY" in str(e):
+                pytest.fail("V2FatalError raised for missing API key even though key was set")
+        except Exception:
+            pass  # Other errors (e.g., OpenAI SDK init) are acceptable
+
+    def test_vision_client_not_checked_when_already_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pre-set vision_client should bypass the API key check."""
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        mock_client = object()
+        stage = OCRExtractionStage(vision_client=mock_client)
+        # Should return the pre-set client without raising
+        result = stage.vision_client
+        assert result is mock_client
