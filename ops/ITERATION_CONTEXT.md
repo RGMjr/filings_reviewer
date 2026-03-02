@@ -6,6 +6,12 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**ADBE FP Cluster Fix (earnings-call-exploration, 2026-03-02)**
+- `_rule_revenue_as_arr` improved: compound "recurring revenue" escape + proximity tiebreaker for standalone "ARR". Handles "ARR of $578M and revenue of $4.15B" — "revenue" closer to $4.15B → correctly rejected.
+- `_rule_percent_on_count_metric` added: rejects PERCENT on count-only metrics (MAU/DAU/customers). MAU/DAU escape: year-over-year context → legitimate growth rate preserved.
+- ADBE FPs: 11 → 7 (4 fixed: 2 MAU adoption FPs + 2 revenue-as-ARR FPs). Remaining 7: revenue farther than 35 chars, bare decimal, "$2B" as Unit.COUNT (not CURRENCY).
+- Overall benchmark improvement: **R=75.8%, P=74.2%, F1=75.0%** (from R=74.7%, P=70.1%, F1=72.3%)
+
 **Phase A+ Cleanup: Scoring Bug Fix (earnings-call-exploration, 2026-03-02)**
 - Fixed date key mismatch bug in transcript validator: added `_normalize_date()` to handle `M/DD/YY` format and strip `_HH_MM_SS` time suffixes from HTML filenames
 - Normalized dates in ADSK_2025-02-27 and MSFT_2025-01-29 gold standard CSVs (was `2/27/25`, `1/29/25`)
@@ -46,9 +52,14 @@ Phase C: Presentation Support
 
 - Unit tests: 346+ pass (gold standard 6/6 pass); no regressions
 - SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28)
-- Transcript benchmark: R=74.7%, P=70.1%, F1=72.3% (91 annotations, 20 files; 2026-03-02, corrected scoring)
+- Transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files; 2026-03-02, ADBE FP fix)
 
 ## Key Learnings
+
+**ADBE FP Fix:**
+- MAU growth rates ("growing 23% YoY") are ACCEPTED in gold standard — blanket percent-on-count rule needs YoY escape for MAU/DAU
+- "$2B" parsed as Unit.COUNT (value_raw="2B", not "$2B") — currency_on_count check misses it; would need Unit.COUNT suppression for large values
+- Revenue-as-ARR proximity tiebreaker: "recurring revenue" compound phrase MUST be detected before applying distance calc (word order: recurring < revenue < value)
 
 **Phase B:**
 - OPERATOR section suppression cleanly eliminates boilerplate FPs without affecting transcript metrics
