@@ -697,22 +697,22 @@ def get_fresh_candidates(
     if verbose:
         logger.info(
             f"  Segmented {result.segments_count} segments, "
-            f"generated {len(result.candidates)} candidates "
+            f"generated {len(result.facts)} facts "
             f"in {result.elapsed_seconds:.1f}s"
         )
 
-    # Convert ReviewCandidate objects to dicts for matching
+    # Convert MetricFact objects to dicts for matching
     # Assign synthetic IDs for matching purposes
     candidates = []
-    for i, candidate in enumerate(result.candidates):
+    for i, fact in enumerate(result.facts):
         candidates.append({
             'candidate_id': i + 1,  # Synthetic ID
-            'suggested_metric_id': candidate.suggested_metric_id,
-            'parsed_value': float(candidate.parsed_value) if candidate.parsed_value else None,
-            'raw_number_text': candidate.raw_number_text,
-            'context_text': candidate.context_text,
-            'triggering_keyword': candidate.triggering_keyword,
-            'source_segment_id': candidate.source_segment_id,
+            'suggested_metric_id': fact.canonical_metric_id,
+            'parsed_value': fact.value,
+            'raw_number_text': fact.value_raw,
+            'context_text': fact.evidence_pack.snippet_html,
+            'triggering_keyword': fact.extraction_method.value,
+            'source_segment_id': fact.source_locator.segment_id,
         })
 
     return candidates
