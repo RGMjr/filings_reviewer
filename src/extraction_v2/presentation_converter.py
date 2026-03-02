@@ -326,7 +326,6 @@ def convert_presentation_to_html(
 
         for page_num, page in enumerate(pages, start=1):
             is_first = page_num == 1
-            extra_attrs = ""
             page_text: str = ""
             page_tables: list[list[list[str | None]]] = []
 
@@ -342,17 +341,17 @@ def convert_presentation_to_html(
                 logger.warning("Failed to extract tables from page %d: %s", page_num, exc)
 
             # --- Title slide detection (first page only) ---
+            section_type = "presentation_slide"
             if is_first:
                 first_lines = [ln for ln in page_text.splitlines() if ln.strip()]
                 if _is_title_slide(first_lines):
-                    extra_attrs = ' data-is-title="true"'
+                    section_type = "title_slide"
 
             # --- Open section element ---
             html_parts.append(
-                f'  <section data-section-type="presentation_slide"'
+                f'  <section data-section-type="{section_type}"'
                 f' data-page="{page_num}"'
-                f' data-page-count="{total_pages}"'
-                f"{extra_attrs}>"
+                f' data-page-count="{total_pages}">'
             )
 
             # --- Empty page ---

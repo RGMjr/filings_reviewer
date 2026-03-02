@@ -68,7 +68,7 @@ MINIMAL_PRESENTATION_HTML = """\
   <meta name="page-count" content="3">
 </head>
 <body>
-  <section data-section-type="presentation_slide" data-page="1" data-page-count="3" data-is-title="true">
+  <section data-section-type="title_slide" data-page="1" data-page-count="3">
     <p>ACME CORP</p>
     <p>Q3 2025 Investor Day</p>
   </section>
@@ -113,7 +113,7 @@ class TestPresentationConverterPipeline:
         with patch("pdfplumber.open", return_value=pdf):
             html, meta = convert_presentation_to_html(Path("/fake/deck.pdf"))
 
-        assert html.count('data-section-type="presentation_slide"') == 3
+        assert html.count("<section") == 3
         assert meta.page_count == 3
         assert "<table>" in html
         assert "ARR" in html

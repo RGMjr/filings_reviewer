@@ -195,7 +195,7 @@ class SECPresentationSource:
                 "Install presentation_converter dependencies."
             )
         try:
-            html = convert_presentation_to_html(pdf_path)
+            html, _presentation_meta = convert_presentation_to_html(pdf_path)
         except Exception as exc:
             logger.warning("Conversion failed for %s: %s", source_id, exc)
             raise

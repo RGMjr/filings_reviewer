@@ -373,7 +373,7 @@ def test_fetch_cache_miss_downloads_converts_and_caches(
 
     _PATCH_TARGET = "src.infra.sec_presentation_source.convert_presentation_to_html"
 
-    with patch(_PATCH_TARGET, return_value=converted_html):
+    with patch(_PATCH_TARGET, return_value=(converted_html, {})):
         html, meta = source.fetch(source_id)
 
     assert html == converted_html
@@ -388,7 +388,7 @@ def test_fetch_cache_miss_downloads_converts_and_caches(
 
     # Second fetch should hit cache (no further HTTP calls)
     source._session.get.reset_mock()
-    with patch(_PATCH_TARGET, return_value=converted_html) as mock_convert:
+    with patch(_PATCH_TARGET, return_value=(converted_html, {})) as mock_convert:
         html2, meta2 = source.fetch(source_id)
 
     mock_convert.assert_not_called()

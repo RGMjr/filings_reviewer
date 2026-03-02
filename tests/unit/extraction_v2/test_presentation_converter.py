@@ -191,7 +191,7 @@ class TestConvertPresentationMultiPage:
         with patch("pdfplumber.open", return_value=pdf):
             html, meta = convert_presentation_to_html(Path("/fake/deck.pdf"))
 
-        assert html.count('data-section-type="presentation_slide"') == 3
+        assert html.count("<section") == 3
         assert meta.page_count == 3
 
     def test_data_page_attributes(self) -> None:
@@ -350,7 +350,7 @@ class TestConvertPresentationTitleSlide:
         with patch("pdfplumber.open", return_value=pdf):
             html, _ = convert_presentation_to_html(Path("/fake/deck.pdf"))
 
-        assert 'data-is-title="true"' in html
+        assert 'data-section-type="title_slide"' in html
 
     def test_first_page_dense_no_title_attr(self) -> None:
         # >= 5 lines with numbers → not a title slide
@@ -368,7 +368,7 @@ class TestConvertPresentationTitleSlide:
         with patch("pdfplumber.open", return_value=pdf):
             html, _ = convert_presentation_to_html(Path("/fake/deck.pdf"))
 
-        assert 'data-is-title="true"' not in html
+        assert 'data-section-type="title_slide"' not in html
 
     def test_only_first_page_can_have_title_attr(self) -> None:
         pages = [
@@ -380,8 +380,8 @@ class TestConvertPresentationTitleSlide:
         with patch("pdfplumber.open", return_value=pdf):
             html, _ = convert_presentation_to_html(Path("/fake/deck.pdf"))
 
-        # data-is-title should appear at most once (only on page 1)
-        assert html.count('data-is-title="true"') <= 1
+        # data-section-type="title_slide" should appear at most once (only on page 1)
+        assert html.count('data-section-type="title_slide"') <= 1
 
 
 # ============================================================================
