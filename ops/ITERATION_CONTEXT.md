@@ -37,30 +37,40 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 **WP-15–22.5 (2026-02-28)**: FP rules, batch hardening, logging, UI parity, V1/V2 comparison script
 - Gold standard: **P=92.8%, R=77.6%, F1=84.5%**; Migration 12: drop V1 FK constraints
 
+**Full Universe Batch Run (2026-03-03)**:
+- Created `scripts/register_manifest_filings.py` — reads manifest, fetches EDGAR metadata, registers companies + filings
+- Registered 78 manifest filings (all `is_in_scope_phase1=True`, `processing_status='pending'`); 0 failures
+- Paginated submissions fallback added: 16 old filings not in EDGAR "recent" found via history pages
+- Downloaded all 78 HTML files via `batch_download_filings.py` (78/78 fetched, 0 failed, ~30s)
+- Batch V2 extraction: 84 total (78 manifest + 6 transcript stubs), 35 succeeded, 49 failed, 5 facts
+  - 6 "HTML not found": transcript stubs (IDs 1-6), not S-1/F-1 filings — expected, skip
+  - 32 duplicate key violations: pipeline bug — same fact inserted twice in single run (idempotency gap)
+  - 11 schema errors: `v2_metric_definitions` missing (6), FK constraint on canonical_metric_id (5)
+- Summary: `logs/batch_v2_summary_20260302_205713.json`
+
 ## Current Focus
 
-- Migrate `src/gold_standard/fresh_extractor.py` from V1 HTMLSegmenter to V2 pipeline
-- Full universe batch run (12 production filings beyond the 4 gold standard)
-- Delete remaining V1 shims in `src/extraction/` once fresh_extractor is migrated
+- Fix V2 batch extraction failures: (1) `v2_metric_definitions` missing — migration needed; (2) FK violations on `canonical_metric_id`; (3) duplicate key in persistence — pipeline not idempotent
+- Validate extraction results on filings where facts were found (5 total)
 
 ## Test Status
 
-- Unit tests: 1,110 extraction_v2; full suite ~4,765 (coverage 87%)
+- Unit tests: 3282 passed, 8 skipped, 81% coverage (2026-03-03)
 - V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17)
 - V1 baseline: P=89.4%, R=63.2%, F1=74.1%
 
 ## Key Learnings for Next Iteration
 
-- V2 persistence bugs (WP-23): `Document.doc_id` must be UUID not `str(filing_id)`; `v2_metric_facts` ON CONFLICT had no unique index — use delete-then-insert; apply migration 11 before batch
-- WP-22 comparison script uses `resolve_to_canonical()` from `src/extraction/keyword_config.py`
-- `source_segments` has FK deps in migrations 07/08/09 — requires migration 12 before dropping
+- `register_manifest_filings.py`: must pass `is_post_combination=False` (and other boolean flags) — DB has NOT NULL constraint
+- `get_filing_by_accession` only searches "recent" EDGAR submissions; old filings need paginated history pages (`filings.files[]` in submissions JSON)
+- `.env` DATABASE_URL points to port 5433 but local Postgres is on 5432 — pass `--database-url` explicitly or fix `.env`
+- V2 persistence has 3 active bugs: (1) duplicate key — same fact persisted twice; (2) `v2_metric_definitions` table missing (migration gap); (3) FK on canonical_metric_id fails for some metrics
 
 ## Blockers or Warnings
 
+- 43/78 manifest filings failed extraction due to persistence bugs — investigate before next batch
 - Snowflake tables have many colspan/grid-gap warnings — extraction works but may have binding gaps; accepted for now
 - Farfetch chart FNs (8) require Vision API; accepted gap unless production has OPENAI_API_KEY
-- 3 residual Snowflake FPs (value_mismatch 702 vs 948, 1 duplicate) — separate pattern, low priority
-- `metric_values` (V1) table is empty — V1/V2 comparison script needs V1 extraction run first
 
 ---
 
