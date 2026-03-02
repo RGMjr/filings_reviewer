@@ -6,6 +6,15 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Phase C: Presentation Support (earnings-call-exploration, 2026-03-02, 72cd1c6 + 5b3b247)**
+- `presentation_converter.py`: pdfplumber PDF→HTML (page→section, tables, images, title-slide detection)
+- `sec_presentation_source.py`: EDGAR 8-K exhibit downloader with idempotent cache
+- Section types: TITLE_SLIDE, KEY_METRICS, FINANCIAL_OVERVIEW, GUIDANCE, APPENDIX (migration 14)
+- FP filter: suppresses TITLE_SLIDE/APPENDIX facts and bare integers <1000
+- Period inference extended for slide title patterns ("Q4 FY2025 Results", "Full Year 2024")
+- Tests: 3595 passing (37 converter, 19 source, 19 e2e); SEC gold standard unchanged (P=88.9%, R=63.7%)
+- M5 (gold standard on real PDFs) deferred pending manual annotation
+
 **ADBE FP Cluster Fix (earnings-call-exploration, 2026-03-02)**
 - `_rule_revenue_as_arr` improved: compound "recurring revenue" escape + proximity tiebreaker for standalone "ARR". Handles "ARR of $578M and revenue of $4.15B" — "revenue" closer to $4.15B → correctly rejected.
 - `_rule_percent_on_count_metric` added: rejects PERCENT on count-only metrics (MAU/DAU/customers). MAU/DAU escape: year-over-year context → legitimate growth rate preserved.
@@ -42,11 +51,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-Phase C: Presentation Support
-- PDF-to-HTML converter (pdfplumber or docling)
-- SEC 8-K presentation source
-- Chart pipeline tuning for presentation charts
-- Target: >40% recall on presentations
+Phase D / M5 annotation:
+- M5 (presentation gold standard): manual annotation of real investor PDFs to measure recall
+- Phase D: FMP API transcript source, monitoring/alerting, batch processing scripts
 
 ## Test Status
 
@@ -76,8 +83,9 @@ Phase C: Presentation Support
 
 ## Next Work (Prioritized)
 
-1. **Phase C: Presentation Support** — PDF-to-HTML, 8-K source, chart tuning
-2. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
+1. **M5: Presentation gold standard** — annotate real investor PDFs, measure recall baseline
+2. **Phase D: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
+3. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 
 ## Blockers or Warnings
 

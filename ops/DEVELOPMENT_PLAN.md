@@ -84,11 +84,15 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 > complete and extraction quality is validated on free sources (HuggingFace).
 > FMP integration moves to Phase D.
 
-### Phase C (Presentation Support) — NEXT PRIORITY
-- PDF-to-HTML converter (pdfplumber/docling)
-- SEC 8-K presentation source
-- Chart pipeline tuning for presentation charts
-- Target: >40% recall on presentations
+### Phase C (Presentation Support) — COMPLETE (72cd1c6, 5b3b247)
+- M1: PDF-to-HTML converter (`presentation_converter.py`) — pdfplumber, page→section, tables, images ✅
+- M2: SEC 8-K presentation source (`sec_presentation_source.py`) — EDGAR downloader, idempotent cache ✅
+- M3: Section classification (TITLE_SLIDE, KEY_METRICS, FINANCIAL_OVERVIEW, GUIDANCE, APPENDIX) ✅
+- M4: FP filter tuning (suppress TITLE_SLIDE/APPENDIX facts, bare integers <1000) ✅
+- M5: Gold standard annotations — **DEFERRED** (requires manual PDF annotation)
+- M6: Period inference for slide title patterns ("Q4 FY2025 Results", "Full Year 2024") ✅
+- Batch ingestor: `scripts/ingest_presentations.py` (--dry-run / --persist) ✅
+- DB migration 14: presentation section types added to v2_segments CHECK constraint ✅
 
 ### Phase D (Production Readiness)
 - FMP API source (`FMPTranscriptSource`) for broader transcript corpus — gated on Phase C
