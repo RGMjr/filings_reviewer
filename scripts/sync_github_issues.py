@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Sync GitHub Issues with docs/archive/historical/PROJECT_TASK_INVENTORY.md
+Sync GitHub Issues with a task inventory file.
 
 Compares task inventory status with GitHub issues and reports discrepancies.
 Can optionally update GitHub issues to match inventory status.
+
+Note: docs/archive/historical/PROJECT_TASK_INVENTORY.md has been removed.
+Use --inventory to specify a current inventory file.
 
 Usage:
     python scripts/sync_github_issues.py --check          # Report only
@@ -216,8 +219,8 @@ def main():
     parser.add_argument('--check', action='store_true', help='Report discrepancies only')
     parser.add_argument('--update', action='store_true', help='Update GitHub issues')
     parser.add_argument('--repo', default='RGMjr/filings_reviewer', help='GitHub repo')
-    parser.add_argument('--inventory', default='docs/archive/historical/PROJECT_TASK_INVENTORY.md',
-                        help='Path to task inventory (archived location)')
+    parser.add_argument('--inventory', required=True,
+                        help='Path to task inventory markdown file')
     args = parser.parse_args()
 
     # Get token
