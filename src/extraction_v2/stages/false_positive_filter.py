@@ -622,23 +622,40 @@ _ARR_QUALIFIER_RE = re.compile(
     r"\b(?:recurring|ARR|annual\s+recurring)\b",
     re.IGNORECASE,
 )
+# Compound phrase "recurring revenue" — when this exact phrase is present, the
+# value is genuine ARR regardless of word proximity.
+_RECURRING_REVENUE_RE = re.compile(r"\brecurring\s+revenue\b", re.IGNORECASE)
+
+# Year-over-year / YoY context — signals that a percent value is a growth rate
+# disclosure rather than an adoption rate.  Used to escape _rule_percent_on_count_metric
+# for MAU/DAU metrics: "growing 23% year-over-year" → legitimate growth rate (ACCEPT).
+_YOY_CONTEXT_RE = re.compile(
+    r"\byear[- ]over[- ]year\b|\bYoY\b|\bY/Y\b|\byear[- ]on[- ]year\b",
+    re.IGNORECASE,
+)
+# Standalone ARR indicator (not "recurring revenue" compound) for proximity check.
+_ARR_ONLY_RE = re.compile(r"\bARR\b|\bannual\s+recurring\b", re.IGNORECASE)
 
 
 def _rule_revenue_as_arr(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block GAAP revenue values from binding to cm_arr.
 
-    Fires when metric_id == 'cm_arr' and the IMMEDIATE context (±20 chars)
-    around the value contains 'revenue' but NOT 'recurring' or 'ARR'.
+    Fires when metric_id == 'cm_arr' and the immediate context (±35 chars)
+    around the value contains 'revenue'.
 
-    Uses a tight ±20-char window for both the revenue detection and the ARR
-    qualifier escape.  This prevents false escapes from ARR mentions in the
-    same sentence but farther away (e.g., "ARR of $578M and revenue of $4.15B"
-    — "ARR" is >20 chars from the $4.15B value, so the escape does not fire
-    and the revenue value is correctly rejected).
+    Three-stage escape (first match wins):
+    1. Compound phrase "recurring revenue" anywhere in ±50-char window → genuine ARR
+       (e.g., "recurring revenue reached $1.2B" — "recurring revenue" is the ARR label).
+    2. Standalone "ARR"/"annual recurring" in ±35-char window AND closer to the value
+       than "revenue" → genuine ARR context via proximity tiebreaker.
+       (e.g., "ARR of $578M and revenue of $4.15B" — "ARR" is farther from $4.15B
+       than "revenue" is → escape does NOT fire → $4.15B correctly rejected).
+    3. Otherwise → revenue-as-ARR FP.
 
     Does NOT fire when:
-    - 'recurring' or 'ARR' appears within ±20 chars of the value
-    - No 'revenue' in the ±20-char window
+    - No 'revenue' in the ±35-char window
+    - 'recurring revenue' compound phrase is in the ±50-char window
+    - Standalone 'ARR'/'annual recurring' is closer to the value than 'revenue'
     """
     if metric_id != "cm_arr" or not source_text:
         return None
@@ -653,16 +670,34 @@ def _rule_revenue_as_arr(bv: BoundValue, source_text: str, metric_id: str) -> st
     rev_start = max(0, value_pos - 35)
     rev_end = min(len(source_text), value_pos + len(raw) + 35)
     rev_window = source_text[rev_start:rev_end]
-    if not _REVENUE_LABEL_RE.search(rev_window):
+    rev_match = _REVENUE_LABEL_RE.search(rev_window)
+    if not rev_match:
         return None  # "revenue" not adjacent — not a revenue-as-ARR FP
-    # ±35-char escape: if ARR/recurring appears within 35 chars, it qualifies the value.
-    # 35 chars is sufficient for "recurring revenue of $X" (recurring ~23 chars out)
-    # but excludes "ARR of $Y and revenue of $X" where ARR is ~36+ chars away.
+
+    # Stage 1 escape: "recurring revenue" compound phrase → genuine ARR.
+    # Use a slightly wider ±50-char window so "annual recurring revenue of $X"
+    # is captured even when "recurring" is ~45 chars from the value.
+    compound_start = max(0, value_pos - 50)
+    compound_end = min(len(source_text), value_pos + len(raw) + 50)
+    compound_window = source_text[compound_start:compound_end]
+    if _RECURRING_REVENUE_RE.search(compound_window):
+        return None  # "recurring revenue" compound — genuine ARR context
+
+    # Stage 2 escape: standalone "ARR" / "annual recurring" with proximity tiebreaker.
+    # Only fires when ARR is closer to the value than "revenue" — handles
+    # "ARR of $578M and revenue of $4.15B" where "revenue" is closer to $4.15B.
     arr_start = max(0, value_pos - 35)
     arr_end = min(len(source_text), value_pos + len(raw) + 35)
     arr_window = source_text[arr_start:arr_end]
-    if _ARR_QUALIFIER_RE.search(arr_window):
-        return None  # ARR/recurring qualifier near value — genuine ARR context
+    arr_match = _ARR_ONLY_RE.search(arr_window)
+    if arr_match:
+        rev_abs = rev_start + rev_match.start()
+        arr_abs = arr_start + arr_match.start()
+        rev_dist = abs(rev_abs - value_pos)
+        arr_dist = abs(arr_abs - value_pos)
+        if arr_dist <= rev_dist:
+            return None  # ARR is closer (or tied) — genuine ARR context
+
     return "v2_revenue_as_arr"
 
 
@@ -696,6 +731,40 @@ def _rule_mau_daily_rate(bv: BoundValue, source_text: str, metric_id: str) -> st
         if value_pos < 0 or abs(per_day_match.start() - value_pos) <= 50:
             return "v2_mau_daily_rate"
     return None
+
+
+def _rule_percent_on_count_metric(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block percent values from binding to count-only metrics.
+
+    Fires when a PERCENT unit value is bound to a metric that can only be an
+    absolute count (MAU, DAU, customers, etc.).
+
+    These FPs arise when a feature adoption rate appears near a count keyword:
+    "Photoshop GenAI monthly active users at approximately 35%" → 35% is a
+    feature adoption rate, not an absolute MAU count.
+
+    MAU/DAU escape: For cm_monthly_active_users and cm_daily_active_users,
+    percent values WITH year-over-year/YoY context within ±100 chars are
+    legitimate growth rate disclosures ("growing 23% year-over-year") and
+    are NOT rejected by this rule.  These are handled as growth rate values.
+
+    For other count metrics (customers_period_end, new_customers_acquired, etc.),
+    percent is always a false positive (no legitimate percent representation exists).
+    """
+    if bv.unit != Unit.PERCENT or metric_id not in _COUNT_ONLY_METRICS:
+        return None
+    # MAU/DAU escape: year-over-year context → legitimate growth rate disclosure.
+    if metric_id in _PURE_COUNT_METRICS and source_text:
+        raw = (bv.value_raw or "").strip()
+        if raw:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0:
+                window_start = max(0, value_pos - 100)
+                window_end = min(len(source_text), value_pos + len(raw) + 100)
+                window = source_text[window_start:window_end]
+                if _YOY_CONTEXT_RE.search(window):
+                    return None  # YoY growth context — legitimate growth rate
+    return "v2_percent_on_count"
 
 
 # Q&A-specific rules below are injected via _is_v2_false_positive after the
@@ -747,6 +816,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("growth_rate_percent", _rule_growth_rate_percent),
     ("arpu_percent", _rule_arpu_percent),
     ("arpu_as_aov", _rule_arpu_as_aov),
+    ("percent_on_count", _rule_percent_on_count_metric),
     ("revenue_as_arr", _rule_revenue_as_arr),
 ]
 

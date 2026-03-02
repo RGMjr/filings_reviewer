@@ -853,7 +853,8 @@ class TestIntegration:
         bv_real = _make_bound_value(
             "c1", 150000.0, "150,000", Unit.COUNT, "seg-1", text_span=(46, 53)
         )
-        # Real: 143%
+        # 143% NRR — percent on a count-only metric (cm_customers_period_end is always
+        # a count; 143% belongs to NRR, not customer count).
         bv_pct = _make_bound_value("c1", 143.0, "143%", Unit.PERCENT, "seg-1", text_span=(75, 79))
 
         ctx = MockPipelineContext(
@@ -867,7 +868,7 @@ class TestIntegration:
         assert 31.0 not in values, "Date component should be filtered"
         assert 2019.0 not in values, "Year should be filtered"
         assert 150000.0 in values, "Real customer count should be kept"
-        assert 143.0 in values, "Real percentage should be kept"
+        assert 143.0 not in values, "Percent on count metric (cm_customers_period_end) should be filtered"
 
 
 # ============================================================================
@@ -1576,12 +1577,13 @@ class TestPercentClauseGateStage:
         stage.process(ctx)
         assert len(ctx.bound_values) == 0, "50% in wrong clause should be rejected"
 
-    def test_same_clause_percent_kept_in_relaxed(self, stage):
-        """Percent value in same clause as keyword kept in relaxed mode."""
-        # Use non-growth-rate prefix ("at") so V1 doesn't catch it; clause gate decides.
-        # "Revenue retention was 115% and MAAs at 30% penetration"
-        #  - "115%" is in clause 0 (before "and"), MAAs and "30%" are in clause 1.
-        #  - Clause gate: same clause → keep.
+    def test_same_clause_percent_rejected_by_percent_on_count_rule(self, stage):
+        """Percent value on MAU metric is always rejected by _rule_percent_on_count_metric.
+
+        Even when "30%" is in the same clause as "MAAs", it is rejected because
+        cm_monthly_active_users is a count-only metric and percent values indicate
+        a feature adoption rate or penetration, not an absolute user count.
+        """
         text = "Revenue retention was 115% and MAAs at 30% penetration"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
@@ -1592,7 +1594,6 @@ class TestPercentClauseGateStage:
             source_type=SourceType.TEXT,
             context_text=text,
         )
-        # "30%" is in the same clause as "MAAs" (both in clause after "and")
         bv = _make_bound_value("c1", 30.0, "30%", Unit.PERCENT, "seg-1")
 
         ctx = MockPipelineContext(
@@ -1602,13 +1603,14 @@ class TestPercentClauseGateStage:
             config=self._make_relaxed_config(),  # type: ignore
         )
         stage.process(ctx)
-        assert len(ctx.bound_values) == 1, "30% in same clause should be kept"
+        assert len(ctx.bound_values) == 0, "Percent on count-only metric should always be filtered"
 
-    def test_clause_gate_not_applied_in_normal_mode(self, stage):
-        """Clause gate only applies in relaxed mode; normal mode keeps all."""
-        # "90%" would be rejected by clause gate in relaxed mode (wrong clause),
-        # but normal mode skips the clause gate entirely → value is kept.
-        # No growth-rate prefix ("was") so V1 also passes.
+    def test_percent_on_mau_rejected_in_normal_mode(self, stage):
+        """Percent on MAU rejected by _rule_percent_on_count_metric in all modes.
+
+        The _rule_percent_on_count_metric fires in both normal and relaxed mode,
+        so 90% bound to cm_monthly_active_users is always a false positive.
+        """
         text = "Revenue retention was 90% and MAAs totaled 250M"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
@@ -1627,10 +1629,15 @@ class TestPercentClauseGateStage:
             bound_values=[bv],
         )
         stage.process(ctx)
-        assert len(ctx.bound_values) == 1, "Normal mode should not apply clause gate"
+        assert len(ctx.bound_values) == 0, "Percent on count-only metric filtered in all modes"
 
-    def test_clause_gate_not_applied_to_non_gated_metric(self, stage):
-        """Clause gate only applies to MAU/DAU, not other metrics."""
+    def test_percent_on_customers_period_end_rejected(self, stage):
+        """Percent on cm_customers_period_end rejected by _rule_percent_on_count_metric.
+
+        cm_customers_period_end is a count-only metric — a percent value bound
+        to it is always a false positive (e.g., a growth rate or revenue share
+        that happens to appear near the 'customers' keyword).
+        """
         text = "Revenue grew 50% and customers grew 30%"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
@@ -1650,11 +1657,16 @@ class TestPercentClauseGateStage:
             config=self._make_relaxed_config(),  # type: ignore
         )
         stage.process(ctx)
-        # customers_period_end is not in _PERCENT_CLAUSE_GATE_METRICS
-        assert len(ctx.bound_values) == 1
+        assert len(ctx.bound_values) == 0, "Percent on count-only metric should be filtered"
 
-    def test_single_clause_mau_percent_kept(self, stage):
-        """Single-clause segment always passes clause gate."""
+    def test_single_clause_mau_percent_rejected(self, stage):
+        """Percent on MAU rejected even in a single-clause segment.
+
+        "monthly active users at approximately 35%" — the 35% is a feature
+        adoption rate, not an absolute MAU count.  _rule_percent_on_count_metric
+        fires before the clause gate and rejects all percent values on count metrics.
+        This is the exact ADBE FP pattern from the gold standard.
+        """
         text = "monthly active users at approximately 35%"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
@@ -1674,7 +1686,7 @@ class TestPercentClauseGateStage:
             config=self._make_relaxed_config(),  # type: ignore
         )
         stage.process(ctx)
-        assert len(ctx.bound_values) == 1, "Single clause should always pass"
+        assert len(ctx.bound_values) == 0, "Percent on count-only metric always filtered"
 
     def test_dau_also_gated(self, stage):
         """DAU metric is also subject to clause gate."""
@@ -1700,10 +1712,9 @@ class TestPercentClauseGateStage:
         stage.process(ctx)
         assert len(ctx.bound_values) == 0, "6% in wrong clause for DAU should be rejected"
 
-    def test_clause_gate_rejection_tracked(self, stage):
-        """Clause gate rejection reason tracked in metadata."""
-        # "90%" is in wrong clause (before "and"), MAAs is in clause after "and".
-        # No growth-rate prefix ("was") so V1 passes; clause gate fires → v2_percent_wrong_clause.
+    def test_percent_on_count_rejection_tracked(self, stage):
+        """_rule_percent_on_count_metric rejection reason tracked in metadata."""
+        # "90%" near MAAs — rejected by _rule_percent_on_count_metric (fires before clause gate).
         text = "Revenue retention was 90% and MAAs totaled 250M"
         segment = _make_text_segment("seg-1", text)
         candidate = MetricCandidate(
@@ -1723,7 +1734,7 @@ class TestPercentClauseGateStage:
             config=self._make_relaxed_config(),  # type: ignore
         )
         result = stage.process(ctx)
-        assert result.metadata["filter_reasons"].get("v2_percent_wrong_clause") == 1
+        assert result.metadata["filter_reasons"].get("v2_percent_on_count") == 1
 
 
 # ============================================================================
