@@ -6,6 +6,11 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Branch cleanup (2026-03-01)**:
+- Preserved `.claude/teams/extraction-team.md`, `.claude/teams/refactor-team.md`, `.claude/rules/agent-dispatch.md`, `config/extraction_patterns.txt` from `claude/agent-swarm-invocation-uM0tR`
+- Committed to v2-rewrite (`dff3b35`), pushed
+- Deleted both stale remote branches: `claude/custom-dev-agents-BCEuT`, `claude/agent-swarm-invocation-uM0tR`
+
 **V2 Production Promotion (2026-03-01)**:
 - Merged PR #27 (v2-rewrite → main) via merge commit `2dd707e` — 155 commits
 - UI cutover: `GET /` now redirects to `/v2/review/filings`; navbar updated (V2 primary, V1 secondary)
@@ -29,17 +34,8 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Fixed 3 persistence bugs: (1) `Document.doc_id` was set to `str(filing_id)` instead of UUID; (2) `ON CONFLICT` expression had no matching unique index — replaced with delete-then-insert; (3) `v2_metric_definitions` table missing — applied migration 11
 - Summary: `logs/batch_v2_summary_20260301_033805.json`
 
-**WP-15–22.5 + WP-21 + Migration 12 (2026-02-28)**:
-- WP-15: `_rule_tier_qualifier` — Snowflake tier FPs 22→3
-- WP-17: `_rule_dollar_threshold_customer` — Slack ">$100K" FPs eliminated; Slack F1 77.1%→92.3%
-- Gold standard: **P=92.8%, R=77.6%, F1=84.5%** (all per-company gates passed)
-- WP-18+19: Batch script hardened; `.env.template` updated
-- WP-20: `logging_config.py` — JSON structured logging, optional Sentry hook
-- WP-21: V2 review UI parity — `review_v2.py`, `api_v2.py`, `v2_stats.html` complete
-- WP-22: `compare_v1_v2_results.py` — V1/V2 DB-based comparison script
-- Migration 12: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments`
-
-**WP-10–14 (2026-02-24)**: Table resilience, batch hardening, review_status preservation
+**WP-15–22.5 (2026-02-28)**: FP rules, batch hardening, logging, UI parity, V1/V2 comparison script
+- Gold standard: **P=92.8%, R=77.6%, F1=84.5%**; Migration 12: drop V1 FK constraints
 
 ## Current Focus
 
@@ -55,12 +51,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Key Learnings for Next Iteration
 
-- `_rule_dollar_threshold_customer`: check source_text for ">$100,000" proximity — simpler than colspan fix
-- AOV wrong_period FNs: were already fixed in 44a1e81 (period start off-by-one). Always re-check before investigating.
-- `source_segments` has FK deps in migrations 07/08/09 — cannot drop without migration 12 first
-- `metric_values` has NO FK dependents — safe to drop/rename independently
-- WP-22 comparison script uses `resolve_to_canonical()` from `src/extraction/keyword_config.py` (not metric_registry)
-- V2 persistence bugs fixed in WP-23: `ingestion.py` was setting `Document.doc_id=str(filing_id)` (should be UUID); `v2_metric_facts` ON CONFLICT expression had no matching unique index (replaced with delete-then-insert); migration 11 (`v2_metric_definitions`) was not applied
+- V2 persistence bugs (WP-23): `Document.doc_id` must be UUID not `str(filing_id)`; `v2_metric_facts` ON CONFLICT had no unique index — use delete-then-insert; apply migration 11 before batch
+- WP-22 comparison script uses `resolve_to_canonical()` from `src/extraction/keyword_config.py`
+- `source_segments` has FK deps in migrations 07/08/09 — requires migration 12 before dropping
 
 ## Blockers or Warnings
 
