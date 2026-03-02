@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.extraction_v2.models import MetricFact
 from src.gold_standard.fresh_extractor import (
     ExtractionResult,
     ParsedSecUrl,
@@ -71,6 +72,18 @@ def temp_gold_standard_dir() -> Generator[Path, None, None]:
         # Patch the gold_standard path to use our temp directory
         # We need to mock at the location where it's used
         yield base
+
+
+def _make_mock_pipeline_result(
+    facts: list[MetricFact] | None = None, segments: int = 2
+) -> MagicMock:
+    """Build a mock PipelineResult with the given facts and segment count."""
+    mock_result = MagicMock()
+    mock_result.success = True
+    mock_result.error_message = None
+    mock_result.facts = facts if facts is not None else []
+    mock_result.segments = [MagicMock() for _ in range(segments)]
+    return mock_result
 
 
 # =============================================================================
@@ -287,53 +300,74 @@ class TestFetchFromSec:
 
 
 class TestSegmentAndGenerate:
-    """Tests for segment_and_generate function."""
+    """Tests for segment_and_generate function (V2 pipeline)."""
+
+    def test_segment_returns_facts_list(self, temp_filings_dir: Path) -> None:
+        """segment_and_generate returns a list of MetricFacts."""
+        html_path = temp_filings_dir / "test.htm"
+        html_path.write_text("<html><body><p>Test content.</p></body></html>")
+
+        mock_fact = MetricFact(canonical_metric_id="cm_dau", value=10.0)
+        mock_result = _make_mock_pipeline_result(facts=[mock_fact], segments=3)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_result
+
+            facts, segment_count, error = segment_and_generate(html_path)
+
+        assert error is None
+        assert segment_count == 3
+        assert len(facts) == 1
+        assert facts[0].canonical_metric_id == "cm_dau"
 
     def test_segment_empty_html(self, temp_filings_dir: Path) -> None:
         """Handle empty HTML file gracefully."""
-        # Create empty HTML file
         html_path = temp_filings_dir / "empty.htm"
         html_path.write_text("<html><body></body></html>")
 
-        candidates, segment_count, error = segment_and_generate(html_path)
+        mock_result = _make_mock_pipeline_result(facts=[], segments=0)
 
-        # Should return empty results without error
-        assert error is None
-        assert segment_count >= 0
-        assert isinstance(candidates, list)
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_result
 
-    def test_segment_with_numbers(self, temp_filings_dir: Path) -> None:
-        """Segment HTML containing numbers and metrics keywords."""
-        html_path = temp_filings_dir / "metrics.htm"
-        html_path.write_text(
-            """
-        <html>
-        <body>
-        <p>We have 10 million daily active users worldwide.</p>
-        <p>Our customer count reached 500,000 paid subscribers.</p>
-        </body>
-        </html>
-        """,
-            encoding="utf-8",
-        )
-
-        candidates, segment_count, error = segment_and_generate(html_path)
+            facts, segment_count, error = segment_and_generate(html_path)
 
         assert error is None
-        assert segment_count > 0
-        # Should generate some candidates from the text
-        assert isinstance(candidates, list)
+        assert segment_count == 0
+        assert facts == []
+
+    def test_segment_pipeline_failure(self, temp_filings_dir: Path) -> None:
+        """Return error when pipeline reports failure."""
+        html_path = temp_filings_dir / "test.htm"
+        html_path.write_text("<html><body></body></html>")
+
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error_message = "Critical stage failed"
+        mock_result.facts = []
+        mock_result.segments = []
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_result
+
+            facts, segment_count, error = segment_and_generate(html_path)
+
+        assert facts == []
+        assert error is not None
+        assert "Critical stage failed" in error
 
     def test_segment_nonexistent_file(self, temp_filings_dir: Path) -> None:
-        """Handle nonexistent file gracefully (returns empty results)."""
+        """Handle pipeline exception for nonexistent file gracefully."""
         nonexistent = temp_filings_dir / "does_not_exist.htm"
 
-        candidates, segment_count, error = segment_and_generate(nonexistent)
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.side_effect = Exception("File not found")
 
-        # HTMLSegmenter logs error but returns empty results without raising
-        # So we get empty candidates and zero segments, but no error string
-        assert candidates == []
+            facts, segment_count, error = segment_and_generate(nonexistent)
+
+        assert facts == []
         assert segment_count == 0
+        assert error is not None
 
 
 # =============================================================================
@@ -353,7 +387,7 @@ class TestExtractFresh:
 
         assert result.success is False
         assert "Invalid SEC URL format" in (result.error_message or "")
-        assert result.candidates == []
+        assert result.facts == []
 
     def test_extract_missing_file_no_fetch(self, temp_filings_dir: Path) -> None:
         """Return error when file not cached and fetch disabled."""
@@ -369,11 +403,16 @@ class TestExtractFresh:
 
     def test_extract_with_cached_file(self, temp_filings_dir: Path, mock_filing_html: Path) -> None:
         """Successfully extract from cached file."""
-        result = extract_fresh(
-            document_url=SLACK_URL,
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-        )
+        mock_result = _make_mock_pipeline_result(facts=[], segments=3)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_result
+
+            result = extract_fresh(
+                document_url=SLACK_URL,
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+            )
 
         assert result.success is True
         assert result.error_message is None
@@ -402,7 +441,7 @@ class TestExtractionResult:
             success=True,
             error_message=None,
             segments_count=100,
-            candidates=[],
+            facts=[],
             local_path=Path("/tmp/test.htm"),
             elapsed_seconds=1.5,
         )
@@ -418,7 +457,7 @@ class TestExtractionResult:
             success=False,
             error_message="File not found",
             segments_count=0,
-            candidates=[],
+            facts=[],
             local_path=None,
             elapsed_seconds=0.1,
         )
@@ -426,6 +465,22 @@ class TestExtractionResult:
         assert result.success is False
         assert result.error_message == "File not found"
         assert result.local_path is None
+
+    def test_extraction_result_with_facts(self) -> None:
+        """ExtractionResult stores MetricFact objects."""
+        fact = MetricFact(canonical_metric_id="cm_nrr", value=1.12)
+        result = ExtractionResult(
+            document_url=SLACK_URL,
+            success=True,
+            error_message=None,
+            segments_count=5,
+            facts=[fact],
+            local_path=None,
+            elapsed_seconds=0.5,
+        )
+
+        assert len(result.facts) == 1
+        assert result.facts[0].canonical_metric_id == "cm_nrr"
 
 
 # =============================================================================
@@ -438,12 +493,18 @@ class TestExtractFreshWithSecFetch:
 
     def test_extract_fetches_from_sec_when_not_cached(self, temp_filings_dir: Path) -> None:
         """When file not cached and allow_sec_fetch=True, fetch from SEC."""
-        with patch("src.gold_standard.fresh_extractor.fetch_from_sec") as mock_fetch:
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=2)
+
+        with (
+            patch("src.gold_standard.fresh_extractor.fetch_from_sec") as mock_fetch,
+            patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls,
+        ):
             # Mock successful fetch
             mock_fetch.return_value = (
                 "<html><body><p>Test content</p></body></html>",
                 None,
             )
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
 
             result = extract_fresh(
                 document_url=SLACK_URL,
@@ -502,11 +563,16 @@ class TestExtractFreshBatch:
             cik_dir.mkdir(parents=True, exist_ok=True)
             (cik_dir / "primary.htm").write_text("<html><body><p>Test</p></body></html>")
 
-        results = extract_fresh_batch(
-            document_urls=[SLACK_URL, FARFETCH_URL],
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-        )
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=1)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
+            results = extract_fresh_batch(
+                document_urls=[SLACK_URL, FARFETCH_URL],
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+            )
 
         assert len(results) == 2
         # First URL should succeed
@@ -521,17 +587,22 @@ class TestExtractFreshBatch:
         cik_dir.mkdir(parents=True, exist_ok=True)
         (cik_dir / "slacks-1a3.htm").write_text("<html></html>")
 
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=0)
+
         progress_calls = []
 
         def progress_callback(current: int, total: int, url: str) -> None:
             progress_calls.append((current, total, url))
 
-        results = extract_fresh_batch(
-            document_urls=[SLACK_URL],
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-            progress_callback=progress_callback,
-        )
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
+            results = extract_fresh_batch(
+                document_urls=[SLACK_URL],
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+                progress_callback=progress_callback,
+            )
 
         assert len(results) == 1
         assert len(progress_calls) == 1
@@ -570,16 +641,21 @@ class TestFreshExtractionIntegration:
             encoding="utf-8",
         )
 
-        result = extract_fresh(
-            document_url=SLACK_URL,
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-        )
+        mock_fact = MetricFact(canonical_metric_id="cm_nrr", value=1.43)
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[mock_fact], segments=4)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
+            result = extract_fresh(
+                document_url=SLACK_URL,
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+            )
 
         assert result.success is True
         assert result.segments_count > 0
-        # The exact number of candidates depends on keyword matching
-        assert isinstance(result.candidates, list)
+        assert isinstance(result.facts, list)
 
     def test_extraction_with_minimal_html(self, temp_filings_dir: Path) -> None:
         """Handle minimal HTML with no metric content."""
@@ -589,15 +665,20 @@ class TestFreshExtractionIntegration:
         filing_path = cik_dir / "slacks-1a3.htm"
         filing_path.write_text("<html><body><p>No metrics here.</p></body></html>")
 
-        result = extract_fresh(
-            document_url=SLACK_URL,
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-        )
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=1)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
+            result = extract_fresh(
+                document_url=SLACK_URL,
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+            )
 
         assert result.success is True
-        # May have zero candidates if no metrics found
-        assert isinstance(result.candidates, list)
+        # May have zero facts if no metrics found
+        assert isinstance(result.facts, list)
 
 
 # =============================================================================
@@ -760,7 +841,14 @@ class TestExtractFreshWithCompanyName:
                 return gold_standard_base
             return original_path(path_str)
 
-        with patch("src.gold_standard.fresh_extractor.Path", side_effect=mock_path):
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=1)
+
+        with (
+            patch("src.gold_standard.fresh_extractor.Path", side_effect=mock_path),
+            patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls,
+        ):
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
             result = extract_fresh(
                 document_url=SLACK_URL,
                 base_dir=str(temp_filings_dir),
@@ -775,12 +863,17 @@ class TestExtractFreshWithCompanyName:
         self, temp_filings_dir: Path, mock_filing_html: Path
     ) -> None:
         """Falls back to data/filings when no gold_standard filing.html."""
-        result = extract_fresh(
-            document_url=SLACK_URL,
-            base_dir=str(temp_filings_dir),
-            allow_sec_fetch=False,
-            company_name="Company Without Gold Standard",
-        )
+        mock_pipeline_result = _make_mock_pipeline_result(facts=[], segments=2)
+
+        with patch("src.gold_standard.fresh_extractor.V2Pipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.process.return_value = mock_pipeline_result
+
+            result = extract_fresh(
+                document_url=SLACK_URL,
+                base_dir=str(temp_filings_dir),
+                allow_sec_fetch=False,
+                company_name="Company Without Gold Standard",
+            )
 
         assert result.success is True
         # Should find the mock_filing_html in data/filings path
