@@ -47,6 +47,11 @@ _HTML_SECTION_TYPE_MAP: dict[str, SectionType] = {
     "operator_instructions": SectionType.OPERATOR,  # legacy alias
     "disclaimer": SectionType.DISCLAIMER,
     "presentation_slide": SectionType.PRESENTATION_SLIDE,
+    "title_slide": SectionType.TITLE_SLIDE,
+    "key_metrics": SectionType.KEY_METRICS,
+    "financial_overview": SectionType.FINANCIAL_OVERVIEW,
+    "guidance": SectionType.GUIDANCE,
+    "appendix": SectionType.APPENDIX,
 }
 
 

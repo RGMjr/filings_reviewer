@@ -8,7 +8,10 @@ from pathlib import Path
 
 from src.extraction_v2.models import SectionType, Segment, SegmentType
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
-from src.extraction_v2.stages.section_classification import SectionClassificationStage
+from src.extraction_v2.stages.section_classification import (
+    SectionClassificationStage,
+    _classify_presentation_slide,
+)
 from src.extraction_v2.text_utils import normalize_text
 
 
@@ -811,3 +814,138 @@ class TestIntegrationSECFiling:
         last_segments = context.segments[-10:]
         assert any(seg.section_type == SectionType.EXHIBITS for seg in last_segments)
         assert any(seg.section_type == SectionType.SIGNATURES for seg in last_segments)
+
+
+class TestPresentationSlideClassification:
+    """Tests for _classify_presentation_slide() and its integration with process()."""
+
+    def test_key_metrics_heading(self) -> None:
+        """'Key Metrics' heading maps to KEY_METRICS when slide type is PRESENTATION_SLIDE."""
+        result = _classify_presentation_slide("Key Metrics", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.KEY_METRICS
+
+    def test_key_metrics_heading_case_insensitive(self) -> None:
+        """Pattern matching is case-insensitive."""
+        result = _classify_presentation_slide("KEY METRICS", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.KEY_METRICS
+
+    def test_kpi_heading(self) -> None:
+        """'KPI' heading maps to KEY_METRICS."""
+        result = _classify_presentation_slide("KPI Summary", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.KEY_METRICS
+
+    def test_appendix_heading(self) -> None:
+        """'Appendix' heading maps to APPENDIX when slide type is PRESENTATION_SLIDE."""
+        result = _classify_presentation_slide("Appendix", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.APPENDIX
+
+    def test_appendix_heading_non_gaap(self) -> None:
+        """'Non-GAAP Reconciliation' heading maps to APPENDIX."""
+        result = _classify_presentation_slide(
+            "Non-GAAP Reconciliation", SectionType.PRESENTATION_SLIDE
+        )
+        assert result == SectionType.APPENDIX
+
+    def test_guidance_heading_fy2025_outlook(self) -> None:
+        """'FY2025 Outlook' heading maps to GUIDANCE when slide type is PRESENTATION_SLIDE."""
+        result = _classify_presentation_slide("FY2025 Outlook", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.GUIDANCE
+
+    def test_guidance_heading_guidance_word(self) -> None:
+        """'Guidance' heading maps to GUIDANCE."""
+        result = _classify_presentation_slide("FY2026 Guidance", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.GUIDANCE
+
+    def test_financial_overview_heading(self) -> None:
+        """'Financial Overview' heading maps to FINANCIAL_OVERVIEW."""
+        result = _classify_presentation_slide("Financial Overview", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.FINANCIAL_OVERVIEW
+
+    def test_financial_summary_heading(self) -> None:
+        """'Financial Summary' heading maps to FINANCIAL_OVERVIEW."""
+        result = _classify_presentation_slide("Financial Summary", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.FINANCIAL_OVERVIEW
+
+    def test_non_presentation_section_unchanged(self) -> None:
+        """Non-presentation section types are returned unchanged regardless of heading."""
+        result = _classify_presentation_slide("Key Metrics", SectionType.MDA)
+        assert result == SectionType.MDA
+
+    def test_non_presentation_risk_factors_unchanged(self) -> None:
+        """RISK_FACTORS section type is not reclassified."""
+        result = _classify_presentation_slide("Key Metrics", SectionType.RISK_FACTORS)
+        assert result == SectionType.RISK_FACTORS
+
+    def test_no_match_returns_input_type(self) -> None:
+        """If no pattern matches, the original PRESENTATION_SLIDE type is returned."""
+        result = _classify_presentation_slide("Our Company Mission", SectionType.PRESENTATION_SLIDE)
+        assert result == SectionType.PRESENTATION_SLIDE
+
+    def test_unknown_section_can_be_classified(self) -> None:
+        """UNKNOWN section type can also be reclassified to a slide type."""
+        result = _classify_presentation_slide("Key Metrics", SectionType.UNKNOWN)
+        assert result == SectionType.KEY_METRICS
+
+    def test_process_refines_presentation_slide_segments(self) -> None:
+        """process() refines PRESENTATION_SLIDE segments using heading text."""
+        stage = SectionClassificationStage()
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/test.html"),
+            config=PipelineConfig(),
+        )
+
+        context.segments = [
+            Segment(
+                doc_id="1",
+                segment_id="seg-1",
+                segment_type=SegmentType.HEADING,
+                text="Key Metrics",
+                dom_locator="/html/body[1]/section[1]/h2[1]",
+                section_type=SectionType.PRESENTATION_SLIDE,
+                sequence=0,
+            ),
+            Segment(
+                doc_id="1",
+                segment_id="seg-2",
+                segment_type=SegmentType.TABLE,
+                text="ARR $100M",
+                dom_locator="/html/body[1]/section[1]/table[1]",
+                section_type=SectionType.PRESENTATION_SLIDE,
+                sequence=1,
+            ),
+        ]
+
+        result = stage.process(context)
+
+        assert result.success is True
+        # Heading segment gets refined
+        assert context.segments[0].section_type == SectionType.KEY_METRICS
+        # Non-heading PRESENTATION_SLIDE segment stays as-is (no text match triggers refinement)
+        assert context.segments[1].section_type == SectionType.PRESENTATION_SLIDE
+
+    def test_process_does_not_reclassify_other_section_types(self) -> None:
+        """process() does not reclassify non-PRESENTATION_SLIDE pre-set section types."""
+        stage = SectionClassificationStage()
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/test.html"),
+            config=PipelineConfig(),
+        )
+
+        context.segments = [
+            Segment(
+                doc_id="1",
+                segment_id="seg-1",
+                segment_type=SegmentType.PARAGRAPH,
+                text="Key Metrics for our business.",
+                dom_locator="/html/body[1]/p[1]",
+                section_type=SectionType.MDA,
+                sequence=0,
+            ),
+        ]
+
+        result = stage.process(context)
+
+        assert result.success is True
+        assert context.segments[0].section_type == SectionType.MDA

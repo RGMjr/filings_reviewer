@@ -26,6 +26,64 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Presentation slide classification patterns (applied after HTML section type is assigned).
+# Only used to refine PRESENTATION_SLIDE segments based on slide heading text.
+_SLIDE_CLASSIFICATION_PATTERNS: list[tuple[SectionType, re.Pattern[str]]] = [
+    (
+        SectionType.KEY_METRICS,
+        re.compile(
+            r"\b(?:key\s+metrics?|kpis?|business\s+highlights?|operating\s+metrics?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.FINANCIAL_OVERVIEW,
+        re.compile(
+            r"\b(?:financial\s+(?:overview|summary|highlights?|results?)|p&l\s+summary)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.GUIDANCE,
+        re.compile(
+            r"\b(?:outlook|guidance|fy\s*20\d{2}|q[1-4]\s+20\d{2}.*(?:outlook|guidance)|forward[-\s]looking)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.APPENDIX,
+        re.compile(
+            r"\b(?:appendix|supplemental|non[-\s]gaap|reconciliation)\b",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
+def _classify_presentation_slide(heading_text: str, section_type: SectionType) -> SectionType:
+    """
+    Refine a PRESENTATION_SLIDE or UNKNOWN section type based on heading text.
+
+    Only reclassifies if the current type is PRESENTATION_SLIDE or UNKNOWN.
+    Checks heading_text against slide classification patterns and returns the
+    first match. If no pattern matches, returns the input type unchanged.
+
+    Args:
+        heading_text: The heading text of the slide to classify.
+        section_type: The current SectionType assigned to the segment.
+
+    Returns:
+        Refined SectionType if a pattern matched, otherwise the original type.
+    """
+    if section_type not in (SectionType.PRESENTATION_SLIDE, SectionType.UNKNOWN):
+        return section_type
+
+    for slide_type, pattern in _SLIDE_CLASSIFICATION_PATTERNS:
+        if pattern.search(heading_text):
+            return slide_type
+
+    return section_type
+
 
 class SectionClassificationStage:
     """
@@ -269,6 +327,15 @@ class SectionClassificationStage:
                 # SEC filing segments arrive as UNKNOWN, so they always go through
                 # the heading classifier below.
                 if segment.section_type != SectionType.UNKNOWN:
+                    # For presentation slides, try to refine the type based on heading text
+                    if segment.section_type == SectionType.PRESENTATION_SLIDE:
+                        refined = _classify_presentation_slide(segment.text, segment.section_type)
+                        if refined != segment.section_type:
+                            logger.debug(
+                                f"Refined presentation slide: {segment.section_type.value} "
+                                f"-> {refined.value} from text: {segment.text[:50]}"
+                            )
+                            segment.section_type = refined
                     segment.section_path = self._build_section_path(segment.section_type)
                     continue
 
