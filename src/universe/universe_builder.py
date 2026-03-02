@@ -4,7 +4,7 @@ UniverseBuilder component for Customer Metrics Filings Analysis.
 Discovers and maintains the Phase 1 universe of S-1/F-1 filings for first-time issuers.
 Excludes SPACs and secondary-only offerings.
 
-Per 05_COMPONENT_INTERFACE_SPECS.md Section 3.
+Per docs/architecture/system-overview.md Section 3.
 """
 
 import logging
@@ -34,7 +34,7 @@ class UniverseBuilder:
     - Upsert companies and filings tables
     - Set is_in_scope_phase1 flag
 
-    Per 04_SYSTEM_ARCHITECTURE.md Section 4.1 and 05_COMPONENT_INTERFACE_SPECS.md Section 3.
+    Per docs/architecture/system-overview.md Section 4.1.
     """
 
     def __init__(self, sec_client: SECClient, db: DatabaseAdapter):
