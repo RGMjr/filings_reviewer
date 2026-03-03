@@ -196,29 +196,7 @@ Batch download filing HTML documents:
 python3 scripts/batch_download_filings.py --limit 10
 ```
 
-### Run Extraction Pipeline (V1)
-
-Extract customer metrics from filings using the V1 pipeline:
-
-```bash
-python3 scripts/run_extraction_pipeline.py --limit 10
-```
-
-Options:
-- `--limit N`: Process first N filings
-- `--filing-id ID`: Process specific filing
-- `--force`: Reprocess already-extracted filings
-- `--debug`: Enable debug logging
-
-This executes the full V1 pipeline:
-1. `HTMLSegmenter`: Parse HTML into segments
-2. `MetricClassifier`: Classify segments by relevance
-3. `SegmentEnricher`: Extract tables and context
-4. `ValueExtractor`: Extract metric values with LLM
-5. `QualityScorer`: Score extraction confidence
-6. Store results in `source_segments` and `metric_values` tables
-
-### Run V2 Extraction Pipeline
+### Run Extraction Pipeline
 
 The V2 pipeline is a ground-up redesign with 10x faster lxml parsing, stable XPath locators, full table reconstruction, and image/OCR integration. Extract metrics from a single filing:
 
@@ -261,17 +239,7 @@ python3 scripts/run_review_server.py
 
 Access at: http://localhost:5000
 
-#### V1 Review Interface
-
-The V1 review interface allows you to:
-- Review extracted text segments and metrics
-- Approve, reject, or flag uncertain extractions
-- Review image-based metrics (charts, graphs)
-- Track review progress and decisions
-
-See `docs/HUMAN_REVIEW_SYSTEM.md` for the V1 review workflow.
-
-#### V2 Review Interface
+#### Review Interface
 
 After running V2 extraction, review facts at: http://localhost:5000/v2/review/filings
 
@@ -419,8 +387,7 @@ filings_reviewer_v2/
 │   ├── infra/               # Database (db.py), SEC client (sec_client.py)
 │   ├── universe/            # Filing discovery and classification
 │   ├── filing_fetcher/      # Document retrieval and caching
-│   ├── extraction/          # V1 extraction pipeline (production)
-│   ├── extraction_v2/       # V2 pipeline (production-ready, 10x faster)
+│   ├── extraction_v2/       # V2 extraction pipeline (sole active pipeline)
 │   ├── review/              # Human review workflow
 │   ├── web/                 # Flask application (routes/, templates/, static/)
 │   ├── llm/                 # OpenAI integration with SQLite caching
@@ -496,12 +463,10 @@ After completing setup:
 
 1. **Build universe**: `python3 scripts/build_universe_real.py`
 2. **Download filings**: `python3 scripts/batch_download_filings.py --limit 10`
-3. **Extract metrics (V1)**: `python3 scripts/run_extraction_pipeline.py --limit 10`
-4. **Extract metrics (V2)**: `python3 scripts/run_v2_extraction.py --filing-id <ID>`
-5. **Start review server**: `python3 scripts/run_review_server.py`
-6. **Review V1 results**: http://localhost:5000/filings
-7. **Review V2 results**: http://localhost:5000/v2/review/filings
-8. **Explore documentation**: See `docs/README.md` for architecture, design decisions, and advanced workflows
+3. **Extract metrics**: `python3 scripts/run_v2_extraction.py --filing-id <ID>`
+4. **Start review server**: `python3 scripts/run_review_server.py`
+5. **Review results**: http://localhost:5000/v2/review/filings
+6. **Explore documentation**: See `docs/README.md` for architecture, design decisions, and advanced workflows
 
 For V2 pipeline usage and migration, see `docs/V2_MIGRATION_GUIDE.md`.
 For V2 human review workflow and API, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.

@@ -6,36 +6,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**Branch cleanup (2026-03-01)**:
-- Preserved `.claude/teams/extraction-team.md`, `.claude/teams/refactor-team.md`, `.claude/rules/agent-dispatch.md`, `config/extraction_patterns.txt` from `claude/agent-swarm-invocation-uM0tR`
-- Committed to v2-rewrite (`dff3b35`), pushed
-- Deleted both stale remote branches: `claude/custom-dev-agents-BCEuT`, `claude/agent-swarm-invocation-uM0tR`
-
-**V2 Production Promotion (2026-03-01)**:
-- Merged PR #27 (v2-rewrite → main) via merge commit `2dd707e` — 155 commits
-- UI cutover: `GET /` now redirects to `/v2/review/filings`; navbar updated (V2 primary, V1 secondary)
-- Shared modules extracted: `src/shared/keyword_config.py`, `src/shared/models.py`
-- V1 retirement: 12 extraction modules deleted, 8 scripts deleted, 31 test files deleted
-- Kept for later migration: `src/extraction/{html_segmenter,exceptions,validators}.py` (fresh_extractor.py dependency)
-- Gold standard: P=89.4%, R=63.2%, F1=74.1% (V1 baseline — no regression from code moves)
-- Unit tests: 3280 passed, 8 skipped, 78.96% coverage (75% minimum met)
-
-**WP-24: Register Farfetch + Snowflake + re-run full batch (2026-02-28)**:
-- Created `sql/register_gold_standard_filings.sql` to register Farfetch (filing_id=297, F-1) and Snowflake (filing_id=298, S-1)
-- Batch ran 4/4 filings, 0 failures, 111 total facts in 14.4s
-- Results: Slack 43 facts, Samsara 2 facts, Farfetch 27 facts, Snowflake 39 facts
-- Snowflake: many grid-gap warnings (complex colspan tables) but extraction completed successfully
-- All 4 gold standard filings now have V2 facts in DB
-- Summary: `logs/batch_v2_summary_20260301_034748.json`
-
-**WP-23: Batch V2 extraction (2026-03-01)**:
-- Batch script ran successfully on 2 registered filings (Slack 295, Samsara 296)
-- Results: 2/2 succeeded, 45 total facts (Slack: 43, Samsara: 2), 7.8s elapsed
-- Fixed 3 persistence bugs: (1) `Document.doc_id` was set to `str(filing_id)` instead of UUID; (2) `ON CONFLICT` expression had no matching unique index — replaced with delete-then-insert; (3) `v2_metric_definitions` table missing — applied migration 11
-- Summary: `logs/batch_v2_summary_20260301_033805.json`
-
-**WP-15–22.5 (2026-02-28)**: FP rules, batch hardening, logging, UI parity, V1/V2 comparison script
-- Gold standard: **P=92.8%, R=77.6%, F1=84.5%**; Migration 12: drop V1 FK constraints
+**Docs refresh + web route tests (2026-03-03)**:
+- Created `tests/unit/web/test_api_v2_routes.py` — 16 tests for `POST /api/v2/decisions` + `DELETE /api/v2/decisions/<id>`; all passing
+- Removed stale V1 references from 9 docs files; V1 rollback guidance updated to reflect V2-only pipeline
+- fresh_extractor migrated to V2 pipeline; all V1 shims deleted (`da43eb7`, `de598f2`)
 
 **Full Universe Batch Run (2026-03-03)**:
 - Created `scripts/register_manifest_filings.py` — reads manifest, fetches EDGAR metadata, registers companies + filings
@@ -52,19 +26,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 - Fix V2 batch extraction failures: (1) `v2_metric_definitions` missing — migration needed; (2) FK violations on `canonical_metric_id`; (3) duplicate key in persistence — pipeline not idempotent
 - Validate extraction results on filings where facts were found (5 total)
+- Open PR: v2-rewrite → main for post-migration hardening (web route tests + docs refresh)
 
 ## Test Status
 
-- Unit tests: 3282 passed, 8 skipped, 81% coverage (2026-03-03)
+- Unit tests: 3,323 collected (81% coverage; integration tests excluded — require TEST_DATABASE_URL)
 - V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17)
-- V1 baseline: P=89.4%, R=63.2%, F1=74.1%
 
 ## Key Learnings for Next Iteration
 
 - `register_manifest_filings.py`: must pass `is_post_combination=False` (and other boolean flags) — DB has NOT NULL constraint
-- `get_filing_by_accession` only searches "recent" EDGAR submissions; old filings need paginated history pages (`filings.files[]` in submissions JSON)
-- `.env` DATABASE_URL points to port 5433 but local Postgres is on 5432 — pass `--database-url` explicitly or fix `.env`
 - V2 persistence has 3 active bugs: (1) duplicate key — same fact persisted twice; (2) `v2_metric_definitions` table missing (migration gap); (3) FK on canonical_metric_id fails for some metrics
+- api_v2 tests: patch `src.web.routes.api_v2.get_db`; use `psycopg.errors.UniqueViolation` for 409 cases
 
 ## Blockers or Warnings
 

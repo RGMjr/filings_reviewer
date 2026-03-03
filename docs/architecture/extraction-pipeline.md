@@ -110,7 +110,7 @@ See `docs/V2_MIGRATION_GUIDE.md` for migration guidance.
 
 ### Overview
 
-The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It runs alongside V1 and is the target for new extraction work.
+The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It is the sole active extraction pipeline.
 
 **Version:** `2.0.0-rc1`
 **Status:** Production-ready (P=92.8%, R=77.6%, F1=84.5% on gold standard, as of 2026-02-28)
@@ -118,7 +118,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 
 ### Key Architectural Differences
 
-| Aspect | V1 (Production) | V2 (Research) |
+| Aspect | V1 (retired) | V2 (production) |
 |--------|----------------|---------------|
 | **Approach** | Text-first, keyword-based | Structure-first, DOM-native |
 | **Table Handling** | Text extraction with markers | Full reconstruction (colspan/rowspan) |
@@ -126,7 +126,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Production ready (87% coverage) | Production ready (F1=84.5%) |
+| **Status** | Retired — code deleted 2026-03-02 | Production (F1=84.5%) |
 
 ### V2 Pipeline Stages
 
@@ -191,18 +191,6 @@ The V2 pipeline implements a 13-stage extraction workflow, plus post-completion 
 4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
 5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
 6. **DOM-native**: XPath locators maintain exact source positions
-
-### When to Use V1 vs V2
-
-**Use V2 for:**
-- New filings requiring full provenance tracking (XPath, EvidencePack)
-- Filings with complex tables (multi-level headers, merged cells)
-- Filings with chart images containing labeled values
-- Research requiring audit-grade evidence packs
-
-**Continue using V1 for:**
-- Bulk re-processing of the full corpus where speed is critical
-- Legacy integrations expecting V1 output format (`metric_values`, `metric_definitions` tables)
 
 ### Configuration
 
