@@ -1,12 +1,12 @@
-# V2 Extraction Pipeline Migration Guide
+# V2 Extraction Pipeline — Migration Record
 
-This guide covers migrating from the V1 extraction pipeline to V2.
+This document records the completed migration from the V1 extraction pipeline to V2. V1 has been removed; V2 is the sole active pipeline.
 
 ## Overview
 
 The V2 pipeline is a ground-up redesign that improves on V1 in several key areas:
 
-| Aspect | V1 | V2 |
+| Aspect | V1 (retired) | V2 (current) |
 |--------|----|----|
 | **HTML Parsing** | BeautifulSoup (slower) | lxml (10x faster) |
 | **Source Locators** | CSS selectors | Stable XPath locators |
@@ -17,40 +17,9 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 | **False Positive Filter** | V1 FP filter (shared) | V2-native FP filter stage with unit compatibility |
 | **Database Schema** | Legacy tables | Normalized v2_* tables with JSONB |
 
-## When to Use V2 vs V1
+**Migration status (as of 2026-03-02):** Complete. V1 code (`src/extraction/`) has been deleted. All extraction now runs through V2. Final validated scores: P=92.8%, R=77.6%, F1=84.5%.
 
-**Use V2 for:**
-- New filings requiring full provenance tracking
-- Filings with complex tables (multi-level headers, merged cells)
-- Filings with chart images containing labeled values
-- Research requiring audit-grade evidence packs
-
-**Continue using V1 for:**
-- Bulk re-processing where speed is critical
-- Legacy integrations expecting V1 output format
-
-**Validation status (as of 2026-02-28):** V2 gold standard validation is active across 4 companies (Slack, Samsara Vision, Farfetch, Snowflake). Current scores: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
-
-## API Differences
-
-### V1 Pipeline
-
-```python
-from src.extraction.extraction_pipeline import ExtractionPipeline
-from src.infra.db import DatabaseAdapter
-
-db = DatabaseAdapter(database_url)
-pipeline = ExtractionPipeline(db, llm_client=None)
-
-# Process filing (requires database lookup for HTML path)
-result = pipeline.process_filing(filing_id=123)
-
-# Result structure
-print(result.success)           # bool
-print(result.num_values)        # int
-print(result.num_definitions)   # int
-print(result.num_segments)      # int
-```
+## API
 
 ### V2 Pipeline
 
@@ -92,8 +61,6 @@ for fact in result.facts:
 
 ### Persistence
 
-V1 writes to database automatically during `process_filing()`.
-
 V2 separates extraction from persistence:
 
 ```python
@@ -116,16 +83,7 @@ else:
     print(f"Errors: {persist_result.errors}")
 ```
 
-## Database Schema Differences
-
-### V1 Tables
-
-- `source_segments` - Text segments with classification flags
-- `metric_values` - Extracted numeric values
-- `metric_definitions` - Extracted definitions/methodologies
-- `filing_metric_incidence` - Quality scores per metric per filing
-
-### V2 Tables
+## Database Schema
 
 All V2 tables use `v2_` prefix:
 
@@ -136,9 +94,9 @@ All V2 tables use `v2_` prefix:
 - `v2_image_assets` - Image metadata, OCR results, chart data
 - `v2_metric_facts` - Primary output with evidence_pack JSONB
 
-Key schema differences:
+Key schema improvements over V1 (retired):
 
-| Field | V1 | V2 |
+| Field | V1 (retired) | V2 (current) |
 |-------|----|----|
 | Source location | `source_segment_id` FK | `source_locator` JSONB with XPath |
 | Table context | N/A | `header_path[]`, `stub_path[]` arrays |
@@ -196,36 +154,22 @@ metric_fact = MetricFact(
 )
 ```
 
-## Migration Steps
+## Migration Record (Completed 2026-03-02)
 
-### Step 1: Validate V2 Output
+The steps below document how the migration was performed. They are preserved for reference; the migration is complete and V1 has been deleted.
 
-Before migrating, validate V2 produces acceptable results:
+### Step 1 (completed): Validate V2 Output
+
+Gold standard validation confirmed V2 was ready:
 
 ```bash
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
-# Expected scores (as of 2026-02-28): P=92.8%, R=77.6%, F1=84.5%
+# Final scores (as of 2026-02-28): P=92.8%, R=77.6%, F1=84.5%
 ```
 
-### Step 2: Parallel Running (Recommended)
-
-Run both pipelines in parallel during transition:
-
-```python
-# Process with V1 (production)
-v1_result = v1_pipeline.process_filing(filing_id)
-
-# Process with V2 (shadow mode)
-v2_result = v2_pipeline.process(html_path, filing_id)
-v2_adapter.persist_pipeline_result(v2_result, filing_id)
-
-# Log comparison for monitoring
-logger.info(f"V1: {v1_result.num_values}, V2: {v2_result.fact_count}")
-```
-
-### Step 3: Update Downstream Consumers
+### Step 2 (completed): Update Downstream Consumers
 
 Update code that reads extraction results:
 
@@ -250,7 +194,7 @@ for fact in facts:
     print(f"Headers: {evidence['header_path']}")
 ```
 
-### Step 4: Update Review UI
+### Step 4 (completed): Update Review UI
 
 The V2 review UI is complete and at full feature parity (WP-21, 2026-02-28). The following are already implemented:
 
@@ -261,23 +205,14 @@ The V2 review UI is complete and at full feature parity (WP-21, 2026-02-28). The
 
 Access via `http://localhost:5000/v2/review/filings`. See `docs/V2_HUMAN_REVIEW_GUIDE.md` for full UI documentation.
 
-### Step 5: Cutover
+### Step 5 (completed): Cutover
 
-Once validated:
+Migration is complete:
 
-1. Update production config to use V2 pipeline
-2. Archive V1 tables (don't delete immediately)
-3. Update scheduled jobs to call V2
-4. Monitor for regressions
-
-## Rollback Plan
-
-If issues arise after cutover:
-
-1. Revert to V1 pipeline in config
-2. V1 tables remain intact (not modified by V2)
-3. Investigate V2 issues in staging
-4. Re-run validation before next cutover attempt
+1. V2 pipeline is now the sole extraction pipeline
+2. V1 code (`src/extraction/`) has been deleted
+3. Scheduled jobs run V2 scripts (`run_v2_extraction.py`, `batch_v2_extraction.py`)
+4. Gold standard validation continues as ongoing regression guard
 
 ## Performance Considerations
 
