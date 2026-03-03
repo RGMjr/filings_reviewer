@@ -6,6 +6,14 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Phase D + M5 Tooling (earnings-call-exploration, 2026-03-03)**
+- M5 gold standard tooling: `review_presentation_annotations.py`, `merge_presentation_annotations.py`, `validate_presentation_extraction.py` — mirrors transcript pipeline; 41 unit tests
+- `preannotate_presentations.py` (M5-1) was already in place; completes the full preannotate→review→merge→validate cycle for presentations
+- Phase D: `check_new_documents.py` (source monitoring, --json), checkpointing + --resume + --max-failures + SIGINT in both ingest scripts, `ingest_all.py` unified wrapper; 23 unit tests
+- Docs: `docs/BATCH_INGESTION.md` (new), `docs/V2_MIGRATION_GUIDE.md` updated, CLAUDE.md updated
+- Tests: 3659 unit tests pass (0 failures, 8 skipped); gold standard 6/6 pass, no extraction regressions
+- M5-5 (sample annotation session on real PDFs) remains to be done interactively
+
 **Phase C: Presentation Support (earnings-call-exploration, 2026-03-02, 72cd1c6 + 5b3b247)**
 - `presentation_converter.py`: pdfplumber PDF→HTML (page→section, tables, images, title-slide detection)
 - `sec_presentation_source.py`: EDGAR 8-K exhibit downloader with idempotent cache
@@ -51,15 +59,16 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-Phase D / M5 annotation:
-- M5 (presentation gold standard): manual annotation of real investor PDFs to measure recall
-- Phase D: FMP API transcript source, monitoring/alerting, batch processing scripts
+M5-5 (sample annotation session):
+- Run preannotate_presentations.py on 2-3 real investor PDFs → review → merge → validate to get initial baseline
+- FMP API source (Phase D-FMP) — deferred; pick up when needed for broader corpus
 
 ## Test Status
 
-- Unit tests: 346+ pass (gold standard 6/6 pass); no regressions
-- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28)
-- Transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files; 2026-03-02, ADBE FP fix)
+- Unit tests: 3659 pass, 0 fail, 8 skipped (2026-03-03)
+- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28, unchanged)
+- Transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files; 2026-03-02)
+- Presentation benchmark: no baseline yet (M5-5 annotation session pending)
 
 ## Key Learnings
 
@@ -83,8 +92,8 @@ Phase D / M5 annotation:
 
 ## Next Work (Prioritized)
 
-1. **M5: Presentation gold standard** — annotate real investor PDFs, measure recall baseline
-2. **Phase D: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
+1. **M5-5: Sample annotation** — run preannotate → review → merge → validate on 2-3 real PDFs to get initial presentation baseline
+2. **Phase D-FMP: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
 3. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 
 ## Blockers or Warnings

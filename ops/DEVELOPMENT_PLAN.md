@@ -89,16 +89,25 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 - M2: SEC 8-K presentation source (`sec_presentation_source.py`) — EDGAR downloader, idempotent cache ✅
 - M3: Section classification (TITLE_SLIDE, KEY_METRICS, FINANCIAL_OVERVIEW, GUIDANCE, APPENDIX) ✅
 - M4: FP filter tuning (suppress TITLE_SLIDE/APPENDIX facts, bare integers <1000) ✅
-- M5: Gold standard annotations — **DEFERRED** (requires manual PDF annotation)
+- M5: Gold standard tooling — **COMPLETE (2026-03-03)**
+  - `scripts/preannotate_presentations.py` — V2 pipeline pre-annotation ✅
+  - `scripts/review_presentation_annotations.py` — terminal review UI ✅
+  - `scripts/merge_presentation_annotations.py` — 60/40 company-level split ✅
+  - `scripts/validate_presentation_extraction.py` — R/P/F1 scoring ✅
+  - 41 unit tests; annotation session (M5-5) pending PDF sample selection
 - M6: Period inference for slide title patterns ("Q4 FY2025 Results", "Full Year 2024") ✅
 - Batch ingestor: `scripts/ingest_presentations.py` (--dry-run / --persist) ✅
 - DB migration 14: presentation section types added to v2_segments CHECK constraint ✅
 
-### Phase D (Production Readiness)
-- FMP API source (`FMPTranscriptSource`) for broader transcript corpus — gated on Phase C
-- Monitoring/alerting for new document types
-- Batch processing scripts for periodic transcript ingestion
-- Documentation updates
+### Phase D (Production Readiness) — COMPLETE (2026-03-03)
+- FMP API source — deferred (non-FMP scope complete; FMP gated separately)
+- `scripts/check_new_documents.py` — monitors sources for unprocessed documents ✅
+- Checkpointing + --resume in `ingest_transcripts.py` and `ingest_presentations.py` ✅
+- Circuit breaker (--max-failures) + SIGINT graceful shutdown in both ingest scripts ✅
+- `scripts/ingest_all.py` — unified wrapper for both ingest scripts ✅
+- `docs/BATCH_INGESTION.md` — full operational reference ✅
+- `docs/V2_MIGRATION_GUIDE.md` updated with transcript/presentation pipeline usage ✅
+- 23 unit tests for Phase D features
 
 ---
 

@@ -26,21 +26,35 @@ Environment variables:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import signal
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+# ---------------------------------------------------------------------------
+
+_shutdown_requested = False
+
+
+def _sigint_handler(signum: int, frame: Any) -> None:
+    global _shutdown_requested
+    _shutdown_requested = True
+    print("\nInterrupt received — finishing current document then shutting down...", flush=True)
 
 # Add project root to sys.path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 from src.extraction_v2.persistence import V2PersistenceAdapter  # noqa: E402
+from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 from src.infra.company_mapping import get_company_info  # noqa: E402
 from src.infra.document_source import DocumentMetadata  # noqa: E402
 
@@ -337,12 +351,44 @@ def _process_one(
     return result
 
 
+def _load_progress(progress_file: Path) -> set[str]:
+    """Load set of tickers already marked 'done' from a progress file."""
+    if not progress_file.exists():
+        return set()
+    try:
+        entries = json.loads(progress_file.read_text())
+        return {e["ticker"] for e in entries if e.get("status") == "done"}
+    except (json.JSONDecodeError, OSError, KeyError):
+        return set()
+
+
+def _save_progress(progress_file: Path, ticker: str, count: int) -> None:
+    """Append a done entry to the progress file (create if missing)."""
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
+    entries: list[dict[str, Any]] = []
+    if progress_file.exists():
+        try:
+            entries = json.loads(progress_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            entries = []
+    entries.append({
+        "ticker": ticker,
+        "status": "done",
+        "count": count,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+    progress_file.write_text(json.dumps(entries, indent=2))
+
+
 def run_ingestion(
     source_name: str,
     tickers: list[str],
     limit: int,
     dry_run: bool,
     db_url: str | None,
+    max_failures: int = 10,
+    resume: bool = False,
+    progress_file: Path | None = None,
 ) -> IngestSummary:
     """
     Main ingestion loop.
@@ -353,10 +399,18 @@ def run_ingestion(
         limit: Max transcripts per ticker
         dry_run: If True, skip DB writes
         db_url: PostgreSQL connection string (ignored if dry_run=True)
+        max_failures: Exit after this many consecutive failures (circuit breaker)
+        resume: Skip tickers already marked done in progress_file
+        progress_file: Path to JSON progress checkpoint file
 
     Returns:
         IngestSummary with per-transcript results
     """
+    global _shutdown_requested
+
+    if progress_file is None:
+        progress_file = Path("logs/ingest_transcripts_progress.json")
+
     # Build source
     if source_name == "fmp":
         from src.infra.fmp_source import FMPTranscriptSource
@@ -379,8 +433,24 @@ def run_ingestion(
     pipeline = V2Pipeline(config=PipelineConfig.for_transcript())
 
     summary = IngestSummary()
+    consecutive_failures = 0
+
+    # Resume: load already-done tickers
+    done_tickers: set[str] = set()
+    if resume:
+        done_tickers = _load_progress(progress_file)
+        if done_tickers:
+            logger.info("Resuming: skipping %d already-done ticker(s): %s", len(done_tickers), sorted(done_tickers))
 
     for ticker in tickers:
+        if _shutdown_requested:
+            logger.info("Shutdown requested — stopping after current ticker")
+            break
+
+        if resume and ticker in done_tickers:
+            logger.info("Skipping %s (already done per progress file)", ticker)
+            continue
+
         logger.info("Listing transcripts for %s from %s...", ticker, source_name)
         try:
             docs = source.list_available(ticker=ticker, limit=limit)
@@ -394,11 +464,21 @@ def run_ingestion(
                 status="error",
                 error=str(exc),
             ))
+            consecutive_failures += 1
+            if consecutive_failures >= max_failures:
+                logger.error("Circuit breaker: %d consecutive failures — aborting", consecutive_failures)
+                summary.print_report()
+                sys.exit(2)
             continue
 
         logger.info("  Found %d transcript(s) for %s", len(docs), ticker)
+        ticker_count = 0
 
         for meta in docs:
+            if _shutdown_requested:
+                logger.info("Shutdown requested — stopping after current document")
+                break
+
             source_id = meta.source_id
 
             # Dedup check (only when we have a DB connection)
@@ -417,6 +497,8 @@ def run_ingestion(
                             fiscal_period=meta.fiscal_period,
                             status="skipped",
                         ))
+                        consecutive_failures = 0
+                        ticker_count += 1
                         continue
 
             # Fetch HTML
@@ -435,6 +517,11 @@ def run_ingestion(
                     status="error",
                     error=str(exc),
                 ))
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures:
+                    logger.error("Circuit breaker: %d consecutive failures — aborting", consecutive_failures)
+                    summary.print_report()
+                    sys.exit(2)
                 continue
 
             result = _process_one(
@@ -447,6 +534,27 @@ def run_ingestion(
                 dry_run=dry_run,
             )
             summary.results.append(result)
+
+            if result.status == "error":
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures:
+                    logger.error("Circuit breaker: %d consecutive failures — aborting", consecutive_failures)
+                    summary.print_report()
+                    sys.exit(2)
+            else:
+                consecutive_failures = 0
+                ticker_count += 1
+
+        # Checkpoint: save progress after each ticker
+        _save_progress(progress_file, ticker, ticker_count)
+
+        if _shutdown_requested:
+            break
+
+    if _shutdown_requested:
+        logger.info("Graceful shutdown complete.")
+        summary.print_report()
+        sys.exit(0)
 
     return summary
 
@@ -491,10 +599,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip tickers already completed per the progress file",
+    )
+    parser.add_argument(
+        "--max-failures",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Abort after N consecutive failures (circuit breaker, default: 10)",
+    )
     return parser
 
 
 def main() -> int:
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -519,6 +641,8 @@ def main() -> int:
             limit=args.limit,
             dry_run=args.dry_run,
             db_url=db_url,
+            max_failures=args.max_failures,
+            resume=args.resume,
         )
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -316,7 +316,7 @@ config = PipelineConfig(
 
 ## Transcript & Presentation Support
 
-The V2 pipeline supports non-SEC document types via document-type-aware `PipelineConfig` presets. Phase A (transcript support) is complete as of 2026-02-19.
+The V2 pipeline supports non-SEC document types via document-type-aware `PipelineConfig` presets. Phases A–D are complete as of 2026-03-03.
 
 ### Config Presets
 
@@ -337,12 +337,12 @@ Key differences from the default SEC config:
 
 | Setting | SEC default | Transcript | Presentation |
 |---------|-------------|------------|--------------|
-| `document_type` | `sec_filing` | `transcript` | `presentation` |
+| `document_type` | `sec_filing` | `transcript` | `investor_presentation` |
 | `value_binding_proximity_words` | 15 | 30 | 20 |
 | `sentence_level_binding` | False | True | False |
 | `fp_filter_relaxed` | False | True | True |
 | `enable_image_extraction` | False | False | True |
-| `min_paragraph_chars` | 50 | 30 | 50 |
+| `min_paragraph_chars` | 50 | 30 | 20 |
 
 ### Transcript Conversion
 
@@ -378,23 +378,89 @@ result = pipeline.process(
 print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
 ```
 
-### Gold Standard & Benchmarking
+### Processing Presentations
 
-The transcript gold standard lives in `data/transcript_gold_standard/` as per-filing `*_reviewed.csv` files (94 annotations, 16 files as of 2026-02-24).
+Investor presentations are PDF files. The `SECPresentationSource` fetches them from SEC EDGAR 8-K filings and converts them to HTML via `pdfplumber`:
+
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
+from datetime import date
+
+config = PipelineConfig.for_presentation()
+pipeline = V2Pipeline(config=config)
+
+result = pipeline.process(
+    html_path=Path("presentation.html"),  # converted from PDF
+    filing_id=None,
+    document_type="investor_presentation",
+    document_date=date(2025, 2, 10),
+)
+
+print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+```
+
+Section types specific to presentations: `TITLE_SLIDE`, `KEY_METRICS`, `FINANCIAL_OVERVIEW`, `GUIDANCE`, `APPENDIX`. The FP filter suppresses bare integers below 1000 in title/appendix slides.
+
+### Transcript Gold Standard & Benchmarking
+
+The transcript gold standard lives in `data/transcript_gold_standard/` as per-filing `*_reviewed.csv` files (91 annotations, 20 files as of 2026-03-02).
 
 ```bash
 # Consolidate annotations
 python3 scripts/merge_transcript_annotations.py
 
-# Run benchmark
+# Run benchmark (all data)
 python3 scripts/validate_transcript_extraction.py
+
+# Run against tuning split only (use during development)
+python3 scripts/validate_transcript_extraction.py --split tuning
+
+# Save current results as baseline
+python3 scripts/validate_transcript_extraction.py --save-baseline
+
+# Compare against baseline (detects >=1pp regression)
+python3 scripts/validate_transcript_extraction.py --baseline
 ```
 
-Current performance (2026-02-28): R=71.8%, P=70.1%, F1=70.9% (all targets met).
+Current performance (2026-03-02): R=75.8%, P=74.2%, F1=75.0%.
+
+### Presentation Gold Standard & Benchmarking
+
+The presentation gold standard lives in `data/presentation_gold_standard/`. The workflow mirrors the transcript gold standard:
+
+```bash
+# Step 1: Pre-annotate (run pipeline, write candidate CSVs)
+python3 scripts/preannotate_presentations.py --ticker CRM ADBE --limit 2
+
+# Step 2: Human review (terminal UI)
+python3 scripts/review_presentation_annotations.py \
+    data/presentation_gold_standard/CRM_2025-02-10_preannotated.csv
+
+# Step 3: Merge reviewed files into gold standard
+python3 scripts/merge_presentation_annotations.py
+
+# Step 4: Validate pipeline against gold standard
+python3 scripts/validate_presentation_extraction.py
+python3 scripts/validate_presentation_extraction.py --split tuning
+python3 scripts/validate_presentation_extraction.py --save-baseline
+python3 scripts/validate_presentation_extraction.py --baseline
+```
+
+The `_file_index.json` written by `preannotate_presentations.py` maps `{TICKER}_{DATE}` keys to cached HTML paths used by the validation script.
 
 ### HuggingFace Source
 
 The `DocumentSource` implementation for the `kurry/earnings-call-transcripts` dataset is in `src/extraction_v2/sources/huggingface_source.py`. Use `scripts/spike/collect_samples.py` to download sample transcripts.
+
+### Batch Ingestion
+
+See `docs/operations/BATCH_INGESTION.md` for full documentation on:
+- `scripts/ingest_transcripts.py` — batch transcript ingestion (FMP or HuggingFace)
+- `scripts/ingest_presentations.py` — batch presentation ingestion (SEC EDGAR)
+- `scripts/ingest_all.py` — unified wrapper for both sources
+- `scripts/check_new_documents.py` — monitoring for unprocessed documents
+- Checkpointing, circuit breaker, and cron scheduling
 
 ---
 

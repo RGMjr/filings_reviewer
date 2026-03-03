@@ -121,7 +121,7 @@ See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_I
 ## Beyond SEC: Transcript & Presentation Support
 
 **Branch:** `earnings-call-exploration` (worktree: `filings_reviewer_beyond_sec`)
-**Status:** Phase A complete (12/12 ACs), Phase A+ complete (all targets met), Phase B complete, Phase C complete (M1-M4, M6; M5 deferred)
+**Status:** Phase A complete (12/12 ACs), Phase A+ complete (all targets met), Phase B complete, Phase C complete (M1-M4, M6; M5 deferred), Phase D complete
 **Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 The V2 pipeline has been extended to extract customer metrics from earnings call transcripts and investor presentations. Current transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files, 2026-03-02). The original spike baseline was 22.1% recall / 63.0% precision on 77 annotated metrics.
@@ -146,6 +146,8 @@ config = PipelineConfig()
 
 **Phase C (complete, 72cd1c6 + 5b3b247):** Presentation support. New modules: `presentation_converter.py` (pdfplumber PDF→HTML), `sec_presentation_source.py` (EDGAR 8-K downloader), `scripts/ingest_presentations.py`. Section types TITLE_SLIDE/KEY_METRICS/FINANCIAL_OVERVIEW/GUIDANCE/APPENDIX added (migration 14). FP filter suppresses title/appendix slides and bare integers <1000. Period inference extended for slide title patterns. M5 (gold standard on real PDFs) deferred.
 
+**Phase D (complete, 2026-03-03):** Monitoring, batch improvements, ingest_all wrapper, and M5 gold standard tooling. New scripts: `check_new_documents.py` (monitors HuggingFace + EDGAR for unprocessed documents), `ingest_all.py` (unified wrapper for both sources), `review_presentation_annotations.py` (terminal review UI), `merge_presentation_annotations.py` (60/40 split), `validate_presentation_extraction.py` (R/P/F1 benchmark). Circuit breaker (`--max-failures`) and `--resume` checkpointing added to both ingest scripts. See `docs/operations/BATCH_INGESTION.md` for full usage.
+
 **Spike scripts:**
 - `scripts/spike/collect_samples.py` — HuggingFace dataset downloader
 - `scripts/spike/convert_transcript_to_html.py` — text-to-HTML converter
@@ -153,4 +155,6 @@ config = PipelineConfig()
 
 **Spike data:** `data/spike_samples/` (22 transcripts, 77 annotations), `data/spike_results/` (per-file results)
 
-**Gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 94 annotations, 16 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
+**Transcript gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 91 annotations, 20 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
+
+**Presentation gold standard:** `data/presentation_gold_standard/` (per-filing `*_reviewed.csv`). Workflow: `preannotate_presentations.py` → `review_presentation_annotations.py` → `merge_presentation_annotations.py` → `validate_presentation_extraction.py`. File index at `data/presentation_gold_standard/_file_index.json`.
