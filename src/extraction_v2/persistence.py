@@ -669,6 +669,30 @@ class V2PersistenceAdapter:
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
                 %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
             )
+            ON CONFLICT (
+                doc_id, canonical_metric_id,
+                COALESCE(period_start, '1900-01-01'::date),
+                COALESCE(period_end, '1900-01-01'::date),
+                unit, scope,
+                COALESCE(cohort_def, ''),
+                COALESCE(customer_type, '')
+            ) DO UPDATE SET
+                value = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                             THEN EXCLUDED.value ELSE v2_metric_facts.value END,
+                value_raw = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                                 THEN EXCLUDED.value_raw ELSE v2_metric_facts.value_raw END,
+                confidence = GREATEST(EXCLUDED.confidence, v2_metric_facts.confidence),
+                fact_id = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                               THEN EXCLUDED.fact_id ELSE v2_metric_facts.fact_id END,
+                source_locator = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                                      THEN EXCLUDED.source_locator ELSE v2_metric_facts.source_locator END,
+                evidence_pack = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                                     THEN EXCLUDED.evidence_pack ELSE v2_metric_facts.evidence_pack END,
+                source_type = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                                   THEN EXCLUDED.source_type ELSE v2_metric_facts.source_type END,
+                extraction_method = CASE WHEN EXCLUDED.confidence > v2_metric_facts.confidence
+                                         THEN EXCLUDED.extraction_method ELSE v2_metric_facts.extraction_method END,
+                updated_at = NOW()
         """
 
         count = 0
