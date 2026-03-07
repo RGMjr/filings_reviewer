@@ -6,68 +6,40 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**V2 Production Promotion (2026-03-01)**:
-- Merged PR #27 (v2-rewrite → main) via merge commit `2dd707e` — 155 commits
-- UI cutover: `GET /` now redirects to `/v2/review/filings`; navbar updated (V2 primary, V1 secondary)
-- Shared modules extracted: `src/shared/keyword_config.py`, `src/shared/models.py`
-- V1 retirement: 12 extraction modules deleted, 8 scripts deleted, 31 test files deleted
-- Kept for later migration: `src/extraction/{html_segmenter,exceptions,validators}.py` (fresh_extractor.py dependency)
-- Gold standard: P=89.4%, R=63.2%, F1=74.1% (V1 baseline — no regression from code moves)
-- Unit tests: 3280 passed, 8 skipped, 78.96% coverage (75% minimum met)
+**WIP Commit + Batch Filter Fix (2026-03-04)**:
+- Fixed batch filter: `WHERE c.cik IS NOT NULL` → `WHERE f.html_storage_path IS NOT NULL` in `scripts/batch_v2_extraction.py`
+- Committed all WIP: persistence ON CONFLICT fix, API route tests cleanup, SQL seed for `cm_large_customers_period_end`, ITERATION_CONTEXT
+- 3,307 unit tests pass; gold standard requires live DB (not run this iteration, last result P=92.8%/R=77.6%/F1=84.5%)
+- PR #29 (v2-rewrite → main) updated
 
-**WP-24: Register Farfetch + Snowflake + re-run full batch (2026-02-28)**:
-- Created `sql/register_gold_standard_filings.sql` to register Farfetch (filing_id=297, F-1) and Snowflake (filing_id=298, S-1)
-- Batch ran 4/4 filings, 0 failures, 111 total facts in 14.4s
-- Results: Slack 43 facts, Samsara 2 facts, Farfetch 27 facts, Snowflake 39 facts
-- Snowflake: many grid-gap warnings (complex colspan tables) but extraction completed successfully
-- All 4 gold standard filings now have V2 facts in DB
-- Summary: `logs/batch_v2_summary_20260301_034748.json`
-
-**WP-23: Batch V2 extraction (2026-03-01)**:
-- Batch script ran successfully on 2 registered filings (Slack 295, Samsara 296)
-- Results: 2/2 succeeded, 45 total facts (Slack: 43, Samsara: 2), 7.8s elapsed
-- Fixed 3 persistence bugs: (1) `Document.doc_id` was set to `str(filing_id)` instead of UUID; (2) `ON CONFLICT` expression had no matching unique index — replaced with delete-then-insert; (3) `v2_metric_definitions` table missing — applied migration 11
-- Summary: `logs/batch_v2_summary_20260301_033805.json`
-
-**WP-15–22.5 + WP-21 + Migration 12 (2026-02-28)**:
-- WP-15: `_rule_tier_qualifier` — Snowflake tier FPs 22→3
-- WP-17: `_rule_dollar_threshold_customer` — Slack ">$100K" FPs eliminated; Slack F1 77.1%→92.3%
-- Gold standard: **P=92.8%, R=77.6%, F1=84.5%** (all per-company gates passed)
-- WP-18+19: Batch script hardened; `.env.template` updated
-- WP-20: `logging_config.py` — JSON structured logging, optional Sentry hook
-- WP-21: V2 review UI parity — `review_v2.py`, `api_v2.py`, `v2_stats.html` complete
-- WP-22: `compare_v1_v2_results.py` — V1/V2 DB-based comparison script
-- Migration 12: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments`
-
-**WP-10–14 (2026-02-24)**: Table resilience, batch hardening, review_status preservation
+**Full Universe Batch Run + Bug Fixes (2026-03-03)**:
+- Fixed 3 persistence bugs; re-run: **78/84 succeeded, 771 facts extracted** (154x improvement)
+- 6 "HTML not found" are Salesforce/Microsoft transcript stubs (IDs 1-6), expected
+- Summary: `logs/batch_v2_summary_20260303_024229.json`
 
 ## Current Focus
 
-- Migrate `src/gold_standard/fresh_extractor.py` from V1 HTMLSegmenter to V2 pipeline
-- Full universe batch run (12 production filings beyond the 4 gold standard)
-- Delete remaining V1 shims in `src/extraction/` once fresh_extractor is migrated
+- Extraction quality validation: query DB for Slack (expect 29-32 facts) and Datadog (expect ~14 facts)
+- Gold standard re-run with live DB to confirm no regression from persistence ON CONFLICT change
+- Assess PR #29 merge readiness after quality validation
 
 ## Test Status
 
-- Unit tests: 1,110 extraction_v2; full suite ~4,765 (coverage 87%)
-- V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17)
-- V1 baseline: P=89.4%, R=63.2%, F1=74.1%
+- Unit tests: 3,307 passed, 8 skipped (integration tests excluded — require TEST_DATABASE_URL)
+- V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17) — requires live DB to re-run
 
 ## Key Learnings for Next Iteration
 
-- `_rule_dollar_threshold_customer`: check source_text for ">$100,000" proximity — simpler than colspan fix
-- AOV wrong_period FNs: were already fixed in 44a1e81 (period start off-by-one). Always re-check before investigating.
-- `source_segments` has FK deps in migrations 07/08/09 — cannot drop without migration 12 first
-- `metric_values` has NO FK dependents — safe to drop/rename independently
-- WP-22 comparison script uses `resolve_to_canonical()` from `src/extraction/keyword_config.py` (not metric_registry)
-- V2 persistence bugs fixed in WP-23: `ingestion.py` was setting `Document.doc_id=str(filing_id)` (should be UUID); `v2_metric_facts` ON CONFLICT expression had no matching unique index (replaced with delete-then-insert); migration 11 (`v2_metric_definitions`) was not applied
+- `ON CONFLICT DO UPDATE` on expression index requires exact COALESCE expressions matching the index definition
+- Transcript stubs (IDs 1-6: Salesforce/Microsoft) have CIKs — filter by `html_storage_path IS NOT NULL` not `cik IS NOT NULL`
+- `v2_metric_definitions` table required by persistence but migration 11 was not applied to production DB
+- api_v2 tests: patch `src.web.routes.api_v2.get_db`; use `psycopg.errors.UniqueViolation` for 409 cases
 
 ## Blockers or Warnings
 
-- Snowflake tables have many colspan/grid-gap warnings — extraction works but may have binding gaps; accepted for now
+- 6 transcript stub filings (IDs 1-6) will always fail unless `html_storage_path IS NOT NULL` filter is added to batch query
+- Snowflake tables have colspan/grid-gap warnings — extraction works but may have binding gaps; accepted for now
 - Farfetch chart FNs (8) require Vision API; accepted gap unless production has OPENAI_API_KEY
-- 3 residual Snowflake FPs (value_mismatch 702 vs 948, 1 duplicate) — separate pattern, low priority
-- `metric_values` (V1) table is empty — V1/V2 comparison script needs V1 extraction run first
 
 ---
 

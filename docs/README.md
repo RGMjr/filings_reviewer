@@ -130,7 +130,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 - **Language:** Python 3.11+
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
-- **Parsing:** BeautifulSoup4, lxml
+- **Parsing:** lxml (primary, V2 pipeline); BeautifulSoup4 (secondary, review modules)
 - **Testing:** pytest (87% coverage, 4,765 tests)
 
 ### Cost Profile
@@ -147,14 +147,6 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 |-----------|--------|---------------|---------------|
 | Universe Builder | ✅ Complete | 93% | [System Overview](architecture/system-overview.md) |
 | Filing Fetcher | ✅ Complete | 94% | [System Overview](architecture/system-overview.md) |
-| HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Segment Enricher | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Cohort Chart Detector | ✅ Complete | 100% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
-| Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
 | Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
 | Review Candidate Generator | ✅ Complete | 98% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
@@ -164,6 +156,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
+| V2 MetricFact / EvidencePack | ✅ Complete | 87% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | V2 Gold Standard | ✅ Active | N/A | P=92.8%, R=77.6%, F1=84.5% (as of 2026-02-28, post-WP-15+17) |
 | V2 Review UI | ✅ Complete | N/A | [V2 Human Review Guide](V2_HUMAN_REVIEW_GUIDE.md) — WP-21 complete |
 

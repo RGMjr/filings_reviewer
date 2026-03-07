@@ -1,6 +1,8 @@
 # Manual Testing Guide
 
-Quick guide for manually testing the human review system.
+Quick guide for manually testing the V1 human review system (Flask app, port 5000).
+
+> Note: `scripts/setup_manual_test.py` has been removed. Use the manual setup steps and database checks below. For the V2 review interface, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.
 
 ## Quick Start
 

@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.extraction.keyword_config import is_metric_deprecated
+from src.shared.keyword_config import is_metric_deprecated
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
     METRIC_REQUIRED_CONTEXT,
@@ -1688,8 +1688,8 @@ class TestRequiredContext:
 
     def test_revenue_synonyms_have_required_context(self):
         """All non-deprecated revenue synonym metrics should have required_context in YAML config."""
-        from src.extraction.keyword_config import get_required_context
-        from src.extraction.keyword_config import is_metric_deprecated
+        from src.shared.keyword_config import get_required_context
+        from src.shared.keyword_config import is_metric_deprecated
 
         # Deprecated metrics no longer have patterns/required_context
         raw_context = get_required_context()
