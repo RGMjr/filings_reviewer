@@ -14,15 +14,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.review import CandidateGenerator
-from src.review.config import CandidateGenerationConfig
-from src.review.models import ReviewCandidate
-
-if TYPE_CHECKING:
-    from src.extraction.models import SourceSegment
+from src.extraction_v2.models import MetricFact
+from src.extraction_v2.pipeline import PipelineConfig, PipelineResult, V2Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +42,7 @@ class ExtractionResult:
     success: bool
     error_message: str | None
     segments_count: int
-    candidates: list[ReviewCandidate]
+    facts: list[MetricFact]
     local_path: Path | None
     elapsed_seconds: float
 
@@ -262,50 +256,40 @@ def fetch_from_sec(
 def segment_and_generate(
     filing_path: Path,
     filing_id: int = 1,
-    company_id: int = 1,
-    config: CandidateGenerationConfig | None = None,
-) -> tuple[list[ReviewCandidate], int, str | None]:
+    pipeline_config: PipelineConfig | None = None,
+) -> tuple[list[MetricFact], int, str | None]:
     """
-    Segment a filing and generate candidates.
+    Segment a filing and generate metric facts using the V2 pipeline.
 
     Args:
         filing_path: Path to filing HTML file
-        filing_id: Filing ID for candidate generation
-        company_id: Company ID for candidate generation
-        config: Optional candidate generation config
+        filing_id: Filing ID for the pipeline
+        pipeline_config: Optional V2 pipeline configuration
 
     Returns:
-        Tuple of (candidates, segment_count, error_message)
+        Tuple of (facts, segment_count, error_message)
     """
-    segmenter = HTMLSegmenter()
-    generator_config = config or CandidateGenerationConfig()
-    generator = CandidateGenerator(config=generator_config)
+    config = pipeline_config or PipelineConfig(
+        enable_image_extraction=False,
+        enable_chart_extraction=False,
+    )
+    pipeline = V2Pipeline(config=config)
 
     try:
-        # Segment the filing
-        segments: list[SourceSegment] = segmenter.segment_filing(filing_id, str(filing_path))
-
-        if not segments:
-            logger.warning(f"No segments generated for {filing_path}")
-            return [], 0, None
-
-        # Convert segments to dicts for generator
-        segment_dicts = [seg.to_dict() for seg in segments]
-
-        # Generate candidates (return_stats=False returns only list)
-        result = generator.generate_for_filing(
+        result: PipelineResult = pipeline.process(
+            html_path=filing_path,
             filing_id=filing_id,
-            company_id=company_id,
-            segments=segment_dicts,
-            return_stats=False,
         )
-        # result is list[ReviewCandidate] when return_stats=False
-        candidates: list[ReviewCandidate] = result if isinstance(result, list) else result[0]
 
-        return candidates, len(segments), None
+        if not result.success:
+            error_msg = result.error_message or "V2 pipeline returned failure"
+            logger.error(f"V2 pipeline failed for {filing_path}: {error_msg}")
+            return [], len(result.segments), error_msg
+
+        return result.facts, len(result.segments), None
 
     except Exception as e:
-        logger.error(f"Segmentation/generation failed for {filing_path}: {e}")
+        logger.error(f"V2 pipeline raised exception for {filing_path}: {e}")
         return [], 0, str(e)
 
 
@@ -315,7 +299,7 @@ def extract_fresh(
     company_id: int = 1,
     base_dir: str | Path = "data/filings",
     allow_sec_fetch: bool = True,
-    config: CandidateGenerationConfig | None = None,
+    pipeline_config: PipelineConfig | None = None,
     company_name: str | None = None,
 ) -> ExtractionResult:
     """
@@ -324,19 +308,19 @@ def extract_fresh(
     1. Parse SEC URL to locate filing
     2. Check local cache first (including gold_standard directory if company_name provided)
     3. Optionally fetch from SEC if not cached
-    4. Segment HTML and generate candidates
+    4. Run V2 pipeline to extract metric facts
 
     Args:
         document_url: SEC EDGAR document URL
-        filing_id: Filing ID for candidate generation
-        company_id: Company ID for candidate generation
+        filing_id: Filing ID for the pipeline
+        company_id: Unused (kept for backward compatibility)
         base_dir: Base directory for cached filings
         allow_sec_fetch: Whether to fetch from SEC if not cached
-        config: Optional candidate generation config
+        pipeline_config: Optional V2 pipeline configuration
         company_name: Optional company name for gold_standard path lookup
 
     Returns:
-        ExtractionResult with candidates or error info
+        ExtractionResult with facts or error info
     """
     start_time = time.time()
 
@@ -348,11 +332,10 @@ def extract_fresh(
             gold_standard_path = _find_gold_standard_filing(company_name)
             if gold_standard_path is not None:
                 logger.info(f"Non-standard URL, using gold_standard filing: {gold_standard_path}")
-                candidates, segment_count, error = segment_and_generate(
+                facts, segment_count, error = segment_and_generate(
                     gold_standard_path,
                     filing_id=filing_id,
-                    company_id=company_id,
-                    config=config,
+                    pipeline_config=pipeline_config,
                 )
                 if error:
                     return ExtractionResult(
@@ -360,7 +343,7 @@ def extract_fresh(
                         success=False,
                         error_message=error,
                         segments_count=segment_count,
-                        candidates=[],
+                        facts=[],
                         local_path=gold_standard_path,
                         elapsed_seconds=time.time() - start_time,
                     )
@@ -369,7 +352,7 @@ def extract_fresh(
                     success=True,
                     error_message=None,
                     segments_count=segment_count,
-                    candidates=candidates,
+                    facts=facts,
                     local_path=gold_standard_path,
                     elapsed_seconds=time.time() - start_time,
                 )
@@ -378,7 +361,7 @@ def extract_fresh(
             success=False,
             error_message=f"Invalid SEC URL format: {document_url}",
             segments_count=0,
-            candidates=[],
+            facts=[],
             local_path=None,
             elapsed_seconds=time.time() - start_time,
         )
@@ -396,7 +379,7 @@ def extract_fresh(
                     success=False,
                     error_message=f"Failed to fetch from SEC: {error}",
                     segments_count=0,
-                    candidates=[],
+                    facts=[],
                     local_path=None,
                     elapsed_seconds=time.time() - start_time,
                 )
@@ -412,17 +395,16 @@ def extract_fresh(
                 success=False,
                 error_message=f"Filing not found in cache: {parsed.to_local_path(base_dir)}",
                 segments_count=0,
-                candidates=[],
+                facts=[],
                 local_path=None,
                 elapsed_seconds=time.time() - start_time,
             )
 
-    # Segment and generate
-    candidates, segment_count, error = segment_and_generate(
+    # Run V2 pipeline
+    facts, segment_count, error = segment_and_generate(
         local_path,
         filing_id=filing_id,
-        company_id=company_id,
-        config=config,
+        pipeline_config=pipeline_config,
     )
 
     if error:
@@ -431,7 +413,7 @@ def extract_fresh(
             success=False,
             error_message=error,
             segments_count=segment_count,
-            candidates=[],
+            facts=[],
             local_path=local_path,
             elapsed_seconds=time.time() - start_time,
         )
@@ -441,7 +423,7 @@ def extract_fresh(
         success=True,
         error_message=None,
         segments_count=segment_count,
-        candidates=candidates,
+        facts=facts,
         local_path=local_path,
         elapsed_seconds=time.time() - start_time,
     )
@@ -451,7 +433,7 @@ def extract_fresh_batch(
     document_urls: list[str],
     base_dir: str | Path = "data/filings",
     allow_sec_fetch: bool = True,
-    config: CandidateGenerationConfig | None = None,
+    pipeline_config: PipelineConfig | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[ExtractionResult]:
     """
@@ -461,7 +443,7 @@ def extract_fresh_batch(
         document_urls: List of SEC EDGAR document URLs
         base_dir: Base directory for cached filings
         allow_sec_fetch: Whether to fetch from SEC if not cached
-        config: Optional candidate generation config
+        pipeline_config: Optional V2 pipeline configuration
         progress_callback: Optional callback(current, total, url) for progress
 
     Returns:
@@ -481,7 +463,7 @@ def extract_fresh_batch(
             company_id=1,
             base_dir=base_dir,
             allow_sec_fetch=allow_sec_fetch,
-            config=config,
+            pipeline_config=pipeline_config,
         )
         results.append(result)
 

@@ -20,7 +20,7 @@ with clear diagnostic messages.
 
 Prerequisites:
     - Gold standard data must exist in data/gold_standard/
-    - Baseline file must exist at data/gold_standard/baseline.json
+    - Baseline file must exist at data/gold_standard/v2_baseline.json
       (create with: python scripts/validate_against_gold_standard.py --all --update-baseline)
     - Database must contain gold standard filings
 """
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 GOLD_STANDARD_CSV_PATH = Path("data/gold_standard/golden_set_251218.csv")
-BASELINE_PATH = Path("data/gold_standard/baseline.json")
+BASELINE_PATH = Path("data/gold_standard/v2_baseline.json")
 
 
 # =============================================================================

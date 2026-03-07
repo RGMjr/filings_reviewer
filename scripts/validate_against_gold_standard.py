@@ -491,9 +491,44 @@ def validate_filing(
                 f"gold entry line {entry.line_number} ({match_type}, score={score:.1f})"
             )
 
+    # Phase 3: Dedup-matched TPs — allow one candidate to satisfy multiple gold entries
+    # V2 deduplicates facts, so a fact appearing in N filing sections produces 1 candidate
+    # but N gold entries. Credit the pipeline for all occurrences it found.
+    #
+    # Build lookup: (normalized_metric_id, parsed_value_float) -> candidate_id for matched candidates
+    # parsed_value is already a float from V2 pipeline; gold values are normalized from raw strings.
+    dedup_match_index: dict[tuple, int] = {}
+    for match in tp_matches:
+        c = next((c for c in candidates if c['candidate_id'] == match.candidate_id), None)
+        if c is None:
+            continue
+        metric_key = normalize_metric_id(c.get('suggested_metric_id', ''))
+        val = c.get('parsed_value')  # already float or None from V2
+        if metric_key and val is not None:
+            dedup_match_index[(metric_key, val)] = match.candidate_id
+
+    dedup_tp_count = 0
+    for entry in gold_entries_with_values:
+        if entry.line_number in matched_entries:
+            continue  # Already matched in Phase 2
+        gold_value = normalize_value(entry.raw_value) or normalize_value(entry.scaled_value)
+        key = (normalize_metric_id(entry.metric_id), gold_value)
+        if key in dedup_match_index:
+            matched_entries.add(entry.line_number)
+            dedup_tp_count += 1
+            if verbose:
+                logger.info(
+                    f"  TP (dedup): gold entry line {entry.line_number} credited to "
+                    f"candidate {dedup_match_index[key]} (deduplicated occurrence)"
+                )
+
+    if dedup_tp_count and verbose:
+        logger.info(f"  Dedup-matched TPs: {dedup_tp_count}")
+
     # Calculate metrics (using only gold entries with values)
-    true_positives = len(tp_matches)
-    false_positives = len(candidates) - true_positives
+    true_positives = len(tp_matches) + dedup_tp_count
+    # FP = candidates not matched in Phase 2 (dedup-matched TPs share a candidate, so don't reduce FP count)
+    false_positives = len(candidates) - len(matched_candidates)
     false_negatives = len(gold_entries_with_values) - true_positives
 
     precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
@@ -697,22 +732,22 @@ def get_fresh_candidates(
     if verbose:
         logger.info(
             f"  Segmented {result.segments_count} segments, "
-            f"generated {len(result.candidates)} candidates "
+            f"generated {len(result.facts)} facts "
             f"in {result.elapsed_seconds:.1f}s"
         )
 
-    # Convert ReviewCandidate objects to dicts for matching
+    # Convert MetricFact objects to dicts for matching
     # Assign synthetic IDs for matching purposes
     candidates = []
-    for i, candidate in enumerate(result.candidates):
+    for i, fact in enumerate(result.facts):
         candidates.append({
             'candidate_id': i + 1,  # Synthetic ID
-            'suggested_metric_id': candidate.suggested_metric_id,
-            'parsed_value': float(candidate.parsed_value) if candidate.parsed_value else None,
-            'raw_number_text': candidate.raw_number_text,
-            'context_text': candidate.context_text,
-            'triggering_keyword': candidate.triggering_keyword,
-            'source_segment_id': candidate.source_segment_id,
+            'suggested_metric_id': fact.canonical_metric_id,
+            'parsed_value': fact.value,
+            'raw_number_text': fact.value_raw,
+            'context_text': re.sub(r'<[^>]+>', '', fact.evidence_pack.snippet_html),
+            'triggering_keyword': fact.extraction_method.value,
+            'source_segment_id': fact.source_locator.segment_id,
         })
 
     return candidates

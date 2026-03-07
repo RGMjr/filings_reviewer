@@ -352,21 +352,17 @@ grep "persist" logs/batch_v2_cutover.log | grep -i "fail\|error"
 
 ## 6. Rollback Notes
 
-V2 extraction is designed for safe rollback at any point:
+V2 is the sole extraction pipeline. V1 extraction code has been removed. If you need to rerun extraction from scratch:
 
 - **V2 writes only to `v2_*` tables**: `v2_documents`, `v2_segments`, `v2_metric_facts`,
   `v2_metric_definitions`, `v2_quality_scores`
-- **V1 data is untouched**: All V1 extraction results remain in `source_segments`, `candidates`,
-  `metric_values`, and related tables
-- **No schema changes required for rollback**: Simply stop invoking V2 scripts
-- **Review UI rollback**: Point users back to V1 review routes at `/filings` (the V1 interface
-  remains operational)
+- **Safe re-extraction**: Simply truncate the `v2_*` tables and rerun the batch script — no schema changes required
 
-To rollback:
+To re-extract from scratch:
 
 1. Stop any running batch extraction processes (`Ctrl+C` for graceful shutdown)
-2. Stop using V2 review routes; redirect users to V1 routes
-3. No database cleanup is required — V2 tables remain but are simply not queried
+2. Clear V2 data (see SQL below)
+3. Rerun the batch extraction script
 
 If you need to clear V2 data to rerun from scratch:
 
