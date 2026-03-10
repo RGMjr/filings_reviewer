@@ -80,6 +80,8 @@ TEST_DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis_test
 LLM_CACHE_ENABLED=true
 LLM_CACHE_PATH=data/llm_cache.db
 LLM_CACHE_VERSION=v1
+# For cloud deployments, use PostgreSQL-backed cache instead of SQLite:
+# LLM_CACHE_BACKEND=postgres
 
 # Flask Configuration (optional in development)
 SECRET_KEY=
@@ -132,7 +134,7 @@ TEST_DATABASE_URL=postgresql://localhost:5432/filings_analysis_test
 
 ### 6. Run Database Migrations
 
-Apply the SQL schema migrations (00-10 in `sql/` directory):
+Apply the SQL schema migrations (00-15 in `sql/` directory):
 
 ```bash
 python3 scripts/apply_migrations.py
@@ -399,7 +401,7 @@ filings_reviewer_v2/
 │   ├── unit/               # Fast unit tests
 │   ├── integration/        # Database-dependent tests
 │   └── conftest.py         # Pytest fixtures
-├── sql/                    # Database schema migrations (00-10)
+├── sql/                    # Database schema migrations (00-15)
 ├── docs/                   # Documentation
 ├── .env.template           # Environment configuration template
 ├── requirements.txt        # Curated Python dependencies
