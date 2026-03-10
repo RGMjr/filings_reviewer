@@ -16,6 +16,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Identified conftest.py load_dotenv() issue: OPENAI_API_KEY from .env enables Stage 5 in pytest sessions; fixed with explicit PipelineConfig in test
 - Text-only: **P=95.0%, R=83.5%, F1=88.9%** | Image-enabled: **P=92.3%, R=83.5%, F1=87.7%**
 
+**Cloud Independence Migration (2026-03-10)**:
+- `html_content`/`txt_content` stored in PostgreSQL; extraction scripts read from DB with file fallback
+- LLM cache: dual SQLite/Postgres backend via `LLM_CACHE_BACKEND=postgres`; SQL migrations 14+15; backfill script added
+
 **Snowflake FN Fixes (2026-03-10)**:
 - Recovered 5 Snowflake FNs: `cm_revenue_by_cohort` ×4 and `cm_new_customers_acquired` ×1
 - Per-filing (text-only): Slack P=93.9%/R=96.9%, Samsara P=100%/R=100%, Farfetch P=92.3%/R=68.6%, Snowflake P=97.5%/R=84.8%

@@ -128,6 +128,7 @@ def _process_filing_worker(
     cik: str,
     db_url: str,
     config_dict: dict,
+    html_content: str | None = None,
 ) -> dict:
     """
     Worker function for ProcessPoolExecutor.
@@ -138,6 +139,7 @@ def _process_filing_worker(
     Returns dict with: filing_id, success, fact_count, definition_count, error, duration_ms, retried
     """
     import sys
+    import tempfile
     from pathlib import Path as _Path
 
     _PROJECT_ROOT = _Path(__file__).parent.parent
@@ -148,6 +150,7 @@ def _process_filing_worker(
     _logger = _logging.getLogger(__name__)
 
     start_ms = int(time.time() * 1000)
+    _temp_file = None
 
     try:
         from src.extraction_v2.persistence import V2PersistenceAdapter
@@ -155,8 +158,15 @@ def _process_filing_worker(
         from src.extraction_v2.quality_scoring import V2QualityScorer
         from src.infra.db import DatabaseAdapter
 
-        # Resolve HTML path
-        if html_path:
+        # Resolve HTML path — prefer database content, then filesystem path
+        if html_content is not None:
+            _temp_file = tempfile.NamedTemporaryFile(
+                suffix=".htm", delete=False, mode="w", encoding="utf-8"
+            )
+            _temp_file.write(html_content)
+            _temp_file.close()
+            resolved_path = _Path(_temp_file.name)
+        elif html_path:
             resolved_path = _Path(html_path)
         else:
             # Try gold standard directory
@@ -265,6 +275,13 @@ def _process_filing_worker(
             "duration_ms": duration_ms,
             "retried": False,
         }
+    finally:
+        # Clean up temp file if we created one from html_content
+        if _temp_file is not None:
+            try:
+                _Path(_temp_file.name).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 class BatchV2Runner:
@@ -288,10 +305,10 @@ class BatchV2Runner:
 
         sql = """
             SELECT f.filing_id, f.accession_number, f.html_storage_path,
-                   c.company_name, c.company_id, c.cik
+                   f.html_content, c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
-            WHERE f.html_storage_path IS NOT NULL
+            WHERE f.html_storage_path IS NOT NULL OR f.html_content IS NOT NULL
             ORDER BY f.filing_id
         """
         filings = db.query(sql)
@@ -351,6 +368,7 @@ class BatchV2Runner:
             str(filing.get("cik", "")),
             self.db_url,
             config_dict,
+            filing.get("html_content"),
         )
 
     def run(self, filings: list[dict], max_consecutive_failures: int = 10) -> BatchStats:
@@ -595,7 +613,7 @@ def main() -> None:
         rows = db.query(
             """
             SELECT f.filing_id, f.accession_number, f.html_storage_path,
-                   c.company_name, c.company_id, c.cik
+                   f.html_content, c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.filing_id = %(filing_id)s
