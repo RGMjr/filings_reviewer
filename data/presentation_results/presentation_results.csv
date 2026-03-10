@@ -1,0 +1,8 @@
+file,ticker,date,pipeline_success,duration_ms,segments,facts_extracted,annotations_count,true_positives,false_negatives,false_positives,recall,precision,f1
+exhibit991-pressrelease.htm.html,ADBE,2019-01-24,True,16,12,0,0,0,0,0,0,0,0
+crm-q3fy26xexhibit991.htm.html,CRM,2025-12-03,True,506,168,1,1,1,0,0,1.0,1.0,1.0
+crm-q4fy26xexhibit991.htm.html,CRM,2026-02-25,True,529,183,4,0,0,0,0,0,0,0
+dec122025exhibit991.htm.html,META,2025-12-12,True,227,288,0,0,0,0,0,0,0,0
+meta-12312025xexhibit991.htm.html,META,2026-01-28,True,343,56,1,1,1,0,0,1.0,1.0,1.0
+q32025investorletter.htm.html,SNAP,2025-11-05,True,177,16,10,3,3,0,7,1.0,0.3,0.4615384615384615
+snapincq42025investorlet.htm.html,SNAP,2026-02-04,True,163,16,4,2,2,0,2,1.0,0.5,0.6666666666666666

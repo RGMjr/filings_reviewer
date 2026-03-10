@@ -36,6 +36,12 @@ data/transcripts/
 # Keep transcript gold standard annotations
 !data/transcript_gold_standard/*.csv
 
+# Keep presentation gold standard annotations and baseline
+!data/presentation_gold_standard/*.csv
+!data/presentation_gold_standard/*.json
+!data/presentation_results/*.json
+!data/presentation_results/*.csv
+
 # Jupyter
 .ipynb_checkpoints/
 

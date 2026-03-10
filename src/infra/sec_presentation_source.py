@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -63,8 +64,9 @@ class SECPresentationSource:
     Discovery strategy:
     - Resolve ticker → CIK via EDGAR submissions API
     - Walk the company's 8-K filings (recent + archived)
-    - Filter exhibits to EX-99.x PDF files whose filename contains a
-      presentation keyword (presentation, slides, investor, earnings)
+    - Filter exhibits to PDF/HTM files whose filename either contains a
+      presentation keyword (presentation, slides, investor, earnings) or
+      matches the exhibit99 filename pattern (e.g. ``exhibit991``, ``exhibit99``)
 
     Caching strategy:
     - PDF stored at cache_dir/{ticker}/{accession}/{filename}
@@ -152,7 +154,11 @@ class SECPresentationSource:
         return results
 
     def fetch(self, source_id: str) -> tuple[str, DocumentMetadata]:
-        """Download a presentation PDF, convert to HTML, and cache locally.
+        """Download a presentation (PDF or HTM), convert if needed, and cache locally.
+
+        For ``.htm`` files: downloads HTML directly from EDGAR and caches it as-is.
+        For ``.pdf`` files: downloads the binary, converts to HTML via
+        ``convert_presentation_to_html``, then caches.
 
         Args:
             source_id: ``{cik}/{accession_number}/{filename}`` as returned by
@@ -163,7 +169,7 @@ class SECPresentationSource:
 
         Raises:
             ValueError: If source_id format is invalid.
-            FileNotFoundError: If PDF cannot be downloaded and is not cached.
+            FileNotFoundError: If the file cannot be downloaded and is not cached.
         """
         cik, accession, filename = self._parse_source_id(source_id)
 
@@ -178,27 +184,36 @@ class SECPresentationSource:
             metadata = self._load_cached_metadata(meta_path)
             return html, metadata
 
-        # Download PDF
-        pdf_path = html_path.parent / filename
-        if not pdf_path.exists():
-            pdf_bytes = self._download_pdf(cik, accession, filename)
-            if pdf_bytes is None:
-                raise FileNotFoundError(f"Could not download PDF for source_id={source_id}")
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            pdf_path.write_bytes(pdf_bytes)
-            logger.debug("Saved PDF to %s (%d bytes)", pdf_path, len(pdf_bytes))
+        filename_lower = filename.lower()
+        is_htm = filename_lower.endswith(".htm") or filename_lower.endswith(".html")
 
-        # Convert PDF to HTML
-        if convert_presentation_to_html is None:
-            raise ImportError(
-                "src.extraction_v2.presentation_converter is not available. "
-                "Install presentation_converter dependencies."
-            )
-        try:
-            html, _presentation_meta = convert_presentation_to_html(pdf_path)
-        except Exception as exc:
-            logger.warning("Conversion failed for %s: %s", source_id, exc)
-            raise
+        if is_htm:
+            # HTM path: download the HTML directly, no PDF conversion needed
+            html = self._download_htm(cik, accession, filename)
+            if html is None:
+                raise FileNotFoundError(f"Could not download HTM for source_id={source_id}")
+        else:
+            # PDF path: download binary → convert to HTML
+            pdf_path = html_path.parent / filename
+            if not pdf_path.exists():
+                pdf_bytes = self._download_pdf(cik, accession, filename)
+                if pdf_bytes is None:
+                    raise FileNotFoundError(f"Could not download PDF for source_id={source_id}")
+                pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                pdf_path.write_bytes(pdf_bytes)
+                logger.debug("Saved PDF to %s (%d bytes)", pdf_path, len(pdf_bytes))
+
+            # Convert PDF to HTML
+            if convert_presentation_to_html is None:
+                raise ImportError(
+                    "src.extraction_v2.presentation_converter is not available. "
+                    "Install presentation_converter dependencies."
+                )
+            try:
+                html, _presentation_meta = convert_presentation_to_html(pdf_path)
+            except Exception as exc:
+                logger.warning("Conversion failed for %s: %s", source_id, exc)
+                raise
 
         # Build and cache metadata
         metadata = DocumentMetadata(
@@ -347,9 +362,17 @@ class SECPresentationSource:
         return results
 
     def _get_8k_exhibits(self, cik: str, accession_number: str) -> list[dict[str, str]]:
-        """Fetch the filing index for an 8-K and return matching PDF exhibits.
+        """Fetch the filing index for an 8-K and return matching PDF/HTM exhibits.
 
-        Filters to EX-99.x types whose filenames contain a presentation keyword.
+        Uses filename-based heuristics to identify EX-99.x earnings releases:
+        - Accepts both ``.pdf`` and ``.htm`` files
+        - Matches if the filename contains a presentation keyword (presentation,
+          slides, investor, earnings) OR matches the exhibit99 filename pattern
+          (e.g. ``exhibit991``, ``exhibit99``)
+
+        Note: EDGAR's index.json returns ``"type"`` as a file icon type (e.g.
+        ``"text.gif"``), NOT the SEC exhibit type — so we do not use it for
+        exhibit type filtering.
         """
         accession_clean = accession_number.replace("-", "")
         index_url = (
@@ -368,22 +391,21 @@ class SECPresentationSource:
 
         for item in items:
             name = item.get("name", "")
-            type_ = item.get("type", "")
-
-            # Must be a PDF
-            if not name.lower().endswith(".pdf"):
-                continue
-
-            # Must match one of our exhibit types
-            if not any(type_ == et or type_.startswith(et) for et in self.EXHIBIT_TYPES):
-                continue
-
-            # Filename must contain a presentation keyword
             name_lower = name.lower()
-            if not any(kw in name_lower for kw in self.PRESENTATION_KEYWORDS):
+
+            # Must be a PDF or HTM file
+            is_pdf = name_lower.endswith(".pdf")
+            is_htm = name_lower.endswith(".htm") or name_lower.endswith(".html")
+            if not is_pdf and not is_htm:
                 continue
 
-            matching.append({"filename": name, "exhibit_type": type_})
+            # Filename must contain a presentation keyword OR match exhibit99 pattern
+            has_keyword = any(kw in name_lower for kw in self.PRESENTATION_KEYWORDS)
+            is_exhibit99 = bool(re.search(r"exhibit9[0-9]", name_lower))
+            if not has_keyword and not is_exhibit99:
+                continue
+
+            matching.append({"filename": name, "exhibit_type": "", "is_pdf": str(is_pdf)})
 
         return matching
 
@@ -401,9 +423,28 @@ class SECPresentationSource:
             resp = self._session.get(url, timeout=60)
             resp.raise_for_status()
             logger.debug("Downloaded PDF %s (%d bytes)", url, len(resp.content))
-            return resp.content
+            return cast(bytes, resp.content)
         except requests.RequestException as exc:
             logger.warning("Failed to download PDF from %s: %s", url, exc)
+            return None
+
+    def _download_htm(self, cik: str, accession_number: str, filename: str) -> str | None:
+        """Download an HTM exhibit from EDGAR.
+
+        Returns the HTML string on success, None on failure.
+        """
+        accession_clean = accession_number.replace("-", "")
+        cik_stripped = cik.lstrip("0") or "0"
+        url = f"{_EDGAR_BASE}/Archives/edgar/data/{cik_stripped}/{accession_clean}/{filename}"
+
+        try:
+            self._sec_client._rate_limit()
+            resp = self._session.get(url, timeout=60)
+            resp.raise_for_status()
+            logger.debug("Downloaded HTM %s (%d bytes)", url, len(resp.content))
+            return cast(str, resp.text)
+        except requests.RequestException as exc:
+            logger.warning("Failed to download HTM from %s: %s", url, exc)
             return None
 
     def _cache_paths(self, ticker: str, accession_number: str, filename: str) -> tuple[Path, Path]:

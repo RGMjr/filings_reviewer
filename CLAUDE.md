@@ -157,4 +157,4 @@ config = PipelineConfig()
 
 **Transcript gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 91 annotations, 20 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
 
-**Presentation gold standard:** `data/presentation_gold_standard/` (per-filing `*_reviewed.csv`). Workflow: `preannotate_presentations.py` → `review_presentation_annotations.py` → `merge_presentation_annotations.py` → `validate_presentation_extraction.py`. File index at `data/presentation_gold_standard/_file_index.json`.
+**Presentation gold standard:** `data/presentation_gold_standard/` (per-filing `*_reviewed.csv`). Workflow: `preannotate_presentations.py` → `review_presentation_annotations.py` → `merge_presentation_annotations.py` → `validate_presentation_extraction.py`. File index at `data/presentation_gold_standard/_file_index.json`. Initial benchmark (2026-03-11): R=100.0%, P=36.8%, F1=53.8% (7 annotations, 5 files: CRM Q3+Q4 FY26, META Q4 2025, SNAP Q3+Q4 2025). SNAP precision is poor (29%) due to image-based investor letter generating spurious text candidates.

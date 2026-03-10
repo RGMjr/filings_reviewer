@@ -6,6 +6,14 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**M5-5: Presentation Gold Standard Annotation Session (earnings-call-exploration, 2026-03-11)**
+- Discovered and fixed bug in `sec_presentation_source._get_8k_exhibits()`: exhibit type filter compared against icon type ("text.gif") instead of exhibit type — always returned 0 results. Also extended to accept `.htm` files alongside `.pdf`.
+- EDGAR discovery redesigned: large tech companies don't file PDF presentations as 8-K exhibits; instead use `*exhibit99[0-9]*` filename pattern to find HTML earnings releases.
+- Annotated 5 files: CRM (Q3+Q4 FY26), META (Q4 2025), SNAP (Q3+Q4 2025); 7 accepted annotations.
+- Initial benchmark: **R=100.0%, P=36.8%, F1=53.8%** (7 annotations; CRM 100/100/100, META 100/100/100, SNAP 100/29/45). High FP rate on SNAP due to image-based investor letter (all text from alt-text in image tags).
+- Baseline saved to `data/presentation_results/presentation_baseline.json`.
+- Tests: 3664 unit tests pass (0 failures, 8 skipped); coverage 78.75%
+
 **Phase D + M5 Tooling (earnings-call-exploration, 2026-03-03)**
 - M5 gold standard tooling: `review_presentation_annotations.py`, `merge_presentation_annotations.py`, `validate_presentation_extraction.py` — mirrors transcript pipeline; 41 unit tests
 - `preannotate_presentations.py` (M5-1) was already in place; completes the full preannotate→review→merge→validate cycle for presentations
@@ -59,16 +67,15 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-M5-5 (sample annotation session):
-- Run preannotate_presentations.py on 2-3 real investor PDFs → review → merge → validate to get initial baseline
-- FMP API source (Phase D-FMP) — deferred; pick up when needed for broader corpus
+- **Phase D-FMP: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
+- **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 
 ## Test Status
 
-- Unit tests: 3659 pass, 0 fail, 8 skipped (2026-03-03)
+- Unit tests: 3664 pass, 0 fail, 8 skipped; coverage 78.75% (2026-03-11)
 - SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28, unchanged)
 - Transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files; 2026-03-02)
-- Presentation benchmark: no baseline yet (M5-5 annotation session pending)
+- Presentation benchmark: R=100.0%, P=36.8%, F1=53.8% (7 annotations, 5 files; 2026-03-11)
 
 ## Key Learnings
 
@@ -92,7 +99,7 @@ M5-5 (sample annotation session):
 
 ## Next Work (Prioritized)
 
-1. **M5-5: Sample annotation** — run preannotate → review → merge → validate on 2-3 real PDFs to get initial presentation baseline
+1. **Presentation precision hardening** — SNAP FP rate is 71% (12 FPs on image-based investor letter). Consider suppressing extraction from image-only HTML (no meaningful text nodes), or raising FP thresholds for count metrics without explicit context.
 2. **Phase D-FMP: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
 3. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 

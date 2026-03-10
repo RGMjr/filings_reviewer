@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason,split
+"Salesforce, Inc.",CRM,2025-12-03,cm_arr,$1.4 billion,currency,2025-07-31 to 2025-10-31,presentation,$1.4 billion,MEDIUM,cover,False,EDIT,period was incorrect,tuning
+"Meta Platforms, Inc.",META,2026-01-28,cm_daily_active_users,3.58 billion,count,other,presentation,3.58 billion,LOW,cover,False,ACCEPT,,test
+Snap Inc,SNAP,2025-11-05,cm_daily_active_users,477 million,count,other,presentation,477 million,LOW,cover,False,ACCEPT,,tuning
+Snap Inc,SNAP,2025-11-05,cm_monthly_active_users,477 million,count,other,presentation,477 million,LOW,cover,False,ACCEPT,,tuning
+Snap Inc,SNAP,2025-11-05,cm_monthly_active_users,943 million,count,other,presentation,943 million,LOW,cover,False,ACCEPT,,tuning
+Snap Inc,SNAP,2026-02-04,cm_monthly_active_users,946,other,2025-10-01 to 2025-12-31,presentation,946,LOW,cover,False,ACCEPT,,tuning
+Snap Inc,SNAP,2026-02-04,cm_daily_active_users,474,other,2025-10-01 to 2025-12-31,presentation,474,LOW,cover,False,ACCEPT,,tuning

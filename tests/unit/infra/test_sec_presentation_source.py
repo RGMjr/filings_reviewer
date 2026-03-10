@@ -179,13 +179,78 @@ def test_list_available_returns_presentation_exhibits(
     assert "1234567".zfill(10) in meta.source_id
 
 
-def test_list_available_filters_non_pdf(source: SECPresentationSource) -> None:
-    """Non-PDF exhibits are excluded even if exhibit type matches."""
+def test_list_available_accepts_htm_exhibit99(source: SECPresentationSource) -> None:
+    """HTM files matching the exhibit99 filename pattern are now included.
+
+    EDGAR's index.json returns ``"type"`` as a file icon (e.g. ``"text.gif"``),
+    not the SEC exhibit type, so we rely on filename heuristics instead.
+    Files like ``crm-q4fy26xexhibit991.htm`` match ``re.search(r'exhibit9[0-9]', name)``.
+    """
     tickers_data = _make_tickers_json()
     submissions_data = _make_submissions()
     index_data = _make_index_json(
         items=[
-            {"name": "exhibit99.htm", "type": "EX-99.1", "size": "50000"},
+            # EDGAR-style earnings release HTM — "type" is a file icon, not exhibit type
+            {"name": "crm-q4fy26xexhibit991.htm", "type": "text.gif", "size": "50000"},
+        ]
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = tickers_data
+    mock_resp.raise_for_status.return_value = None
+    source._session.get.return_value = mock_resp
+
+    def make_request_side_effect(url: str) -> dict:
+        if "CIK" in url:
+            return submissions_data
+        if "index.json" in url:
+            return index_data
+        raise ValueError(f"Unexpected URL: {url}")
+
+    source._sec_client._make_request.side_effect = make_request_side_effect
+
+    results = source.list_available(ticker="CRM")
+    assert len(results) == 1
+    assert "crm-q4fy26xexhibit991.htm" in results[0].source_id
+
+
+def test_list_available_accepts_pdf_exhibit99(source: SECPresentationSource) -> None:
+    """PDF files matching the exhibit99 filename pattern are included."""
+    tickers_data = _make_tickers_json()
+    submissions_data = _make_submissions()
+    index_data = _make_index_json(
+        items=[
+            {"name": "exhibit991.pdf", "type": "text.gif", "size": "200000"},
+        ]
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = tickers_data
+    mock_resp.raise_for_status.return_value = None
+    source._session.get.return_value = mock_resp
+
+    def make_request_side_effect(url: str) -> dict:
+        if "CIK" in url:
+            return submissions_data
+        if "index.json" in url:
+            return index_data
+        raise ValueError(f"Unexpected URL: {url}")
+
+    source._sec_client._make_request.side_effect = make_request_side_effect
+
+    results = source.list_available(ticker="CRM")
+    assert len(results) == 1
+    assert "exhibit991.pdf" in results[0].source_id
+
+
+def test_list_available_filters_non_pdf_htm_files(source: SECPresentationSource) -> None:
+    """Non-PDF/HTM files (e.g. .xml, .gif) are always excluded."""
+    tickers_data = _make_tickers_json()
+    submissions_data = _make_submissions()
+    index_data = _make_index_json(
+        items=[
+            {"name": "exhibit991.xml", "type": "text.gif", "size": "50000"},
+            {"name": "investor_presentation.gif", "type": "image.gif", "size": "1000"},
         ]
     )
 
@@ -207,16 +272,17 @@ def test_list_available_filters_non_pdf(source: SECPresentationSource) -> None:
     assert results == []
 
 
-def test_list_available_filters_non_presentation_keyword(
+def test_list_available_filters_files_without_keyword_or_exhibit99(
     source: SECPresentationSource,
 ) -> None:
-    """PDF exhibits whose filename contains no presentation keyword are excluded."""
+    """PDF/HTM files with no presentation keyword AND no exhibit99 pattern are excluded."""
     tickers_data = _make_tickers_json()
     submissions_data = _make_submissions()
     index_data = _make_index_json(
         items=[
-            # PDF but no keyword in name
-            {"name": "exhibit99.pdf", "type": "EX-99.1", "size": "200000"},
+            # Neither a presentation keyword nor exhibit99 pattern
+            {"name": "form8k.htm", "type": "text.gif", "size": "20000"},
+            {"name": "signature.pdf", "type": "text.gif", "size": "5000"},
         ]
     )
 
@@ -437,6 +503,115 @@ def test_fetch_conversion_failure_propagates(
     ):
         with pytest.raises(RuntimeError, match="conversion error"):
             source.fetch(source_id)
+
+
+# ============================================================================
+# fetch — HTM path (direct download, no conversion)
+# ============================================================================
+
+
+def test_fetch_htm_downloads_directly_without_conversion(
+    source: SECPresentationSource, tmp_path: Path
+) -> None:
+    """fetch() downloads HTM files directly without invoking PDF conversion."""
+    cik = "0001234567"
+    accession = "0001234567-26-000056"
+    filename = "crm-q4fy26xexhibit991.htm"
+    source_id = f"{cik}/{accession}/{filename}"
+
+    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+
+    htm_content = "<html><body><h1>Q4 FY2026 Earnings</h1></body></html>"
+
+    mock_resp = MagicMock()
+    mock_resp.text = htm_content
+    mock_resp.content = htm_content.encode("utf-8")
+    mock_resp.raise_for_status.return_value = None
+    source._session.get.return_value = mock_resp
+
+    source._sec_client.get_company_info.return_value = {
+        "name": "Salesforce Inc",
+        "tickers": ["CRM"],
+    }
+
+    _PATCH_TARGET = "src.infra.sec_presentation_source.convert_presentation_to_html"
+
+    with patch(_PATCH_TARGET) as mock_convert:
+        html, meta = source.fetch(source_id)
+
+    # PDF conversion must NOT be called for HTM files
+    mock_convert.assert_not_called()
+
+    assert html == htm_content
+    assert meta.source_id == source_id
+    assert meta.document_type == "investor_presentation"
+
+    # Verify HTML was cached
+    html_path, meta_path = source._cache_paths("CRM", accession, filename)
+    assert html_path.exists()
+    assert html_path.read_text(encoding="utf-8") == htm_content
+
+
+def test_fetch_htm_download_failure_raises_file_not_found(
+    source: SECPresentationSource,
+) -> None:
+    """fetch() raises FileNotFoundError when HTM download fails and no cache."""
+    cik = "0001234567"
+    accession = "0001234567-26-000056"
+    filename = "exhibit991.htm"
+    source_id = f"{cik}/{accession}/{filename}"
+
+    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+
+    import requests as req_lib
+
+    source._session.get.side_effect = req_lib.RequestException("connection refused")
+
+    with pytest.raises(FileNotFoundError, match="Could not download HTM"):
+        source.fetch(source_id)
+
+
+def test_fetch_htm_cache_hit_returns_cached_html(
+    source: SECPresentationSource, tmp_path: Path
+) -> None:
+    """fetch() returns cached HTML for HTM files on subsequent calls."""
+    cik = "0001234567"
+    accession = "0001234567-26-000056"
+    filename = "exhibit991.htm"
+    source_id = f"{cik}/{accession}/{filename}"
+
+    ticker = "CRM"
+    SECPresentationSource._cik_to_ticker_cache[cik] = ticker
+    html_path, meta_path = source._cache_paths(ticker, accession, filename)
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cached_html = "<html><body>Cached HTM earnings release</body></html>"
+    html_path.write_text(cached_html, encoding="utf-8")
+
+    cached_meta = {
+        "source_id": source_id,
+        "source": SOURCE_NAME,
+        "company_name": "Salesforce Inc",
+        "ticker": "CRM",
+        "cik": cik,
+        "document_type": "investor_presentation",
+        "document_date": "2026-02-25",
+        "title": filename,
+        "fiscal_year": None,
+        "fiscal_period": None,
+        "form_type": "8-K",
+        "url": None,
+    }
+    meta_path.write_text(json.dumps(cached_meta), encoding="utf-8")
+
+    with patch(
+        "src.infra.sec_presentation_source.SECPresentationSource._download_htm"
+    ) as mock_download:
+        html, meta = source.fetch(source_id)
+
+    mock_download.assert_not_called()
+    assert html == cached_html
+    assert meta.ticker == "CRM"
 
 
 # ============================================================================

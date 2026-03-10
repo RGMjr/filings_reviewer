@@ -1,0 +1,5 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Snap Inc,SNAP,2026-02-04,cm_monthly_active_users,150,other,2025-10-01 to 2025-12-31,presentation,150,LOW,cover,False,,
+Snap Inc,SNAP,2026-02-04,cm_monthly_active_users,946,other,2025-10-01 to 2025-12-31,presentation,946,LOW,cover,False,,
+Snap Inc,SNAP,2026-02-04,cm_daily_active_users,474,other,2025-10-01 to 2025-12-31,presentation,474,LOW,cover,False,,
+Snap Inc,SNAP,2026-02-04,cm_monthly_active_users,1 billion,count,2025-10-01 to 2025-12-31,presentation,1 billion,MEDIUM,cover,False,,
