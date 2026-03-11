@@ -72,6 +72,16 @@
         ]
       }
     ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"additionalContext\": \"PRESERVE: Current task goal, files being modified, test status, gold standard scores, and any uncommitted changes. Re-read ops/ITERATION_CONTEXT.md after compaction.\"}'"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
