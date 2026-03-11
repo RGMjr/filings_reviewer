@@ -110,7 +110,7 @@ _CONJUNCTION_RE = re.compile(r"\b(?:and|or|but|while)\b|;", re.IGNORECASE)
 # Geographic revenue context — "international", "domestic", "geographic" etc.
 # Used to suppress cm_revenue_concentration FPs from geographic revenue breakdowns.
 _GEOGRAPHIC_REVENUE_RE = re.compile(
-    r"\b(?:international|domestic|geographic|geography|united\s+states|americas|emea|apac|"
+    r"\b(?:international|domestic|geographic|geography|united\s+states|north\s+america|americas|emea|apac|"
     r"asia[- ]pacific|europe|rest\s+of\s+(?:the\s+)?world)\b",
     re.IGNORECASE,
 )
@@ -120,6 +120,17 @@ _GEOGRAPHIC_REVENUE_RE = re.compile(
 # (e.g., "CapEx for the fiscal year to be approximately 2% of revenue").
 _CAPEX_REVENUE_RE = re.compile(
     r"\b(?:cap(?:ex|ital\s+expenditure)s?|opex|depreciation|amortization)\b",
+    re.IGNORECASE,
+)
+
+# Cost-structure revenue context — "cost of revenue", "gross margin", etc.
+# Used to suppress cm_revenue_concentration FPs where a percent appears in the
+# context of cost structure analysis rather than customer revenue concentration.
+_COST_STRUCTURE_REVENUE_RE = re.compile(
+    r"\b(?:cost\s+(?:of\s+)?revenue|cost\s+structure|"
+    r"(?:adjusted\s+)?(?:gross\s+)?margin|"
+    r"(?:component|portion)\s+of\s+(?:total\s+)?(?:cost|revenue)|"
+    r"guidance\s+range)\b",
     re.IGNORECASE,
 )
 
@@ -325,13 +336,14 @@ def _rule_per_share(bv: BoundValue, source_text: str, metric_id: str) -> str | N
     return None
 
 
-def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Geographic or CapEx revenue context for cm_revenue_concentration.
+def _rule_revenue_concentration_context(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Geographic, CapEx, or cost-structure revenue context for cm_revenue_concentration.
 
-    Fires when the percent value is near geographic breakdown language
-    (e.g., "international revenue") or CapEx-as-%-of-revenue language
-    (e.g., "CapEx for the fiscal year to be approximately 2% of revenue").
-    Both indicate the percent is NOT customer revenue concentration.
+    Fires when the percent value is near:
+    - Geographic breakdown language (e.g., "international revenue")
+    - CapEx-as-%-of-revenue language (e.g., "CapEx for the fiscal year to be approximately 2% of revenue")
+    - Cost-structure language (e.g., "cost of revenue was 18% of revenue", "gross margin")
+    All indicate the percent is NOT customer revenue concentration.
     """
     if not source_text or metric_id != "cm_revenue_concentration":
         return None
@@ -340,13 +352,20 @@ def _rule_geographic_revenue(bv: BoundValue, source_text: str, metric_id: str) -
         return None
     value_pos = source_text.find(raw)
     if value_pos < 0:
-        return None
+        # Value not in segment text — cross-segment binding artifact.
+        # A revenue concentration percent that cannot be located in its own
+        # segment text is almost certainly spurious; suppress it.
+        return "v2_cross_segment_revenue_concentration"
     geo_match = _GEOGRAPHIC_REVENUE_RE.search(source_text)
     if geo_match and abs(geo_match.start() - value_pos) <= 200:
         return "v2_geographic_revenue"
     capex_match = _CAPEX_REVENUE_RE.search(source_text)
     if capex_match and abs(capex_match.start() - value_pos) <= 200:
         return "v2_capex_revenue"
+    # Use finditer to find the nearest cost-structure pattern occurrence;
+    # source_text.search() only finds the first match which may be far from the value.
+    if any(abs(m.start() - value_pos) <= 200 for m in _COST_STRUCTURE_REVENUE_RE.finditer(source_text)):
+        return "v2_cost_structure_revenue"
     return None
 
 
@@ -481,6 +500,23 @@ _PURE_COUNT_METRICS: frozenset[str] = frozenset({
 })
 
 
+# Delta/growth count patterns — "increase of", "up by", "net additions of".
+# When immediately preceding a count value, these indicate a growth delta,
+# not an absolute stock value.
+_DELTA_COUNT_RE = re.compile(
+    r"(?:"
+    r"(?:an?\s+)?(?:increase|decrease)\s+of"
+    r"|(?:up|down)\s+(?:by\s+)?(?:more\s+than\s+|approximately\s+|nearly\s+|over\s+|about\s+)?"
+    r"|(?:net\s+)?(?:additions?)\s+of"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+_DELTA_BY_MORE_RE = re.compile(
+    r"\b(?:up|down|grew|grown|increased?|decreased?)\b.{0,40}\bby[\s\u200b]+(?:more[\s\u200b]+than|approximately|nearly|over|about)[\s\u200b]*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
 # Content engagement metrics (views, impressions, streams) near a bound value
 # indicate the number is NOT a customer count.  Fires when the value raw text
 # appears immediately adjacent to engagement vocabulary.
@@ -511,6 +547,46 @@ def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -
         value_pos = source_text.find(raw)
         if value_pos >= 0 and abs(engagement_match.start() - value_pos) <= 60:
             return "v2_content_engagement"
+    return None
+
+
+def _rule_delta_count_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block delta/growth amounts bound as absolute count values.
+
+    Fires when a count-type metric (excluding cm_new_customers_acquired) has
+    its value preceded by delta language — "increase of", "up by", "net additions of".
+    These patterns indicate the number is a growth amount, not an absolute stock.
+
+    Two checks:
+    1. 60-char pre-window: _DELTA_COUNT_RE ("increase of", "up by", "net additions of")
+    2. 30-char pre-window: _DELTA_BY_MORE_RE ("by more than", "by approximately", etc.)
+       — tighter window to avoid matching "grew X% year over year to over VALUE"
+
+    Excludes cm_new_customers_acquired because "added/adding VALUE" is the canonical
+    reporting pattern for net customer additions and should remain valid.
+    """
+    if metric_id not in _COUNT_TYPE_METRICS or metric_id == "cm_new_customers_acquired":
+        return None
+    if bv.unit not in (Unit.COUNT, Unit.OTHER):
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    # Check 60-char pre-window for primary delta patterns
+    pre_start = max(0, value_pos - 60)
+    pre_window = source_text[pre_start:value_pos]
+    if _DELTA_COUNT_RE.search(pre_window):
+        return "v2_delta_count_value"
+    # Check 60-char pre-window for "by more than/approximately/etc."
+    # (wider than the former 30-char window to catch "grew ... (MAU) by more than VALUE"
+    # where a noun phrase separates the verb from "by")
+    if _DELTA_BY_MORE_RE.search(pre_window):
+        return "v2_delta_count_value"
     return None
 
 
@@ -708,7 +784,11 @@ _FORWARD_GUIDANCE_RE = re.compile(
     r"\b(?:we\s+expect|our\s+expectation|our\s+outlook|we\s+guide|"
     r"we\s+project|we\s+anticipate|we\s+forecast|"
     r"guidance\s+(?:of|is|for|at)|full[- ]year\s+guidance|"
-    r"expect(?:ing)?\s+to\s+(?:add|reach|achieve|deliver|generate))\b",
+    r"expect(?:ing)?\s+to\s+(?:add|reach|achieve|deliver|generate)|"
+    r"goal\s+(?:of|to)\s+(?:reach(?:ing)?|achiev(?:e|ing)|grow(?:ing)?|serv(?:e|ing))|"
+    r"target\s+(?:of|to)\s+(?:reach(?:ing)?|achiev(?:e|ing))|"
+    r"aspir(?:e|ing|ation)\s+to|"
+    r"on\s+track\s+to)\b",
     re.IGNORECASE,
 )
 
@@ -807,12 +887,13 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("financial_sbc", _rule_financial_sbc),
     ("ranking_name", _rule_ranking_name),
     ("per_share", _rule_per_share),
-    ("geographic_revenue", _rule_geographic_revenue),
+    ("revenue_concentration_context", _rule_revenue_concentration_context),
     ("developer_count", _rule_developer_count),
     ("fortune_subset", _rule_fortune_subset),
     ("tier_qualifier", _rule_tier_qualifier),
     ("dollar_threshold_customer", _rule_dollar_threshold_customer),
     ("content_engagement", _rule_content_engagement),
+    ("delta_count_value", _rule_delta_count_value),
     ("growth_rate_percent", _rule_growth_rate_percent),
     ("arpu_percent", _rule_arpu_percent),
     ("arpu_as_aov", _rule_arpu_as_aov),

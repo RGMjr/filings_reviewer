@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-03-10T09:45:26.538033",
+  "timestamp": "2026-03-11T09:03:58.654685",
   "split": null,
   "annotations_source": "/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings_Analysis/Filings_review_tool/filings_reviewer_beyond_sec/data/presentation_gold_standard/presentation_gold_standard.csv",
   "aggregate": {
     "total_annotations": 7,
     "true_positives": 7,
     "false_negatives": 0,
-    "false_positives": 9,
+    "false_positives": 2,
     "recall": 1.0,
-    "precision": 0.4375,
-    "f1": 0.6086956521739131
+    "precision": 0.7777777777777778,
+    "f1": 0.8750000000000001
   },
   "per_company": {
     "CRM": {
@@ -34,10 +34,10 @@
       "total_annotations": 5,
       "true_positives": 5,
       "false_negatives": 0,
-      "false_positives": 9,
+      "false_positives": 2,
       "recall": 1.0,
-      "precision": 0.35714285714285715,
-      "f1": 0.5263157894736842
+      "precision": 0.7142857142857143,
+      "f1": 0.8333333333333333
     }
   },
   "per_file": [
@@ -62,7 +62,7 @@
       "ticker": "CRM",
       "date": "2025-12-03",
       "pipeline_success": true,
-      "duration_ms": 506,
+      "duration_ms": 502,
       "segments": 168,
       "facts_extracted": 1,
       "annotations_count": 1,
@@ -78,7 +78,7 @@
       "ticker": "CRM",
       "date": "2026-02-25",
       "pipeline_success": true,
-      "duration_ms": 529,
+      "duration_ms": 518,
       "segments": 183,
       "facts_extracted": 4,
       "annotations_count": 0,
@@ -94,7 +94,7 @@
       "ticker": "META",
       "date": "2025-12-12",
       "pipeline_success": true,
-      "duration_ms": 227,
+      "duration_ms": 225,
       "segments": 288,
       "facts_extracted": 0,
       "annotations_count": 0,
@@ -110,7 +110,7 @@
       "ticker": "META",
       "date": "2026-01-28",
       "pipeline_success": true,
-      "duration_ms": 343,
+      "duration_ms": 340,
       "segments": 56,
       "facts_extracted": 1,
       "annotations_count": 1,
@@ -126,32 +126,32 @@
       "ticker": "SNAP",
       "date": "2025-11-05",
       "pipeline_success": true,
-      "duration_ms": 177,
+      "duration_ms": 172,
       "segments": 16,
-      "facts_extracted": 10,
+      "facts_extracted": 5,
       "annotations_count": 3,
       "true_positives": 3,
       "false_negatives": 0,
-      "false_positives": 7,
+      "false_positives": 2,
       "recall": 1.0,
-      "precision": 0.3,
-      "f1": 0.4615384615384615
+      "precision": 0.6,
+      "f1": 0.7499999999999999
     },
     {
       "file": "snapincq42025investorlet.htm.html",
       "ticker": "SNAP",
       "date": "2026-02-04",
       "pipeline_success": true,
-      "duration_ms": 163,
+      "duration_ms": 161,
       "segments": 16,
-      "facts_extracted": 4,
+      "facts_extracted": 2,
       "annotations_count": 2,
       "true_positives": 2,
       "false_negatives": 0,
-      "false_positives": 2,
+      "false_positives": 0,
       "recall": 1.0,
-      "precision": 0.5,
-      "f1": 0.6666666666666666
+      "precision": 1.0,
+      "f1": 1.0
     }
   ]
 }

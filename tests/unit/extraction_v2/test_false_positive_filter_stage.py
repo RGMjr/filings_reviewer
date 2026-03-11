@@ -2523,3 +2523,251 @@ class TestV2DollarThresholdCustomer:
         bv = _make_bound_value("c1", 95000.0, "95,000", Unit.COUNT, "seg-1")
         is_fp, _ = _is_v2_false_positive(bv, source, "cm_customers_period_end")
         assert is_fp is False
+
+
+# ============================================================================
+# Test: V2-native — Delta count value suppression
+# ============================================================================
+
+
+class TestDeltaCountValueRule:
+    """_rule_delta_count_value blocks delta/growth amounts on count metrics."""
+
+    def test_increase_of_prefix_rejected(self):
+        """'saw an increase of 34 million daily active users' → rejected."""
+        source = "saw an increase of 34 million daily active users"
+        bv = _make_bound_value("c1", 34_000_000.0, "34 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_daily_active_users"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+    def test_up_by_more_than_narrow_window_rejected(self):
+        """'MAU grew by more than 150 million users' → rejected (30-char window, verb immediately before 'by')."""
+        source = "MAU grew by more than 150 million users"
+        bv = _make_bound_value("c1", 150_000_000.0, "150 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+    def test_grew_to_absolute_value_not_rejected(self):
+        """'grew 10% to 86.3 million daily active users' → NOT rejected (no delta prefix before value)."""
+        source = "grew 10% to 86.3 million daily active users"
+        bv = _make_bound_value("c1", 86_300_000.0, "86.3 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_daily_active_users"
+        )
+        assert reason != "v2_delta_count_value"
+
+    def test_new_customers_acquired_excluded(self):
+        """cm_new_customers_acquired is exempt — 'increase of 5 million new customers' NOT rejected."""
+        source = "increase of 5 million new customers acquired"
+        bv = _make_bound_value("c1", 5_000_000.0, "5 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_new_customers_acquired"
+        )
+        assert reason != "v2_delta_count_value"
+
+    def test_used_by_more_than_not_rejected(self):
+        """'Facebook is used by more than 3 billion monthly actives' → NOT rejected (no directional verb before 'by')."""
+        source = "Facebook is used by more than 3 billion monthly actives"
+        bv = _make_bound_value("c1", 3_000_000_000.0, "3 billion", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users"
+        )
+        assert reason != "v2_delta_count_value"
+
+    def test_grown_mau_by_more_than_with_zwsp_rejected(self):
+        """'grown\u200b MAU\u200b by\u200b more\u200b than\u200b 150' (zero-width spaces) → rejected as delta."""
+        # Simulates zero-width space characters from PDF conversion (SNAP investor letters).
+        # The verb ('grown') is separated from 'by more than' by a noun phrase and \u200b chars.
+        source = "\u200b \u200bgrown\u200b \u200bMonthly\u200b \u200bActive\u200b \u200bUsers\u200b\u200b(MAU)\u200b\u200bby\u200b\u200bmore\u200b\u200bthan\u200b\u200b150 million users"
+        bv = _make_bound_value("c1", 150_000_000.0, "150", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+
+# ============================================================================
+# Test: V2-native — Extended forward guidance patterns
+# ============================================================================
+
+
+class TestExtendedForwardGuidance:
+    """Extended _FORWARD_GUIDANCE_RE patterns — goal/target/aspire/on-track."""
+
+    def test_goal_of_reaching_rejects_value(self):
+        """'goal of reaching one billion monthly active users' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 1_000_000_000.0, "one billion", Unit.COUNT)
+        source = "We have a goal of reaching one billion monthly active users by end of year."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+    def test_on_track_to_reach_rejects_value(self):
+        """'on track to reach 500 million users' → rejected as guidance."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 500_000_000.0, "500 million", Unit.COUNT)
+        source = "We are on track to reach 500 million users by the end of fiscal year."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+
+# ============================================================================
+# Test: V2-native — Revenue concentration context (renamed from geographic_revenue)
+# ============================================================================
+
+
+class TestRevenueConcentrationContextRule:
+    """_rule_revenue_concentration_context covers geo, capex, and cost-structure contexts."""
+
+    def test_cost_of_revenue_percent_rejected(self):
+        """'cost of revenue was 18% of revenue' → rejected as cost structure."""
+        source = "cost of revenue was 18% of revenue for the quarter"
+        bv = _make_bound_value("c1", 18.0, "18", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_cost_structure_revenue"
+
+    def test_gross_margin_percent_rejected(self):
+        """'adjusted gross margin of 72%' → rejected as cost structure."""
+        source = "adjusted gross margin of 72% this quarter"
+        bv = _make_bound_value("c1", 72.0, "72", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_cost_structure_revenue"
+
+    def test_geographic_revenue_still_rejected(self):
+        """Geographic language still fires after rename."""
+        source = "international revenue represented 45% of total revenue"
+        bv = _make_bound_value("c1", 45.0, "45", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_geographic_revenue"
+
+    def test_capex_revenue_still_rejected(self):
+        """CapEx language still fires after rename."""
+        source = "CapEx for the fiscal year to be approximately 2% of revenue"
+        bv = _make_bound_value("c1", 2.0, "2", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_capex_revenue"
+
+    def test_customer_revenue_concentration_not_rejected(self):
+        """Genuine revenue concentration (customer context) → not rejected."""
+        source = "Our top 10 customers accounted for 32% of revenue"
+        bv = _make_bound_value("c1", 32.0, "32", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is False
+
+    def test_north_america_geographic_rejected(self):
+        """'North America LCS business accounted for 43% of total global revenue' → rejected as geographic."""
+        source = "The North America LCS business accounted for approximately 43% of total global revenue in Q3"
+        bv = _make_bound_value("c1", 43.0, "43", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_geographic_revenue"
+
+    def test_cross_segment_value_not_in_text_suppressed(self):
+        """When value_raw not found in source_text → fires v2_cross_segment_revenue_concentration."""
+        # Simulates cross-segment binding: segment has North America geo context
+        # but the value (18%) comes from a different paragraph
+        source = "The North America LCS business accounted for approximately 43% of total global revenue in Q3"
+        bv = _make_bound_value("c1", 18.0, "18%", Unit.PERCENT)
+        # '18%' is not in source — cross-segment binding scenario
+        assert "18%" not in source
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_cross_segment_revenue_concentration"
+
+    def test_cross_segment_any_segment_suppressed(self):
+        """Cross-segment suppression fires regardless of what the wrong segment contains."""
+        source = "Free Cash Flow was $93 million in Q3 while Operating Cash Flow was $146 million."
+        bv = _make_bound_value("c1", 99.0, "99", Unit.PERCENT)
+        assert "99" not in source
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_cross_segment_revenue_concentration"
+
+    def test_guidance_range_percent_rejected(self):
+        """'full year cost structure guidance range of 18% to 19%' → rejected as cost structure.
+
+        The nearest cost-structure pattern ('guidance range') is close to the value,
+        but an earlier 'Cost of Revenue' occurrence is 400+ chars away. Uses finditer
+        to find the nearest match rather than just the first.
+        """
+        # Simulate segment with "Cost of Revenue" far from value, "guidance range" nearby
+        preamble = "Cost of Revenue " + "x" * 400
+        tail = f"our full year cost structure guidance range of 18% to 19%"
+        source = preamble + tail
+        bv = _make_bound_value("c1", 18.0, "18%", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+        assert reason == "v2_cost_structure_revenue"
+
+
+# ============================================================================
+# Test: V2-native — Forward guidance "goal of serving" extension
+# ============================================================================
+
+
+class TestGoalOfServingGuidance:
+    """'goal of serving N billion' should fire as forward guidance in relaxed mode."""
+
+    def test_goal_of_serving_rejects_value(self):
+        """'long-term goal of serving more than 1 billion global monthly active users' → rejected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 1_000_000_000.0, "1 billion", Unit.COUNT)
+        source = "we remain committed to our long-term goal of serving more than 1 billion global monthly active users."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=True, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert is_fp is True
+        assert reason == "v2_forward_guidance"
+
+    def test_goal_of_serving_not_fired_in_non_relaxed(self):
+        """Forward guidance is relaxed-only — SEC filing mode unaffected."""
+        from src.extraction_v2.models import SectionType
+
+        bv = _make_bound_value("c1", 1_000_000_000.0, "1 billion", Unit.COUNT)
+        source = "we remain committed to our long-term goal of serving more than 1 billion global monthly active users."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users",
+            relaxed=False, section_type=SectionType.PREPARED_REMARKS
+        )
+        assert reason != "v2_forward_guidance"
