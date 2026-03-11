@@ -45,6 +45,7 @@ class MockPipelineConfig:
     min_confidence_auto_accept: float = 0.90
     min_confidence_no_review: float = 0.85
     max_confidence_auto_reject: float = 0.15
+    enable_chart_interpolation: bool = False
 
 
 @dataclass
@@ -2823,3 +2824,498 @@ class TestRespectivelyPatternBinding:
 
         # Currency values must be filtered for a count-only metric
         assert len(results) == 0
+
+
+# ============================================================================
+# Chart Binding - period_hint Tests
+# ============================================================================
+
+
+class TestChartBindingPeriodHint:
+    """Tests for period_hint propagation in _bind_chart_candidate."""
+
+    def _make_chart_candidate(self, img_id: str) -> MetricCandidate:
+        return MetricCandidate(
+            candidate_id="cand-chart-ph",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+    def _make_image_with_chart(self, img_id: str, points: list[Any], annotations: list[Any]) -> Any:
+        from src.extraction_v2.models import (
+            ChartAnnotation,
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        data_points = [DataPoint(x=x, y=y, label=label) for x, y, label in points]
+        series = [ChartSeries(name="ARR", points=data_points)] if data_points else []
+        ann_objs = [
+            ChartAnnotation(text=t, value=v, unit=u, category=c, period=p)
+            for t, v, u, c, p in annotations
+        ]
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="ARR ($M)",
+            series=series,
+            annotations=ann_objs,
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.9,
+            processed=True,
+            chart_data=chart_data,
+        )
+        return asset
+
+    def test_period_hint_set_from_datapoint_x_on_chart_label(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """period_hint is set from DataPoint.x on chart_label BoundValues."""
+        img_id = "img-period-1"
+        asset = self._make_image_with_chart(
+            img_id,
+            points=[("2021", 100.0, "100M"), ("2022", 200.0, "200M")],
+            annotations=[],
+        )
+        candidate = self._make_chart_candidate(img_id)
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_label_bvs = [
+            bv for bv in context.bound_values if bv.binding_type == "chart_label"
+        ]
+        assert len(chart_label_bvs) == 2
+        period_hints = {bv.period_hint for bv in chart_label_bvs}
+        assert "2021" in period_hints
+        assert "2022" in period_hints
+
+    def test_period_hint_set_from_annotation_period(self, stage: ValueBindingStage) -> None:
+        """period_hint is set from ChartAnnotation.period on chart_annotation BoundValues."""
+        from src.extraction_v2.models import (
+            ChartAnnotation,
+            ChartData,
+            ChartType,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        img_id = "img-period-2"
+        # Use a percent-axis chart so the annotation unit (percent) passes the filter
+        ann = ChartAnnotation(
+            text="44.4% New Consumers in 2017",
+            value=44.4,
+            unit="percent",
+            category="New Consumers",
+            period="2017",
+        )
+        chart_data = ChartData(
+            chart_type=ChartType.LINE,
+            y_axis_label="NRR %",  # % axis => Unit.PERCENT
+            series=[],
+            annotations=[ann],
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.9,
+            processed=True,
+            chart_data=chart_data,
+        )
+        # Use a metric that accepts percent
+        candidate = MetricCandidate(
+            candidate_id="cand-chart-ann",
+            metric_id="cm_net_revenue_retention",
+            match_text="NRR",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        ann_bvs = [
+            bv for bv in context.bound_values if bv.binding_type == "chart_annotation"
+        ]
+        assert len(ann_bvs) == 1
+        assert ann_bvs[0].period_hint == "2017"
+
+    def test_period_hint_empty_when_datapoint_x_is_empty(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """period_hint is empty string when DataPoint.x is empty string."""
+        img_id = "img-period-3"
+        asset = self._make_image_with_chart(
+            img_id,
+            points=[("", 150.0, "150M")],
+            annotations=[],
+        )
+        candidate = self._make_chart_candidate(img_id)
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_label_bvs = [
+            bv for bv in context.bound_values if bv.binding_type == "chart_label"
+        ]
+        assert len(chart_label_bvs) == 1
+        assert chart_label_bvs[0].period_hint == ""
+
+
+# ============================================================================
+# Chart Binding - series_name and annotation metadata Tests (Phase 1)
+# ============================================================================
+
+
+class TestChartBindingSeriesMetadata:
+    """Tests for series_name / annotation_category propagation (Phase 1)."""
+
+    def _make_cohort_chart_asset(self, img_id: str, series_names: list[str]) -> Any:
+        """Build an ImageAsset with named cohort series."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        series = [
+            ChartSeries(
+                name=name,
+                points=[DataPoint(x="2023", y=float(10 + i), label=str(10 + i))],
+            )
+            for i, name in enumerate(series_names)
+        ]
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="Revenue ($M)",  # currency axis — cm_revenue_by_cohort is currency-only
+            series=series,
+        )
+        return ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.9,
+            processed=True,
+            chart_data=chart_data,
+        )
+
+    def test_series_name_propagated_to_bound_value(self, stage: ValueBindingStage) -> None:
+        """Each BoundValue carries the series_name from its source ChartSeries."""
+        img_id = "img-series-1"
+        series_names = ["2019 Cohort", "2020 Cohort", "2021 Cohort"]
+        asset = self._make_cohort_chart_asset(img_id, series_names)
+
+        candidate = MetricCandidate(
+            candidate_id="cand-series-1",
+            metric_id="cm_revenue_by_cohort",
+            match_text="revenue by cohort",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        assert len(chart_bvs) == 3
+
+        bound_series_names = {bv.series_name for bv in chart_bvs}
+        assert bound_series_names == set(series_names)
+
+        # Verify each individual series name is correctly assigned
+        for bv in chart_bvs:
+            assert bv.series_name in series_names
+
+    def test_annotation_category_and_text_propagated(self, stage: ValueBindingStage) -> None:
+        """annotation_category and annotation_text are set on annotation BoundValues."""
+        from src.extraction_v2.models import (
+            ChartAnnotation,
+            ChartData,
+            ChartType,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        img_id = "img-ann-1"
+        annotation = ChartAnnotation(
+            text="44.4% New Consumers",
+            value=44.4,
+            unit="percent",
+            category="New Consumers",
+            period="2017",
+        )
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="Gross Margin (%)",  # percent axis for a percent-only metric
+            annotations=[annotation],
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.9,
+            processed=True,
+            chart_data=chart_data,
+        )
+        # cm_gross_margin_by_cohort is percent-only — compatible with the PERCENT annotation
+        candidate = MetricCandidate(
+            candidate_id="cand-ann-1",
+            metric_id="cm_gross_margin_by_cohort",
+            match_text="gross margin by cohort",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        ann_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_annotation"]
+        assert len(ann_bvs) == 1
+        assert ann_bvs[0].annotation_category == "New Consumers"
+        assert ann_bvs[0].annotation_text == "44.4% New Consumers"
+
+    def test_series_keyword_filtering_applies_higher_multiplier_on_match(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Series matching metric tokens get 0.9x multiplier; non-matching series are excluded."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        img_id = "img-filter-1"
+        # "revenue" series should match "cm_revenue_by_cohort" tokens
+        matching_series = ChartSeries(
+            name="Revenue Cohort",
+            points=[DataPoint(x="2023", y=50.0, label="50")],
+        )
+        non_matching_series = ChartSeries(
+            name="Unrelated Series",
+            points=[DataPoint(x="2023", y=30.0, label="30")],
+        )
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="Revenue ($M)",  # currency axis — cm_revenue_by_cohort is currency-only
+            series=[matching_series, non_matching_series],
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=1.0,
+            processed=True,
+            chart_data=chart_data,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-filter-1",
+            metric_id="cm_revenue_by_cohort",
+            match_text="revenue by cohort",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        # Only the matching series should be bound
+        assert len(chart_bvs) == 1
+        assert chart_bvs[0].series_name == "Revenue Cohort"
+        # Confidence uses 0.9x multiplier (1.0 asset confidence * 0.9)
+        assert abs(chart_bvs[0].binding_confidence - 0.9) < 0.001
+
+    def test_no_matching_named_series_routes_to_manual_capture(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """When named series are present but none match metric tokens, asset is
+        flagged for manual capture and no BoundValues are produced (Rule 4)."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        img_id = "img-filter-2"
+        # cm_revenue_by_cohort is currency-only; use a currency axis
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="Revenue ($M)",
+            series=[
+                ChartSeries(name="Alpha", points=[DataPoint(x="2022", y=10.0)]),
+                ChartSeries(name="Beta", points=[DataPoint(x="2022", y=20.0)]),
+            ],
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=1.0,
+            processed=True,
+            chart_data=chart_data,
+        )
+        # metric_id tokens: ["revenue", "cohort"] — neither "alpha" nor "beta" match
+        candidate = MetricCandidate(
+            candidate_id="cand-filter-2",
+            metric_id="cm_revenue_by_cohort",
+            match_text="revenue by cohort",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        # No bindings produced — named series present but none match metric tokens
+        assert len(chart_bvs) == 0
+        # Asset flagged for manual capture (second signal missing)
+        assert asset.requires_manual_capture is True
+
+    def _make_interp_context(self, img_id: str, extra_config: dict | None = None) -> tuple:
+        """Helper: build asset + candidate + context for interpolation tests."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        chart_data = ChartData(
+            chart_type=ChartType.LINE,
+            y_axis_label="ARR ($M)",
+            series=[
+                ChartSeries(
+                    name="ARR",
+                    points=[
+                        DataPoint(x="2022", y=100.0, label="100", interpolated=False),
+                        DataPoint(x="2023", y=150.0, interpolated=True),  # label=None
+                    ],
+                )
+            ],
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=1.0,
+            processed=True,
+            chart_data=chart_data,
+        )
+        candidate = MetricCandidate(
+            candidate_id=f"cand-{img_id}",
+            metric_id="cm_arr",
+            match_text="ARR",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+        )
+        cfg = MockPipelineConfig()
+        if extra_config:
+            for k, v in extra_config.items():
+                setattr(cfg, k, v)
+        context = MockPipelineContext(images=[asset], candidates=[candidate], config=cfg)
+        return asset, candidate, context
+
+    def test_exact_mode_skips_unlabeled_points(self, stage: ValueBindingStage) -> None:
+        """When interpolation_enabled=False (default), DataPoints with label=None are skipped."""
+        _, _, context = self._make_interp_context("img-exact-1")
+        # Default MockPipelineContext has enable_chart_interpolation=False
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        # Only the labeled point (2022) should be bound
+        assert len(chart_bvs) == 1
+        assert chart_bvs[0].period_hint == "2022"
+        assert not chart_bvs[0].interpolated
+
+    def test_interpolated_point_sets_flag_and_reduced_confidence(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """When interpolation_enabled=True, unlabeled DataPoints are bound with 0.7x penalty."""
+        _, _, context = self._make_interp_context("img-interp-1", {"enable_chart_interpolation": True})
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        assert len(chart_bvs) == 2
+
+        labeled_bv = next(bv for bv in chart_bvs if bv.period_hint == "2022")
+        interp_bv = next(bv for bv in chart_bvs if bv.period_hint == "2023")
+
+        assert not labeled_bv.interpolated
+        assert interp_bv.interpolated
+        # Labeled: 1.0 * 0.9 = 0.9; interpolated: 0.9 * 0.7 = 0.63
+        assert abs(labeled_bv.binding_confidence - 0.9) < 0.001
+        assert abs(interp_bv.binding_confidence - 0.63) < 0.001
+
+
+class TestSeriesMatchesMetric:
+    """Unit tests for ValueBindingStage._series_matches_metric() (Rule 4 helper)."""
+
+    @pytest.mark.parametrize(
+        "series_name,metric_id,expected",
+        [
+            # Token matches
+            ("Revenue 2022 Cohort", "cm_revenue_by_cohort", True),
+            ("GMV by Year", "cm_gmv", True),
+            ("Existing Customers Revenue", "cm_revenue_by_cohort", True),
+            # Stop-word and short-token filtering (these should NOT produce false positives)
+            ("Customer Growth", "cm_gmv", False),  # "gmv" not in "customer growth"
+            ("Series A", "cm_arr", False),  # "arr" not in "series a"
+            # Edge: metric with stop words excluded
+            ("Cohort Revenue", "cm_revenue_by_cohort", True),  # "revenue" or "cohort" match
+            # Case-insensitive
+            ("REVENUE GROWTH", "cm_revenue_by_cohort", True),
+        ],
+    )
+    def test_series_matches_metric_parametrized(
+        self, series_name: str, metric_id: str, expected: bool
+    ) -> None:
+        result = ValueBindingStage._series_matches_metric(series_name, metric_id)
+        assert result is expected, f"{series_name!r} vs {metric_id!r}: expected {expected}"
+
+
+class TestChartAxisUnitSignals:
+    """Verify chart axis unit signals are loaded from YAML config (Rule 5)."""
+
+    def test_signals_loaded_from_config(self) -> None:
+        """ValueBindingStage loads axis unit signals from YAML on init."""
+        stage = ValueBindingStage()
+        assert len(stage._axis_currency_signals) > 0, "currency signals should be non-empty"
+        assert len(stage._axis_count_signals) > 0, "count signals should be non-empty"
+        assert len(stage._axis_percent_signals) > 0, "percent signals should be non-empty"
+        # Known signals from config
+        assert "$" in stage._axis_currency_signals
+        assert "customers" in stage._axis_count_signals
+        assert "%" in stage._axis_percent_signals
+
+    def test_infer_unit_uses_config_signals(self) -> None:
+        """_infer_unit_from_axis() returns Unit.CURRENCY for config currency signals."""
+        stage = ValueBindingStage()
+        assert stage._infer_unit_from_axis("Revenue ($M)") == Unit.CURRENCY
+        assert stage._infer_unit_from_axis("GMV (USDm)") == Unit.CURRENCY
+        assert stage._infer_unit_from_axis("Active Users") == Unit.COUNT
+        assert stage._infer_unit_from_axis("Gross Margin (%)") == Unit.PERCENT
+        assert stage._infer_unit_from_axis("Score") == Unit.OTHER

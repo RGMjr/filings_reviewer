@@ -631,6 +631,8 @@ class DataPoint:
     y: float  # Value
     label: str | None = None  # Data label if explicitly shown
     bbox: BoundingBox | None = None  # Location in image
+    interpolated: bool = False  # True if value was scale-derived (not labeled)
+    point_confidence: float | None = None  # Per-point confidence from Vision API
 
 
 @dataclass
@@ -653,6 +655,23 @@ class ChartAnnotation:
 
 
 @dataclass
+class ChartClassificationResult:
+    """
+    Result of Pass 1 chart classification (structure only, no data values).
+
+    Populated by OCRExtractionStage Pass 1 and used as structured prior
+    for Pass 2 type-specific extraction.
+    """
+
+    chart_type: ChartType = ChartType.UNKNOWN
+    has_data_labels: bool = False
+    axis_info: dict = field(default_factory=dict)  # x_label, y_label, y_min, y_max, y_ticks, x_categories
+    legend_entries: list[str] = field(default_factory=list)
+    estimated_series_count: int = 0
+    confidence: float = 0.0
+
+
+@dataclass
 class ChartData:
     """Structured data extracted from a chart."""
 
@@ -662,6 +681,32 @@ class ChartData:
     y_axis_label: str = ""
     series: list[ChartSeries] = field(default_factory=list)
     annotations: list[ChartAnnotation] = field(default_factory=list)
+
+
+@dataclass
+class ImageExtractionMeta:
+    """
+    Telemetry for a single Vision API call on an ImageAsset.
+
+    Populated by OCRExtractionStage after each Vision API call, or by
+    ImageTriageStage for images that are skipped before reaching Stage 5.
+    """
+
+    # Vision API details (populated after a successful or failed API call)
+    vision_model: str = ""
+    prompt_version: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_usd: float = 0.0
+    latency_ms: float = 0.0
+
+    # Outcome
+    parse_success: bool = False
+    manual_capture_reason: str = ""  # Why requires_manual_capture was set
+    extraction_mode: str = ""  # "exact" | "interpolated" | ""
+
+    # Skip reason (set when image never reaches the Vision API)
+    skip_reason: str = ""  # e.g. "classified_decorative", "below_relevance_threshold"
 
 
 @dataclass
@@ -701,11 +746,15 @@ class ImageAsset:
 
     # Chart results (if chart)
     chart_data: ChartData | None = None
+    classification_result: ChartClassificationResult | None = None  # Pass 1 result
 
     # Processing status
     processed: bool = False
     confidence: float = 0.0
     requires_manual_capture: bool = False  # True if values couldn't be extracted
+
+    # Telemetry (populated by Stage 4/5 for observability)
+    extraction_meta: ImageExtractionMeta | None = None
 
     def is_relevant(self, threshold: float = 0.3) -> bool:
         """Check if image is relevant for metric extraction."""
@@ -841,6 +890,12 @@ class BoundValue:
     period_source: str = ""  # "header_path", "text_context", "filing_fallback"
     period_ambiguous: bool = False  # True if multiple conflicting periods detected
     period_hint: str = ""  # Pre-parsed period from respectively pattern (e.g., "2017")
+
+    # Chart-specific provenance (populated for chart_label and chart_annotation bindings)
+    series_name: str | None = None  # e.g., "2019 Cohort"
+    annotation_category: str | None = None  # e.g., "New Consumers"
+    annotation_text: str | None = None  # Full annotation text
+    interpolated: bool = False  # True if value was scale-derived (not labeled)
 
     # Metadata
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
