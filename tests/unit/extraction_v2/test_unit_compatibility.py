@@ -173,11 +173,13 @@ class TestNewConstraints:
         assert is_unit_compatible("cm_cac_payback_period", Unit.PERCENT) is False
         assert is_unit_compatible("cm_cac_payback_period", Unit.RATIO) is False
 
-    def test_revenue_by_cohort_constrained_to_currency(self) -> None:
+    def test_revenue_by_cohort_is_currency_only(self) -> None:
+        # cm_revenue_by_cohort is currency-only: percentage cohort splits
+        # (44.4% New Consumers) belong to cm_gross_margin_by_cohort, not this metric
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.CURRENCY) is True
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.OTHER) is True
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is False
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.RATIO) is False
 
 

@@ -651,16 +651,19 @@ class TestPipelineApiKeyCheck:
     """Tests for automatic disabling of chart/image extraction when API key is missing."""
 
     def test_chart_extraction_disabled_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Pipeline should auto-disable chart and image extraction when OPENAI_API_KEY is unset."""
+        """Pipeline should disable only chart extraction (Stage 5) when OPENAI_API_KEY is unset.
+
+        Stage 4 (image triage) still runs so images are classified and scored for
+        observability even without the Vision API.
+        """
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
         pipeline = V2Pipeline(config=config)
-        # Both flags should be False after initialization
+        # Only Stage 5 (chart extraction) should be disabled; Stage 4 (triage) still runs
         assert pipeline.config.enable_chart_extraction is False
-        assert pipeline.config.enable_image_extraction is False
-        # Neither Stage 4 nor Stage 5 should be in the stage list
+        assert pipeline.config.enable_image_extraction is True
         stage_ids = [s for s, _ in pipeline._stages]
-        assert PipelineStage.IMAGE_TRIAGE not in stage_ids
+        assert PipelineStage.IMAGE_TRIAGE in stage_ids
         assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
 
     def test_chart_extraction_enabled_when_api_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:

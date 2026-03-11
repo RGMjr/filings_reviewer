@@ -868,3 +868,149 @@ class TestChartEvidenceGeneration:
         evidence = stage._generate_evidence(bv, {}, {}, {"img_004": asset}, config)
 
         assert evidence.context_before == nearby[:200].strip()
+
+
+# ============================================================================
+# Phase 1: Chart series -> cohort_def / scope_detail mapping
+# ============================================================================
+
+
+class TestChartSeriesToFactDimensions:
+    """Tests for cohort_def / scope_detail derived from chart series metadata."""
+
+    def _make_context_with_chart_bv(
+        self,
+        series_name: str | None = None,
+        annotation_category: str | None = None,
+    ) -> PipelineContext:
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        context = MagicMock(spec=PipelineContext)
+        context.document = Document(doc_id="TEST_DOC")
+        context.config = PipelineConfig(save_evidence_screenshots=False)
+        context.facts = []
+
+        bv = BoundValue(
+            candidate_id="cand-fc-1",
+            value=44.4,
+            value_raw="44.4",
+            unit="percent",
+            binding_confidence=0.9,
+            period_confidence=0.8,
+            series_name=series_name,
+            annotation_category=annotation_category,
+            source_locator=SourceLocator(img_id="img-fc-1"),
+        )
+        candidate = make_candidate(candidate_id="cand-fc-1", metric_id="cm_revenue_by_cohort")
+
+        context.bound_values = [bv]
+        context.candidates = [candidate]
+        context.segments = []
+        context.tables = []
+        context.images = []
+        return context
+
+    def test_cohort_series_name_populates_cohort_def(
+        self, stage: FactConstructionStage
+    ) -> None:
+        """series_name matching cohort pattern populates cohort_def and scope=COHORT."""
+        from src.extraction_v2.models import Scope
+
+        context = self._make_context_with_chart_bv(series_name="2019 Cohort")
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.facts) == 1
+        fact = context.facts[0]
+        assert fact.cohort_def == "2019 Cohort"
+        assert fact.scope == Scope.COHORT
+        assert fact.scope_detail is None
+
+    def test_scope_hint_in_series_name_populates_scope_detail(
+        self, stage: FactConstructionStage
+    ) -> None:
+        """series_name containing scope hint keyword sets scope_detail and scope=CUSTOMER_TYPE."""
+        from src.extraction_v2.models import Scope
+
+        context = self._make_context_with_chart_bv(series_name="New Consumers")
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.facts) == 1
+        fact = context.facts[0]
+        assert fact.scope_detail == "New Consumers"
+        assert fact.scope == Scope.CUSTOMER_TYPE
+        assert fact.cohort_def is None
+
+    def test_annotation_category_populates_scope_detail(
+        self, stage: FactConstructionStage
+    ) -> None:
+        """annotation_category containing scope hint sets scope_detail when series_name is None."""
+        from src.extraction_v2.models import Scope
+
+        context = self._make_context_with_chart_bv(annotation_category="Enterprise")
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.facts) == 1
+        fact = context.facts[0]
+        assert fact.scope_detail == "Enterprise"
+        assert fact.scope == Scope.CUSTOMER_TYPE
+
+    def test_series_name_without_pattern_leaves_company_scope(
+        self, stage: FactConstructionStage
+    ) -> None:
+        """series_name with no recognized pattern leaves scope=COMPANY."""
+        from src.extraction_v2.models import Scope
+
+        context = self._make_context_with_chart_bv(series_name="Series A")
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        fact = context.facts[0]
+        assert fact.scope == Scope.COMPANY
+        assert fact.cohort_def is None
+        assert fact.scope_detail is None
+
+    def test_chart_snippet_html_includes_series_name(
+        self, stage: FactConstructionStage
+    ) -> None:
+        """snippet_html includes the series name for chart-sourced BoundValues."""
+        from src.extraction_v2.models import ChartData, ChartType, ImageAsset, ImageClassification
+        from src.extraction_v2.pipeline import PipelineConfig
+
+        context = MagicMock(spec=PipelineContext)
+        context.document = Document(doc_id="TEST_DOC")
+        context.config = PipelineConfig(save_evidence_screenshots=False)
+        context.facts = []
+
+        bv = BoundValue(
+            candidate_id="cand-snip-1",
+            value=44.4,
+            value_raw="44.4%",
+            unit="percent",
+            binding_confidence=0.9,
+            period_confidence=0.8,
+            series_name="2020 Cohort",
+            source_locator=SourceLocator(img_id="img-snip-1"),
+        )
+        candidate = make_candidate(candidate_id="cand-snip-1")
+
+        asset = ImageAsset(
+            img_id="img-snip-1",
+            classification=ImageClassification.CHART,
+            chart_data=ChartData(title="Revenue by Cohort", chart_type=ChartType.BAR),
+        )
+
+        context.bound_values = [bv]
+        context.candidates = [candidate]
+        context.segments = []
+        context.tables = []
+        context.images = [asset]
+
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        fact = context.facts[0]
+        assert "2020 Cohort" in fact.evidence_pack.snippet_html
+        assert "44.4%" in fact.evidence_pack.snippet_html

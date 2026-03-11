@@ -23,6 +23,7 @@ from src.extraction_v2.models import (
     ChartType,
     ImageAsset,
     ImageClassification,
+    ImageExtractionMeta,
     SectionType,
 )
 
@@ -250,6 +251,10 @@ class ImageTriageStage:
                 "customers",
                 "arr",
                 "mrr",
+                "ltv",
+                "cac",
+                "lifetime value",
+                "customer acquisition",
             ]
             if any(kw in text_lower for kw in metric_keywords):
                 return True
@@ -270,8 +275,11 @@ class ImageTriageStage:
         combined_text = f"{filename_normalized} {asset.nearby_text}".lower()
 
         # Explicit table references (in text or filename)
+        # Strip "table of contents" first to avoid misclassifying charts that appear
+        # after the ToC navigation link common in SEC EDGAR filings.
+        combined_no_toc = combined_text.replace("table of contents", "")
         table_keywords = ["table", "schedule", "summary of", "breakdown"]
-        if any(kw in combined_text for kw in table_keywords):
+        if any(kw in combined_no_toc for kw in table_keywords):
             # Make sure it's not already classified as a chart
             if not self._is_chart(asset):
                 return True
@@ -439,7 +447,12 @@ class ImageTriageStage:
         # Cap at 1.0
         return min(1.0, score)
 
-    def triage_images(self, images: list[ImageAsset]) -> list[ImageAsset]:
+    def triage_images(
+        self,
+        images: list[ImageAsset],
+        min_relevance: float | None = None,
+        ambiguous_threshold: float | None = None,
+    ) -> list[ImageAsset]:
         """
         Process a batch of images: classify, score, and mark for processing.
 
@@ -447,24 +460,50 @@ class ImageTriageStage:
         - classification
         - relevance_score
         - requires_manual_capture (for ambiguous cases)
+        - extraction_meta.skip_reason (for images below threshold)
 
         Args:
             images: List of ImageAsset objects to process
+            min_relevance: Minimum relevance score to queue for OCR/Vision.
+                Defaults to MIN_RELEVANCE_FOR_PROCESSING class constant.
+            ambiguous_threshold: Relevance below this (but >= min_relevance) marks for
+                manual capture. Defaults to AMBIGUOUS_RELEVANCE_THRESHOLD class constant.
 
         Returns:
             List of ImageAsset objects that should be processed by OCR/Vision (relevance >= threshold)
         """
+        min_rel = min_relevance if min_relevance is not None else self.MIN_RELEVANCE_FOR_PROCESSING
+        ambig_thresh = (
+            ambiguous_threshold
+            if ambiguous_threshold is not None
+            else self.AMBIGUOUS_RELEVANCE_THRESHOLD
+        )
         images_for_processing: list[ImageAsset] = []
 
         for asset in images:
-            # Classify
+            # Hard gate: decorative classifications never need scoring
             asset.classification = self.classify_image(asset)
+
+            if asset.classification in (
+                ImageClassification.DECORATIVE,
+                ImageClassification.LOGO,
+                ImageClassification.SIGNATURE,
+            ):
+                _skip_map = {
+                    ImageClassification.DECORATIVE: "classified_decorative",
+                    ImageClassification.LOGO: "classified_logo",
+                    ImageClassification.SIGNATURE: "classified_signature",
+                }
+                asset.relevance_score = 0.0
+                asset.extraction_meta = ImageExtractionMeta(
+                    skip_reason=_skip_map[asset.classification]
+                )
+                continue
 
             # Detect chart type if applicable
             if asset.classification == ImageClassification.CHART:
-                # Store chart type in a way that's accessible
                 # (ChartData will be populated in Stage 5)
-                pass  # Chart type detection happens when scoring
+                pass
 
             # Score relevance
             asset.relevance_score = self.score_relevance(asset)
@@ -472,14 +511,18 @@ class ImageTriageStage:
             # Mark for manual capture if ambiguous
             if (
                 asset.classification == ImageClassification.UNKNOWN
-                and asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING
-                and asset.relevance_score < self.AMBIGUOUS_RELEVANCE_THRESHOLD
+                and asset.relevance_score >= min_rel
+                and asset.relevance_score < ambig_thresh
             ):
                 asset.requires_manual_capture = True
 
             # Queue for processing if relevant
-            if asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING:
+            if asset.relevance_score >= min_rel:
                 images_for_processing.append(asset)
+            else:
+                asset.extraction_meta = ImageExtractionMeta(
+                    skip_reason="below_relevance_threshold"
+                )
 
         logger.info(
             f"Triage complete: {len(images)} images processed, "
@@ -523,8 +566,22 @@ class ImageTriageStage:
                     metadata={"message": "No images to process"},
                 )
 
-            # Triage all images
-            images_for_processing = self.triage_images(context.images)
+            # Triage all images using config-driven thresholds (fall back to defaults if no config)
+            min_relevance = (
+                context.config.min_image_relevance
+                if context.config is not None
+                else self.MIN_RELEVANCE_FOR_PROCESSING
+            )
+            ambiguous_threshold = (
+                context.config.image_triage_ambiguous_threshold
+                if context.config is not None
+                else self.AMBIGUOUS_RELEVANCE_THRESHOLD
+            )
+            images_for_processing = self.triage_images(
+                context.images,
+                min_relevance=min_relevance,
+                ambiguous_threshold=ambiguous_threshold,
+            )
 
             # Compute statistics
             classification_counts: dict[str, int] = {}

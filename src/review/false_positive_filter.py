@@ -500,6 +500,13 @@ def should_treat_as_percentage(
                 "dollar-based net expansion",
             ]
             if any(keyword in context_lower for keyword in retention_keywords):
+                # Guard: bare integers below 50 are months/quarters/counts,
+                # not realistic retention percentages (NRR is always ≥50%)
+                try:
+                    if float(raw_text.replace(",", "")) < 50:
+                        return False
+                except ValueError:
+                    pass
                 return True
 
     return False

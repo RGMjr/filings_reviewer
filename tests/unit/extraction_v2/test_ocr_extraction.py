@@ -25,6 +25,7 @@ from src.extraction_v2.models import (
     ChartType,
     ImageAsset,
     ImageClassification,
+    ImageExtractionMeta,
 )
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
@@ -233,6 +234,16 @@ class TestTableImageOCR:
         assert asset.ocr_table.col_count == 2
         assert len(asset.ocr_table.cells) == 6
 
+        # Verify extraction_meta telemetry
+        assert asset.extraction_meta is not None
+        assert isinstance(asset.extraction_meta, ImageExtractionMeta)
+        assert asset.extraction_meta.parse_success is True
+        assert asset.extraction_meta.vision_model == "gpt-4o"
+        assert asset.extraction_meta.prompt_tokens == 1000
+        assert asset.extraction_meta.completion_tokens == 200
+        assert asset.extraction_meta.extraction_mode == "exact"
+        assert asset.extraction_meta.skip_reason == ""
+
     def test_table_ocr_low_confidence(self, temp_image_file: Path) -> None:
         """Low confidence OCR should mark for manual capture."""
         ocr_data = {
@@ -365,6 +376,32 @@ class TestTableImageOCR:
             stage.process_table_image(asset)
 
 
+def _make_pass1_response(chart_type: str = "bar") -> VisionResponse:
+    """Return a standard Pass 1 classification response for two-pass tests."""
+    return VisionResponse(
+        content=json.dumps(
+            {
+                "chart_type": chart_type,
+                "has_data_labels": True,
+                "x_label": "X",
+                "y_label": "Y",
+                "y_min": 0,
+                "y_max": 2000,
+                "y_ticks": [0, 500, 1000, 1500, 2000],
+                "x_categories": [],
+                "legend_entries": [],
+                "estimated_series_count": 1,
+                "confidence": 0.88,
+            }
+        ),
+        model="gpt-4o",
+        prompt_tokens=100,
+        completion_tokens=80,
+        cost_usd=0.005,
+        latency_ms=300,
+    )
+
+
 class TestChartExtraction:
     """Tests for chart extraction with labeled values."""
 
@@ -398,7 +435,7 @@ class TestChartExtraction:
             ],
         }
 
-        mock_response = VisionResponse(
+        pass2_response = VisionResponse(
             content=json.dumps(chart_data),
             model="gpt-4o",
             prompt_tokens=1500,
@@ -407,7 +444,9 @@ class TestChartExtraction:
             latency_ms=600,
         )
 
-        mock_client = MockVisionClient(responses=[mock_response])
+        # Two-pass: Pass 1 classification response followed by Pass 2 extraction response
+        pass1_response = _make_pass1_response("bar")
+        mock_client = MockVisionClient(responses=[pass1_response, pass2_response])
         stage = OCRExtractionStage(vision_client=mock_client)
 
         asset = ImageAsset(
@@ -434,6 +473,16 @@ class TestChartExtraction:
         assert len(asset.chart_data.series) == 1
         assert len(asset.chart_data.series[0].points) == 2
 
+        # Verify extraction_meta telemetry (summed across both passes)
+        assert asset.extraction_meta is not None
+        assert isinstance(asset.extraction_meta, ImageExtractionMeta)
+        assert asset.extraction_meta.parse_success is True
+        assert asset.extraction_meta.vision_model == "gpt-4o"
+        assert asset.extraction_meta.prompt_tokens == pass1_response.prompt_tokens + 1500
+        assert asset.extraction_meta.completion_tokens == pass1_response.completion_tokens + 300
+        assert asset.extraction_meta.extraction_mode == "exact"
+        assert asset.extraction_meta.skip_reason == ""
+
     def test_chart_extraction_no_labels(self, temp_image_file: Path) -> None:
         """Chart with no labeled values should mark for manual capture."""
         chart_data = {
@@ -445,7 +494,7 @@ class TestChartExtraction:
             "series": [],  # No labeled values
         }
 
-        mock_response = VisionResponse(
+        pass2_response = VisionResponse(
             content=json.dumps(chart_data),
             model="gpt-4o",
             prompt_tokens=1500,
@@ -454,7 +503,7 @@ class TestChartExtraction:
             latency_ms=500,
         )
 
-        mock_client = MockVisionClient(responses=[mock_response])
+        mock_client = MockVisionClient(responses=[_make_pass1_response("line"), pass2_response])
         stage = OCRExtractionStage(vision_client=mock_client)
 
         asset = ImageAsset(
@@ -526,7 +575,7 @@ class TestChartExtraction:
             ],
         }
 
-        mock_response = VisionResponse(
+        pass2_response = VisionResponse(
             content=json.dumps(chart_data),
             model="gpt-4o",
             prompt_tokens=1500,
@@ -535,7 +584,7 @@ class TestChartExtraction:
             latency_ms=450,
         )
 
-        mock_client = MockVisionClient(responses=[mock_response])
+        mock_client = MockVisionClient(responses=[_make_pass1_response("bar"), pass2_response])
         stage = OCRExtractionStage(vision_client=mock_client)
 
         asset = ImageAsset(
@@ -620,6 +669,7 @@ class TestPipelineIntegration:
         }
 
         mock_responses = [
+            # OCR table response (single call)
             VisionResponse(
                 content=json.dumps(table_data),
                 model="gpt-4o",
@@ -628,6 +678,9 @@ class TestPipelineIntegration:
                 cost_usd=0.05,
                 latency_ms=500,
             ),
+            # Chart Pass 1: classification
+            _make_pass1_response("bar"),
+            # Chart Pass 2: extraction
             VisionResponse(
                 content=json.dumps(chart_data),
                 model="gpt-4o",
@@ -679,8 +732,8 @@ class TestPipelineIntegration:
         assert result.items_processed == 2
         assert result.items_output == 2
         assert result.metadata["ocr_calls"] == 1
-        assert result.metadata["chart_calls"] == 1
-        assert result.metadata["total_api_calls"] == 2
+        assert result.metadata["chart_calls"] == 2  # two-pass: Pass 1 + Pass 2
+        assert result.metadata["total_api_calls"] == 2  # 2 images processed (1 OCR + 1 chart)
 
         # Verify both images were processed
         assert images[0].processed is True
@@ -867,15 +920,16 @@ class TestVisionClientApiKeyCheck:
     """Tests for API key validation in vision_client property."""
 
     def test_vision_client_raises_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """vision_client property should raise V2FatalError when OPENAI_API_KEY is missing."""
-        from src.extraction_v2.exceptions import V2FatalError
+        """vision_client property raises when OPENAI_API_KEY is missing.
 
+        After the factory refactor, the error comes from the OpenAI SDK itself
+        (openai.OpenAIError) rather than a V2FatalError, since key validation
+        is now handled inside OpenAIVisionProvider.__init__.
+        """
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         stage = OCRExtractionStage()  # No pre-set vision_client
-        with pytest.raises(V2FatalError) as exc_info:
+        with pytest.raises(Exception):
             _ = stage.vision_client
-        assert "OPENAI_API_KEY" in str(exc_info.value)
-        assert exc_info.value.stage_name == "ocr_chart_extraction"
 
     def test_vision_client_does_not_raise_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """vision_client property should not raise when OPENAI_API_KEY is present."""
