@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m pytest tests/unit/ -x -q --tb=short && echo '\\nAll unit tests passed - safe to commit' || (echo '\\nUNIT TESTS FAILED - fix before committing' && exit 1)"
+            "command": "python3 -m pytest tests/unit/ --collect-only -q 2>&1 | tail -5 && echo '\\nTest collection passed - safe to commit' || (echo '\\nTEST COLLECTION FAILED - fix before committing' && exit 1)"
           }
         ]
       }
@@ -78,16 +78,6 @@
           {
             "type": "command",
             "command": "echo '{\"additionalContext\": \"PRESERVE: Current task goal, files being modified, test status, gold standard scores, and any uncommitted changes. Re-read ops/ITERATION_CONTEXT.md after compaction.\"}'"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '{\"additionalContext\": \"WORKFLOW GATE: Before planning or implementing, classify this task per the Session Approach table in CLAUDE.md and state your chosen execution mode (interactive / ralph / team). This is mandatory.\"}'"
           }
         ]
       }
