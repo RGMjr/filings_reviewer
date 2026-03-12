@@ -45,7 +45,6 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_billings",
     "cm_bookings",
     "cm_gmv",
-    "cm_revenue_by_cohort",  # Currency-only: percentage annotations belong to cm_gross_margin_by_cohort
 }
 
 # Percent-only metrics: retention rates, churn, margins

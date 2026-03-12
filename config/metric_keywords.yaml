@@ -183,6 +183,9 @@ cm_revenue_by_cohort:
     - '\bgmv[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\bgmv\b'
     - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
+    # Quantified retention disclosure: "~94% of revenue...derived from existing customers"
+    # Requires a percentage prefix to distinguish from general prose (e.g., Farfetch FPs)
+    - '\b\d+(?:\.\d+)?\s*%\s+of(?:\s+\w+)?\s+revenue[^.;]{0,80}\b(?:derived\s+from|from)\s+(?:existing|new)\s+customers?\b'
 
 cm_transactions_by_cohort:
   patterns:

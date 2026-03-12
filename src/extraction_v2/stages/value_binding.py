@@ -982,9 +982,13 @@ class ValueBindingStage:
                 series_to_bind = matching_series
                 series_confidence_multiplier = 0.9
             else:
-                # Named series present but none match metric — route to manual capture
-                asset.requires_manual_capture = True
-                return bound_values
+                # Named series present but none match metric tokens — bind all at reduced
+                # confidence and route to human review (conservative but not blocking).
+                # Returning empty would suppress legitimate multi-metric charts where
+                # series names use domain terminology not in the metric_id tokens.
+                series_to_bind = named_series
+                series_confidence_multiplier = 0.70  # Below annotation (0.80x) — lowest priority
+                asset.requires_manual_capture = True  # Flag for reviewer attention
         else:
             # No named series — bind all (unlabeled chart, no series filter possible)
             series_to_bind = unnamed_series or chart.series
