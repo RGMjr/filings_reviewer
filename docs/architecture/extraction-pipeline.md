@@ -113,7 +113,7 @@ See `docs/V2_MIGRATION_GUIDE.md` for migration guidance.
 The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It is the sole active extraction pipeline.
 
 **Version:** `2.0.0-rc1`
-**Status:** Production-ready (P=92.8%, R=77.6%, F1=84.5% on gold standard, as of 2026-02-28)
+**Status:** Production-ready (text-only P=95.0%, R=83.5%, F1=88.9%; image-enabled P=92.3%, R=83.5%, F1=87.7%; as of 2026-03-11)
 **See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`, `docs/operations/v2-deployment-guide.md`
 
 ### Key Architectural Differences
@@ -126,7 +126,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Retired — code deleted 2026-03-02 | Production (F1=84.5%) |
+| **Status** | Retired — code deleted 2026-03-02 | Production (text-only F1=88.9%) |
 
 ### V2 Pipeline Stages
 

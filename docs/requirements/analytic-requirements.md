@@ -1,8 +1,8 @@
 # 01_ANALYTIC_REQUIREMENTS
 
-Version: 0.1  
-Date: 2025-11-15  
-Owner: Rob Markey  
+Version: 0.3
+Date: 2026-03-11
+Owner: Rob Markey
 
 ## 1. Purpose and context
 
@@ -36,12 +36,13 @@ All system and data design choices must support the analytic needs defined here.
 
 Include:
 
-- All **S-1 registration statements** for companies **issuing public equity for the first time** within the coverage period  
+- All **S-1 registration statements** for companies **issuing public equity for the first time** within the coverage period
+- **F-1 registration statements** for **foreign private issuers** (FPIs) issuing public equity for the first time — same customer metric disclosure patterns apply; examples include Farfetch Limited (2018), PropertyGuru Group (2021)
 
 Exclude:
 
-- SPACs and SPAC-like vehicles  
-- Registration statements that are **purely secondary offerings** (no new capital raised by the company)  
+- SPACs and SPAC-like vehicles
+- Registration statements that are **purely secondary offerings** (no new capital raised by the company)
 - Amendments that do not materially change customer metric disclosures, unless needed to capture the first appearance of such metrics
 
 The system must:
@@ -157,14 +158,19 @@ Phase 1 focuses on a small set of “Core Metrics” defined in `Proposed Metric
 
 > Note: Final canonical names and detailed definitions will be maintained in `02_METRIC_TAXONOMY_AND_DEFINITIONS.md`. The list here is conceptual.
 
-Examples of core metrics (to be confirmed):
+Implemented core metrics (canonical IDs defined in `config/metric_keywords.yaml`):
 
-- New customers acquired per period  
-- Total customer count by tenure cohort (period-end)  
-- Active customer count by tenure cohort (period-end)  
-- Revenue by customer cohort  
-- Purchase transactions by cohort  
-- Product / service penetration per customer by cohort  
+| Canonical ID | Description |
+|---|---|
+| `cm_new_customers_acquired` | New customers acquired per period |
+| `cm_customers_period_end` | Total/paid customer count at period end (stock count) |
+| `cm_customers_period_end_by_tenure` | Customers at period end broken down by tenure cohort |
+| `cm_revenue_by_cohort` | Revenue attributed to customer acquisition or tenure cohorts |
+| `cm_transactions_by_cohort` | Purchase transactions broken down by cohort |
+| `cm_purchase_transactions_overall` | Total purchase/order count (no cohort breakdown required) |
+| `cm_large_customers_period_end` | Enterprise/large customers above a revenue threshold |
+
+See `02_METRIC_TAXONOMY_AND_DEFINITIONS.md` for full business definitions.
 
 The analytics must:
 
@@ -284,9 +290,9 @@ Must include:
 - Cohort type and cohort bucket (e.g., tenure, signup year)  
 - Segment dimension and value (product, geography, customer type, if disclosed)  
 - Provenance:
-  - Source type (table / narrative / footnote)  
-  - Source segment ID  
-  - Extraction method (rule-based, LLM, manual)  
+  - Source type: `html_table`, `ocr_table`, `text`, or `chart` (V2 `SourceType` enum)
+  - Source locator: XPath-based `dom_locator` (V2 `SourceLocator`)
+  - Extraction method: `exact_match`, `alias_match`, `embedding`, `llm`, or `manual` (V2 `ExtractionMethod` enum)
 - QA fields:
   - QA status (pass / warning / fail)  
   - QA notes, if any  
@@ -319,8 +325,8 @@ Must include:
 - Filing ID  
 - Segment type (paragraph, table, footnote, definition block, methodology block)  
 - Section information (e.g., Item path, heading)  
-- Location within the document (URL, selector, character offsets)  
-- Raw text (and optionally raw HTML)  
+- Location within the document (URL, XPath `dom_locator` via `SourceLocator`; character offsets where available)
+- Raw text (and optionally highlighted HTML via `EvidencePack`)
 - Detected metric references and roles (definition / numeric / methodology / other)  
 
 This is the core auditability artifact: any metric or quality score must be traceable back to one or more segments in this index.
@@ -404,15 +410,18 @@ The design must:
 
 ## 10. Open questions and to-dos
 
-To be resolved in later documents:
+Items resolved during V2 implementation:
 
-- Final list and canonical names of Phase 1 core metrics  
-- Exact quality scoring rubric (scale and definitions for each level)  
-- Final industry classification scheme (SIC vs GICS vs custom)  
-- Detailed design of the labeled evaluation set and sampling plan  
+- **Final core metric list** — RESOLVED: See Section 5.1 and `02_METRIC_TAXONOMY_AND_DEFINITIONS.md`
+- **Quality scoring rubric** — RESOLVED: 0–3 scale per dimension, implemented in `V2QualityScorer`; see `06_QA_AND_QUALITY_MODEL.md`
+- **Labeled evaluation set** — RESOLVED: 12-filing gold standard in `data/gold_standard/`; two baselines (text-only, image-enabled)
 
-These items will be specified in:
+Remaining open items:
 
-- `02_METRIC_TAXONOMY_AND_DEFINITIONS.md`  
-- `03_DATA_MODEL_SPEC.md`  
-- `06_QA_AND_QUALITY_MODEL.md`  
+- **Industry classification scheme**: SIC codes used for corpus filtering; GICS mapping deferred to Phase 2 analytics
+- **Phase 2 design**: Extension to 10-K filings; schema designed to accommodate but not yet implemented
+
+Cross-references:
+
+- `02_METRIC_TAXONOMY_AND_DEFINITIONS.md` — canonical metric IDs and definitions
+- `06_QA_AND_QUALITY_MODEL.md` — quality model and scoring

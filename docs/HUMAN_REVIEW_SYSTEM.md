@@ -86,7 +86,7 @@ Options: `--limit`, `--batch-id`, `--dry-run`, `--no-progress`
 
 ```bash
 export DATABASE_URL="postgresql://user:pass@localhost/filings_analysis"
-export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 export APP_ENV=production
 python3 scripts/run_review_server.py
 ```

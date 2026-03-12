@@ -108,7 +108,7 @@ Contains historical evaluation reports that have been superseded:
 - `CORRECTED_ASSESSMENT.md` - Evaluation process artifact
 - `EVALUATION_RECONCILIATION.md` - Reconciliation of findings
 
-See `docs/archive/analysis/evaluation-reports/README.md` for details.
+Note: The `docs/archive/analysis/evaluation-reports/` subfolder referenced here does not exist in the current archive structure. The archived evaluation reports listed above are located directly in `docs/archive/` or in git history. The authoritative archive index is `docs/archive/README.md`.
 
 ---
 
