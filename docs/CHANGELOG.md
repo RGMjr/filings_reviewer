@@ -4,6 +4,11 @@ Major milestones in reverse chronological order. Each entry summarizes a workstr
 
 ---
 
+## [2026-03-12] — Date FP Fix + Multi-Provider Vision API Check
+
+- **Key Changes**: Added `_is_date_day_component()` pre-filter in `value_binding.py` — skips integers 1-31 that are immediately preceded by a month name in `_find_numbers_in_proximity()`, preventing day-of-month integers (e.g., "June 30") from binding as metric values. Multi-provider vision API key check added: `VisionProvider` factory validates both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are present before allowing provider selection.
+- **Metrics Impact**: 4-filing gold standard baseline improvement: P=95.3%, R=80.6%, F1=87.3%. 11 new `TestIsDateDayComponent` tests; 3,330 unit tests pass total.
+
 ## [2026-03-11] — Chart Extraction Pipeline Overhaul + Image Pipeline Activation
 
 - **Key Changes**: Six-phase refactor of chart extraction: series-aware binding (`BoundValue` extended with `series_name`/`annotation_category`), two-pass type-specific chart prompts, axis range validation, and pie-chart sum check. `VisionProvider` protocol added with `ClaudeVisionProvider` and `vision_factory.py` for A/B comparison between OpenAI and Anthropic vision models. Dual gold standard baselines introduced: `v2_baseline.json` (text-only, used in CI) and `v2_baseline_with_images.json` (image-enabled, manual gate).

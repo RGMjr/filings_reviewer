@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.7
+**Version:** 2.8
 **Status:** Production Ready
-**Last Updated:** 2026-03-11
+**Last Updated:** 2026-03-12
 
 ---
 
@@ -130,6 +130,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 - **Language:** Python 3.11+
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
+- **Vision:** OpenAI GPT-4o or Anthropic Claude (configurable via `VisionProvider` protocol)
 - **Parsing:** lxml (primary, V2 pipeline); BeautifulSoup4 (secondary, review modules)
 - **Testing:** pytest (87% coverage, 3,800+ tests)
 
@@ -157,7 +158,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
 | V2 MetricFact / EvidencePack | ✅ Complete | 87% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| V2 Gold Standard | ✅ Active | N/A | Text-only: P=95.0%, R=83.5%, F1=88.9%; Image-enabled: P=92.3%, R=83.5%, F1=87.7% (as of 2026-03-11) |
+| V2 Gold Standard | ✅ Active | N/A | Text-only: P=95.0%, R=83.5%, F1=88.9%; Image-enabled: P=92.3%, R=83.5%, F1=87.7% (as of 2026-03-12) |
 | V2 Review UI | ✅ Complete | N/A | [V2 Human Review Guide](V2_HUMAN_REVIEW_GUIDE.md) — WP-21 complete |
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 3,800+ tests)
@@ -384,7 +385,13 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.7 (Current - 2026-03-11)
+### Version 2.8 (Current - 2026-03-12)
+- ✅ Date FP fix: `_is_date_day_component()` pre-filter skips day-of-month integers (1-31) preceded by a month name
+- ✅ Multi-provider vision API key check in `vision_factory.py`
+- ✅ 4-filing baseline improvement: P=95.3%, R=80.6%, F1=87.3%
+- ✅ 3,330 unit tests pass
+
+### Version 2.7 (2026-03-11)
 - ✅ Chart extraction pipeline overhauled: series-aware binding, two-pass type-specific prompts, axis range validation
 - ✅ Claude Vision provider added (`ClaudeVisionProvider`, `VisionProvider` protocol, `vision_factory.py`)
 - ✅ Image pipeline activated: dual gold standard baselines (`v2_baseline.json` text-only; `v2_baseline_with_images.json` image-enabled)

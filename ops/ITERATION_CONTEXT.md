@@ -16,6 +16,8 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - **Keyword fix**: Added quantified-retention pattern to `cm_revenue_by_cohort` (`\d+%\s+of...\s+revenue...derived from existing/new customers`) — recovered Snowflake recall from 76.1% to 84.8%
 - `cm_revenue_by_cohort` unconstrained from currency-only (accepts PERCENT for chart annotations like 44.4%)
 
+**Farfetch Date FP Fix (2026-03-12)**: Added `_is_date_day_component()` pre-filter in `value_binding.py` — skips integers 1-31 that are immediately preceded by a month name in `_find_numbers_in_proximity()`. This prevents "June 30" day-of-month from binding as a metric value. 11 `TestIsDateDayComponent` tests + `test_find_numbers_year_not_fragmented` all pass; 3330 unit tests pass total.
+
 **Image Pipeline Activation (2026-03-11)**:
 - Dual gold standard baselines: `v2_baseline.json` (text-only, CI), `v2_baseline_with_images.json` (image-enabled)
 - Text-only: **P=95.0%, R=83.5%, F1=88.9%** | Image-enabled: **P=92.3%, R=83.5%, F1=87.7%**
@@ -26,13 +28,12 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-- Address Farfetch date-parsing FP bug (value=30 from "June 30" month-day strings)
 - Run real Vision API smoke test on Farfetch chart images to validate two-pass extraction
 - Assess PR merge readiness for `v2-rewrite` branch
 
 ## Test Status
 
-- Unit tests: ~3,305 passed (full suite)
+- Unit tests: ~3,330 passed (full suite)
 - V2 gold standard text-only: **P=95.0%, R=83.5%, F1=88.9%** — 12/12 pass
 - V2 gold standard with images: **P=92.3%, R=83.5%, F1=87.7%** — 12/12 pass
 - Farfetch chart recall: 68.6% with image-enabled baseline (chart prompts ready; needs real API run)
