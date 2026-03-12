@@ -293,15 +293,25 @@ class V2Pipeline:
         self._setup_stages()
 
     def _check_vision_api_availability(self) -> None:
-        """Check if OPENAI_API_KEY is set; disable Stage 5 (OCR) only if not available.
+        """Check if the required API key is set; disable Stage 5 (OCR) only if not available.
 
         Stage 4 (triage) always runs so images are classified and scored for
         observability even when the Vision API is unavailable.
         """
-        if self.config.enable_chart_extraction and not os.environ.get("OPENAI_API_KEY", "").strip():
+        if not self.config.enable_chart_extraction:
+            return
+        provider = self.config.vision_provider
+        if provider == "claude":
+            key_available = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+            key_name = "ANTHROPIC_API_KEY"
+        else:
+            key_available = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+            key_name = "OPENAI_API_KEY"
+        if not key_available:
             logger.warning(
-                "OPENAI_API_KEY is not set. Disabling chart extraction (Stage 5). "
-                "Image triage (Stage 4) will still run for classification and scoring."
+                "%s is not set. Disabling chart extraction (Stage 5). "
+                "Image triage (Stage 4) will still run for classification and scoring.",
+                key_name,
             )
             self.config.enable_chart_extraction = False
 
