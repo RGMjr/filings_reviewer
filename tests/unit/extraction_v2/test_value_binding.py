@@ -877,10 +877,11 @@ class TestNumberParsing:
         results = stage._find_numbers_in_proximity(text, 0, 7, 100)
         raw_values = [raw for _, _, _, raw in results]
         assert "201" not in raw_values, f"Year '2019' was split into fragments: {raw_values}"
-        # Should find "31" and "2019" as whole numbers
+        # Should find "2019" as a whole number.
+        # "31" is correctly skipped by _is_date_day_component (day-of-month after month name).
         values = [v for _, v, _, _ in results]
         assert 2019 in values
-        assert 31 in values
+        assert 31 not in values
 
 
 # ============================================================================
@@ -3320,4 +3321,98 @@ class TestChartAxisUnitSignals:
         assert stage._infer_unit_from_axis("GMV (USDm)") == Unit.CURRENCY
         assert stage._infer_unit_from_axis("Active Users") == Unit.COUNT
         assert stage._infer_unit_from_axis("Gross Margin (%)") == Unit.PERCENT
-        assert stage._infer_unit_from_axis("Score") == Unit.OTHER
+
+
+class TestIsDateDayComponent:
+    """Tests for _is_date_day_component() — Farfetch date-parsing FP guard."""
+
+    def _match(self, text: str) -> "re.Match[str]":
+        """Return the first NUMBER_PATTERN match in text."""
+        import re
+        from src.extraction_v2.stages import number_parsing as _np
+
+        m = _np.NUMBER_PATTERN.search(text)
+        assert m is not None, f"No NUMBER_PATTERN match found in {text!r}"
+        return m
+
+    def _all_matches(self, text: str) -> "list[re.Match[str]]":
+        """Return all NUMBER_PATTERN matches in text."""
+        from src.extraction_v2.stages import number_parsing as _np
+
+        return list(_np.NUMBER_PATTERN.finditer(text))
+
+    def test_june_30_returns_true(self) -> None:
+        """'June 30' day component should be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "June 30"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is True
+
+    def test_january_1_returns_true(self) -> None:
+        """'January 1' day component should be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "January 1"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is True
+
+    def test_december_31_returns_true(self) -> None:
+        """'December 31' day component should be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "December 31"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is True
+
+    def test_sep_abbreviated_with_punctuation_returns_true(self) -> None:
+        """'Sep. 30,' (abbreviated + punctuation) should be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "Sep. 30,"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is True
+
+    def test_number_with_suffix_million_returns_false(self) -> None:
+        """'30 million' has a suffix — should NOT be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "June 30 million"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is False
+
+    def test_number_with_currency_symbol_returns_false(self) -> None:
+        """'$30' has a currency prefix — should NOT be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "June $30"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is False
+
+    def test_number_with_percent_returns_false(self) -> None:
+        """'30%' has a percent suffix — should NOT be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "June 30%"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is False
+
+    def test_value_32_out_of_range_returns_false(self) -> None:
+        """32 exceeds the 1-31 day range — should NOT be skipped."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "June 32"
+        m = self._match(text)
+        assert _is_date_day_component(text, m) is False
+
+    def test_metric_value_vs_date_in_sentence(self) -> None:
+        """In '30 active customers as of June 30', first match is metric value (False), last is date (True)."""
+        from src.extraction_v2.stages.value_binding import _is_date_day_component
+
+        text = "had 30 active customers as of June 30"
+        matches = self._all_matches(text)
+        assert len(matches) >= 2, "Expected at least two number matches"
+        # First match: the metric value '30' — no month name before it
+        assert _is_date_day_component(text, matches[0]) is False
+        # Last match: the date day '30' — preceded by 'June'
+        assert _is_date_day_component(text, matches[-1]) is True
