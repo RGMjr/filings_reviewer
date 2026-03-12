@@ -452,6 +452,7 @@ class ImageTriageStage:
         images: list[ImageAsset],
         min_relevance: float | None = None,
         ambiguous_threshold: float | None = None,
+        max_images: int | None = None,
     ) -> list[ImageAsset]:
         """
         Process a batch of images: classify, score, and mark for processing.
@@ -468,6 +469,8 @@ class ImageTriageStage:
                 Defaults to MIN_RELEVANCE_FOR_PROCESSING class constant.
             ambiguous_threshold: Relevance below this (but >= min_relevance) marks for
                 manual capture. Defaults to AMBIGUOUS_RELEVANCE_THRESHOLD class constant.
+            max_images: Global cap on images sent for processing. When exceeded,
+                keeps highest-relevance images and drops the rest.
 
         Returns:
             List of ImageAsset objects that should be processed by OCR/Vision (relevance >= threshold)
@@ -524,6 +527,18 @@ class ImageTriageStage:
                     skip_reason="below_relevance_threshold"
                 )
 
+        # Enforce global image budget: keep highest-relevance images
+        if max_images is not None and len(images_for_processing) > max_images:
+            images_for_processing.sort(key=lambda a: a.relevance_score, reverse=True)
+            dropped = images_for_processing[max_images:]
+            images_for_processing = images_for_processing[:max_images]
+            for asset in dropped:
+                asset.extraction_meta = ImageExtractionMeta(skip_reason="budget_exceeded")
+            logger.warning(
+                f"Image budget exceeded: dropped {len(dropped)} images "
+                f"(limit={max_images})"
+            )
+
         logger.info(
             f"Triage complete: {len(images)} images processed, "
             f"{len(images_for_processing)} queued for OCR/Vision"
@@ -577,10 +592,16 @@ class ImageTriageStage:
                 if context.config is not None
                 else self.AMBIGUOUS_RELEVANCE_THRESHOLD
             )
+            max_images = (
+                context.config.max_images_per_document
+                if context.config is not None
+                else None
+            )
             images_for_processing = self.triage_images(
                 context.images,
                 min_relevance=min_relevance,
                 ambiguous_threshold=ambiguous_threshold,
+                max_images=max_images,
             )
 
             # Compute statistics

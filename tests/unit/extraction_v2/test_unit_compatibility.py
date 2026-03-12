@@ -173,14 +173,13 @@ class TestNewConstraints:
         assert is_unit_compatible("cm_cac_payback_period", Unit.PERCENT) is False
         assert is_unit_compatible("cm_cac_payback_period", Unit.RATIO) is False
 
-    def test_revenue_by_cohort_is_currency_only(self) -> None:
-        # cm_revenue_by_cohort is currency-only: percentage cohort splits
-        # (44.4% New Consumers) belong to cm_gross_margin_by_cohort, not this metric
+    def test_revenue_by_cohort_accepts_currency_and_percent(self) -> None:
+        # cm_revenue_by_cohort is unconstrained: chart annotations express cohort
+        # revenue as percentage-of-total (e.g., 44.4% from New Consumers 2017),
+        # while table values appear as currency. Both are valid for this metric.
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.CURRENCY) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is True
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.OTHER) is True
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is False
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.RATIO) is False
 
 
 class TestUnconstrainedMetrics:
@@ -240,4 +239,4 @@ class TestGetAllowedUnits:
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
         # Should have count + currency + percent + ratio metrics
-        assert len(METRIC_ALLOWED_UNITS) == 10 + 14 + 7 + 3  # 34 total
+        assert len(METRIC_ALLOWED_UNITS) == 10 + 13 + 7 + 3  # 33 total (cm_revenue_by_cohort unconstrained)

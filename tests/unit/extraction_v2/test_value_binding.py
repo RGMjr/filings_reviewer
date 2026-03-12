@@ -3157,13 +3157,12 @@ class TestChartBindingSeriesMetadata:
         )
 
         img_id = "img-filter-2"
-        # cm_revenue_by_cohort is currency-only; use a currency axis
         chart_data = ChartData(
             chart_type=ChartType.BAR,
             y_axis_label="Revenue ($M)",
             series=[
-                ChartSeries(name="Alpha", points=[DataPoint(x="2022", y=10.0)]),
-                ChartSeries(name="Beta", points=[DataPoint(x="2022", y=20.0)]),
+                ChartSeries(name="Alpha", points=[DataPoint(x="2022", y=10.0, label="$10M")]),
+                ChartSeries(name="Beta", points=[DataPoint(x="2022", y=20.0, label="$20M")]),
             ],
         )
         asset = ImageAsset(
@@ -3187,9 +3186,12 @@ class TestChartBindingSeriesMetadata:
 
         assert result.success
         chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
-        # No bindings produced — named series present but none match metric tokens
-        assert len(chart_bvs) == 0
-        # Asset flagged for manual capture (second signal missing)
+        # Bindings produced at reduced confidence (0.70x) — named series present but
+        # none match metric tokens; conservative fallback preserves recall
+        assert len(chart_bvs) == 2
+        for bv in chart_bvs:
+            assert abs(bv.binding_confidence - 0.70) < 0.001
+        # Asset flagged for manual capture (second signal missing — needs human review)
         assert asset.requires_manual_capture is True
 
     def _make_interp_context(self, img_id: str, extra_config: dict | None = None) -> tuple:
