@@ -43,6 +43,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Date-component filter helpers
+# ---------------------------------------------------------------------------
+
+_MONTH_DAY_PREFIX_RE = re.compile(
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|"
+    r"Dec(?:ember)?)\.?,?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_date_day_component(text: str, num_match: re.Match[str]) -> bool:
+    """Return True if num_match is a day-of-month (1-31) preceded by a month name."""
+    if num_match.group("suffix") or num_match.group("currency") or num_match.group("percent"):
+        return False
+    try:
+        val = int(num_match.group("number").replace(",", ""))
+    except ValueError:
+        return False
+    if val < 1 or val > 31:
+        return False
+    prefix = text[: num_match.start()]
+    return bool(_MONTH_DAY_PREFIX_RE.search(prefix))
+
 
 class ValueBindingStage:
     """
@@ -1127,6 +1152,8 @@ class ValueBindingStage:
 
         # Find all numbers in window
         for match in _np.NUMBER_PATTERN.finditer(window_text):
+            if _is_date_day_component(window_text, match):
+                continue  # skip day-of-month from date expressions
             parsed = self._parse_number(match.group())
             if parsed:
                 value, unit, raw = parsed
