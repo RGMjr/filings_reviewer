@@ -14,7 +14,7 @@ It serves four purposes:
 - Specify **business definitions** and **calculation rules** for Phase 1 Core Metrics  
 - Enumerate **synonyms and variants** we expect to see in SEC filings  
 - Provide a foundation for:
-  - Data model design (`03_DATA_MODEL_SPEC.md`)  
+  - Data model design (`architecture/data-model.md`)
   - Extraction rules and prompts  
   - Quality/comparability assessment  
 
@@ -62,7 +62,7 @@ These IDs are the **single source of truth** across:
 
 ### 2.3 Data model mapping
 
-In the relational schema (`03_DATA_MODEL_SPEC.md`), each metric in this taxonomy is represented in the `metrics` dimension table.
+In the relational schema (`architecture/data-model.md`), each metric in this taxonomy is represented in the `metrics` dimension table.
 
 Key fields:
 

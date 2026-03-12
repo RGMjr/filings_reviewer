@@ -1,7 +1,9 @@
 # Deployment Guide
 
-**Version:** 3.0
-**Last Updated:** 2026-02-05
+**Version:** 3.1
+**Last Updated:** 2026-03-12
+
+> **V2 Deployment:** For the V2 cloud/production deployment steps, see [`docs/operations/v2-deployment-guide.md`](v2-deployment-guide.md). This document covers production-scale batch processing phases (pilot → full corpus). For V2 extraction operations and runbook, see [`docs/operations/extraction-runbook.md`](extraction-runbook.md).
 
 ---
 
@@ -201,13 +203,13 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 
 6. **Retry Failed Extractions**
    ```bash
-   # Get failed filing IDs and retry
-   python3 scripts/reextract_all_filings.py \
+   # Re-run batch extraction on pending/failed filings (skips already-processed)
+   python3 scripts/batch_v2_extraction.py \
        --limit 50 \
        --dry-run  # Preview first
 
    # Then execute
-   python3 scripts/reextract_all_filings.py --limit 50
+   python3 scripts/batch_v2_extraction.py --limit 50
    ```
 
 7. **Export Results**
@@ -641,7 +643,7 @@ psql $DATABASE_URL -c "
 # If avg_confidence < 0.7:
 # - Review config/metric_keywords.yaml for keyword accuracy
 # - Run gold standard validation to identify issues
-# - Check LLM prompts in src/extraction/ for improvements
+# - Check LLM prompts in src/extraction_v2/ for improvements
 ```
 
 ### Issue: Database Connection Errors
@@ -865,14 +867,14 @@ python3 scripts/export_review_decisions.py \
 vim config/metric_keywords.yaml
 
 # Test changes on sample
-python3 scripts/run_v2_extraction.py --limit 10 --csv-only
+python3 scripts/batch_v2_extraction.py --limit 10 --dry-run
 
 # Validate changes
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
 # If validation passes, re-extract all filings
-python3 scripts/reextract_all_filings.py --dry-run
-python3 scripts/reextract_all_filings.py
+python3 scripts/batch_v2_extraction.py --dry-run
+python3 scripts/batch_v2_extraction.py
 ```
 
 ### Database Optimization
@@ -930,7 +932,7 @@ pg_dump $DATABASE_URL | gzip > \
 | `build_universe_real.py` | Discover filings from SEC EDGAR | `--start-date`, `--end-date`, `--dry-run` |
 | `batch_download_filings.py` | Download HTML/TXT files | `--limit`, `--year`, `--dry-run` |
 | `run_v2_extraction.py` | Extract metrics from filings | `--limit`, `--cik`, `--accession`, `--csv-only` |
-| `reextract_all_filings.py` | Re-run extraction on all filings | `--dry-run`, `--limit`, `--resume-from` |
+| `batch_v2_extraction.py` | Run V2 extraction on pending/failed filings | `--dry-run`, `--limit` |
 | `export_review_decisions.py` | Export metrics to CSV/JSON | `--status`, `--format`, `--output` |
 | `validate_against_gold_standard.py` | Compare vs gold standard | `--all`, `--company`, `--mode fresh` |
 | `run_review_server.py` | Start web review interface | (no flags, runs on port 5000) |
