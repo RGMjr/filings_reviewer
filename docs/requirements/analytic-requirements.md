@@ -18,9 +18,9 @@ Phase 1 focuses on S-1 registration statements for first-time issuers of public 
 
 This document is the primary input to:
 
-- `02_METRIC_TAXONOMY_AND_DEFINITIONS.md`  
-- `03_DATA_MODEL_SPEC.md`  
-- `04_SYSTEM_ARCHITECTURE.md`  
+- `docs/development/metrics-taxonomy.md`
+- `docs/architecture/data-model.md`
+- `docs/architecture/system-overview.md`
 
 All system and data design choices must support the analytic needs defined here.
 
@@ -251,7 +251,7 @@ All data models and extraction logic must preserve these grains and enable joins
 
 ## 7. Required analytic outputs
 
-The system must produce, at minimum, the following logical outputs. Physical implementation (DB tables, CSVs, views) will be defined in `03_DATA_MODEL_SPEC.md`.
+The system must produce, at minimum, the following logical outputs. Physical implementation (DB tables, CSVs, views) is defined in `docs/architecture/data-model.md`.
 
 ### 7.1 Filing-level incidence / quality table
 

@@ -627,7 +627,7 @@ def pytest_addoption(parser):
 ### When to Run Gold Standard Tests
 
 **Required before merging:**
-- Changes to `src/extraction/` (segmenter, classifier, extractor, enricher)
+- Changes to `src/extraction_v2/` (any stage)
 - Changes to `config/metric_keywords.yaml`
 - Changes to `src/gold_standard/` validation logic
 
@@ -647,9 +647,6 @@ The project enforces strict type checking on critical modules.
 ```bash
 # Check review module (strict mode)
 mypy src/review/ --strict
-
-# Check segment enricher (strict mode)
-mypy src/extraction/segment_enricher.py --strict
 
 # Check all source code (permissive mode)
 mypy src/
@@ -678,7 +675,6 @@ no_implicit_reexport = true
 
 **Coverage:**
 - `src/review/*` - Full strict mode (100% type coverage)
-- `src/extraction/segment_enricher.py` - Strict mode
 - Other modules - Permissive mode (gradual typing)
 
 ---
@@ -787,11 +783,10 @@ addopts = [
 **Overall:** 87% (target: 75% minimum)
 
 **By Module:**
-- `src/extraction/` - 90%+
+- `src/extraction_v2/` - 75%+
 - `src/review/` - 85%+
 - `src/web/` - 80%+
 - `src/infra/` - 85%+
-- `src/extraction_v2/` - 75%+
 
 ### Viewing Coverage
 

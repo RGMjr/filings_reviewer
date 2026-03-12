@@ -4,6 +4,8 @@
 **Core System:** Complete (Streams A-E)
 **Interface Improvements:** 11/12 Complete
 
+> **Historical Note:** This document describes the V1-era human review system design (candidates-based workflow). The V1 extraction pipeline (`src/extraction/`) was removed in v2.7. The current V2 human review system operates on facts (not candidates) and is documented in [`docs/V2_HUMAN_REVIEW_GUIDE.md`](V2_HUMAN_REVIEW_GUIDE.md). This document is retained for historical context on the design rationale and learning loop architecture.
+
 ---
 
 ## Overview

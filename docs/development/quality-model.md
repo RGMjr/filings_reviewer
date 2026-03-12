@@ -15,7 +15,7 @@ It answers four questions:
 3. What numeric quality targets are we aiming for in Phase 1?
 4. When do we require manual review vs accepting automated output?
 
-`07_TEST_STRATEGY_AND_FIX_PROCESS.md` will describe **how** we measure and enforce this model (gold standards, tests, and defect process).
+`development/testing.md` describes **how** we measure and enforce this model (gold standards, tests, and defect process).
 
 ---
 
@@ -431,7 +431,7 @@ Before moving from pilot to full Phase 1 run:
 If these gates are not met, the system is not ready for a full Phase 1 run. We then:
 
 - Identify failure modes (by component and pattern)
-- Add tests and fixes (to be detailed in `07_TEST_STRATEGY_AND_FIX_PROCESS.md`)
+- Add tests and fixes (see `development/testing.md`)
 - Re-run the pilot sample until gates are satisfied
 
 ---

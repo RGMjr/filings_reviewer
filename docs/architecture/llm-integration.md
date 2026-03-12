@@ -1,10 +1,12 @@
 # LLM Integration - OpenAI GPT-4o-mini
 
-**Date:** 2025-12-09
+**Date:** 2026-03-12
 **Status:** ✅ All Phases Complete - Production Ready
 **Sprint:** Sprint 3 - LLM Integration (Complete)
 
 ---
+
+> **Historical Note:** The V1 extraction pipeline (`src/extraction/`) and its stage labels (HTML Segmentation, Metric Classification, Value Extraction) were removed in v2.7. The pipeline diagram below reflects V1 architecture for historical reference. The current V2 pipeline is documented in `docs/architecture/extraction-pipeline.md` and `docs/V2_MIGRATION_GUIDE.md`.
 
 ## Overview
 
