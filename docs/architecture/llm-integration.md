@@ -204,7 +204,8 @@ Unit tests for the LLM module are in `tests/unit/llm/`. The standalone `scripts/
 | Token Counting | ✅ Complete | tiktoken integration |
 | Cost Tracking | ✅ Complete | `CostTracker` class |
 | Error Handling | ✅ Complete | Retry logic with backoff |
-| Vision Client | ✅ Complete | `src/llm/vision_client.py` |
+| Vision Client (OpenAI) | ✅ Complete | `src/llm/vision_client.py` |
+| Vision Client (Claude) | ✅ Complete | `src/extraction_v2/vision_factory.py` — `ClaudeVisionProvider` via `VisionProvider` protocol |
 
 ### Phase 2: Pipeline Integration ✅ COMPLETE
 

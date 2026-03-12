@@ -545,12 +545,12 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-28)
-- **V2 overall:** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements)
-- **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
-- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% through iterative FP rule tightening
-- V2 recall: 77.6% (Farfetch chart FNs accepted gap — require Vision API)
-- V2 F1 (84.5%) substantially exceeds V1 baseline (74.1%); all per-company gates passed
+### Gold Standard Performance (as of 2026-03-11)
+- **V2 text-only:** P=95.0%, R=83.5%, F1=88.9% (CI baseline: `v2_baseline.json`)
+- **V2 image-enabled:** P=92.3%, R=83.5%, F1=87.7% (manual gate baseline: `v2_baseline_with_images.json`)
+- **V1 baseline (retired):** P=89.4%, R=63.2%, F1=74.1%
+- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% → 95.0% through iterative FP rule tightening and keyword improvements
+- Farfetch chart FNs partially addressed by two-pass chart extraction pipeline (image-enabled runs)
 
 ## Phase B: Post-Pipeline Enhancements ✅ COMPLETE (2026-02-24)
 
@@ -590,7 +590,7 @@ SIGINT triggers graceful shutdown: completes the current batch before exiting.
 
 ## Current Status
 
-All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`. Gold standard F1=84.5% (all per-company gates passed as of 2026-02-28).
+All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`. Current gold standard: text-only F1=88.9%, image-enabled F1=87.7% (as of 2026-03-11, all per-company gates passed).
 
 Completed hardening work (2026-02-26 to 2026-02-28):
 - Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions; pipeline dispatcher re-raises transient errors for caller retry; fatal errors in critical stages abort the pipeline
@@ -609,8 +609,9 @@ Remaining:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-11 | 2.0 | Chart extraction overhaul + image pipeline activation: series-aware binding, two-pass prompts, ClaudeVisionProvider, dual baselines. Text-only F1=88.9%, image-enabled F1=87.7% |
 | 2026-03-01 | 1.9 | WP-23 complete: batch extraction ran on 2 DB filings (Slack 43 facts, Samsara 2 facts); fixed 3 persistence bugs (doc_id UUID, ON CONFLICT expression, v2_metric_definitions missing table); applied migration 11 |
-| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created, WP-23 pending |
+| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created |
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |

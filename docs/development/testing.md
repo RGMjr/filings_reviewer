@@ -1,7 +1,7 @@
 # Testing Strategy
 
 **Version:** 3.2
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-03-11
 
 ---
 
@@ -228,7 +228,7 @@ def test_table_structure_preserved(sample_html):
 
 ### Example: Value Extractor
 
-**File:** `tests/unit/extraction/test_value_extractor.py`
+**File:** `tests/unit/extraction_v2/test_value_binding.py`
 
 ```python
 """Unit tests for ValueExtractor."""
@@ -822,7 +822,7 @@ pytest --cov=src --cov-report=term-missing
 
 ### Quality Metrics (Gold Standard)
 
-Current V2 scores as of 2026-02-28: P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17). V1 baseline: P=89.4%, R=63.2%, F1=74.1%.
+Current V2 scores as of 2026-03-11: Text-only P=95.0%, R=83.5%, F1=88.9%; Image-enabled P=92.3%, R=83.5%, F1=87.7%. V1 baseline (retired): P=89.4%, R=63.2%, F1=74.1%.
 
 | Metric | Target | Formula |
 |--------|--------|---------|
@@ -1130,4 +1130,4 @@ python3 scripts/validate_against_gold_standard.py --all --update-baseline
 - [Extraction Pipeline](../architecture/extraction-decisions.md)
 - [Human Review System](../HUMAN_REVIEW_SYSTEM.md)
 - [V2 Migration Guide](../V2_MIGRATION_GUIDE.md)
-- [Gold Standard Rules](.claude/rules/gold-standard.md)
+- [Gold Standard Rules](../../.claude/rules/gold-standard.md)

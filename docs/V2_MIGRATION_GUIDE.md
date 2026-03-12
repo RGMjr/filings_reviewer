@@ -17,7 +17,7 @@ The V2 pipeline is a ground-up redesign that improves on V1 in several key areas
 | **False Positive Filter** | V1 FP filter (shared) | V2-native FP filter stage with unit compatibility |
 | **Database Schema** | Legacy tables | Normalized v2_* tables with JSONB |
 
-**Migration status (as of 2026-03-02):** Complete. V1 code (`src/extraction/`) has been deleted. All extraction now runs through V2. Final validated scores: P=92.8%, R=77.6%, F1=84.5%.
+**Migration status (as of 2026-03-11):** Complete. V1 code (`src/extraction/`) has been deleted. All extraction now runs through V2. Current validated scores: Text-only P=95.0%, R=83.5%, F1=88.9%; Image-enabled P=92.3%, R=83.5%, F1=87.7%.
 
 ## API
 
@@ -166,7 +166,9 @@ Gold standard validation confirmed V2 was ready:
 # Run gold standard validation
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
-# Final scores (as of 2026-02-28): P=92.8%, R=77.6%, F1=84.5%
+# Current scores (as of 2026-03-11):
+# Text-only: P=95.0%, R=83.5%, F1=88.9%
+# Image-enabled: P=92.3%, R=83.5%, F1=87.7%
 ```
 
 ### Step 2 (completed): Update Downstream Consumers
