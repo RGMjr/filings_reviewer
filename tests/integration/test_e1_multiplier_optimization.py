@@ -9,7 +9,6 @@ Tests verify the end-to-end flow:
 
 import pytest
 
-from src.infra.db import DatabaseAdapter
 from src.review.candidate_generator import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import SegmentDict
@@ -17,9 +16,9 @@ from src.review.pattern_analyzer import PatternAnalyzer
 
 
 @pytest.fixture
-def db(test_db_url):
-    """Database adapter with test database."""
-    return DatabaseAdapter(test_db_url)
+def db(clean_db):
+    """Database adapter with clean test database (truncated before/after each test)."""
+    return clean_db
 
 
 @pytest.fixture
