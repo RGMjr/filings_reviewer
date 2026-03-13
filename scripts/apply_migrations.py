@@ -47,6 +47,7 @@ MIGRATIONS = [
     "13_seed_large_customers_metric.sql",
     "14_filing_html_content.sql",
     "15_llm_cache_postgres.sql",
+    "16_extraction_jobs.sql",
 ]
 
 BOOTSTRAP_DDL = """
