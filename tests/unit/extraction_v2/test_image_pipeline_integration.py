@@ -803,7 +803,6 @@ class TestV2PipelineSecClient:
 
         from src.extraction_v2.pipeline import V2Pipeline
 
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         mock_client = MagicMock()
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
             pipeline = V2Pipeline(sec_client=mock_client)

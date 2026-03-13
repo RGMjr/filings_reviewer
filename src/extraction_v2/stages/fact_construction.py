@@ -43,7 +43,8 @@ logger = logging.getLogger(__name__)
 
 
 # Cohort pattern: "2019 Cohort", "Cohort 2019", "Year 1", etc.
-_COHORT_PATTERN = re.compile("|".join(get_cohort_patterns()))
+_cohort_patterns = get_cohort_patterns()
+_COHORT_PATTERN = re.compile("|".join(_cohort_patterns) if _cohort_patterns else r"(?!)")
 
 # Scope hint keywords that map series/annotation names to scope_detail
 _SCOPE_HINT_KEYWORDS = get_scope_hint_keywords()
