@@ -210,17 +210,20 @@ class TestE1MultiplierOptimization:
         )
 
         # Generate multiple candidates with table context
+        # Each segment uses a different text prefix to vary char_position of the number
+        # (char_position is based on position within text, not start_char)
+        decided_ids: set[int] = set()
         for i in range(15):
-            offset = i * 100  # unique char position per segment to avoid conflict resolution
-            text = f"Net revenue retention {50 + i}%"
+            prefix = "x" * (i * 5)  # vary prefix length so number appears at different position
+            text = f"{prefix}NRR was {50 + i}%"
             segment: SegmentDict = {
                 "segment_id": i + 1,
                 "section_name": "Results",
                 "segment_type": "table",
                 "raw_text": text,
-                "raw_html": f"<table><tr><td>Net revenue retention</td><td>{50 + i}%</td></tr></table>",
-                "start_char": offset,
-                "end_char": offset + len(text),
+                "raw_html": f"<table><tr><td>NRR</td><td>{50 + i}%</td></tr></table>",
+                "start_char": 0,
+                "end_char": len(text),
             }
 
             candidates = generator.generate_for_filing(
@@ -233,14 +236,16 @@ class TestE1MultiplierOptimization:
             candidate_dicts = [c.to_dict() for c in candidates]
             candidate_ids = db.bulk_insert_review_candidates(candidate_dicts)
 
-            # Reject all (low precision for this test)
+            # Reject each unique candidate only once
             for candidate_id in candidate_ids:
-                db.update_candidate_status(candidate_id, "reviewed")
-                db.insert_review_decision(
-                    candidate_id=candidate_id,
-                    decision="reject",
-                    rejection_category="not_a_metric",
-                )
+                if candidate_id not in decided_ids:
+                    db.update_candidate_status(candidate_id, "reviewed")
+                    db.insert_review_decision(
+                        candidate_id=candidate_id,
+                        decision="reject",
+                        rejection_category="not_a_metric",
+                    )
+                    decided_ids.add(candidate_id)
 
         # Generate recommendations
         recommendations = analyzer.generate_multiplier_recommendations(min_sample_size=10)
