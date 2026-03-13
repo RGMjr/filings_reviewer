@@ -14,8 +14,8 @@ from decimal import Decimal
 from typing import TypedDict
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
-from werkzeug.exceptions import HTTPException
 from markupsafe import Markup, escape
+from werkzeug.exceptions import HTTPException
 
 from src.review.models import (
     DECISION_TYPES,

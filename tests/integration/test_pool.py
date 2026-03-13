@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def test_db_url():
     """Get test database URL from environment."""
     url = os.getenv("TEST_DATABASE_URL")
