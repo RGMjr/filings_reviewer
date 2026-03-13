@@ -211,14 +211,16 @@ class TestE1MultiplierOptimization:
 
         # Generate multiple candidates with table context
         for i in range(15):
+            offset = i * 100  # unique char position per segment to avoid conflict resolution
+            text = f"Net revenue retention {50 + i}%"
             segment: SegmentDict = {
                 "segment_id": i + 1,
                 "section_name": "Results",
                 "segment_type": "table",
-                "raw_text": f"Net revenue retention {50 + i}%",
+                "raw_text": text,
                 "raw_html": f"<table><tr><td>Net revenue retention</td><td>{50 + i}%</td></tr></table>",
-                "start_char": 0,
-                "end_char": 20,
+                "start_char": offset,
+                "end_char": offset + len(text),
             }
 
             candidates = generator.generate_for_filing(
