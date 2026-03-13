@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from src.infra.db import DatabaseAdapter
 from src.review.models import CandidateFeatures
 from src.web.app import create_app
 from tests.integration.conftest import create_test_company_and_filing
@@ -30,9 +29,9 @@ def client(app):
 
 
 @pytest.fixture
-def db(test_db_url):
+def db(clean_db):
     """Create database adapter for test setup."""
-    return DatabaseAdapter(test_db_url)
+    return clean_db
 
 
 @pytest.fixture
@@ -174,8 +173,12 @@ def test_filing_list_pagination(client, db):
     """Test filing list pagination with multiple filings."""
     # Create multiple companies and filings with candidates
     filing_ids = []
-    for _ in range(5):
-        company_id, filing_id = create_test_company_and_filing(db)
+    for i in range(5):
+        company_id, filing_id = create_test_company_and_filing(
+            db,
+            cik=f"000123456{i}",
+            accession_number=f"000123456{i}-24-00000{i}",
+        )
 
         # Create 1 candidate per filing
         db.insert_review_candidate(

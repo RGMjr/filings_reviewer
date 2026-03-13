@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
+from werkzeug.exceptions import HTTPException
 from markupsafe import Markup, escape
 
 from src.review.models import (
@@ -502,6 +503,8 @@ def review_filing(filing_id: int):
             extraction_date=extraction_date,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in review_filing for filing_id={filing_id}: {e}")
         flash("Error loading filing. Please try again.", "danger")

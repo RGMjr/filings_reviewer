@@ -699,11 +699,11 @@ def create_bulk_decisions():
     Record multiple review decisions in one request (bulk accept or reject).
 
     Only 'accept' and 'reject' are allowed - 'reclassify' requires individual review.
-    Maximum 50 candidates per request for safety.
+    Maximum 20 candidates per request for safety.
 
     Request Body:
         {
-            "candidate_ids": [int, ...],    # Required: 1-50 candidate IDs
+            "candidate_ids": [int, ...],    # Required: 1-20 candidate IDs
             "decision": "accept" | "reject", # Required: only accept/reject allowed
             "assigned_metric_id": str,       # Required for accept
             "rejection_category": str,       # Required for reject
@@ -768,13 +768,13 @@ def create_bulk_decisions():
         candidate_ids = list(set(data["candidate_ids"]))
         decision = data["decision"]
 
-        # Safety limit - maximum 50 candidates per bulk action
-        if len(candidate_ids) > 50:
+        # Safety limit - maximum 20 candidates per bulk action
+        if len(candidate_ids) > 20:
             return (
                 jsonify(
                     {
                         "status": "error",
-                        "message": "Maximum 50 candidates per bulk action",
+                        "message": "Maximum 20 candidates per bulk action",
                     }
                 ),
                 403,

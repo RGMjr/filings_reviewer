@@ -4,6 +4,7 @@ Integration tests for end-to-end filing fetcher pipeline.
 These tests simulate real-world scenarios including edge cases and error handling.
 """
 
+import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -52,10 +53,11 @@ class TestRealWorldEdgeCases:
         )
 
         # Mock SEC client to resolve URL with unusual filename
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            # First call: get index.json
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        # resolve_primary_document_url uses sec_client._http_client (not .session)
+        mock_http_client = Mock()
+        mock_index_http_response = Mock()
+        mock_index_http_response.content = json.dumps(
+            {
                 "directory": {
                     "item": [
                         {"name": "mainbody.htm", "size": 500000},
@@ -63,16 +65,15 @@ class TestRealWorldEdgeCases:
                     ]
                 }
             }
-            mock_index_response.raise_for_status = Mock()
+        ).encode()
+        mock_index_http_response.elapsed_seconds = 0.1
+        mock_http_client.get.return_value = mock_index_http_response
 
-            # Second call: get mainbody.htm
-            mock_filing_response = Mock()
-            mock_filing_response.text = valid_filing_html
-            mock_filing_response.raise_for_status = Mock()
+        mock_filing_response = Mock()
+        mock_filing_response.text = valid_filing_html
+        mock_filing_response.raise_for_status = Mock()
 
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
-
-            # Also patch fetcher's session for the actual filing download
+        with patch.object(fetcher.sec_client, "_http_client", mock_http_client):
             with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
@@ -90,9 +91,10 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        mock_http_client = Mock()
+        mock_index_http_response = Mock()
+        mock_index_http_response.content = json.dumps(
+            {
                 "directory": {
                     "item": [
                         {"name": "ff12014a1_biondvax.htm", "size": 500000},
@@ -100,14 +102,15 @@ class TestRealWorldEdgeCases:
                     ]
                 }
             }
-            mock_index_response.raise_for_status = Mock()
+        ).encode()
+        mock_index_http_response.elapsed_seconds = 0.1
+        mock_http_client.get.return_value = mock_index_http_response
 
-            mock_filing_response = Mock()
-            mock_filing_response.text = valid_filing_html
-            mock_filing_response.raise_for_status = Mock()
+        mock_filing_response = Mock()
+        mock_filing_response.text = valid_filing_html
+        mock_filing_response.raise_for_status = Mock()
 
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
-
+        with patch.object(fetcher.sec_client, "_http_client", mock_http_client):
             with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 
@@ -165,9 +168,10 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        mock_http_client = Mock()
+        mock_index_http_response = Mock()
+        mock_index_http_response.content = json.dumps(
+            {
                 "directory": {
                     "item": [
                         {"name": "cover.htm", "size": 10000},
@@ -176,14 +180,15 @@ class TestRealWorldEdgeCases:
                     ]
                 }
             }
-            mock_index_response.raise_for_status = Mock()
+        ).encode()
+        mock_index_http_response.elapsed_seconds = 0.1
+        mock_http_client.get.return_value = mock_index_http_response
 
-            mock_filing_response = Mock()
-            mock_filing_response.text = valid_filing_html
-            mock_filing_response.raise_for_status = Mock()
+        mock_filing_response = Mock()
+        mock_filing_response.text = valid_filing_html
+        mock_filing_response.raise_for_status = Mock()
 
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
-
+        with patch.object(fetcher.sec_client, "_http_client", mock_http_client):
             with patch.object(fetcher.session, "get", return_value=mock_filing_response):
                 content = fetcher.fetch_filing(metadata, fetch_txt=False)
 

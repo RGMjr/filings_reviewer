@@ -11,7 +11,19 @@
      data-filter-sort="{{ current_filters.sort }}"
 >
     {% if not candidates or candidates|length == 0 %}
-        {# Empty state: No candidates for this filing #}
+        {# Empty state: differentiate between no candidates vs. filtered out #}
+        {% if current_filters.has_active_filters and total_candidates_unfiltered > 0 %}
+        <div class="alert alert-info">
+            <h5>No Matching Candidates</h5>
+            <p>No candidates match the current filters.</p>
+            <a href="{{ url_for('review.review_filing', filing_id=filing.filing_id) }}" class="btn btn-secondary me-2">
+                Clear Filters
+            </a>
+            <a href="{{ url_for('review.filing_list') }}" class="btn btn-primary">
+                Back to Filing List
+            </a>
+        </div>
+        {% else %}
         <div class="alert alert-info">
             <h5>No Candidates</h5>
             <p>No review candidates have been generated for this filing yet.</p>
@@ -19,6 +31,7 @@
                 Back to Filing List
             </a>
         </div>
+        {% endif %}
     {% else %}
         {# =================================================================
            Section 1: Filing Header
