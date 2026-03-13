@@ -295,7 +295,7 @@ class TestRunnerUpCapture:
         assert len(set(result_ids)) == 2
 
         # Runner-up should be logged
-        runner_up_logs = [entry for entry in logs if entry["suppression_reason"] == "runner_up"]
+        runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
 
         log = runner_up_logs[0]
@@ -364,7 +364,7 @@ class TestRunnerUpCapture:
 
         result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
-        runner_up_logs = [entry for entry in logs if entry["suppression_reason"] == "runner_up"]
+        runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
 
         # cm_customers (0.7) is runner-up, not cm_mrr (0.5)
@@ -396,7 +396,7 @@ class TestRunnerUpCapture:
         # Find which ID is cm_arr (the winner)
         arr_id = result_ids[0]  # First one is cm_arr
 
-        runner_up_logs = [entry for entry in logs if entry["suppression_reason"] == "runner_up"]
+        runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
         assert runner_up_logs[0]["winner_candidate_id"] == arr_id
 
@@ -490,7 +490,7 @@ class TestNullSegmentHandling:
 
         result_ids, logs = clean_db.bulk_insert_review_candidates(candidates, log_suppressed=True)
 
-        runner_up_logs = [entry for entry in logs if entry["suppression_reason"] == "runner_up"]
+        runner_up_logs = [l for l in logs if l["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
         assert runner_up_logs[0]["source_segment_id"] is None
 
@@ -702,5 +702,5 @@ class TestBackwardCompatibility:
         result = clean_db.bulk_insert_review_candidates(candidates)
 
         # This is what helpers.py does - should not raise
-        for _candidate, cid in zip(candidates, result, strict=True):
+        for candidate, cid in zip(candidates, result, strict=True):
             assert cid > 0

@@ -27,7 +27,7 @@ The **YAML configuration** (`config/metric_keywords.yaml`) is the authoritative 
 |----------|---------|-----|-----------|--------|
 | `config/metric_keywords.yaml` | Patterns, exclusions, aliases | Required | Keep (comment) | Remove |
 | `sql/04_seed_metrics_taxonomy.sql` | Database seed, display names | Required | Update status | Remove |
-| `src/shared/keyword_config.py` | Keyword loader (V2) | Required | Keep | Remove |
+| `src/extraction/value_extractor.py` | Name variants mapping | Required | Keep | Remove |
 | `src/web/routes/review.py` | UI dropdown ordering | Required | Remove | Remove |
 | `docs/development/metrics-taxonomy.md` | Business definitions | Required | Mark deprecated | Remove |
 
@@ -101,13 +101,22 @@ VALUES (
 - `extended` - Phase 1 extended metrics (secondary priority)
 - `future` - Phase 2+ metrics (anticipated but not active)
 
-### Step 3: Update Keyword Config (V2)
+### Step 3: Add to METRIC_NAME_MAPPING
 
-**Files:** `src/shared/keyword_config.py`, `src/extraction_v2/stages/candidate_generation.py`
+**File:** `src/extraction/value_extractor.py`
 
-The V2 pipeline loads keywords from `config/metric_keywords.yaml` via `src/shared/keyword_config.py`. If you need to add name-variant mappings for LLM output normalization, update the `canonical_id` fields in the YAML file. Candidate generation is handled by `src/extraction_v2/stages/candidate_generation.py`, and value binding by `src/extraction_v2/stages/value_binding.py`.
+Add all name variants that should map to this metric. These are used when the LLM returns free-form metric names.
 
-If the metric requires LLM-based name resolution, add name variants to the keyword config's `aliases` section rather than a separate mapping dict.
+```python
+METRIC_NAME_MAPPING = {
+    # ... existing entries ...
+
+    # New metric name variants
+    "new_metric_name": "cm_new_metric_name",
+    "alternate_name": "cm_new_metric_name",
+    "common_abbreviation": "cm_new_metric_name",
+}
+```
 
 ### Step 4: Add to Dropdown Ordering
 
@@ -210,11 +219,11 @@ cm_old_metric_name:
     - '\bold\s+metric\s+pattern\b'
 ```
 
-### Step 3: Keep in Keyword Config Aliases
+### Step 3: Keep in METRIC_NAME_MAPPING
 
-**File:** `config/metric_keywords.yaml`
+**File:** `src/extraction/value_extractor.py`
 
-**DO NOT remove** aliases or patterns — needed for validation of existing data and historical data interpretation.
+**DO NOT remove** - needed for validation of existing data.
 
 ### Step 4: Remove from Dropdown Ordering
 
@@ -283,8 +292,8 @@ Remove in this order to avoid breaking references:
 1. **Remove from dropdown ordering** (`src/web/routes/review.py`)
    - Delete entry from `METRIC_DISPLAY_ORDER`
 
-2. **Remove from keyword config aliases** (`config/metric_keywords.yaml`)
-   - Delete aliases and name-variant entries for this metric
+2. **Remove from name mapping** (`src/extraction/value_extractor.py`)
+   - Delete all entries that map to this metric
 
 3. **Remove INSERT statement** (`sql/04_seed_metrics_taxonomy.sql`)
    - Delete the entire INSERT block
@@ -364,12 +373,11 @@ When adding a new metric, choose a sort order value within the appropriate categ
    );
    ```
 
-3. **metric_keywords.yaml** - Add aliases for name normalization:
-   ```yaml
-   cm_ltv_to_cac_ratio_by_cohort:
-     aliases:
-       - ltv_cac_by_cohort
-       - cohort_ltv_cac
+3. **value_extractor.py** - Add name variants:
+   ```python
+   "ltv_to_cac_ratio_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
+   "ltv_cac_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
+   "cohort_ltv_cac": "cm_ltv_to_cac_ratio_by_cohort",
    ```
 
 4. **review.py** - Add to Unit Economics category:
@@ -411,7 +419,7 @@ When adding a new metric, choose a sort order value within the appropriate categ
 
 3. **review.py** - Remove from `METRIC_DISPLAY_ORDER` dict
 
-4. **metric_keywords.yaml** - Keep all aliases (needed for historical data)
+4. **value_extractor.py** - Keep all name mappings (needed for historical data)
 
 5. **metrics-taxonomy.md** - Mark deprecated:
    ```markdown
@@ -436,7 +444,7 @@ Use this checklist when making metric changes:
 ### Adding a New Metric
 - [ ] Added to `config/metric_keywords.yaml` with patterns
 - [ ] Added INSERT to `sql/04_seed_metrics_taxonomy.sql`
-- [ ] Added aliases to `config/metric_keywords.yaml` (V2 name normalization)
+- [ ] Added name variants to `src/extraction/value_extractor.py`
 - [ ] Added to `METRIC_DISPLAY_ORDER` in `src/web/routes/review.py`
 - [ ] Updated `docs/development/metrics-taxonomy.md`
 - [ ] Ran `pytest -m gold_standard --gold-standard-mode=fresh`
@@ -445,7 +453,8 @@ Use this checklist when making metric changes:
 
 ### Deprecating a Metric
 - [ ] Changed status to `'deprecated'` in SQL
-- [ ] Added deprecation comment in YAML (kept patterns and aliases)
+- [ ] Added deprecation comment in YAML (kept patterns)
+- [ ] Kept entries in value_extractor.py
 - [ ] Removed from `METRIC_DISPLAY_ORDER`
 - [ ] Marked deprecated in documentation
 - [ ] All tests passing
@@ -453,9 +462,9 @@ Use this checklist when making metric changes:
 ### Removing a Metric
 - [ ] Verified no existing data in database
 - [ ] Removed from `METRIC_DISPLAY_ORDER`
-- [ ] Removed aliases from `config/metric_keywords.yaml`
+- [ ] Removed from value_extractor.py
 - [ ] Removed INSERT from SQL
-- [ ] Removed metric block from YAML
+- [ ] Removed from YAML
 - [ ] Removed from documentation
 - [ ] Updated test fixtures
 - [ ] All tests passing

@@ -24,6 +24,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 @dataclass
@@ -136,7 +137,7 @@ def get_github_issues(repo: str, token: str) -> list[GitHubIssue]:
 
     issues = []
     for issue in issues_data:
-        labels = [lbl['name'] if isinstance(lbl, dict) else lbl for lbl in issue.get('labels', [])]
+        labels = [l['name'] if isinstance(l, dict) else l for l in issue.get('labels', [])]
         issues.append(GitHubIssue(
             number=issue['number'],
             title=issue['title'],
@@ -251,7 +252,7 @@ def main():
             print("Please update issues manually or extend this script")
     else:
         print("Note: Set GITHUB_TOKEN to fetch and compare with GitHub issues")
-        print("\nTask summary by workstream:")
+        print(f"\nTask summary by workstream:")
         workstreams = {}
         for task in tasks.values():
             ws = task.workstream

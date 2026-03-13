@@ -533,25 +533,18 @@ def get_scope_hint_keywords(
 
 def get_chart_axis_unit_signals(
     config_path: str | None = None,
-) -> dict[str, list[str]]:
+) -> list[str]:
     """
-    Get chart axis unit signal keywords from config.
+    Get chart metric keywords from config.
 
-    Returns the ``_chart_axis_unit_signals`` section which maps unit names
-    (``currency``, ``count``, ``percent``) to lists of keyword strings used
-    to infer unit from a chart y-axis label.
+    Returns the ``_chart_metric_keywords`` list used by ImageTriageStage to
+    detect metric-related content near large images.
 
     Args:
         config_path: Optional path to config file.
 
     Returns:
-        Dict with keys ``currency``, ``count``, ``percent`` each mapping to a
-        list of lowercase signal strings.
+        List of lowercase keyword strings.
     """
     config = _load_config(config_path)
-    signals = config.get("_chart_axis_unit_signals", {})
-    return {
-        "currency": list(signals.get("currency", [])),
-        "count": list(signals.get("count", [])),
-        "percent": list(signals.get("percent", [])),
-    }
+    return list(config.get("_chart_metric_keywords", []))

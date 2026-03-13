@@ -2,8 +2,6 @@
 
 Historical record of design decisions affecting metric extraction, keyword matching, and candidate generation. Reference this document for implementation details; CLAUDE.md contains only the actionable summary.
 
-> **Historical Note:** The V1 extraction pipeline (`src/extraction/`) was removed in v2.7. Decisions referencing V1 modules (e.g., `segment_enricher.py`, `html_segmenter.py`, `value_extractor.py`, `keyword_config.py`) describe the historical V1 approach. The equivalent V2 implementations are in `src/extraction_v2/stages/`. For V2 operations, see `docs/operations/extraction-runbook.md`.
-
 ---
 
 ## Decision Timeline

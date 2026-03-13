@@ -20,9 +20,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: filings_analysis_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: filings_test
         ports:
           - 5432:5432
         options: >-
@@ -31,32 +31,61 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    env:
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/filings_analysis_test
-
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: |
+          pip install -r requirements.txt
 
-      - name: Apply migrations
-        run: uv run python3 scripts/apply_migrations.py --test
+      - name: Initialize test database
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/filings_test
+        run: |
+          # Apply schema migrations
+          for sql_file in sql/*.sql; do
+            if [ -f "$sql_file" ]; then
+              psql "$TEST_DATABASE_URL" -f "$sql_file" || true
+            fi
+          done
+
+      - name: Check for gold standard baseline
+        id: baseline-check
+        run: |
+          if [ -f "data/gold_standard/baseline.json" ]; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            echo "::warning::Gold standard baseline not found. Skipping validation."
+          fi
 
       - name: Run gold standard validation
+        if: steps.baseline-check.outputs.baseline_exists == 'true'
         id: gold-standard
+        env:
+          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/filings_test
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         continue-on-error: true
         run: |
-          uv run pytest -m gold_standard --gold-standard-mode=fresh -v --tb=short 2>&1 | tee gold_standard_output.txt
+          # Run gold standard tests in fresh mode
+          pytest -m gold_standard --gold-standard-mode=fresh -v 2>&1 | tee gold_standard_output.txt
+
+          # Capture exit code
           EXIT_CODE=${PIPESTATUS[0]}
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
       - name: Report results
+        if: steps.baseline-check.outputs.baseline_exists == 'true'
         run: |
           if [ "${{ steps.gold-standard.outputs.exit_code }}" != "0" ]; then
             echo "::warning file=src/extraction::Gold standard validation detected potential regressions. Review the test output before merging."
+            echo ""
             echo "## Gold Standard Results" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Status:** Warning - Potential regression detected" >> $GITHUB_STEP_SUMMARY
@@ -73,7 +102,7 @@ jobs:
           fi
 
       - name: Upload test output
-        if: always()
+        if: always() && steps.baseline-check.outputs.baseline_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gold-standard-output

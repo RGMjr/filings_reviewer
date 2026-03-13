@@ -31,7 +31,7 @@ load_dotenv()
 def extract_title_from_html(html_path: str) -> str:
     """Extract title tag from HTML file."""
     try:
-        with open(html_path, encoding="utf-8") as f:
+        with open(html_path, "r", encoding="utf-8") as f:
             # Read first 5KB which should contain the title
             content = f.read(5000)
 

@@ -1,19 +1,24 @@
 # Manual Testing Guide
 
-Quick guide for manually testing the human review system (Flask app, port 5000).
+Quick guide for manually testing the V1 human review system (Flask app, port 5000).
 
-> **Note:** `scripts/setup_manual_test.py` has been removed. Use the manual setup steps and database checks below to initialize test data. For the V2 review interface and its workflow, see [`docs/V2_HUMAN_REVIEW_GUIDE.md`](../V2_HUMAN_REVIEW_GUIDE.md).
+> Note: `scripts/setup_manual_test.py` has been removed. Use the manual setup steps and database checks below. For the V2 review interface, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.
 
 ## Quick Start
 
-1. Start PostgreSQL: `docker compose up -d`
-2. Apply migrations: `python3 scripts/apply_migrations.py`
-3. Start the Flask app:
-   ```bash
-   DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-       python3 -m flask --app src.web.app run
-   ```
-4. Navigate to http://localhost:5000/review/filings
+**Single command to set up everything:**
+
+```bash
+python3 scripts/setup_manual_test.py
+```
+
+This script will:
+1. ✓ Check database connection
+2. ✓ Verify review schema exists
+3. ✓ Load Farfetch and Samsara test data
+4. ✓ Generate source segments from HTML filings
+5. ✓ Generate review candidates
+6. ✓ Start Flask application on http://localhost:5000
 
 ## Prerequisites
 
@@ -167,11 +172,11 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis -c "
 TRUNCATE review.decisions CASCADE;
 TRUNCATE review.candidates CASCADE;"
 
-# Clear all data and re-apply migrations
+# Clear everything and re-run setup
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis -c "
 TRUNCATE companies CASCADE;"
 
-python3 scripts/apply_migrations.py
+python3 scripts/setup_manual_test.py
 ```
 
 ## Common Issues
@@ -205,4 +210,9 @@ Press `Ctrl+C` in the terminal where Flask is running.
 
 ## Re-running Tests
 
-Restart the Flask app as described in the Quick Start section above. Database state is preserved between restarts; use the Reset Test Data steps above to clear data before re-testing from scratch.
+Simply run the setup script again:
+```bash
+python3 scripts/setup_manual_test.py
+```
+
+The script is idempotent - it won't duplicate data if run multiple times.

@@ -165,7 +165,7 @@ class DeduplicationStage:
 
         groups: list[list[MetricFact]] = []
 
-        for _bucket_key, bucket_facts in identity_buckets.items():
+        for bucket_key, bucket_facts in identity_buckets.items():
             if len(bucket_facts) == 1:
                 groups.append(bucket_facts)
                 continue
@@ -253,7 +253,7 @@ class DeduplicationStage:
         result: list[MetricFact] = []
         removed = 0
 
-        for _bucket_key, bucket_facts in buckets.items():
+        for bucket_key, bucket_facts in buckets.items():
             if len(bucket_facts) == 1:
                 result.append(bucket_facts[0])
                 continue

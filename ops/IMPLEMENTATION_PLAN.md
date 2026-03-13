@@ -128,7 +128,7 @@ def should_treat_as_percentage(metric_id: str, raw_text: str, context_text: str)
 
 ```bash
 # Validate against Slack gold standard
-python3 scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode fresh
+python scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode fresh
 
 # Run unit tests
 pytest tests/unit/review/ -x -q

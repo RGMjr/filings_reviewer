@@ -101,7 +101,7 @@ All deprecated metrics are correctly synchronized between YAML and SQL.
 
 ## Section 3: METRIC_NAME_MAPPING Audit
 
-The `METRIC_NAME_MAPPING` dict previously in `src/extraction/value_extractor.py` (removed in v2.7) mapped LLM-returned names to canonical IDs. In V2, name normalization is handled via the `aliases` field in `config/metric_keywords.yaml` and loaded by `src/shared/keyword_config.py`.
+The `METRIC_NAME_MAPPING` dict in `src/extraction/value_extractor.py` maps LLM-returned names to canonical IDs.
 
 ### Coverage Summary
 
@@ -284,7 +284,7 @@ These are semantically **distinct**:
 
 | Option | Files Changed | Gold Standard Impact | Risk |
 |--------|---------------|---------------------|------|
-| A (Distinct) | YAML, SQL, metric_keywords.yaml aliases, tests | Gold standard updates needed | LOW |
+| A (Distinct) | YAML, SQL, value_extractor.py, tests | Gold standard updates needed | LOW |
 | B (Merge) | YAML only | None (alias handles it) | LOW |
 | C (Keep) | None | None | MEDIUM |
 

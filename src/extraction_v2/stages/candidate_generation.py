@@ -18,6 +18,14 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from src.shared.keyword_config import (
+    KeywordConfigError,
+    get_exclusion_patterns,
+    get_metric_keywords,
+    get_required_context,
+    get_specific_patterns,
+    is_metric_deprecated,
+)
 from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     ImageAsset,
@@ -27,24 +35,12 @@ from src.extraction_v2.models import (
     SourceLocator,
     SourceType,
 )
-from src.shared.keyword_config import (
-    KeywordConfigError,
-    get_exclusion_patterns,
-    get_metric_keywords,
-    get_required_context,
-    get_specific_patterns,
-    is_metric_deprecated,
-)
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Segment, Table
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
-
-# Maximum number of nearby_text-only chart candidates per chart image.
-# Limits fan-out when nearby text mentions many metrics unrelated to the chart.
-_MAX_NEARBY_TEXT_CHART_METRICS = 3
 
 
 class CandidateGenerationStage:
@@ -460,11 +456,8 @@ class CandidateGenerationStage:
                         candidates.append(candidate)
                         found_in_metadata.add(metric_id)
 
-        # Second pass: search nearby_text for metrics NOT already found in metadata.
-        # These are lower-confidence candidates because the link to the chart is indirect.
-        # Cap at _MAX_NEARBY_TEXT_CHART_METRICS to prevent fan-out.
+        # Second pass: search nearby_text for metrics NOT already found in metadata
         if nearby_text:
-            nearby_candidates: list[MetricCandidate] = []
             for metric_id, patterns in self._compiled_patterns.items():
                 if metric_id in found_in_metadata:
                     continue  # Already found from chart metadata
@@ -481,8 +474,8 @@ class CandidateGenerationStage:
                             source_type=SourceType.CHART,
                             section_type=asset.section_type,
                         )
-                        # Larger penalty for nearby_text-only match (indirect link)
-                        confidence = max(0.0, confidence - 0.20)
+                        # Penalty for nearby_text-only match (indirect link)
+                        confidence = max(0.0, confidence - 0.05)
 
                         candidate = MetricCandidate(
                             metric_id=metric_id,
@@ -495,13 +488,8 @@ class CandidateGenerationStage:
                             confidence=confidence,
                             context_text=nearby_text[:200],
                             section_type=asset.section_type,
-                            from_nearby_text=True,
                         )
-                        nearby_candidates.append(candidate)
-
-            # Keep only top _MAX_NEARBY_TEXT_CHART_METRICS by confidence to cap fan-out
-            nearby_candidates.sort(key=lambda c: c.confidence, reverse=True)
-            candidates.extend(nearby_candidates[:_MAX_NEARBY_TEXT_CHART_METRICS])
+                        candidates.append(candidate)
 
         return self._deduplicate_chart_candidates(candidates)
 

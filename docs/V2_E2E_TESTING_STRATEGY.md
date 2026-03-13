@@ -16,7 +16,7 @@ This document outlines the end-to-end testing strategy for merging the V2-rewrit
 | Persistence | Roundtrip extraction → DB → retrieval | `TestE2EPersistence` | Mature |
 | Idempotency | Re-running produces same facts | `TestE2EIdempotency` | Mature |
 | Performance | 30s completion gate | `TestE2EPerformance` | Mature |
-| V1/V2 Comparison | Side-by-side validation | `test_v1_v2_comparison.py` *(removed — V1 deleted in v2.7)* | N/A |
+| V1/V2 Comparison | Side-by-side validation | `test_v1_v2_comparison.py` | Mature |
 | Gold Standard | Baseline regression | `pytest -m gold_standard` | Mature |
 
 ### Gaps to Fill Before Merge

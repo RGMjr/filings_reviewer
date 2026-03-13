@@ -6,7 +6,6 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'requirements.txt'
       - 'pyproject.toml'
   pull_request:
     paths:
@@ -23,25 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: uv sync --extra dev
 
       - name: Run documentation sync check
         run: |
-          python scripts/check_docs_sync.py --ci
+          uv run python scripts/check_docs_sync.py --ci
 
       - name: Check for stale coverage
         id: coverage
         continue-on-error: true
         run: |
           # Run tests and capture coverage
-          pytest --cov=src --cov-report=term -q --tb=no 2>/dev/null | tee coverage.txt
+          uv run pytest --cov=src --cov-report=term -q --tb=no 2>/dev/null | tee coverage.txt
 
           # Extract actual coverage
           ACTUAL=$(grep TOTAL coverage.txt | awk '{print $4}' | tr -d '%')
@@ -70,18 +65,15 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v3
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: uv sync --extra dev
 
       - name: Update coverage in README
         run: |
           # Get actual coverage
-          COVERAGE=$(pytest --cov=src --cov-report=term -q --tb=no 2>/dev/null | grep TOTAL | awk '{print $4}' | tr -d '%')
+          COVERAGE=$(uv run pytest --cov=src --cov-report=term -q --tb=no 2>/dev/null | grep TOTAL | awk '{print $4}' | tr -d '%')
 
           if [ -n "$COVERAGE" ]; then
             # Update README

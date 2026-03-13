@@ -48,10 +48,10 @@ PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.infra.db import DatabaseAdapter  # noqa: E402
-from src.infra.logging_config import configure_logging  # noqa: E402
-from src.review.candidate_generator import CandidateGenerator  # noqa: E402
-from src.review.config import get_high_recall_config  # noqa: E402
+from src.infra.db import DatabaseAdapter
+from src.infra.logging_config import configure_logging
+from src.review.candidate_generator import CandidateGenerator
+from src.review.config import get_high_recall_config
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,8 @@ def parse_date(value: str | None) -> date | None:
         return None
     try:
         return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError as err:
-        raise argparse.ArgumentTypeError(f"Invalid date format '{value}', expected YYYY-MM-DD") from err
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid date format '{value}', expected YYYY-MM-DD")
 
 
 def build_filings_query(
@@ -103,7 +103,7 @@ def build_filings_query(
             key = f"company_name_{idx}"
             ors.append(f"c.company_name ILIKE %({key})s")
             params[key] = f"%{name.strip()}%"
-        base += " AND (" + " OR ".join(ors) + ")"
+        base += f" AND (" + " OR ".join(ors) + ")"
 
     # SIC/industry filters
     if sic_codes:
