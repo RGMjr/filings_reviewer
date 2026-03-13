@@ -34,7 +34,7 @@ class TestContextTypeTracking:
 
     def test_table_context_type(self, db, generator):
         """Table segments should have context_type='table'."""
-        text = "Gross margin was 52% for the year."
+        text = "Net revenue retention was 115% for the year."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -59,7 +59,7 @@ class TestContextTypeTracking:
 
     def test_bullet_context_type(self, db, generator):
         """Bullet points should have context_type='bullet'."""
-        text = "• Gross margin was 52% for the year"
+        text = "• Net revenue retention was 115% for the year"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -85,7 +85,7 @@ class TestContextTypeTracking:
     def test_parenthetical_context_type(self, db, generator):
         """Parenthetical text (NUMBER in parentheses) should have context_type='parenthetical'."""
         # Note: Parenthetical detection checks if NUMBER is inside parentheses
-        text = "The company achieved (52% gross margin) improvement"
+        text = "The company achieved (115% net revenue retention) improvement"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -110,7 +110,7 @@ class TestContextTypeTracking:
 
     def test_copula_context_type(self, db, generator):
         """Copula verb pattern should have context_type='copula'."""
-        text = "Gross margin was 52% in the quarter"
+        text = "Net revenue retention was 115% in the quarter"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -135,7 +135,7 @@ class TestContextTypeTracking:
 
     def test_default_context_type(self, db, generator):
         """No special context should have context_type='default'."""
-        text = "The company increased from gross margin measurement levels by reaching 52 percent"
+        text = "The company increased from net revenue retention measurement levels by reaching 115 percent"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
