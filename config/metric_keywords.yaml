@@ -28,6 +28,25 @@
 # review candidates. Without this context, they are just revenue measures,
 # not customer metrics. This anchor defines the shared context patterns.
 
+# =============================================================================
+# Chart Metric Keywords
+# =============================================================================
+# Keywords used by ImageTriageStage._is_chart() to detect metric-related content
+# near large images. Used to identify charts likely to contain customer metrics.
+# Prefix with _ so the keyword config validator skips this entry.
+_chart_metric_keywords:
+  - "retention"
+  - "cohort"
+  - "revenue"
+  - "growth"
+  - "customers"
+  - "arr"
+  - "mrr"
+  - "ltv"
+  - "cac"
+  - "lifetime value"
+  - "customer acquisition"
+
 _revenue_synonym_context: &revenue_synonym_context
   required_context:
     patterns:
