@@ -71,6 +71,11 @@ class TestingConfig(Config):
     API_KEY = "test-api-key-for-testing-only"
     API_KEY_REQUIRED = False  # Tests handle auth explicitly when needed
     DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+    # Disable connection pooling in tests: each test creates a new Flask app but
+    # pools are only closed at atexit (process exit), not between tests. With
+    # many test functions each creating a pool with min_size=2, postgres
+    # max_connections is quickly exhausted.
+    DB_POOL_ENABLED = False
 
 
 class ProductionConfig(Config):
