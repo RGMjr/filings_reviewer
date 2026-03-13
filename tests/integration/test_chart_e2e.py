@@ -230,7 +230,7 @@ class TestChartExtractionE2E:
         )
 
         stage = FactConstructionStage()
-        evidence = stage._generate_evidence(bv, {}, {}, [asset], config)
+        evidence = stage._generate_evidence(bv, {}, {}, {asset.img_id: asset}, config)
 
         # Screenshot should be copied
         assert evidence.screenshot_path is not None
