@@ -3416,3 +3416,151 @@ class TestIsDateDayComponent:
         assert _is_date_day_component(text, matches[0]) is False
         # Last match: the date day '30' — preceded by 'June'
         assert _is_date_day_component(text, matches[-1]) is True
+
+
+# =============================================================================
+# Chart Binding — from_nearby_text guard tests
+# =============================================================================
+
+
+class TestChartBindingFromNearbyTextGuard:
+    """Tests for the from_nearby_text rejection guard in _bind_chart_candidate."""
+
+    def _make_chart_asset_with_named_series(
+        self, img_id: str, series_names: list[str]
+    ) -> Any:
+        """Build an ImageAsset with named series whose names do NOT match the metric."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        series = [
+            ChartSeries(
+                name=name,
+                points=[DataPoint(x="2023", y=float(10 + i), label=str(10 + i))],
+            )
+            for i, name in enumerate(series_names)
+        ]
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="",  # no unit inference — keeps unit as OTHER
+            series=series,
+        )
+        return ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.8,
+            processed=True,
+            chart_data=chart_data,
+        )
+
+    def test_nearby_text_candidate_no_series_match_returns_empty(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """from_nearby_text=True + named series present + no series name match → empty list."""
+        img_id = "img-nearby-1"
+        # Series names that have no overlap with "cm_customers_period_end" tokens
+        asset = self._make_chart_asset_with_named_series(
+            img_id, ["Revenue 2021", "Revenue 2022", "Revenue 2023"]
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-nearby-1",
+            metric_id="cm_customers_period_end",
+            match_text="customers",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+            from_nearby_text=True,
+        )
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        assert len(chart_bvs) == 0, (
+            "nearby_text candidate with no series match should produce no bound values"
+        )
+
+    def test_metadata_candidate_no_series_match_still_binds_at_0_70(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """from_nearby_text=False + named series + no series match → binds all at 0.70x (existing behavior)."""
+        img_id = "img-meta-1"
+        asset = self._make_chart_asset_with_named_series(
+            img_id, ["Revenue 2021", "Revenue 2022"]
+        )
+        # cm_customers_period_end matched from chart title/axis — from_nearby_text=False
+        candidate = MetricCandidate(
+            candidate_id="cand-meta-1",
+            metric_id="cm_customers_period_end",
+            match_text="customers",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+            from_nearby_text=False,
+        )
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        # Should still bind both series at 0.70x (conservative fallback)
+        assert len(chart_bvs) == 2, (
+            "metadata candidate with no series match should still bind all series at 0.70x"
+        )
+        # Confidence should be 0.70x of asset confidence (0.8 * 0.70 = 0.56)
+        for bv in chart_bvs:
+            assert bv.binding_confidence == pytest.approx(0.8 * 0.70, abs=1e-6)
+
+    def test_nearby_text_candidate_with_matching_series_still_binds(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """from_nearby_text=True + matching series name → binds normally at full confidence."""
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartSeries,
+            ChartType,
+            DataPoint,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        img_id = "img-nearby-match-1"
+        # Series name contains "customers" — matches metric tokens
+        series = [
+            ChartSeries(
+                name="Total Customers",
+                points=[DataPoint(x="2023", y=500.0, label="500")],
+            )
+        ]
+        chart_data = ChartData(
+            chart_type=ChartType.BAR,
+            y_axis_label="",
+            series=series,
+        )
+        asset = ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.8,
+            processed=True,
+            chart_data=chart_data,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-nearby-match-1",
+            metric_id="cm_customers_period_end",
+            match_text="customers",
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(img_id=img_id),
+            from_nearby_text=True,
+        )
+        context = MockPipelineContext(images=[asset], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        chart_bvs = [bv for bv in context.bound_values if bv.binding_type == "chart_label"]
+        assert len(chart_bvs) == 1, (
+            "nearby_text candidate with matching series should bind normally"
+        )

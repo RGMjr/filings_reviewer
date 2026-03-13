@@ -1419,3 +1419,138 @@ class TestHeaderColumnBroadcastDedup:
         # Should emit 1 per column = 2 total
         customer_candidates = [c for c in candidates if c.metric_id == "cm_customers_period_end"]
         assert len(customer_candidates) == 2
+
+
+# =============================================================================
+# Chart Candidate nearby_text Tests
+# =============================================================================
+
+
+class TestChartNearbyTextCandidates:
+    """Tests for _scan_chart Pass 2 (nearby_text) behavior."""
+
+    def _make_stage_with_patterns(self, patterns: dict[str, list[str]]) -> CandidateGenerationStage:
+        """Create a stage with injected compiled patterns (no config file needed)."""
+        stage = CandidateGenerationStage()
+        stage._initialized = True
+        stage._compiled_patterns = {
+            mid: [re.compile(p, re.IGNORECASE) for p in pats]
+            for mid, pats in patterns.items()
+        }
+        stage._compiled_exclusions = {}
+        stage._compiled_context = {}
+        stage._compiled_specific = []
+        return stage
+
+    def _make_chart_asset(
+        self,
+        img_id: str = "img-1",
+        title: str = "",
+        nearby_text: str = "",
+    ) -> Any:
+        from src.extraction_v2.models import (
+            ChartData,
+            ChartType,
+            ImageAsset,
+            ImageClassification,
+        )
+
+        chart_data = ChartData(chart_type=ChartType.BAR, title=title)
+        return ImageAsset(
+            img_id=img_id,
+            classification=ImageClassification.CHART,
+            confidence=0.8,
+            processed=True,
+            chart_data=chart_data,
+            nearby_text=nearby_text,
+        )
+
+    def test_nearby_text_penalty_is_0_20(self) -> None:
+        """Pass 2 candidates have a 0.20 confidence penalty, not 0.05."""
+        stage = self._make_stage_with_patterns(
+            {"cm_customers_period_end": [r"\bcustomers\b"]}
+        )
+        asset = self._make_chart_asset(
+            title="",  # no chart metadata match
+            nearby_text="We had 500 customers at year end.",
+        )
+        candidates = stage._scan_chart(asset)
+        nearby = [c for c in candidates if c.from_nearby_text]
+        assert len(nearby) >= 1
+        # Base confidence for CHART source = 0.5 + 0.1 (TABLE_SOURCE_BONUS) = 0.6
+        # After 0.20 penalty = 0.40
+        assert all(c.confidence == pytest.approx(0.4, abs=1e-6) for c in nearby)
+
+    def test_nearby_text_candidates_flagged_from_nearby_text_true(self) -> None:
+        """All Pass 2 candidates have from_nearby_text=True."""
+        stage = self._make_stage_with_patterns(
+            {"cm_customers_period_end": [r"\bcustomers\b"]}
+        )
+        asset = self._make_chart_asset(
+            title="",
+            nearby_text="customers grew this quarter",
+        )
+        candidates = stage._scan_chart(asset)
+        nearby = [c for c in candidates if c.from_nearby_text]
+        assert len(nearby) >= 1
+        assert all(c.from_nearby_text is True for c in nearby)
+
+    def test_pass1_metadata_candidates_have_from_nearby_text_false(self) -> None:
+        """Pass 1 (metadata) candidates have from_nearby_text=False."""
+        stage = self._make_stage_with_patterns(
+            {"cm_customers_period_end": [r"\bcustomers\b"]}
+        )
+        asset = self._make_chart_asset(
+            title="Total Customers",  # match in metadata
+            nearby_text="",
+        )
+        candidates = stage._scan_chart(asset)
+        metadata = [c for c in candidates if not c.from_nearby_text]
+        assert len(metadata) >= 1
+        assert all(c.from_nearby_text is False for c in metadata)
+
+    def test_nearby_text_candidates_capped_at_3(self) -> None:
+        """When nearby_text matches >3 metrics, only top 3 by confidence are kept."""
+        # Inject 5 distinct metrics, each matching in nearby_text
+        patterns = {
+            f"cm_metric_{i}": [rf"\bmetric{i}\b"] for i in range(5)
+        }
+        stage = self._make_stage_with_patterns(patterns)
+        nearby = " ".join(f"metric{i}" for i in range(5))
+        asset = self._make_chart_asset(title="", nearby_text=nearby)
+        candidates = stage._scan_chart(asset)
+        nearby_candidates = [c for c in candidates if c.from_nearby_text]
+        assert len(nearby_candidates) <= 3
+
+    def test_nearby_text_cap_keeps_highest_confidence(self) -> None:
+        """The 3 kept nearby_text candidates are the highest-confidence ones."""
+        from src.extraction_v2.stages.candidate_generation import _MAX_NEARBY_TEXT_CHART_METRICS
+
+        assert _MAX_NEARBY_TEXT_CHART_METRICS == 3
+
+        # 5 metrics — all same pattern length, same section → same raw confidence.
+        # After dedup the kept set must be exactly 3.
+        patterns = {f"cm_metric_{i}": [rf"\bkeyword{i}\b"] for i in range(5)}
+        stage = self._make_stage_with_patterns(patterns)
+        nearby = " ".join(f"keyword{i}" for i in range(5))
+        asset = self._make_chart_asset(title="", nearby_text=nearby)
+        candidates = stage._scan_chart(asset)
+        nearby_candidates = [c for c in candidates if c.from_nearby_text]
+        assert len(nearby_candidates) == 3
+
+    def test_metadata_match_not_counted_in_nearby_cap(self) -> None:
+        """Metrics found in chart metadata don't consume the nearby_text cap slots."""
+        # 1 metric in metadata + 4 metrics only in nearby_text → expect 1 + 3 = 4 total
+        patterns = {
+            "cm_metadata_metric": [r"\bchartmetric\b"],
+            **{f"cm_nearby_{i}": [rf"\bnearby{i}\b"] for i in range(4)},
+        }
+        stage = self._make_stage_with_patterns(patterns)
+        nearby = " ".join(f"nearby{i}" for i in range(4))
+        asset = self._make_chart_asset(title="chartmetric", nearby_text=nearby)
+        candidates = stage._scan_chart(asset)
+
+        metadata_candidates = [c for c in candidates if not c.from_nearby_text]
+        nearby_candidates = [c for c in candidates if c.from_nearby_text]
+        assert len(metadata_candidates) >= 1
+        assert len(nearby_candidates) <= 3

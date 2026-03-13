@@ -1007,7 +1007,12 @@ class ValueBindingStage:
                 series_to_bind = matching_series
                 series_confidence_multiplier = 0.9
             else:
-                # Named series present but none match metric tokens — bind all at reduced
+                # Named series present but none match metric tokens.
+                if candidate.from_nearby_text:
+                    # Nearby-text candidates are indirect matches: if no series name
+                    # confirms the metric, the binding has no second signal — skip it.
+                    return bound_values
+                # Metadata candidates (title/axis/annotation match): bind all at reduced
                 # confidence and route to human review (conservative but not blocking).
                 # Returning empty would suppress legitimate multi-metric charts where
                 # series names use domain terminology not in the metric_id tokens.
