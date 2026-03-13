@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 # ============================================================================
@@ -25,7 +25,7 @@ from typing import Any
 # ============================================================================
 
 
-class SourceType(str, Enum):
+class SourceType(StrEnum):
     """Source of an extracted value."""
 
     HTML_TABLE = "html_table"
@@ -34,7 +34,7 @@ class SourceType(str, Enum):
     CHART = "chart"
 
 
-class SegmentType(str, Enum):
+class SegmentType(StrEnum):
     """Type of document segment."""
 
     HEADING = "heading"
@@ -49,7 +49,7 @@ class SegmentType(str, Enum):
     OTHER = "other"
 
 
-class SectionType(str, Enum):
+class SectionType(StrEnum):
     """Semantic section classification for SEC filings."""
 
     COVER = "cover"
@@ -64,7 +64,7 @@ class SectionType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class ImageClassification(str, Enum):
+class ImageClassification(StrEnum):
     """Classification of extracted images."""
 
     CHART = "chart"
@@ -75,7 +75,7 @@ class ImageClassification(str, Enum):
     UNKNOWN = "unknown"
 
 
-class ChartType(str, Enum):
+class ChartType(StrEnum):
     """Type of chart for extraction strategy."""
 
     BAR = "bar"
@@ -86,7 +86,7 @@ class ChartType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class Unit(str, Enum):
+class Unit(StrEnum):
     """Unit type for metric values."""
 
     PERCENT = "percent"
@@ -97,7 +97,7 @@ class Unit(str, Enum):
     OTHER = "other"
 
 
-class PeriodType(str, Enum):
+class PeriodType(StrEnum):
     """Time period classification."""
 
     ANNUAL = "annual"  # FY
@@ -108,7 +108,7 @@ class PeriodType(str, Enum):
     OTHER = "other"
 
 
-class Scope(str, Enum):
+class Scope(StrEnum):
     """Scope of metric measurement."""
 
     COMPANY = "company"  # Company-wide
@@ -120,7 +120,7 @@ class Scope(str, Enum):
     OTHER = "other"
 
 
-class ReviewStatus(str, Enum):
+class ReviewStatus(StrEnum):
     """Status in review workflow."""
 
     AUTO_ACCEPTED = "auto_accepted"  # High confidence, no review needed
@@ -130,7 +130,7 @@ class ReviewStatus(str, Enum):
     CORRECTED = "corrected"  # Human corrected value/metric
 
 
-class ExtractionMethod(str, Enum):
+class ExtractionMethod(StrEnum):
     """Method used to extract the value."""
 
     EXACT_MATCH = "exact_match"  # Keyword exact match

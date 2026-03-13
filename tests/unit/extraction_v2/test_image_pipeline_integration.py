@@ -831,10 +831,14 @@ class TestV2PipelineSecClient:
 
     def test_pipeline_passes_sec_client_to_ocr_stage(self) -> None:
         """V2Pipeline passes sec_client through to OCRExtractionStage."""
+        import os
+        from unittest.mock import patch
+
         from src.extraction_v2.pipeline import V2Pipeline
 
         mock_client = MagicMock()
-        pipeline = V2Pipeline(sec_client=mock_client)
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+            pipeline = V2Pipeline(sec_client=mock_client)
 
         # Find the OCR stage
         ocr_stages = [

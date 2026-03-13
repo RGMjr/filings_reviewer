@@ -135,8 +135,8 @@ class DocsChecker:
             "dataclasses", "datetime", "decimal", "difflib", "enum", "functools",
             "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
             "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
-            "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
-            "tempfile", "textwrap", "threading", "time", "traceback", "typing",
+            "signal", "socket", "sqlite3", "statistics", "string", "struct", "subprocess",
+            "sys", "tempfile", "textwrap", "threading", "time", "traceback", "typing",
             "unittest", "urllib", "uuid", "warnings", "xml", "zipfile",
         }
 
@@ -205,23 +205,20 @@ class DocsChecker:
 
         content = readme.read_text()
 
-        # Expected components based on src/ structure
+        # Expected components based on src/ structure.
+        # Keys must match the string that appears in README.md.
         expected_components = {
-            "UniverseBuilder": SRC / "universe" / "universe_builder.py",
-            "FilingFetcher": SRC / "filing_fetcher" / "filing_fetcher.py",
-            "HTMLSegmenter": SRC / "extraction" / "html_segmenter.py",
-            "MetricClassifier": SRC / "extraction" / "metric_classifier.py",
-            "ValueExtractor": SRC / "extraction" / "value_extractor.py",
-            "DefinitionExtractor": SRC / "extraction" / "definition_extractor.py",
-            "QualityScorer": SRC / "extraction" / "quality_scorer.py",
+            "universe/": SRC / "universe" / "universe_builder.py",
+            "filing_fetcher/": SRC / "filing_fetcher" / "filing_fetcher.py",
+            "extraction_v2/": SRC / "extraction_v2" / "pipeline.py",
         }
 
         issues = []
         for component, path in expected_components.items():
-            if not path.exists():
-                issues.append(f"{component} listed but {path} missing")
-            elif component not in content:
+            if path.exists() and component not in content:
                 issues.append(f"{component} exists but not in README")
+            elif not path.exists() and component in content:
+                issues.append(f"{component} listed but {path} missing")
 
         if issues:
             for issue in issues:

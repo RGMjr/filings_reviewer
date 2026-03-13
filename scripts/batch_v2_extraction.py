@@ -309,7 +309,6 @@ class BatchV2Runner:
                    f.html_content, c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
-            WHERE f.html_storage_path IS NOT NULL OR f.html_content IS NOT NULL
             ORDER BY f.filing_id
         """
         filings = db.query(sql)

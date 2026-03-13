@@ -50,6 +50,9 @@ scikit-learn>=1.4.0
 # OpenAI API - For metric extraction and quality scoring
 openai>=1.0.0
 
+# Anthropic API - For Claude-based vision extraction (claude_vision_provider)
+anthropic>=0.20.0
+
 # Token counting - For cost tracking and context management
 tiktoken>=0.5.0
 
@@ -83,6 +86,13 @@ pytest-benchmark>=4.0.0
 
 # Memory profiling - Tracks memory consumption and detects leaks
 memory-profiler>=0.61.0
+
+# -----------------------------------------------------------------------------
+# Observability
+# -----------------------------------------------------------------------------
+
+# Sentry SDK - Optional error tracking and performance monitoring
+sentry-sdk>=1.40.0
 
 # -----------------------------------------------------------------------------
 # Development Dependencies
