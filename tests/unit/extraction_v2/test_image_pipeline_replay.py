@@ -8,7 +8,6 @@ Uses a mocked VisionClient to avoid real API calls.
 from __future__ import annotations
 
 import json
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,7 +15,6 @@ from typing import Any
 import pytest
 
 from src.extraction_v2.models import (
-    ChartAnnotation,
     ChartType,
     ImageAsset,
     ImageClassification,
@@ -27,7 +25,6 @@ from src.extraction_v2.models import (
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.value_binding import ValueBindingStage
 from src.llm.vision_client import VisionResponse
-
 
 # ============================================================================
 # Fixtures and helpers

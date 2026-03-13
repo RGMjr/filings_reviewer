@@ -325,7 +325,7 @@ def discover_images_in_filing(
             matched_keywords: list[str] = []
             closest_distance = float("inf")
 
-            for kw_start, kw_end, keyword in keyword_positions:
+            for _kw_start, kw_end, keyword in keyword_positions:
                 distance = text_pos - kw_end
                 # Only consider keywords before image (or slightly after)
                 if -200 <= distance <= MAX_PROXIMITY_CHARS:

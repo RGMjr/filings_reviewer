@@ -111,10 +111,10 @@ def main() -> None:
     print(f"Running A/B comparison on: {filing_path}")
 
     # Run ingestion + triage to get chart images
-    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, V2Pipeline
-    from src.extraction_v2.stages.ingestion import IngestionStage
-    from src.extraction_v2.stages.image_triage import ImageTriageStage
     from src.extraction_v2.models import ImageClassification
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
+    from src.extraction_v2.stages.image_triage import ImageTriageStage
+    from src.extraction_v2.stages.ingestion import IngestionStage
 
     config = PipelineConfig(enable_chart_extraction=False)  # Don't auto-process; we do it manually
     context = PipelineContext(
@@ -217,7 +217,7 @@ ONLY extract values with explicit labels on the chart."""
         claude_vals = _extract_values(claude_chart)
         agreed = 0
         compared = min(len(openai_vals), len(claude_vals))
-        for v1, v2 in zip(sorted(openai_vals), sorted(claude_vals)):
+        for v1, v2 in zip(sorted(openai_vals), sorted(claude_vals), strict=False):
             if _values_agree(v1, v2):
                 agreed += 1
         value_agreement_pct = (agreed / compared * 100) if compared > 0 else None

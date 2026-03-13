@@ -10,7 +10,6 @@ Asserts that g607688g54x53.jpg is classified as CHART with relevance >= 0.3.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 # Resolve project root so this script can be run from any CWD.

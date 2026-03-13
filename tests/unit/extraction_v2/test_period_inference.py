@@ -14,11 +14,10 @@ Tests cover:
 """
 
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-
-from pathlib import Path
 
 from src.extraction_v2.models import (
     BoundValue,

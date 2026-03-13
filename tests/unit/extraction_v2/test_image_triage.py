@@ -452,7 +452,7 @@ class TestTriageBatch:
             width=500,
             height=400,
         )
-        result = stage.triage_images([asset])
+        _result = stage.triage_images([asset])
 
         # Should be UNKNOWN with some relevance.
         assert asset.classification == ImageClassification.UNKNOWN
