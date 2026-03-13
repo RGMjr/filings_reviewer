@@ -27,6 +27,9 @@ env/
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/
 
+# Persistent image cache (downloaded from SEC EDGAR during pipeline runs)
+data/image_cache/
+
 # But keep fixture metadata
 !data/fixtures/*.json
 
