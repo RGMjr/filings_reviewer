@@ -843,6 +843,10 @@ class MetricCandidate:
     # Section context
     section_type: SectionType = SectionType.UNKNOWN
 
+    # Chart provenance: True when candidate was created from nearby_text (Pass 2),
+    # False when created from chart metadata (title, axes, series, annotations).
+    from_nearby_text: bool = False
+
     # Metadata
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

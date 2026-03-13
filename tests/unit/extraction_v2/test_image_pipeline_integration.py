@@ -705,7 +705,7 @@ class TestChartValueBinding:
     def test_bind_chart_candidate_no_matching_series_routes_to_manual(
         self, stage: ValueBindingStage
     ) -> None:
-        """When named series are present but none match the metric, routes to manual capture."""
+        """When named series are present but none match the metric, binds all at reduced confidence and flags for manual capture."""
         asset = _make_chart_asset(
             series_data=[
                 ("Series A", [("2023", 100.0, "100")]),
@@ -722,9 +722,14 @@ class TestChartValueBinding:
 
         bound_values = stage._bind_chart_candidate(candidate, [asset])
 
-        # No matching series → manual capture, no bound values
-        assert len(bound_values) == 0
+        # No matching series → all bound at reduced confidence, flagged for manual capture
+        assert len(bound_values) == 2
         assert asset.requires_manual_capture is True
+        # Verify reduced confidence (0.70x multiplier on asset.confidence 0.85)
+        assert all(bv.binding_confidence < 0.70 for bv in bound_values)
+        # Verify both series are present
+        series_names = {bv.series_name for bv in bound_values}
+        assert series_names == {"Series A", "Series B"}
 
     def test_bind_chart_in_process(self, stage: ValueBindingStage) -> None:
         """Chart candidates are bound during process() (not stubbed)."""
