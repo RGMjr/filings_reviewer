@@ -1,5 +1,7 @@
 # Performance Baseline
 
+> **Historical Note:** This baseline was established for the V1 extraction pipeline (`src/extraction/`) which was removed in v2.7. The benchmarks below reflect V1 `source_segments`-based candidate generation. For V2 performance characteristics, see the V2 pipeline documentation in `docs/V2_IMPLEMENTATION_ROADMAP.md` and the gold standard results in `docs/V2_IMPLEMENTATION_ROADMAP.md#gold-standard-performance`.
+
 **Date Established**: 2025-12-11
 **System**: macOS Darwin 25.1.0, Python 3.11.9
 **pytest-benchmark**: 5.2.3

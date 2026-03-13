@@ -28,7 +28,7 @@ psql $DATABASE_URL -c "SELECT id, cik FROM filings WHERE cik = '<CIK>';"
 
 ### Step 2: Run Extraction
 ```bash
-python -m src.extraction.extraction_pipeline --cik <CIK>
+python3 -m src.extraction.extraction_pipeline --cik <CIK>
 ```
 
 ### Step 3: Verify Results

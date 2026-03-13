@@ -1,7 +1,7 @@
 # Metric Extraction Pipeline
 
-**Version:** 2.9
-**Last Updated:** 2026-03-02
+**Version:** 2.10
+**Last Updated:** 2026-03-12
 **Status:** Production Ready
 
 ---
@@ -113,7 +113,7 @@ See `docs/V2_MIGRATION_GUIDE.md` for migration guidance.
 The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesign with all 13 implementation phases finished. It is the sole active extraction pipeline.
 
 **Version:** `2.0.0-rc1`
-**Status:** Production-ready (P=92.8%, R=77.6%, F1=84.5% on gold standard, as of 2026-02-28)
+**Status:** Production-ready (text-only P=95.0%, R=83.5%, F1=88.9%; image-enabled P=92.3%, R=83.5%, F1=87.7%; as of 2026-03-11)
 **See also:** `docs/V2_IMPLEMENTATION_ROADMAP.md`, `docs/V2_MIGRATION_GUIDE.md`, `docs/operations/v2-deployment-guide.md`
 
 ### Key Architectural Differences
@@ -126,7 +126,7 @@ The V2 extraction pipeline (`src/extraction_v2/`) is a complete ground-up redesi
 | **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
 | **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
 | **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Retired — code deleted 2026-03-02 | Production (F1=84.5%) |
+| **Status** | Retired — code deleted 2026-03-02 | Production (text-only F1=88.9%) |
 
 ### V2 Pipeline Stages
 
@@ -137,7 +137,7 @@ The V2 pipeline implements a 13-stage extraction workflow, plus post-completion 
 2.  Section Classification      → MD&A, Risk Factors, Business, etc.
 3.  Table Reconstruction        → header_path, stub_path per cell
 4.  Image Triage                → chart, table_image, decorative
-5.  OCR & Chart Extraction      → labeled values only (never interpolate)
+5.  OCR & Chart Extraction      → labeled values by default; interpolation opt-in via enable_chart_interpolation
 6.  Metric Candidate Generation → YAML taxonomy matching
 7.  Value Binding               → structural link required
 7.5 False Positive Filtering    → unit compatibility, decimal-gated count scaling
@@ -176,6 +176,18 @@ The V2 pipeline implements a 13-stage extraction workflow, plus post-completion 
 - OCR text extraction for table images
 - Vision model analysis for chart values (labeled values only)
 
+**BoundValue (chart extensions):** Additional fields on extracted chart values
+- `series_name`: data series label from legend or axis (e.g., "New Customers")
+- `annotation_category`: category label attached to the annotation (e.g., "FY2024")
+- `annotation_text`: raw annotation string as extracted from the chart
+- `interpolated`: bool — True when value was inferred from axis position rather than an explicit label
+- `requires_manual_capture`: bool — True when no series name matched; routed to review with 0.70x confidence penalty
+
+**VisionProvider protocol:** Abstraction over vision model backends
+- Implemented by `OpenAIVisionProvider` (GPT-4o) and `ClaudeVisionProvider` (Anthropic Claude)
+- Selected at runtime via `vision_provider` + `vision_model` config fields; `vision_factory.py` constructs the appropriate instance
+- Two-pass chart extraction: pass 1 identifies chart type and axis ranges; pass 2 uses type-specific prompts to extract labeled values with structured JSON output
+
 ### Key Files
 
 - **`models.py`** - Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
@@ -188,7 +200,7 @@ The V2 pipeline implements a 13-stage extraction workflow, plus post-completion 
 1. **Structure-first, LLM-second**: Parse DOM structure before LLM calls (opposite of V1)
 2. **No value without provenance**: Every MetricFact includes complete EvidencePack
 3. **Fail closed**: Ambiguous cases route to review (never guess)
-4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
+4. **Charts only when labeled**: Extract only explicit data labels by default; axis interpolation is opt-in via `enable_chart_interpolation` config flag
 5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
 6. **DOM-native**: XPath locators maintain exact source positions
 
@@ -203,6 +215,11 @@ config = PipelineConfig(
     enable_section_classification=True,
     enable_image_extraction=True,
     enable_chart_extraction=True,
+    enable_chart_interpolation=False,        # opt-in: interpolate values from chart axes
+    image_triage_ambiguous_threshold=0.5,    # confidence below which triage result is "ambiguous"
+    min_image_relevance=0.3,                 # minimum relevance score to process an image
+    vision_provider="openai",                # "openai" or "anthropic"
+    vision_model="gpt-4o",                   # model name for the selected vision provider
     min_confidence_auto_accept=0.90,
     min_confidence_no_review=0.85,
     max_confidence_auto_reject=0.15,
@@ -220,11 +237,12 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 
 ---
 
-**Last Updated:** 2026-03-02
-**Version:** 2.9
+**Last Updated:** 2026-03-12
+**Version:** 2.10
 **Status:** Production Ready
 
 **Changelog:**
+- v2.10 (2026-03-12): Added 5 PipelineConfig fields (`enable_chart_interpolation`, `image_triage_ambiguous_threshold`, `min_image_relevance`, `vision_provider`, `vision_model`); updated Stage 5 and design principle #4 to reflect interpolation as opt-in; added BoundValue chart extensions and VisionProvider protocol to data models
 - v2.9 (2026-03-02): Removed V1 component specs (HTMLSegmenter, MetricClassifier, SegmentEnricher, ValueExtractor, DefinitionExtractor, QualityScorer, ExtractionPipeline); replaced with legacy note pointing to git history and V2_MIGRATION_GUIDE.md
 - v2.8 (2026-02-26): V2 promoted to 2.0.0-rc1; noted exception architecture (V2FatalError/V2TransientError); added v2-deployment-guide cross-reference
 - v2.7 (2026-02-24): Updated V2 gold standard scores to P=78.6%/R=79.2%/F1=78.9% (post-WP-09); added Stage 9.5 Definition Extraction to V2 stage list

@@ -43,6 +43,11 @@ MIGRATIONS = [
     "09_v2_schema.sql",
     "10_v2_fact_identity_dedup.sql",
     "11_v2_definitions.sql",
+    "12_drop_v1_fk_constraints.sql",
+    "13_seed_large_customers_metric.sql",
+    "14_filing_html_content.sql",
+    "15_llm_cache_postgres.sql",
+    "16_extraction_jobs.sql",
 ]
 
 BOOTSTRAP_DDL = """

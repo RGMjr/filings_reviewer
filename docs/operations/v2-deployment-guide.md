@@ -95,11 +95,11 @@ Before promoting V2 to primary, validate extraction quality against the gold sta
 
 ### Minimum Thresholds
 
-| Metric | Minimum | Current Baseline |
-|--------|---------|-----------------|
-| Precision | 75% | 92.8% |
-| Recall | 55% | 77.6% |
-| F1 Score | 65% | 84.5% |
+| Metric | Minimum | Current Baseline (text-only) |
+|--------|---------|------------------------------|
+| Precision | 75% | 95.0% |
+| Recall | 55% | 83.5% |
+| F1 Score | 65% | 88.9% |
 
 ### Run Gold Standard Validation
 

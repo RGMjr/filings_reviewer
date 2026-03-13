@@ -5,6 +5,8 @@
 **Updated**: 2026-02-26
 **Status**: Complete (All 13 Phases + Phase B enhancements)
 
+> **Historical Note:** References to `src/extraction/` modules throughout this document (e.g., `html_segmenter.py`, `structure_parser.py`, `keyword_config.py`, `value_extractor.py`) describe V1 code that was used as a reference during V2 design. The V1 extraction pipeline (`src/extraction/`) was removed in v2.7. All phase descriptions are preserved as-is for implementation history. The completed V2 pipeline lives in `src/extraction_v2/`.
+
 ## Executive Summary
 
 The V2 extraction pipeline is a ground-up redesign that addresses V1 limitations while preserving its best patterns. Key improvements:
@@ -514,14 +516,19 @@ Each phase must pass before moving to next:
 
 ## V1 Modules to Reuse (Import Directly)
 
-These V1 modules are stable and should be imported into V2:
+> **Historical Note:** The V1 extraction pipeline (`src/extraction/`) was removed in v2.7. The modules listed below no longer exist. Their V2 equivalents are:
+> - `src/extraction/keyword_config.py` → `src/shared/keyword_config.py`
+> - `src/extraction/quality_scorer.py` → adapted into V2 fact construction stage
+> - `src/review/false_positive_filter.py` and `src/review/number_parsing.py` — still present in `src/review/`
 
-| Module | Purpose | Import As |
-|--------|---------|-----------|
-| `src/extraction/keyword_config.py` | YAML taxonomy | `from src.extraction.keyword_config import get_metric_keywords` |
-| `src/review/false_positive_filter.py` | Date/year filtering | `from src.review.false_positive_filter import FalsePositiveFilter` |
-| `src/review/number_parsing.py` | Number extraction | `from src.review.number_parsing import parse_number` |
-| `src/extraction/quality_scorer.py` | Quality dimensions | Adapt for V2 facts |
+These V1 modules were identified for reuse during V2 design (now superseded):
+
+| Module | Purpose | V2 Equivalent |
+|--------|---------|---------------|
+| `src/extraction/keyword_config.py` | YAML taxonomy | `src/shared/keyword_config.py` |
+| `src/review/false_positive_filter.py` | Date/year filtering | `src/review/false_positive_filter.py` (unchanged) |
+| `src/review/number_parsing.py` | Number extraction | `src/review/number_parsing.py` (unchanged) |
+| `src/extraction/quality_scorer.py` | Quality dimensions | V2 fact construction stage |
 
 ---
 
@@ -545,12 +552,12 @@ After all 13 phases were completed, the following enhancements were added:
 - Database-level deduplication migration beyond the original schema (sql/00-09)
 - Ensures idempotent fact storage at the database layer
 
-### Gold Standard Performance (as of 2026-02-28)
-- **V2 overall:** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements)
-- **V1 baseline:** P=89.4%, R=63.2%, F1=74.1%
-- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% through iterative FP rule tightening
-- V2 recall: 77.6% (Farfetch chart FNs accepted gap — require Vision API)
-- V2 F1 (84.5%) substantially exceeds V1 baseline (74.1%); all per-company gates passed
+### Gold Standard Performance (as of 2026-03-11)
+- **V2 text-only:** P=95.0%, R=83.5%, F1=88.9% (CI baseline: `v2_baseline.json`)
+- **V2 image-enabled:** P=92.3%, R=83.5%, F1=87.7% (manual gate baseline: `v2_baseline_with_images.json`)
+- **V1 baseline (retired):** P=89.4%, R=63.2%, F1=74.1%
+- V2 precision improved from 58% → 70% → 73% → 81.9% → 78.6% → 92.8% → 95.0% through iterative FP rule tightening and keyword improvements
+- Farfetch chart FNs partially addressed by two-pass chart extraction pipeline (image-enabled runs)
 
 ## Phase B: Post-Pipeline Enhancements ✅ COMPLETE (2026-02-24)
 
@@ -590,7 +597,7 @@ SIGINT triggers graceful shutdown: completes the current batch before exiting.
 
 ## Current Status
 
-All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`. Gold standard F1=84.5% (all per-company gates passed as of 2026-02-28).
+All 13 implementation phases and Phase B enhancements are complete. The pipeline is at version `2.0.0-rc1`. Current gold standard: text-only F1=88.9%, image-enabled F1=87.7% (as of 2026-03-11, all per-company gates passed).
 
 Completed hardening work (2026-02-26 to 2026-02-28):
 - Exception hierarchy (`V2FatalError` / `V2TransientError`) — all stages raise typed exceptions; pipeline dispatcher re-raises transient errors for caller retry; fatal errors in critical stages abort the pipeline
@@ -609,8 +616,9 @@ Remaining:
 
 | Date | Version | Changes |
 |------|---------|---------|
+| 2026-03-11 | 2.0 | Chart extraction overhaul + image pipeline activation: series-aware binding, two-pass prompts, ClaudeVisionProvider, dual baselines. Text-only F1=88.9%, image-enabled F1=87.7% |
 | 2026-03-01 | 1.9 | WP-23 complete: batch extraction ran on 2 DB filings (Slack 43 facts, Samsara 2 facts); fixed 3 persistence bugs (doc_id UUID, ON CONFLICT expression, v2_metric_definitions missing table); applied migration 11 |
-| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created, WP-23 pending |
+| 2026-02-28 | 1.8 | Updated gold standard to F1=84.5% (post-WP-15+17); updated Current Status with WP-21 complete, Migration 12 created |
 | 2026-01-23 | 1.0 | Initial roadmap based on V1 analysis |
 | 2026-02-04 | 1.2 | Phase 13 complete: E2E testing, V1/V2 comparison, gold standard validation, benchmarks, migration guide |
 | 2026-02-05 | 1.3 | Documentation audit: All phases (0-13) marked complete with accurate file sizes and test counts |

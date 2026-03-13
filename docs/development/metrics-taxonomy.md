@@ -1,8 +1,8 @@
 # 02_METRIC_TAXONOMY_AND_DEFINITIONS
 
-Version: 0.1  
-Date: 2025-11-15  
-Owner: Rob Markey  
+Version: 0.3
+Date: 2026-03-11
+Owner: Rob Markey
 
 ## 1. Purpose
 
@@ -14,7 +14,7 @@ It serves four purposes:
 - Specify **business definitions** and **calculation rules** for Phase 1 Core Metrics  
 - Enumerate **synonyms and variants** we expect to see in SEC filings  
 - Provide a foundation for:
-  - Data model design (`03_DATA_MODEL_SPEC.md`)  
+  - Data model design (`architecture/data-model.md`)
   - Extraction rules and prompts  
   - Quality/comparability assessment  
 
@@ -62,7 +62,7 @@ These IDs are the **single source of truth** across:
 
 ### 2.3 Data model mapping
 
-In the relational schema (`03_DATA_MODEL_SPEC.md`), each metric in this taxonomy is represented in the `metrics` dimension table.
+In the relational schema (`architecture/data-model.md`), each metric in this taxonomy is represented in the `metrics` dimension table.
 
 Key fields:
 
@@ -349,59 +349,87 @@ Measure **purchase intensity** and **engagement** by cohort, independent of tick
 
 ## 4. Extended Metrics (Phase 1)
 
-Extended metrics are **not primary** for Phase 1 but provide important context. We track incidence and values where feasible.
+Extended metrics are **not primary** for Phase 1 but provide important context. We track incidence and values where feasible. All IDs and keyword patterns are maintained in `config/metric_keywords.yaml`.
 
-### 4.1 Active Customers (Total)
+### 4.1 Customer Count Metrics
 
-**ID:** `cm_active_customers_total`  
-**Class:** Extended (Phase 1)  
+**Semantic distinction** — these are intentionally separate:
 
-**Intent**
-
-Total number of **active customers** as defined by the issuer at period end.
-
-We will:
-
-- Capture the number  
-- Capture the issuer’s definition of “active” (see Section 5)  
-- Link to revenue and cohort metrics where possible  
+| ID | Meaning |
+|----|---------|
+| `cm_customers_period_end` | Stock count at period end: “total customers,” “paid customers,” “customer base” — no engagement criterion implied |
+| `cm_active_customers_total` | Engagement-based count: “active customers” — issuer applies an activity criterion (e.g., transacted in last X months) |
+| `cm_large_customers_period_end` | Customers above a revenue threshold (e.g., “>$100K ARR”), enterprise/large-account counts |
 
 ### 4.2 ARPU / Revenue per Customer
 
-**ID:** `cm_revenue_per_customer`  
-**Class:** Extended (Phase 1)  
+**ID:** `cm_revenue_per_customer`
+**Class:** Extended (Phase 1)
 
-Any metric clearly framed as revenue per user/customer/subscriber over a defined period.
-
-We will:
-
-- Capture values and definitions  
-- Not enforce a single standard definition yet  
+Any metric clearly framed as revenue per user/customer/subscriber over a defined period (ARPU, revenue per customer, average revenue per user).
 
 ### 4.3 CAC and CAC Payback
 
-**IDs:**
+**IDs:** `cm_customer_acquisition_cost`, `cm_cac_payback_period`
 
-- `cm_customer_acquisition_cost`  
-- `cm_cac_payback_period`  
+Track incidence and disclosed values; capture methodology text; flag alignment with future CMASB standard.
 
-We will:
+### 4.4 Retention and Churn
 
-- Track their incidence and disclosed values  
-- Capture methodology text  
-- Flag alignment/misalignment with a future CMASB standard  
+**IDs:** `cm_customer_retention_rate`, `cm_customer_churn_rate`, `cm_net_revenue_retention`, `cm_gross_revenue_retention`
 
-### 4.4 Retention and Churn (Basic)
+- `cm_net_revenue_retention` and `cm_gross_revenue_retention` capture NRR/NDR/GRR disclosures — revenue-based retention, not customer-count retention
+- Phase 1: incidence and basic extraction; comparability analysis deferred to Phase 2
 
-**IDs:**
+### 4.5 Engagement Metrics
 
-- `cm_customer_retention_rate`  
-- `cm_customer_churn_rate`  
+**IDs:** `cm_monthly_active_users`, `cm_daily_active_users`
 
-Phase 1:
+MAU/DAU disclosures. These are intentionally split from `cm_active_customers_total` because DAU/MAU patterns fire in different contexts.
 
-- Focus on incidence and basic extraction of values  
-- Defer detailed comparability analysis to Phase 2  
+### 4.6 Cohort-Contextualized Financial Metrics
+
+**IDs:** `cm_gross_margin_by_cohort`, `cm_arr`, `cm_mrr`, `cm_expansion_revenue`, `cm_ltv_to_cac_ratio_by_cohort`
+
+These metrics require explicit cohort context to qualify (enforced via `required_context` in `metric_keywords.yaml`). Plain ARR/MRR or gross margin without cohort context is excluded.
+
+### 4.7 Revenue Concentration
+
+**ID:** `cm_revenue_concentration`
+
+Captures disclosures about customer concentration risk: top-N customers, “contributed X% of revenue,” major customer disclosures.
+
+### 4.8 E-Commerce / Consumer Metrics
+
+**IDs:** `cm_average_order_value`, `cm_repeat_purchase_rate`
+
+AOV and repeat purchase rate disclosures common in e-commerce S-1s.
+
+### 4.9 Customer Value Metrics
+
+**IDs:** `cm_lifetime_value_per_customer`, `cm_ltv_to_cac_ratio`
+
+LTV and LTV/CAC ratio disclosures.
+
+### 4.10 Overall Purchase Transactions
+
+**ID:** `cm_purchase_transactions_overall`
+
+Total order/transaction count disclosures without cohort breakdown. Distinct from `cm_transactions_by_cohort` (Section 3.4), which requires explicit cohort context.
+
+### 4.11 Deprecated Metrics
+
+The following metrics were deprecated on 2026-01-07 because they are financial metrics, not customer metrics, unless combined with cohort context (which is covered by other metrics):
+
+| ID | Reason |
+|----|--------|
+| `cm_bookings` | Financial, not customer metric |
+| `cm_billings` | Financial, not customer metric |
+| `cm_gmv` | Financial, not customer metric |
+| `cm_acv` | Financial/contract metric |
+| `cm_tcv` | Financial/contract metric |
+
+Patterns for these IDs are retained in `metric_keywords.yaml` with `status: deprecated` for historical data interpretation. They are filtered out at candidate generation time and excluded from UI dropdowns.
 
 ---
 
@@ -493,17 +521,20 @@ We will:
 
 For each metric, we will record:
 
-- Whether a disclosed metric **maps** to a canonical metric ID  
-- Alignment level:
-  - `aligned` – close to the canonical definition  
-  - `partial` – overlaps but includes or excludes important elements  
-  - `not_aligned` – related but materially different  
+- Whether a disclosed metric **maps** to a canonical metric ID
+- Alignment level (stored as `alignment_flag` in `metric_definitions` and `filing_metric_incidence`):
+  - `aligned` – materially consistent with canonical definition
+  - `partial` – overlaps but has notable differences
+  - `not_aligned` – related but materially different
+  - `unknown` – definition not clear enough to judge
 
 The extraction/QA pipeline must:
 
-- Capture issuer labels and definitions  
-- Map them to canonical IDs where appropriate  
+- Capture issuer labels and definitions
+- Map them to canonical IDs where appropriate
 - Store alignment flags and short notes
+
+The `required_context` mechanism in `metric_keywords.yaml` prevents revenue synonym metrics (e.g., ARR, GMV) from generating review candidates unless cohort or per-customer language appears within 1,500 characters.
 
 ---
 
@@ -530,27 +561,26 @@ When definitions change:
 
 ## 8. Open questions
 
-Items to resolve before finalizing v1.0:
+Items resolved (decisions made during V2 implementation):
 
-1. **Exact list of Phase 1 Core Metrics**  
-   - Confirm that CM1–CM4 are the correct set and that others remain Extended in Phase 1.  
+1. **Exact list of Phase 1 Core Metrics** — RESOLVED: CM1–CM4 (new customers, customers by tenure, revenue by cohort, transactions by cohort) plus `cm_customers_period_end` and `cm_purchase_transactions_overall` as closely related core metrics. Full list in Section 3 and Section 4.
 
-2. **Canonical tenure buckets**  
-   - Decide whether we will enforce a standard set (0–1, 1–2, 2–3, 3–5, 5+ years) or simply normalize issuer buckets where possible.  
+2. **Canonical tenure buckets** — RESOLVED: We capture issuer-provided buckets verbatim and normalize where possible. No enforced canonical set; issuers use highly varied buckets.
 
-3. **Treatment of reactivated customers**  
-   - Do we require separate metrics for reactivations in standards, or just capture issuer choices?  
+3. **Treatment of reactivated customers** — RESOLVED: Capture issuer choices in definition text; do not require separate extraction in Phase 1.
 
-4. **ARR/MRR vs GAAP revenue**  
-   - For cohort metrics, how do we want to treat ARR/MRR disclosures that are not GAAP revenue but are economically meaningful?  
+4. **ARR/MRR vs GAAP revenue** — RESOLVED: ARR/MRR without cohort context is deprecated as a customer metric (see Section 4.11). ARR/MRR with explicit cohort context is captured via `cm_arr` / `cm_mrr` with a `required_context` guard.
 
-5. **Minimum detail level for Phase 1**  
-   - For Extended Metrics (CAC, ARPU, retention), how much effort do we want to invest now vs Phase 2?
+5. **Minimum detail level for Phase 1** — RESOLVED: Extended metrics tracked for incidence and basic value extraction. Deep comparability analysis is Phase 2.
+
+Remaining open questions:
+
+- **F-1 filers**: The corpus includes F-1 registration statements (foreign private issuers, e.g., Farfetch). Metric disclosures in F-1s are treated identically to S-1s. No known taxonomy impact but worth confirming alignment scoring handles international currency units correctly.
 
 These decisions will influence:
 
-- Extraction complexity  
-- Comparability claims in CMASB reports  
+- Extraction complexity
+- Comparability claims in CMASB reports
 - The degree of “push” on issuers in the first standards proposal
 
 ---

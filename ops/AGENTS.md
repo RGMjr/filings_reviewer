@@ -16,26 +16,26 @@ export SEC_USER_AGENT="FilingsReviewer contact@example.com"
 
 ```bash
 # Run extraction for a single filing by CIK
-python -m src.extraction.extraction_pipeline --cik <CIK>
+python3 scripts/run_v2_extraction.py --cik <CIK>
 
 # Run extraction for a filing by ticker
-python -m src.extraction.extraction_pipeline --ticker <TICKER>
+python3 scripts/run_v2_extraction.py --ticker <TICKER>
 
-# Re-extract all filings (use with caution)
-python scripts/run_full_extraction.py --all
+# Batch extract all filings (use with caution)
+python3 scripts/batch_v2_extraction.py --all
 ```
 
 ## Validation Commands
 
 ```bash
 # Validate single filing against gold standard
-python scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh
+python3 scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh
 
 # Validate all gold standard filings
-python scripts/validate_against_gold_standard.py --all --mode fresh
+python3 scripts/validate_against_gold_standard.py --all --mode fresh
 
 # Compare against baseline
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 ```
 
 ## Test Commands

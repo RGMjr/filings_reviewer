@@ -44,14 +44,12 @@ After a workstream completes:
 
 ### Completion Summaries → CHANGELOG
 
-Format for CHANGELOG.md:
+Add entries to `docs/CHANGELOG.md`. Format:
 
 ```markdown
-## [Date] - [Workstream Name]
+## [YYYY-MM-DD] — [Workstream Name]
 
-- **Tasks**: [X] completed
 - **Key Changes**: [1-2 sentences]
-- **Files Modified**: [list key files]
 - **Metrics Impact**: [if applicable]
 ```
 
@@ -83,8 +81,11 @@ find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*"
 ### Monthly
 
 ```bash
-# Archive old worker prompts
-./scripts/archive_old_prompts.sh  # Create this if needed
+# Archive old worker prompts manually:
+# 1. List completed prompts in docs/worker-prompts/
+# 2. Move completed ones to docs/archive/worker-prompts/
+# 3. Add one-line summary to docs/CHANGELOG.md
+# Note: scripts/archive_old_prompts.sh does not exist; perform this step manually.
 ```
 
 ---

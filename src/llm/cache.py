@@ -1,11 +1,15 @@
 """
-LLM Response Cache with SQLite backend.
+LLM Response Cache with SQLite and PostgreSQL backends.
 
 Provides caching for LLM API responses to reduce costs and latency
 for repeated or near-repeated prompts.
 
 Cache key is computed from: model, system_message, prompt, temperature, max_tokens.
 Cache version field allows safe invalidation when prompts change.
+
+Backend selection:
+- SQLite (default): Local file-based cache for development
+- PostgreSQL: Shared cache for cloud deployments, uses DATABASE_URL
 """
 
 import hashlib
@@ -33,6 +37,8 @@ class CacheConfig:
     )
     cache_version: str = field(default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v1"))
     max_age_days: int = 30
+    backend: str = field(default_factory=lambda: os.environ.get("LLM_CACHE_BACKEND", "sqlite"))
+    database_url: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", ""))
 
 
 @dataclass
@@ -47,10 +53,10 @@ class CachedResponse:
 
 class LLMCache:
     """
-    SQLite-backed cache for LLM responses.
+    Cache for LLM responses with SQLite and PostgreSQL backends.
 
     Thread-safe using a lock around database operations.
-    For production with multiple workers, consider upgrading to Redis or Postgres.
+    Backend is selected via CacheConfig.backend ("sqlite" or "postgres").
     """
 
     def __init__(self, config: CacheConfig | None = None):
@@ -61,7 +67,8 @@ class LLMCache:
             config: Cache configuration. If None, uses defaults from environment.
         """
         self.config = config or CacheConfig()
-        self._conn: sqlite3.Connection | None = None
+        self._conn: Any = None
+        self._backend = self.config.backend
         self._lock = threading.Lock()
 
         # Statistics
@@ -69,7 +76,10 @@ class LLMCache:
         self._misses = 0
 
         if self.config.enabled:
-            self._init_db()
+            if self._backend == "postgres":
+                self._init_postgres()
+            else:
+                self._init_db()
 
     def _init_db(self) -> None:
         """Initialize the SQLite database and create schema if needed."""
@@ -101,6 +111,72 @@ class LLMCache:
             logger.error(f"Failed to initialize LLM cache: {e}")
             self.config.enabled = False
             self._conn = None
+
+    def _init_postgres(self) -> None:
+        """Initialize a PostgreSQL connection for the cache backend."""
+        if not self.config.database_url:
+            logger.error(
+                "LLM_CACHE_BACKEND=postgres but DATABASE_URL is not set. Disabling LLM cache."
+            )
+            self.config.enabled = False
+            self._conn = None
+            return
+
+        try:
+            import psycopg  # conditional import: only needed for postgres backend
+
+            self._conn = psycopg.connect(self.config.database_url, autocommit=False)
+            # Table should already exist from sql/15_llm_cache_postgres.sql migration.
+            # Verify connectivity with a lightweight query.
+            self._conn.execute("SELECT 1")
+            self._conn.commit()
+            logger.info("LLM cache initialized with PostgreSQL backend")
+        except Exception as e:
+            logger.error(f"Failed to initialize PostgreSQL LLM cache: {e}")
+            self.config.enabled = False
+            self._conn = None
+
+    # ---- SQL dialect helpers ------------------------------------------------
+
+    def _placeholder(self) -> str:
+        """Return the parameter placeholder for the active backend."""
+        return "%s" if self._backend == "postgres" else "?"
+
+    def _age_filter(self) -> str:
+        """Return an SQL expression for the max-age filter."""
+        if self._backend == "postgres":
+            return f"created_at > now() - interval '{self.config.max_age_days} days'"
+        return f"created_at > datetime('now', '-{self.config.max_age_days} days')"
+
+    def _expired_filter(self) -> str:
+        """Return an SQL expression matching expired rows."""
+        if self._backend == "postgres":
+            return f"created_at <= now() - interval '{self.config.max_age_days} days'"
+        return f"created_at <= datetime('now', '-{self.config.max_age_days} days')"
+
+    def _upsert_sql(self) -> str:
+        """Return the upsert SQL statement for the active backend."""
+        ph = self._placeholder()
+        if self._backend == "postgres":
+            return f"""
+                INSERT INTO llm_cache
+                    (cache_key, cache_version, model, response_content, input_tokens, output_tokens)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                ON CONFLICT (cache_key) DO UPDATE SET
+                    cache_version = EXCLUDED.cache_version,
+                    model = EXCLUDED.model,
+                    response_content = EXCLUDED.response_content,
+                    input_tokens = EXCLUDED.input_tokens,
+                    output_tokens = EXCLUDED.output_tokens,
+                    created_at = now()
+            """
+        return f"""
+            INSERT OR REPLACE INTO llm_cache
+            (cache_key, cache_version, model, response_content, input_tokens, output_tokens)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+        """
+
+    # ---- Public API ---------------------------------------------------------
 
     def _compute_key(
         self,
@@ -174,21 +250,19 @@ class LLMCache:
         cache_key = self._compute_key(
             model, system_message, prompt, temperature, max_tokens, **kwargs
         )
+        ph = self._placeholder()
+        age = self._age_filter()
 
         with self._lock:
             try:
                 cursor = self._conn.execute(
-                    """
+                    f"""
                     SELECT response_content, input_tokens, output_tokens
                     FROM llm_cache
-                    WHERE cache_key = ? AND cache_version = ?
-                    AND created_at > datetime('now', ?)
+                    WHERE cache_key = {ph} AND cache_version = {ph}
+                    AND {age}
                 """,
-                    (
-                        cache_key,
-                        self.config.cache_version,
-                        f"-{self.config.max_age_days} days",
-                    ),
+                    (cache_key, self.config.cache_version),
                 )
 
                 row = cursor.fetchone()
@@ -206,7 +280,7 @@ class LLMCache:
                 logger.debug(f"Cache MISS for key {cache_key[:8]}...")
                 return None
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 logger.error(f"Cache get error: {e}")
                 return None
 
@@ -249,11 +323,7 @@ class LLMCache:
         with self._lock:
             try:
                 self._conn.execute(
-                    """
-                    INSERT OR REPLACE INTO llm_cache
-                    (cache_key, cache_version, model, response_content, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
+                    self._upsert_sql(),
                     (
                         cache_key,
                         self.config.cache_version,
@@ -267,7 +337,7 @@ class LLMCache:
                 logger.debug(f"Cache SET for key {cache_key[:8]}...")
                 return True
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 logger.error(f"Cache set error: {e}")
                 return False
 
@@ -294,16 +364,18 @@ class LLMCache:
                 "hit_rate": 0.0,
             }
 
+        ph = self._placeholder()
+
         with self._lock:
             try:
                 cursor = self._conn.execute(
-                    """
+                    f"""
                     SELECT
                         COUNT(*) as total_entries,
                         COALESCE(SUM(input_tokens), 0) as total_input_tokens,
                         COALESCE(SUM(output_tokens), 0) as total_output_tokens
                     FROM llm_cache
-                    WHERE cache_version = ?
+                    WHERE cache_version = {ph}
                 """,
                     (self.config.cache_version,),
                 )
@@ -322,7 +394,7 @@ class LLMCache:
                     "hit_rate": round(hit_rate, 1),
                 }
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 logger.error(f"Cache stats error: {e}")
                 return {
                     "enabled": True,
@@ -345,11 +417,13 @@ class LLMCache:
         if not self._conn:
             return 0
 
+        ph = self._placeholder()
+
         with self._lock:
             try:
                 if version_only:
                     cursor = self._conn.execute(
-                        "DELETE FROM llm_cache WHERE cache_version = ?",
+                        f"DELETE FROM llm_cache WHERE cache_version = {ph}",
                         (self.config.cache_version,),
                     )
                 else:
@@ -360,7 +434,7 @@ class LLMCache:
                 logger.info(f"Cleared {deleted} cache entries")
                 return deleted
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 logger.error(f"Cache clear error: {e}")
                 return 0
 
@@ -376,17 +450,14 @@ class LLMCache:
 
         with self._lock:
             try:
-                cursor = self._conn.execute(
-                    "DELETE FROM llm_cache WHERE created_at <= datetime('now', ?)",
-                    (f"-{self.config.max_age_days} days",),
-                )
+                cursor = self._conn.execute(f"DELETE FROM llm_cache WHERE {self._expired_filter()}")
                 self._conn.commit()
                 deleted = cursor.rowcount
                 if deleted > 0:
                     logger.info(f"Cleaned up {deleted} expired cache entries")
                 return deleted
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 logger.error(f"Cache cleanup error: {e}")
                 return 0
 

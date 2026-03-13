@@ -152,9 +152,9 @@ class TestPrintBaselineComparison:
         captured = capsys.readouterr()
         # Should have [REGRESSION] markers for recall and f1
         lines = captured.out.split("\n")
-        recall_line = [l for l in lines if "Recall" in l][0]
-        f1_line = [l for l in lines if "F1" in l][0]
-        precision_line = [l for l in lines if "Precision" in l][0]
+        recall_line = [line for line in lines if "Recall" in line][0]
+        f1_line = [line for line in lines if "F1" in line][0]
+        precision_line = [line for line in lines if "Precision" in line][0]
 
         assert "[REGRESSION]" in recall_line
         assert "[REGRESSION]" in f1_line

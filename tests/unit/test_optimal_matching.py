@@ -12,7 +12,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from scripts.validate_against_gold_standard import (
+from scripts.validate_against_gold_standard import (  # noqa: E402
     GoldStandardEntry,
     validate_filing,
 )

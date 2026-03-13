@@ -3,12 +3,11 @@ Unit tests for V2 review routes (WI-04: async audit logging, WI-05: pagination).
 """
 
 import threading
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.web.app import create_app
-
 
 # =============================================================================
 # Fixtures
@@ -54,10 +53,10 @@ def test_audit_log_fires_in_background_thread(client, mock_db, app):
     mock_db.count_v2_filings_with_facts.return_value = 0
     mock_db.get_v2_filings_with_facts.return_value = []
 
-    threads_started = []
+    _threads_started = []
 
-    original_thread_init = threading.Thread.__init__
-    original_thread_start = threading.Thread.start
+    _original_thread_init = threading.Thread.__init__
+    _original_thread_start = threading.Thread.start
 
     with patch("src.web.routes.review_v2.threading.Thread") as mock_thread_cls:
         mock_thread = MagicMock()
@@ -98,11 +97,11 @@ def test_audit_log_captures_request_context(client, app):
         mock.get_v2_filings_with_facts.return_value = []
         mock_get_db.return_value = mock
 
-        captured_kwargs = {}
+        _captured_kwargs = {}
 
         def fake_thread(**kwargs):
             # Intercept the target function and extract its closure kwarg dict
-            target = kwargs.get("target")
+            _target = kwargs.get("target")
             # We can't easily introspect the closure; instead check thread is created
             t = MagicMock()
             t.start = MagicMock()

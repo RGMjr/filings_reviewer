@@ -45,7 +45,6 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_billings",
     "cm_bookings",
     "cm_gmv",
-    "cm_revenue_by_cohort",  # cohort revenue breakdowns — always currency
 }
 
 # Percent-only metrics: retention rates, churn, margins

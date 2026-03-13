@@ -1,8 +1,8 @@
 # Customer Metrics Filings Analysis
 
-**Version:** 2.4
+**Version:** 2.7
 **Status:** Production Ready
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-03-12
 
 A system for systematically analyzing SEC filings to assess how companies disclose customer-related metrics.
 
@@ -35,7 +35,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | Validation + Persistence | ✅ Complete | |
 | Batch Runner | ✅ Complete | `scripts/batch_v2_extraction.py` |
 
-**Gold Standard (V2):** Precision=78.6%, Recall=79.2%, F1=78.9% (surpasses V1 F1=74.1%)
+**Gold Standard (V2):** Precision=95.0%, Recall=83.5%, F1=88.9%
 
 ### Infrastructure
 
@@ -45,7 +45,6 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | Filing Fetcher | ✅ Complete | 94% |
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
-| V1 Extraction Pipeline | ✅ Legacy | Maintained for comparison |
 
 **Overall:** 87% overall test coverage (4,765 tests)
 
@@ -129,7 +128,6 @@ src/
 ├── universe/       # Filing discovery and classification
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction_v2/  # V2 extraction pipeline (primary)
-├── extraction/     # V1 extraction pipeline (legacy)
 ├── review/         # Human-in-the-loop review system
 ├── web/            # Flask web application
 ├── llm/            # OpenAI GPT-4o-mini integration
@@ -144,15 +142,6 @@ Ingestion → SectionClassification → TableReconstruction → ImageTriage
     → Deduplication → Validation → Persistence
 ```
 See [V2 Migration Guide](docs/V2_MIGRATION_GUIDE.md) for details.
-
-**V1 Pipeline** (legacy):
-```
-UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
-                                        ↓
-                              ValueExtractor + DefinitionExtractor
-                                        ↓
-                                  QualityScorer → Database
-```
 
 ## Documentation
 
@@ -180,7 +169,6 @@ filings_reviewer/
 │   ├── universe/          # Filing discovery
 │   ├── filing_fetcher/    # Document retrieval
 │   ├── extraction_v2/     # V2 extraction pipeline (primary)
-│   ├── extraction/        # V1 extraction pipeline (legacy)
 │   ├── review/            # Human review system
 │   ├── web/               # Flask application
 │   ├── llm/               # LLM integration
@@ -195,7 +183,7 @@ filings_reviewer/
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (00-11)
+├── sql/                    # Database schema (00-15)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration

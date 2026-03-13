@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.6
+**Version:** 2.8
 **Status:** Production Ready
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-12
 
 ---
 
@@ -101,8 +101,8 @@ Current improvement work in progress.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
-| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
+| **[archive/GOLDMINE_REMEDIATION_PLAN.md](archive/GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
+| **[archive/HUMAN_REVIEW_VALIDATION_PLAN.md](archive/HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 
@@ -130,8 +130,9 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 - **Language:** Python 3.11+
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
+- **Vision:** OpenAI GPT-4o or Anthropic Claude (configurable via `VisionProvider` protocol)
 - **Parsing:** lxml (primary, V2 pipeline); BeautifulSoup4 (secondary, review modules)
-- **Testing:** pytest (87% coverage, 4,765 tests)
+- **Testing:** pytest (87% coverage, 3,800+ tests)
 
 ### Cost Profile
 
@@ -157,10 +158,10 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
 | V2 MetricFact / EvidencePack | ✅ Complete | 87% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| V2 Gold Standard | ✅ Active | N/A | P=92.8%, R=77.6%, F1=84.5% (as of 2026-02-28, post-WP-15+17) |
+| V2 Gold Standard | ✅ Active | N/A | Text-only: P=95.0%, R=83.5%, F1=88.9%; Image-enabled: P=92.3%, R=83.5%, F1=87.7% (as of 2026-03-12) |
 | V2 Review UI | ✅ Complete | N/A | [V2 Human Review Guide](V2_HUMAN_REVIEW_GUIDE.md) — WP-21 complete |
 
-**Overall Status:** ✅ **Production Ready** (87% test coverage, 4,765 tests)
+**Overall Status:** ✅ **Production Ready** (87% test coverage, 3,800+ tests)
 
 ---
 
@@ -196,7 +197,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 
 3. **Access the Data**
    - Connect to PostgreSQL database
-   - Use analysis views: `v_filing_metric_incidence`, `v_metric_values_cohort`
+   - Query the `filing_metric_incidence` and `v2_metric_facts` tables directly; the SQL views `v_filing_metric_incidence` and `v_metric_values_cohort` are runtime-only convenience views, not versioned in the codebase
 
 ---
 
@@ -206,7 +207,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 
 ```bash
 # See setup-guide.md for detailed instructions
-python3 scripts/run_extraction_pipeline.py --limit 10
+python3 scripts/run_v2_extraction.py --limit 10
 ```
 
 ### Running Tests
@@ -216,7 +217,7 @@ python3 scripts/run_extraction_pipeline.py --limit 10
 pytest -v
 
 # Specific module
-pytest tests/unit/extraction/test_value_extractor.py -v
+pytest tests/unit/extraction_v2/test_value_binding.py -v
 
 # With coverage
 pytest --cov=src --cov-report=html
@@ -233,6 +234,8 @@ python3 scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-1
 
 ```sql
 -- Filing-level incidence by year
+-- Note: v_filing_metric_incidence is a runtime-only convenience view; query
+-- filing_metric_incidence directly if the view is not present in your environment.
 SELECT
     EXTRACT(YEAR FROM filing_date) AS year,
     metric_id,
@@ -382,12 +385,25 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.6 (Current - 2026-02-28)
+### Version 2.8 (Current - 2026-03-12)
+- ✅ Date FP fix: `_is_date_day_component()` pre-filter skips day-of-month integers (1-31) preceded by a month name
+- ✅ Multi-provider vision API key check in `vision_factory.py`
+- ✅ 4-filing baseline improvement: P=95.3%, R=80.6%, F1=87.3%
+- ✅ 3,330 unit tests pass
+
+### Version 2.7 (2026-03-11)
+- ✅ Chart extraction pipeline overhauled: series-aware binding, two-pass type-specific prompts, axis range validation
+- ✅ Claude Vision provider added (`ClaudeVisionProvider`, `VisionProvider` protocol, `vision_factory.py`)
+- ✅ Image pipeline activated: dual gold standard baselines (`v2_baseline.json` text-only; `v2_baseline_with_images.json` image-enabled)
+- ✅ Gold standard improved: Text-only P=95.0%, R=83.5%, F1=88.9%; Image-enabled P=92.3%, R=83.5%, F1=87.7%
+- ✅ Cloud independence: `html_content`/`txt_content` stored in PostgreSQL; dual SQLite/Postgres LLM cache backend (SQL migrations 14+15)
+- ✅ `cm_revenue_by_cohort` quantified-retention pattern: recovered Snowflake recall from 76.1% to 84.8%
+
+### Version 2.6 (2026-02-28)
 - ✅ WP-21 complete: V2 review UI at full feature parity (`review_v2.py`, `api_v2.py`, `v2_filing_list.html`, `v2_review.html`, `v2_stats.html`)
 - ✅ Migration 12 created: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments` before V1 table removal
 - ✅ FP rules hardened: WP-15 `_rule_tier_qualifier` (Snowflake tier FPs 22→3); WP-17 `_rule_dollar_threshold_customer` (Slack ">$100K" FPs eliminated)
-- ✅ Gold standard improved: P=92.8%, R=77.6%, F1=84.5% (all per-company gates passed, post-WP-15+17)
-- ✅ WP-23 pending: Batch V2 extraction on remaining 8 filings (runtime execution only)
+- ✅ Gold standard at this version: P=92.8%, R=77.6%, F1=84.5% (all per-company gates passed, post-WP-15+17)
 
 ### Version 2.5 (2026-02-26)
 - ✅ V2 pipeline promoted to `2.0.0-rc1` (was alpha)
@@ -412,7 +428,7 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 - ✅ V2 false positive filter stage and percentage context detection
 - ✅ Gold standard validator for V2 (P=78.6%, R=79.2%, F1=78.9% as of 2026-02-24)
 - ✅ V2 precision tuning: FP reduction, decimal-gated count scaling, unit compatibility
-- ✅ 4,765 tests, 87% coverage
+- ✅ 87% test coverage
 
 ### Version 2.2 (2025-12-29)
 - ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
