@@ -149,8 +149,14 @@ class TestE2ESlackFiling:
         assert slack_result.document is not None
         assert slack_result.total_duration_ms > 0
 
-    def test_e2e_slack_all_13_stages_executed(self, slack_result: PipelineResult):
-        """Test that all 13 pipeline stages were executed."""
+    def test_e2e_slack_all_13_stages_executed(
+        self, slack_result: PipelineResult, pipeline: V2Pipeline
+    ):
+        """Test that all expected pipeline stages were executed.
+
+        OCR_CHART_EXTRACTION is excluded from expected stages when chart
+        extraction was disabled (e.g. OPENAI_API_KEY absent in CI).
+        """
         executed_stages = {result.stage for result in slack_result.stage_results}
 
         expected_stages = {
@@ -158,7 +164,6 @@ class TestE2ESlackFiling:
             PipelineStage.SECTION_CLASSIFICATION,
             PipelineStage.TABLE_RECONSTRUCTION,
             PipelineStage.IMAGE_TRIAGE,
-            PipelineStage.OCR_CHART_EXTRACTION,
             PipelineStage.CANDIDATE_GENERATION,
             PipelineStage.VALUE_BINDING,
             PipelineStage.FALSE_POSITIVE_FILTER,
@@ -168,6 +173,8 @@ class TestE2ESlackFiling:
             PipelineStage.DEDUPLICATION,
             PipelineStage.VALIDATION,
         }
+        if pipeline.config.enable_chart_extraction:
+            expected_stages.add(PipelineStage.OCR_CHART_EXTRACTION)
 
         assert executed_stages == expected_stages, (
             f"Missing stages: {expected_stages - executed_stages}"
