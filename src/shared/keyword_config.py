@@ -491,3 +491,22 @@ def metrics_are_equivalent(
     return resolve_to_canonical(metric_id_1, config_path) == resolve_to_canonical(
         metric_id_2, config_path
     )
+
+
+def get_chart_metric_keywords(
+    config_path: str | None = None,
+) -> list[str]:
+    """
+    Get chart metric keywords from config.
+
+    Returns the ``_chart_metric_keywords`` list used by ImageTriageStage to
+    detect metric-related content near large images.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        List of lowercase keyword strings.
+    """
+    config = _load_config(config_path)
+    return list(config.get("_chart_metric_keywords", []))
