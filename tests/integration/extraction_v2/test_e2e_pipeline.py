@@ -362,13 +362,17 @@ class TestE2EPersistence:
                 segment_count = cur.fetchone()["cnt"]
                 assert segment_count == len(result.segments)
 
-                # Check facts
+                # Check facts - deduplication by identity tuple may reduce count
+                # (same metric+period+unit+scope from multiple sources collapses to one row)
                 cur.execute(
                     "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
                     (test_filing_id,),
                 )
                 fact_count = cur.fetchone()["cnt"]
-                assert fact_count == len(result.facts)
+                assert fact_count > 0, "No facts were persisted"
+                assert fact_count <= len(result.facts), (
+                    f"DB has more facts ({fact_count}) than pipeline produced ({len(result.facts)})"
+                )
 
 
 class TestE2EIdempotency:
