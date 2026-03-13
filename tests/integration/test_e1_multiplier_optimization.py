@@ -61,8 +61,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 1,
             "section_name": "Results",
             "segment_type": "table",
-            "raw_text": "Gross margin 52% for the year",
-            "raw_html": "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            "raw_text": "Net revenue retention 52% for the year",
+            "raw_html": "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             "start_char": 0,
             "end_char": 30,
         }
@@ -107,8 +107,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 1,
             "section_name": "Results",
             "segment_type": "table",
-            "raw_text": "Gross margin 52%",
-            "raw_html": "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            "raw_text": "Net revenue retention 52%",
+            "raw_html": "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             "start_char": 0,
             "end_char": 17,
         }
@@ -160,8 +160,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 1,
             "section_name": "Results",
             "segment_type": "table",
-            "raw_text": "Gross margin 52%",
-            "raw_html": "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            "raw_text": "Net revenue retention 52%",
+            "raw_html": "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             "start_char": 0,
             "end_char": 17,
         }
@@ -216,8 +216,8 @@ class TestE1MultiplierOptimization:
                 "segment_id": i + 1,
                 "section_name": "Results",
                 "segment_type": "table",
-                "raw_text": f"Gross margin {50 + i}%",
-                "raw_html": f"<table><tr><td>Gross margin</td><td>{50 + i}%</td></tr></table>",
+                "raw_text": f"Net revenue retention {50 + i}%",
+                "raw_html": f"<table><tr><td>Net revenue retention</td><td>{50 + i}%</td></tr></table>",
                 "start_char": 0,
                 "end_char": 20,
             }
@@ -272,8 +272,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 1,
             "section_name": "Results",
             "segment_type": "table",
-            "raw_text": "Gross margin 52%",
-            "raw_html": "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            "raw_text": "Net revenue retention 52%",
+            "raw_html": "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             "start_char": 0,
             "end_char": 17,
         }
@@ -283,8 +283,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 2,
             "section_name": "Narrative",
             "segment_type": "paragraph",
-            "raw_text": "The company increased from gross margin levels by reaching 52 percent",
-            "raw_html": "<p>The company increased from gross margin levels by reaching 52 percent</p>",
+            "raw_text": "The company increased from net revenue retention levels by reaching 52 percent",
+            "raw_html": "<p>The company increased from net revenue retention levels by reaching 52 percent</p>",
             "start_char": 0,
             "end_char": 70,
         }
@@ -364,8 +364,8 @@ class TestE1MultiplierOptimization:
             "segment_id": 1,
             "section_name": "Results",
             "segment_type": "table",
-            "raw_text": "Gross margin 52%",
-            "raw_html": "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+            "raw_text": "Net revenue retention 52%",
+            "raw_html": "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             "start_char": 0,
             "end_char": 17,
         }
@@ -426,15 +426,15 @@ class TestE1RegressionPrevention:
             (
                 "table",
                 "table",
-                "Gross margin 52%",
-                "<table><tr><td>Gross margin</td><td>52%</td></tr></table>",
+                "Net revenue retention 52%",
+                "<table><tr><td>Net revenue retention</td><td>52%</td></tr></table>",
             ),
-            ("bullet", "paragraph", "• Gross margin was 52%", "<p>• Gross margin was 52%</p>"),
+            ("bullet", "paragraph", "• Net revenue retention was 52%", "<p>• Net revenue retention was 52%</p>"),
             (
                 "parenthetical",
                 "paragraph",
-                "We achieved (52% gross margin)",
-                "<p>We achieved (52% gross margin)</p>",
+                "We achieved (52% net revenue retention)",
+                "<p>We achieved (52% net revenue retention)</p>",
             ),
         ]
 
