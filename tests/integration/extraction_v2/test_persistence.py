@@ -621,8 +621,8 @@ class TestFactPersistence:
                     (original_fact_id,),
                 )
                 result = cur.fetchone()
-                # Delete-then-insert resets reviewer decisions; status is back to PENDING
-                assert result["review_status"] == "pending", (
+                # Delete-then-insert resets reviewer decisions; status is back to PENDING_REVIEW
+                assert result["review_status"] == "pending_review", (
                     "Re-extraction should reset review_status to pending (delete-then-insert)"
                 )
                 assert float(result["confidence"]) == 0.92
