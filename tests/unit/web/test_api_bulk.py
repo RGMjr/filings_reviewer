@@ -71,9 +71,9 @@ class TestBulkDecisionValidation:
         assert data["status"] == "error"
         assert "candidate_ids" in data["errors"]
 
-    def test_over_50_candidates_returns_403(self, client, mock_db):
-        """More than 50 candidates should return 403."""
-        candidate_ids = list(range(1, 52))  # 51 candidates
+    def test_over_20_candidates_returns_403(self, client, mock_db):
+        """More than 20 candidates should return 403."""
+        candidate_ids = list(range(1, 22))  # 21 candidates
         response = client.post(
             "/api/bulk-decisions",
             json={
@@ -85,7 +85,7 @@ class TestBulkDecisionValidation:
         assert response.status_code == 403
         data = json.loads(response.data)
         assert data["status"] == "error"
-        assert "Maximum 50 candidates" in data["message"]
+        assert "Maximum 20 candidates" in data["message"]
 
     def test_reclassify_not_allowed_returns_400(self, client, mock_db):
         """Bulk reclassify should return 400."""
@@ -209,17 +209,17 @@ class TestBulkAccept:
         call_args = mock_db.insert_bulk_review_decisions.call_args[1]
         assert len(call_args["candidate_ids"]) == 2
 
-    def test_exactly_50_candidates_succeeds(self, client, mock_db):
-        """Exactly 50 candidates should succeed (edge case at limit)."""
-        candidate_ids = list(range(1, 51))  # Exactly 50 candidates
+    def test_exactly_20_candidates_succeeds(self, client, mock_db):
+        """Exactly 20 candidates should succeed (edge case at limit)."""
+        candidate_ids = list(range(1, 21))  # Exactly 20 candidates
 
-        # Mock all 50 candidates from same filing
+        # Mock all 20 candidates from same filing
         mock_db.get_review_candidate.side_effect = [
             {"candidate_id": i, "filing_id": 100} for i in candidate_ids
         ]
 
-        # Mock successful bulk insert returning 50 decision IDs
-        decision_ids = list(range(1001, 1051))
+        # Mock successful bulk insert returning 20 decision IDs
+        decision_ids = list(range(1001, 1021))
         mock_db.insert_bulk_review_decisions.return_value = (decision_ids, [])
 
         response = client.post(
@@ -234,8 +234,8 @@ class TestBulkAccept:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["status"] == "success"
-        assert data["processed_count"] == 50
-        assert len(data["decision_ids"]) == 50
+        assert data["processed_count"] == 20
+        assert len(data["decision_ids"]) == 20
 
 
 class TestBulkReject:
