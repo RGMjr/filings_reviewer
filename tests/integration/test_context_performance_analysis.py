@@ -190,7 +190,21 @@ def sample_candidates(db, generator):
 
     filing_data.append((filing_id_3, company_id_3, candidate_ids_3))
 
-    return filing_data
+    yield filing_data
+
+    # Teardown: clean up decisions and candidates to avoid cross-test contamination
+    all_candidate_ids = [cid for _, _, cids in filing_data for cid in cids]
+    if all_candidate_ids:
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM review_decisions WHERE candidate_id = ANY(%s)",
+                    (all_candidate_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM review_candidates WHERE candidate_id = ANY(%s)",
+                    (all_candidate_ids,),
+                )
 
 
 class TestContextPerformanceAnalysis:
