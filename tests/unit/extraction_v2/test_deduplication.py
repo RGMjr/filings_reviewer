@@ -381,7 +381,7 @@ class TestEdgeCases:
         stage = DeduplicationStage()
         context = MockPipelineContext(facts=[])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success
         assert len(context.deduplicated_facts) == 0
@@ -399,7 +399,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert len(context.deduplicated_facts) == 3
         assert result.metadata["duplicates_removed"] == 0
@@ -415,7 +415,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert len(context.deduplicated_facts) == 1
         primary = context.deduplicated_facts[0]
@@ -434,7 +434,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         # Two facts with None values are duplicates (same identity)
         assert len(context.deduplicated_facts) == 1
@@ -449,7 +449,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         # Two facts with None periods are duplicates
         assert len(context.deduplicated_facts) == 1
@@ -468,7 +468,7 @@ class TestStageResult:
         stage = DeduplicationStage()
         context = MockPipelineContext(facts=[make_fact(fact_id="fact-1")])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success is True
 
@@ -483,7 +483,7 @@ class TestStageResult:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.items_processed == 3
 
@@ -498,7 +498,7 @@ class TestStageResult:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.items_output == 2  # One merged + one unique
 
@@ -513,7 +513,7 @@ class TestStageResult:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["duplicates_removed"] == 2  # 3 -> 1
 
@@ -528,7 +528,7 @@ class TestStageResult:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["groups_with_alternates"] == 1
 
@@ -537,7 +537,7 @@ class TestStageResult:
         stage = DeduplicationStage()
         context = MockPipelineContext(facts=[make_fact(fact_id="fact-1")])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.duration_ms >= 0
 
@@ -563,7 +563,7 @@ class TestConfigIntegration:
             ],
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         # With 15% tolerance, these should be grouped
         assert len(context.deduplicated_facts) == 1
@@ -740,7 +740,7 @@ class TestFuzzyPeriodDedup:
             ]
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert len(context.deduplicated_facts) == 1
         assert result.metadata["fuzzy_period_removed"] == 1

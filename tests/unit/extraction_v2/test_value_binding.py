@@ -12,6 +12,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -3326,16 +3327,15 @@ class TestChartAxisUnitSignals:
 class TestIsDateDayComponent:
     """Tests for _is_date_day_component() — Farfetch date-parsing FP guard."""
 
-    def _match(self, text: str) -> "re.Match[str]":
+    def _match(self, text: str) -> re.Match[str]:
         """Return the first NUMBER_PATTERN match in text."""
-        import re
         from src.extraction_v2.stages import number_parsing as _np
 
         m = _np.NUMBER_PATTERN.search(text)
         assert m is not None, f"No NUMBER_PATTERN match found in {text!r}"
         return m
 
-    def _all_matches(self, text: str) -> "list[re.Match[str]]":
+    def _all_matches(self, text: str) -> list[re.Match[str]]:
         """Return all NUMBER_PATTERN matches in text."""
         from src.extraction_v2.stages import number_parsing as _np
 

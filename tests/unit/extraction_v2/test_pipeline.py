@@ -357,7 +357,7 @@ class TestValidationStage:
         from src.extraction_v2.pipeline import ValidationStage
 
         stage = ValidationStage()
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success is True
         assert context.facts[0].requires_review is False
@@ -382,7 +382,7 @@ class TestValidationStage:
         from src.extraction_v2.pipeline import ValidationStage
 
         stage = ValidationStage()
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success is True
         assert context.facts[0].requires_review is True
@@ -404,7 +404,7 @@ class TestValidationStage:
         from src.extraction_v2.pipeline import ValidationStage
 
         stage = ValidationStage()
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert context.facts[0].requires_review is True
         assert "auto-reject" in context.facts[0].review_reason.lower()

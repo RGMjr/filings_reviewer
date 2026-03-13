@@ -928,7 +928,7 @@ class TestVisionClientApiKeyCheck:
         """
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         stage = OCRExtractionStage()  # No pre-set vision_client
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             _ = stage.vision_client
 
     def test_vision_client_does_not_raise_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:

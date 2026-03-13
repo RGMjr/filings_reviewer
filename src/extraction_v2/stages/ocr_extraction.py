@@ -21,13 +21,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.exceptions import V2FatalError
-import time
-
 from src.extraction_v2.chart_prompts import get_classification_prompt, get_pass2_prompt
+from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Cell,
     ChartAnnotation,
@@ -42,6 +42,18 @@ if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_IMAGE_CACHE_DIR = "data/image_cache"
+
+
+def _image_cache_base_dir() -> Path:
+    """Return the base directory for caching downloaded filing images.
+
+    Defaults to data/image_cache/ relative to the working directory.
+    Override with FILINGS_IMAGE_CACHE_DIR environment variable.
+    """
+    env_val = os.environ.get("FILINGS_IMAGE_CACHE_DIR", "").strip()
+    return Path(env_val) if env_val else Path(_DEFAULT_IMAGE_CACHE_DIR)
 
 
 class OCRExtractionStage:
@@ -157,9 +169,6 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        import tempfile
-        from pathlib import Path
-
         if not context.cik or not context.accession_number:
             return 0
 
@@ -168,11 +177,11 @@ class OCRExtractionStage:
             from src.infra.sec_client import SECClient
 
             self._sec_client = SECClient(
-                image_cache_dir=Path(tempfile.gettempdir()) / "filings_image_cache"
+                image_cache_dir=_image_cache_base_dir()
             )
 
         downloaded = 0
-        cache_dir = Path(tempfile.gettempdir()) / "filings_image_cache" / "pipeline"
+        cache_dir = _image_cache_base_dir() / "pipeline"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         for asset in context.images:
@@ -578,7 +587,7 @@ time periods, or definitions that help interpret the chart's data.
         Returns:
             Tuple of (series_list, annotations, title, x_axis_label, y_axis_label, confidence)
         """
-        from src.extraction_v2.models import ChartAnnotation, ChartSeries, ChartType, DataPoint
+        from src.extraction_v2.models import ChartAnnotation, ChartSeries, DataPoint
 
         title = chart_response.get("title", "")
         x_axis_label = chart_response.get("x_axis_label", "")
@@ -730,7 +739,7 @@ time periods, or definitions that help interpret the chart's data.
         import json
         from pathlib import Path
 
-        from src.extraction_v2.models import ChartData, ChartType
+        from src.extraction_v2.models import ChartData
 
         # Validate file path
         if not asset.file_path:

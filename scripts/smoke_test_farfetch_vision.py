@@ -9,10 +9,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv()
 
 from src.extraction_v2.models import SourceType  # noqa: E402
-from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig  # noqa: E402
+from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 
 config = PipelineConfig(
     enable_image_extraction=True,

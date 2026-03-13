@@ -398,7 +398,7 @@ class TestOCRTableFeeding:
         )
         context.images = [asset]
 
-        result = stage.process(context)
+        _result = stage.process(context)
 
         # Tables list should remain empty
         assert len(context.tables) == 0

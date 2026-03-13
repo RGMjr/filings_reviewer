@@ -19,7 +19,8 @@ import csv
 import json
 import logging
 import re
-from dataclasses import dataclass, field, replace as dc_replace
+from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from datetime import date
 from decimal import InvalidOperation
 from pathlib import Path
