@@ -28,18 +28,6 @@
 # review candidates. Without this context, they are just revenue measures,
 # not customer metrics. This anchor defines the shared context patterns.
 
-# =============================================================================
-# Chart Axis Unit Signals
-# =============================================================================
-# Keyword lists used by ValueBindingStage._infer_unit_from_axis() to map
-# y-axis label text to a Unit enum. Keys must match Unit enum values
-# (currency, count, percent). Prefix with _ so the keyword config validator
-# skips this entry (it lacks a 'patterns' key).
-_chart_axis_unit_signals:
-  currency: ["$", "usd", "revenue", "gmv", "£", "€", "eur"]
-  count: ["users", "customers", "subscribers", "accounts", "seats", "number", "count"]
-  percent: ["%", "percent", "pct", "rate", "margin"]
-
 _revenue_synonym_context: &revenue_synonym_context
   required_context:
     patterns:
@@ -83,7 +71,6 @@ cm_new_customers_acquired:
     - '\bnew\s+customer\s+additions?\b'
     - '\bnet\s+new\s+customers?\b'
     - '\bcustomers?\s+added\b'
-    - '\badded\s+(?:approximately\s+|about\s+|over\s+|more\s+than\s+)?[\d,]+\s+(?:new\s+)?customers?\b'
     - '\bacquisition\s+of\s+customers?\b'
     - '\bnew\s+users?\s+acquired\b'
     - '\bacquired\s+users?\b'
@@ -183,9 +170,6 @@ cm_revenue_by_cohort:
     - '\bgmv[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\bgmv\b'
     - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
-    # Quantified retention disclosure: "~94% of revenue...derived from existing customers"
-    # Requires a percentage prefix to distinguish from general prose (e.g., Farfetch FPs)
-    - '\b\d+(?:\.\d+)?\s*%\s+of(?:\s+\w+)?\s+revenue[^.;]{0,80}\b(?:derived\s+from|from)\s+(?:existing|new)\s+customers?\b'
 
 cm_transactions_by_cohort:
   patterns:

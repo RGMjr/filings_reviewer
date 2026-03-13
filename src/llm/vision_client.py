@@ -92,17 +92,15 @@ class VisionResponse:
     latency_ms: int
 
 
-class OpenAIVisionProvider:
-    """OpenAI GPT-4o Vision provider.
+class VisionClient:
+    """Client for OpenAI GPT-4o Vision API.
 
     Provides a simple interface for sending images to GPT-4o Vision
     and receiving structured responses. Includes cost tracking,
     MIME type detection, and retry logic with exponential backoff.
 
-    Implements the VisionProvider protocol.
-
     Example:
-        client = OpenAIVisionProvider()
+        client = VisionClient()
         response = client.analyze_image(
             image_bytes=open("chart.jpg", "rb").read(),
             prompt="Extract data from this chart...",
@@ -120,7 +118,7 @@ class OpenAIVisionProvider:
     BASE_BACKOFF_SECONDS: float = 1.0
 
     def __init__(self, model: str = "gpt-4o") -> None:
-        """Initialize OpenAIVisionProvider.
+        """Initialize VisionClient.
 
         Args:
             model: OpenAI model to use (default: gpt-4o)
@@ -265,7 +263,3 @@ class OpenAIVisionProvider:
         if last_exception:
             raise last_exception
         raise RuntimeError("Unexpected state: no response and no exception")
-
-
-# Backward-compatibility alias
-VisionClient = OpenAIVisionProvider

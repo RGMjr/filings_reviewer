@@ -104,7 +104,7 @@ class Snippet:
 
 def extract_text_from_html(filepath: Path) -> str:
     """Extract all text from an HTML filing."""
-    with open(filepath, encoding="utf-8", errors="replace") as f:
+    with open(filepath, mode="r", encoding="utf-8", errors="replace") as f:
         html = f.read()
 
     soup = BeautifulSoup(html, "html.parser")

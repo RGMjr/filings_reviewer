@@ -21,20 +21,15 @@ from __future__ import annotations
 import logging
 import os
 import re
-import time
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.chart_prompts import get_classification_prompt, get_pass2_prompt
 from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Cell,
     ChartAnnotation,
-    ChartClassificationResult,
     ImageAsset,
     ImageClassification,
-    ImageExtractionMeta,
     Table,
 )
 
@@ -42,18 +37,6 @@ if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_IMAGE_CACHE_DIR = "data/image_cache"
-
-
-def _image_cache_base_dir() -> Path:
-    """Return the base directory for caching downloaded filing images.
-
-    Defaults to data/image_cache/ relative to the working directory.
-    Override with FILINGS_IMAGE_CACHE_DIR environment variable.
-    """
-    env_val = os.environ.get("FILINGS_IMAGE_CACHE_DIR", "").strip()
-    return Path(env_val) if env_val else Path(_DEFAULT_IMAGE_CACHE_DIR)
 
 
 class OCRExtractionStage:
@@ -75,45 +58,41 @@ class OCRExtractionStage:
 
     # Cost control limits (per document)
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
-    MAX_CHART_CALLS_PER_DOCUMENT: int = 20  # 10 charts x 2 passes (Pass 1 + Pass 2)
+    MAX_CHART_CALLS_PER_DOCUMENT: int = 10
 
     def __init__(
         self,
         vision_client: object | None = None,
         sec_client: object | None = None,
-        config: Any | None = None,
     ) -> None:
         """
         Initialize the OCR extraction stage.
 
         Args:
-            vision_client: Optional vision API client (injected for testing).
-                          If None, will be created on first use via factory.
+            vision_client: Optional vision API client (OpenAI Vision).
+                          If None, will be created on first use.
             sec_client: Optional SECClient instance for image downloading.
                        If None, will be created on first use when needed.
-            config: Optional PipelineConfig for provider selection.
-                   If None, defaults to OpenAI provider.
         """
         self._vision_client = vision_client
         self._sec_client = sec_client
-        self._config = config
         self._api_call_count = 0
         self._ocr_call_count = 0
         self._chart_call_count = 0
 
     @property
     def vision_client(self) -> Any:
-        """Lazy-load vision client via factory using config provider settings."""
+        """Lazy-load vision client to avoid import errors in tests."""
         if self._vision_client is None:
-            from src.llm.vision_factory import create_vision_provider
+            if not os.environ.get("OPENAI_API_KEY", "").strip():
+                raise V2FatalError(
+                    "OPENAI_API_KEY is not set. Cannot initialize VisionClient for OCR/chart extraction.",
+                    stage_name="ocr_chart_extraction",
+                )
+            # Import here to avoid circular dependency
+            from src.llm.vision_client import VisionClient
 
-            provider = "openai"
-            model: str | None = None
-            if self._config is not None:
-                provider = getattr(self._config, "vision_provider", "openai")
-                model = getattr(self._config, "vision_model", None)
-
-            self._vision_client = create_vision_provider(provider, model)
+            self._vision_client = VisionClient()
         return self._vision_client
 
     @staticmethod
@@ -169,6 +148,9 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
+        import tempfile
+        from pathlib import Path
+
         if not context.cik or not context.accession_number:
             return 0
 
@@ -177,11 +159,11 @@ class OCRExtractionStage:
             from src.infra.sec_client import SECClient
 
             self._sec_client = SECClient(
-                image_cache_dir=_image_cache_base_dir()
+                image_cache_dir=Path(tempfile.gettempdir()) / "filings_image_cache"
             )
 
         downloaded = 0
-        cache_dir = _image_cache_base_dir() / "pipeline"
+        cache_dir = Path(tempfile.gettempdir()) / "filings_image_cache" / "pipeline"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         for asset in context.images:
@@ -257,14 +239,12 @@ class OCRExtractionStage:
 
         # Call Vision API with table extraction prompt
         try:
-            _t0 = time.monotonic()
             response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
                 prompt=self._get_table_extraction_prompt(),
                 detail="high",  # High detail for accurate OCR
                 max_tokens=2000,
             )
-            _latency_ms = (time.monotonic() - _t0) * 1000.0
 
             # Parse JSON response
             try:
@@ -277,15 +257,6 @@ class OCRExtractionStage:
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=response.model,
-                    prompt_tokens=response.prompt_tokens,
-                    completion_tokens=response.completion_tokens,
-                    cost_usd=response.cost_usd,
-                    latency_ms=_latency_ms,
-                    parse_success=False,
-                    manual_capture_reason="json_parse_error",
-                )
                 return
 
             # Store raw OCR text
@@ -298,15 +269,6 @@ class OCRExtractionStage:
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=response.model,
-                    prompt_tokens=response.prompt_tokens,
-                    completion_tokens=response.completion_tokens,
-                    cost_usd=response.cost_usd,
-                    latency_ms=_latency_ms,
-                    parse_success=False,
-                    manual_capture_reason="no_cells_in_response",
-                )
                 return
 
             # Build table from OCR cells
@@ -325,16 +287,6 @@ class OCRExtractionStage:
                 )
 
             asset.processed = True
-            asset.extraction_meta = ImageExtractionMeta(
-                vision_model=response.model,
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.completion_tokens,
-                cost_usd=response.cost_usd,
-                latency_ms=_latency_ms,
-                parse_success=True,
-                manual_capture_reason="low_ocr_confidence" if asset.requires_manual_capture else "",
-                extraction_mode="exact",
-            )
             logger.info(
                 f"Processed table image {asset.img_id}: {table.row_count}x{table.col_count} cells, "
                 f"confidence={asset.confidence:.2f}"
@@ -576,161 +528,22 @@ time periods, or definitions that help interpret the chart's data.
             _grid=grid,
         )
 
-    def _parse_chart_response(
-        self,
-        chart_response: dict,
-        classification: ChartClassificationResult,
-    ) -> tuple[list, list, str, str, str, float]:
+    def process_chart(self, asset: ImageAsset) -> None:
         """
-        Parse a Pass 2 chart extraction response into structured objects.
+        Extract labeled values from chart.
 
-        Returns:
-            Tuple of (series_list, annotations, title, x_axis_label, y_axis_label, confidence)
-        """
-        from src.extraction_v2.models import ChartAnnotation, ChartSeries, DataPoint
+        CRITICAL: Only extract values that are EXPLICITLY labeled on the chart.
+        Never interpolate values from axis positions.
 
-        title = chart_response.get("title", "")
-        x_axis_label = chart_response.get("x_axis_label", "")
-        y_axis_label = chart_response.get("y_axis_label", "")
-        confidence = float(chart_response.get("confidence", 0.8))
-
-        # Parse axis range from classification for validation
-        y_min = classification.axis_info.get("y_min")
-        y_max = classification.axis_info.get("y_max")
-
-        # Parse annotations
-        annotations_data = chart_response.get("annotations", [])
-        chart_annotations: list[ChartAnnotation] = []
-        for ann_item in annotations_data:
-            ann_text = str(ann_item.get("text", ""))
-            if not ann_text:
-                continue
-            ann_value = ann_item.get("value")
-            if ann_value is not None:
-                try:
-                    ann_value = float(ann_value)
-                except (ValueError, TypeError):
-                    ann_value = None
-            chart_annotations.append(
-                ChartAnnotation(
-                    text=ann_text,
-                    value=ann_value,
-                    unit=str(ann_item.get("unit", "")),
-                    category=str(ann_item.get("category", "")),
-                    period=str(ann_item.get("period", "")),
-                )
-            )
-
-        # Parse series data
-        series_data = chart_response.get("series", [])
-        chart_series_list: list[ChartSeries] = []
-
-        for series_item in series_data:
-            series_name = series_item.get("name", "")
-            points_data = series_item.get("points", [])
-
-            data_points: list[DataPoint] = []
-            for point_item in points_data:
-                x_val = str(point_item.get("x", ""))
-                y_val = point_item.get("y", 0.0)
-                label_val = point_item.get("label")
-                interpolated = bool(point_item.get("interpolated", False))
-                point_conf_raw = point_item.get("confidence")
-                point_confidence = float(point_conf_raw) if point_conf_raw is not None else None
-
-                # Convert y to float
-                try:
-                    if isinstance(y_val, str):
-                        y_cleaned = y_val.replace("$", "").replace("%", "").replace(",", "").strip()
-                        y_val = float(y_cleaned)
-                    else:
-                        y_val = float(y_val)
-                except (ValueError, TypeError):
-                    logger.warning(f"Failed to parse y value: {point_item.get('y')}, skipping point")
-                    continue
-
-                # Axis range check: flag out-of-range points
-                if y_min is not None and y_max is not None and y_max > y_min:
-                    lower_bound = float(y_min) * 0.8
-                    upper_bound = float(y_max) * 1.2
-                    if y_val < lower_bound or y_val > upper_bound:
-                        logger.warning(
-                            f"DataPoint y={y_val} is out of axis range [{y_min}, {y_max}] "
-                            f"for chart series '{series_name}' — applying 0.5x confidence penalty"
-                        )
-                        # Apply confidence penalty: set point_confidence if not set
-                        if point_confidence is None:
-                            point_confidence = 0.5
-                        else:
-                            point_confidence = point_confidence * 0.5
-                        interpolated = True  # Treat out-of-range as unreliable
-
-                # Negative percentage check
-                if y_val < 0 and (
-                    "percent" in (y_axis_label or "").lower() or "%" in (y_axis_label or "")
-                ):
-                    logger.warning(
-                        f"Negative percentage value {y_val} — applying 0.7x confidence penalty"
-                    )
-                    if point_confidence is None:
-                        point_confidence = 0.7
-                    else:
-                        point_confidence = point_confidence * 0.7
-
-                data_point = DataPoint(
-                    x=x_val,
-                    y=y_val,
-                    label=label_val,
-                    interpolated=interpolated,
-                    point_confidence=point_confidence,
-                )
-                data_points.append(data_point)
-
-            if data_points:
-                chart_series_list.append(ChartSeries(name=series_name, points=data_points))
-
-        return chart_series_list, chart_annotations, title, x_axis_label, y_axis_label, confidence
-
-    def _parse_classification_response(self, response_dict: dict) -> ChartClassificationResult:
-        """Parse Pass 1 classification JSON into a ChartClassificationResult."""
-        from src.extraction_v2.models import ChartType
-
-        chart_type_str = response_dict.get("chart_type", "unknown")
-        try:
-            chart_type = ChartType(chart_type_str)
-        except ValueError:
-            chart_type = ChartType.UNKNOWN
-
-        axis_info = {
-            "x_label": response_dict.get("x_label", ""),
-            "y_label": response_dict.get("y_label", ""),
-            "y_min": response_dict.get("y_min"),
-            "y_max": response_dict.get("y_max"),
-            "y_ticks": response_dict.get("y_ticks", []),
-            "x_categories": response_dict.get("x_categories", []),
-        }
-
-        return ChartClassificationResult(
-            chart_type=chart_type,
-            has_data_labels=bool(response_dict.get("has_data_labels", False)),
-            axis_info=axis_info,
-            legend_entries=list(response_dict.get("legend_entries", [])),
-            estimated_series_count=int(response_dict.get("estimated_series_count", 0)),
-            confidence=float(response_dict.get("confidence", 0.0)),
-        )
-
-    def process_chart(self, asset: ImageAsset, config: Any = None) -> None:
-        """
-        Extract labeled values from chart using a two-pass Vision API approach.
-
-        Pass 1: Classify chart type, axis scales, legend entries (no value extraction).
-        Pass 2: Type-specific extraction using Pass 1 context as structured priors.
-
-        If Pass 1 confidence < 0.3, skip Pass 2 and mark for manual capture.
+        Steps:
+        1. Load image file as bytes
+        2. Call Vision API with chart extraction prompt
+        3. Parse response into ChartData/ChartSeries/DataPoint
+        4. Set requires_manual_capture if no labeled values found
+        5. Compute confidence from extraction quality
 
         Args:
             asset: Image asset to process (modified in place)
-            config: Optional PipelineConfig (for interpolation flag)
 
         Raises:
             FileNotFoundError: If image file doesn't exist
@@ -739,7 +552,7 @@ time periods, or definitions that help interpret the chart's data.
         import json
         from pathlib import Path
 
-        from src.extraction_v2.models import ChartData
+        from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
 
         # Validate file path
         if not asset.file_path:
@@ -749,196 +562,152 @@ time periods, or definitions that help interpret the chart's data.
         if not image_path.exists():
             raise FileNotFoundError(f"Image file not found: {asset.file_path}")
 
-        # Determine if interpolation is enabled from config
-        interpolation_enabled = bool(
-            config is not None and getattr(config, "enable_chart_interpolation", False)
-        )
-
         # Load image bytes
         image_bytes = image_path.read_bytes()
 
+        # Call Vision API with chart extraction prompt (include nearby context)
         try:
-            # ----------------------------------------------------------------
-            # Pass 1: Classification
-            # ----------------------------------------------------------------
-            _t1 = time.monotonic()
-            pass1_response = self.vision_client.analyze_image(
+            response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
-                prompt=get_classification_prompt(),
-                detail="high",
-                max_tokens=1000,
-            )
-            _latency_pass1_ms = (time.monotonic() - _t1) * 1000.0
-            self._chart_call_count += 1
-
-            # Parse Pass 1 response
-            try:
-                pass1_data = json.loads(self._strip_code_fences(pass1_response.content))
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Pass 1 classification response: {e}")
-                asset.processed = True
-                asset.confidence = 0.0
-                asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=pass1_response.model,
-                    prompt_tokens=pass1_response.prompt_tokens,
-                    completion_tokens=pass1_response.completion_tokens,
-                    cost_usd=pass1_response.cost_usd,
-                    latency_ms=_latency_pass1_ms,
-                    parse_success=False,
-                    manual_capture_reason="pass1_json_parse_error",
-                )
-                return
-
-            classification = self._parse_classification_response(pass1_data)
-            asset.classification_result = classification
-
-            # Skip Pass 2 if classification confidence is too low
-            if classification.confidence < 0.3:
-                logger.info(
-                    f"Chart {asset.img_id} Pass 1 confidence={classification.confidence:.2f} < 0.3, "
-                    f"skipping Pass 2"
-                )
-                asset.processed = True
-                asset.confidence = classification.confidence
-                asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=pass1_response.model,
-                    prompt_tokens=pass1_response.prompt_tokens,
-                    completion_tokens=pass1_response.completion_tokens,
-                    cost_usd=pass1_response.cost_usd,
-                    latency_ms=_latency_pass1_ms,
-                    parse_success=True,
-                    skip_reason="low_classification_confidence",
-                    manual_capture_reason="low_classification_confidence",
-                )
-                return
-
-            # ----------------------------------------------------------------
-            # Pass 2: Type-specific extraction with Pass 1 priors
-            # ----------------------------------------------------------------
-
-            # Build pass1_context dict for prompt construction
-            pass1_context = {
-                "chart_type": classification.chart_type.value,
-                "has_data_labels": classification.has_data_labels,
-                "legend_entries": classification.legend_entries,
-                **classification.axis_info,
-            }
-
-            pass2_prompt = get_pass2_prompt(
-                chart_type=classification.chart_type.value,
-                pass1_context=pass1_context,
-                interpolation_enabled=interpolation_enabled,
-            )
-            # Append nearby context if available
-            if asset.nearby_text:
-                truncated = asset.nearby_text[:1500]
-                pass2_prompt += (
-                    f"\n\nSURROUNDING CONTEXT (from the HTML near this chart):\n"
-                    f'"""{truncated}"""\n\n'
-                    f"Use this context to understand what the chart represents.\n"
-                )
-
-            _t2 = time.monotonic()
-            pass2_response = self.vision_client.analyze_image(
-                image_bytes=image_bytes,
-                prompt=pass2_prompt,
-                detail="high",
+                prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
+                detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
             )
-            _latency_pass2_ms = (time.monotonic() - _t2) * 1000.0
-            self._chart_call_count += 1
 
-            # Sum telemetry across both passes
-            total_prompt_tokens = pass1_response.prompt_tokens + pass2_response.prompt_tokens
-            total_completion_tokens = pass1_response.completion_tokens + pass2_response.completion_tokens
-            total_cost_usd = pass1_response.cost_usd + pass2_response.cost_usd
-            total_latency_ms = _latency_pass1_ms + _latency_pass2_ms
-
-            # Parse Pass 2 response
+            # Parse JSON response
             try:
-                chart_response = json.loads(self._strip_code_fences(pass2_response.content))
+                chart_response = json.loads(self._strip_code_fences(response.content))
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Pass 2 chart extraction response: {e}")
+                logger.error(f"Failed to parse chart response as JSON: {e}")
+                logger.debug(f"Response content: {response.content[:500]}")
+                # Mark for manual capture - couldn't parse response
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=pass2_response.model,
-                    prompt_tokens=total_prompt_tokens,
-                    completion_tokens=total_completion_tokens,
-                    cost_usd=total_cost_usd,
-                    latency_ms=total_latency_ms,
-                    parse_success=False,
-                    manual_capture_reason="pass2_json_parse_error",
-                )
                 return
 
-            # Parse chart response
-            chart_series_list, chart_annotations, title, x_axis_label, y_axis_label, confidence = (
-                self._parse_chart_response(chart_response, classification)
-            )
-            total_points = sum(len(s.points) for s in chart_series_list)
+            # Extract chart metadata
+            chart_type_str = chart_response.get("chart_type", "unknown")
+            try:
+                chart_type = ChartType(chart_type_str)
+            except ValueError:
+                logger.warning(f"Unknown chart type: {chart_type_str}")
+                chart_type = ChartType.UNKNOWN
 
-            # Pie chart sum check
-            if classification.chart_type.value == "pie" and chart_series_list:
-                pie_sum = sum(p.y for s in chart_series_list for p in s.points)
-                if abs(pie_sum - 100) > 5:
-                    logger.warning(
-                        f"Pie chart {asset.img_id}: sum of slice values = {pie_sum:.1f} "
-                        f"(expected ~100)"
+            title = chart_response.get("title", "")
+            x_axis_label = chart_response.get("x_axis_label", "")
+            y_axis_label = chart_response.get("y_axis_label", "")
+
+            # Parse annotations
+            annotations_data = chart_response.get("annotations", [])
+            chart_annotations: list[ChartAnnotation] = []
+            for ann_item in annotations_data:
+                ann_text = str(ann_item.get("text", ""))
+                if not ann_text:
+                    continue
+                ann_value = ann_item.get("value")
+                if ann_value is not None:
+                    try:
+                        ann_value = float(ann_value)
+                    except (ValueError, TypeError):
+                        ann_value = None
+                chart_annotations.append(
+                    ChartAnnotation(
+                        text=ann_text,
+                        value=ann_value,
+                        unit=str(ann_item.get("unit", "")),
+                        category=str(ann_item.get("category", "")),
+                        period=str(ann_item.get("period", "")),
                     )
+                )
 
-            # No data at all — mark for manual capture
+            # Extract series data
+            series_data = chart_response.get("series", [])
+            if not series_data and not chart_annotations:
+                # No labeled values AND no annotations - mark for manual capture
+                logger.info(
+                    f"Chart {asset.img_id} has no labeled values or annotations, marking for manual capture"
+                )
+                asset.processed = True
+                asset.confidence = 0.0
+                asset.requires_manual_capture = True
+                return
+
+            # Build ChartSeries and DataPoint objects
+            chart_series_list: list[ChartSeries] = []
+            total_points = 0
+
+            for series_item in series_data:
+                series_name = series_item.get("name", "")
+                points_data = series_item.get("points", [])
+
+                data_points: list[DataPoint] = []
+                for point_item in points_data:
+                    # Extract x, y, label
+                    x_val = str(point_item.get("x", ""))
+                    y_val = point_item.get("y", 0.0)
+                    label_val = point_item.get("label")
+
+                    # Convert y to float if it's not already
+                    try:
+                        if isinstance(y_val, str):
+                            # Strip common non-numeric chars (%, $, commas)
+                            y_cleaned = (
+                                y_val.replace("$", "").replace("%", "").replace(",", "").strip()
+                            )
+                            y_val = float(y_cleaned)
+                        else:
+                            y_val = float(y_val)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Failed to parse y value: {point_item.get('y')}, skipping point"
+                        )
+                        continue
+
+                    data_point = DataPoint(x=x_val, y=y_val, label=label_val)
+                    data_points.append(data_point)
+                    total_points += 1
+
+                if data_points:
+                    chart_series = ChartSeries(name=series_name, points=data_points)
+                    chart_series_list.append(chart_series)
+
+            # If we still have no points AND no annotations after parsing, mark for manual
             if total_points == 0 and not chart_annotations:
                 logger.info(
-                    f"Chart {asset.img_id} has no valid data points or annotations, marking for manual capture"
+                    f"Chart {asset.img_id} has no valid data points or annotations after parsing, marking for manual capture"
                 )
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                asset.extraction_meta = ImageExtractionMeta(
-                    vision_model=pass2_response.model,
-                    prompt_tokens=total_prompt_tokens,
-                    completion_tokens=total_completion_tokens,
-                    cost_usd=total_cost_usd,
-                    latency_ms=total_latency_ms,
-                    parse_success=True,
-                    manual_capture_reason="no_labeled_values",
-                )
                 return
 
-            # Determine extraction mode
-            has_interpolated = any(p.interpolated for s in chart_series_list for p in s.points)
-            extraction_mode = "interpolated" if has_interpolated else "exact"
-
-            # Build ChartData
-            asset.chart_data = ChartData(
-                chart_type=classification.chart_type,
+            # Build ChartData object
+            chart_data = ChartData(
+                chart_type=chart_type,
                 title=title,
                 x_axis_label=x_axis_label,
                 y_axis_label=y_axis_label,
                 series=chart_series_list,
                 annotations=chart_annotations,
             )
-            asset.confidence = confidence
+            asset.chart_data = chart_data
+
+            # Compute confidence from extraction quality
+            # Use confidence from response if provided, otherwise compute based on data completeness
+            confidence = chart_response.get(
+                "confidence", 0.8
+            )  # Default to 0.8 for successful extraction
+            asset.confidence = float(confidence)
+
+            # Don't mark for manual capture if we successfully extracted labeled values
             asset.requires_manual_capture = False
             asset.processed = True
-            asset.extraction_meta = ImageExtractionMeta(
-                vision_model=pass2_response.model,
-                prompt_tokens=total_prompt_tokens,
-                completion_tokens=total_completion_tokens,
-                cost_usd=total_cost_usd,
-                latency_ms=total_latency_ms,
-                parse_success=True,
-                extraction_mode=extraction_mode,
-            )
 
             logger.info(
-                f"Processed chart {asset.img_id} (two-pass): type={classification.chart_type.value}, "
+                f"Processed chart {asset.img_id}: type={chart_type.value}, "
                 f"series={len(chart_series_list)}, points={total_points}, "
-                f"confidence={confidence:.2f}, mode={extraction_mode}"
+                f"confidence={asset.confidence:.2f}"
             )
 
         except Exception as e:
@@ -967,11 +736,6 @@ time periods, or definitions that help interpret the chart's data.
         """
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
-
-        # Sync config from context so vision_client property picks up provider settings.
-        # Only update if not already injected (injected clients take precedence in tests).
-        if self._vision_client is None and context.config is not None:
-            self._config = context.config
 
         start_time = datetime.now(UTC)
         errors: list[str] = []
@@ -1023,7 +787,6 @@ time periods, or definitions that help interpret the chart's data.
                         if msg not in warnings:
                             warnings.append(msg)
                             logger.warning(msg)
-                        asset.extraction_meta = ImageExtractionMeta(skip_reason="api_limit")
                         skipped_count += 1
                         continue
                 elif asset.classification == ImageClassification.CHART:
@@ -1032,7 +795,6 @@ time periods, or definitions that help interpret the chart's data.
                         if msg not in warnings:
                             warnings.append(msg)
                             logger.warning(msg)
-                        asset.extraction_meta = ImageExtractionMeta(skip_reason="api_limit")
                         skipped_count += 1
                         continue
 
@@ -1045,8 +807,8 @@ time periods, or definitions that help interpret the chart's data.
                         if asset.ocr_table is not None:
                             context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
-                        self.process_chart(asset, config=context.config)
-                        # _chart_call_count is incremented inside process_chart (once per pass)
+                        self.process_chart(asset)
+                        self._chart_call_count += 1
                     else:
                         # Unknown type - skip
                         logger.debug(
@@ -1075,28 +837,6 @@ time periods, or definitions that help interpret the chart's data.
 
             duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
 
-            context.ocr_calls += self._ocr_call_count
-            context.vision_calls += self._chart_call_count
-
-            # Aggregate telemetry from all processed images
-            total_cost_usd = sum(
-                img.extraction_meta.cost_usd
-                for img in context.images
-                if img.extraction_meta is not None
-            )
-            skip_reasons: dict[str, int] = {}
-            for img in context.images:
-                if img.extraction_meta and img.extraction_meta.skip_reason:
-                    reason = img.extraction_meta.skip_reason
-                    skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
-
-            images_processed = sum(1 for img in context.images if img.processed)
-            images_skipped = sum(
-                1
-                for img in context.images
-                if img.extraction_meta and img.extraction_meta.skip_reason
-            )
-
             return StageResult(
                 stage=PipelineStage.OCR_CHART_EXTRACTION,
                 success=len(errors) == 0,
@@ -1111,10 +851,6 @@ time periods, or definitions that help interpret the chart's data.
                     "total_api_calls": self._api_call_count,
                     "manual_capture_count": manual_capture_count,
                     "skipped_count": skipped_count,
-                    "images_processed": images_processed,
-                    "images_skipped": images_skipped,
-                    "skip_reasons": skip_reasons,
-                    "total_cost_usd": total_cost_usd,
                 },
             )
 

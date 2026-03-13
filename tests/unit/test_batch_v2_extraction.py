@@ -17,7 +17,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.batch_v2_extraction import BatchConfig, BatchStats, BatchV2Runner  # noqa: E402
+from scripts.batch_v2_extraction import BatchConfig, BatchStats, BatchV2Runner
 
 
 class TestBatchConfig:
@@ -101,7 +101,7 @@ class TestBatchV2RunnerQueryFilings:
         with patch("src.infra.db.DatabaseAdapter", return_value=mock_db):
             runner._db_for_test = mock_db  # Inject mock
             # Bypass actual DB call
-            assert hasattr(runner, "query_filings")
+            runner.query_filings.__func__  # Just check it exists
 
         # Test the filtering logic directly (resume/limit are pure Python)
         all_filings = filings[:]
@@ -114,7 +114,7 @@ class TestBatchV2RunnerQueryFilings:
 
     def test_limit_applied(self):
         config = BatchConfig(limit=3)
-        _runner = self._make_runner(config)
+        runner = self._make_runner(config)
 
         all_filings = [{"filing_id": i, "company_name": f"Co{i}", "company_id": i, "cik": str(i)} for i in range(1, 11)]
 

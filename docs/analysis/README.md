@@ -108,7 +108,7 @@ Contains historical evaluation reports that have been superseded:
 - `CORRECTED_ASSESSMENT.md` - Evaluation process artifact
 - `EVALUATION_RECONCILIATION.md` - Reconciliation of findings
 
-Note: The `docs/archive/analysis/evaluation-reports/` subfolder referenced here does not exist in the current archive structure. The archived evaluation reports listed above are located directly in `docs/archive/` or in git history. The authoritative archive index is `docs/archive/README.md`.
+See `docs/archive/analysis/evaluation-reports/README.md` for details.
 
 ---
 
@@ -126,9 +126,19 @@ Note: The `docs/archive/analysis/evaluation-reports/` subfolder referenced here 
 
 ### Next Steps
 
-> **Note:** The pre-deployment work items listed here were completed as part of the v2.7 release. The V1 extraction pipeline (`src/extraction/`) was removed in v2.7. Active V2 work items are tracked in `ops/ITERATION_CONTEXT.md`.
+**Before Production Deployment** (8-10 hours):
+1. Fix 13 test failures (1-2h)
+2. Fix 2 type safety issues (30min)
+3. Document EA-2b/EA-3b integration plans (2h)
+4. Set up production monitoring (4h)
 
-For current improvement plans, refer to `docs/analysis/COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md`.
+**Post-Deployment Priority** (14-19 hours):
+1. Integrate EA-2 CandidateDetector (6-8h)
+2. Integrate EA-3 ContextExtractor (4-6h)
+3. Load GR-17 validation filings (2-3h)
+4. Add definition segment bonus (2h)
+
+**See comprehensive report for detailed improvement plan.**
 
 ---
 
@@ -147,4 +157,4 @@ For current improvement plans, refer to `docs/analysis/COMPREHENSIVE_EVALUATION_
 ---
 
 **Maintained By**: Claude Code
-**Last Updated**: 2026-03-12
+**Last Updated**: 2026-02-09

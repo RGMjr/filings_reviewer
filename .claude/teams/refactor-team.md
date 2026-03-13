@@ -7,7 +7,7 @@ testing and review to catch regressions early.
 
 | Agent | Role | Model | Max Turns |
 |-------|------|-------|-----------|
-| `general-purpose` | Implements refactoring changes | sonnet | 30 |
+| `general-purpose` | Implements refactoring changes | inherit | 30 |
 | `test-runner` | Runs tests, reports failures | haiku | 10 |
 | `extraction-reviewer` | Reviews code quality (if extraction files touched) | sonnet | 12 |
 

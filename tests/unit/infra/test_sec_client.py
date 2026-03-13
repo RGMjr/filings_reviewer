@@ -1785,7 +1785,7 @@ class TestImageCaching:
         client = SECClient(http_client=mock_client, image_cache_dir=cache_dir)
 
         # Make write_bytes raise an error
-        _original_write_bytes = Path.write_bytes
+        original_write_bytes = Path.write_bytes
 
         def failing_write_bytes(self, data):
             raise OSError("Disk full")

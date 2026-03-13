@@ -1,10 +1,9 @@
 ---
 name: dev-implementer
 description: General-purpose implementation agent for non-extraction code changes (web routes, database, infra, scripts). Self-tests before signaling completion.
-model: sonnet
+model: inherit
 tools: Bash, Read, Write, Edit, Grep, Glob
 maxTurns: 25
-memory: project
 ---
 
 # Dev Implementer

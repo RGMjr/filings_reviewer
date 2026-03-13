@@ -29,7 +29,7 @@ If no gold standard file exists:
 
 ### Step 2: Run Validation
 ```bash
-python3 scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh --verbose
+python scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh --verbose
 ```
 
 ### Step 3: Capture Metrics
@@ -61,7 +61,7 @@ Edit `ops/VALIDATION_PLAN.md`:
 ### Step 6: Backpressure Check
 Compare against baseline (if exists):
 ```bash
-python3 scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh --baseline
+python scripts/validate_against_gold_standard.py --cik <CIK> --mode fresh --baseline
 ```
 
 If regression detected (>1% drop in any metric):

@@ -25,7 +25,6 @@ import logging
 import os
 import signal
 import sys
-import tempfile
 from pathlib import Path
 
 # Add project root to path
@@ -62,7 +61,7 @@ def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | N
         rows = db.query(
             """
             SELECT f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                   f.html_storage_path, f.html_content, c.company_name, c.cik, c.company_id
+                   f.html_storage_path, c.company_name, c.cik, c.company_id
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.filing_id = %(filing_id)s
@@ -73,7 +72,7 @@ def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | N
         rows = db.query(
             """
             SELECT f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                   f.html_storage_path, f.html_content, c.company_name, c.cik, c.company_id
+                   f.html_storage_path, c.company_name, c.cik, c.company_id
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.accession_number = %(accession)s
@@ -90,40 +89,20 @@ def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | N
 
 
 def resolve_html_path(filing: dict) -> Path:
-    """Resolve HTML file path for a filing.
-
-    Priority order:
-    1. html_content from database (written to a temp file)
-    2. html_storage_path on the local filesystem
-    3. Gold standard directory
-    4. data/filings directory
-
-    Note: If html_content is used, a temporary file is created. The caller
-    should clean up the temp file when done (path will have a .htm suffix
-    in the system temp directory).
-    """
-    # Priority 1: html_content stored in database
-    html_content = filing.get("html_content")
-    if html_content is not None:
-        tmp = tempfile.NamedTemporaryFile(suffix=".htm", delete=False, mode="w", encoding="utf-8")
-        tmp.write(html_content)
-        tmp.close()
-        return Path(tmp.name)
-
-    # Priority 2: html_storage_path on local filesystem
+    """Resolve HTML file path for a filing."""
     storage_path = filing.get("html_storage_path")
     if storage_path:
         path = Path(storage_path)
         if path.exists():
             return path
 
-    # Priority 3: Gold standard directory
+    # Try gold standard directory
     company_name = filing["company_name"].replace(" ", "_")
     gold_path = PROJECT_ROOT / "data" / "gold_standard" / company_name / "filing.html"
     if gold_path.exists():
         return gold_path
 
-    # Priority 4: data/filings directory
+    # Try data/filings directory
     accession = filing["accession_number"].replace("-", "")
     filings_path = PROJECT_ROOT / "data" / "filings" / accession / "primary.htm"
     if filings_path.exists():
@@ -243,9 +222,6 @@ def main():
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Track whether we created a temp file from html_content (needs cleanup)
-    _is_temp_file = filing.get("html_content") is not None
-
     logger.info(f"Processing: {filing['company_name']} (filing_id={filing['filing_id']})")
     logger.info(f"HTML path: {html_path}")
 
@@ -277,12 +253,6 @@ def main():
     finally:
         if args.timeout > 0:
             signal.alarm(0)  # Cancel any pending alarm
-        # Clean up temp file created from html_content
-        if _is_temp_file:
-            try:
-                html_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     # Print summary
     print_summary(result, filing)

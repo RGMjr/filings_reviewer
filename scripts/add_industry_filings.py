@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
+from src.universe.universe_builder import UniverseBuilder
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def main():
             if filings:
                 logger.info(f"  ✓ Has S-1/F-1: {filings[0]['form_type']} ({filings[0]['filing_date']})")
             else:
-                logger.info("  ✗ No S-1/F-1 filings found")
+                logger.info(f"  ✗ No S-1/F-1 filings found")
         else:
             logger.info(f"✗ {target['name']} ({target['industry']}) NOT in database")
 

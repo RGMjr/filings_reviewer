@@ -7,8 +7,8 @@ config, classifiers, or FP rules is validated against gold standard before commi
 
 | Agent | Role | Model | Max Turns |
 |-------|------|-------|-----------|
-| `extraction-implementer` | Makes code/config changes, self-tests | sonnet | 20 |
-| `gold-standard-validator` | Validates quality, detects regressions | sonnet | 15 |
+| `extraction-implementer` | Makes code/config changes, self-tests | inherit | 20 |
+| `gold-standard-validator` | Validates quality, detects regressions | inherit | 15 |
 | `extraction-reviewer` | Reviews against 5 extraction rules (optional) | sonnet | 12 |
 
 ## Task Sequence

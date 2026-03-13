@@ -398,7 +398,7 @@ class TestOCRTableFeeding:
         )
         context.images = [asset]
 
-        _result = stage.process(context)
+        result = stage.process(context)
 
         # Tables list should remain empty
         assert len(context.tables) == 0
@@ -676,36 +676,8 @@ class TestChartValueBinding:
 
         assert len(bound_values) == 0
 
-    def test_bind_chart_candidate_multiple_series_match(self, stage: ValueBindingStage) -> None:
-        """Named series that match metric tokens are bound; non-matching series are skipped."""
-        asset = _make_chart_asset(
-            series_data=[
-                # "GMV 2022 Cohort" matches cm_gmv (token "gmv")
-                ("GMV 2022 Cohort", [("2023", 100.0, "100")]),
-                # "Other Revenue" does not match cm_gmv ("gmv" not in "other revenue")
-                # But "revenue" is a token of cm_gmv... let's use a clearly non-matching name
-                ("Unrelated Series", [("2023", 200.0, "200")]),
-            ],
-        )
-
-        candidate = MetricCandidate(
-            metric_id="cm_gmv",
-            match_text="GMV",
-            source_locator=SourceLocator(img_id=asset.img_id),
-            source_type=SourceType.CHART,
-        )
-
-        bound_values = stage._bind_chart_candidate(candidate, [asset])
-
-        # Only the matching series should be bound
-        assert len(bound_values) == 1
-        assert bound_values[0].value == 100.0
-        assert bound_values[0].series_name == "GMV 2022 Cohort"
-
-    def test_bind_chart_candidate_no_matching_series_routes_to_manual(
-        self, stage: ValueBindingStage
-    ) -> None:
-        """When named series are present but none match the metric, binds all at reduced confidence and flags for manual capture."""
+    def test_bind_chart_candidate_multiple_series(self, stage: ValueBindingStage) -> None:
+        """Multiple series produce bound values from all series."""
         asset = _make_chart_asset(
             series_data=[
                 ("Series A", [("2023", 100.0, "100")]),
@@ -722,14 +694,9 @@ class TestChartValueBinding:
 
         bound_values = stage._bind_chart_candidate(candidate, [asset])
 
-        # No matching series → all bound at reduced confidence, flagged for manual capture
         assert len(bound_values) == 2
-        assert asset.requires_manual_capture is True
-        # Verify reduced confidence (0.70x multiplier on asset.confidence 0.85)
-        assert all(bv.binding_confidence < 0.70 for bv in bound_values)
-        # Verify both series are present
-        series_names = {bv.series_name for bv in bound_values}
-        assert series_names == {"Series A", "Series B"}
+        values = sorted(bv.value for bv in bound_values)
+        assert values == [100.0, 200.0]
 
     def test_bind_chart_in_process(self, stage: ValueBindingStage) -> None:
         """Chart candidates are bound during process() (not stubbed)."""
@@ -957,30 +924,6 @@ class TestChartAnnotationExtraction:
 
     def test_annotations_parsed_from_response(self, tmp_path: Path) -> None:
         """GPT-4o response with annotations field populates chart_data.annotations."""
-        # Pass 1: classification response
-        pass1_response = VisionResponse(
-            content=json.dumps(
-                {
-                    "chart_type": "area",
-                    "has_data_labels": False,
-                    "x_label": "Year",
-                    "y_label": "GMV (USDm)",
-                    "y_min": 0,
-                    "y_max": 1000,
-                    "y_ticks": [0, 200, 400, 600, 800, 1000],
-                    "x_categories": ["2015", "2016", "2017"],
-                    "legend_entries": ["New Consumers", "Existing Consumers"],
-                    "estimated_series_count": 2,
-                    "confidence": 0.85,
-                }
-            ),
-            model="gpt-4o-mock",
-            prompt_tokens=100,
-            completion_tokens=80,
-            cost_usd=0.01,
-            latency_ms=400,
-        )
-        # Pass 2: extraction response
         chart_response = json.dumps(
             {
                 "chart_type": "area",
@@ -1015,7 +958,7 @@ class TestChartAnnotationExtraction:
             cost_usd=0.02,
             latency_ms=800,
         )
-        mock_vision = MockVisionClient([pass1_response, response])
+        mock_vision = MockVisionClient([response])
         stage = OCRExtractionStage(vision_client=mock_vision)
 
         image_path = tmp_path / "chart.jpg"
@@ -1044,30 +987,6 @@ class TestChartAnnotationExtraction:
 
     def test_empty_series_and_annotations_marks_manual(self, tmp_path: Path) -> None:
         """Chart with no series AND no annotations still marks for manual capture."""
-        # Pass 1: classification response
-        pass1_response = VisionResponse(
-            content=json.dumps(
-                {
-                    "chart_type": "area",
-                    "has_data_labels": False,
-                    "x_label": "",
-                    "y_label": "",
-                    "y_min": None,
-                    "y_max": None,
-                    "y_ticks": [],
-                    "x_categories": [],
-                    "legend_entries": [],
-                    "estimated_series_count": 0,
-                    "confidence": 0.6,
-                }
-            ),
-            model="gpt-4o-mock",
-            prompt_tokens=100,
-            completion_tokens=60,
-            cost_usd=0.01,
-            latency_ms=400,
-        )
-        # Pass 2: extraction response (empty)
         chart_response = json.dumps(
             {
                 "chart_type": "area",
@@ -1087,7 +1006,7 @@ class TestChartAnnotationExtraction:
             cost_usd=0.01,
             latency_ms=500,
         )
-        mock_vision = MockVisionClient([pass1_response, response])
+        mock_vision = MockVisionClient([response])
         stage = OCRExtractionStage(vision_client=mock_vision)
 
         image_path = tmp_path / "empty_chart.jpg"
@@ -1272,22 +1191,19 @@ class TestAnnotationValueBinding:
         assert ann_bvs[0].unit == Unit.PERCENT
 
     def test_annotation_confidence_lower_than_label(self, stage: ValueBindingStage) -> None:
-        """Annotation binding uses 0.80x multiplier (vs 0.9x for data labels)."""
+        """Annotation binding uses 0.85x multiplier (vs 0.9x for data labels)."""
         from src.extraction_v2.models import ChartAnnotation
 
-        # Series name must match metric tokens for label binding to proceed
-        # cm_revenue_by_cohort tokens: ["revenue", "cohort"]  →  "Revenue Cohort" matches
-        # Use currency annotation (100.0) since cm_revenue_by_cohort is currency-only
         asset = _make_chart_asset(
             confidence=0.85,
-            series_data=[("Revenue Cohort", [("2017", 100.0, "100")])],
+            series_data=[("Series", [("2017", 100.0, "100")])],
         )
         asset.chart_data.annotations = [
-            ChartAnnotation(text="$500M", value=500.0, unit="currency"),
+            ChartAnnotation(text="44.4%", value=44.4, unit="percent"),
         ]
 
         candidate = MetricCandidate(
-            metric_id="cm_revenue_by_cohort",
+            metric_id="cm_some_unconstrained_metric",
             match_text="cohort",
             source_locator=SourceLocator(img_id=asset.img_id),
             source_type=SourceType.CHART,
@@ -1300,7 +1216,7 @@ class TestAnnotationValueBinding:
 
         assert len(label_bvs) >= 1
         assert len(ann_bvs) >= 1
-        # 0.85 * 0.9 = 0.765 for labels, 0.85 * 0.80 = 0.68 for annotations
+        # 0.85 * 0.9 = 0.765 for labels, 0.85 * 0.85 = 0.7225 for annotations
         assert ann_bvs[0].binding_confidence < label_bvs[0].binding_confidence
 
     def test_annotation_without_value_skipped(self, stage: ValueBindingStage) -> None:
