@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from src.shared.keyword_config import is_metric_deprecated
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
     METRIC_REQUIRED_CONTEXT,
@@ -17,6 +16,7 @@ from src.review.keyword_matching import (
     KeywordMatcher,
 )
 from src.review.number_parsing import NumberMatch
+from src.shared.keyword_config import is_metric_deprecated
 
 # =============================================================================
 # KeywordMatcher.find_all_keywords Tests
@@ -1688,8 +1688,7 @@ class TestRequiredContext:
 
     def test_revenue_synonyms_have_required_context(self):
         """All non-deprecated revenue synonym metrics should have required_context in YAML config."""
-        from src.shared.keyword_config import get_required_context
-        from src.shared.keyword_config import is_metric_deprecated
+        from src.shared.keyword_config import get_required_context, is_metric_deprecated
 
         # Deprecated metrics no longer have patterns/required_context
         raw_context = get_required_context()
@@ -2086,7 +2085,7 @@ class TestShouldExcludeWithMarkerRowParser:
             ("575", 50),
         ]
 
-        for raw_text, expected_approx_pos in values:
+        for raw_text, _expected_approx_pos in values:
             actual_pos = text.find(raw_text)
             should_exclude, reason = matcher.should_exclude_for_number_context(
                 metric_id="cm_large_customers_period_end",

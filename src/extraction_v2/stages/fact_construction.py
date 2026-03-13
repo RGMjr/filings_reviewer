@@ -16,6 +16,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from src.extraction_v2.models import (
     ImageAsset,
     MetricFact,
     ReviewStatus,
+    Scope,
     SectionType,
     SourceType,
 )
@@ -39,6 +41,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+# Cohort pattern: "2019 Cohort", "Cohort 2019", "Year 1", etc.
+_COHORT_PATTERN = re.compile(
+    r"\b(19|20)\d{2}\b.*[Cc]ohort|[Cc]ohort.*\b(19|20)\d{2}\b|\b[Yy]ear\s+\d+\b"
+)
+
+# Scope hint keywords that map series/annotation names to scope_detail
+_SCOPE_HINT_KEYWORDS = ("New Consumers", "Enterprise", "SMB", "Existing")
 
 # Confidence adjustment constants
 MDA_SECTION_BONUS: float = 0.10
@@ -162,6 +172,31 @@ class FactConstructionStage:
             bv, segment_lookup, table_lookup, image_lookup, context.config
         )
 
+        # Derive cohort_def and scope_detail from chart series/annotation metadata
+        cohort_def: str | None = None
+        scope_detail: str | None = None
+        scope = Scope.COMPANY
+
+        # Check series_name for cohort pattern
+        series_or_category = bv.series_name or bv.annotation_category
+        if series_or_category:
+            if _COHORT_PATTERN.search(series_or_category):
+                cohort_def = series_or_category
+                scope = Scope.COHORT
+            else:
+                # Check for scope hint keywords
+                for hint in _SCOPE_HINT_KEYWORDS:
+                    if hint.lower() in series_or_category.lower():
+                        scope_detail = series_or_category
+                        scope = Scope.CUSTOMER_TYPE
+                        break
+
+        # Interpolated values always require review
+        requires_review = True
+        review_reason: str | None = None
+        if bv.interpolated:
+            review_reason = "interpolated_chart_value"
+
         # Build the fact
         return MetricFact(
             doc_id=context.document.doc_id if context.document else "",
@@ -172,12 +207,16 @@ class FactConstructionStage:
             period_type=bv.period_type,
             period_start=bv.period_start,
             period_end=bv.period_end,
+            scope=scope,
+            scope_detail=scope_detail,
+            cohort_def=cohort_def,
             source_type=source_type,
             source_locator=bv.source_locator,
             evidence_pack=evidence,
             confidence=confidence,
             extraction_method=ExtractionMethod.EXACT_MATCH,
-            requires_review=True,
+            requires_review=requires_review,
+            review_reason=review_reason,
             review_status=ReviewStatus.PENDING_REVIEW,
         )
 
@@ -332,15 +371,20 @@ class FactConstructionStage:
         if loc.img_id:
             asset = image_lookup.get(loc.img_id)
             if asset is not None:
-                # Build snippet from chart title
+                # Build snippet from chart title and series name
                 chart_title = ""
                 if asset.chart_data and asset.chart_data.title:
                     chart_title = asset.chart_data.title
+                series_part = (
+                    f"<span class='series-name'>{bv.series_name}</span> "
+                    if bv.series_name
+                    else ""
+                )
                 snippet_html = (
                     f"<figure><figcaption>{chart_title}</figcaption>"
-                    f"<mark>{bv.value_raw}</mark></figure>"
+                    f"{series_part}<mark>{bv.value_raw}</mark></figure>"
                     if chart_title
-                    else f"<mark>{bv.value_raw}</mark>"
+                    else f"{series_part}<mark>{bv.value_raw}</mark>"
                 )
                 # Populate context_before from nearby text
                 if asset.nearby_text:

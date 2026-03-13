@@ -49,7 +49,7 @@ def _query_v1(conn, filing_ids: list[int]) -> list[dict]:
     """
     rows = conn.execute(sql, (filing_ids,)).fetchall()
     cols = ["filing_id", "metric_name", "value", "period_start", "period_end", "unit"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(zip(cols, r, strict=True)) for r in rows]
 
 
 def _query_v2(conn, filing_ids: list[int], min_confidence: float) -> list[dict]:
@@ -61,7 +61,7 @@ def _query_v2(conn, filing_ids: list[int], min_confidence: float) -> list[dict]:
     """
     rows = conn.execute(sql, (filing_ids, min_confidence)).fetchall()
     cols = ["filing_id", "canonical_metric_id", "value", "period_start", "period_end", "unit", "confidence"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(zip(cols, r, strict=True)) for r in rows]
 
 
 def _periods_overlap(start1, end1, start2, end2) -> bool:
@@ -93,7 +93,6 @@ def _compare_filing(
     resolve_fn,
 ) -> dict:
     """Compare V1 and V2 results for a single filing."""
-    from src.shared.keyword_config import resolve_to_canonical
 
     # Resolve V1 metric names to canonical IDs
     v1_resolved = [
@@ -259,7 +258,7 @@ def main() -> None:
         if (overall_precision + overall_recall) > 0 else 0.0
     )
 
-    print(f"\nV1/V2 Comparison Report")
+    print("\nV1/V2 Comparison Report")
     print(f"{'=' * 60}")
     print(f"Filings compared:  {len(results)}")
     print(f"Min V2 confidence: {args.min_confidence}")

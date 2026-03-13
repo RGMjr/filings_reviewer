@@ -1,10 +1,8 @@
-
-
 # 06_QA_AND_QUALITY_MODEL
 
-Version: 0.1  
-Date: 2025-11-15  
-Owner: Rob Markey  
+Version: 0.3
+Date: 2026-03-11
+Owner: Rob Markey
 
 ## 1. Purpose
 
@@ -17,7 +15,7 @@ It answers four questions:
 3. What numeric quality targets are we aiming for in Phase 1?
 4. When do we require manual review vs accepting automated output?
 
-`07_TEST_STRATEGY_AND_FIX_PROCESS.md` will describe **how** we measure and enforce this model (gold standards, tests, and defect process).
+`development/testing.md` describes **how** we measure and enforce this model (gold standards, tests, and defect process).
 
 ---
 
@@ -183,8 +181,9 @@ Metrics:
 
 We measure separately for:
 
-- Table-derived values (`source_type='table'`)
+- Table-derived values (`source_type='html_table'` or `source_type='ocr_table'`)
 - Text-derived values (`source_type='text'`)
+- Chart-derived values (`source_type='chart'`) — image/OCR extraction via V2 image pipeline
 
 ### 6.3 Targets (Phase 1)
 
@@ -316,7 +315,7 @@ Provenance means we can always trace any analytic result back to:
 We check:
 
 - For a random sample of `metric_values` rows, can we:
-  - Follow `source_segment_id` to a segment with non-empty `raw_text` and either `html_selector` or offsets?
+  - Follow `source_segment_id` to a segment with non-empty `raw_text` and a valid `SourceLocator` (XPath-based `dom_locator`)?
 - For a random sample of `filing_metric_incidence` records, can we:
   - Identify at least one definition/methodology segment when `metric_disclosed_flag = true`?
 
@@ -333,19 +332,26 @@ We check:
 
 ## 10. QA states and flags
 
-### 10.1 Per-value QA (`metric_values.qa_status`)
+### 10.1 Per-fact Review Status (V2: `MetricFact.review_status`)
 
-We standardize `qa_status` values:
+In the V2 pipeline, extracted facts carry a `ReviewStatus` enum value (not a string `qa_status`):
 
-- `unreviewed` – Default after extraction, before QA
-- `pass` – Passes all applicable rule-based checks
-- `warning` – Data is plausible but some checks failed or LLM uncertainty is high
-- `fail` – Data is likely wrong or inconsistent
+- `auto_accepted` – High confidence (≥ configured threshold, default 0.90); no human review needed
+- `pending_review` – Awaiting human review (default for lower-confidence facts)
+- `accepted` – Human accepted the fact
+- `rejected` – Human rejected the fact
+- `corrected` – Human corrected the value or metric assignment
 
-Rule-based checks may include:
+Each fact also carries a `confidence` float (0.0–1.0) derived from keyword match strength, source type, and unit compatibility checks.
+
+**EvidencePack**: Every `MetricFact` is linked to an `EvidencePack` containing highlighted HTML context, raw text, and the XPath `SourceLocator`. This is the primary audit artifact — it enables human reviewers to verify extracted values without navigating the original filing.
+
+**Image/chart extraction quality**: For `source_type='chart'`, facts carry additional metadata via `ImageExtractionMeta` (model used, token cost, latency, skip reason if applicable). Chart facts have lower default confidence and higher human review rates.
+
+Rule-based checks that feed into confidence and review decisions:
 
 - Allowed value ranges (e.g., percentages 0–100)
-- Unit consistency with metric type
+- Unit compatibility with metric type
 - Internal checks (e.g., sum of cohort counts within 5% of total if both are available)
 
 ### 10.2 Filing–metric quality scores
@@ -400,8 +406,9 @@ Manual review should be triggered when:
 
 Manual review outcomes must be recorded via:
 
-- Updated `metric_values` and `metric_definitions` rows with `extraction_method = 'manual_review'`
-- Updated `qa_status` and quality scores
+- Updated `v2_metric_facts` rows with `review_status = 'corrected'` or `'accepted'`/`'rejected'`
+- `extraction_method` values in the V2 pipeline follow the `ExtractionMethod` enum: `exact_match`, `alias_match`, `embedding`, `llm`, `manual`
+- Updated quality scores in `filing_metric_incidence`
 
 ---
 
@@ -424,26 +431,24 @@ Before moving from pilot to full Phase 1 run:
 If these gates are not met, the system is not ready for a full Phase 1 run. We then:
 
 - Identify failure modes (by component and pattern)
-- Add tests and fixes (to be detailed in `07_TEST_STRATEGY_AND_FIX_PROCESS.md`)
+- Add tests and fixes (see `development/testing.md`)
 - Re-run the pilot sample until gates are satisfied
 
 ---
 
 ## 13. Open questions
 
-Open items to refine in later iterations:
+Items resolved during V2 implementation:
 
-1. Exact size and composition of the labeled gold-standard sample:
-   - How many filings?
-   - Which industries and years?
+1. **Gold standard sample composition** — RESOLVED: 12 filings covering multiple industries (SaaS, e-commerce, marketplace, fintech, foreign private issuers). See `data/gold_standard/` for full list. Two baseline modes: text-only (`v2_baseline.json`) and image-enabled (`v2_baseline_with_images.json`).
 
-2. Whether to weight different quality dimensions when computing an overall quality index.
+2. **Quality dimension weighting** — DEFERRED to Phase 2. Current implementation uses the 0–3 scores independently; no composite index is computed yet.
 
-3. How aggressively to use LLM-based scoring vs rule-only scoring for quality.
+3. **LLM vs rule-only scoring** — PARTIALLY RESOLVED: V2 `V2QualityScorer` writes all five rubric scores derived from rule-based signals (keyword presence, alignment flags, definition segment proximity). LLM-based scoring is not yet implemented.
 
-4. How to communicate uncertainty and QA flags in external publications (visual conventions, footnotes).
+4. **Uncertainty communication** — RESOLVED for internal use: `review_status` and `confidence` on each fact. External publication conventions TBD by CMASB stakeholders.
 
-These will be specified in coordination with:
+These will continue to be refined in coordination with:
 
-- `07_TEST_STRATEGY_AND_FIX_PROCESS.md`
 - CMASB stakeholder expectations
+- Phase 2 design (10-K extension)

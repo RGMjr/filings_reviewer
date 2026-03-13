@@ -1,7 +1,7 @@
 ---
 name: gold-standard-validator
 description: Runs gold standard validation, compares against baseline, diagnoses regressions. Use after changes to extraction code, keyword config, or candidate generation.
-model: inherit
+model: sonnet
 tools: Bash, Read, Grep, Glob
 memory: project
 maxTurns: 15

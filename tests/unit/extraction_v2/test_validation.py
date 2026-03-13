@@ -84,7 +84,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success
         assert fact.requires_review is False
@@ -99,7 +99,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.90)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
@@ -110,7 +110,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.89)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert fact.review_status == ReviewStatus.PENDING_REVIEW
@@ -123,7 +123,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.15)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert fact.review_status == ReviewStatus.PENDING_REVIEW
@@ -135,7 +135,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.14)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert fact.review_status == ReviewStatus.PENDING_REVIEW
@@ -148,7 +148,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.0)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "auto-reject candidate" in fact.review_reason.lower()
@@ -161,7 +161,7 @@ class TestConfidenceRouting:
         low_conf = create_valid_fact(confidence=0.10)
         context = MockPipelineContext(deduplicated_facts=[high_conf, mid_conf, low_conf])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert high_conf.requires_review is False
         assert mid_conf.requires_review is True
@@ -180,7 +180,7 @@ class TestSchemaValidation:
         fact = create_valid_fact(canonical_metric_id="", confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "canonical_metric_id" in fact.review_reason
@@ -192,7 +192,7 @@ class TestSchemaValidation:
         fact = create_valid_fact(value=None, value_raw="", confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "value" in fact.review_reason.lower()
@@ -204,7 +204,7 @@ class TestSchemaValidation:
         fact = create_valid_fact(value=None, value_raw="N/A", confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert result.metadata["schema_validation_failures"] == 0
@@ -216,7 +216,7 @@ class TestSchemaValidation:
         fact.source_locator = SourceLocator()  # Empty locator
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "source_locator" in fact.review_reason
@@ -229,7 +229,7 @@ class TestSchemaValidation:
         fact.source_locator = SourceLocator(table_id="tbl-123")
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert result.metadata["schema_validation_failures"] == 0
@@ -241,7 +241,7 @@ class TestSchemaValidation:
         fact.source_locator = SourceLocator(img_id="img-123")
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert result.metadata["schema_validation_failures"] == 0
@@ -252,7 +252,7 @@ class TestSchemaValidation:
         fact = create_valid_fact(snippet_html="", confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "snippet_html" in fact.review_reason
@@ -264,7 +264,7 @@ class TestSchemaValidation:
         fact = create_valid_fact(confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["schema_validation_failures"] == 0
 
@@ -278,7 +278,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.OCR_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "OCR" in fact.review_reason
@@ -289,7 +289,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.CHART)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "Chart" in fact.review_reason
@@ -300,7 +300,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.HTML_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert fact.review_reason is None
@@ -311,7 +311,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.TEXT)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert fact.review_reason is None
@@ -326,7 +326,7 @@ class TestReviewReasonAssignment:
         )
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         # Should have multiple reasons joined by semicolon
@@ -340,7 +340,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.review_reason is None
 
@@ -351,7 +351,7 @@ class TestReviewReasonAssignment:
         fact.review_reason = "Period ambiguous"
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is True
         assert "Period ambiguous" in fact.review_reason
@@ -365,7 +365,7 @@ class TestEdgeCases:
         stage = ValidationStage()
         context = MockPipelineContext(deduplicated_facts=[])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.success
         assert result.items_processed == 0
@@ -379,7 +379,7 @@ class TestEdgeCases:
         facts = [create_valid_fact(confidence=0.95) for _ in range(5)]
         context = MockPipelineContext(deduplicated_facts=facts)
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["auto_accepted"] == 5
         assert result.metadata["pending_review"] == 0
@@ -391,7 +391,7 @@ class TestEdgeCases:
         facts = [create_valid_fact(confidence=0.10) for _ in range(5)]
         context = MockPipelineContext(deduplicated_facts=facts)
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["auto_accepted"] == 0
         assert result.metadata["pending_review"] == 5
@@ -405,7 +405,7 @@ class TestEdgeCases:
         # Use EmptyConfig so init thresholds are used
         context = MockPipelineContext(deduplicated_facts=[fact], config=EmptyConfig())
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
@@ -420,7 +420,7 @@ class TestEdgeCases:
         )
         context = MockPipelineContext(deduplicated_facts=[fact], config=config)
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
@@ -434,7 +434,7 @@ class TestEdgeCases:
             deduplicated_facts=[],
         )
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.items_processed == 1
         assert fact.requires_review is False
@@ -450,7 +450,7 @@ class TestEdgeCases:
         ]
         context = MockPipelineContext(deduplicated_facts=facts)
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.metadata["auto_accepted"] == 1
         assert result.metadata["pending_review"] == 3
@@ -462,7 +462,7 @@ class TestEdgeCases:
         stage = ValidationStage()
         context = MockPipelineContext(deduplicated_facts=[create_valid_fact()])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.duration_ms >= 0
 
@@ -473,6 +473,6 @@ class TestEdgeCases:
         stage = ValidationStage()
         context = MockPipelineContext(deduplicated_facts=[create_valid_fact()])
 
-        result = stage.process(context)
+        result = stage.process(context)  # noqa: F841
 
         assert result.stage == PipelineStage.VALIDATION

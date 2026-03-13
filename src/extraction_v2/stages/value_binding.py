@@ -35,12 +35,38 @@ from src.extraction_v2.unit_compatibility import (
 )
 from src.review.false_positive_filter import should_treat_as_percentage
 from src.review.respectively_parser import detect_respectively_pattern
+from src.shared.keyword_config import get_chart_axis_unit_signals
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Date-component filter helpers
+# ---------------------------------------------------------------------------
+
+_MONTH_DAY_PREFIX_RE = re.compile(
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|"
+    r"Dec(?:ember)?)\.?,?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_date_day_component(text: str, num_match: re.Match[str]) -> bool:
+    """Return True if num_match is a day-of-month (1-31) preceded by a month name."""
+    if num_match.group("suffix") or num_match.group("currency") or num_match.group("percent"):
+        return False
+    try:
+        val = int(num_match.group("number").replace(",", ""))
+    except ValueError:
+        return False
+    if val < 1 or val > 31:
+        return False
+    prefix = text[: num_match.start()]
+    return bool(_MONTH_DAY_PREFIX_RE.search(prefix))
 
 
 class ValueBindingStage:
@@ -93,6 +119,12 @@ class ValueBindingStage:
         """
         self.proximity_window = proximity_window
         self._unit_filtered_count = 0
+
+        # Load chart axis unit signals from YAML config (Rule 5: all keywords in config)
+        _axis_signals = get_chart_axis_unit_signals()
+        self._axis_currency_signals: list[str] = _axis_signals["currency"]
+        self._axis_count_signals: list[str] = _axis_signals["count"]
+        self._axis_percent_signals: list[str] = _axis_signals["percent"]
 
     def _check_percentage_context(
         self, metric_id: str, unit: Unit, raw_text: str, context_text: str
@@ -221,7 +253,12 @@ class ValueBindingStage:
         elif candidate.source_type == SourceType.TEXT:
             return self._bind_text_candidate(candidate, context.segments)
         elif candidate.source_type == SourceType.CHART:
-            return self._bind_chart_candidate(candidate, context.images)
+            interpolation_enabled = bool(
+                getattr(context.config, "enable_chart_interpolation", False)
+            )
+            return self._bind_chart_candidate(
+                candidate, context.images, interpolation_enabled=interpolation_enabled
+            )
         # All SourceType values handled above
         return []
 
@@ -889,20 +926,52 @@ class ValueBindingStage:
 
         return bound_values
 
+    @staticmethod
+    def _series_matches_metric(series_name: str, metric_id: str) -> bool:
+        """
+        Check if a chart series name is relevant to a metric (Rule 4: two-signal check).
+
+        Extracts meaningful tokens from metric_id (skipping stop words and short tokens)
+        and checks if any appear in the series name.
+
+        Args:
+            series_name: Series name from chart legend (e.g., "Existing Customers Revenue")
+            metric_id: Canonical metric ID (e.g., "cm_revenue_by_cohort")
+
+        Returns:
+            True if any metric token appears in the series name.
+        """
+        _STOP_TOKENS = frozenset(("cm", "by", "the", "of", "per", "and", "or", "in"))
+        tokens = [
+            t for t in metric_id.lower().split("_")
+            if t not in _STOP_TOKENS and len(t) > 2
+        ]
+        series_lower = series_name.lower()
+        return any(token in series_lower for token in tokens)
+
     def _bind_chart_candidate(
         self,
         candidate: MetricCandidate,
         images: list[ImageAsset],
+        interpolation_enabled: bool = False,
     ) -> list[BoundValue]:
         """
         Bind chart candidate to data points from the chart.
 
-        Each DataPoint in each series produces a BoundValue. The unit is
+        Each DataPoint in each matching series produces a BoundValue. The unit is
         inferred from the chart's y-axis label.
+
+        Series filtering (Rule 4): named series must match metric tokens to be bound.
+        If named series exist but none match, sets asset.requires_manual_capture=True
+        and returns empty (no single-signal fallback).
+
+        Interpolation mode (item 5): when interpolation_enabled=False, DataPoints
+        with point.label is None are skipped (unlabeled = potentially interpolated).
 
         Args:
             candidate: Chart-sourced metric candidate
             images: List of image assets
+            interpolation_enabled: If False, skip unlabeled DataPoints (default False)
 
         Returns:
             List of BoundValue objects
@@ -922,13 +991,54 @@ class ValueBindingStage:
         if self._should_filter_unit(candidate.metric_id, unit):
             return bound_values
 
-        for series in chart.series:
+        # Keyword-overlap heuristic (Rule 4: two-signal check via named helper)
+        # Separate named series from unnamed series
+        named_series = [s for s in chart.series if s.name and s.name.strip()]
+        unnamed_series = [s for s in chart.series if not (s.name and s.name.strip())]
+
+        if named_series:
+            # Identify named series whose names overlap with metric tokens
+            matching_series = [
+                s for s in named_series
+                if self._series_matches_metric(s.name, candidate.metric_id)
+            ]
+            if matching_series:
+                # Second signal confirmed: bind only matching series at full confidence
+                series_to_bind = matching_series
+                series_confidence_multiplier = 0.9
+            else:
+                # Named series present but none match metric tokens.
+                if candidate.from_nearby_text:
+                    # Nearby-text candidates are indirect matches: if no series name
+                    # confirms the metric, the binding has no second signal — skip it.
+                    return bound_values
+                # Metadata candidates (title/axis/annotation match): bind all at reduced
+                # confidence and route to human review (conservative but not blocking).
+                # Returning empty would suppress legitimate multi-metric charts where
+                # series names use domain terminology not in the metric_id tokens.
+                series_to_bind = named_series
+                series_confidence_multiplier = 0.70  # Below annotation (0.80x) — lowest priority
+                asset.requires_manual_capture = True  # Flag for reviewer attention
+        else:
+            # No named series — bind all (unlabeled chart, no series filter possible)
+            series_to_bind = unnamed_series or chart.series
+            series_confidence_multiplier = 0.9
+
+        for series in series_to_bind:
             for point in series.points:
                 if point.y is None:
                     continue
 
-                # Slight discount on confidence for chart extraction
-                binding_confidence = asset.confidence * 0.9
+                # In exact mode, skip unlabeled points (no explicit label = potentially
+                # interpolated from axis position — reject unless interpolation is enabled)
+                if not interpolation_enabled and point.label is None:
+                    continue
+
+                binding_confidence = asset.confidence * series_confidence_multiplier
+
+                # Interpolated points get an additional penalty
+                if point.interpolated:
+                    binding_confidence *= 0.7
 
                 bound_value = BoundValue(
                     candidate_id=candidate.candidate_id,
@@ -937,6 +1047,9 @@ class ValueBindingStage:
                     unit=unit,
                     binding_type="chart_label",
                     binding_confidence=binding_confidence,
+                    period_hint=point.x,
+                    series_name=series.name or None,
+                    interpolated=point.interpolated,
                     source_locator=SourceLocator(
                         img_id=asset.img_id,
                         dom_locator=asset.dom_locator,
@@ -956,8 +1069,8 @@ class ValueBindingStage:
             if self._should_filter_unit(candidate.metric_id, ann_unit):
                 continue
 
-            # Lower confidence multiplier for annotations (0.85x vs 0.9x for labels)
-            binding_confidence = asset.confidence * 0.85
+            # Lower confidence multiplier for annotations (0.80x, always below the 0.85x fallback for labels)
+            binding_confidence = asset.confidence * 0.80
 
             bound_value = BoundValue(
                 candidate_id=candidate.candidate_id,
@@ -966,6 +1079,9 @@ class ValueBindingStage:
                 unit=ann_unit,
                 binding_type="chart_annotation",
                 binding_confidence=binding_confidence,
+                period_hint=annotation.period,
+                annotation_category=annotation.category or None,
+                annotation_text=annotation.text or None,
                 source_locator=SourceLocator(
                     img_id=asset.img_id,
                     dom_locator=asset.dom_locator,
@@ -985,12 +1101,13 @@ class ValueBindingStage:
         Returns:
             Inferred Unit enum value
         """
+        # All signal strings come from config (Rule 5: no hardcoded keywords in code)
         label_lower = (axis_label or "").lower()
-        if any(s in label_lower for s in ("$", "usd", "revenue", "gmv")):
+        if self._axis_currency_signals and any(s in label_lower for s in self._axis_currency_signals):
             return Unit.CURRENCY
-        if "%" in label_lower or "percent" in label_lower or "rate" in label_lower:
+        if self._axis_percent_signals and any(s in label_lower for s in self._axis_percent_signals):
             return Unit.PERCENT
-        if any(s in label_lower for s in ("count", "number", "users", "customers", "subscribers")):
+        if self._axis_count_signals and any(s in label_lower for s in self._axis_count_signals):
             return Unit.COUNT
         return Unit.OTHER
 
@@ -1040,6 +1157,8 @@ class ValueBindingStage:
 
         # Find all numbers in window
         for match in _np.NUMBER_PATTERN.finditer(window_text):
+            if _is_date_day_component(window_text, match):
+                continue  # skip day-of-month from date expressions
             parsed = self._parse_number(match.group())
             if parsed:
                 value, unit, raw = parsed
