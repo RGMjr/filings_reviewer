@@ -163,11 +163,12 @@ class TestCreateAppPoolIntegration:
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
             ):
-                from src.web.app import create_app
+                with patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
+                    from src.web.app import create_app
 
-                app = create_app("testing")
+                    app = create_app("testing")
 
-                assert app.config["_db_pool"] == mock_pool
+                    assert app.config["_db_pool"] == mock_pool
 
     def test_create_app_registers_atexit(self):
         """Should register close_pool with atexit."""
@@ -208,9 +209,10 @@ class TestHealthEndpoint:
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
             ):
-                from src.web.app import create_app
+                with patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
+                    from src.web.app import create_app
 
-                app = create_app("testing")
+                    app = create_app("testing")
 
                 healthy_report = PoolHealthReport(
                     is_healthy=True,
@@ -245,9 +247,10 @@ class TestHealthEndpoint:
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
             ):
-                from src.web.app import create_app
+                with patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
+                    from src.web.app import create_app
 
-                app = create_app("testing")
+                    app = create_app("testing")
 
                 unhealthy_report = PoolHealthReport(
                     is_healthy=False,
