@@ -48,25 +48,6 @@ _chart_metric_keywords:
   - "customer acquisition"
 
 # =============================================================================
-# Chart Metric Keywords
-# =============================================================================
-# Keywords used by ImageTriageStage._is_chart() to detect metric-related content
-# near large images. Used to identify charts likely to contain customer metrics.
-# Prefix with _ so the keyword config validator skips this entry.
-_chart_metric_keywords:
-  - "retention"
-  - "cohort"
-  - "revenue"
-  - "growth"
-  - "customers"
-  - "arr"
-  - "mrr"
-  - "ltv"
-  - "cac"
-  - "lifetime value"
-  - "customer acquisition"
-
-# =============================================================================
 # Scope Hint Keywords
 # =============================================================================
 # Keywords used by FactConstructionStage to map series/annotation names to
@@ -77,6 +58,17 @@ _scope_hint_keywords:
   - "Enterprise"
   - "SMB"
   - "Existing"
+
+# =============================================================================
+# Cohort Patterns
+# =============================================================================
+# Regex used by FactConstructionStage to detect cohort context in series/annotation
+# names (e.g., "2019 Cohort", "Cohort 2019", "Year 1"). Prefix with _ so the
+# keyword config validator skips this entry.
+_cohort_patterns:
+  - '\b(19|20)\d{2}\b.*[Cc]ohort'
+  - '[Cc]ohort.*\b(19|20)\d{2}\b'
+  - '\b[Yy]ear\s+\d+\b'
 
 _revenue_synonym_context: &revenue_synonym_context
   required_context:

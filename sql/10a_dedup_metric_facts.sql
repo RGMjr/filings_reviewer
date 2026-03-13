@@ -28,6 +28,7 @@ WITH doomed AS (
     WHERE rn > 1
 )
 -- Step 2: Clear self-FK references to doomed rows (primary_fact_id has NO ACTION)
+-- NOTE: cleared CTE executes unconditionally per PostgreSQL CTE semantics
 , cleared AS (
     UPDATE v2_metric_facts
     SET primary_fact_id = NULL

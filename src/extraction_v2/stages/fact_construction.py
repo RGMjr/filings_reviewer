@@ -33,7 +33,7 @@ from src.extraction_v2.models import (
     SectionType,
     SourceType,
 )
-from src.shared.keyword_config import get_scope_hint_keywords
+from src.shared.keyword_config import get_cohort_patterns, get_scope_hint_keywords
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import MetricCandidate, Segment, Table
@@ -43,9 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 # Cohort pattern: "2019 Cohort", "Cohort 2019", "Year 1", etc.
-_COHORT_PATTERN = re.compile(
-    r"\b(19|20)\d{2}\b.*[Cc]ohort|[Cc]ohort.*\b(19|20)\d{2}\b|\b[Yy]ear\s+\d+\b"
-)
+_COHORT_PATTERN = re.compile("|".join(get_cohort_patterns()))
 
 # Scope hint keywords that map series/annotation names to scope_detail
 _SCOPE_HINT_KEYWORDS = get_scope_hint_keywords()

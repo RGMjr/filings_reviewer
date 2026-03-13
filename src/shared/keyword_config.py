@@ -531,20 +531,20 @@ def get_scope_hint_keywords(
     return tuple(config.get("_scope_hint_keywords", []))
 
 
-def get_chart_axis_unit_signals(
+def get_cohort_patterns(
     config_path: str | None = None,
-) -> list[str]:
+) -> tuple[str, ...]:
     """
-    Get chart metric keywords from config.
+    Get cohort detection patterns from config.
 
-    Returns the ``_chart_metric_keywords`` list used by ImageTriageStage to
-    detect metric-related content near large images.
+    Returns the ``_cohort_patterns`` list used by FactConstructionStage to
+    detect cohort context in series/annotation names.
 
     Args:
         config_path: Optional path to config file.
 
     Returns:
-        List of lowercase keyword strings.
+        Tuple of regex pattern strings.
     """
     config = _load_config(config_path)
-    return list(config.get("_chart_metric_keywords", []))
+    return tuple(config.get("_cohort_patterns", []))
