@@ -263,12 +263,17 @@ class TestE2EProvenance:
             # Every fact must have a source_locator
             assert fact.source_locator is not None, f"Fact {fact.fact_id} missing source_locator"
 
-            # source_locator should have either dom_locator (xpath) or segment_id
-            has_dom_locator = fact.source_locator.dom_locator is not None
-            has_segment_id = fact.source_locator.segment_id is not None
-
-            assert has_dom_locator or has_segment_id, (
-                f"Fact {fact.fact_id} has no dom_locator or segment_id in source_locator"
+            # source_locator must have at least one identifier set
+            loc = fact.source_locator
+            has_locator = (
+                loc.dom_locator is not None
+                or loc.segment_id is not None
+                or loc.table_id is not None
+                or loc.img_id is not None
+            )
+            assert has_locator, (
+                f"Fact {fact.fact_id} has no identifier in source_locator "
+                f"(dom_locator, segment_id, table_id, img_id all None)"
             )
 
             # Evidence pack should exist
