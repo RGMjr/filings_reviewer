@@ -81,6 +81,42 @@ CREATE INDEX IF NOT EXISTS idx_v2_metric_facts_evidence ON v2_metric_facts USING
 CREATE INDEX IF NOT EXISTS idx_v2_metric_facts_locator ON v2_metric_facts USING GIN (source_locator);
 
 -- ============================================================================
+-- V2 SEGMENTS (DOM-native content blocks with section classification)
+-- Must be created before v2_tables and v2_image_assets which reference it.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS v2_segments (
+    segment_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id              BIGINT NOT NULL REFERENCES filings(filing_id) ON DELETE CASCADE,
+
+    -- Type and content
+    segment_type        TEXT NOT NULL CHECK (segment_type IN ('heading', 'paragraph', 'table', 'image_ref', 'caption', 'list', 'footnote', 'definition', 'methodology', 'other')),
+    segment_text        TEXT NOT NULL,
+
+    -- DOM location
+    dom_locator         TEXT NOT NULL,
+
+    -- Section context (enhanced from V1)
+    section_path        TEXT[],  -- Hierarchical labels, e.g., ["Item 7", "MD&A"]
+    section_type        TEXT CHECK (section_type IN ('cover', 'risk_factors', 'mda', 'business', 'financials', 'notes', 'exhibits', 'signatures', 'other', 'unknown')),
+
+    -- Document order
+    sequence_idx        INTEGER NOT NULL,
+
+    -- Context links
+    prev_segment_id     UUID REFERENCES v2_segments(segment_id),
+    next_segment_id     UUID REFERENCES v2_segments(segment_id),
+
+    -- Metadata
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_v2_segments_doc_id ON v2_segments(doc_id);
+CREATE INDEX IF NOT EXISTS idx_v2_segments_type ON v2_segments(segment_type);
+CREATE INDEX IF NOT EXISTS idx_v2_segments_section ON v2_segments(section_type);
+CREATE INDEX IF NOT EXISTS idx_v2_segments_sequence ON v2_segments(doc_id, sequence_idx);
+
+-- ============================================================================
 -- V2 TABLES (Reconstructed tables with full structure)
 -- ============================================================================
 
@@ -199,41 +235,6 @@ CREATE INDEX IF NOT EXISTS idx_v2_image_assets_doc_id ON v2_image_assets(doc_id)
 CREATE INDEX IF NOT EXISTS idx_v2_image_assets_classification ON v2_image_assets(classification);
 CREATE INDEX IF NOT EXISTS idx_v2_image_assets_relevance ON v2_image_assets(relevance_score);
 CREATE INDEX IF NOT EXISTS idx_v2_image_assets_processed ON v2_image_assets(processed);
-
--- ============================================================================
--- V2 SEGMENTS (DOM-native content blocks with section classification)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS v2_segments (
-    segment_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    doc_id              BIGINT NOT NULL REFERENCES filings(filing_id) ON DELETE CASCADE,
-
-    -- Type and content
-    segment_type        TEXT NOT NULL CHECK (segment_type IN ('heading', 'paragraph', 'table', 'image_ref', 'caption', 'list', 'footnote', 'definition', 'methodology', 'other')),
-    segment_text        TEXT NOT NULL,
-
-    -- DOM location
-    dom_locator         TEXT NOT NULL,
-
-    -- Section context (enhanced from V1)
-    section_path        TEXT[],  -- Hierarchical labels, e.g., ["Item 7", "MD&A"]
-    section_type        TEXT CHECK (section_type IN ('cover', 'risk_factors', 'mda', 'business', 'financials', 'notes', 'exhibits', 'signatures', 'other', 'unknown')),
-
-    -- Document order
-    sequence_idx        INTEGER NOT NULL,
-
-    -- Context links
-    prev_segment_id     UUID REFERENCES v2_segments(segment_id),
-    next_segment_id     UUID REFERENCES v2_segments(segment_id),
-
-    -- Metadata
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_v2_segments_doc_id ON v2_segments(doc_id);
-CREATE INDEX IF NOT EXISTS idx_v2_segments_type ON v2_segments(segment_type);
-CREATE INDEX IF NOT EXISTS idx_v2_segments_section ON v2_segments(section_type);
-CREATE INDEX IF NOT EXISTS idx_v2_segments_sequence ON v2_segments(doc_id, sequence_idx);
 
 -- ============================================================================
 -- V2 DOCUMENTS (Filing-level processing metadata)

@@ -26,11 +26,11 @@ Design principles:
 from __future__ import annotations
 
 import dataclasses
+import enum
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from typing import Any, Protocol
@@ -63,7 +63,7 @@ from src.extraction_v2.stages.value_binding import ValueBindingStage
 logger = logging.getLogger(__name__)
 
 
-class PipelineStage(str, Enum):
+class PipelineStage(enum.StrEnum):
     """Pipeline stage identifiers for tracking and logging."""
 
     INGESTION = "ingestion"

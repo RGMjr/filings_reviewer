@@ -14,10 +14,10 @@ Design source: Claude V2 PRD MetricFact schema + GPT-5.2 PRD pragmatic constrain
 
 from __future__ import annotations
 
+import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from enum import Enum
 from typing import Any
 
 # ============================================================================
@@ -25,7 +25,7 @@ from typing import Any
 # ============================================================================
 
 
-class SourceType(str, Enum):
+class SourceType(enum.StrEnum):
     """Source of an extracted value."""
 
     HTML_TABLE = "html_table"
@@ -34,7 +34,7 @@ class SourceType(str, Enum):
     CHART = "chart"
 
 
-class SegmentType(str, Enum):
+class SegmentType(enum.StrEnum):
     """Type of document segment."""
 
     HEADING = "heading"
@@ -49,7 +49,7 @@ class SegmentType(str, Enum):
     OTHER = "other"
 
 
-class SectionType(str, Enum):
+class SectionType(enum.StrEnum):
     """Semantic section classification for SEC filings."""
 
     COVER = "cover"
@@ -64,7 +64,7 @@ class SectionType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class ImageClassification(str, Enum):
+class ImageClassification(enum.StrEnum):
     """Classification of extracted images."""
 
     CHART = "chart"
@@ -75,7 +75,7 @@ class ImageClassification(str, Enum):
     UNKNOWN = "unknown"
 
 
-class ChartType(str, Enum):
+class ChartType(enum.StrEnum):
     """Type of chart for extraction strategy."""
 
     BAR = "bar"
@@ -86,7 +86,7 @@ class ChartType(str, Enum):
     UNKNOWN = "unknown"
 
 
-class Unit(str, Enum):
+class Unit(enum.StrEnum):
     """Unit type for metric values."""
 
     PERCENT = "percent"
@@ -97,7 +97,7 @@ class Unit(str, Enum):
     OTHER = "other"
 
 
-class PeriodType(str, Enum):
+class PeriodType(enum.StrEnum):
     """Time period classification."""
 
     ANNUAL = "annual"  # FY
@@ -108,7 +108,7 @@ class PeriodType(str, Enum):
     OTHER = "other"
 
 
-class Scope(str, Enum):
+class Scope(enum.StrEnum):
     """Scope of metric measurement."""
 
     COMPANY = "company"  # Company-wide
@@ -120,7 +120,7 @@ class Scope(str, Enum):
     OTHER = "other"
 
 
-class ReviewStatus(str, Enum):
+class ReviewStatus(enum.StrEnum):
     """Status in review workflow."""
 
     AUTO_ACCEPTED = "auto_accepted"  # High confidence, no review needed
@@ -130,7 +130,7 @@ class ReviewStatus(str, Enum):
     CORRECTED = "corrected"  # Human corrected value/metric
 
 
-class ExtractionMethod(str, Enum):
+class ExtractionMethod(enum.StrEnum):
     """Method used to extract the value."""
 
     EXACT_MATCH = "exact_match"  # Keyword exact match
