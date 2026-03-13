@@ -593,10 +593,10 @@ class TestFactPersistence:
             source_locator=SourceLocator(dom_locator="/p[2]"),
             evidence_pack=EvidencePack(snippet_html="<p>500</p>"),
             confidence=0.85,
-            review_status=ReviewStatus.PENDING,
+            review_status=ReviewStatus.PENDING_REVIEW,
         )
 
-        # Initial insert with PENDING
+        # Initial insert with PENDING_REVIEW
         persistence_adapter.persist_facts([fact], test_filing_id)
 
         # Simulate a reviewer accepting the fact directly in DB
@@ -610,7 +610,7 @@ class TestFactPersistence:
         # Re-extraction: delete-then-insert means reviewer status is wiped
         original_fact_id = fact.fact_id
         fact.confidence = 0.92
-        fact.review_status = ReviewStatus.PENDING  # extraction always sets pending
+        fact.review_status = ReviewStatus.PENDING_REVIEW  # extraction always sets pending
         persistence_adapter.persist_facts([fact], test_filing_id)
 
         # After re-extraction the old row is gone (DELETE) and a fresh row exists with PENDING
