@@ -20,7 +20,7 @@ with clear diagnostic messages.
 
 Prerequisites:
     - Gold standard data must exist in data/gold_standard/
-    - Baseline file must exist at data/gold_standard/v2_baseline.json
+    - Baseline file must exist at data/gold_standard/baseline.json
       (create with: python scripts/validate_against_gold_standard.py --all --update-baseline)
     - Database must contain gold standard filings
 """
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 GOLD_STANDARD_CSV_PATH = Path("data/gold_standard/golden_set_251218.csv")
-BASELINE_PATH = Path("data/gold_standard/v2_baseline.json")
+BASELINE_PATH = Path("data/gold_standard/baseline.json")
 
 
 # =============================================================================
@@ -64,7 +64,6 @@ def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     but returns structured data for test assertions.
     """
     import sys
-
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     from scripts.validate_against_gold_standard import (
@@ -91,25 +90,23 @@ def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
             WHERE LOWER(c.company_name) = LOWER(%(company)s)
             LIMIT 1
         """
-        filing_rows = db.query(query, {"company": company})
-        filing_id = filing_rows[0]["filing_id"] if filing_rows else None
+        filing_rows = db.query(query, {'company': company})
+        filing_id = filing_rows[0]['filing_id'] if filing_rows else None
 
         result = validate_filing(db, filing_id, company, company_entries)
 
-        results.append(
-            {
-                "company_name": result.company_name,
-                "filing_id": result.filing_id,
-                "gold_standard_count": result.gold_standard_count,
-                "candidate_count": result.candidate_count,
-                "true_positives": result.true_positives,
-                "false_positives": result.false_positives,
-                "false_negatives": result.false_negatives,
-                "precision": result.precision,
-                "recall": result.recall,
-                "f1_score": result.f1_score,
-            }
-        )
+        results.append({
+            'company_name': result.company_name,
+            'filing_id': result.filing_id,
+            'gold_standard_count': result.gold_standard_count,
+            'candidate_count': result.candidate_count,
+            'true_positives': result.true_positives,
+            'false_positives': result.false_positives,
+            'false_negatives': result.false_negatives,
+            'precision': result.precision,
+            'recall': result.recall,
+            'f1_score': result.f1_score,
+        })
 
     return results
 
@@ -190,7 +187,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         assert baseline_metrics is not None, "Baseline should be loaded"
@@ -208,7 +205,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.precision - baseline_metrics.overall.precision
@@ -237,7 +234,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.recall - baseline_metrics.overall.recall
@@ -251,7 +248,8 @@ class TestGoldStandardRegression:
 
         if delta > 0:
             logger.info(
-                f"Recall improved: {current_metrics.overall.recall:.1%} (+{delta:.1%} vs baseline)"
+                f"Recall improved: {current_metrics.overall.recall:.1%} "
+                f"(+{delta:.1%} vs baseline)"
             )
 
     def test_overall_f1_above_baseline(
@@ -265,7 +263,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         delta = current_metrics.overall.f1 - baseline_metrics.overall.f1
@@ -278,7 +276,10 @@ class TestGoldStandardRegression:
         )
 
         if delta > 0:
-            logger.info(f"F1 improved: {current_metrics.overall.f1:.1%} (+{delta:.1%} vs baseline)")
+            logger.info(
+                f"F1 improved: {current_metrics.overall.f1:.1%} "
+                f"(+{delta:.1%} vs baseline)"
+            )
 
     def test_no_company_recall_regressions(
         self,
@@ -291,7 +292,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         regressed_companies = []
@@ -306,14 +307,12 @@ class TestGoldStandardRegression:
             recall_delta = current_scores.recall - baseline_scores.recall
 
             if recall_delta < -gold_standard_tolerance:
-                regressed_companies.append(
-                    {
-                        "company": company,
-                        "current": current_scores.recall,
-                        "baseline": baseline_scores.recall,
-                        "delta": recall_delta,
-                    }
-                )
+                regressed_companies.append({
+                    'company': company,
+                    'current': current_scores.recall,
+                    'baseline': baseline_scores.recall,
+                    'delta': recall_delta,
+                })
 
         if regressed_companies:
             details = "\n".join(
@@ -321,7 +320,9 @@ class TestGoldStandardRegression:
                 f"(was {r['baseline']:.1%}, delta: {r['delta']:+.1%})"
                 for r in regressed_companies
             )
-            pytest.fail(f"RECALL REGRESSIONS in {len(regressed_companies)} companies:\n{details}")
+            pytest.fail(
+                f"RECALL REGRESSIONS in {len(regressed_companies)} companies:\n{details}"
+            )
 
     def test_aggregate_company_metrics(
         self,
@@ -334,7 +335,7 @@ class TestGoldStandardRegression:
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
-                f"Create with: python3 scripts/validate_against_gold_standard.py --all --update-baseline"
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
             )
 
         if comparison_result is None:
@@ -437,7 +438,7 @@ class TestGoldStandardMetrics:
 
         gold_entries = load_gold_standard(gold_standard_csv_path)
         expected_companies = set(e.company for e in gold_entries)
-        validated_companies = set(r["company_name"] for r in validation_results)
+        validated_companies = set(r['company_name'] for r in validation_results)
 
         missing = expected_companies - validated_companies
         assert not missing, (

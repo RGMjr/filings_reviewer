@@ -204,12 +204,12 @@ Include when relevant:
 ### File Naming Convention
 
 ```
-docs/analysis/[TASK-ID]_COMPLETION_SUMMARY.md
+docs/completion/[TASK-ID]_COMPLETION_SUMMARY.md
 ```
 
 Examples:
-- `docs/analysis/EI-1_COMPLETION_SUMMARY.md`
-- `docs/analysis/GR-5_COMPLETION_SUMMARY.md`
+- `docs/completion/EI-1_COMPLETION_SUMMARY.md`
+- `docs/completion/GR-5_COMPLETION_SUMMARY.md`
 
 ### When to Skip Sections
 

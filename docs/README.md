@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.6
+**Version:** 2.2
 **Status:** Production Ready
-**Last Updated:** 2026-02-28
+**Last Updated:** 2025-12-29
 
 ---
 
@@ -64,36 +64,15 @@ Instructions for setting up, running, and maintaining the system.
 |----------|-------------|----------|
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
 | **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
-| **[v2-deployment-guide.md](operations/v2-deployment-guide.md)** | V2 pipeline deployment: pre-flight checks, batch extraction, cutover, rollback | DevOps |
-
-### V2 Pipeline Documentation
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| **[V2_IMPLEMENTATION_ROADMAP.md](V2_IMPLEMENTATION_ROADMAP.md)** | All 13 phases + Phase B — complete with changelog | Developers |
-| **[V2_MIGRATION_GUIDE.md](V2_MIGRATION_GUIDE.md)** | API differences, data model mapping, migration steps | Developers |
-| **[V2_HUMAN_REVIEW_GUIDE.md](V2_HUMAN_REVIEW_GUIDE.md)** | V2 fact review UI, API reference, keyboard shortcuts | Developers |
-| **[V2_E2E_TESTING_STRATEGY.md](V2_E2E_TESTING_STRATEGY.md)** | E2E testing coverage, merge readiness checklist | Developers, QA |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
-
-### Analysis (Task Outputs & Reports)
-
-Results, audits, investigations, research findings, and completion summaries.
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| **[analysis/](analysis/)** | All task output documents (evaluations, validations, research) | Everyone |
-
-See [analysis/README.md](analysis/README.md) for full file listing.
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
-Human-in-the-loop system for validating and improving extraction quality. Both V1 (candidate-based) and V2 (fact-based) review interfaces are operational.
+Human-in-the-loop system for validating and improving extraction quality.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | V1 candidate review system design, usage, configuration | Developers |
-| **[V2_HUMAN_REVIEW_GUIDE.md](V2_HUMAN_REVIEW_GUIDE.md)** | V2 fact-by-fact review workflow, API reference, UI guide | Developers |
+| **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | System design, usage, configuration | Developers |
 
 ### Active Improvement Plans
 
@@ -106,13 +85,17 @@ Current improvement work in progress.
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 
-### Archive (Extraction Validation Only)
+### Archive (Historical Reference)
 
-Reference data for improving extraction quality. Everything else was deleted (preserved in git history).
+Historical documents for reference only. Not part of current operations.
 
 | Category | Contents |
 |----------|----------|
-| **[archive/extraction-validation/](archive/extraction-validation/)** | Evaluation reports, goldmine validation, extraction improvement summaries (18 files) |
+| **[archive/2025-12-extraction/](archive/2025-12-extraction/)** | EI-1 to EI-6 extraction improvement completions |
+| **[archive/2025-12-goldmine-analysis/](archive/2025-12-goldmine-analysis/)** | GI-1 to GI-8 goldmine analysis artifacts |
+| **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
+| **[archive/worker-prompts/](archive/worker-prompts/)** | Completed task worker prompts |
+| **[archive/workstreams/](archive/workstreams/)** | Historical workstream documentation |
 
 ---
 
@@ -130,8 +113,8 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 - **Language:** Python 3.11+
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
-- **Parsing:** lxml (primary, V2 pipeline); BeautifulSoup4 (secondary, review modules)
-- **Testing:** pytest (87% coverage, 4,765 tests)
+- **Parsing:** BeautifulSoup4, lxml
+- **Testing:** pytest (75%+ coverage, 3,129 tests)
 
 ### Cost Profile
 
@@ -147,6 +130,14 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 |-----------|--------|---------------|---------------|
 | Universe Builder | ✅ Complete | 93% | [System Overview](architecture/system-overview.md) |
 | Filing Fetcher | ✅ Complete | 94% | [System Overview](architecture/system-overview.md) |
+| HTML Segmenter | ✅ Complete | 80% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Metric Classifier | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Segment Enricher | ✅ Complete | 98% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Cohort Chart Detector | ✅ Complete | 100% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Value Extractor | ✅ Complete | 66% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Definition Extractor | ✅ Complete | 89% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
+| Quality Scorer | ✅ Complete | 100% | [Quality Model](development/quality-model.md) |
+| Extraction Pipeline | ✅ Complete | 91% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
 | OpenAI Client | ✅ Complete | 88% | [LLM Integration](architecture/llm-integration.md) |
 | Database Schema | ✅ Complete | N/A | [Data Model](architecture/data-model.md) |
 | Review Candidate Generator | ✅ Complete | 98% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
@@ -155,12 +146,8 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 | API Routes (D2) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
-| V2 Extraction Pipeline | ✅ Complete | 87% | [V2 Roadmap](V2_IMPLEMENTATION_ROADMAP.md), [Migration Guide](V2_MIGRATION_GUIDE.md) |
-| V2 MetricFact / EvidencePack | ✅ Complete | 87% | [Extraction Pipeline](architecture/extraction-pipeline.md) |
-| V2 Gold Standard | ✅ Active | N/A | P=92.8%, R=77.6%, F1=84.5% (as of 2026-02-28, post-WP-15+17) |
-| V2 Review UI | ✅ Complete | N/A | [V2 Human Review Guide](V2_HUMAN_REVIEW_GUIDE.md) — WP-21 complete |
 
-**Overall Status:** ✅ **Production Ready** (87% test coverage, 4,765 tests)
+**Overall Status:** ✅ **Production Ready** (87% test coverage, 3,150+ tests)
 
 ---
 
@@ -206,7 +193,7 @@ Reference data for improving extraction quality. Everything else was deleted (pr
 
 ```bash
 # See setup-guide.md for detailed instructions
-python3 scripts/run_extraction_pipeline.py --limit 10
+python scripts/run_extraction_sample.py
 ```
 
 ### Running Tests
@@ -226,7 +213,7 @@ pytest --cov=src --cov-report=html
 
 ```bash
 # See setup-guide.md for database setup first
-python3 scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
+python scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
 ```
 
 ### Querying Results
@@ -280,8 +267,8 @@ Group of customers by acquisition period or tenure. See [Metrics Taxonomy](devel
 
 **"Module not found" errors**
 - Ensure you're in the project root directory
-- Verify virtual environment is activated: `source .venv/bin/activate`
-- Install dependencies: `uv sync --all-extras`
+- Verify virtual environment is activated: `source venv/bin/activate`
+- Install dependencies: `pip install -r requirements.txt`
 
 **Database connection errors**
 - Check `DATABASE_URL` in `.env` file
@@ -346,7 +333,6 @@ Rules that auto-load when working with specific file paths:
 | `extraction.md` | `src/extraction/**`, `config/metric_keywords.yaml` | Core principles, gold standard validation requirements |
 | `testing.md` | `tests/**` | Test conventions, coverage requirements |
 | `gold-standard.md` | Gold standard files | Validation workflow and thresholds |
-| `docs.md` | `docs/**` | Canonical folder structure and document placement rules |
 
 Rules are applied automatically based on which files are being edited.
 
@@ -382,39 +368,7 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.6 (Current - 2026-02-28)
-- ✅ WP-21 complete: V2 review UI at full feature parity (`review_v2.py`, `api_v2.py`, `v2_filing_list.html`, `v2_review.html`, `v2_stats.html`)
-- ✅ Migration 12 created: `sql/12_drop_v1_fk_constraints.sql` — drops FK deps on `source_segments` before V1 table removal
-- ✅ FP rules hardened: WP-15 `_rule_tier_qualifier` (Snowflake tier FPs 22→3); WP-17 `_rule_dollar_threshold_customer` (Slack ">$100K" FPs eliminated)
-- ✅ Gold standard improved: P=92.8%, R=77.6%, F1=84.5% (all per-company gates passed, post-WP-15+17)
-- ✅ WP-23 pending: Batch V2 extraction on remaining 8 filings (runtime execution only)
-
-### Version 2.5 (2026-02-26)
-- ✅ V2 pipeline promoted to `2.0.0-rc1` (was alpha)
-- ✅ V2 exception architecture: `V2FatalError` / `V2TransientError` hierarchy; all stages raise typed exceptions instead of swallowing errors
-- ✅ Pipeline error handling hardened: `CANDIDATE_GENERATION` and `VALUE_BINDING` added to critical-stage set; `V2TransientError` propagates for caller retry
-- ✅ Bug fix: Slack colspan and date-header parsing (commit `bb0ed5a`)
-- ✅ Bug fix: `period_start_date` extraction (commit `bb0ed5a`)
-- ✅ V2 integration test coverage expanded (commits `41d752b`, `0045d93`)
-- ✅ New unit tests: `test_number_parsing.py` (year non-splitting regression, scale multipliers) and `test_text_utils.py` (normalize_text, find_sentence_bounds)
-- ✅ V2 deployment guide added: `docs/operations/v2-deployment-guide.md`
-
-### Version 2.4 (2026-02-24)
-- ✅ V2 Stage 9.5 — Definition Extraction (±5-window proximity scan, CMASB alignment scoring)
-- ✅ V2 Quality Scoring Adapter (`V2QualityScorer`) writes all 5 rubrics to `filing_metric_incidence`
-- ✅ Batch extraction script (`scripts/batch_v2_extraction.py`) with parallel workers, checkpointing, graceful shutdown
-- ✅ SQL migration 11: `v2_metric_definitions` table
-- ✅ Gold standard: P=78.6%, R=79.2%, F1=78.9% (confidence >= 0.5, as of 2026-02-24)
-
-### Version 2.3 (2026-02-17)
-- ✅ V2 extraction pipeline complete (all 13 phases, production-ready)
-- ✅ V2 human review interface with fact-by-fact review and evidence packs
-- ✅ V2 false positive filter stage and percentage context detection
-- ✅ Gold standard validator for V2 (P=78.6%, R=79.2%, F1=78.9% as of 2026-02-24)
-- ✅ V2 precision tuning: FP reduction, decimal-gated count scaling, unit compatibility
-- ✅ 4,765 tests, 87% coverage
-
-### Version 2.2 (2025-12-29)
+### Version 2.2 (Current - 2025-12-29)
 - ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
 - ✅ HRV-1 through HRV-5 validation complete
 - ✅ Performance optimizations (+33% throughput)
@@ -461,4 +415,4 @@ For questions about this system or the CMASB initiative:
 ---
 
 **Quick Navigation:**
-[Architecture](architecture/) | [Requirements](requirements/) | [Development](development/) | [Operations](operations/) | [Analysis](analysis/) | [Archive](archive/)
+[Architecture](architecture/) | [Requirements](requirements/) | [Development](development/) | [Operations](operations/) | [Archive](archive/)

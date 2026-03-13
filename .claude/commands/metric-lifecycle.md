@@ -1,7 +1,3 @@
----
-description: Guide for adding, deprecating, or removing customer metrics from the system
----
-
 # Metric Lifecycle Guide
 
 This command provides guidance for adding, deprecating, or removing customer metrics.

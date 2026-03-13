@@ -1,13 +1,13 @@
 # Deployment Guide
 
-**Version:** 3.0
-**Last Updated:** 2026-02-05
+**Version:** 2.0
+**Last Updated:** 2025-11-14
 
 ---
 
 ## Overview
 
-This guide covers deploying the system for production-scale processing of 7,304 in-scope S-1/F-1 filings using PostgreSQL-backed infrastructure and the real extraction pipeline.
+This guide covers deploying the system for production-scale processing of 20,500+ SEC filings.
 
 **Deployment Phases:**
 1. Environment setup
@@ -21,34 +21,30 @@ This guide covers deploying the system for production-scale processing of 7,304 
 ## Pre-Deployment Checklist
 
 ### ✅ Code Readiness
-- [ ] All unit tests passing (`pytest -v`)
-- [ ] Integration tests passing (`pytest tests/integration/`)
-- [ ] Gold standard validation passing (`pytest -m gold_standard`)
+- [ ] All unit tests passing
+- [ ] Integration tests passing
 - [ ] Code reviewed and approved
 - [ ] Documentation complete
-- [ ] `.gitignore` configured (exclude `.env`, cache, logs)
+- [ ] `.gitignore` configured (exclude `.env`, cache, database)
 
 ### ✅ Environment
 - [ ] Python 3.11+ installed
-- [ ] Virtual environment created and activated
-- [ ] Dependencies installed (`uv sync --all-extras`)
+- [ ] Virtual environment created
+- [ ] Dependencies installed from `requirements.txt`
 - [ ] OpenAI API key obtained and funded
 - [ ] SEC User-Agent configured (with valid email)
-- [ ] PostgreSQL client tools installed (`psql`, `pg_dump`)
 
-### ✅ Database Infrastructure
-- [ ] Docker Compose installed
-- [ ] PostgreSQL running (`docker compose up -d`)
-- [ ] Database initialized (`python3 scripts/apply_migrations.py`)
-- [ ] Connection verified (`psql $DATABASE_URL`)
-- [ ] Sufficient disk space (recommend 20GB+)
+### ✅ Storage
+- [ ] `data/` directory created
+- [ ] `data/cache/` directory created
+- [ ] Sufficient disk space (recommend 10GB+)
+- [ ] Database initialized
 
 ### ✅ Configuration
-- [ ] `.env` file created from `.env.template`
-- [ ] `DATABASE_URL` set to PostgreSQL connection string
-- [ ] `OPENAI_API_KEY` configured
-- [ ] `SEC_USER_AGENT` includes contact email
-- [ ] `config/metric_keywords.yaml` reviewed
+- [ ] `.env` file created with API key
+- [ ] `config/s1_config.yaml` reviewed
+- [ ] Rate limits configured for your OpenAI tier
+- [ ] Cost limits set appropriately
 
 ---
 
@@ -59,81 +55,50 @@ Validate the system on a small sample before full deployment.
 
 ### Steps
 
-1. **Start Database**
+1. **Select Pilot Dataset**
    ```bash
-   # Start PostgreSQL via Docker Compose
-   docker compose up -d
-
-   # Verify connection
-   psql $DATABASE_URL -c "SELECT COUNT(*) FROM companies;"
-   ```
-
-2. **Build Universe Sample**
-   ```bash
-   # Build universe for January 2024 (test sample)
-   python3 scripts/build_universe_real.py \
+   # Process 100 S-1 filings from 2024
+   python main.py \
        --start-date 2024-01-01 \
-       --end-date 2024-01-31
-
-   # Check results
-   psql $DATABASE_URL -c "
-       SELECT form_type, COUNT(*) as count
-       FROM filings
-       WHERE is_in_scope_phase1 = true
-       GROUP BY form_type;"
+       --end-date 2024-12-31 \
+       --filing-type S-1 \
+       --workers 5 \
+       --max-results 100 \
+       --max-cost 10.00
    ```
 
-3. **Download Filings**
+2. **Monitor Progress**
+   - Watch console output for errors
+   - Check `data/filings_data.db` size growing
+   - Monitor OpenAI API usage dashboard
+
+3. **Review Results**
    ```bash
-   # Download first 100 pending filings
-   python3 scripts/batch_download_filings.py --limit 100
+   # Export to CSV
+   python -c "from core.storage import export_to_csv; \
+              export_to_csv('metrics', 'data/exports/pilot_metrics.csv'); \
+              export_to_csv('qa_warnings', 'data/exports/pilot_warnings.csv')"
 
-   # Monitor progress
-   psql $DATABASE_URL -c "
-       SELECT processing_status, COUNT(*)
-       FROM filings
-       GROUP BY processing_status;"
+   # Review in Excel or Pandas
+   import pandas as pd
+   metrics = pd.read_csv('data/exports/pilot_metrics.csv')
+   warnings = pd.read_csv('data/exports/pilot_warnings.csv')
+
+   print(f"Metrics extracted: {len(metrics)}")
+   print(f"Avg per filing: {len(metrics) / metrics['filing_id'].nunique():.1f}")
+   print(f"QA warnings: {len(warnings)}")
    ```
 
-4. **Run Extraction Pipeline**
-   ```bash
-   # Extract metrics from first 100 filings
-   python3 scripts/run_extraction_pipeline.py --limit 100
-
-   # Check extraction results
-   psql $DATABASE_URL -c "
-       SELECT COUNT(DISTINCT filing_id) as filings,
-              COUNT(*) as metric_values
-       FROM metric_values;"
-   ```
-
-5. **Review Results**
-   ```bash
-   # Export to CSV for manual review
-   python3 scripts/export_review_decisions.py \
-       --status all \
-       --output data/exports/pilot_metrics.csv
-
-   # Check quality metrics
-   psql $DATABASE_URL -c "
-       SELECT
-           AVG(confidence_score) as avg_confidence,
-           COUNT(*) FILTER (WHERE confidence_score >= 0.8) as high_conf,
-           COUNT(*) FILTER (WHERE confidence_score < 0.8) as low_conf
-       FROM metric_values;"
-   ```
-
-6. **Manual QA Sample**
+4. **Manual QA Sample**
    - Select 10 random filings
-   - Use web review interface: `python3 scripts/run_review_server.py`
    - Manually verify metrics against actual SEC filings
-   - Compare against gold standard: `python3 scripts/validate_against_gold_standard.py --all`
+   - Calculate precision/recall (see 07_TESTING_STRATEGY.md)
 
-7. **Go/No-Go Decision**
+5. **Go/No-Go Decision**
    - ✅ Success rate > 95%
-   - ✅ Cost per filing < $0.20
-   - ✅ Precision > 75% (vs gold standard; current V2: 92.8%)
-   - ✅ Recall > 55% (vs gold standard; current V2: 77.6%)
+   - ✅ Cost per filing < $0.10
+   - ✅ Precision > 90%
+   - ✅ Recall > 80%
    - ✅ No critical bugs
 
    **If not meeting criteria:** Debug, iterate, re-run pilot
@@ -143,89 +108,48 @@ Validate the system on a small sample before full deployment.
 ## Phase 2: S-1 Processing (2024)
 
 ### Objective
-Process all 2024 S-1/F-1 filings (~200-300 filings)
+Process all 2024 S-1 filings (~200-300 filings)
 
 ### Steps
 
-1. **Build 2024 Universe**
+1. **Run 2024 Batch**
    ```bash
-   python3 scripts/build_universe_real.py \
+   python main.py \
        --start-date 2024-01-01 \
-       --end-date 2024-12-31
-
-   # Expected: ~250-300 S-1/F-1 filings
+       --end-date 2024-12-31 \
+       --filing-type S-1 \
+       --workers 10 \
+       --max-cost 50.00 \
+       2>&1 | tee logs/2024_s1_run.log
    ```
 
-2. **Download All 2024 Filings**
-   ```bash
-   python3 scripts/batch_download_filings.py \
-       --year 2024 \
-       --limit 500 \
-       2>&1 | tee logs/2024_download.log
-   ```
-
-3. **Run Extraction**
-   ```bash
-   # Extract from all fetched 2024 filings
-   python3 scripts/run_extraction_pipeline.py \
-       --limit 500 \
-       2>&1 | tee logs/2024_extraction.log
-   ```
-
-4. **Expected Metrics**
+2. **Expected Metrics**
    - Filings: ~250
-   - Time: ~2-4 hours
-   - Cost: ~$25-50
+   - Time: ~1-2 hours
+   - Cost: ~$8-15
    - Metrics: ~3,750-6,250
 
-5. **Monitor for Issues**
+3. **Monitor for Issues**
    ```bash
-   # Check processing status
-   psql $DATABASE_URL -c "
-       SELECT processing_status, COUNT(*)
-       FROM filings
-       WHERE EXTRACT(YEAR FROM filing_date) = 2024
-       GROUP BY processing_status;"
+   # Check failures
+   sqlite3 data/filings_data.db \
+       "SELECT COUNT(*) FROM failed_filings WHERE resolved = 0;"
 
-   # Check for extraction failures
-   psql $DATABASE_URL -c "
-       SELECT COUNT(*) as failed_filings
-       FROM filings f
-       WHERE f.processing_status = 'fetched'
-         AND NOT EXISTS (
-             SELECT 1 FROM metric_values mv
-             WHERE mv.filing_id = f.filing_id
-         )
-         AND EXTRACT(YEAR FROM f.filing_date) = 2024;"
+   # Check cost
+   sqlite3 data/filings_data.db \
+       "SELECT SUM(cost_usd) FROM cost_tracking;"
    ```
 
-6. **Retry Failed Extractions**
+4. **Retry Failed Filings**
    ```bash
-   # Get failed filing IDs and retry
-   python3 scripts/reextract_all_filings.py \
-       --limit 50 \
-       --dry-run  # Preview first
-
-   # Then execute
-   python3 scripts/reextract_all_filings.py --limit 50
+   # After batch completes, retry failures
+   python main.py --retry-failed
    ```
 
-7. **Export Results**
+5. **Export Results**
    ```bash
-   # Create export directory
-   mkdir -p data/exports/2024_s1/
-
-   # Export all accepted metrics
-   python3 scripts/export_review_decisions.py \
-       --status accepted \
-       --format csv \
-       --output data/exports/2024_s1/metrics.csv
-
-   # Export as JSON for analysis
-   python3 scripts/export_review_decisions.py \
-       --status all \
-       --format json \
-       --output data/exports/2024_s1/all_decisions.json
+   # Export all data
+   python scripts/export_all.py --output data/exports/2024_s1/
    ```
 
 ---
@@ -233,118 +157,71 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 ## Phase 3: Full S-1 Processing (10 Years)
 
 ### Objective
-Process all S-1/F-1 filings from 2015-2024
+Process all S-1 filings from 2015-2024
 
 ### Strategy
 Process year by year to enable checkpointing and monitoring.
 
 ### Execution
 
-1. **Build Full Universe**
+1. **Process Each Year**
    ```bash
-   # Build universe for 10 years (2015-2024)
-   python3 scripts/build_universe_real.py \
-       --start-date 2015-01-01 \
-       --end-date 2024-12-31 \
-       2>&1 | tee logs/universe_full.log
-
-   # Check total scope
-   psql $DATABASE_URL -c "
-       SELECT
-           EXTRACT(YEAR FROM filing_date) as year,
-           COUNT(*) as filings
-       FROM filings
-       WHERE is_in_scope_phase1 = true
-       GROUP BY year
-       ORDER BY year;"
-   ```
-
-2. **Download Year by Year**
-   ```bash
-   # Download all pending filings in batches
    for year in {2015..2024}; do
-       echo "Downloading filings for $year"
+       echo "Processing S-1 filings for $year"
 
-       python3 scripts/batch_download_filings.py \
-           --year $year \
-           --limit 500 \
-           2>&1 | tee logs/download_${year}.log
+       python main.py \
+           --start-date ${year}-01-01 \
+           --end-date ${year}-12-31 \
+           --filing-type S-1 \
+           --workers 10 \
+           --max-cost 100.00 \
+           2>&1 | tee logs/${year}_s1_run.log
 
        # Check if successful
        if [ $? -eq 0 ]; then
-           echo "$year download completed successfully"
+           echo "$year completed successfully"
        else
-           echo "$year download failed, check logs"
+           echo "$year failed, check logs"
            break
        fi
 
        # Brief pause between years
-       sleep 30
+       sleep 60
    done
    ```
 
-3. **Extract Year by Year**
-   ```bash
-   # Extract metrics for all fetched filings
-   # Process in smaller batches to enable resume capability
-   for batch in {1..10}; do
-       echo "Processing batch $batch"
-
-       python3 scripts/run_extraction_pipeline.py \
-           --limit 250 \
-           2>&1 | tee logs/extract_batch_${batch}.log
-
-       sleep 30
-   done
-   ```
-
-4. **Expected Totals (10 Years)**
+2. **Expected Totals (10 Years)**
    - Filings: ~2,500
-   - Time: ~10-15 hours (download + extraction)
-   - Cost: $125-250
+   - Time: ~6-10 hours
+   - Cost: $75-150
    - Metrics: ~50,000-75,000
 
-5. **Monitor Progress**
+3. **Monitor Progress**
    ```bash
    # Check progress periodically
-   watch -n 60 "psql $DATABASE_URL -c \"
-       SELECT
-           EXTRACT(YEAR FROM f.filing_date) as year,
-           COUNT(*) as total_filings,
-           COUNT(*) FILTER (WHERE f.processing_status = 'fetched') as fetched,
-           COUNT(DISTINCT mv.filing_id) as extracted
-       FROM filings f
-       LEFT JOIN metric_values mv ON f.filing_id = mv.filing_id
-       WHERE f.is_in_scope_phase1 = true
-       GROUP BY year
-       ORDER BY year;\""
+   watch -n 60 "sqlite3 data/filings_data.db \
+       'SELECT filing_type, \
+               COUNT(*) as filings, \
+               SUM(metrics_extracted) as metrics, \
+               ROUND(SUM(total_cost_usd), 2) as cost \
+        FROM execution_log \
+        WHERE status = \"completed\" \
+        GROUP BY filing_type;'"
    ```
 
-6. **Handle Interruptions**
+4. **Handle Interruptions**
    ```bash
-   # If process crashes or is stopped, check progress
-   psql $DATABASE_URL -c "
-       SELECT
-           MAX(created_at) as last_extraction,
-           COUNT(*) as total_extracted
-       FROM metric_values;"
+   # If process crashes or is stopped, resume:
+   # Check last completed date
+   sqlite3 data/filings_data.db \
+       "SELECT MAX(date_range_end) FROM execution_log WHERE status = 'completed';"
 
-   # Resume extraction from where it stopped
-   # Script automatically skips already-processed filings
-   python3 scripts/run_extraction_pipeline.py --limit 2500
-   ```
-
-7. **Validate Against Gold Standard**
-   ```bash
-   # Run validation for all companies with gold standard data
-   python3 scripts/validate_against_gold_standard.py \
-       --all \
-       --output data/validation/full_validation.json
-
-   # Review precision/recall metrics
-   python3 scripts/validate_against_gold_standard.py \
-       --all \
-       --verbose
+   # Resume from next date
+   python main.py \
+       --start-date 2018-01-01 \  # Example: resume from 2018
+       --end-date 2024-12-31 \
+       --filing-type S-1 \
+       --workers 10
    ```
 
 ---
@@ -356,64 +233,53 @@ Process all 10-K filings from 2022-2024
 
 ### Preparation
 
-1. **Review Metric Configuration**
+1. **Review 10-K Config**
    ```bash
-   # Review metric keywords for 10-K relevance
-   # Edit config/metric_keywords.yaml if needed
-   # 10-Ks may use different terminology than S-1s
-   cat config/metric_keywords.yaml
+   # Edit config/10k_config.yaml
+   # Adjust keywords and metrics for annual reports
    ```
 
 2. **Test on Sample**
    ```bash
-   # Build small universe for testing
-   python3 scripts/build_universe_real.py \
+   # Test with 50 10-Ks first
+   python main.py \
        --start-date 2024-01-01 \
-       --end-date 2024-03-31
-
-   # Download 10-Ks only (modify query if needed)
-   python3 scripts/batch_download_filings.py --limit 50
-
-   # Extract and review
-   python3 scripts/run_extraction_pipeline.py --limit 50
+       --end-date 2024-12-31 \
+       --filing-type 10-K \
+       --workers 5 \
+       --max-results 50 \
+       --max-cost 10.00
    ```
 
 3. **Review and Adjust**
-   ```bash
-   # Check extraction quality
-   psql $DATABASE_URL -c "
-       SELECT
-           f.form_type,
-           AVG(mv.confidence_score) as avg_confidence,
-           COUNT(*) as metric_count
-       FROM metric_values mv
-       JOIN filings f ON mv.filing_id = f.filing_id
-       WHERE f.form_type LIKE '10-K%'
-       GROUP BY f.form_type;"
-
-   # Adjust keywords/prompts if needed
-   # Re-test with reextraction script
-   ```
+   - Check if extraction quality is similar to S-1s
+   - Adjust keywords/prompts if needed
+   - Re-test
 
 ### Execution
 
-1. **Build 10-K Universe**
+1. **Process 10-Ks Year by Year**
    ```bash
-   # Note: build_universe_real.py currently focuses on S-1/F-1
-   # May need to extend for 10-K support or query directly
-   # For now, this is a placeholder for future 10-K support
+   for year in {2022..2024}; do
+       echo "Processing 10-K filings for $year"
 
-   echo "10-K processing requires extension of universe builder"
-   echo "See CLAUDE.md for Phase 2+ roadmap"
+       python main.py \
+           --start-date ${year}-01-01 \
+           --end-date ${year}-12-31 \
+           --filing-type 10-K \
+           --workers 10 \
+           --max-cost 500.00 \  # 10-Ks are larger, higher budget
+           2>&1 | tee logs/${year}_10k_run.log
+
+       sleep 60
+   done
    ```
 
-2. **Expected Totals (3 Years) - FUTURE**
+2. **Expected Totals (3 Years)**
    - Filings: ~18,000
-   - Time: ~30-50 hours
-   - Cost: $900-1,800
+   - Time: ~24-48 hours
+   - Cost: $540-1,080
    - Metrics: ~300,000-450,000
-
-   *Note: 10-K processing is planned for Phase 2. Current system focuses on S-1/F-1 filings.*
 
 ---
 
@@ -423,166 +289,138 @@ Process all 10-K filings from 2022-2024
 
 ```bash
 # Before major runs, backup database
-pg_dump $DATABASE_URL > data/backups/filings_db_$(date +%Y%m%d).sql
-
-# Compressed backup
-pg_dump $DATABASE_URL | gzip > data/backups/filings_db_$(date +%Y%m%d).sql.gz
+cp data/filings_data.db data/backups/filings_data_$(date +%Y%m%d).db
 
 # Backup config
 cp -r config/ data/backups/config_$(date +%Y%m%d)/
 
 # Backup logs
 tar -czf data/backups/logs_$(date +%Y%m%d).tar.gz logs/
-
-# Restore from backup if needed
-psql $DATABASE_URL < data/backups/filings_db_20260205.sql
 ```
 
-### 2. Database Maintenance
+### 2. Logging
 
-```bash
-# Check database size
-psql $DATABASE_URL -c "
-    SELECT
-        pg_size_pretty(pg_database_size(current_database())) as db_size;"
+**Configure logging** in `main.py`:
+```python
+import logging
 
-# Vacuum and analyze for performance
-psql $DATABASE_URL -c "VACUUM ANALYZE;"
-
-# Check table sizes
-psql $DATABASE_URL -c "
-    SELECT
-        schemaname,
-        tablename,
-        pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-    FROM pg_tables
-    WHERE schemaname = 'public'
-    ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
-    LIMIT 10;"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'logs/run_{datetime.now():%Y%m%d_%H%M%S}.log'),
+        logging.StreamHandler()
+    ]
+)
 ```
 
-### 3. Logging
-
-All scripts automatically log to timestamped files in `logs/`:
-- `logs/extraction_YYYYMMDD_HHMMSS.log` - Extraction runs
-- `logs/batch_download_YYYYMMDD_HHMMSS.log` - Download runs
-- `logs/reextract_progress.json` - Reextraction checkpoint
+### 3. Error Monitoring
 
 ```bash
-# Monitor extraction in real-time
-tail -f logs/extraction_$(date +%Y%m%d)_*.log
+# Monitor error log in real-time
+tail -f logs/run_*.log | grep -i error
 
 # Count errors
-grep -i error logs/extraction_*.log | wc -l
+grep -i error logs/run_*.log | wc -l
 
 # Extract unique errors
-grep -i error logs/extraction_*.log | sort | uniq -c | sort -rn
+grep -i error logs/run_*.log | sort | uniq -c | sort -rn
 ```
 
-### 4. Error Monitoring
+### 4. Cost Monitoring
 
-```bash
-# Check for processing failures
-psql $DATABASE_URL -c "
-    SELECT
-        f.processing_status,
-        COUNT(*) as count
-    FROM filings f
-    GROUP BY f.processing_status
-    ORDER BY count DESC;"
+```python
+# Real-time cost tracking script
+# scripts/monitor_cost.py
 
-# Identify filings that failed extraction
-psql $DATABASE_URL -c "
-    SELECT
-        f.filing_id,
-        f.company_id,
-        f.accession_number,
-        f.filing_date
-    FROM filings f
-    WHERE f.processing_status = 'fetched'
-      AND NOT EXISTS (
-          SELECT 1 FROM metric_values mv
-          WHERE mv.filing_id = f.filing_id
-      )
-    LIMIT 20;"
-```
+import sqlite3
+import time
 
-### 5. Cost Monitoring
+db = sqlite3.connect('data/filings_data.db')
 
-```bash
-# Track OpenAI API costs
-# Note: Cost tracking is embedded in LLM client with SQLite cache
-# Monitor via OpenAI dashboard: https://platform.openai.com/usage
-
-# Estimate costs per filing
-psql $DATABASE_URL -c "
-    SELECT
-        COUNT(DISTINCT filing_id) as filings_with_metrics,
-        COUNT(*) as total_metrics,
-        ROUND(COUNT(*)::numeric / COUNT(DISTINCT filing_id), 2) as avg_metrics_per_filing
-    FROM metric_values;"
-
-# Expected cost: ~$0.10-0.20 per filing for GPT-4o
-# Bulk processing: ~$250-500 per 2,500 filings
-```
-
-### 6. Progress Dashboard
-
-Use the web review interface for real-time monitoring:
-
-```bash
-# Start review server
-python3 scripts/run_review_server.py
-
-# Access at http://localhost:5000
-# Review interface shows:
-# - Total filings processed
-# - Metrics extracted
-# - Review status
-# - Quality metrics
-```
-
-Or query database directly:
-
-```bash
-# Real-time stats query
-psql $DATABASE_URL -c "
-    WITH stats AS (
+while True:
+    cursor = db.execute("""
         SELECT
-            COUNT(DISTINCT f.filing_id) as total_filings,
-            COUNT(DISTINCT mv.filing_id) as extracted_filings,
-            COUNT(*) as total_metrics,
-            AVG(mv.confidence_score) as avg_confidence
-        FROM filings f
-        LEFT JOIN metric_values mv ON f.filing_id = mv.filing_id
-        WHERE f.is_in_scope_phase1 = true
-    )
-    SELECT
-        total_filings,
-        extracted_filings,
-        total_filings - extracted_filings as pending,
-        total_metrics,
-        ROUND(avg_confidence::numeric, 3) as avg_confidence,
-        ROUND(total_metrics::numeric / NULLIF(extracted_filings, 0), 1) as metrics_per_filing
-    FROM stats;"
+            SUM(cost_usd) as total_cost,
+            COUNT(*) as api_calls,
+            SUM(input_tokens + output_tokens) as total_tokens
+        FROM cost_tracking
+        WHERE created_at > datetime('now', '-1 hour')
+    """)
+
+    cost, calls, tokens = cursor.fetchone()
+
+    print(f"\nLast Hour:")
+    print(f"  Cost: ${cost:.2f}")
+    print(f"  API Calls: {calls}")
+    print(f"  Tokens: {tokens:,}")
+
+    time.sleep(300)  # Update every 5 min
 ```
 
-### 7. Health Checks
+### 5. Progress Dashboard
+
+```python
+# scripts/dashboard.py
+# Real-time progress monitoring
+
+from rich.console import Console
+from rich.table import Table
+from rich.live import Live
+import sqlite3
+import time
+
+def generate_table():
+    db = sqlite3.connect('data/filings_data.db')
+
+    # Get stats
+    stats = db.execute("""
+        SELECT
+            filing_type,
+            SUM(filings_processed) as processed,
+            SUM(filings_failed) as failed,
+            ROUND(SUM(total_cost_usd), 2) as cost,
+            SUM(metrics_extracted) as metrics
+        FROM execution_log
+        WHERE status = 'completed'
+        GROUP BY filing_type
+    """).fetchall()
+
+    table = Table(title="Extraction Progress")
+    table.add_column("Filing Type")
+    table.add_column("Processed")
+    table.add_column("Failed")
+    table.add_column("Cost")
+    table.add_column("Metrics")
+
+    for row in stats:
+        table.add_row(*[str(x) for x in row])
+
+    return table
+
+with Live(generate_table(), refresh_per_second=0.1) as live:
+    while True:
+        time.sleep(10)
+        live.update(generate_table())
+```
+
+### 6. Health Checks
 
 ```bash
-# Create a health check script
-cat > scripts/health_check.sh <<'EOF'
+# scripts/health_check.sh
+# Run periodically to ensure system health
+
 #!/bin/bash
 
 # Check database is accessible
-psql $DATABASE_URL -c "SELECT 1" > /dev/null 2>&1
+sqlite3 data/filings_data.db "SELECT 1" > /dev/null
 if [ $? -ne 0 ]; then
     echo "ERROR: Database not accessible"
     exit 1
 fi
 
 # Check disk space
-SPACE=$(df -h $(pwd) | awk 'NR==2 {print $5}' | sed 's/%//')
+SPACE=$(df -h data/ | awk 'NR==2 {print $5}' | sed 's/%//')
 if [ $SPACE -gt 90 ]; then
     echo "WARNING: Disk space > 90%"
 fi
@@ -593,107 +431,68 @@ if [ -z "$OPENAI_API_KEY" ]; then
     exit 1
 fi
 
-# Check Docker container running
-docker compose ps | grep postgres | grep Up > /dev/null
-if [ $? -ne 0 ]; then
-    echo "ERROR: PostgreSQL container not running"
-    exit 1
-fi
-
 echo "Health check passed"
-EOF
-
-chmod +x scripts/health_check.sh
-./scripts/health_check.sh
 ```
 
 ---
 
 ## Troubleshooting
 
-### Issue: High Download Failure Rate
+### Issue: High Failure Rate
 
 ```bash
-# Check download status
-psql $DATABASE_URL -c "
-    SELECT processing_status, COUNT(*)
-    FROM filings
-    GROUP BY processing_status;"
+# Check failure reasons
+sqlite3 data/filings_data.db \
+    "SELECT error_type, COUNT(*) \
+     FROM failed_filings \
+     WHERE resolved = 0 \
+     GROUP BY error_type;"
 
 # Common causes:
-# - Rate limiting: SEC enforces 100ms between requests
-# - Invalid URLs: Check sec_html_url is valid
-# - Network issues: Retry with batch_download_filings.py
+# - transient: Network issues, retry
+# - permanent: Bad URLs, skip
+# - extraction: LLM issues, review prompts
 ```
 
-### Issue: Low Extraction Quality
+### Issue: Cost Overrun
 
 ```bash
-# Check average confidence scores
-psql $DATABASE_URL -c "
-    SELECT
-        AVG(confidence_score) as avg_confidence,
-        MIN(confidence_score) as min_confidence,
-        MAX(confidence_score) as max_confidence,
-        COUNT(*) FILTER (WHERE confidence_score < 0.7) as low_confidence_count
-    FROM metric_values;"
+# Check cost per filing
+sqlite3 data/filings_data.db \
+    "SELECT AVG(cost_usd) FROM cost_tracking;"
 
-# If avg_confidence < 0.7:
-# - Review config/metric_keywords.yaml for keyword accuracy
-# - Run gold standard validation to identify issues
-# - Check LLM prompts in src/extraction/ for improvements
+# If > $0.10:
+# - Check if GPT-4o being used too much
+# - Verify keyword filtering is working
+# - Check for repeated processing (deduplication issue)
 ```
 
-### Issue: Database Connection Errors
+### Issue: Low Quality Extractions
 
 ```bash
-# Check Docker container status
-docker compose ps
+# Check average confidence
+sqlite3 data/filings_data.db \
+    "SELECT AVG(confidence) FROM metrics;"
 
-# Restart PostgreSQL
-docker compose restart
-
-# Check logs
-docker compose logs postgres
-
-# Verify DATABASE_URL in .env
-echo $DATABASE_URL
-
-# Test connection
-psql $DATABASE_URL -c "SELECT version();"
+# If < 0.7:
+# - Review QA warnings
+# - Check if LLM prompts need adjustment
+# - Verify table extraction is working
 ```
 
 ### Issue: Slow Processing
 
 ```bash
 # Check processing rate
-# Should process ~5-10 filings/minute
+# Should be ~5-10 filings/minute with 10 workers
 
 # Causes:
-# - Database connection pooling issues
-# - OpenAI API rate limits
-# - Large filing sizes
+# - Rate limiting too conservative
+# - Network latency
+# - Workers set too low
 
-# Solutions:
-# - Process in smaller batches (--limit 50)
-# - Monitor OpenAI tier limits
-# - Use --csv-only flag to skip database writes during testing
-```
-
-### Issue: Out of Disk Space
-
-```bash
-# Check space usage
-df -h
-
-# Clean up old logs
-find logs/ -name "*.log" -mtime +30 -delete
-
-# Clean up old backups
-find data/backups/ -name "*.sql.gz" -mtime +90 -delete
-
-# Vacuum database to reclaim space
-psql $DATABASE_URL -c "VACUUM FULL;"
+# Solution: Increase workers carefully
+python main.py --workers 15  # Test with more workers
 ```
 
 ---
@@ -702,111 +501,53 @@ psql $DATABASE_URL -c "VACUUM FULL;"
 
 ### 1. Data Validation
 
-```bash
-# Run gold standard validation
-python3 scripts/validate_against_gold_standard.py \
-    --all \
-    --output data/validation/final_validation.json \
-    --verbose
+```python
+# scripts/validate_final_data.py
 
-# Review results
-cat data/validation/final_validation.json | jq '.summary'
+import pandas as pd
+import sqlite3
 
-# Expected metrics (current V2 actuals: P=92.8%, R=77.6%, F1=84.5%):
-# - Precision > 75%
-# - Recall > 55%
-# - F1 > 65%
+db = sqlite3.connect('data/filings_data.db')
+
+# Load metrics
+metrics = pd.read_sql("SELECT * FROM metrics", db)
+
+print(f"Total metrics: {len(metrics):,}")
+print(f"Unique filings: {metrics['filing_id'].nunique():,}")
+print(f"Date range: {metrics['filing_date'].min()} to {metrics['filing_date'].max()}")
+print(f"\nMetrics by type:")
+print(metrics['metric_name'].value_counts().head(20))
+
+# Check for anomalies
+print(f"\nNegative values: {(metrics['value_numeric'] < 0).sum()}")
+print(f"Null periods: {metrics['period'].isna().sum()}")
+print(f"Low confidence (<0.5): {(metrics['confidence'] < 0.5).sum()}")
 ```
 
 ### 2. Export Final Dataset
 
 ```bash
-# Create export directory
-mkdir -p data/final_export/
-
-# Export all accepted decisions
-python3 scripts/export_review_decisions.py \
-    --status accepted \
+# Export everything
+python scripts/export_all.py \
+    --output data/final_export/ \
     --format csv \
-    --output data/final_export/customer_metrics.csv
-
-# Export all decisions (including rejected) for analysis
-python3 scripts/export_review_decisions.py \
-    --status all \
-    --format csv \
-    --output data/final_export/all_decisions.csv
-
-# Export as JSON for programmatic access
-python3 scripts/export_review_decisions.py \
-    --status accepted \
-    --format json \
-    --output data/final_export/customer_metrics.json
+    --include-qa-warnings \
+    --include-keywords
 ```
 
-### 3. Generate Summary Report
+### 3. Generate Report
 
-```bash
-# Query summary statistics
-psql $DATABASE_URL -c "
-    SELECT
-        'Total Companies' as metric,
-        COUNT(DISTINCT company_id)::text as value
-    FROM companies
-    UNION ALL
-    SELECT
-        'Total Filings',
-        COUNT(*)::text
-    FROM filings
-    WHERE is_in_scope_phase1 = true
-    UNION ALL
-    SELECT
-        'Filings Processed',
-        COUNT(DISTINCT filing_id)::text
-    FROM metric_values
-    UNION ALL
-    SELECT
-        'Total Metrics Extracted',
-        COUNT(*)::text
-    FROM metric_values
-    UNION ALL
-    SELECT
-        'Avg Confidence Score',
-        ROUND(AVG(confidence_score)::numeric, 3)::text
-    FROM metric_values
-    UNION ALL
-    SELECT
-        'Date Range',
-        MIN(filing_date)::text || ' to ' || MAX(filing_date)::text
-    FROM filings
-    WHERE is_in_scope_phase1 = true;" \
-    > data/final_export/summary.txt
+```python
+# scripts/generate_report.py
 
-cat data/final_export/summary.txt
-```
-
-### 4. Archive Project State
-
-```bash
-# Create archive directory with timestamp
-ARCHIVE_DIR="data/archives/production_run_$(date +%Y%m%d)"
-mkdir -p $ARCHIVE_DIR
-
-# Backup database
-pg_dump $DATABASE_URL | gzip > $ARCHIVE_DIR/database.sql.gz
-
-# Copy exports
-cp -r data/final_export/ $ARCHIVE_DIR/
-
-# Copy config
-cp -r config/ $ARCHIVE_DIR/
-
-# Copy logs
-tar -czf $ARCHIVE_DIR/logs.tar.gz logs/
-
-# Copy validation results
-cp -r data/validation/ $ARCHIVE_DIR/
-
-echo "Archive created at: $ARCHIVE_DIR"
+# Create PDF report with:
+# - Total filings processed
+# - Success rate
+# - Total cost
+# - Metrics extracted
+# - Quality metrics
+# - Top warnings
+# - Recommendations
 ```
 
 ---
@@ -814,23 +555,21 @@ echo "Archive created at: $ARCHIVE_DIR"
 ## Final Checklist
 
 ### ✅ Deployment Complete When:
-- [ ] All filings processed (S-1/F-1: 10 years)
+- [ ] All filings processed (S-1: 10 years, 10-K: 3 years)
 - [ ] Success rate > 95%
 - [ ] Total cost within budget
-- [ ] Gold standard validation: precision > 75%, recall > 55% (current V2 actuals: P=92.8%, R=77.6%, F1=84.5%)
-- [ ] Database exported to CSV/JSON
-- [ ] Summary report generated
+- [ ] QA sample validated (precision > 90%, recall > 80%)
+- [ ] Database exported to CSV
+- [ ] Report generated
 - [ ] Data backed up
-- [ ] Code archived with git tag
+- [ ] Code archived
 
 ### ✅ Deliverables:
-- [ ] `customer_metrics.csv` - Main output (accepted metrics)
-- [ ] `all_decisions.csv` - Complete decision log
-- [ ] `customer_metrics.json` - JSON export for APIs
-- [ ] `final_validation.json` - Gold standard comparison
-- [ ] `summary.txt` - Summary statistics
-- [ ] Database backup (`.sql.gz`)
-- [ ] Codebase snapshot (git tag)
+- [ ] `customer_metrics.csv` - Main output
+- [ ] `qa_warnings.csv` - Quality warnings
+- [ ] `execution_log.csv` - Processing history
+- [ ] Final report PDF
+- [ ] Codebase snapshot
 - [ ] Documentation
 
 ---
@@ -838,129 +577,43 @@ echo "Archive created at: $ARCHIVE_DIR"
 ## Long-Term Maintenance
 
 ### Quarterly Updates
-
 ```bash
-# Build universe for new quarter
-python3 scripts/build_universe_real.py \
-    --start-date 2026-01-01 \
-    --end-date 2026-03-31
-
-# Download new filings
-python3 scripts/batch_download_filings.py --limit 200
-
-# Extract metrics
-python3 scripts/run_extraction_pipeline.py --limit 200
-
-# Validate and export
-python3 scripts/validate_against_gold_standard.py --all
-python3 scripts/export_review_decisions.py \
-    --status accepted \
-    --output data/exports/Q1_2026_metrics.csv
+# Run quarterly to capture new filings
+python main.py \
+    --start-date 2025-01-01 \
+    --end-date 2025-03-31 \
+    --filing-type S-1,10-K \
+    --workers 10
 ```
 
 ### Config Updates
-
-```bash
-# Update metric keywords as new metrics emerge
-vim config/metric_keywords.yaml
-
-# Test changes on sample
-python3 scripts/run_extraction_pipeline.py --limit 10 --csv-only
-
-# Validate changes
-pytest -m gold_standard --gold-standard-mode=fresh -v
-
-# If validation passes, re-extract all filings
-python3 scripts/reextract_all_filings.py --dry-run
-python3 scripts/reextract_all_filings.py
-```
-
-### Database Optimization
-
-```bash
-# Monthly maintenance
-psql $DATABASE_URL -c "VACUUM ANALYZE;"
-
-# Quarterly backup
-pg_dump $DATABASE_URL | gzip > \
-    data/backups/quarterly_backup_$(date +%Y%m%d).sql.gz
-
-# Annual archival
-# Archive old data to separate tables or files
-# Maintain rolling 3-year window for active analysis
-```
+- Update keywords as new metrics emerge
+- Adjust LLM prompts based on QA feedback
+- Add new filing types (10-Q, 8-K) if needed
 
 ### Cost Optimization
-
-- Monitor OpenAI pricing updates
-- Consider batch API for large re-extractions
-- Evaluate GPT-4o-mini vs GPT-4o trade-offs
-- Review keyword filtering to minimize LLM calls
+- Review if GPT-4o-mini remains cheapest option
+- Check if OpenAI releases new models
+- Consider batch API for large updates
 
 ---
 
 ## Success Criteria
 
 ### Technical Success
-✅ Processed 2,500+ S-1/F-1 filings (2015-2024)
+✅ Processed 20,500+ filings
 ✅ Success rate > 95%
-✅ Total cost < $500 for full S-1 corpus
-✅ Average processing time < 10 sec/filing
-
-### Quality Success
-✅ Extracted 50,000-75,000 metrics
-✅ Precision > 75% (vs gold standard; V2 current: 92.8%)
-✅ Recall > 55% (vs gold standard; V2 current: 77.6%)
-✅ F1 Score > 65% (V2 current: 84.5%)
+✅ Total cost < $1,500
+✅ Average processing time < 8 sec/filing
 
 ### Business Success
-✅ Usable dataset for CMASB research
-✅ Web review interface operational
-✅ Export pipeline working
-✅ Documentation complete
-
----
-
-## Additional Resources
-
-### Key Scripts Reference
-
-| Script | Purpose | Key Flags |
-|--------|---------|-----------|
-| `build_universe_real.py` | Discover filings from SEC EDGAR | `--start-date`, `--end-date`, `--dry-run` |
-| `batch_download_filings.py` | Download HTML/TXT files | `--limit`, `--year`, `--dry-run` |
-| `run_extraction_pipeline.py` | Extract metrics from filings | `--limit`, `--cik`, `--accession`, `--csv-only` |
-| `reextract_all_filings.py` | Re-run extraction on all filings | `--dry-run`, `--limit`, `--resume-from` |
-| `export_review_decisions.py` | Export metrics to CSV/JSON | `--status`, `--format`, `--output` |
-| `validate_against_gold_standard.py` | Compare vs gold standard | `--all`, `--company`, `--mode fresh` |
-| `run_review_server.py` | Start web review interface | (no flags, runs on port 5000) |
-| `apply_migrations.py` | Initialize database schema | (no flags) |
-
-### Database Schema Key Tables
-
-- `companies` - Company master data
-- `filings` - Filing metadata with processing status
-- `source_segments` - HTML segments from filings
-- `metrics` - Canonical metric taxonomy (dimension table)
-- `metric_values` - Extracted metric facts
-- `metric_definitions` - Per-filing metric definitions and methodology
-- `review_candidates` - Candidate metrics for human review
-- `review_decisions` - Human review decisions
-
-### Configuration Files
-
-- `.env` - Environment variables (DATABASE_URL, OPENAI_API_KEY, etc.)
-- `config/metric_keywords.yaml` - Keyword patterns for metrics (authoritative source)
-- `docker-compose.yml` - PostgreSQL container config
+✅ Extracted 300,000-500,000 metrics
+✅ Precision > 90%
+✅ Recall > 80%
+✅ Usable dataset for research
 
 ---
 
 **Congratulations on deploying the SEC Filings Analysis System!**
 
-For questions or issues, refer to:
-- Architecture docs: `docs/architecture/`
-- CLAUDE.md: Project overview and commands
-- Testing guide: `docs/development/testing.md`
-- Review system: `docs/HUMAN_REVIEW_SYSTEM.md`
-
-Or create an issue in the project repository.
+For questions or issues, refer back to the architecture docs or create an issue in the project repository.

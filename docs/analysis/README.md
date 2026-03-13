@@ -1,6 +1,6 @@
-# Analysis & Task Outputs
+# Analysis & Evaluation Reports
 
-This directory contains all task output documents: validation reports, evaluation results, audits, investigations, research findings, and completion summaries.
+This directory contains validation reports, evaluation results, and analysis documentation for the filings analysis system.
 
 ---
 
@@ -70,33 +70,6 @@ This directory contains all task output documents: validation reports, evaluatio
 
 ---
 
-### Audits & Investigations
-
-| Document | Description |
-|----------|-------------|
-| **MET-1-metric-consistency-audit.md** | Metric consistency audit across filings |
-| **INV-1_FARFETCH_EXTRACTION_REPORT.md** | Farfetch extraction investigation report |
-
-### Research
-
-| Document | Description |
-|----------|-------------|
-| **VIS-1-chart-extraction-results.md** | Chart/vision extraction evaluation results |
-| **VIS-1a-extended-evaluation-results.md** | Extended vision evaluation results |
-| **VIS-GPT4O-VALIDATION.md** | GPT-4o vision validation results |
-| **SAMSARA_VISION_EXTRACTION_ANALYSIS.md** | Samsara vision extraction analysis |
-
-### Completion Summaries
-
-| Document | Description |
-|----------|-------------|
-| **DUP-2_COMPLETION_SUMMARY.md** | DUP-2 task completion summary |
-| **HRV-16_COMPLETION_SUMMARY.md** | HRV-16 task completion summary |
-| **IMG-1-1_COMPLETION_SUMMARY.md** | IMG-1-1 image extraction completion |
-| **IMG-1-2_COMPLETION_SUMMARY.md** | IMG-1-2 image extraction completion |
-
----
-
 ## Archive
 
 **Location**: `docs/archive/analysis/evaluation-reports/`
@@ -157,4 +130,4 @@ See `docs/archive/analysis/evaluation-reports/README.md` for details.
 ---
 
 **Maintained By**: Claude Code
-**Last Updated**: 2026-02-09
+**Last Updated**: 2025-12-27

@@ -1,6 +1,8 @@
 """Tests for V2 extraction data models."""
 
-from datetime import date
+from datetime import date, datetime
+
+import pytest
 
 from src.extraction_v2.models import (
     BoundingBox,
@@ -11,10 +13,12 @@ from src.extraction_v2.models import (
     DataPoint,
     Document,
     EvidencePack,
+    ExtractionMethod,
     ImageAsset,
     ImageClassification,
     MetricFact,
     PeriodType,
+    ReviewStatus,
     Scope,
     SectionType,
     Segment,

@@ -501,7 +501,7 @@ benchmark: 5.2.3 (
    - Result: **SAFE WITH CONSTRAINTS** - Use per-thread instances
    - Recommendation: ThreadPoolExecutor with per-thread CandidateGenerator instances
    - Expected speedup: 3-4x on 4 cores, 5-7x on 8 cores
-   - See: `docs/archive/workstreams/P-performance/P3_THREAD_SAFETY_AUDIT.md` for full analysis
+   - See: `docs/P3_THREAD_SAFETY_AUDIT.md` for full analysis
 
 ### Medium Priority
 
@@ -604,7 +604,7 @@ Performance difference is from functional enhancements added AFTER baseline:
 
 **Conclusion**: Type hints have no measurable performance impact. The 24.9% difference is from quality improvements (boundary + sentence detection) that enhance extraction accuracy.
 
-**Full Report**: The detailed B13 performance investigation report has been archived and is no longer available.
+**Full Report**: See `docs/archive/workstreams/B-type-safety/PERFORMANCE_INVESTIGATION_B13.md`
 
 ---
 
@@ -757,7 +757,7 @@ pool = create_pool(
 
 ### Full Documentation
 
-See `docs/archive/workstreams/P-performance/P3_THREAD_SAFETY_AUDIT.md` for complete analysis including:
+See `docs/P3_THREAD_SAFETY_AUDIT.md` for complete analysis including:
 - Per-module thread-safety analysis (10 modules)
 - Threading scenario comparisons
 - Recommended usage patterns

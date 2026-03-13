@@ -136,11 +136,15 @@ def test_review_page_renders(client, sample_filing, sample_image_candidates):
     assert "sec.gov" in html or "image" in html.lower()
 
 
-def test_review_page_shows_specific_candidate(client, sample_filing, sample_image_candidates):
+def test_review_page_shows_specific_candidate(
+    client, sample_filing, sample_image_candidates
+):
     """Review page shows specific candidate when requested."""
     filing_id = sample_filing["filing_id"]
     candidate_id = sample_image_candidates[0]
-    response = client.get(f"/review/images/{filing_id}?image_candidate_id={candidate_id}")
+    response = client.get(
+        f"/review/images/{filing_id}?image_candidate_id={candidate_id}"
+    )
     assert response.status_code == 200
 
 
@@ -216,7 +220,9 @@ def test_decision_returns_next_candidate(client, sample_filing, sample_image_can
     assert "next_candidate" in data
 
 
-def test_decision_validation_chart_type_required(client, sample_filing, sample_image_candidates):
+def test_decision_validation_chart_type_required(
+    client, sample_filing, sample_image_candidates
+):
     """API rejects relevant decision without chart_type."""
     candidate_id = sample_image_candidates[2]  # Use unused candidate
     response = client.post(

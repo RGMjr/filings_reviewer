@@ -16,11 +16,10 @@
       "Bash(git commit*)",
       "Bash(git push*)",
       "Bash(mypy*)",
-      "Bash(ruff format*)",
+      "Bash(black*)",
       "Bash(ruff*)",
-      "Bash(python3 scripts/validate_against_gold_standard.py*)",
-      "Bash(python3 scripts/sync_github_issues.py*)",
-      "Bash(bash scripts/extraction-change-workflow.sh*)"
+      "Bash(python scripts/validate_against_gold_standard.py*)",
+      "Bash(python scripts/sync_github_issues.py*)"
     ],
     "deny": [
       "Bash(rm -rf /)*",
@@ -41,17 +40,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash(git commit*)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 -m pytest tests/unit/ -x -q --tb=short && echo '\\nAll unit tests passed - safe to commit' || (echo '\\nUNIT TESTS FAILED - fix before committing' && exit 1)"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Edit.*metric_keywords",
@@ -61,30 +49,8 @@
             "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
           }
         ]
-      },
-      {
-        "matcher": "(Edit|Write).*\\.py$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "input=$(cat); file=$(echo \"$input\" | jq -r '.tool_input.file_path // empty'); [ -n \"$file\" ] && ruff format --quiet \"$file\" 2>/dev/null; exit 0"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '{\"additionalContext\": \"WORKFLOW GATE: Before planning or implementing, classify this task per the Session Approach table in CLAUDE.md and state your chosen execution mode (interactive / ralph / team). This is mandatory.\"}'"
-          }
-        ]
       }
     ]
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "project": {
     "testCommand": "pytest",

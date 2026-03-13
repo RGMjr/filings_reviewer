@@ -1,7 +1,3 @@
----
-description: Generate structured implementation plans with phases, dependencies, and risk assessment
----
-
 # Implementation Planner Skill
 
 **Purpose:** Generate structured implementation plans following the SEC Filings Reviewer project's planning methodology.

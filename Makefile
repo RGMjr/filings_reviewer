@@ -2,22 +2,21 @@
 #
 # Common commands for development, testing, and documentation maintenance.
 
-.PHONY: help install test test-parallel coverage lint format docs-check docs-update hooks-install clean
+.PHONY: help install test coverage lint format docs-check docs-update hooks-install clean
 
 # Default target
 help:
 	@echo "SEC Filings Reviewer - Development Commands"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make install        Install dependencies (via uv)"
+	@echo "  make install        Install dependencies"
 	@echo "  make hooks-install  Install git pre-commit hooks"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test           Run all tests"
-	@echo "  make test-parallel  Run tests in parallel (pytest-xdist)"
 	@echo "  make coverage       Run tests with coverage report"
 	@echo "  make lint           Run linter (ruff)"
-	@echo "  make format         Format code (ruff)"
+	@echo "  make format         Format code (black)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-check     Check if docs are in sync with code"
@@ -31,12 +30,13 @@ help:
 # -----------------------------------------------------------------------------
 
 install:
-	uv sync --all-extras
-	@echo "✅ Dependencies installed via uv"
+	pip install -r requirements.txt
+	@echo "✅ Dependencies installed"
 
 hooks-install:
-	uv run pre-commit install
-	@echo "✅ Pre-commit hooks installed"
+	git config core.hooksPath .githooks
+	@echo "✅ Git hooks installed from .githooks/"
+	@echo "   Pre-commit will now check documentation freshness"
 
 # -----------------------------------------------------------------------------
 # Development
@@ -44,9 +44,6 @@ hooks-install:
 
 test:
 	pytest tests/ -v
-
-test-parallel:
-	pytest tests/ -n auto --dist=loadscope -v
 
 coverage:
 	pytest --cov=src --cov-report=html --cov-report=term
@@ -57,8 +54,7 @@ lint:
 	ruff check src/ tests/
 
 format:
-	ruff check --fix src/ tests/
-	ruff format src/ tests/
+	black src/ tests/
 	@echo "✅ Code formatted"
 
 # -----------------------------------------------------------------------------
@@ -66,7 +62,7 @@ format:
 # -----------------------------------------------------------------------------
 
 docs-check:
-	@python3 scripts/check_docs_sync.py
+	@python scripts/check_docs_sync.py
 
 docs-update:
 	@echo "Updating coverage in README.md..."
@@ -86,7 +82,7 @@ docs: docs-check
 # -----------------------------------------------------------------------------
 
 clean:
-	rm -rf __pycache__ .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage
+	rm -rf __pycache__ .pytest_cache htmlcov .coverage
 	rm -rf src/__pycache__ tests/__pycache__
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true

@@ -359,7 +359,7 @@ Example output for cohort data:
 
 2. **Run Phase 1 Extraction**:
    ```bash
-   python3 scripts/test_cmasb_phase1.py --sample-filings 5
+   python scripts/test_cmasb_phase1.py --sample-filings 5
    ```
 
 3. **Compare Results**:

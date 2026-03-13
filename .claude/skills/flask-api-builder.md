@@ -1,7 +1,3 @@
----
-description: Generate Flask routes and API endpoints following project conventions with auth decorators and error handling
----
-
 # Flask API Builder Skill
 
 **Version:** 1.0.0

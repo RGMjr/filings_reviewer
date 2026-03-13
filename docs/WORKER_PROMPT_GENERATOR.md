@@ -28,8 +28,8 @@ You are generating a worker prompt for Task [TASK_ID] following the project's st
 ## Instructions
 
 1. **Read Required Documents**
-   - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings_Analysis/Filings_review_tool/filings_reviewer/docs/WORKER_PROMPT_TEMPLATE.md` (template format)
-   - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings_Analysis/Filings_review_tool/filings_reviewer/instructions_orchestrator.md` (orchestrator context)
+   - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/docs/WORKER_PROMPT_TEMPLATE.md` (template format)
+   - Read `/Users/rgmarkey/Library/CloudStorage/OneDrive-CMASB/Analytics/Filings Analysis/Filings review tool/filings_reviewer/instructions_orchestrator.md` (orchestrator context)
    - Read the plan document: `[PLAN_DOC]` (task details)
 
 2. **Extract Task Information**

@@ -92,20 +92,16 @@ class TestL3DirectionDetection:
 
         # Find the churn rate candidate by metric_id
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
-        assert len(churn_candidates) > 0, (
+        assert len(churn_candidates) > 0, \
             f"Expected churn rate candidate, got: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
-        )
 
         # Verify direction is 'before'
         candidate = churn_candidates[0]
-        assert candidate.keyword_position == "before", (
+        assert candidate.keyword_position == "before", \
             f"Expected 'before', got '{candidate.keyword_position}'"
-        )
 
     def test_direction_after_persisted_to_database(self, db, generator):
         """Direction 'after' is persisted to database correctly."""
@@ -134,18 +130,15 @@ class TestL3DirectionDetection:
 
         # Find the churn rate candidate
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
 
         # Verify direction is 'after'
         candidate = churn_candidates[0]
-        assert candidate.keyword_position == "after", (
+        assert candidate.keyword_position == "after", \
             f"Expected 'after', got '{candidate.keyword_position}'"
-        )
 
     def test_direction_at_mapped_to_before(self, db, generator):
         """Edge case: 'at' direction is mapped to 'before' for semantic correctness."""
@@ -176,9 +169,8 @@ class TestL3DirectionDetection:
 
         # Assert: All candidates should have valid direction ('before' or 'after')
         for candidate in candidates:
-            assert candidate.keyword_position in ("before", "after"), (
+            assert candidate.keyword_position in ("before", "after"), \
                 f"Invalid direction: {candidate.keyword_position} (should be 'before' or 'after')"
-            )
 
     def test_multiple_numbers_correct_directions(self, db, generator):
         """Each number gets correct direction for its nearest keywords."""
@@ -208,10 +200,8 @@ class TestL3DirectionDetection:
 
         # Find customer candidate (50000)
         customer_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("50000")
-            and "cm_active_customers_total" in c.suggested_metric_id
+            c for c in candidates
+            if c.parsed_value == Decimal("50000") and "cm_active_customers_total" in c.suggested_metric_id
         ]
         if customer_candidates:
             # "active customers" is AFTER 50000
@@ -219,10 +209,8 @@ class TestL3DirectionDetection:
 
         # Find churn rate candidate (5%)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         if churn_candidates:
             # "churn rate" is BEFORE 5%
@@ -261,10 +249,8 @@ class TestL4ContextDependentMultipliers:
 
         # Assert: Should find "churn rate" (post-value, in parentheses)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
         assert churn_candidates[0].keyword_position == "after"
@@ -293,10 +279,8 @@ class TestL4ContextDependentMultipliers:
 
         # Assert: Should find "churn rate" (pre-value, in bullet)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
         # Should be 'before' due to bullet context (prefers pre-value)
@@ -326,10 +310,8 @@ class TestL4ContextDependentMultipliers:
 
         # Assert: Should find "churn rate" (pre-value, with copula verb)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
         assert churn_candidates[0].keyword_position == "before"
@@ -427,10 +409,8 @@ class TestL3L4Combined:
 
         # Churn rate is much closer than active customers, should win
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("100")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         if len(churn_candidates) > 0:
             # Should be 'after' (post-value) and should be the selected keyword
@@ -462,18 +442,15 @@ class TestL3L4Combined:
         # Assert: Should find "churn rate" (same bullet, post-value)
         # Should NOT find "active customers" (different bullet, filtered by boundary)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("100")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         if len(churn_candidates) > 0:
             assert churn_candidates[0].keyword_position == "after"
 
         # Verify no customer candidates for value 100
         customer_candidates = [
-            c
-            for c in candidates
+            c for c in candidates
             if c.parsed_value == Decimal("100") and "customer" in c.triggering_keyword.lower()
         ]
         # Should be 0 (filtered by boundary)
@@ -517,26 +494,21 @@ class TestRealWorldPatterns:
 
         # Verify LTV/CAC candidates (1.42, 1.53, 1.72) are matched correctly
         ltv_candidates = [
-            c
-            for c in candidates
+            c for c in candidates
             if c.parsed_value in (Decimal("1.42"), Decimal("1.53"), Decimal("1.72"))
         ]
-        assert len(ltv_candidates) >= 3, (
+        assert len(ltv_candidates) >= 3, \
             f"Expected at least 3 LTV/CAC candidates, got: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
-        )
 
         # The key test: LTV/CAC values should NOT incorrectly match "Contribution Margin"
         # from the second bullet (boundary detection prevents this)
         for ltv_candidate in ltv_candidates:
             # Check that it's matched to LTV-related metrics, not margin metrics
-            assert (
-                "ltv" in ltv_candidate.suggested_metric_id.lower()
-                or "lifetime" in ltv_candidate.suggested_metric_id.lower()
-                or "cac" in ltv_candidate.suggested_metric_id.lower()
-                or "acquisition" in ltv_candidate.suggested_metric_id.lower()
-            ), (
+            assert "ltv" in ltv_candidate.suggested_metric_id.lower() or \
+                   "lifetime" in ltv_candidate.suggested_metric_id.lower() or \
+                   "cac" in ltv_candidate.suggested_metric_id.lower() or \
+                   "acquisition" in ltv_candidate.suggested_metric_id.lower(), \
                 f"LTV/CAC value {ltv_candidate.parsed_value} incorrectly matched to: {ltv_candidate.suggested_metric_id}"
-            )
 
         # Note: The 33%, 35%, 43% values may or may not be matched due to distance filtering
         # and year filtering. The key improvement from L3/L4 is that boundary detection
@@ -565,10 +537,8 @@ class TestRealWorldPatterns:
 
         # Assert: Should find churn rate candidate
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
         # "Churn rate" is before "was 5%"
@@ -597,10 +567,8 @@ class TestRealWorldPatterns:
 
         # Assert: Should find churn rate candidate (in parentheses after value)
         churn_candidates = [
-            c
-            for c in candidates
-            if c.parsed_value == Decimal("0.05")
-            and c.suggested_metric_id == "cm_customer_churn_rate"
+            c for c in candidates
+            if c.parsed_value == Decimal("0.05") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         assert len(churn_candidates) > 0
         # Parenthetical multiplier (1.15) should prefer post-value "churn rate"

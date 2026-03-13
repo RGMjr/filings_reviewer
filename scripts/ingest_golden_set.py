@@ -24,12 +24,9 @@ COMPANY_MAP = {
     "Samsara": "Samsara_Inc_",
     "Samsara Inc.": "Samsara_Inc_",
     "SAMSARA VISION INC.": "Samsara_Vision_Inc_",
-    "Farfetch": "Farfetch_Limited",
-    "Farfetch Limited": "Farfetch_Limited",
+    "Farfetch": "Farfetch_Ltd",
     "Slack": "Slack_Technologies",
     "Slack Technologies": "Slack_Technologies",
-    "Snowflake": "Snowflake_Inc",
-    "Snowflake Inc": "Snowflake_Inc",
 }
 
 # Target columns for extracted_values.csv

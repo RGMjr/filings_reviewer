@@ -1,7 +1,3 @@
----
-description: Evaluate Python modules and generate prioritized improvement recommendations with letter grades
----
-
 # Code Module Grader Skill
 
 **Version:** 1.0.0

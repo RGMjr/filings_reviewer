@@ -55,9 +55,7 @@ class TestRequestsHTTPClient:
         result = client.get("https://example.com/page")
 
         # Verify request made
-        mock_get.assert_called_once_with(
-            "https://example.com/page", headers=None, timeout=10.0, allow_redirects=True
-        )
+        mock_get.assert_called_once_with("https://example.com/page", headers=None, timeout=10.0, allow_redirects=True)
 
         # Verify response
         assert isinstance(result, HTTPResponse)
@@ -82,9 +80,7 @@ class TestRequestsHTTPClient:
         result = client.get("https://api.example.com", headers=custom_headers, timeout=30.0)
 
         # Verify headers and timeout passed
-        mock_get.assert_called_once_with(
-            "https://api.example.com", headers=custom_headers, timeout=30.0, allow_redirects=True
-        )
+        mock_get.assert_called_once_with("https://api.example.com", headers=custom_headers, timeout=30.0, allow_redirects=True)
 
         assert result.status_code == 200
 

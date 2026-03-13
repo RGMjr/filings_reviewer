@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 try:
     import tiktoken
@@ -26,7 +26,7 @@ try:
 except ImportError as e:
     raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken") from e
 
-from src.llm.cache import CacheConfig, LLMCache
+from src.llm.cache import CacheConfig, CachedResponse, LLMCache
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,9 @@ class CostTracker:
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "total_cost_usd": round(self.total_cost, 4),
             "avg_cost_per_request": (
-                round(self.total_cost / self.total_requests, 4) if self.total_requests > 0 else 0
+                round(self.total_cost / self.total_requests, 4)
+                if self.total_requests > 0
+                else 0
             ),
         }
 
@@ -111,7 +113,7 @@ class OpenAIClient:
         max_tokens: int = 4096,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        cache_config: CacheConfig | None = None,
+        cache_config: Optional[CacheConfig] = None,
     ):
         """
         Initialize OpenAI client.
@@ -145,7 +147,9 @@ class OpenAIClient:
             except KeyError:
                 # Fallback to cl100k_base for newer models
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
-                logger.warning(f"No tokenizer for {model}, using cl100k_base as fallback")
+                logger.warning(
+                    f"No tokenizer for {model}, using cl100k_base as fallback"
+                )
         else:
             self.tokenizer = None
             logger.warning("tiktoken not installed, token counting will be estimated")
@@ -238,7 +242,9 @@ class OpenAIClient:
                 cached=True,
             )
 
-            logger.debug(f"Cache hit: {cached.output_tokens} tokens (saved ${cost:.4f})")
+            logger.debug(
+                f"Cache hit: {cached.output_tokens} tokens (saved ${cost:.4f})"
+            )
 
             return llm_response
 

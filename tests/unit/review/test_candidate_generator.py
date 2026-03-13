@@ -393,7 +393,6 @@ class TestMetricKeywords:
     def test_patterns_are_valid_regex(self):
         """All patterns should be valid regex."""
         import re
-
         for metric_id, patterns in METRIC_KEYWORDS.items():
             for pattern in patterns:
                 try:
@@ -501,7 +500,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.contains_definition_language is True
@@ -515,7 +516,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.has_period_mention is True
@@ -530,7 +533,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.is_in_risk_factors is True
@@ -544,7 +549,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.is_in_risk_factors is True
@@ -558,7 +565,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.number_format == "integer"
@@ -572,7 +581,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.number_format == "percentage"
@@ -586,7 +597,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.number_format == "currency"
@@ -600,11 +613,14 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Find the candidate for NRR
         nrr_candidates = [
-            c for c in candidates if c.suggested_metric_id == "cm_net_revenue_retention"
+            c for c in candidates
+            if c.suggested_metric_id == "cm_net_revenue_retention"
         ]
         assert len(nrr_candidates) >= 1
         assert nrr_candidates[0].features.number_format == "decimal"
@@ -618,7 +634,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         # log10(10000) = 4.0
@@ -634,11 +652,14 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should find "active customers" candidate
         active_candidates = [
-            c for c in candidates if c.suggested_metric_id == "cm_active_customers_total"
+            c for c in candidates
+            if c.suggested_metric_id == "cm_active_customers_total"
         ]
         assert len(active_candidates) >= 1
         # There are 3 numbers total, so surrounding count should be 2
@@ -653,7 +674,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.context_word_count > 0
@@ -668,7 +691,9 @@ class TestComputeFeatures:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         assert len(candidates) >= 1
         assert candidates[0].features.section_name == "Business Overview"
@@ -701,7 +726,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not for 5
         assert len(candidates) >= 1
@@ -718,7 +745,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not for 2023
         raw_texts = [c.raw_number_text for c in candidates]
@@ -734,7 +763,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not date components
         raw_texts = [c.raw_number_text for c in candidates]
@@ -751,7 +782,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not page number
         raw_texts = [c.raw_number_text for c in candidates]
@@ -767,7 +800,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not note number
         raw_texts = [c.raw_number_text for c in candidates]
@@ -783,7 +818,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000, not version
         raw_texts = [c.raw_number_text for c in candidates]
@@ -799,7 +836,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Should only have candidate for 50,000
         raw_texts = [c.raw_number_text for c in candidates]
@@ -814,7 +853,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # 5% should not be filtered even though 5 < 10
         assert len(candidates) >= 1
@@ -829,7 +870,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # $5 should not be filtered
         assert len(candidates) >= 1
@@ -844,7 +887,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # 1.25 should not be filtered (could be a ratio like 125%)
         nrr_candidates = [
@@ -882,7 +927,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # 50 should be filtered (< 100), 500 should remain
         raw_texts = [c.raw_number_text for c in candidates]
@@ -899,7 +946,9 @@ class TestFalsePositiveFiltering:
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # 2023 should be present when year filtering is off
         raw_texts = [c.raw_number_text for c in candidates]
@@ -917,7 +966,9 @@ See Note 5 on page 123 for details. Version 2.0 of our software launched.""",
             }
         ]
 
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
 
         # Collect raw texts
         raw_texts = [c.raw_number_text for c in candidates]
@@ -1444,10 +1495,7 @@ class TestConfidenceIntegration:
 
         assert len(candidates_no_def) >= 1
         assert len(candidates_with_def) >= 1
-        assert (
-            candidates_with_def[0].suggestion_confidence
-            > candidates_no_def[0].suggestion_confidence
-        )
+        assert candidates_with_def[0].suggestion_confidence > candidates_no_def[0].suggestion_confidence
 
     def test_lower_confidence_in_risk_factors(self, generator):
         """Candidates in risk factors should have lower confidence."""
@@ -1532,7 +1580,6 @@ class TestSpecificKeywordPatterns:
     def test_patterns_are_valid_regex(self):
         """All specific keyword patterns should be valid regex."""
         import re
-
         for pattern in SPECIFIC_KEYWORD_PATTERNS:
             try:
                 re.compile(pattern, re.IGNORECASE)
@@ -1667,9 +1714,7 @@ class TestDuplicateMetricSkipping:
 
         all_keywords = generator._find_all_keywords(text)
         # Should have multiple keyword matches for the same metric
-        customer_keywords = [
-            kw for kw in all_keywords if kw.metric_id == "cm_active_customers_total"
-        ]
+        customer_keywords = [kw for kw in all_keywords if kw.metric_id == "cm_active_customers_total"]
         assert len(customer_keywords) >= 2, "Expected multiple customer keyword matches"
 
         # But _find_keywords_near_number should deduplicate
@@ -1768,7 +1813,6 @@ class TestProcessingStats:
     def test_log_summary_basic(self, caplog):
         """log_summary should log info message."""
         import logging
-
         caplog.set_level(logging.INFO)
 
         stats = ProcessingStats(
@@ -1787,7 +1831,6 @@ class TestProcessingStats:
     def test_log_summary_with_segment_failures(self, caplog):
         """log_summary should warn about segment failures."""
         import logging
-
         caplog.set_level(logging.WARNING)
 
         stats = ProcessingStats(
@@ -1801,7 +1844,6 @@ class TestProcessingStats:
     def test_log_summary_with_number_failures(self, caplog):
         """log_summary should warn about number failures."""
         import logging
-
         caplog.set_level(logging.WARNING)
 
         stats = ProcessingStats(
@@ -2283,8 +2325,7 @@ class TestCrossSegmentDeduplication:
         # Both segments have identical "10,000 active customers"
         # Should deduplicate to just one candidate
         active_customer_candidates = [
-            c
-            for c in candidates
+            c for c in candidates
             if c.suggested_metric_id == "cm_active_customers_total"
             and c.parsed_value == Decimal("10000")
         ]
@@ -2324,11 +2365,7 @@ class TestCrossSegmentDeduplication:
             return_stats=True,
         )
 
-        values = {
-            c.parsed_value
-            for c in candidates
-            if c.suggested_metric_id == "cm_active_customers_total"
-        }
+        values = {c.parsed_value for c in candidates if c.suggested_metric_id == "cm_active_customers_total"}
 
         # Should keep both values
         assert Decimal("10000") in values
@@ -2416,7 +2453,6 @@ class TestKeywordMatchingPerformance:
         else:
             # Without benchmark plugin, just verify it runs quickly
             import time
-
             start = time.perf_counter()
             result = generator._find_all_keywords(large_text)
             elapsed = time.perf_counter() - start
@@ -2457,7 +2493,7 @@ class TestKeywordMatchingPerformance:
         # Verify each match has correct properties
         for kw in keywords:
             # Keyword text should be from the original text
-            assert text[kw.start : kw.end].lower() == kw.keyword.lower()
+            assert text[kw.start:kw.end].lower() == kw.keyword.lower()
             # Pattern should be a string
             assert isinstance(kw.pattern, str)
             # Metric ID should be valid
@@ -2580,7 +2616,9 @@ class TestContextExtractionPerformance:
         assert len(context) > 0
         assert "10,000" in context or "active" in context
 
-    def test_benchmark_context_extraction_with_many_numbers(self, segment_with_many_numbers):
+    def test_benchmark_context_extraction_with_many_numbers(
+        self, segment_with_many_numbers
+    ):
         """
         Benchmark context extraction performance with multiple numbers.
 
@@ -2632,8 +2670,8 @@ class TestContextExtractionPerformance:
 
         print("\nContext extraction performance:")
         print(f"  Numbers processed: {len(numbers)}")
-        print(f"  With cache (P1.2): {time_with_cache * 1000:.2f}ms")
-        print(f"  Without cache (old): {time_without_cache * 1000:.2f}ms")
+        print(f"  With cache (P1.2): {time_with_cache*1000:.2f}ms")
+        print(f"  Without cache (old): {time_without_cache*1000:.2f}ms")
         print(f"  Speedup: {speedup:.1f}x")
 
         # Should see at least 2x speedup (typically 10-20x)
@@ -2906,7 +2944,11 @@ class TestConfigSystemAdoption:
         assert "5" not in raw_texts
 
         # Should have confidence scores
-        assert all(c.suggestion_confidence is not None for c in candidates if len(candidates) > 0)
+        assert all(
+            c.suggestion_confidence is not None
+            for c in candidates
+            if len(candidates) > 0
+        )
 
     def test_config_backward_compatibility(self, sample_segments):
         """
@@ -2994,7 +3036,8 @@ class TestL3KeywordDirectionIntegration:
 
         # Find the retention candidate
         retention_candidates = [
-            c for c in candidates if "retention" in c.triggering_keyword.lower()
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
         ]
         assert len(retention_candidates) >= 1
 
@@ -3028,7 +3071,8 @@ class TestL3KeywordDirectionIntegration:
 
         # Find the retention candidate
         retention_candidates = [
-            c for c in candidates if "retention" in c.triggering_keyword.lower()
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
         ]
         assert len(retention_candidates) >= 1
 
@@ -3090,13 +3134,11 @@ class TestL3KeywordDirectionIntegration:
 
         # Find candidates for each number
         customer_candidates = [
-            c
-            for c in candidates
+            c for c in candidates
             if "50000" in c.raw_number_text or c.parsed_value == Decimal("50000")
         ]
         retention_candidates = [
-            c
-            for c in candidates
+            c for c in candidates
             if "152" in c.raw_number_text and c.parsed_unit in ("%", "percent")
         ]
 
@@ -3166,7 +3208,8 @@ class TestL3KeywordDirectionIntegration:
 
         # Find retention candidate
         retention_candidates = [
-            c for c in candidates if "retention" in c.triggering_keyword.lower()
+            c for c in candidates
+            if "retention" in c.triggering_keyword.lower()
         ]
 
         assert len(retention_candidates) >= 1
@@ -3226,12 +3269,8 @@ class TestL1RespectivelyPatternIntegration:
         assert generator._normalize_value_text("$ 1 M") == "$1m"
         assert generator._normalize_value_text("33.0%") == "33.0%"
         assert generator._normalize_value_text("1.42") == "1.42"
-        assert (
-            generator._normalize_value_text("$2.5 Million") == "$2.5m"
-        )  # L1-P1.3: standardize suffixes
-        assert (
-            generator._normalize_value_text("100 Billion") == "100b"
-        )  # L1-P1.3: standardize suffixes
+        assert generator._normalize_value_text("$2.5 Million") == "$2.5m"  # L1-P1.3: standardize suffixes
+        assert generator._normalize_value_text("100 Billion") == "100b"  # L1-P1.3: standardize suffixes
 
     def test_enrich_with_respectively_patterns_disabled_by_config(self):
         """Enrichment skipped when config disables respectively detection."""
@@ -3645,9 +3684,7 @@ class TestContextPrefixMatching:
         assert len(candidates) >= 1
         # Should match "active customers" from context_prefix
         active_customer_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
+            c for c in candidates if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
         ]
         assert len(active_customer_candidates) >= 1
 
@@ -3670,22 +3707,13 @@ class TestContextPrefixMatching:
         )
 
         # Should find MAU from main text (metric_id is cm_monthly_active_users)
-        mau_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id and "monthly_active" in c.suggested_metric_id.lower()
-        ]
+        mau_candidates = [c for c in candidates if c.suggested_metric_id and "monthly_active" in c.suggested_metric_id.lower()]
         assert len(mau_candidates) >= 1
 
         # Should NOT pick up NRR from context_prefix (nearby keyword exists)
         nrr_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id
-            and (
-                "net_revenue_retention" in c.suggested_metric_id
-                or "nrr" in c.suggested_metric_id.lower()
-            )
+            c for c in candidates
+            if c.suggested_metric_id and ("net_revenue_retention" in c.suggested_metric_id or "nrr" in c.suggested_metric_id.lower())
         ]
         assert len(nrr_candidates) == 0
 
@@ -3709,9 +3737,7 @@ class TestContextPrefixMatching:
 
         # Find candidates with active_customer metric
         active_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
+            c for c in candidates if c.suggested_metric_id and "active_customer" in c.suggested_metric_id
         ]
 
         if active_candidates:
@@ -3740,13 +3766,7 @@ class TestContextPrefixMatching:
         )
 
         mrr_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id
-            and (
-                "mrr" in c.suggested_metric_id.lower()
-                or "recurring_revenue" in c.suggested_metric_id
-            )
+            c for c in candidates if c.suggested_metric_id and ("mrr" in c.suggested_metric_id.lower() or "recurring_revenue" in c.suggested_metric_id)
         ]
 
         if mrr_candidates:
@@ -3772,13 +3792,8 @@ class TestContextPrefixMatching:
         )
 
         cac_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id
-            and (
-                "cac" in c.suggested_metric_id.lower()
-                or "customer_acquisition" in c.suggested_metric_id
-            )
+            c for c in candidates
+            if c.suggested_metric_id and ("cac" in c.suggested_metric_id.lower() or "customer_acquisition" in c.suggested_metric_id)
         ]
 
         if cac_candidates:
@@ -3809,13 +3824,8 @@ class TestContextPrefixMatching:
 
         # Any NRR match should have from_context_prefix behavior (distance=500)
         nrr_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id
-            and (
-                "nrr" in c.suggested_metric_id.lower()
-                or "net_revenue_retention" in c.suggested_metric_id
-            )
+            c for c in candidates
+            if c.suggested_metric_id and ("nrr" in c.suggested_metric_id.lower() or "net_revenue_retention" in c.suggested_metric_id)
         ]
 
         for c in nrr_candidates:
@@ -3901,14 +3911,11 @@ class TestContextPrefixMatching:
         )
 
         arr_candidates = [
-            c
-            for c in candidates
-            if c.suggested_metric_id and "arr" in c.suggested_metric_id.lower()
+            c for c in candidates if c.suggested_metric_id and "arr" in c.suggested_metric_id.lower()
         ]
 
         # Both numbers should potentially match ARR from context
         assert len(arr_candidates) >= 1  # At least one match
-
 
 # =============================================================================
 # EI-1: Definition Segment Filtering Tests
@@ -4138,12 +4145,10 @@ class TestCrossMetricSubstringSuppression:
         # The threshold values should NOT be extracted
         assert Decimal("50") not in values or all(
             c.suggested_metric_id != "cm_large_customers_period_end"
-            for c in candidates
-            if c.parsed_value == Decimal("50")
+            for c in candidates if c.parsed_value == Decimal("50")
         ), "50K threshold value should not generate large_customers candidate"
 
         assert Decimal("100") not in values or all(
             c.suggested_metric_id != "cm_large_customers_period_end"
-            for c in candidates
-            if c.parsed_value == Decimal("100")
+            for c in candidates if c.parsed_value == Decimal("100")
         ), "100K threshold value should not generate large_customers candidate"

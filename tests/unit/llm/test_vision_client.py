@@ -149,9 +149,10 @@ class TestVisionClientCostCalculation:
         input_tokens = 1000
         output_tokens = 0
 
-        cost = (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS + (
-            output_tokens / 1_000_000
-        ) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        cost = (
+            (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS
+            + (output_tokens / 1_000_000) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        )
 
         assert cost == pytest.approx(0.0025, rel=1e-6)
 
@@ -162,9 +163,10 @@ class TestVisionClientCostCalculation:
         input_tokens = 0
         output_tokens = 1000
 
-        cost = (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS + (
-            output_tokens / 1_000_000
-        ) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        cost = (
+            (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS
+            + (output_tokens / 1_000_000) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        )
 
         assert cost == pytest.approx(0.01, rel=1e-6)
 
@@ -174,9 +176,10 @@ class TestVisionClientCostCalculation:
         input_tokens = 1000
         output_tokens = 500
 
-        cost = (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS + (
-            output_tokens / 1_000_000
-        ) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        cost = (
+            (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS
+            + (output_tokens / 1_000_000) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        )
 
         expected = 0.0025 + 0.005
         assert cost == pytest.approx(expected, rel=1e-6)
@@ -187,9 +190,10 @@ class TestVisionClientCostCalculation:
         input_tokens = 1000
         output_tokens = 500
 
-        cost = (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS + (
-            output_tokens / 1_000_000
-        ) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        cost = (
+            (input_tokens / 1_000_000) * VisionClient.COST_PER_1M_INPUT_TOKENS
+            + (output_tokens / 1_000_000) * VisionClient.COST_PER_1M_OUTPUT_TOKENS
+        )
 
         # Should be around $0.0075
         assert cost == pytest.approx(0.0075, rel=1e-6)

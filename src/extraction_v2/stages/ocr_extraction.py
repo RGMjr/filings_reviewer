@@ -19,15 +19,11 @@ Key responsibilities:
 from __future__ import annotations
 
 import logging
-import os
-import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     Cell,
-    ChartAnnotation,
     ImageAsset,
     ImageClassification,
     Table,
@@ -60,22 +56,15 @@ class OCRExtractionStage:
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
     MAX_CHART_CALLS_PER_DOCUMENT: int = 10
 
-    def __init__(
-        self,
-        vision_client: object | None = None,
-        sec_client: object | None = None,
-    ) -> None:
+    def __init__(self, vision_client: object | None = None) -> None:
         """
         Initialize the OCR extraction stage.
 
         Args:
             vision_client: Optional vision API client (OpenAI Vision).
                           If None, will be created on first use.
-            sec_client: Optional SECClient instance for image downloading.
-                       If None, will be created on first use when needed.
         """
         self._vision_client = vision_client
-        self._sec_client = sec_client
         self._api_call_count = 0
         self._ocr_call_count = 0
         self._chart_call_count = 0
@@ -84,23 +73,11 @@ class OCRExtractionStage:
     def vision_client(self) -> Any:
         """Lazy-load vision client to avoid import errors in tests."""
         if self._vision_client is None:
-            if not os.environ.get("OPENAI_API_KEY", "").strip():
-                raise V2FatalError(
-                    "OPENAI_API_KEY is not set. Cannot initialize VisionClient for OCR/chart extraction.",
-                    stage_name="ocr_chart_extraction",
-                )
             # Import here to avoid circular dependency
-            from src.llm.vision_client import VisionClient
+            from src.extraction_v2.vision_client import OpenAIVisionClient
 
-            self._vision_client = VisionClient()
+            self._vision_client = OpenAIVisionClient()
         return self._vision_client
-
-    @staticmethod
-    def _strip_code_fences(text: str) -> str:
-        """Strip markdown code fences from LLM response."""
-        return (
-            re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE).rstrip("`").strip()
-        )
 
     def _should_process(self, asset: ImageAsset) -> bool:
         """
@@ -134,75 +111,6 @@ class OCRExtractionStage:
             return False
 
         return True
-
-    def _download_missing_images(self, context: pipeline.PipelineContext) -> int:
-        """
-        Download image files for triaged images that lack file_path.
-
-        Uses SECClient.fetch_image() with caching, rate limiting, and
-        content validation.
-
-        Args:
-            context: Pipeline context with images list, cik, accession_number
-
-        Returns:
-            Number of images successfully downloaded
-        """
-        import tempfile
-        from pathlib import Path
-
-        if not context.cik or not context.accession_number:
-            return 0
-
-        # Lazy-load SECClient
-        if self._sec_client is None:
-            from src.infra.sec_client import SECClient
-
-            self._sec_client = SECClient(
-                image_cache_dir=Path(tempfile.gettempdir()) / "filings_image_cache"
-            )
-
-        downloaded = 0
-        cache_dir = Path(tempfile.gettempdir()) / "filings_image_cache" / "pipeline"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        for asset in context.images:
-            # Only download for images that would be processed but lack file_path
-            if asset.processed:
-                continue
-            if asset.relevance_score < self.MIN_RELEVANCE_FOR_PROCESSING:
-                continue
-            if asset.classification in {
-                ImageClassification.DECORATIVE,
-                ImageClassification.LOGO,
-                ImageClassification.SIGNATURE,
-            }:
-                continue
-            if asset.file_path:
-                continue  # Already have file
-            if not asset.filename:
-                continue
-
-            try:
-                image_bytes = self._sec_client.fetch_image(
-                    cik=context.cik,
-                    accession_number=context.accession_number,
-                    filename=asset.filename,
-                )
-                if image_bytes:
-                    image_path = cache_dir / asset.filename
-                    image_path.write_bytes(image_bytes)
-                    asset.file_path = str(image_path)
-                    downloaded += 1
-                    logger.info(f"Downloaded image {asset.filename}: {len(image_bytes)} bytes")
-                else:
-                    logger.warning(f"Failed to download image {asset.filename}")
-            except Exception as e:
-                logger.warning(f"Error downloading image {asset.filename}: {e}")
-
-        if downloaded:
-            logger.info(f"Downloaded {downloaded} images for pipeline processing")
-        return downloaded
 
     def process_table_image(self, asset: ImageAsset) -> None:
         """
@@ -248,7 +156,7 @@ class OCRExtractionStage:
 
             # Parse JSON response
             try:
-                ocr_data = json.loads(self._strip_code_fences(response.content))
+                ocr_data = json.loads(response.content)
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse OCR response as JSON: {e}")
                 logger.debug(f"Response content: {response.content[:500]}")
@@ -337,21 +245,14 @@ Example JSON:
 }
 """
 
-    def _get_chart_extraction_prompt(self, nearby_text: str = "") -> str:
+    def _get_chart_extraction_prompt(self) -> str:
         """
         Get the prompt for chart extraction via Vision API.
-
-        Args:
-            nearby_text: Surrounding HTML paragraph text for context
 
         Returns:
             Prompt string for Vision API
         """
-        prompt = """Analyze this chart and extract ONLY explicitly labeled data values.
-
-DEFINITIONS:
-- "data labels" = numeric values printed directly on data points (bars, lines, pie slices)
-- "annotations" = floating text overlays, callouts, or percentage breakdowns visible on the chart but NOT attached to specific data points
+        return """Analyze this chart and extract ONLY explicitly labeled data values.
 
 CRITICAL RULES:
 1. ONLY extract values that are explicitly shown as data labels on the chart
@@ -359,7 +260,6 @@ CRITICAL RULES:
 3. If a bar/line/point has no label, do NOT include it
 4. Include the exact text of labels as shown
 5. For unlabeled charts, return empty series array
-6. Always capture annotations — floating text overlays with numbers, even if series is empty
 
 Return a JSON object with:
 - chart_type: One of "bar", "line", "pie", "stacked_bar", "area", "unknown" (string)
@@ -373,40 +273,27 @@ Return a JSON object with:
     - x: Category or date label (string)
     - y: Numeric value (number)
     - label: The explicit label text shown on chart (string or null)
-- annotations: Array of text annotations/callouts visible on the chart, each with:
-  - text: Full annotation text as shown (string, e.g. "44.4% New Consumers in 2017")
-  - value: Parsed numeric value if present (number or null, e.g. 44.4)
-  - unit: Unit type — "percent", "currency", "count", or "" if unknown (string)
-  - category: Category/segment the annotation refers to (string, e.g. "New Consumers")
-  - period: Time period if mentioned (string, e.g. "2017")
 
-If NO labeled values are found, return empty series array (but still populate annotations if any text overlays are visible).
+If NO labeled values are found, return empty series array.
 
 Example JSON:
 {
-  "chart_type": "area",
-  "title": "Marketplace GMV (USDm) by Consumer Cohort",
+  "chart_type": "bar",
+  "title": "Annual Revenue",
   "x_axis_label": "Year",
-  "y_axis_label": "GMV (USDm)",
-  "confidence": 0.85,
-  "series": [],
-  "annotations": [
-    {"text": "44.4% New Consumers in 2017", "value": 44.4, "unit": "percent", "category": "New Consumers", "period": "2017"},
-    {"text": "55.6% Existing Consumers in 2017", "value": 55.6, "unit": "percent", "category": "Existing Consumers", "period": "2017"}
+  "y_axis_label": "Revenue ($M)",
+  "confidence": 0.95,
+  "series": [
+    {
+      "name": "Revenue",
+      "points": [
+        {"x": "2021", "y": 1200.0, "label": "$1,200M"},
+        {"x": "2022", "y": 1500.0, "label": "$1,500M"}
+      ]
+    }
   ]
 }
 """
-        # Append bounded surrounding context if available
-        if nearby_text:
-            truncated = nearby_text[:1500]
-            prompt += f"""
-SURROUNDING CONTEXT (from the HTML near this chart):
-\"\"\"{truncated}\"\"\"
-
-Use this context to understand what the chart represents. It may contain metric names,
-time periods, or definitions that help interpret the chart's data.
-"""
-        return prompt
 
     def _reconstruct_table_from_ocr(self, cells_data: list[dict[str, object]]) -> Table:
         """
@@ -565,18 +452,18 @@ time periods, or definitions that help interpret the chart's data.
         # Load image bytes
         image_bytes = image_path.read_bytes()
 
-        # Call Vision API with chart extraction prompt (include nearby context)
+        # Call Vision API with chart extraction prompt
         try:
             response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
-                prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
+                prompt=self._get_chart_extraction_prompt(),
                 detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
             )
 
             # Parse JSON response
             try:
-                chart_response = json.loads(self._strip_code_fences(response.content))
+                chart_response = json.loads(response.content)
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse chart response as JSON: {e}")
                 logger.debug(f"Response content: {response.content[:500]}")
@@ -598,35 +485,12 @@ time periods, or definitions that help interpret the chart's data.
             x_axis_label = chart_response.get("x_axis_label", "")
             y_axis_label = chart_response.get("y_axis_label", "")
 
-            # Parse annotations
-            annotations_data = chart_response.get("annotations", [])
-            chart_annotations: list[ChartAnnotation] = []
-            for ann_item in annotations_data:
-                ann_text = str(ann_item.get("text", ""))
-                if not ann_text:
-                    continue
-                ann_value = ann_item.get("value")
-                if ann_value is not None:
-                    try:
-                        ann_value = float(ann_value)
-                    except (ValueError, TypeError):
-                        ann_value = None
-                chart_annotations.append(
-                    ChartAnnotation(
-                        text=ann_text,
-                        value=ann_value,
-                        unit=str(ann_item.get("unit", "")),
-                        category=str(ann_item.get("category", "")),
-                        period=str(ann_item.get("period", "")),
-                    )
-                )
-
             # Extract series data
             series_data = chart_response.get("series", [])
-            if not series_data and not chart_annotations:
-                # No labeled values AND no annotations - mark for manual capture
+            if not series_data:
+                # No labeled values found - mark for manual capture
                 logger.info(
-                    f"Chart {asset.img_id} has no labeled values or annotations, marking for manual capture"
+                    f"Chart {asset.img_id} has no labeled values, marking for manual capture"
                 )
                 asset.processed = True
                 asset.confidence = 0.0
@@ -653,7 +517,10 @@ time periods, or definitions that help interpret the chart's data.
                         if isinstance(y_val, str):
                             # Strip common non-numeric chars (%, $, commas)
                             y_cleaned = (
-                                y_val.replace("$", "").replace("%", "").replace(",", "").strip()
+                                y_val.replace("$", "")
+                                .replace("%", "")
+                                .replace(",", "")
+                                .strip()
                             )
                             y_val = float(y_cleaned)
                         else:
@@ -672,10 +539,10 @@ time periods, or definitions that help interpret the chart's data.
                     chart_series = ChartSeries(name=series_name, points=data_points)
                     chart_series_list.append(chart_series)
 
-            # If we still have no points AND no annotations after parsing, mark for manual
-            if total_points == 0 and not chart_annotations:
+            # If we still have no points after parsing, mark for manual
+            if total_points == 0:
                 logger.info(
-                    f"Chart {asset.img_id} has no valid data points or annotations after parsing, marking for manual capture"
+                    f"Chart {asset.img_id} has no valid data points after parsing, marking for manual capture"
                 )
                 asset.processed = True
                 asset.confidence = 0.0
@@ -689,15 +556,12 @@ time periods, or definitions that help interpret the chart's data.
                 x_axis_label=x_axis_label,
                 y_axis_label=y_axis_label,
                 series=chart_series_list,
-                annotations=chart_annotations,
             )
             asset.chart_data = chart_data
 
             # Compute confidence from extraction quality
             # Use confidence from response if provided, otherwise compute based on data completeness
-            confidence = chart_response.get(
-                "confidence", 0.8
-            )  # Default to 0.8 for successful extraction
+            confidence = chart_response.get("confidence", 0.8)  # Default to 0.8 for successful extraction
             asset.confidence = float(confidence)
 
             # Don't mark for manual capture if we successfully extracted labeled values
@@ -737,7 +601,7 @@ time periods, or definitions that help interpret the chart's data.
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
 
-        start_time = datetime.now(UTC)
+        start_time = datetime.utcnow()
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -751,16 +615,10 @@ time periods, or definitions that help interpret the chart's data.
         manual_capture_count = 0
 
         try:
-            # Download missing images before processing
-            if context.cik and context.accession_number:
-                downloaded = self._download_missing_images(context)
-                if downloaded:
-                    warnings.append(f"Downloaded {downloaded} images from SEC EDGAR")
-
             # Handle empty images list
             if not context.images:
                 logger.info("No images to process")
-                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
                 return StageResult(
                     stage=PipelineStage.OCR_CHART_EXTRACTION,
                     success=True,
@@ -779,41 +637,31 @@ time periods, or definitions that help interpret the chart's data.
                     skipped_count += 1
                     continue
 
-                # Check API call limits per type — use continue so other types
-                # still get processed (break would skip all remaining images).
+                # Check API call limits
                 if asset.classification == ImageClassification.TABLE_IMAGE:
                     if self._ocr_call_count >= self.MAX_OCR_CALLS_PER_DOCUMENT:
                         msg = f"OCR call limit ({self.MAX_OCR_CALLS_PER_DOCUMENT}) reached"
-                        if msg not in warnings:
-                            warnings.append(msg)
-                            logger.warning(msg)
-                        skipped_count += 1
-                        continue
+                        warnings.append(msg)
+                        logger.warning(msg)
+                        break
                 elif asset.classification == ImageClassification.CHART:
                     if self._chart_call_count >= self.MAX_CHART_CALLS_PER_DOCUMENT:
                         msg = f"Chart call limit ({self.MAX_CHART_CALLS_PER_DOCUMENT}) reached"
-                        if msg not in warnings:
-                            warnings.append(msg)
-                            logger.warning(msg)
-                        skipped_count += 1
-                        continue
+                        warnings.append(msg)
+                        logger.warning(msg)
+                        break
 
                 # Process based on classification
                 try:
                     if asset.classification == ImageClassification.TABLE_IMAGE:
                         self.process_table_image(asset)
                         self._ocr_call_count += 1
-                        # Feed OCR table into pipeline for candidate generation
-                        if asset.ocr_table is not None:
-                            context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
                         self.process_chart(asset)
                         self._chart_call_count += 1
                     else:
                         # Unknown type - skip
-                        logger.debug(
-                            f"Skipping image {asset.img_id} with classification {asset.classification}"
-                        )
+                        logger.debug(f"Skipping image {asset.img_id} with classification {asset.classification}")
                         skipped_count += 1
                         continue
 
@@ -835,7 +683,7 @@ time periods, or definitions that help interpret the chart's data.
                     asset.confidence = 0.0
                     manual_capture_count += 1
 
-            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 
             return StageResult(
                 stage=PipelineStage.OCR_CHART_EXTRACTION,
@@ -854,7 +702,27 @@ time periods, or definitions that help interpret the chart's data.
                 },
             )
 
-        except V2FatalError:
-            raise
         except Exception as e:
-            raise V2FatalError(str(e), stage_name="ocr_chart_extraction") from e
+            # Catastrophic error - fail the stage
+            error_msg = f"OCR extraction stage failed: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg, exc_info=True)
+
+            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+
+            return StageResult(
+                stage=PipelineStage.OCR_CHART_EXTRACTION,
+                success=False,
+                duration_ms=duration_ms,
+                items_processed=processed_count,
+                items_output=processed_count,
+                errors=errors,
+                warnings=warnings,
+                metadata={
+                    "ocr_calls": self._ocr_call_count,
+                    "chart_calls": self._chart_call_count,
+                    "total_api_calls": self._api_call_count,
+                    "manual_capture_count": manual_capture_count,
+                    "skipped_count": skipped_count,
+                },
+            )
