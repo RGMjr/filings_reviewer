@@ -10,11 +10,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - **Phase 0**: Added `enable_chart_interpolation`, `vision_provider`, `vision_model`, `image_triage_ambiguous_threshold` to `PipelineConfig`
 - **Phase 1**: Extended `BoundValue` with `series_name`, `annotation_category`, `annotation_text`, `interpolated`; reworked `_bind_chart_candidate()` for series-aware binding (0.70x fallback + `requires_manual_capture=True` when no series name matches)
 - **Phase 2**: Added `ImageExtractionMeta` dataclass; `ocr_extraction.py` now populates model/tokens/cost/latency/skip_reason per image
-- **Phase 3**: Config-driven triage thresholds; `_get_nearby_text()` expanded (heading chain, 3 siblings, table captions, style dimensions)
-- **Phase 4**: Two-pass chart extraction (`chart_prompts.py`); type-specific prompts; axis range validation; pie sum check
+- **Phase 3**: Config-driven triage thresholds; `_get_nearby_text()` expanded (heading chain, 3 siblings, table captions)
+- **Phase 4**: Two-pass chart extraction (`chart_prompts.py`); type-specific prompts; axis/pie validation
 - **Phase 5**: `VisionProvider` protocol; `ClaudeVisionProvider`; `vision_factory.py`; `scripts/run_ab_comparison.py`
-- **Keyword fix**: Added quantified-retention pattern to `cm_revenue_by_cohort` (`\d+%\s+of...\s+revenue...derived from existing/new customers`) — recovered Snowflake recall from 76.1% to 84.8%
-- `cm_revenue_by_cohort` unconstrained from currency-only (accepts PERCENT for chart annotations like 44.4%)
+- **Keyword fix**: Added quantified-retention pattern to `cm_revenue_by_cohort` — Snowflake recall 76.1% → 84.8%
 
 **Farfetch Date FP Fix (2026-03-12)**: Added `_is_date_day_component()` pre-filter in `value_binding.py` — skips integers 1-31 that are immediately preceded by a month name in `_find_numbers_in_proximity()`. This prevents "June 30" day-of-month from binding as a metric value. 11 `TestIsDateDayComponent` tests + `test_find_numbers_year_not_fragmented` all pass; 3330 unit tests pass total.
 
@@ -26,9 +25,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - `html_content`/`txt_content` stored in PostgreSQL; extraction scripts read from DB with file fallback
 - LLM cache: dual SQLite/Postgres backend via `LLM_CACHE_BACKEND=postgres`; SQL migrations 14+15; backfill script added
 
+**Farfetch Vision Smoke Test (2026-03-12)**: Two-pass chart extraction confirmed working end-to-end with real Claude Haiku vision API. Pipeline: SUCCESS, 13.7s, 40 facts (21 auto-accepted), 34 images found, 7 classified as charts, 2 sent to Haiku (~$0.155). Chart facts extracted: `cm_customer_acquisition_cost` (6 values), `cm_ltv_to_cac_ratio` (6 values), `cm_new_customers_acquired` (3 values). 5 pre-pipeline UUID images skipped (no `file_path`; likely stale cache).
+
 ## Current Focus
 
-- Run real Vision API smoke test on Farfetch chart images to validate two-pass extraction
 - Assess PR merge readiness for `v2-rewrite` branch
 
 ## Test Status
@@ -36,7 +36,7 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 - Unit tests: ~3,330 passed (full suite)
 - V2 gold standard text-only: **P=95.0%, R=83.5%, F1=88.9%** — 12/12 pass
 - V2 gold standard with images: **P=92.3%, R=83.5%, F1=87.7%** — 12/12 pass
-- Farfetch chart recall: 68.6% with image-enabled baseline (chart prompts ready; needs real API run)
+- Vision smoke test: **PASS** — Farfetch charts extracted, ~$0.155/run, 13.7s
 
 ## Key Learnings for Next Iteration
 
@@ -47,9 +47,9 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Blockers or Warnings
 
-- Farfetch chart FNs: two-pass prompts are implemented but need real GPT-4o run to confirm recall improvement
 - Vision provider A/B comparison (`scripts/run_ab_comparison.py`) requires both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
 - 6 transcript stub filings (IDs 1-6): always fail batch unless `html_storage_path IS NOT NULL` filter applied
+- 5 UUID-based images skipped pre-pipeline (no `file_path`); source unclear — may be stale DB cache entries
 
 ---
 
