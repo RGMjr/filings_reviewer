@@ -6,6 +6,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**v2-rewrite → main merge prep (2026-03-13)**:
+- Discarded 129 contaminated working tree files (reverted commits), cleaned to known-good HEAD `5bc2a93`
+- Merged `origin/main` into `v2-rewrite` with `-X ours` — no manual conflict resolution required
+- Fixed merge artifact: restored `import re` in `fact_construction.py` dropped by auto-merge
+- Tests: 3299 unit pass, gold standard P=95.2%/R=79.6%/F1=86.7% (no regression vs baseline)
+- Pushed and opened PR #32 (v2-rewrite → main), supersedes #24/#27/#29/#31
+
 **WIP Commit + Batch Filter Fix (2026-03-04)**:
 - Fixed batch filter: `WHERE c.cik IS NOT NULL` → `WHERE f.html_storage_path IS NOT NULL` in `scripts/batch_v2_extraction.py`
 - Committed all WIP: persistence ON CONFLICT fix, API route tests cleanup, SQL seed for `cm_large_customers_period_end`, ITERATION_CONTEXT
@@ -19,9 +26,8 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Current Focus
 
-- Extraction quality validation: query DB for Slack (expect 29-32 facts) and Datadog (expect ~14 facts)
-- Gold standard re-run with live DB to confirm no regression from persistence ON CONFLICT change
-- Assess PR #29 merge readiness after quality validation
+- Merge PR #32 (v2-rewrite → main)
+- Post-merge: run cloud deployment runbook (`docs/operations/cloud-migration-runbook.md`) to deploy V2 schema to Neon
 
 ## Test Status
 
