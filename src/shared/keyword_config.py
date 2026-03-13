@@ -493,6 +493,44 @@ def metrics_are_equivalent(
     )
 
 
+def get_chart_metric_keywords(
+    config_path: str | None = None,
+) -> list[str]:
+    """
+    Get chart metric keywords from config.
+
+    Returns the ``_chart_metric_keywords`` list used by ImageTriageStage to
+    detect metric-related content near large images.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        List of lowercase keyword strings.
+    """
+    config = _load_config(config_path)
+    return list(config.get("_chart_metric_keywords", []))
+
+
+def get_scope_hint_keywords(
+    config_path: str | None = None,
+) -> tuple[str, ...]:
+    """
+    Get scope hint keywords from config.
+
+    Returns the ``_scope_hint_keywords`` list used by FactConstructionStage to
+    map series/annotation names to scope_detail.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Tuple of keyword strings.
+    """
+    config = _load_config(config_path)
+    return tuple(config.get("_scope_hint_keywords", []))
+
+
 def get_chart_axis_unit_signals(
     config_path: str | None = None,
 ) -> dict[str, list[str]]:

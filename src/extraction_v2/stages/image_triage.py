@@ -26,6 +26,7 @@ from src.extraction_v2.models import (
     ImageExtractionMeta,
     SectionType,
 )
+from src.shared.keyword_config import get_chart_metric_keywords
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -243,19 +244,7 @@ class ImageTriageStage:
         )
         if is_large or not has_known_dimensions:
             text_lower = asset.nearby_text.lower()
-            metric_keywords = [
-                "retention",
-                "cohort",
-                "revenue",
-                "growth",
-                "customers",
-                "arr",
-                "mrr",
-                "ltv",
-                "cac",
-                "lifetime value",
-                "customer acquisition",
-            ]
+            metric_keywords = get_chart_metric_keywords()
             if any(kw in text_lower for kw in metric_keywords):
                 return True
 

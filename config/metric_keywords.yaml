@@ -40,6 +40,37 @@ _chart_axis_unit_signals:
   count: ["users", "customers", "subscribers", "accounts", "seats", "number", "count"]
   percent: ["%", "percent", "pct", "rate", "margin"]
 
+# =============================================================================
+# Chart Metric Keywords
+# =============================================================================
+# Keywords used by ImageTriageStage._is_chart() to detect metric-related content
+# near large images. Used to identify charts likely to contain customer metrics.
+# Prefix with _ so the keyword config validator skips this entry.
+_chart_metric_keywords:
+  - "retention"
+  - "cohort"
+  - "revenue"
+  - "growth"
+  - "customers"
+  - "arr"
+  - "mrr"
+  - "ltv"
+  - "cac"
+  - "lifetime value"
+  - "customer acquisition"
+
+# =============================================================================
+# Scope Hint Keywords
+# =============================================================================
+# Keywords used by FactConstructionStage to map series/annotation names to
+# scope_detail (e.g., "Enterprise" -> enterprise scope). Prefix with _ so the
+# keyword config validator skips this entry.
+_scope_hint_keywords:
+  - "New Consumers"
+  - "Enterprise"
+  - "SMB"
+  - "Existing"
+
 _revenue_synonym_context: &revenue_synonym_context
   required_context:
     patterns:

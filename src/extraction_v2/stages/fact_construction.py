@@ -34,6 +34,7 @@ from src.extraction_v2.models import (
     SectionType,
     SourceType,
 )
+from src.shared.keyword_config import get_scope_hint_keywords
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import MetricCandidate, Segment, Table
@@ -48,7 +49,7 @@ _COHORT_PATTERN = re.compile(
 )
 
 # Scope hint keywords that map series/annotation names to scope_detail
-_SCOPE_HINT_KEYWORDS = ("New Consumers", "Enterprise", "SMB", "Existing")
+_SCOPE_HINT_KEYWORDS = get_scope_hint_keywords()
 
 # Confidence adjustment constants
 MDA_SECTION_BONUS: float = 0.10
