@@ -21,7 +21,7 @@ import logging
 import re
 import sys
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -29,8 +29,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.extraction_v2.models import MetricFact  # noqa: E402
-from src.extraction_v2.pipeline import (  # noqa: E402
+from src.extraction_v2.models import BoundValue, MetricCandidate, MetricFact
+from src.extraction_v2.pipeline import (
     PipelineConfig,
     PipelineContext,
     PipelineResult,
@@ -38,11 +38,13 @@ from src.extraction_v2.pipeline import (  # noqa: E402
     StageResult,
     V2Pipeline,
 )
-from src.gold_standard.v2_validator import (  # noqa: E402
+from src.gold_standard.v2_validator import (
+    GOLD_STANDARD_CSV,
     GOLD_STANDARD_DIR,
     GoldStandardEntry,
     V2GoldStandardValidator,
     normalize_metric_id,
+    normalize_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -712,7 +714,7 @@ def print_report(diagnostics: list[CompanyDiagnostic]) -> None:
         for d in diagnostics:
             for mid, data in d.metric_breakdown.items():
                 all_metrics[mid] += data["candidates"]
-        print("\n    Noisiest Metrics (by candidate count):")
+        print(f"\n    Noisiest Metrics (by candidate count):")
         for mid, count in all_metrics.most_common(10):
             print(f"      {mid:<36} {count:>6} candidates")
 

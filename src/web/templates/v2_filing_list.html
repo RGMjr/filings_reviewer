@@ -78,17 +78,11 @@
               <small class="text-muted">-</small>
               {% endif %}
             </td>
-            <td class="text-nowrap">
+            <td>
               <a href="{{ url_for('review_v2.review_filing', filing_id=f.filing_id) }}"
                  class="btn btn-sm btn-outline-primary">
                 Review
               </a>
-              <button
-                class="btn btn-sm btn-outline-secondary ms-1 btn-extract"
-                data-filing-id="{{ f.filing_id }}"
-                title="Enqueue V2 extraction job">
-                Extract
-              </button>
             </td>
           </tr>
           {% endfor %}
@@ -158,44 +152,4 @@
 {% endif %}
 
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script>
-document.querySelectorAll('.btn-extract').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    var filingId = parseInt(this.getAttribute('data-filing-id'));
-    var self = this;
-    self.disabled = true;
-    self.textContent = 'Queuing...';
-
-    fetch('/api/v2/jobs', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({filing_id: filingId})
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.status === 'success') {
-        self.textContent = 'Queued #' + data.job.id;
-        self.classList.remove('btn-outline-secondary');
-        self.classList.add('btn-success');
-      } else {
-        self.textContent = 'Error';
-        self.classList.remove('btn-outline-secondary');
-        self.classList.add('btn-danger');
-        self.disabled = false;
-        alert('Failed to enqueue job: ' + (data.message || 'unknown error'));
-      }
-    })
-    .catch(function(err) {
-      self.textContent = 'Error';
-      self.classList.remove('btn-outline-secondary');
-      self.classList.add('btn-danger');
-      self.disabled = false;
-      console.error('Enqueue error:', err);
-    });
-  });
-});
-</script>
 {% endblock %}

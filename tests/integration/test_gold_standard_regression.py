@@ -26,7 +26,6 @@ Prerequisites:
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -50,14 +49,6 @@ logger = logging.getLogger(__name__)
 
 GOLD_STANDARD_CSV_PATH = Path("data/gold_standard/golden_set_251218.csv")
 BASELINE_PATH = Path("data/gold_standard/v2_baseline.json")
-BASELINE_PATH_WITH_IMAGES = Path("data/gold_standard/v2_baseline_with_images.json")
-
-# Detect whether Vision API is available for this test session.
-# When OPENAI_API_KEY is set, the pipeline will run image/OCR extraction
-# (Stage 4 + 5), so we compare against the image-aware baseline.
-# When the key is absent, we enforce text-only extraction and compare against
-# the text-only baseline.
-HAS_VISION_KEY = bool(os.environ.get("OPENAI_API_KEY", "").strip())
 
 
 # =============================================================================
@@ -65,52 +56,9 @@ HAS_VISION_KEY = bool(os.environ.get("OPENAI_API_KEY", "").strip())
 # =============================================================================
 
 
-def run_validation_fresh() -> list[dict[str, Any]]:
-    """
-    Run gold standard validation using V2 pipeline directly (no DB needed).
-
-    Uses V2GoldStandardValidator to extract from local HTML files and
-    compare against gold standard CSV entries.
-
-    When OPENAI_API_KEY is set, image extraction (Stages 4+5) is enabled so
-    the run is compared against the image-aware baseline.  When the key is
-    absent, image extraction is disabled to ensure deterministic, API-free
-    execution against the text-only baseline.
-    """
-    from src.extraction_v2.pipeline import PipelineConfig
-    from src.gold_standard.v2_validator import V2GoldStandardValidator
-
-    if HAS_VISION_KEY:
-        config = PipelineConfig()  # defaults: image extraction enabled
-    else:
-        config = PipelineConfig(
-            enable_image_extraction=False,
-            enable_chart_extraction=False,
-        )
-
-    validator = V2GoldStandardValidator(v2_config=config)
-    v2_results = validator.validate_all()
-
-    return [
-        {
-            "company_name": r.company_name,
-            "filing_id": None,
-            "gold_standard_count": r.total_expected,
-            "candidate_count": r.matched + r.extra,
-            "true_positives": r.true_positives,
-            "false_positives": r.false_positives,
-            "false_negatives": r.false_negatives,
-            "precision": r.precision,
-            "recall": r.recall,
-            "f1_score": r.f1_score,
-        }
-        for r in v2_results
-    ]
-
-
 def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     """
-    Run gold standard validation via V1 DB path.
+    Run gold standard validation and return results.
 
     This mirrors the logic in scripts/validate_against_gold_standard.py
     but returns structured data for test assertions.
@@ -183,38 +131,16 @@ def gold_standard_csv_path():
 
 
 @pytest.fixture(scope="module")
-def baseline_path():
-    """Override conftest baseline_path to use V2 baseline.
-
-    Selects v2_baseline_with_images.json when OPENAI_API_KEY is set (image
-    extraction enabled), otherwise falls back to the text-only v2_baseline.json.
-    If the image-aware baseline doesn't exist yet, tests are skipped so the
-    first run with a key can establish it.
-    """
-    if HAS_VISION_KEY:
-        return BASELINE_PATH_WITH_IMAGES
-    return BASELINE_PATH
-
-
-@pytest.fixture(scope="module")
-def validation_results(request, gold_standard_mode, gold_standard_csv_path):
+def validation_results(test_db_adapter, gold_standard_csv_path):
     """
     Run validation and cache results for the module.
 
-    In fresh mode, uses V2GoldStandardValidator directly (no DB needed).
-    In DB mode, falls back to V1 DB-based validation.
-
     This is module-scoped to avoid running validation multiple times.
     """
-    if gold_standard_mode == "fresh":
-        return run_validation_fresh()
-
-    # DB mode fallback (V1)
     if not gold_standard_csv_path.exists():
         pytest.skip(f"Gold standard CSV not found: {gold_standard_csv_path}")
 
-    db = request.getfixturevalue("test_db_adapter")
-    return run_validation(db, gold_standard_csv_path)
+    return run_validation(test_db_adapter, gold_standard_csv_path)
 
 
 @pytest.fixture(scope="module")

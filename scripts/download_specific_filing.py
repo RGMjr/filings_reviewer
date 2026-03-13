@@ -10,12 +10,14 @@ import argparse
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
+from src.filing_fetcher.filing_fetcher import FilingFetcher
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import SECEdgarClient
 

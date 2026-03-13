@@ -1,12 +1,10 @@
 # LLM Integration - OpenAI GPT-4o-mini
 
-**Date:** 2026-03-12
+**Date:** 2025-12-09
 **Status:** ✅ All Phases Complete - Production Ready
 **Sprint:** Sprint 3 - LLM Integration (Complete)
 
 ---
-
-> **Historical Note:** The V1 extraction pipeline (`src/extraction/`) and its stage labels (HTML Segmentation, Metric Classification, Value Extraction) were removed in v2.7. The pipeline diagram below reflects V1 architecture for historical reference. The current V2 pipeline is documented in `docs/architecture/extraction-pipeline.md` and `docs/V2_MIGRATION_GUIDE.md`.
 
 ## Overview
 
@@ -206,8 +204,7 @@ Unit tests for the LLM module are in `tests/unit/llm/`. The standalone `scripts/
 | Token Counting | ✅ Complete | tiktoken integration |
 | Cost Tracking | ✅ Complete | `CostTracker` class |
 | Error Handling | ✅ Complete | Retry logic with backoff |
-| Vision Client (OpenAI) | ✅ Complete | `src/llm/vision_client.py` |
-| Vision Client (Claude) | ✅ Complete | `src/extraction_v2/vision_factory.py` — `ClaudeVisionProvider` via `VisionProvider` protocol |
+| Vision Client | ✅ Complete | `src/llm/vision_client.py` |
 
 ### Phase 2: Pipeline Integration ✅ COMPLETE
 

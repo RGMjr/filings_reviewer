@@ -6,9 +6,9 @@ Tests ledger-aware migration logic using mocked DatabaseAdapter.
 
 import hashlib
 import sys
-from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call, patch, mock_open
+from contextlib import contextmanager
 
 import pytest
 
@@ -16,11 +16,14 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.apply_migrations import (  # noqa: E402
+from scripts.apply_migrations import (
     MIGRATIONS,
     _checksum,
     apply_migration,
+    bootstrap_ledger,
+    main,
 )
+
 
 # ---------------------------------------------------------------------------
 # Helpers

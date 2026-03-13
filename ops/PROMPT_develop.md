@@ -38,7 +38,7 @@ If `ops/DEVELOPMENT_PLAN.md` is empty or contains only a template header:
    pytest tests/unit/ -q
 
    # If task modifies extraction/keyword files, run gold standard
-   python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+   python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
    ```
 4. **Mark complete**: Change `- [ ]` to `- [x]` with brief result note
 5. **Update iteration context**: Update `ops/ITERATION_CONTEXT.md` with:
@@ -61,7 +61,7 @@ pytest tests/unit/ -q
 mypy src/review/ --strict
 
 # Gold standard (if modified config/metric_keywords.yaml or src/extraction/)
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 ```
 
 ## File Locations

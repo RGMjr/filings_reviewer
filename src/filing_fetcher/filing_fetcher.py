@@ -39,8 +39,6 @@ class FilingContent:
     html_path: str
     txt_path: str | None = None
     fetched_at: datetime | None = None
-    html_content: str | None = None
-    txt_content: str | None = None
 
 
 class FilingFetcher:
@@ -311,15 +309,12 @@ class FilingFetcher:
 
                 html_path.write_text(response.text, encoding="utf-8")
                 logger.info(f"Saved HTML to {html_path}")
-                html_content_text = response.text
             else:
                 logger.debug(f"HTML already cached: {html_path}")
-                html_content_text = html_path.read_text(encoding="utf-8")
 
             # Fetch TXT filing (if requested and URL available)
             # TXT files are optional - don't fail entire fetch if unavailable
             txt_path_str = None
-            txt_content_text = None
             if fetch_txt and filing_metadata.txt_url:
                 try:
                     if not txt_path.exists():
@@ -331,11 +326,9 @@ class FilingFetcher:
                         txt_path.write_text(response.text, encoding="utf-8")
                         logger.info(f"Saved TXT to {txt_path}")
                         txt_path_str = str(txt_path)
-                        txt_content_text = response.text
                     else:
                         logger.debug(f"TXT already cached: {txt_path}")
                         txt_path_str = str(txt_path)
-                        txt_content_text = txt_path.read_text(encoding="utf-8")
                 except requests.HTTPError as e:
                     # TXT file not available (404) - this is OK, HTML is sufficient
                     logger.warning(f"TXT file not available for {cik}/{accession_number}: {e}")
@@ -350,8 +343,6 @@ class FilingFetcher:
                 html_path=str(html_path),
                 txt_path=txt_path_str,
                 fetched_at=datetime.now(),
-                html_content=html_content_text,
-                txt_content=txt_content_text,
             )
 
             # Update database if available
@@ -435,8 +426,6 @@ class FilingFetcher:
                 SET
                     html_storage_path = %(html_path)s,
                     txt_storage_path = %(txt_path)s,
-                    html_content = %(html_content)s,
-                    txt_content = %(txt_content)s,
                     html_fetched_at = %(fetched_at)s,
                     html_fetch_error = NULL,
                     processing_status = 'fetched',
@@ -449,8 +438,6 @@ class FilingFetcher:
                 {
                     "html_path": content.html_path,
                     "txt_path": content.txt_path,
-                    "html_content": content.html_content,
-                    "txt_content": content.txt_content,
                     "fetched_at": content.fetched_at,
                     "accession": content.accession_number,
                     "resolved_url": resolved_url,

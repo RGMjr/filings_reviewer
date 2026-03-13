@@ -27,14 +27,8 @@ env/
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/
 
-# Persistent image cache (downloaded from SEC EDGAR during pipeline runs)
-data/image_cache/
-
 # But keep fixture metadata
 !data/fixtures/*.json
-
-# But keep gold standard baselines
-!data/gold_standard/*.json
 
 # Jupyter
 .ipynb_checkpoints/
@@ -72,9 +66,6 @@ logs/*.jsonl
 
 # Generated analysis artifacts
 ops/review_artifacts/
-
-# Generated pipeline evidence screenshots
-evidence_v2/
 
 # Build artifacts
 *.egg-info/

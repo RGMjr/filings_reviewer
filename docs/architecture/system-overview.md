@@ -1,7 +1,7 @@
 # System Architecture Overview
 
 **Version:** 2.3
-**Last Updated:** 2026-03-12
+**Last Updated:** 2026-01-07
 **Status:** Production Ready
 
 ---
@@ -549,7 +549,7 @@ A ground-up redesign of the extraction pipeline is available in `src/extraction_
 - **Unit compatibility checking** (`src/extraction_v2/unit_compatibility.py`): Cross-unit validation to reduce false positives (e.g., dollar values matched to percentage metrics)
 - **Fact identity deduplication** (`sql/10_v2_fact_identity_dedup.sql`): Database-level deduplication for idempotent fact storage
 
-**Gold standard performance (as of 2026-03-11):** Text-only P=95.0%, R=83.5%, F1=88.9%; Image-enabled P=92.3%, R=83.5%, F1=87.7% (all per-company gates passed)
+**Gold standard performance (as of 2026-02-28):** P=92.8%, R=77.6%, F1=84.5% (post-WP-15+17 FP rule improvements; all per-company gates passed)
 
 See `docs/V2_MIGRATION_GUIDE.md` for migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap.
 

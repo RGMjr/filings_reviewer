@@ -29,6 +29,7 @@ from src.extraction_v2.models import (
 from src.extraction_v2.text_utils import find_sentence_bounds
 
 if TYPE_CHECKING:
+    from src.extraction_v2.models import Segment, Table
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)

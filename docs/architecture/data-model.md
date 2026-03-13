@@ -1,7 +1,7 @@
 # Data Model Specification
 
-**Version:** 2.1
-**Last Updated:** 2026-03-10
+**Version:** 2.0
+**Last Updated:** 2025-12-09
 **Status:** Production Schema
 
 ---
@@ -163,10 +163,6 @@ CREATE TABLE filings (
     processing_status TEXT NOT NULL DEFAULT 'pending',
     processing_notes TEXT,
 
-    -- Cloud-independent content storage (migration 14)
-    html_content TEXT,
-    txt_content TEXT,
-
     -- Metadata
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -199,8 +195,6 @@ CREATE INDEX idx_filings_status ON filings(processing_status);
 | `classification_method` | text | no | How classification flags were determined: `heuristic`, `manual_review`, `uncertain`. |
 | `processing_status` | text | yes | Current state: `pending`, `fetched`, `segmented`, `processed`, `failed`. |
 | `processing_notes` | text | no | Free-text notes about errors or special handling. |
-| `html_content` | text | no | Filing HTML document content stored directly in database. Enables cloud deployments without local filesystem. |
-| `txt_content` | text | no | Filing complete text content stored directly in database. |
 
 ---
 
@@ -560,31 +554,6 @@ CREATE INDEX idx_definitions_metric ON metric_definitions(metric_id);
 
 ---
 
-### 8. `llm_cache`
-
-**Grain:** One row per unique LLM request (keyed by prompt hash)
-
-**Purpose:** PostgreSQL-backed LLM response cache for cloud deployments (replaces local SQLite cache when `LLM_CACHE_BACKEND=postgres`)
-
-**Schema:**
-
-```sql
-CREATE TABLE llm_cache (
-    cache_key TEXT PRIMARY KEY,
-    cache_version TEXT NOT NULL,
-    model TEXT NOT NULL,
-    response_content TEXT NOT NULL,
-    input_tokens INTEGER NOT NULL,
-    output_tokens INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_llm_cache_version ON llm_cache(cache_version);
-CREATE INDEX idx_llm_cache_created ON llm_cache(created_at);
-```
-
----
-
 ## Data Conventions
 
 ### Value Conventions
@@ -712,6 +681,6 @@ When metric definition changes that affect comparability:
 
 ---
 
-**Last Updated:** 2026-03-10
-**Version:** 2.1
+**Last Updated:** 2025-12-09
+**Version:** 2.0
 **Status:** Production Schema

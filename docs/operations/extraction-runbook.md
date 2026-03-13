@@ -1,30 +1,8 @@
-# Extraction Operations Runbook (V2)
+# Extraction Operations Runbook
 
-**Last Updated:** 2026-03-12
-**Pipeline Version:** V2 (v2.7+)
+**Last Updated:** 2024-12-24
 
----
-
-> **V1 Runbook archived.** The V1 extraction pipeline (`src/extraction/`) and its associated scripts (`reextract_all_filings.py`, `debug_segmentation.py`, `generate_review_candidates.py`) were removed in v2.7. The archived V1 runbook is at [`docs/archive/extraction-runbook-v1.md`](../archive/extraction-runbook-v1.md).
-
----
-
-## V2 Pipeline Overview
-
-The V2 extraction pipeline (`src/extraction_v2/`) is a 13-stage, lxml-based pipeline. It is orchestrated by `src/extraction_v2/pipeline.py` and run in bulk via `scripts/batch_v2_extraction.py`.
-
-```
-Ingestion → SectionClassification → TableReconstruction → ImageTriage
-    → OCR/Chart → CandidateGeneration → ValueBinding → FalsePositiveFilter
-    → PeriodInference → FactConstruction → DefinitionExtraction
-    → Deduplication → Validation → Persistence
-```
-
-For full operational procedures, deployment steps, and batch extraction instructions, see:
-
-- **[`docs/operations/v2-deployment-guide.md`](v2-deployment-guide.md)** — Primary V2 operations guide (deployment, batch runs, monitoring)
-- **[`docs/operations/deployment-guide.md`](deployment-guide.md)** — Production deployment phases (pilot → full corpus)
-- **[`docs/V2_MIGRATION_GUIDE.md`](../V2_MIGRATION_GUIDE.md)** — V1 → V2 migration reference
+This runbook documents the correct procedures for re-extracting and re-segmenting filings. **Following these procedures is critical** to avoid stale data issues.
 
 ---
 
@@ -32,77 +10,297 @@ For full operational procedures, deployment steps, and batch extraction instruct
 
 | Task | Command |
 |------|---------|
-| Run V2 extraction (single filing) | `python3 -m src.extraction_v2.pipeline --filing-id <ID>` |
-| Batch extraction | `python3 scripts/batch_v2_extraction.py --limit 100` |
-| Gold standard validation | `pytest -m gold_standard --gold-standard-mode=fresh -v` |
-| Apply database migrations | `python3 scripts/apply_migrations.py` |
+| Re-extract single filing (full pipeline) | `DATABASE_URL="..." python3 scripts/reextract_all_filings.py --filing-id <ID>` |
+| Re-extract all filings | `DATABASE_URL="..." python3 scripts/reextract_all_filings.py` |
+| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python3 scripts/generate_review_candidates.py --filing-ids <ID>` |
+| Diagnose segmentation issues | `DATABASE_URL="..." python3 scripts/debug_segmentation.py --filing-id <ID>` |
 
 ---
 
-## If You Modify...
+## Understanding the Data Flow
 
-| Change | Action Required |
-|--------|----------------|
-| `config/metric_keywords.yaml` | Re-run batch extraction or re-extract affected filings |
-| `src/extraction_v2/stages/candidate_generation.py` | Re-run batch extraction; validate with gold standard |
-| `src/extraction_v2/stages/value_binding.py` | Re-run batch extraction; validate with gold standard |
-| Any V2 stage | Re-run gold standard: `pytest -m gold_standard` |
-
----
-
-## Common Operations
-
-### Re-extract a Single Filing
-
-```python
-from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
-from pathlib import Path
-
-config = PipelineConfig(enable_image_extraction=True, min_confidence_auto_accept=0.90)
-pipeline = V2Pipeline(config=config)
-result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
-print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+```
+HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Generator → review_candidates (DB)
+                ↓
+          LLM Extraction → metric_values (DB)
 ```
 
-### Batch Extraction
+**Key Insight**: If you modify segmentation logic or keywords, you must re-run the appropriate stage AND all downstream stages.
+
+| If you modify... | You must re-run... |
+|------------------|-------------------|
+| `html_segmenter.py` | Full re-extraction (`reextract_all_filings.py`) |
+| `config/metric_keywords.yaml` | Delete old candidates, run `generate_review_candidates.py` |
+| `keyword_matching.py` | Delete old candidates, run `generate_review_candidates.py` |
+| LLM prompts | Full re-extraction (`reextract_all_filings.py`) |
+
+---
+
+## Procedure 1: Full Re-extraction (Recommended)
+
+Use when: Segmenter logic changed, or you want to ensure fresh data.
 
 ```bash
-# Run extraction on up to 100 pending filings
+# 1. Check current state (dry run)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/batch_v2_extraction.py --limit 100
+    python3 scripts/reextract_all_filings.py --filing-id <FILING_ID> --dry-run
 
-# Dry run to preview
-python3 scripts/batch_v2_extraction.py --limit 10 --dry-run
+# 2. Run full re-extraction (deletes segments, metric_values, re-runs pipeline)
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/reextract_all_filings.py --filing-id <FILING_ID>
+
+# 3. Regenerate review candidates
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
-### Validate Against Gold Standard
+**What this does:**
+- Deletes existing `metric_values` for the filing
+- Deletes existing `source_segments` for the filing
+- Re-runs HTML segmentation with current segmenter
+- Re-runs LLM extraction
+- You must then regenerate candidates separately
+
+---
+
+## Procedure 2: Regenerate Candidates Only
+
+Use when: Only keyword patterns changed, segmenter unchanged.
 
 ```bash
-# Full fresh validation
-pytest -m gold_standard --gold-standard-mode=fresh -v
+# 1. Delete existing candidates for the filing
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
+    -c "DELETE FROM review_candidates WHERE filing_id = <FILING_ID>;"
 
-# Update baseline after intentional changes
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
+# 2. Regenerate candidates
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+```
+
+**What this does:**
+- Uses existing `source_segments` (does NOT re-segment)
+- Applies current keyword patterns from `config/metric_keywords.yaml`
+- Generates new `review_candidates`
+
+---
+
+## Procedure 3: Manual Re-segmentation Only
+
+Use when: You need to re-segment without running LLM extraction (saves cost).
+
+```bash
+# 1. Delete old segments
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
+    -c "DELETE FROM source_segments WHERE filing_id = <FILING_ID>;"
+
+# 2. Re-segment using Python
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" python3 << 'EOF'
+from src.extraction.html_segmenter import HTMLSegmenter
+from src.infra.db import DatabaseAdapter
+import os
+
+db = DatabaseAdapter(os.environ["DATABASE_URL"])
+filing_id = <FILING_ID>
+
+# Get filing info
+filing = db.query("""
+    SELECT f.filing_id, f.html_storage_path
+    FROM filings f WHERE f.filing_id = %(id)s
+""", {"id": filing_id})[0]
+
+# Run segmentation
+segmenter = HTMLSegmenter()
+segments = segmenter.segment_filing(filing_id, filing['html_storage_path'])
+print(f"Generated {len(segments)} segments")
+
+# Insert segments
+for segment in segments:
+    db.execute("""
+        INSERT INTO source_segments (
+            filing_id, segment_type, section_path, section_heading,
+            sequence_index, raw_text, raw_html,
+            contains_definition_flag, contains_methodology_flag,
+            contains_numeric_disclosure_flag
+        ) VALUES (
+            %(filing_id)s, %(segment_type)s, %(section_path)s, %(section_heading)s,
+            %(sequence_index)s, %(raw_text)s, %(raw_html)s,
+            %(contains_definition_flag)s, %(contains_methodology_flag)s,
+            %(contains_numeric_disclosure_flag)s
+        )
+    """, segment.to_dict())
+
+print(f"Inserted {len(segments)} segments")
+EOF
+
+# 3. Regenerate candidates
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 ---
 
-## Troubleshooting
+## Procedure 4: Diagnose Segmentation Issues
 
-### Missing metrics for a filing
+Use when: A filing has missing or incorrect data and you need to investigate.
 
-1. Check that keywords exist in `config/metric_keywords.yaml`
-2. Run gold standard to confirm extraction quality: `pytest -m gold_standard`
-3. Inspect candidate generation output using `V2Pipeline` directly with logging enabled
+```bash
+# Run diagnostic script
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/debug_segmentation.py --filing-id <FILING_ID>
+```
 
-### Performance regression
+**Output includes:**
+- File size and total visible text
+- Number of elements considered/extracted/skipped
+- Skip reasons breakdown (nested_in_table, too_short, in_composite_div)
+- Search for specific values to confirm they're captured
+- Coverage ratio (segment chars / visible text chars)
 
-Run the benchmark suite: `pytest tests/performance/ -v`
+---
 
-See [`docs/PERFORMANCE_BASELINE.md`](../PERFORMANCE_BASELINE.md) for baseline numbers.
+## Procedure 5: Batch Re-extraction
 
-### Database schema issues
+Use when: Re-extracting multiple filings (e.g., after major segmenter changes).
 
-Apply missing migrations: `python3 scripts/apply_migrations.py`
+```bash
+# 1. Test with dry run
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/reextract_all_filings.py --limit 5 --dry-run
 
-Migrations are numbered `00`–`15` in `sql/`. Check which are applied by inspecting the `schema_migrations` table.
+# 2. Run limited batch first
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/reextract_all_filings.py --limit 5
+
+# 3. Verify results before full run
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
+    -c "SELECT COUNT(*) FROM source_segments;"
+
+# 4. Full re-extraction (can take hours)
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/reextract_all_filings.py --batch-size 10
+
+# 5. Regenerate all candidates
+DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/generate_review_candidates.py
+```
+
+---
+
+## Common Pitfalls
+
+### Pitfall 1: Stale Segments
+**Symptom:** Gold standard values exist in HTML but not in candidates.
+**Cause:** Database has old segments from previous segmenter version.
+**Fix:** Run Procedure 1 or 3 to re-segment.
+
+### Pitfall 2: Missing Keywords
+**Symptom:** Values are in segments but not matched to correct metric.
+**Cause:** Keyword patterns in `config/metric_keywords.yaml` don't include company-specific terminology.
+**Fix:**
+1. Add keywords to `config/metric_keywords.yaml`
+2. Run Procedure 2 to regenerate candidates
+
+### Pitfall 3: Regenerating Candidates Without Deleting Old Ones
+**Symptom:** Duplicate candidates or old incorrect candidates remain.
+**Cause:** `generate_review_candidates.py` doesn't delete existing candidates by default.
+**Fix:** Always delete candidates first:
+```bash
+PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
+    -c "DELETE FROM review_candidates WHERE filing_id = <ID>;"
+```
+
+### Pitfall 4: Forgetting to Set DATABASE_URL
+**Symptom:** Script runs but doesn't affect expected database.
+**Cause:** Using wrong database or default connection.
+**Fix:** Always explicitly set `DATABASE_URL` environment variable.
+
+---
+
+## Verification Queries
+
+### Check segment count for a filing
+```sql
+SELECT COUNT(*) as segment_count,
+       SUM(LENGTH(raw_text)) as total_chars
+FROM source_segments
+WHERE filing_id = <FILING_ID>;
+```
+
+### Check if specific value is in segments
+```sql
+SELECT COUNT(*) as matches
+FROM source_segments
+WHERE filing_id = <FILING_ID>
+  AND raw_text ILIKE '%<VALUE>%';
+```
+
+### Check candidate count for a filing
+```sql
+SELECT COUNT(*) as candidate_count
+FROM review_candidates
+WHERE filing_id = <FILING_ID>;
+```
+
+### Check candidates for specific metric
+```sql
+SELECT parsed_value, triggering_keyword, suggested_metric_id
+FROM review_candidates
+WHERE filing_id = <FILING_ID>
+  AND suggested_metric_id = '<METRIC_ID>';
+```
+
+### Compare filing stats before/after
+```sql
+SELECT f.filing_id, c.company_name,
+       COUNT(DISTINCT ss.source_segment_id) as segments,
+       COUNT(DISTINCT rc.candidate_id) as candidates,
+       COUNT(DISTINCT mv.metric_value_id) as extracted_values
+FROM filings f
+JOIN companies c ON f.company_id = c.company_id
+LEFT JOIN source_segments ss ON f.filing_id = ss.filing_id
+LEFT JOIN review_candidates rc ON f.filing_id = rc.filing_id
+LEFT JOIN metric_values mv ON f.filing_id = mv.filing_id
+WHERE f.filing_id = <FILING_ID>
+GROUP BY f.filing_id, c.company_name;
+```
+
+---
+
+## Lesson Learned (2024-12-24)
+
+**Issue:** Farfetch and Samsara Vision filings showed 0 candidates despite gold standard values existing in HTML.
+
+**Root Cause:**
+1. Database had 80 segments (stale) while current segmenter produces 89,887 segments
+2. Keywords like "Active Consumers" (Farfetch) and "Customer A" (Samsara Vision) weren't in patterns
+
+**Resolution:**
+1. Re-segmented both filings using current segmenter
+2. Added missing keywords to `metric_classifier.py`
+3. Regenerated candidates
+
+**Prevention:**
+- After ANY segmenter changes, re-segment affected filings
+- After keyword changes, regenerate candidates
+- Use `debug_segmentation.py` to diagnose before assuming code bugs
+
+---
+
+## Lesson Learned (2025-12-27)
+
+**Issue:** "View SEC Filing" button in human review interface linked to wrong document (exhibit file instead of main S-1).
+
+**Root Cause:**
+1. `resolve_primary_document_url()` matched exhibit files containing form patterns (e.g., `exhibit103s-1.htm`) before the actual document (`slacks-1.htm`)
+2. Slack's database record pointed to original S-1 instead of final S-1/A amendment
+3. `fetch_curated_sample.py` only queried for `S-1`/`F-1`, ignoring amendments
+
+**Resolution:**
+1. Fixed `sec_client.py` to filter exhibit files BEFORE pattern matching
+2. Updated Slack's database record to point to final S-1/A (accession `0001628280-19-007428`)
+3. Modified `fetch_curated_sample.py` to prefer final amendments (S-1/A, F-1/A) over originals
+
+**Prevention:**
+- When loading filings, prefer the final S-1/A or F-1/A amendment (most complete disclosure)
+- The `resolve_primary_document_url()` now correctly excludes exhibit files from pattern matching
+- Verify SEC filing URLs resolve correctly before committing filing data

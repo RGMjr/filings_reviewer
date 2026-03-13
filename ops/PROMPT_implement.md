@@ -86,7 +86,7 @@ pytest tests/unit/ -x -q
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
 # Quick validation check
-python3 scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode fresh
+python scripts/validate_against_gold_standard.py --company "Slack Technologies" --mode fresh
 ```
 
 ## Completion

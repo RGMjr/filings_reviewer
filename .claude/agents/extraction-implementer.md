@@ -1,7 +1,7 @@
 ---
 name: extraction-implementer
 description: Implements extraction code changes (keywords, classifiers, FP rules) following project extraction rules. Self-tests before signaling validator.
-model: sonnet
+model: inherit
 tools: Bash, Read, Write, Edit, Grep, Glob
 memory: project
 maxTurns: 20

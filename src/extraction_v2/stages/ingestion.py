@@ -614,57 +614,23 @@ class IngestionStage:
         """
         Extract text near an image element.
 
-        Collects text from (in priority order):
-        - Heading chain ancestors (nearest h1-h6 walking up the DOM)
-        - Caption (figcaption, table caption, or first thead row)
-        - Surrounding siblings (up to 3 in each direction)
-        - Parent's siblings as fallback if no sibling text found
-
-        Total nearby text is capped at 500 characters.
+        Collects text from:
+        - Caption (figcaption, nearby spans/divs)
+        - Surrounding paragraphs (previous and next siblings)
 
         Args:
             img_element: Image element to get context for
             tree: Full HTML tree
 
         Returns:
-            Nearby text (heading + caption + context), max 500 chars
+            Nearby text (caption + context)
         """
-        _NEARBY_TEXT_MAX = 500
-        _BLOCK_TAGS = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6")
-        _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
         nearby_parts: list[str] = []
 
+        # 1. Look for caption in parent figure element
         parent = img_element.getparent()
-
-        # 1. Heading chain: walk up DOM ancestors to find nearest heading
-        ancestor = parent
-        while ancestor is not None:
-            if ancestor.tag in _HEADING_TAGS:
-                text = ancestor.text_content() if hasattr(ancestor, "text_content") else ""
-                text = normalize_text(text)
-                if text:
-                    nearby_parts.insert(0, text)
-                break
-            # Also check previous siblings of each ancestor for a heading
-            sib = ancestor.getprevious()
-            found_heading = False
-            checked = 0
-            while sib is not None and checked < 3:
-                if sib.tag in _HEADING_TAGS:
-                    text = sib.text_content() if hasattr(sib, "text_content") else ""
-                    text = normalize_text(text)
-                    if text:
-                        nearby_parts.insert(0, text)
-                    found_heading = True
-                    break
-                sib = sib.getprevious()
-                checked += 1
-            if found_heading:
-                break
-            ancestor = ancestor.getparent()
-
-        # 2. Caption from parent figure element
         if parent is not None and parent.tag == "figure":
+            # Find figcaption
             captions = parent.xpath(".//figcaption")
             for caption in captions:
                 text = caption.text_content() if hasattr(caption, "text_content") else ""
@@ -672,68 +638,50 @@ class IngestionStage:
                 if text:
                     nearby_parts.append(text)
 
-        # 3. Table caption: if img is inside a table, get caption or first thead row
-        table_ancestor = img_element
-        while table_ancestor is not None:
-            if table_ancestor.tag == "table":
-                captions = table_ancestor.xpath("./caption")
-                if captions:
-                    text = captions[0].text_content() if hasattr(captions[0], "text_content") else ""
-                    text = normalize_text(text)
-                    if text:
-                        nearby_parts.append(text)
-                else:
-                    # Use first thead row text
-                    thead_rows = table_ancestor.xpath(".//thead/tr[1]")
-                    if thead_rows:
-                        text = thead_rows[0].text_content() if hasattr(thead_rows[0], "text_content") else ""
-                        text = normalize_text(text)
-                        if text:
-                            nearby_parts.append(text)
-                break
-            table_ancestor = table_ancestor.getparent()
-
-        # 4. Previous siblings (up to 3)
+        # 2. Get context from nearby siblings — only process if parent exists
+        # Get previous siblings (up to 2)
         if parent is not None:
             prev_siblings: list[str] = []
             current = img_element.getprevious()
             count = 0
-            while current is not None and count < 3:
-                if current.tag in _BLOCK_TAGS:
+            while current is not None and count < 2:
+                if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
                     text = current.text_content() if hasattr(current, "text_content") else ""
                     text = normalize_text(text)
                     if text:
                         prev_siblings.insert(0, text)
                         count += 1
                 current = current.getprevious()
+
             nearby_parts.extend(prev_siblings)
 
-        # 5. Next siblings (up to 3)
+        # 3. Get next siblings (up to 2)
         if parent is not None:
             next_siblings: list[str] = []
             current = img_element.getnext()
             count = 0
-            while current is not None and count < 3:
-                if current.tag in _BLOCK_TAGS:
+            while current is not None and count < 2:
+                if current.tag in ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6"):
                     text = current.text_content() if hasattr(current, "text_content") else ""
                     text = normalize_text(text)
                     if text:
                         next_siblings.append(text)
                         count += 1
                 current = current.getnext()
+
             nearby_parts.extend(next_siblings)
 
-        # 6. Fallback: if no sibling text was found (image is alone in its parent element,
-        # e.g. <p><img/></p>), walk up to parent and check parent's siblings for context.
-        # Also run when only a heading was captured — a bare "Table of Contents" heading
-        # provides no useful content signal; the image title is typically in an adjacent
-        # parent sibling (e.g. the <p> immediately before the <p><img/></p>).
-        if len(nearby_parts) <= 1 and parent is not None:
+        # 4. Fallback: if no text found and img is only child of parent (e.g. <P><IMG/></P>),
+        # walk up to parent and check parent's siblings for context
+        if not nearby_parts and parent is not None:
+            _block_tags = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6")
+
+            # Check parent's previous siblings (up to 2)
             parent_prev: list[str] = []
             current = parent.getprevious()
             count = 0
-            while current is not None and count < 3:
-                if current.tag in _BLOCK_TAGS:
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
                     text = current.text_content() if hasattr(current, "text_content") else ""
                     text = normalize_text(text)
                     if text:
@@ -742,11 +690,12 @@ class IngestionStage:
                 current = current.getprevious()
             nearby_parts.extend(parent_prev)
 
+            # Check parent's next siblings (up to 2)
             parent_next: list[str] = []
             current = parent.getnext()
             count = 0
-            while current is not None and count < 3:
-                if current.tag in _BLOCK_TAGS:
+            while current is not None and count < 2:
+                if current.tag in _block_tags:
                     text = current.text_content() if hasattr(current, "text_content") else ""
                     text = normalize_text(text)
                     if text:
@@ -755,9 +704,8 @@ class IngestionStage:
                 current = current.getnext()
             nearby_parts.extend(parent_next)
 
-        # Combine and cap at 500 chars
-        combined = " ".join(nearby_parts)
-        return combined[:_NEARBY_TEXT_MAX]
+        # Combine all parts
+        return " ".join(nearby_parts)
 
     def _compute_initial_relevance(self, nearby_text: str, filename: str) -> float:
         """
@@ -862,19 +810,6 @@ class IngestionStage:
                     height = int(height_str)
             except (ValueError, TypeError):
                 pass
-
-            # Fall back to inline style for dimensions if not in HTML attrs
-            if (width == 0 or height == 0):
-                style = element.get("style", "")
-                if style:
-                    if width == 0:
-                        m = re.search(r"width:\s*(\d+)px", style)
-                        if m:
-                            width = int(m.group(1))
-                    if height == 0:
-                        m = re.search(r"height:\s*(\d+)px", style)
-                        if m:
-                            height = int(m.group(1))
 
             # Generate XPath locator
             xpath = self._generate_xpath(element)

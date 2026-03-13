@@ -1,9 +1,7 @@
 # Deployment Guide
 
-**Version:** 3.1
-**Last Updated:** 2026-03-12
-
-> **V2 Deployment:** For the V2 cloud/production deployment steps, see [`docs/operations/v2-deployment-guide.md`](v2-deployment-guide.md). This document covers production-scale batch processing phases (pilot → full corpus). For V2 extraction operations and runbook, see [`docs/operations/extraction-runbook.md`](extraction-runbook.md).
+**Version:** 3.0
+**Last Updated:** 2026-02-05
 
 ---
 
@@ -100,7 +98,7 @@ Validate the system on a small sample before full deployment.
 4. **Run Extraction Pipeline**
    ```bash
    # Extract metrics from first 100 filings
-   python3 scripts/run_v2_extraction.py --limit 100
+   python3 scripts/run_extraction_pipeline.py --limit 100
 
    # Check extraction results
    psql $DATABASE_URL -c "
@@ -134,8 +132,8 @@ Validate the system on a small sample before full deployment.
 7. **Go/No-Go Decision**
    - ✅ Success rate > 95%
    - ✅ Cost per filing < $0.20
-   - ✅ Precision > 75% (vs gold standard; current V2 text-only: 95.0%)
-   - ✅ Recall > 55% (vs gold standard; current V2 text-only: 83.5%)
+   - ✅ Precision > 75% (vs gold standard; current V2: 92.8%)
+   - ✅ Recall > 55% (vs gold standard; current V2: 77.6%)
    - ✅ No critical bugs
 
    **If not meeting criteria:** Debug, iterate, re-run pilot
@@ -169,7 +167,7 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 3. **Run Extraction**
    ```bash
    # Extract from all fetched 2024 filings
-   python3 scripts/run_v2_extraction.py \
+   python3 scripts/run_extraction_pipeline.py \
        --limit 500 \
        2>&1 | tee logs/2024_extraction.log
    ```
@@ -203,13 +201,13 @@ Process all 2024 S-1/F-1 filings (~200-300 filings)
 
 6. **Retry Failed Extractions**
    ```bash
-   # Re-run batch extraction on pending/failed filings (skips already-processed)
-   python3 scripts/batch_v2_extraction.py \
+   # Get failed filing IDs and retry
+   python3 scripts/reextract_all_filings.py \
        --limit 50 \
        --dry-run  # Preview first
 
    # Then execute
-   python3 scripts/batch_v2_extraction.py --limit 50
+   python3 scripts/reextract_all_filings.py --limit 50
    ```
 
 7. **Export Results**
@@ -292,7 +290,7 @@ Process year by year to enable checkpointing and monitoring.
    for batch in {1..10}; do
        echo "Processing batch $batch"
 
-       python3 scripts/run_v2_extraction.py \
+       python3 scripts/run_extraction_pipeline.py \
            --limit 250 \
            2>&1 | tee logs/extract_batch_${batch}.log
 
@@ -333,7 +331,7 @@ Process year by year to enable checkpointing and monitoring.
 
    # Resume extraction from where it stopped
    # Script automatically skips already-processed filings
-   python3 scripts/run_v2_extraction.py --limit 2500
+   python3 scripts/run_extraction_pipeline.py --limit 2500
    ```
 
 7. **Validate Against Gold Standard**
@@ -377,7 +375,7 @@ Process all 10-K filings from 2022-2024
    python3 scripts/batch_download_filings.py --limit 50
 
    # Extract and review
-   python3 scripts/run_v2_extraction.py --limit 50
+   python3 scripts/run_extraction_pipeline.py --limit 50
    ```
 
 3. **Review and Adjust**
@@ -643,7 +641,7 @@ psql $DATABASE_URL -c "
 # If avg_confidence < 0.7:
 # - Review config/metric_keywords.yaml for keyword accuracy
 # - Run gold standard validation to identify issues
-# - Check LLM prompts in src/extraction_v2/ for improvements
+# - Check LLM prompts in src/extraction/ for improvements
 ```
 
 ### Issue: Database Connection Errors
@@ -714,7 +712,7 @@ python3 scripts/validate_against_gold_standard.py \
 # Review results
 cat data/validation/final_validation.json | jq '.summary'
 
-# Expected metrics (current V2 text-only actuals: P=95.0%, R=83.5%, F1=88.9%):
+# Expected metrics (current V2 actuals: P=92.8%, R=77.6%, F1=84.5%):
 # - Precision > 75%
 # - Recall > 55%
 # - F1 > 65%
@@ -819,7 +817,7 @@ echo "Archive created at: $ARCHIVE_DIR"
 - [ ] All filings processed (S-1/F-1: 10 years)
 - [ ] Success rate > 95%
 - [ ] Total cost within budget
-- [ ] Gold standard validation: precision > 75%, recall > 55% (current V2 text-only actuals: P=95.0%, R=83.5%, F1=88.9%)
+- [ ] Gold standard validation: precision > 75%, recall > 55% (current V2 actuals: P=92.8%, R=77.6%, F1=84.5%)
 - [ ] Database exported to CSV/JSON
 - [ ] Summary report generated
 - [ ] Data backed up
@@ -851,7 +849,7 @@ python3 scripts/build_universe_real.py \
 python3 scripts/batch_download_filings.py --limit 200
 
 # Extract metrics
-python3 scripts/run_v2_extraction.py --limit 200
+python3 scripts/run_extraction_pipeline.py --limit 200
 
 # Validate and export
 python3 scripts/validate_against_gold_standard.py --all
@@ -867,14 +865,14 @@ python3 scripts/export_review_decisions.py \
 vim config/metric_keywords.yaml
 
 # Test changes on sample
-python3 scripts/batch_v2_extraction.py --limit 10 --dry-run
+python3 scripts/run_extraction_pipeline.py --limit 10 --csv-only
 
 # Validate changes
 pytest -m gold_standard --gold-standard-mode=fresh -v
 
 # If validation passes, re-extract all filings
-python3 scripts/batch_v2_extraction.py --dry-run
-python3 scripts/batch_v2_extraction.py
+python3 scripts/reextract_all_filings.py --dry-run
+python3 scripts/reextract_all_filings.py
 ```
 
 ### Database Optimization
@@ -911,9 +909,9 @@ pg_dump $DATABASE_URL | gzip > \
 
 ### Quality Success
 ✅ Extracted 50,000-75,000 metrics
-✅ Precision > 75% (vs gold standard; V2 current: 95.0%)
-✅ Recall > 55% (vs gold standard; V2 current: 83.5%)
-✅ F1 Score > 65% (V2 current: 88.9%)
+✅ Precision > 75% (vs gold standard; V2 current: 92.8%)
+✅ Recall > 55% (vs gold standard; V2 current: 77.6%)
+✅ F1 Score > 65% (V2 current: 84.5%)
 
 ### Business Success
 ✅ Usable dataset for CMASB research
@@ -931,8 +929,8 @@ pg_dump $DATABASE_URL | gzip > \
 |--------|---------|-----------|
 | `build_universe_real.py` | Discover filings from SEC EDGAR | `--start-date`, `--end-date`, `--dry-run` |
 | `batch_download_filings.py` | Download HTML/TXT files | `--limit`, `--year`, `--dry-run` |
-| `run_v2_extraction.py` | Extract metrics from filings | `--limit`, `--cik`, `--accession`, `--csv-only` |
-| `batch_v2_extraction.py` | Run V2 extraction on pending/failed filings | `--dry-run`, `--limit` |
+| `run_extraction_pipeline.py` | Extract metrics from filings | `--limit`, `--cik`, `--accession`, `--csv-only` |
+| `reextract_all_filings.py` | Re-run extraction on all filings | `--dry-run`, `--limit`, `--resume-from` |
 | `export_review_decisions.py` | Export metrics to CSV/JSON | `--status`, `--format`, `--output` |
 | `validate_against_gold_standard.py` | Compare vs gold standard | `--all`, `--company`, `--mode fresh` |
 | `run_review_server.py` | Start web review interface | (no flags, runs on port 5000) |

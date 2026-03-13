@@ -1321,7 +1321,7 @@ class DatabaseAdapter:
 
         runner_up_entries: list[dict[str, Any]] = []
 
-        for _position_key, group in position_groups.items():
+        for position_key, group in position_groups.items():
             if len(group) < 2:
                 # No alternatives at this position
                 continue
@@ -1334,7 +1334,7 @@ class DatabaseAdapter:
             winner_metric = None
             winner_conf = None
 
-            for idx, _cand in group:
+            for idx, cand in group:
                 cand_id = final_ids[idx]
                 if cand_id in winner_metrics:
                     metric_id, conf = winner_metrics[cand_id]
@@ -1674,7 +1674,7 @@ class DatabaseAdapter:
                 # =====================================================================
                 # Execute Updates (winner replaces existing)
                 # =====================================================================
-                for _input_idx, existing_id, new_cand, old_cand in to_update:
+                for input_idx, existing_id, new_cand, old_cand in to_update:
                     # Log old candidate as suppressed
                     if log_suppressed:
                         suppression_entries.append(
