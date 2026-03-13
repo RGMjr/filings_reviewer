@@ -27,9 +27,18 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 **Farfetch Vision Smoke Test (2026-03-12)**: Two-pass chart extraction confirmed working end-to-end with real Claude Haiku vision API. Pipeline: SUCCESS, 13.7s, 40 facts (21 auto-accepted), 34 images found, 7 classified as charts, 2 sent to Haiku (~$0.155). Chart facts extracted: `cm_customer_acquisition_cost` (6 values), `cm_ltv_to_cac_ratio` (6 values), `cm_new_customers_acquired` (3 values). 5 pre-pipeline UUID images skipped (no `file_path`; likely stale cache).
 
+**Cloud Deployment Infrastructure (2026-03-12)**:
+- Multi-target Dockerfile: `web` (Waitress/Flask on :8000), `worker` (job runner), `test` (pytest + gold standard data)
+- `docker-compose.prod.yml`: web + worker services, no DB service — expects managed Postgres via `DATABASE_URL`
+- `src/infra/filing_storage.py`: `get_filing_html_path()` context manager — DB-first, filesystem fallback, auto temp file cleanup
+- `sql/16_extraction_jobs.sql`: `extraction_jobs` table with `FOR UPDATE SKIP LOCKED` atomic claiming
+- `src/worker/job_runner.py`: poll loop → claim pending job → run V2Pipeline → update status → repeat
+- `POST /api/v2/jobs` + `GET /api/v2/jobs/<id>` endpoints added to api_v2.py
+- v2_filing_list.html: "Extract" button per-row enqueues job with live JS status feedback
+
 ## Current Focus
 
-- Assess PR merge readiness for `v2-rewrite` branch
+- Assess PR merge readiness for `v2-rewrite` branch — cloud deployment infrastructure complete
 
 ## Test Status
 
