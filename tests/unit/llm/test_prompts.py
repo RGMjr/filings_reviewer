@@ -1,5 +1,6 @@
 """Tests for prompt templates module."""
 
+
 import pytest
 
 from src.llm.prompts import PromptTemplates
@@ -241,7 +242,9 @@ That's all I found."""
 class TestValidateValueExtractionResponse:
     """Tests for value extraction response validation."""
 
-    def test_validate_value_extraction_response_valid(self, sample_value_extraction_response):
+    def test_validate_value_extraction_response_valid(
+        self, sample_value_extraction_response
+    ):
         """Test validation passes for valid response."""
         result = PromptTemplates.validate_value_extraction_response(
             sample_value_extraction_response
@@ -257,7 +260,9 @@ class TestValidateValueExtractionResponse:
 
     def test_validate_value_extraction_response_non_list_invalid(self):
         """Test validation fails for non-list response."""
-        result = PromptTemplates.validate_value_extraction_response({"metric_name": "users"})
+        result = PromptTemplates.validate_value_extraction_response(
+            {"metric_name": "users"}
+        )
 
         assert result is False
 

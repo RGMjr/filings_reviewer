@@ -47,7 +47,7 @@ Suppression Logging (DUP-3):
     removes duplicates before DB insert, but its 'cross_sentence' suppression reason is
     NOT captured separately. This was a deliberate simplification - the DB layer provides
     ~90% of suppression tracking value without the architectural complexity of coordinating
-    two deduplication layers. (DUP-3 completion notes preserved in git history.)
+    two deduplication layers. See DUP-3 completion notes in PROJECT_TASK_INVENTORY.md.
 
 Using Custom Generator Configuration:
     >>> from src.review import CandidateGenerator
@@ -188,7 +188,9 @@ def generate_candidates_for_filing(
         # - 'lower_confidence': within-batch duplicates and cross-batch conflicts
         # - 'runner_up': best alternative metric at same position
         if log_suppressed:
-            result = db.bulk_insert_review_candidates(candidate_dicts, log_suppressed=True)
+            result = db.bulk_insert_review_candidates(
+                candidate_dicts, log_suppressed=True
+            )
             candidate_ids, suppression_entries = result
 
             # Log suppression summary
@@ -211,6 +213,8 @@ def generate_candidates_for_filing(
         for candidate, cid in zip(candidates, candidate_ids, strict=True):
             candidate.candidate_id = cid
 
-        logger.info(f"Saved {len(candidate_ids)} candidates for filing {filing_id}")
+        logger.info(
+            f"Saved {len(candidate_ids)} candidates for filing {filing_id}"
+        )
 
     return candidates

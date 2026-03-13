@@ -11,6 +11,7 @@ Tests verify that all 5 Phase 1 bugs are eliminated when fixes work together:
 This is validation only - no production code should be modified.
 """
 
+
 from src.review.candidate_generator import CandidateGenerator
 
 
@@ -147,7 +148,7 @@ class TestDefinitionFiltering:
                 "section_heading": "Metrics",
                 "section_path": "/Metrics",
                 "contains_definition_flag": True,
-            },
+            }
         ]
 
         generator = CandidateGenerator(apply_learned_rules=False)
@@ -245,9 +246,8 @@ class TestMeasurementUnits:
         )
 
         # "24" from "24-hour" should be filtered
-        assert not any(c.raw_number_text == "24" for c in candidates), (
+        assert not any(c.raw_number_text == "24" for c in candidates), \
             "Measurement unit number '24' from '24-hour' should be filtered"
-        )
 
     def test_day_unit_filtered(self, clean_db):
         """30 from '30-day retention' should not be extracted."""

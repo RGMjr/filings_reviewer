@@ -80,6 +80,7 @@ SELECTORS = {
     # Reclassify dropdown
     "reclassify_button": ".btn-warning.dropdown-toggle",
     "dropdown_menu": ".metric-selector",
+
     # Search components (UXI-2)
     "search_input": "#metric-search-input",
     "clear_button": ".metric-search-clear",
@@ -88,9 +89,11 @@ SELECTORS = {
     "metric_item": ".metric-list > li",
     "visible_metric": ".metric-list > li:not(.d-none)",
     "no_matches": ".no-matches-message",
+
     # Feedback/notifications
     "success_toast": ".alert-success",
     "error_toast": ".alert-danger",
+
     # Navigation
     "filings_link": "a[href='/filings']",
     "filing_row": ".filing-row",

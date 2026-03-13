@@ -41,9 +41,7 @@ class HTTPClient(Protocol):
     automatically satisfies this interface without explicit inheritance.
     """
 
-    def get(
-        self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0
-    ) -> HTTPResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
         """Perform GET request.
 
         Args:
@@ -78,9 +76,7 @@ class RequestsHTTPClient:
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": user_agent})
 
-    def get(
-        self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0
-    ) -> HTTPResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None, timeout: float = 10.0) -> HTTPResponse:
         """Perform GET request using requests library.
 
         Args:
@@ -99,9 +95,7 @@ class RequestsHTTPClient:
         start_time = time.time()
 
         try:
-            response = self._session.get(
-                url, headers=headers, timeout=timeout, allow_redirects=True
-            )
+            response = self._session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             elapsed = time.time() - start_time
 
             # Raise for 4xx/5xx status codes

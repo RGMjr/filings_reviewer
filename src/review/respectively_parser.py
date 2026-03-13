@@ -103,16 +103,17 @@ MAX_LIST_DISTANCE = 200
 # =============================================================================
 
 # Year patterns (1990-2029)
-YEAR_PATTERN = re.compile(r"\b(20[0-2][0-9]|19[89][0-9])\b")
+YEAR_PATTERN = re.compile(r'\b(20[0-2][0-9]|19[89][0-9])\b')
 
 # Quarter patterns (Q1, Q2, Q3, Q4, or spelled out)
 QUARTER_PATTERN = re.compile(
-    r"\b(Q[1-4]|first\s+quarter|second\s+quarter|third\s+quarter|fourth\s+quarter)\b", re.IGNORECASE
+    r'\b(Q[1-4]|first\s+quarter|second\s+quarter|third\s+quarter|fourth\s+quarter)\b',
+    re.IGNORECASE
 )
 
 # Value patterns (percentages, currency, numbers with optional magnitude suffixes)
 VALUE_PATTERN = re.compile(
-    r"""
+    r'''
     (?:
         \$\s*[\d,]+(?:\.\d+)?(?:\s*(?:million|billion|thousand|mn|bn|k|m|b))?  |  # Currency
         [\d,]+(?:\.\d+)?%                                                        |  # Percentage with %
@@ -120,8 +121,8 @@ VALUE_PATTERN = re.compile(
         [\d,]+(?:\.\d+)?(?:\s*(?:million|billion|thousand|mn|bn|k|m|b))         |  # Plain number with suffix
         [\d,]+\.\d+                                                                 # Plain decimal (e.g., 1.42, 1.53)
     )
-    """,
-    re.VERBOSE | re.IGNORECASE,
+    ''',
+    re.VERBOSE | re.IGNORECASE
 )
 
 
@@ -145,7 +146,6 @@ class RespectivelyMatch:
         confidence: Confidence score 0.0-1.0 based on pattern clarity
         span: Tuple of (start, end) positions in original text
     """
-
     values: list[str]
     periods: list[str]
     associations: list[tuple[str, str]]
@@ -160,7 +160,9 @@ class RespectivelyMatch:
                 f"got {len(self.values)} values and {len(self.periods)} periods"
             )
         if not (0 <= self.confidence <= 1):
-            raise ValueError(f"Confidence must be between 0 and 1, got {self.confidence}")
+            raise ValueError(
+                f"Confidence must be between 0 and 1, got {self.confidence}"
+            )
         if len(self.associations) != len(self.values):
             raise ValueError(
                 f"Associations length {len(self.associations)} "
@@ -173,7 +175,10 @@ class RespectivelyMatch:
 # =============================================================================
 
 
-def detect_respectively_pattern(text: str, min_confidence: float = 0.6) -> RespectivelyMatch | None:
+def detect_respectively_pattern(
+    text: str,
+    min_confidence: float = 0.6
+) -> RespectivelyMatch | None:
     """
     Detect a "respectively" pattern in text and return associations.
 
@@ -210,7 +215,7 @@ def detect_respectively_pattern(text: str, min_confidence: float = 0.6) -> Respe
         return None
 
     # 2. Find the position of "respectively"
-    resp_match = re.search(r"\brespectively\b", text, re.IGNORECASE)
+    resp_match = re.search(r'\brespectively\b', text, re.IGNORECASE)
     if not resp_match:
         return None
 
@@ -232,7 +237,7 @@ def detect_respectively_pattern(text: str, min_confidence: float = 0.6) -> Respe
         return None
 
     # 4. Extract text from SAME SENTENCE only (not entire text before "respectively")
-    context = text[resp_sentence.start : resp_pos]
+    context = text[resp_sentence.start:resp_pos]
 
     # 5. Find period list (should be earlier in text)
     periods = _extract_period_list(context)
@@ -288,12 +293,13 @@ def detect_respectively_pattern(text: str, min_confidence: float = 0.6) -> Respe
         periods=periods,
         associations=associations,
         confidence=confidence,
-        span=(resp_sentence.start, resp_match.end()),
+        span=(resp_sentence.start, resp_match.end())
     )
 
 
 def detect_all_respectively_patterns(
-    text: str, min_confidence: float = 0.6
+    text: str,
+    min_confidence: float = 0.6
 ) -> list[RespectivelyMatch]:
     """
     Detect ALL "respectively" patterns in text.
@@ -338,14 +344,16 @@ def detect_all_respectively_patterns(
 
     # Process each sentence that contains "respectively"
     for sentence in sentences:
-        sentence_text = text[sentence.start : sentence.end]
+        sentence_text = text[sentence.start:sentence.end]
 
         if "respectively" not in sentence_text.lower():
             continue
 
         # Detect pattern within this sentence
         pattern = _detect_in_sentence(
-            sentence_text, sentence_offset=sentence.start, min_confidence=min_confidence
+            sentence_text,
+            sentence_offset=sentence.start,
+            min_confidence=min_confidence
         )
 
         if pattern:
@@ -353,14 +361,17 @@ def detect_all_respectively_patterns(
 
     if patterns:
         logger.debug(
-            f"Detected {len(patterns)} respectively pattern(s) in text ({len(text)} chars)"
+            f"Detected {len(patterns)} respectively pattern(s) in text "
+            f"({len(text)} chars)"
         )
 
     return patterns
 
 
 def _detect_in_sentence(
-    sentence_text: str, sentence_offset: int, min_confidence: float
+    sentence_text: str,
+    sentence_offset: int,
+    min_confidence: float
 ) -> RespectivelyMatch | None:
     """
     Detect a respectively pattern within a single sentence.
@@ -376,7 +387,7 @@ def _detect_in_sentence(
         RespectivelyMatch if pattern found, None otherwise
     """
     # Find "respectively" position within sentence
-    resp_match = re.search(r"\brespectively\b", sentence_text, re.IGNORECASE)
+    resp_match = re.search(r'\brespectively\b', sentence_text, re.IGNORECASE)
     if not resp_match:
         return None
 
@@ -436,7 +447,7 @@ def _detect_in_sentence(
         periods=periods,
         associations=associations,
         confidence=confidence,
-        span=(sentence_offset, sentence_offset + resp_match.end()),
+        span=(sentence_offset, sentence_offset + resp_match.end())
     )
 
 
@@ -483,10 +494,10 @@ def _extract_value_list(text: str) -> list[str]:
         next_match = matches[i + 1]
 
         # Check the text between current and next match
-        between = text[current_match.end() : next_match.start()]
+        between = text[current_match.end():next_match.start()]
 
         # Valid separators: ", " or " and " (with optional whitespace)
-        if re.match(r"^\s*,\s*$", between) or re.match(r"^\s+and\s+$", between):
+        if re.match(r'^\s*,\s*$', between) or re.match(r'^\s+and\s+$', between):
             # This is part of the same list
             candidate_list.insert(0, current_match.group().strip())
             candidate_positions.insert(0, current_match.start())
@@ -536,15 +547,13 @@ def _extract_period_list(text: str) -> list[str]:
             prev_match = year_matches[i - 1]
 
             # Check the text between previous and current match
-            between = text[prev_match.end() : current_match.start()]
+            between = text[prev_match.end():current_match.start()]
 
             # Valid separators: ", " or " and " (with optional whitespace)
             # Also allow "December 31, " style prefixes
-            if (
-                re.search(r",\s*$", between)
-                or re.search(r"\s+and\s+$", between)
-                or re.match(r"^,\s*", between)
-            ):
+            if (re.search(r',\s*$', between) or
+                re.search(r'\s+and\s+$', between) or
+                re.match(r'^,\s*', between)):
                 # This is part of the same list
                 candidate_list.append(current_match.group())
                 candidate_positions.append(current_match.start())
@@ -566,9 +575,9 @@ def _extract_period_list(text: str) -> list[str]:
             current_match = quarter_matches[i]
             prev_match = quarter_matches[i - 1]
 
-            between = text[prev_match.end() : current_match.start()]
+            between = text[prev_match.end():current_match.start()]
 
-            if re.search(r",\s*$", between) or re.search(r"\s+and\s+$", between):
+            if re.search(r',\s*$', between) or re.search(r'\s+and\s+$', between):
                 candidate_list.append(current_match.group())
             elif len(candidate_list) < 2:
                 candidate_list = [current_match.group()]
@@ -579,7 +588,11 @@ def _extract_period_list(text: str) -> list[str]:
     return []
 
 
-def _calculate_confidence(values: list[str], periods: list[str], context: str) -> float:
+def _calculate_confidence(
+    values: list[str],
+    periods: list[str],
+    context: str
+) -> float:
     """
     Calculate confidence score for a respectively pattern match.
 
@@ -625,7 +638,10 @@ def _calculate_confidence(values: list[str], periods: list[str], context: str) -
     try:
         years = [int(p) for p in periods if p.isdigit()]
         if len(years) >= 2:
-            consecutive = all(years[i] == years[i - 1] + 1 for i in range(1, len(years)))
+            consecutive = all(
+                years[i] == years[i-1] + 1
+                for i in range(1, len(years))
+            )
             if consecutive:
                 score += 0.1
     except (ValueError, IndexError):
@@ -633,8 +649,8 @@ def _calculate_confidence(values: list[str], periods: list[str], context: str) -
 
     # +0.1 if values have consistent format (all %, all $, etc.)
     if values:
-        has_percent = [("%" in v) for v in values]
-        has_currency = [("$" in v) for v in values]
+        has_percent = [('%' in v) for v in values]
+        has_currency = [('$' in v) for v in values]
 
         if all(has_percent) or all(has_currency):
             score += 0.1

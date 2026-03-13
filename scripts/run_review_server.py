@@ -29,7 +29,7 @@ Usage:
 Examples:
     # Start on default host and port (0.0.0.0:8000)
     export DATABASE_URL="postgresql://user:pass@localhost/filings_analysis"
-    export SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
     export APP_ENV=production
     python scripts/run_review_server.py
 
@@ -81,7 +81,7 @@ def validate_environment() -> None:
         for msg in missing:
             logger.error(msg)
         logger.error("\nGenerate SECRET_KEY with:")
-        logger.error('  python3 -c "import secrets; print(secrets.token_hex(32))"')
+        logger.error('  python -c "import secrets; print(secrets.token_hex(32))"')
         sys.exit(1)
 
 

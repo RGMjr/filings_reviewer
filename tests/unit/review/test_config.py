@@ -4,6 +4,7 @@ Unit tests for configuration module.
 Tests for configuration dataclass, presets, and P1 enhancements.
 """
 
+
 from src.review.config import (
     DEFAULT_CONFIG,
     CandidateGenerationConfig,

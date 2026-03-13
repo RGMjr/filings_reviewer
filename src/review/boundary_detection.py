@@ -469,7 +469,7 @@ class BoundaryDetector:
             return True
 
         # Check if next character is a quote or parenthesis followed by uppercase
-        if next_char in "\"'([":
+        if next_char in '"\'([':
             if next_pos + 1 < len(text) and text[next_pos + 1].isupper():
                 return True
 

@@ -136,8 +136,8 @@ class TestPrintBaselineComparison:
         """[REGRESSION] markers appear for regressed metrics."""
         mock_comparison = MagicMock()
         mock_comparison.precision_delta = 0.02  # Improved
-        mock_comparison.recall_delta = -0.08  # Regressed
-        mock_comparison.f1_delta = -0.03  # Regressed
+        mock_comparison.recall_delta = -0.08   # Regressed
+        mock_comparison.f1_delta = -0.03       # Regressed
         mock_comparison.regressed_metrics = ["recall", "f1"]
         mock_comparison.regressed_companies = []
 

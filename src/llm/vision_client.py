@@ -18,7 +18,6 @@ Future Improvements:
        - ChartValueExtractor.extract() -> extract values from each image
        See VIS-2a for planned caching to avoid repeated SEC downloads.
 """
-
 from __future__ import annotations
 
 import base64
@@ -204,9 +203,10 @@ class VisionClient:
                 completion_tokens = usage.completion_tokens if usage else 0
 
                 # Calculate cost (per 1M tokens)
-                cost_usd = (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS + (
-                    completion_tokens / 1_000_000
-                ) * self.COST_PER_1M_OUTPUT_TOKENS
+                cost_usd = (
+                    (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS
+                    + (completion_tokens / 1_000_000) * self.COST_PER_1M_OUTPUT_TOKENS
+                )
 
                 return VisionResponse(
                     content=response.choices[0].message.content or "",

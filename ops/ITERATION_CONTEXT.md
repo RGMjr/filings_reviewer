@@ -6,40 +6,50 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-**WIP Commit + Batch Filter Fix (2026-03-04)**:
-- Fixed batch filter: `WHERE c.cik IS NOT NULL` → `WHERE f.html_storage_path IS NOT NULL` in `scripts/batch_v2_extraction.py`
-- Committed all WIP: persistence ON CONFLICT fix, API route tests cleanup, SQL seed for `cm_large_customers_period_end`, ITERATION_CONTEXT
-- 3,307 unit tests pass; gold standard requires live DB (not run this iteration, last result P=92.8%/R=77.6%/F1=84.5%)
-- PR #29 (v2-rewrite → main) updated
+*Updated automatically at iteration end*
 
-**Full Universe Batch Run + Bug Fixes (2026-03-03)**:
-- Fixed 3 persistence bugs; re-run: **78/84 succeeded, 771 facts extracted** (154x improvement)
-- 6 "HTML not found" are Salesforce/Microsoft transcript stubs (IDs 1-6), expected
-- Summary: `logs/batch_v2_summary_20260303_024229.json`
+- V2-05 AC-9 & AC-10: Created comprehensive test suite (22 tests), achieved 85% coverage on ocr_extraction.py, all 196 V2 tests pass, mypy and ruff pass
 
 ## Current Focus
 
-- Extraction quality validation: query DB for Slack (expect 29-32 facts) and Datadog (expect ~14 facts)
-- Gold standard re-run with live DB to confirm no regression from persistence ON CONFLICT change
-- Assess PR #29 merge readiness after quality validation
+*Set by previous iteration or worker prompt*
+
+- Task V2-05 complete: All 10 acceptance criteria met
 
 ## Test Status
 
-- Unit tests: 3,307 passed, 8 skipped (integration tests excluded — require TEST_DATABASE_URL)
-- V2 gold standard: P=92.8%, R=77.6%, F1=84.5% (2026-02-28, post-WP-15+17) — requires live DB to re-run
+- All 196 V2 tests passing (174 existing + 22 new OCR extraction tests)
+- V2-04 image_triage.py at 94% coverage
+- V2-05 ocr_extraction.py at 85% coverage
+- mypy passes (no errors in ocr_extraction.py)
+- ruff passes
 
 ## Key Learnings for Next Iteration
 
-- `ON CONFLICT DO UPDATE` on expression index requires exact COALESCE expressions matching the index definition
-- Transcript stubs (IDs 1-6: Salesforce/Microsoft) have CIKs — filter by `html_storage_path IS NOT NULL` not `cik IS NOT NULL`
-- `v2_metric_definitions` table required by persistence but migration 11 was not applied to production DB
-- api_v2 tests: patch `src.web.routes.api_v2.get_db`; use `psycopg.errors.UniqueViolation` for 409 cases
+*Technical discoveries that affect subsequent work*
+
+- ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
+- ChartData/ChartSeries/DataPoint models exist in models.py
+- TableReconstructor exists in table_reconstructor.py
+- VisionClient in src/llm/vision_client.py provides analyze_image() API
+- Chart extraction prompt must emphasize "labeled values only" to prevent interpolation
+- process() method already implemented in AC-2, conforming to pipeline stage interface
+
+## Files Changed This Session
+
+*For quick orientation on what was modified*
+
+- src/extraction_v2/stages/ocr_extraction.py (AC-9: removed incorrect isinstance() checks in process_table_image() and process_chart(), fixed to use self.vision_client directly, added Any type hint)
+- tests/unit/extraction_v2/test_ocr_extraction.py (AC-9 & AC-10: created 22 comprehensive tests covering all functionality, MockVisionClient for API mocking)
+- ops/DEVELOPMENT_PLAN.md (marked AC-4 through AC-10 complete)
+- ops/ITERATION_CONTEXT.md (updated progress)
 
 ## Blockers or Warnings
 
-- 6 transcript stub filings (IDs 1-6) will always fail unless `html_storage_path IS NOT NULL` filter is added to batch query
-- Snowflake tables have colspan/grid-gap warnings — extraction works but may have binding gaps; accepted for now
-- Farfetch chart FNs (8) require Vision API; accepted gap unless production has OPENAI_API_KEY
+*Issues the next iteration should be aware of*
+
+- Need OPENAI_API_KEY in .env for vision API calls
+- Tests should mock vision API responses to avoid API costs
 
 ---
 
@@ -48,9 +58,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 At the END of each iteration, before committing:
 
 1. Move "Current Focus" item to "Last Completed" with result
-2. Set new "Current Focus" from ops/DEVELOPMENT_PLAN.md
+2. Set new "Current Focus" from DEVELOPMENT_PLAN.md
 3. Update "Test Status" with coverage % and any failures
 4. Add any technical discoveries to "Key Learnings"
-5. Note any blockers for next iteration
+5. List files modified in "Files Changed"
+6. Note any blockers for next iteration
 
-Keep this file under 65 lines - distill, don't dump.
+Keep this file under 50 lines - distill, don't dump.

@@ -4,7 +4,7 @@ UniverseBuilder component for Customer Metrics Filings Analysis.
 Discovers and maintains the Phase 1 universe of S-1/F-1 filings for first-time issuers.
 Excludes SPACs and secondary-only offerings.
 
-Per docs/architecture/system-overview.md Section 3.
+Per 05_COMPONENT_INTERFACE_SPECS.md Section 3.
 """
 
 import logging
@@ -34,7 +34,7 @@ class UniverseBuilder:
     - Upsert companies and filings tables
     - Set is_in_scope_phase1 flag
 
-    Per docs/architecture/system-overview.md Section 4.1.
+    Per 04_SYSTEM_ARCHITECTURE.md Section 4.1 and 05_COMPONENT_INTERFACE_SPECS.md Section 3.
     """
 
     def __init__(self, sec_client: SECClient, db: DatabaseAdapter):
@@ -205,7 +205,8 @@ class UniverseBuilder:
 
         if classification_method == "uncertain":
             logger.warning(
-                f"Filing {filing.accession_number} ({filing.company_name}) requires manual review"
+                f"Filing {filing.accession_number} ({filing.company_name}) "
+                f"requires manual review"
             )
 
         return in_scope
@@ -259,7 +260,9 @@ class UniverseBuilder:
         in_scope_count = self.db.get_in_scope_filing_count()
 
         # SPAC count
-        spac_result = self.db.query("SELECT COUNT(*) as count FROM filings WHERE is_spac = true")
+        spac_result = self.db.query(
+            "SELECT COUNT(*) as count FROM filings WHERE is_spac = true"
+        )
         spac_count = spac_result[0]["count"] if spac_result else 0
 
         # First-time issuer count

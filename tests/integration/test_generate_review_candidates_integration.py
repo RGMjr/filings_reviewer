@@ -109,7 +109,9 @@ class TestMainFunction:
     @patch("generate_review_candidates.DatabaseAdapter")
     @patch("generate_review_candidates.load_dotenv")
     @patch("sys.argv", ["script.py", "--limit", "10"])
-    def test_main_exits_cleanly_when_no_filings_found(self, mock_dotenv, mock_db_class):
+    def test_main_exits_cleanly_when_no_filings_found(
+        self, mock_dotenv, mock_db_class
+    ):
         """Test main() exits with code 0 when no filings found."""
         mock_db = Mock()
         mock_db_class.return_value = mock_db

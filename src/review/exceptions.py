@@ -12,6 +12,7 @@ Exception Hierarchy:
 """
 
 
+
 class CandidateGenerationError(Exception):
     """Base exception for candidate generation errors."""
 

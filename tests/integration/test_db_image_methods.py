@@ -19,6 +19,7 @@ from tests.integration.conftest import (
     create_test_image_decision,
 )
 
+
 # =============================================================================
 # Candidate Query Tests
 # =============================================================================
@@ -136,7 +137,9 @@ class TestGetImageReviewCandidatesForFiling:
                 image_index=i + 1,
             )
 
-        candidates = clean_db.get_image_review_candidates_for_filing(filing_id, sort_by="tier")
+        candidates = clean_db.get_image_review_candidates_for_filing(
+            filing_id, sort_by="tier"
+        )
 
         # Should be in priority order: seed_list, tier_1, tier_2, tier_3
         assert candidates[0]["detection_tier"] == "seed_list"
@@ -183,7 +186,9 @@ class TestGetImageReviewCandidatesForFiling:
                 image_index=idx,
             )
 
-        candidates = clean_db.get_image_review_candidates_for_filing(filing_id, sort_by="position")
+        candidates = clean_db.get_image_review_candidates_for_filing(
+            filing_id, sort_by="position"
+        )
 
         # Should be in image_index order
         indices = [c["image_index"] for c in candidates]
@@ -541,7 +546,9 @@ class TestDeleteImageReviewDecision:
 
     def test_deletes_and_resets_status(self, clean_db):
         """Test deleting decision resets candidate to pending."""
-        company_id, filing_id, candidate_id, decision_id = create_test_image_decision(clean_db)
+        company_id, filing_id, candidate_id, decision_id = create_test_image_decision(
+            clean_db
+        )
 
         # Verify reviewed status
         candidate = clean_db.get_image_review_candidate(candidate_id)
@@ -567,7 +574,9 @@ class TestGetImageDecisionById:
 
     def test_returns_decision_with_filing_id(self, clean_db):
         """Test that method returns decision details including filing_id."""
-        company_id, filing_id, candidate_id, decision_id = create_test_image_decision(clean_db)
+        company_id, filing_id, candidate_id, decision_id = create_test_image_decision(
+            clean_db
+        )
 
         result = clean_db.get_image_decision_by_id(decision_id)
 

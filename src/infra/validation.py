@@ -74,11 +74,15 @@ def validate_accession_number(accession: str) -> str:
 
     # Security: Check for path traversal characters
     if ".." in accession or "\\" in accession:
-        raise ValidationError("Invalid accession number: contains path traversal characters")
+        raise ValidationError(
+            "Invalid accession number: contains path traversal characters"
+        )
 
     # Check for slashes (allowing dashes which are part of format)
     if "/" in accession.replace("-", ""):
-        raise ValidationError("Invalid accession number: contains path traversal characters")
+        raise ValidationError(
+            "Invalid accession number: contains path traversal characters"
+        )
 
     # Remove dashes for alphanumeric check
     accession_clean = accession.replace("-", "")
@@ -126,7 +130,9 @@ def validate_sic_code(sic: str) -> str:
     # Validate range (0100-9999 are valid SIC codes)
     sic_int = int(normalized)
     if sic_int < 100 or sic_int > 9999:
-        raise ValidationError(f"Invalid SIC code: must be between 0100 and 9999: {normalized}")
+        raise ValidationError(
+            f"Invalid SIC code: must be between 0100 and 9999: {normalized}"
+        )
 
     return normalized
 
@@ -156,7 +162,9 @@ def validate_date(date_str: str, field_name: str = "date") -> datetime:
         ) from e
 
 
-def validate_date_range(start_date: str, end_date: str) -> tuple[datetime, datetime]:
+def validate_date_range(
+    start_date: str, end_date: str
+) -> tuple[datetime, datetime]:
     """
     Validate a date range ensuring start <= end.
 
@@ -291,6 +299,7 @@ def validate_score(
     if not (min_val <= value <= max_val):
         context_suffix = f" ({context})" if context else ""
         raise ValidationError(
-            f"{field_name} must be between {min_val} and {max_val}, got {value}{context_suffix}"
+            f"{field_name} must be between {min_val} and {max_val}, "
+            f"got {value}{context_suffix}"
         )
     return value

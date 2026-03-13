@@ -242,7 +242,9 @@ def test_filing_list_status_filter_works(client, mock_db):
 
     client.get("/review/images/filings?status=pending")
 
-    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(status="pending")
+    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(
+        status="pending"
+    )
     mock_db.get_filings_with_image_candidates.assert_called_once_with(
         status="pending", limit=50, offset=0
     )
@@ -375,7 +377,9 @@ def test_review_filing_404_for_invalid_filing(client, mock_db):
     assert response.status_code == 404
 
 
-def test_review_filing_redirects_when_no_candidates(client, mock_db, sample_filing):
+def test_review_filing_redirects_when_no_candidates(
+    client, mock_db, sample_filing
+):
     """Test redirect to filing list when filing has no candidates."""
     mock_db.query.return_value = [sample_filing]
     mock_db.get_image_review_candidates_for_filing.return_value = []
@@ -648,6 +652,8 @@ def test_validate_positive_int_above_max():
     from src.web.routes.review_images import _validate_positive_int
 
     with patch("src.web.routes.review_images.flash"):
-        result = _validate_positive_int("test", 200, default=50, min_value=1, max_value=100)
+        result = _validate_positive_int(
+            "test", 200, default=50, min_value=1, max_value=100
+        )
 
     assert result == 100

@@ -118,7 +118,9 @@ class TestReviewCandidatesMethods:
         assert len(candidates) == 5
 
         # Test with limit
-        candidates_limited = clean_db.get_review_candidates_for_filing(filing_id, limit=3)
+        candidates_limited = clean_db.get_review_candidates_for_filing(
+            filing_id, limit=3
+        )
         assert len(candidates_limited) == 3
 
         # Verify ordering by char_position
@@ -150,7 +152,9 @@ class TestReviewCandidatesMethods:
         pending = clean_db.get_review_candidates_for_filing(filing_id, status="pending")
         assert len(pending) == 2
 
-        reviewed = clean_db.get_review_candidates_for_filing(filing_id, status="reviewed")
+        reviewed = clean_db.get_review_candidates_for_filing(
+            filing_id, status="reviewed"
+        )
         assert len(reviewed) == 1
 
     def test_get_pending_candidates(self, clean_db):
@@ -228,18 +232,7 @@ class TestReviewCandidatesMethods:
                 "triggering_keyword": "customers",
                 "keyword_distance": 10,
                 "keyword_position": "after",
-                "suggested_metric_id": [
-                    "cm_new_customers_acquired",
-                    "cm_customers_period_end_by_tenure",
-                    "cm_revenue_by_cohort",
-                    "cm_transactions_by_cohort",
-                    "cm_active_customers_total",
-                    "cm_revenue_per_customer",
-                    "cm_customer_acquisition_cost",
-                    "cm_new_customers_acquired",
-                    "cm_customers_period_end_by_tenure",
-                    "cm_revenue_by_cohort",
-                ][i],
+                "suggested_metric_id": ["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total", "cm_revenue_per_customer", "cm_customer_acquisition_cost", "cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort"][i],
             }
             for i in range(10)
         ]
@@ -282,7 +275,9 @@ class TestReviewCandidatesMethods:
             assert candidate["review_status"] == "pending"
 
         # Bulk update first 3 to skipped
-        rows_updated = clean_db.bulk_update_candidate_status(candidate_ids[:3], "skipped")
+        rows_updated = clean_db.bulk_update_candidate_status(
+            candidate_ids[:3], "skipped"
+        )
         assert rows_updated == 3
 
         # Verify statuses
@@ -302,7 +297,9 @@ class TestReviewCandidatesMethods:
     def test_bulk_update_candidate_status_nonexistent_ids(self, clean_db):
         """Test bulk update with non-existent IDs returns 0 updated."""
         # Use IDs that don't exist
-        rows_updated = clean_db.bulk_update_candidate_status([999998, 999999], "reviewed")
+        rows_updated = clean_db.bulk_update_candidate_status(
+            [999998, 999999], "reviewed"
+        )
         assert rows_updated == 0
 
     def test_bulk_update_candidate_status_partial_match(self, clean_db):
@@ -322,7 +319,9 @@ class TestReviewCandidatesMethods:
         )
 
         # Update with one valid ID and one invalid
-        rows_updated = clean_db.bulk_update_candidate_status([cid, 999999], "in_progress")
+        rows_updated = clean_db.bulk_update_candidate_status(
+            [cid, 999999], "in_progress"
+        )
         assert rows_updated == 1
 
         # Verify the valid one was updated
@@ -451,9 +450,7 @@ class TestReviewDecisionsMethods:
             )
             if i < 3:  # 3 accepts
                 clean_db.insert_review_decision(
-                    candidate_id=cid,
-                    decision="accept",
-                    assigned_metric_id="cm_revenue_per_customer",
+                    candidate_id=cid, decision="accept", assigned_metric_id="cm_revenue_per_customer"
                 )
             elif i < 5:  # 2 rejects
                 clean_db.insert_review_decision(
@@ -461,9 +458,7 @@ class TestReviewDecisionsMethods:
                 )
             else:  # 1 reclassify
                 clean_db.insert_review_decision(
-                    candidate_id=cid,
-                    decision="reclassify",
-                    assigned_metric_id="cm_active_customers_total",
+                    candidate_id=cid, decision="reclassify", assigned_metric_id="cm_active_customers_total"
                 )
 
         stats = clean_db.get_decision_statistics()
@@ -569,12 +564,16 @@ class TestReviewDecisionsMethods:
         )
 
         # Filter by accept
-        accepts = clean_db.get_decisions_by_reviewer("reviewer@test.com", decision="accept")
+        accepts = clean_db.get_decisions_by_reviewer(
+            "reviewer@test.com", decision="accept"
+        )
         assert len(accepts) == 1
         assert accepts[0]["decision"] == "accept"
 
         # Filter by reject
-        rejects = clean_db.get_decisions_by_reviewer("reviewer@test.com", decision="reject")
+        rejects = clean_db.get_decisions_by_reviewer(
+            "reviewer@test.com", decision="reject"
+        )
         assert len(rejects) == 1
         assert rejects[0]["decision"] == "reject"
 
@@ -597,13 +596,7 @@ class TestReviewDecisionsMethods:
             clean_db.insert_review_decision(
                 candidate_id=cid,
                 decision="accept",
-                assigned_metric_id=[
-                    "cm_new_customers_acquired",
-                    "cm_customers_period_end_by_tenure",
-                    "cm_revenue_by_cohort",
-                    "cm_transactions_by_cohort",
-                    "cm_active_customers_total",
-                ][i],
+                assigned_metric_id=["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total"][i],
                 reviewer_id="paginated@test.com",
             )
 
@@ -612,11 +605,15 @@ class TestReviewDecisionsMethods:
         assert len(all_decisions) == 5
 
         # Get first 2
-        page1 = clean_db.get_decisions_by_reviewer("paginated@test.com", limit=2, offset=0)
+        page1 = clean_db.get_decisions_by_reviewer(
+            "paginated@test.com", limit=2, offset=0
+        )
         assert len(page1) == 2
 
         # Get next 2
-        page2 = clean_db.get_decisions_by_reviewer("paginated@test.com", limit=2, offset=2)
+        page2 = clean_db.get_decisions_by_reviewer(
+            "paginated@test.com", limit=2, offset=2
+        )
         assert len(page2) == 2
 
         # Verify pages are different (ordered by created_at DESC)
@@ -707,13 +704,7 @@ class TestReviewDecisionsMethods:
             clean_db.insert_review_decision(
                 candidate_id=cid,
                 decision="accept",
-                assigned_metric_id=[
-                    "cm_new_customers_acquired",
-                    "cm_customers_period_end_by_tenure",
-                    "cm_revenue_by_cohort",
-                    "cm_transactions_by_cohort",
-                    "cm_active_customers_total",
-                ][i],
+                assigned_metric_id=["cm_new_customers_acquired", "cm_customers_period_end_by_tenure", "cm_revenue_by_cohort", "cm_transactions_by_cohort", "cm_active_customers_total"][i],
                 reviewer_id="total_test@test.com",
             )
 
@@ -723,7 +714,9 @@ class TestReviewDecisionsMethods:
         assert len(result_list) == 5
 
         # With include_total - returns dict
-        result_dict = clean_db.get_decisions_by_reviewer("total_test@test.com", include_total=True)
+        result_dict = clean_db.get_decisions_by_reviewer(
+            "total_test@test.com", include_total=True
+        )
         assert isinstance(result_dict, dict)
         assert "results" in result_dict
         assert "total" in result_dict
@@ -1059,7 +1052,9 @@ class TestHelperMethods:
 
     def test_get_filings_with_candidates_multiple_filings(self, clean_db):
         """Test with multiple filings, sorted by pending count."""
-        company_id = clean_db.upsert_company(cik="0001234567", company_name="Test Company")
+        company_id = clean_db.upsert_company(
+            cik="0001234567", company_name="Test Company"
+        )
 
         # Filing 1: 2 candidates
         filing_id1 = clean_db.upsert_filing(
@@ -1184,7 +1179,9 @@ class TestHelperMethods:
 
     def test_get_next_candidate_for_review_by_filing(self, clean_db):
         """Test getting next candidate filtered by filing."""
-        company_id = clean_db.upsert_company(cik="0001234567", company_name="Test Company")
+        company_id = clean_db.upsert_company(
+            cik="0001234567", company_name="Test Company"
+        )
 
         filing_id1 = clean_db.upsert_filing(
             company_id=company_id,
@@ -1381,13 +1378,17 @@ class TestHelperMethods:
         )
 
         # Filter by pending status
-        pending = clean_db.get_review_candidates_with_decisions(filing_id, status="pending")
+        pending = clean_db.get_review_candidates_with_decisions(
+            filing_id, status="pending"
+        )
         assert len(pending) == 1
         assert pending[0]["candidate_id"] == candidate_ids[2]
         assert pending[0]["decision_id"] is None
 
         # Filter by reviewed status
-        reviewed = clean_db.get_review_candidates_with_decisions(filing_id, status="reviewed")
+        reviewed = clean_db.get_review_candidates_with_decisions(
+            filing_id, status="reviewed"
+        )
         assert len(reviewed) == 2
         # Both should have decisions
         assert all(c["decision_id"] is not None for c in reviewed)
@@ -1526,7 +1527,9 @@ class TestAnalysisViewMethods:
 
     def test_get_decision_stats_by_metric_with_data(self, clean_db):
         """Test decision stats aggregation."""
-        company_id, filing_id, candidates = self._create_test_data_with_decisions(clean_db)
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
 
         # Add decisions: 2 accept, 1 reject for active_customers
         clean_db.insert_review_decision(
@@ -1577,7 +1580,9 @@ class TestAnalysisViewMethods:
 
     def test_get_decision_stats_by_metric_filtered(self, clean_db):
         """Test filtering by specific metric."""
-        company_id, filing_id, candidates = self._create_test_data_with_decisions(clean_db)
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
 
         # Add one decision for each metric
         clean_db.insert_review_decision(
@@ -1603,7 +1608,9 @@ class TestAnalysisViewMethods:
 
     def test_get_rejection_reasons_with_data(self, clean_db):
         """Test rejection reason aggregation."""
-        company_id, filing_id, candidates = self._create_test_data_with_decisions(clean_db)
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
 
         # Add rejections with different categories
         clean_db.insert_review_decision(
@@ -1633,17 +1640,23 @@ class TestAnalysisViewMethods:
         assert len(ac_reasons) == 2
 
         # not_a_metric should have count 2
-        not_metric = next(r for r in ac_reasons if r["rejection_category"] == "not_a_metric")
+        not_metric = next(
+            r for r in ac_reasons if r["rejection_category"] == "not_a_metric"
+        )
         assert not_metric["rejection_count"] == 2
         assert not_metric["avg_keyword_distance"] is not None
 
         # wrong_metric should have count 1
-        wrong_metric = next(r for r in ac_reasons if r["rejection_category"] == "wrong_metric")
+        wrong_metric = next(
+            r for r in ac_reasons if r["rejection_category"] == "wrong_metric"
+        )
         assert wrong_metric["rejection_count"] == 1
 
     def test_get_rejection_reasons_filtered(self, clean_db):
         """Test filtering by specific metric."""
-        company_id, filing_id, candidates = self._create_test_data_with_decisions(clean_db)
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
 
         # Add rejections to both metrics
         clean_db.insert_review_decision(
@@ -1664,7 +1677,9 @@ class TestAnalysisViewMethods:
 
     def test_get_rejection_reasons_includes_keyword_stats(self, clean_db):
         """Test that keyword distance and position stats are included."""
-        company_id, filing_id, candidates = self._create_test_data_with_decisions(clean_db)
+        company_id, filing_id, candidates = self._create_test_data_with_decisions(
+            clean_db
+        )
 
         # Add a rejection
         clean_db.insert_review_decision(
@@ -1752,7 +1767,7 @@ class TestDailyDecisionCounts:
                     WHERE candidate_id IN (%s, %s)
                     ORDER BY created_at DESC
                     """,
-                    (candidate_ids[3], candidate_ids[4]),
+                    (candidate_ids[3], candidate_ids[4])
                 )
                 decision_ids = [row["decision_id"] for row in cur.fetchall()]
 
@@ -1760,11 +1775,11 @@ class TestDailyDecisionCounts:
                 if len(decision_ids) >= 2:
                     cur.execute(
                         "UPDATE review_decisions SET created_at = %s WHERE decision_id = %s",
-                        (two_days_ago, decision_ids[0]),
+                        (two_days_ago, decision_ids[0])
                     )
                     cur.execute(
                         "UPDATE review_decisions SET created_at = %s WHERE decision_id = %s",
-                        (five_days_ago, decision_ids[1]),
+                        (five_days_ago, decision_ids[1])
                     )
 
         # Query daily counts
@@ -1819,7 +1834,7 @@ class TestDailyDecisionCounts:
         assert len(actual_dates) == 7
         for i in range(1, 7):
             # Each date should be exactly 1 day after the previous
-            assert (actual_dates[i] - actual_dates[i - 1]).days == 1
+            assert (actual_dates[i] - actual_dates[i-1]).days == 1
 
 
 class TestTransactionContext:
@@ -2432,7 +2447,9 @@ class TestGetAllReviewedCandidatesWithDecisions:
         """Test with reviewed candidates across multiple filings."""
         # Create two companies and filings
         company1_id, filing1_id = create_test_company_and_filing(clean_db)
-        company2_id, filing2_id = create_test_company_and_filing(clean_db, cik="0000654321")
+        company2_id, filing2_id = create_test_company_and_filing(
+            clean_db, cik="0000654321"
+        )
 
         # Insert candidate in filing 1
         cand1 = clean_db.insert_review_candidate(
@@ -2579,7 +2596,9 @@ class TestGetAllReviewedCandidatesWithDecisions:
         assert len(batch1) == 3
 
         # Test limit + offset
-        batch2 = clean_db.get_all_reviewed_candidates_with_decisions(limit=3, offset=3)
+        batch2 = clean_db.get_all_reviewed_candidates_with_decisions(
+            limit=3, offset=3
+        )
         assert len(batch2) == 3
 
         # Batches should be different
@@ -2588,7 +2607,9 @@ class TestGetAllReviewedCandidatesWithDecisions:
         assert batch1_ids.isdisjoint(batch2_ids)
 
         # Test offset beyond data
-        batch_empty = clean_db.get_all_reviewed_candidates_with_decisions(limit=5, offset=100)
+        batch_empty = clean_db.get_all_reviewed_candidates_with_decisions(
+            limit=5, offset=100
+        )
         assert len(batch_empty) == 0
 
     # REMOVED: test_get_all_reviewed_latest_decision_only

@@ -206,7 +206,9 @@ class TestDatabaseConstraints:
         clean_db.upsert_company(cik="0001234567", company_name="Test Company 1")
 
         # Upsert with same CIK but different name should update
-        clean_db.upsert_company(cik="0001234567", company_name="Test Company Updated")
+        clean_db.upsert_company(
+            cik="0001234567", company_name="Test Company Updated"
+        )
 
         # Should still be only one company
         companies = clean_db.query("SELECT * FROM companies WHERE cik = '0001234567'")
@@ -216,7 +218,9 @@ class TestDatabaseConstraints:
     def test_unique_filing_constraint(self, clean_db):
         """Test that (company_id, accession_number) must be unique."""
         # Create company
-        company_id = clean_db.upsert_company(cik="0001234567", company_name="Test Company")
+        company_id = clean_db.upsert_company(
+            cik="0001234567", company_name="Test Company"
+        )
 
         # Insert filing
         filing_id1 = clean_db.upsert_filing(

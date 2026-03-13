@@ -495,7 +495,7 @@ def main():
     print("\n4. Generating analysis report...")
     report = generate_report(unique_snippets, pattern_results, categories)
 
-    output_path = PROJECT_ROOT / "docs/archive/extraction-validation/goldmine-GI-1_cohort_pattern_gaps.md"
+    output_path = PROJECT_ROOT / "docs/analysis/GI-1_cohort_pattern_gaps.md"
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report)
 

@@ -57,17 +57,18 @@ Format for CHANGELOG.md:
 
 ---
 
-## Canonical Archive Structure
+## Recommended Archive Structure
 
 ```
 docs/archive/
-├── extraction-validation/   # Extraction accuracy reports, validation baselines, quality analysis
-└── worker-prompts/          # Completed worker prompts (moved from docs/worker-prompts/ when done)
+├── workstreams/           # Completed workstream summaries
+│   ├── 2025-12-GR.md      # Goldmine Remediation summary
+│   ├── 2025-12-EI.md      # Extraction Improvement summary
+│   └── ...
+├── investigations/        # Ad-hoc investigation reports
+├── analysis/              # Analysis reports (keep longer)
+└── historical/            # Process improvements, old templates
 ```
-
-Do not create new subfolders under `docs/archive/`. All other historical content (workstream summaries,
-investigations, analysis reports) goes into `docs/analysis/`, not the archive. See `.claude/rules/docs.md`
-for the full placement guide.
 
 ---
 
@@ -101,4 +102,4 @@ find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*"
 
 ---
 
-**Last Updated**: 2026-03-02
+**Last Updated**: 2026-01-13

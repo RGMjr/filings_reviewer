@@ -24,7 +24,9 @@ SPAC_NAME_PATTERNS = [
 SPAC_REGEXES = [re.compile(pattern, re.IGNORECASE) for pattern in SPAC_NAME_PATTERNS]
 
 
-def classify_spac(company_name: str, filing_text: str | None = None) -> tuple[bool, str]:
+def classify_spac(
+    company_name: str, filing_text: str | None = None
+) -> tuple[bool, str]:
     """
     Classify whether a company is a SPAC based on name and filing content.
 
@@ -68,7 +70,9 @@ def classify_spac(company_name: str, filing_text: str | None = None) -> tuple[bo
             spac_score += 1
 
         if spac_score >= 2:
-            logger.debug(f"Probable SPAC detected (score={spac_score}) for: {company_name}")
+            logger.debug(
+                f"Probable SPAC detected (score={spac_score}) for: {company_name}"
+            )
             return True, "uncertain"
 
     return False, "heuristic"
@@ -107,7 +111,8 @@ def classify_first_time_issuer(
 
     # There's an earlier IPO filing
     logger.debug(
-        f"CIK {cik} has prior IPO filing on {previous_ipo_date}, current filing on {filing_date}"
+        f"CIK {cik} has prior IPO filing on {previous_ipo_date}, "
+        f"current filing on {filing_date}"
     )
     return False, "heuristic"
 
@@ -230,8 +235,12 @@ def detect_post_combination(
         )
 
         # If we see combination language + real financials/operations, likely post-combination
-        if has_combination_language and (has_financial_statements or has_operating_metrics):
-            logger.debug(f"Probable post-combination detected via filing content: {company_name}")
+        if has_combination_language and (
+            has_financial_statements or has_operating_metrics
+        ):
+            logger.debug(
+                f"Probable post-combination detected via filing content: {company_name}"
+            )
             return True, "content_analysis"
 
     # Default: Not post-combination
@@ -287,7 +296,9 @@ def classify_investment_vehicle(
         return True, "sic_and_name_trust"
 
     # Has investment SIC but no confirming name pattern
-    logger.debug(f"Has investment SIC ({sic_code}) but no matching name pattern: {company_name}")
+    logger.debug(
+        f"Has investment SIC ({sic_code}) but no matching name pattern: {company_name}"
+    )
     return False, "sic_only_no_name_match"
 
 
@@ -354,11 +365,12 @@ def classify_resource_extraction(
     for keyword in all_keywords:
         if keyword in name_lower:
             logger.debug(f"Resource extraction detected ({keyword}): {company_name}")
-            return True, f"sic_and_name_{keyword.replace(' ', '_')}"
+            return True, f'sic_and_name_{keyword.replace(" ", "_")}'
 
     # Has extraction SIC but no confirming name pattern
     logger.debug(
-        f"Has resource extraction SIC ({sic_code}) but no matching name pattern: {company_name}"
+        f"Has resource extraction SIC ({sic_code}) but no matching name pattern: "
+        f"{company_name}"
     )
     return False, "sic_only_no_name_match"
 
@@ -397,23 +409,22 @@ def classify_saas_software(
 
     # Secondary detection: Name-based ONLY if SIC is tech-related
     # This prevents false positives from manufacturing companies with "Technologies" in name
-    if sic_code and sic_code.startswith("7"):  # Services sector (73xx, 74xx, etc.)
+    if sic_code and sic_code.startswith('7'):  # Services sector (73xx, 74xx, etc.)
         name_lower = company_name.lower()
         # Use stricter keywords - removed broad terms like "technologies", "ai", "data"
         strict_saas_keywords = ["saas", "software", "cloud"]
 
         for keyword in strict_saas_keywords:
             if keyword in name_lower:
-                logger.debug(
-                    f"SaaS/Software detected via validated name ({keyword}): {company_name}"
-                )
+                logger.debug(f"SaaS/Software detected via validated name ({keyword}): {company_name}")
                 return True, f"name_{keyword}_sic_validated"
 
     # Tertiary detection: Filing text (if provided)
     if filing_text:
         text_sample = filing_text[:10000].lower()
-        if ("software as a service" in text_sample or "saas" in text_sample) and (
-            "subscription" in text_sample or "recurring revenue" in text_sample
+        if (
+            ("software as a service" in text_sample or "saas" in text_sample)
+            and ("subscription" in text_sample or "recurring revenue" in text_sample)
         ):
             logger.debug(f"SaaS detected via filing text: {company_name}")
             return True, "filing_text_saas"
@@ -451,15 +462,8 @@ def classify_ecommerce_marketplace(
     # Name-based detection
     name_lower = company_name.lower()
     ecommerce_keywords = [
-        "marketplace",
-        "commerce",
-        "retail",
-        "shop",
-        "store",
-        "merchant",
-        "seller",
-        "buyer",
-        "trading",
+        "marketplace", "commerce", "retail", "shop", "store",
+        "merchant", "seller", "buyer", "trading"
     ]
 
     for keyword in ecommerce_keywords:
@@ -522,9 +526,7 @@ def classify_fintech_crypto(
     # EXCLUSION 2: Crypto hardware manufacturers
     # Similar to manufacturing companies in SaaS (e.g., Canaan Inc. makes mining equipment)
     # Known hardware manufacturers or companies with "mining" + "canaan" in name
-    if "canaan" in name_lower or (
-        "mining" in name_lower and sic_code and not sic_code.startswith("6")
-    ):
+    if "canaan" in name_lower or ("mining" in name_lower and sic_code and not sic_code.startswith('6')):
         logger.debug(f"Excluded crypto hardware manufacturer: {company_name}")
         return False, "excluded_hardware"
 
@@ -545,30 +547,24 @@ def classify_fintech_crypto(
 
     # Secondary detection: Name-based ONLY if SIC is finance-related
     # This prevents false positives from non-financial companies
-    if sic_code and sic_code.startswith("6"):  # Finance, insurance, real estate (6xxx)
+    if sic_code and sic_code.startswith('6'):  # Finance, insurance, real estate (6xxx)
         # Use stricter keywords - focus on platform/service indicators
         fintech_keywords = [
-            "fintech",
-            "financial technology",
-            "payment",
-            "wallet",
-            "exchange",
-            "blockchain",
-            "crypto",
+            "fintech", "financial technology", "payment", "wallet",
+            "exchange", "blockchain", "crypto"
         ]
 
         for keyword in fintech_keywords:
             if keyword in name_lower:
-                logger.debug(
-                    f"Fintech/Crypto detected via validated name ({keyword}): {company_name}"
-                )
+                logger.debug(f"Fintech/Crypto detected via validated name ({keyword}): {company_name}")
                 return True, f"name_{keyword}_sic_validated"
 
     # Tertiary detection: Filing text (if provided)
     if filing_text:
         text_sample = filing_text[:10000].lower()
-        if ("cryptocurrency" in text_sample or "blockchain" in text_sample) and (
-            "payment processing" in text_sample or "digital wallet" in text_sample
+        if (
+            ("cryptocurrency" in text_sample or "blockchain" in text_sample)
+            and ("payment processing" in text_sample or "digital wallet" in text_sample)
         ):
             logger.debug(f"Fintech/Crypto detected via filing text: {company_name}")
             return True, "filing_text_fintech"
@@ -606,22 +602,14 @@ def classify_healthcare_tech(
     # Name-based detection
     name_lower = company_name.lower()
     healthtech_keywords = [
-        "health",
-        "medical",
-        "telehealth",
-        "telemedicine",
-        "healthcare",
-        "patient",
-        "clinical",
-        "therapeutics",
+        "health", "medical", "telehealth", "telemedicine",
+        "healthcare", "patient", "clinical", "therapeutics"
     ]
 
     for keyword in healthtech_keywords:
         if keyword in name_lower:
             # Check if it's technology-focused (not pharma/biotech)
-            if any(
-                tech in name_lower for tech in ["tech", "digital", "platform", "software", "data"]
-            ):
+            if any(tech in name_lower for tech in ["tech", "digital", "platform", "software", "data"]):
                 logger.debug(f"Healthcare Tech detected via name ({keyword}): {company_name}")
                 return True, f"name_{keyword}_tech"
 
@@ -669,14 +657,8 @@ def classify_media_subscription(
     # Name-based detection
     name_lower = company_name.lower()
     media_keywords = [
-        "media",
-        "streaming",
-        "content",
-        "entertainment",
-        "publishing",
-        "video",
-        "music",
-        "podcast",
+        "media", "streaming", "content", "entertainment",
+        "publishing", "video", "music", "podcast"
     ]
 
     for keyword in media_keywords:
@@ -726,13 +708,8 @@ def classify_telecom(
     # Name-based detection
     name_lower = company_name.lower()
     telecom_keywords = [
-        "telecom",
-        "wireless",
-        "communications",
-        "network",
-        "broadband",
-        "cellular",
-        "mobile",
+        "telecom", "wireless", "communications", "network",
+        "broadband", "cellular", "mobile"
     ]
 
     for keyword in telecom_keywords:

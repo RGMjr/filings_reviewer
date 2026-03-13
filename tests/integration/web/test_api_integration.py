@@ -399,21 +399,17 @@ class TestCreateDecisionIntegration:
                 )
 
                 with results_lock:
-                    results.append(
-                        {
-                            "thread_id": thread_id,
-                            "status_code": response.status_code,
-                            "data": json.loads(response.data),
-                        }
-                    )
+                    results.append({
+                        "thread_id": thread_id,
+                        "status_code": response.status_code,
+                        "data": json.loads(response.data),
+                    })
             except Exception as e:
                 with results_lock:
-                    results.append(
-                        {
-                            "thread_id": thread_id,
-                            "error": str(e),
-                        }
-                    )
+                    results.append({
+                        "thread_id": thread_id,
+                        "error": str(e),
+                    })
 
         # Create threads that will all try to create decisions simultaneously
         threads = []

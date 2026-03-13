@@ -1,7 +1,3 @@
----
-description: Evaluate refactoring opportunities and compare implementation approaches with risk/benefit analysis
----
-
 # Refactor Evaluator Skill
 
 **Version:** 1.0.0

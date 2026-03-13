@@ -108,7 +108,9 @@ class TestPoolWithDatabaseAdapter:
             # Multiple sequential operations
             for i in range(5):
                 with adapter.get_connection() as conn:
-                    result = conn.execute("SELECT %s AS iteration", (i,)).fetchone()
+                    result = conn.execute(
+                        "SELECT %s AS iteration", (i,)
+                    ).fetchone()
                     assert result["iteration"] == i
 
             # All connections should be back in pool

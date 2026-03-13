@@ -23,7 +23,7 @@ Purpose: Give AI coding agents the minimum, project-specific context to be produ
 - Secrets: `.env` (gitignored). See `.env.template`.
 
 ## Developer Workflows
-- Install: `uv sync --all-extras` (project uses uv; no requirements.txt).
+- Install: `pip install -r requirements.txt` or `make install`.
 - Docker DB: `docker compose up -d` (runs init SQL from [sql](../sql)).
 - Tests (pyproject config):
   - All: `pytest -v`
@@ -31,7 +31,7 @@ Purpose: Give AI coding agents the minimum, project-specific context to be produ
   - Unit: `pytest tests/unit/ -v`
   - Integration: `TEST_DATABASE_URL=... pytest tests/integration/ -v`
   - Markers: `unit`, `integration`, `slow`, `benchmark`.
-- Lint/format: `ruff check src/ tests/` and `ruff format src/ tests/`.
+- Lint/format: `ruff check src/ tests/` and `black src/ tests/`.
 - Type checking: strict for `src/review/*` with `mypy --strict`; other modules permissive per `pyproject.toml`.
 - Docs sync: `make docs-check`; update coverage in README via `make docs-update`.
 
@@ -71,7 +71,7 @@ Purpose: Give AI coding agents the minimum, project-specific context to be produ
   ```
 
 ## Non-obvious Behavior
-- Docker image default `CMD` runs tests without coverage; override to run scripts (e.g., `docker run --rm -it <image> python3 scripts/run_extraction_pipeline.py`).
+- Docker image default `CMD` runs tests without coverage; override to run scripts (e.g., `docker run --rm -it <image> python scripts/run_phase1b_extraction.py`).
 - Health check `/health` introspects pool stats when pooling is enabled.
 
 Keep changes minimal and aligned with these patterns. When adding new components, mirror directory placement and adapt existing adapters/blueprints rather than inventing new frameworks.

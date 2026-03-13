@@ -124,7 +124,6 @@ class PaginationData(TypedDict, total=False):
     Note: Uses total=False because total_count, total_pages, has_prev, has_next
     are only included when total_count is known.
     """
-
     # Always present
     page: int  # Current page number (1-indexed)
     per_page: int  # Items per page
@@ -143,7 +142,6 @@ class ReviewProgress(TypedDict):
 
     Used by: filing_list.html
     """
-
     total_candidates: int  # Total candidates across all filings
     pending_count: int  # Number of pending candidates
     reviewed_count: int  # Number of reviewed candidates
@@ -158,7 +156,6 @@ class FilingListItem(TypedDict):
 
     Used by: filing_list.html (in filings array)
     """
-
     filing_id: int
     company_id: int
     company_name: str
@@ -178,7 +175,6 @@ class FilingData(TypedDict):
 
     Used by: review.html
     """
-
     filing_id: int
     company_id: int
     company_name: str
@@ -204,7 +200,6 @@ class CandidateData(TypedDict, total=False):
     and decision fields (decision_id, decision, etc.) may be NULL depending on
     whether the candidate has a source_segment_id or has been reviewed.
     """
-
     # Core candidate fields (always present)
     candidate_id: int
     filing_id: int
@@ -225,9 +220,7 @@ class CandidateData(TypedDict, total=False):
     # Segment fields (from LEFT JOIN to source_segments)
     segment_type: str | None  # 'table', 'paragraph', etc. - NULL if no source_segment_id
     segment_html: str | None  # Raw HTML of segment - NULL if no source_segment_id
-    segment_html_table_only: (
-        str | None
-    )  # Table HTML preserved for dual display when value is truncated
+    segment_html_table_only: str | None  # Table HTML preserved for dual display when value is truncated
     features: dict | None  # JSONB features for ML pattern analysis
 
     # Decision fields (present only if reviewed - from LEFT JOIN)
@@ -247,7 +240,6 @@ class DecisionData(TypedDict):
 
     Used by: review.html (existing_decision)
     """
-
     decision_id: int
     decision: str  # 'accept', 'reject', 'reclassify'
     assigned_metric_id: str | None
@@ -264,7 +256,6 @@ class MetricData(TypedDict):
 
     Used by: review.html (in metrics array)
     """
-
     metric_id: str
     display_name: str
     metric_class: str  # 'core', 'extended', etc.
@@ -275,11 +266,10 @@ class MetricData(TypedDict):
 # Page Routes
 # =============================================================================
 
-
 @review_bp.route("/")
 def index():
-    """Redirect root to V2 filing list."""
-    return redirect(url_for("review_v2.filing_list"))
+    """Redirect root to filing list."""
+    return redirect(url_for("review.filing_list"))
 
 
 @review_bp.route("/filings")
@@ -317,7 +307,9 @@ def filing_list():
                 "warning",
             )
             # Redirect to page 1 with same filters
-            return redirect(url_for("review.filing_list", status=status, per_page=per_page))
+            return redirect(
+                url_for("review.filing_list", status=status, per_page=per_page)
+            )
 
         # Get filings for current page
         filings = db.get_filings_with_candidates(
@@ -400,18 +392,13 @@ def review_filing(filing_id: int):
         # Invalid values fall back to defaults (no filter)
         db_status = filter_status if filter_status in REVIEW_STATUSES else None
         db_metric_id = filter_metric if filter_metric != "all" else None
-        db_confidence = (
-            filter_confidence if filter_confidence in ("high", "medium", "low") else None
-        )
-        db_sort_by = (
-            sort_by
-            if sort_by
-            in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc")
-            else "position"
-        )
+        db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
+        db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
 
         # Get total candidate count (unfiltered) for "Showing X of Y" display
-        all_candidates = db.get_review_candidates_with_decisions(filing_id=filing_id, limit=None)
+        all_candidates = db.get_review_candidates_with_decisions(
+            filing_id=filing_id, limit=None
+        )
         total_candidates_unfiltered = len(all_candidates)
 
         # Get filtered candidates for this filing WITH their decisions
@@ -421,7 +408,7 @@ def review_filing(filing_id: int):
             metric_id=db_metric_id,
             confidence_level=db_confidence,
             sort_by=db_sort_by,
-            limit=None,  # Get all matching candidates
+            limit=None  # Get all matching candidates
         )
 
         # Get active metrics for reclassify dropdown
@@ -446,12 +433,8 @@ def review_filing(filing_id: int):
         existing_decision = _extract_decision_from_candidate(current_candidate)
 
         # Build current_filters dict for template
-        has_active_filters = (
-            filter_status != "all"
-            or filter_metric != "all"
-            or filter_confidence != "all"
-            or sort_by != "position"
-        )
+        has_active_filters = (filter_status != "all" or filter_metric != "all" or
+                             filter_confidence != "all" or sort_by != "position")
         current_filters = {
             "status": filter_status,
             "metric": filter_metric,
@@ -551,7 +534,6 @@ def stats():
 # Navigation Routes
 # =============================================================================
 
-
 @review_bp.route("/review/<int:filing_id>/next")
 def next_candidate(filing_id: int):
     """Navigate to next pending candidate, respecting active filters."""
@@ -623,7 +605,9 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 
         # Redirect to review interface with query param
         return redirect(
-            url_for("review.review_filing", filing_id=filing_id, candidate_id=candidate_id)
+            url_for(
+                "review.review_filing", filing_id=filing_id, candidate_id=candidate_id
+            )
         )
 
     except Exception as e:
@@ -635,7 +619,6 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 # =============================================================================
 # Helper Functions
 # =============================================================================
-
 
 def _validate_positive_int(
     param_name: str,
@@ -694,7 +677,9 @@ def _validate_positive_int(
     return value
 
 
-def _paginate(page: int = 1, per_page: int = 50, total_count: int | None = None) -> PaginationData:
+def _paginate(
+    page: int = 1, per_page: int = 50, total_count: int | None = None
+) -> PaginationData:
     """
     Calculate pagination metadata.
 
@@ -728,7 +713,8 @@ def _paginate(page: int = 1, per_page: int = 50, total_count: int | None = None)
 
 
 def _select_current_candidate(
-    candidates: list[CandidateData], requested_id: int | None
+    candidates: list[CandidateData],
+    requested_id: int | None
 ) -> CandidateData | None:
     """
     Select the current candidate to display from a list of candidates.
@@ -768,7 +754,9 @@ def _select_current_candidate(
     )
 
 
-def _calculate_review_progress(candidates: list[CandidateData]) -> tuple[int, int, int]:
+def _calculate_review_progress(
+    candidates: list[CandidateData]
+) -> tuple[int, int, int]:
     """
     Calculate review progress from a list of candidates.
 
@@ -779,13 +767,19 @@ def _calculate_review_progress(candidates: list[CandidateData]) -> tuple[int, in
         Tuple of (total_candidates, reviewed_count, pending_count)
     """
     total_candidates = len(candidates)
-    reviewed_count = sum(1 for c in candidates if c["review_status"] == "reviewed")
-    pending_count = sum(1 for c in candidates if c["review_status"] == "pending")
+    reviewed_count = sum(
+        1 for c in candidates if c["review_status"] == "reviewed"
+    )
+    pending_count = sum(
+        1 for c in candidates if c["review_status"] == "pending"
+    )
 
     return total_candidates, reviewed_count, pending_count
 
 
-def _extract_decision_from_candidate(candidate: CandidateData | None) -> DecisionData | None:
+def _extract_decision_from_candidate(
+    candidate: CandidateData | None
+) -> DecisionData | None:
     """
     Extract decision data from a candidate record.
 
@@ -853,18 +847,10 @@ def _find_next_candidate(
     sort_by = filters.get("sort", "position")
 
     # Convert to database query parameters
-    db_status = (
-        filter_status
-        if filter_status in ("pending", "reviewed", "skipped", "in_progress")
-        else None
-    )
+    db_status = filter_status if filter_status in ("pending", "reviewed", "skipped", "in_progress") else None
     db_metric_id = filter_metric if filter_metric != "all" else None
     db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
-    db_sort_by = (
-        sort_by
-        if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc")
-        else "position"
-    )
+    db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
 
     # When navigating "next", we always look for pending candidates (unless status filter is set)
     # This ensures we skip reviewed candidates during normal review flow
@@ -1050,7 +1036,8 @@ def _build_metric_order_clause() -> str:
     DO NOT copy this pattern for user-supplied values.
     """
     clauses = [
-        f"WHEN '{metric_id}' THEN {order}" for metric_id, order in METRIC_DISPLAY_ORDER.items()
+        f"WHEN '{metric_id}' THEN {order}"
+        for metric_id, order in METRIC_DISPLAY_ORDER.items()
     ]
     return "CASE metric_id\n" + "\n".join(clauses) + "\nELSE 99\nEND"
 
@@ -1075,7 +1062,11 @@ def _get_unique_metrics_for_filing(candidates: list[dict]) -> list[str]:
     return sorted(unique_metrics, key=lambda m: METRIC_DISPLAY_ORDER.get(m, 99))
 
 
-def _highlight_context(context_text: str, raw_number_text: str, triggering_keyword: str) -> Markup:
+def _highlight_context(
+    context_text: str,
+    raw_number_text: str,
+    triggering_keyword: str
+) -> Markup:
     """
     Highlight number and keyword in context text for review display.
 
@@ -1114,9 +1105,13 @@ def _highlight_context(context_text: str, raw_number_text: str, triggering_keywo
     num_idx = safe_text.find(safe_number)
     if num_idx != -1:
         before = safe_text[:num_idx]
-        number = safe_text[num_idx : num_idx + len(safe_number)]
-        after = safe_text[num_idx + len(safe_number) :]
-        safe_text = before + f'<mark class="extracted-number">{number}</mark>' + after
+        number = safe_text[num_idx:num_idx + len(safe_number)]
+        after = safe_text[num_idx + len(safe_number):]
+        safe_text = (
+            before +
+            f'<mark class="extracted-number">{number}</mark>' +
+            after
+        )
     else:
         logger.warning(
             f"Number '{raw_number_text}' not found in context text. "
@@ -1132,15 +1127,23 @@ def _highlight_context(context_text: str, raw_number_text: str, triggering_keywo
 
     if kw_idx != -1:
         # Extract actual keyword with original case from safe_text
-        actual_keyword = safe_text[kw_idx : kw_idx + len(triggering_keyword)]
+        actual_keyword = safe_text[kw_idx:kw_idx + len(triggering_keyword)]
         before = safe_text[:kw_idx]
-        after = safe_text[kw_idx + len(triggering_keyword) :]
-        safe_text = before + f'<u class="triggering-keyword">{actual_keyword}</u>' + after
+        after = safe_text[kw_idx + len(triggering_keyword):]
+        safe_text = (
+            before +
+            f'<u class="triggering-keyword">{actual_keyword}</u>' +
+            after
+        )
 
     return Markup(safe_text)
 
 
-def _highlight_html(html_content: str, raw_number_text: str, triggering_keyword: str) -> Markup:
+def _highlight_html(
+    html_content: str,
+    raw_number_text: str,
+    triggering_keyword: str
+) -> Markup:
     """
     Highlight number and keyword in HTML content (like tables) for review display.
 
@@ -1167,7 +1170,7 @@ def _highlight_html(html_content: str, raw_number_text: str, triggering_keyword:
 
     # Parse HTML with BeautifulSoup to fix any truncated/unclosed tags
     # This is critical because segment_html may be cut off mid-tag
-    soup = BeautifulSoup(html_content, "html.parser")
+    soup = BeautifulSoup(html_content, 'html.parser')
     result = str(soup)
 
     # Highlight the number (case-sensitive exact match)
@@ -1175,16 +1178,16 @@ def _highlight_html(html_content: str, raw_number_text: str, triggering_keyword:
     if raw_number_text:
         escaped_number = re.escape(raw_number_text)
         result = re.sub(
-            f"({escaped_number})",
+            f'({escaped_number})',
             r'<mark class="extracted-number">\1</mark>',
             result,
-            count=1,  # Only highlight first occurrence
+            count=1  # Only highlight first occurrence
         )
 
     # Highlight the keyword (case-insensitive)
     # Use BeautifulSoup to search text nodes to handle keywords split across HTML tags
     if triggering_keyword:
-        soup = BeautifulSoup(result, "html.parser")
+        soup = BeautifulSoup(result, 'html.parser')
         keyword_lower = triggering_keyword.lower()
 
         # Search through all text nodes to find the keyword
@@ -1199,21 +1202,20 @@ def _highlight_html(html_content: str, raw_number_text: str, triggering_keyword:
                 idx = text_lower.find(keyword_lower)
                 if idx != -1:
                     # Extract the actual keyword with original case from the text
-                    actual_keyword = text[idx : idx + len(triggering_keyword)]
+                    actual_keyword = text[idx:idx + len(triggering_keyword)]
 
                     # Create highlighted version
                     highlighted_text = (
-                        text[:idx]
-                        + f'<u class="triggering-keyword">{actual_keyword}</u>'
-                        + text[idx + len(triggering_keyword) :]
+                        text[:idx] +
+                        f'<u class="triggering-keyword">{actual_keyword}</u>' +
+                        text[idx + len(triggering_keyword):]
                     )
 
                     # Replace the text node with highlighted version
                     # BeautifulSoup will parse the HTML we inject
                     from bs4 import NavigableString
-
                     if isinstance(element, NavigableString):
-                        new_soup = BeautifulSoup(highlighted_text, "html.parser")
+                        new_soup = BeautifulSoup(highlighted_text, 'html.parser')
                         element.replace_with(new_soup)
 
                     # Only highlight first occurrence
