@@ -160,7 +160,7 @@ class TestContextTypeTracking:
 
     def test_context_type_serialization(self, db, generator):
         """Context type should survive serialization round-trip."""
-        text = "• Gross margin was 52%"
+        text = "• Net revenue retention was 115%"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
