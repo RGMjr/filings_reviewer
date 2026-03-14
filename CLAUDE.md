@@ -12,7 +12,7 @@ src/
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction/     # Metric extraction (V1 - production)
-├── extraction_v2/  # V2 pipeline (alpha, experimental)
+├── extraction_v2/  # Image/OCR pipeline (ingestion, image triage, OCR extraction)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with SQLite-backed caching
@@ -89,7 +89,6 @@ See `docs/README.md` for complete index. Key docs:
 
 Claude Code loads path-specific rules automatically from `.claude/rules/`:
 - `extraction.md` - Loaded when editing `src/extraction/**` or `config/metric_keywords.yaml`
-- `testing.md` - Loaded when editing `tests/**`
 - `gold-standard.md` - Loaded when working with gold standard validation
 
 ## Available Commands
