@@ -74,16 +74,17 @@ Human-in-the-loop system for validating and improving extraction quality.
 |----------|-------------|----------|
 | **[HUMAN_REVIEW_SYSTEM.md](HUMAN_REVIEW_SYSTEM.md)** | System design, usage, configuration | Developers |
 
-### Active Improvement Plans
+### Reference Plans
 
-Current improvement work in progress.
+Completed and in-progress improvement plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (16/18 complete, targets exceeded) | Developers |
-| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | 🟡 HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
+| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (production ready, targets exceeded) | Developers |
+| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
+| **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations | Developers |
 
 ### Archive (Historical Reference)
 
@@ -91,11 +92,9 @@ Historical documents for reference only. Not part of current operations.
 
 | Category | Contents |
 |----------|----------|
-| **[archive/2025-12-extraction/](archive/2025-12-extraction/)** | EI-1 to EI-6 extraction improvement completions |
-| **[archive/2025-12-goldmine-analysis/](archive/2025-12-goldmine-analysis/)** | GI-1 to GI-8 goldmine analysis artifacts |
 | **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
-| **[archive/worker-prompts/](archive/worker-prompts/)** | Completed task worker prompts |
-| **[archive/workstreams/](archive/workstreams/)** | Historical workstream documentation |
+| **[archive/historical/](archive/historical/)** | Historical process documentation and task inventory |
+| **[archive/workstreams/](archive/workstreams/)** | Legacy workstream documentation |
 
 ---
 

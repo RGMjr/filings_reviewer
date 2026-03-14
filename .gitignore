@@ -63,6 +63,7 @@ logs/
 data/llm_cache.db
 data/models/
 data/filings_spac_analysis/
+ops/review_artifacts/
 
 # Archives
 *.zip
