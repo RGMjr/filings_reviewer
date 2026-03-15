@@ -102,6 +102,7 @@ Use these slash commands for workflows:
 - `/metric-lifecycle` - Guide for adding/removing metrics
 - `/commit` - Safe commit: runs ruff + pytest before committing
 - `/merge-check` - Thorough merge readiness assessment (CI, migrations, imports, tests)
+- `/ci-fix` - Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass
 
 ## Implementation Rules
 
