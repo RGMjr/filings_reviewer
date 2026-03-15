@@ -1,8 +1,8 @@
 # Customer Metrics Filings Analysis
 
-**Version:** 2.1
+**Version:** 2.2
 **Status:** In process
-**Last Updated:** 2025-12-16
+**Last Updated:** 2026-03-15
 
 A system for systematically analyzing SEC filings to assess how companies disclose customer-related metrics.
 
@@ -30,7 +30,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
 
-**Overall:** 87% overall test coverage (1,625+ tests)
+**Overall:** 87% overall test coverage (3,150+ tests)
 
 **Corpus:** 7,304 in-scope S-1/F-1 filings identified (2015-2025)
 
