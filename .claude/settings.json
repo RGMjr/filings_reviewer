@@ -49,6 +49,15 @@
             "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
           }
         ]
+      },
+      {
+        "matcher": "(Edit|Write).*\\.py",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff check --select=E,F --quiet src/ tests/ 2>&1 | head -20 || true"
+          }
+        ]
       }
     ]
   },
