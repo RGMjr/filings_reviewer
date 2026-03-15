@@ -52,6 +52,30 @@ This directory contains validation reports, evaluation results, and analysis doc
 
 ---
 
+### HRV-6_VALIDATION_ANALYSIS.md
+
+**Status**: COMPLETE
+
+**Scope**: Post-review analysis of Slack and Farfetch human review sessions (HRV-3 and HRV-4), identifying false positive and false negative patterns, metric ID taxonomy mismatches, and prioritized improvement recommendations.
+
+---
+
+### HRV-16_VALIDATION_RESULTS.md
+
+**Status**: COMPLETE
+
+**Scope**: Post-Phase 4 validation results across Farfetch, Slack, and Samsara filings; documents the precision/recall trade-off achieved by Phase 4 filtering improvements (66.7% precision, 47.4% recall, 55.4% F1).
+
+---
+
+### SAMSARA_VISION_EXTRACTION_ANALYSIS.md
+
+**Status**: COMPLETE
+
+**Scope**: Root-cause analysis of extraction failures on the Samsara Vision filing, covering table parsing gaps, regulatory reference false positives, and industry-specific keyword limitations.
+
+---
+
 ### 🏭 GR-17_INDUSTRY_LABELING.md
 
 **Status**: In Progress - Labels created, filings not yet loaded
@@ -126,6 +150,9 @@ See `docs/archive/analysis/evaluation-reports/README.md` for details.
 | 2025-12-26 | WAVE_3_EVALUATION_REPORT.md | Wave 3 evaluation (archived) |
 | 2025-12-26 | COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md | **Current primary report** |
 | 2025-12-27 | HRV-3 through HRV-5 | Validation documentation added |
+| 2025-12-30 | HRV-6_VALIDATION_ANALYSIS.md | Human review session analysis (Slack + Farfetch) |
+| 2024-12-24 | SAMSARA_VISION_EXTRACTION_ANALYSIS.md | Samsara extraction failure root-cause |
+| 2026-01-04 | HRV-16_VALIDATION_RESULTS.md | Post-Phase 4 validation results |
 
 ---
 

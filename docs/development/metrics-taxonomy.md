@@ -6,6 +6,8 @@ Owner: Rob Markey
 
 ## 1. Purpose
 
+> **Note on keyword patterns**: As of the `eb2fb54` refactor, all keyword patterns, synonyms, and metric signal configurations have been moved to `config/metric_keywords.yaml` as the **authoritative source**. The synonym and pattern examples in this document are illustrative of intent; the YAML config is canonical for extraction purposes. Always update `config/metric_keywords.yaml` when changing detection behavior.
+
 This document defines the **metric taxonomy** for the Customer Metrics Filings Analysis project.
 
 It serves four purposes:

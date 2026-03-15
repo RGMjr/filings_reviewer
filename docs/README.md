@@ -3,7 +3,7 @@
 **Project:** SEC Filings Customer Metrics Extraction System
 **Version:** 2.2
 **Status:** Production Ready
-**Last Updated:** 2025-12-29
+**Last Updated:** 2026-03-15
 
 ---
 
@@ -95,6 +95,28 @@ Historical documents for reference only. Not part of current operations.
 | **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
 | **[archive/historical/](archive/historical/)** | Historical process documentation and task inventory |
 | **[archive/workstreams/](archive/workstreams/)** | Legacy workstream documentation |
+
+### Additional Documentation Directories
+
+Task output and reference documents organized by type.
+
+| Directory | Description |
+|-----------|-------------|
+| **[completion/](completion/)** | Task completion summary reports (DUP-2, HRV-16, IMG-1-1, IMG-1-2, etc.) |
+| **[investigation/](investigation/)** | Deep-dive investigation reports on extraction failures and edge cases |
+| **[reports/](reports/)** | Metric consistency audits, chart extraction results, and validation reports |
+| **[research/](research/)** | Chart extraction research and GPT-4o vision validation results |
+
+### Operational Templates (Worker Prompts)
+
+Templates and generators for structured task execution via Claude Code.
+
+| File | Description |
+|------|-------------|
+| **[WORKER_PROMPT_GENERATOR.md](WORKER_PROMPT_GENERATOR.md)** | Meta-prompt for generating new worker prompts using Claude Code headless mode |
+| **[WORKER_PROMPT_RALPH.md](WORKER_PROMPT_RALPH.md)** | Streamlined template for autonomous Ralph Loop task execution |
+| **[WORKER_PROMPT_TEMPLATE.md](WORKER_PROMPT_TEMPLATE.md)** | Full worker prompt template (v2.6) for M/L/XL tasks (15 min – 5 hours) |
+| **[WORKER_PROMPT_TEMPLATE_LITE.md](WORKER_PROMPT_TEMPLATE_LITE.md)** | Lightweight template for XS/S tasks under 2 hours (bug fixes, minor changes) |
 
 ---
 
@@ -192,7 +214,7 @@ Historical documents for reference only. Not part of current operations.
 
 ```bash
 # See setup-guide.md for detailed instructions
-python scripts/run_extraction_sample.py
+python scripts/run_extraction_pipeline.py
 ```
 
 ### Running Tests
