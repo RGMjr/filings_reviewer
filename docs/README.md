@@ -63,7 +63,8 @@ Instructions for setting up, running, and maintaining the system.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[setup-guide.md](operations/setup-guide.md)** | Environment setup, dependencies, configuration | Developers, DevOps |
-| **[deployment-guide.md](operations/deployment-guide.md)** | Deployment procedures, monitoring | DevOps, PMs |
+| **[cloud-deployment-runbook.md](operations/cloud-deployment-runbook.md)** ⭐ | **Render + Neon DB: start command, env vars, migrations, troubleshooting** | DevOps |
+| **[deployment-guide.md](operations/deployment-guide.md)** | Legacy deployment guide (local/batch processing era) | Archive |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
