@@ -158,7 +158,36 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ---
 
+---
+
+## 6. FilingFetcher Downloads Directory Index Instead of Primary Document
+
+**Status**: Open
+**Severity**: Medium — blocks candidate generation for newly fetched filings
+**Discovered**: 2026-03-16 during cloud deployment pilot
+
+### Symptom
+
+`fetch_curated_sample.py` reports success and marks filings as `html_fetched_at` in the DB, but the saved `primary.htm` is the SEC EDGAR directory listing page (~16KB) rather than the actual S-1/F-1 document (typically 500KB–5MB).
+
+Downstream effect: `run_extraction_pipeline.py` extracts 0 metrics. `generate_review_candidates.py` finds no filings to process because `source_segments` is never populated.
+
+### Root Cause
+
+The `sec_html_url` stored in the `filings` table is a directory URL ending in `/`:
+```
+https://www.sec.gov/Archives/edgar/data/1764925/000162828019007428/
+```
+`FilingFetcher` fetches this URL directly and saves the response as `primary.htm` without resolving the actual primary document from the index.
+
+### Fix
+
+`FilingFetcher` should detect when `sec_html_url` ends with `/`, fetch the index, parse the document table to find the primary `.htm` file, and download that instead. The SEC EDGAR index lists each document with its type — the primary filing document is the one typed `S-1`, `S-1/A`, `F-1`, etc.
+
+---
+
 ## Change Log
 
 - **2026-01-01**: Initial document created after VAL-1 validation
 - **2026-01-01**: CAC payback period issue resolved (moved to "FIXED" section)
+- **2026-03-16**: Added Issue #6 — FilingFetcher directory index bug
