@@ -2,15 +2,16 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-01-01
+**Last Updated**: 2026-03-16
 
 ---
 
 ## 1. Metric ID Mismatch Between Gold Standard and System
 
-**Status**: Needs Investigation
+**Status**: Resolved
 **Severity**: High (affects recall measurements)
 **Discovered**: 2026-01-01 during VAL-1 validation
+**Resolved**: 2026-03-16
 
 ### Problem
 
@@ -21,25 +22,18 @@ The gold standard CSV uses different metric IDs than the extraction system gener
 | `cm_active_customers_total` | `cm_customers_period_end` | Slack paid customers |
 | `cm_active_customers_total` | `cm_active_customers_total` | Farfetch active consumers |
 
-This causes apparent "false negatives" in recall calculation when the system correctly extracts values but assigns them different metric IDs.
+This caused apparent "false negatives" in recall calculation when the system correctly extracts values but assigns them different metric IDs.
 
-### Impact
+### Resolution
 
-- **Slack recall**: Likely understated due to ID mismatch
-- **Farfetch recall**: 12.5% (1/8) - lower than expected
-- **Comparison script**: Cannot match candidates to gold values
+The gold standard CSV (`data/gold_standard/golden_set_251218.csv`) was updated to align all metric IDs with the system taxonomy in `config/metric_keywords.yaml`. Fresh validation confirms no remaining ID mismatches:
 
-### Root Cause
+- **Slack**: 97.9% recall (1 FN — extraction gap, not ID mismatch)
+- **Samsara**: 100% recall
+- **Farfetch**: 0% recall (URL issue — see Issue #6; not ID mismatch)
+- **Snowflake**: 31% recall (extraction coverage gap, not ID mismatch)
 
-The gold standard was created using different metric taxonomy than the extraction system's `config/metric_keywords.yaml` definitions.
-
-### Recommended Fix
-
-1. Audit gold standard metric IDs against `config/metric_keywords.yaml`
-2. Either:
-   - Update gold standard IDs to match system taxonomy, OR
-   - Add metric ID aliases to comparison script
-3. Re-run validation after alignment
+The alias infrastructure in `src/extraction/keyword_config.py` remains in place but is correctly unused — no aliases are needed since the gold standard now uses canonical IDs.
 
 ---
 
@@ -55,9 +49,10 @@ Only 1 of 8 non-chart Farfetch gold standard values matched during validation.
 
 ### Contributing Factors
 
-1. **Metric ID mismatch** (see Issue #1)
-2. **Value normalization differences**: Gold uses exact values, system may normalize differently
-3. **Missing patterns**: Some keywords may not trigger candidate generation
+1. ~~**Metric ID mismatch** (see Issue #1)~~ — resolved; gold standard IDs now aligned
+2. **URL issue**: `sec_html_url` for Farfetch resolves to a directory index (see Issue #6), so no segments are extracted
+3. **Value normalization differences**: Gold uses exact values, system may normalize differently
+4. **Missing patterns**: Some keywords may not trigger candidate generation
 
 ### CAC Payback Period (FIXED)
 
@@ -68,8 +63,8 @@ The CAC payback period value "six" (months) was not being extracted:
 
 ### Remaining Gaps
 
-- Investigate which values remain unmatched after fixing metric ID mismatch
-- Review Active Consumers, Number of Orders, Take Rate patterns
+- Farfetch recall is blocked by the directory index bug (Issue #6); re-evaluate after that is fixed
+- Review Active Consumers, Number of Orders, Take Rate patterns once document fetch is working
 
 ---
 
@@ -148,13 +143,14 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ## Summary
 
-| Issue | Priority | Effort | Impact |
-|-------|----------|--------|--------|
-| Metric ID Mismatch | High | Medium | Fixes recall measurements |
-| Low Farfetch Recall | Medium | Medium | Improves coverage |
-| Gold Standard Methodology | Low | Low | Process improvement |
-| Spelled-Out Number Limits | Low | High | Edge case coverage |
-| Revenue Synonym Gating | Monitor | N/A | Working as designed |
+| Issue | Status | Priority | Effort | Impact |
+|-------|--------|----------|--------|--------|
+| Metric ID Mismatch | **Resolved** | — | — | Recall measurements now accurate |
+| Low Farfetch Recall | Open | Medium | Medium | Blocked by Issue #6 |
+| Gold Standard Methodology | Open | Low | Low | Process improvement |
+| Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
+| Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
+| FilingFetcher Directory Index | **Resolved** | — | — | Re-fetch cloud filings to get actual documents |
 
 ---
 
@@ -162,15 +158,16 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ## 6. FilingFetcher Downloads Directory Index Instead of Primary Document
 
-**Status**: Open
-**Severity**: Medium — blocks candidate generation for newly fetched filings
+**Status**: Resolved
+**Severity**: Medium — blocked candidate generation for newly fetched filings
 **Discovered**: 2026-03-16 during cloud deployment pilot
+**Resolved**: 2026-03-16
 
 ### Symptom
 
-`fetch_curated_sample.py` reports success and marks filings as `html_fetched_at` in the DB, but the saved `primary.htm` is the SEC EDGAR directory listing page (~16KB) rather than the actual S-1/F-1 document (typically 500KB–5MB).
+`fetch_curated_sample.py` reported success and marked filings as `html_fetched_at` in the DB, but the saved `primary.htm` was the SEC EDGAR directory listing page (~16KB) rather than the actual S-1/F-1 document (typically 500KB–5MB).
 
-Downstream effect: `run_extraction_pipeline.py` extracts 0 metrics. `generate_review_candidates.py` finds no filings to process because `source_segments` is never populated.
+Downstream effect: `run_extraction_pipeline.py` extracted 0 metrics. `generate_review_candidates.py` found no filings to process because `source_segments` was never populated.
 
 ### Root Cause
 
@@ -178,11 +175,17 @@ The `sec_html_url` stored in the `filings` table is a directory URL ending in `/
 ```
 https://www.sec.gov/Archives/edgar/data/1764925/000162828019007428/
 ```
-`FilingFetcher` fetches this URL directly and saves the response as `primary.htm` without resolving the actual primary document from the index.
+`FilingFetcher` had two bugs: (1) `sec_client` defaulted to `None`, and (2) the URL resolution block was guarded by `if self.sec_client:`, so it was silently skipped when no client was provided. The fetcher downloaded the directory listing directly.
 
 ### Fix
 
-`FilingFetcher` should detect when `sec_html_url` ends with `/`, fetch the index, parse the document table to find the primary `.htm` file, and download that instead. The SEC EDGAR index lists each document with its type — the primary filing document is the one typed `S-1`, `S-1/A`, `F-1`, etc.
+Two changes in `src/filing_fetcher/filing_fetcher.py`:
+1. Line 81: `sec_client` parameter now defaults to a new `SECClient(user_agent=user_agent)` instead of `None`
+2. Line 295: Removed the `if self.sec_client:` guard — resolution runs unconditionally when URL ends with `/`
+
+### Cached File Audit
+
+`scripts/audit_fetched_filings.py` found 78 filings recorded as fetched in the DB but no files present on local disk. These were fetched on the cloud deployment (Render). No locally cached directory-listing files were found, so no cleanup is needed locally. **Re-fetch all 78 filings** on the cloud environment to get actual filing documents instead of directory pages.
 
 ---
 
@@ -191,3 +194,5 @@ https://www.sec.gov/Archives/edgar/data/1764925/000162828019007428/
 - **2026-01-01**: Initial document created after VAL-1 validation
 - **2026-01-01**: CAC payback period issue resolved (moved to "FIXED" section)
 - **2026-03-16**: Added Issue #6 — FilingFetcher directory index bug
+- **2026-03-16**: Issue #6 resolved — default SECClient creation + removed null guard; 78 cloud-fetched files need re-fetch
+- **2026-03-16**: Issue #1 resolved — gold standard CSV updated to align with system taxonomy; no metric ID mismatches remain

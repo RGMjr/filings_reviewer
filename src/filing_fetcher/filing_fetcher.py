@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from src.infra.sec_client import FilingMetadata
+from src.infra.sec_client import FilingMetadata, SECClient
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class FilingFetcher:
         self.session.headers.update({"User-Agent": user_agent})
 
         self.db = db
-        self.sec_client = sec_client
+        self.sec_client = sec_client or SECClient(user_agent=user_agent)
         self._last_request_time = 0.0
 
     def _rate_limit(self):
@@ -292,7 +292,7 @@ class FilingFetcher:
             if not html_path.exists():
                 # Resolve primary document URL if it's a directory URL
                 primary_doc_url = filing_metadata.primary_doc_url
-                if primary_doc_url.endswith("/") and self.sec_client:
+                if primary_doc_url.endswith("/"):
                     logger.debug(
                         f"Resolving primary doc URL for {cik}/{accession_number}"
                     )
