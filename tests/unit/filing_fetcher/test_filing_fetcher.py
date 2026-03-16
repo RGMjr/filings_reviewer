@@ -152,6 +152,44 @@ class TestFetchFiling:
         assert content.accession_number == "0001234567-12-123456"
         assert Path(content.html_path).exists()
 
+    def test_fetch_filing_with_directory_url_no_explicit_sec_client(
+        self, tmp_path, valid_filing_html
+    ):
+        """Test that a FilingFetcher constructed without sec_client still resolves directory URLs.
+
+        Regression test for bug where sec_client defaulted to None and the resolution
+        code path was silently skipped, causing directory listing pages to be saved as
+        primary.htm instead of the actual filing document.
+        """
+        fetcher = FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+        # Patch the auto-created sec_client on the instance
+        fetcher.sec_client = Mock()
+        fetcher.sec_client.resolve_primary_document_url.return_value = (
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        )
+
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
+            txt_url=None,
+        )
+
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, "get", return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is not None
+        fetcher.sec_client.resolve_primary_document_url.assert_called_once_with(
+            "0001234567", "0001234567-12-123456"
+        )
+
     def test_fetch_filing_with_directory_url(self, fetcher, valid_filing_html):
         """Test fetching filing with directory URL that needs resolution."""
         metadata = FilingMetadata(
