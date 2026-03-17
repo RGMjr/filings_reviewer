@@ -5,13 +5,18 @@ These cover basic text extraction behavior and guard against regressions in the
 extraction_method flag expected by the analysis schema.
 """
 
+import json
 from datetime import date
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.extraction.models import SourceSegment
 from src.extraction.value_extractor import (
     ValueExtractor,
     _normalize_text,
+    map_llm_name_to_metric_id,
     verify_quote_in_source,
 )
 
@@ -1643,3 +1648,240 @@ class TestRowBoundaryValidation:
         # Row validation would then not be needed for this value
         extracted_values = [float(v.value_numeric) for v in values]
         assert 2019 not in extracted_values
+
+
+# =============================================================================
+# map_llm_name_to_metric_id Tests
+# =============================================================================
+
+
+def test_map_llm_name_empty_returns_none():
+    assert map_llm_name_to_metric_id("") is None
+
+
+def test_map_llm_name_already_valid_id():
+    # Already a canonical metric ID — returned as-is (step 1)
+    assert map_llm_name_to_metric_id("cm_monthly_active_users") == "cm_monthly_active_users"
+
+
+def test_map_llm_name_adds_cm_prefix():
+    # "daily_active_users" -> "cm_daily_active_users" via cm_ prefix check (step 3)
+    assert map_llm_name_to_metric_id("daily_active_users") == "cm_daily_active_users"
+
+
+def test_map_llm_name_from_mapping():
+    # Abbreviation "mau" -> "cm_monthly_active_users" via METRIC_NAME_MAPPING (step 4)
+    assert map_llm_name_to_metric_id("mau") == "cm_monthly_active_users"
+
+
+def test_map_llm_name_partial_match():
+    # "active" is not in mapping but is a substring of "active_customers_total" (step 5)
+    result = map_llm_name_to_metric_id("active", candidate_metric_ids=["cm_active_customers_total"])
+    assert result == "cm_active_customers_total"
+
+
+def test_map_llm_name_no_match():
+    # Gibberish returns None (step 6)
+    assert map_llm_name_to_metric_id("xyz_gibberish_metric") is None
+
+
+# =============================================================================
+# extract_from_text_with_llm Tests
+# =============================================================================
+
+_TEXT_LLM_RAW = "We had 1,500 active customers as of Q4 2023."
+_TEXT_LLM_JSON = json.dumps([
+    {
+        "metric_name": "active_customers",
+        "value": "1,500",
+        "period": "Q4 2023",
+        "quote": "1,500 active customers",
+        "units": "count",
+    }
+])
+
+
+def test_text_llm_no_client_raises():
+    segment = build_segment(
+        raw_text=_TEXT_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor()
+    with pytest.raises(ValueError, match="LLM client not available"):
+        extractor.extract_from_text_with_llm(segment, company_id=1)
+
+
+def test_text_llm_happy_path():
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = _TEXT_LLM_JSON
+    mock_client.complete.return_value = mock_response
+
+    segment = build_segment(
+        raw_text=_TEXT_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    values = extractor.extract_from_text_with_llm(segment, company_id=42)
+
+    assert len(values) == 1
+    assert values[0].metric_id == "cm_active_customers_total"
+    assert values[0].extraction_method == "llm_text"
+    assert values[0].qa_status == "pass"
+    assert values[0].company_id == 42
+
+
+def test_text_llm_validation_fails():
+    # LLM returns non-list -> validate_value_extraction_response returns False -> []
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = '{"not": "a list"}'
+    mock_client.complete.return_value = mock_response
+
+    segment = build_segment(
+        raw_text=_TEXT_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    assert extractor.extract_from_text_with_llm(segment, company_id=1) == []
+
+
+def test_text_llm_exception_returns_empty():
+    # Unparseable JSON -> parse_json_response raises -> caught -> []
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = "}{not valid json}{"
+    mock_client.complete.return_value = mock_response
+
+    segment = build_segment(
+        raw_text=_TEXT_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    assert extractor.extract_from_text_with_llm(segment, company_id=1) == []
+
+
+# =============================================================================
+# extract_from_table_with_llm Tests
+# =============================================================================
+
+_TABLE_LLM_RAW = "We had 1,500 active customers in the 2021 cohort as of Q4 2023."
+_TABLE_LLM_HTML = (
+    "<table><tr><th>Cohort</th><th>Customers</th></tr>"
+    "<tr><td>2021</td><td>1,500</td></tr></table>"
+)
+_TABLE_LLM_JSON = json.dumps([
+    {
+        "metric_name": "active_customers",
+        "value": "1,500",
+        "period": "Q4 2023",
+        "quote": "1,500 active customers",
+        "units": "count",
+        "cohort_label": "2021 Cohort",
+    }
+])
+
+
+def test_table_llm_no_html_returns_empty():
+    mock_client = MagicMock()
+    segment = build_segment(
+        segment_type="table",
+        raw_html=None,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    assert extractor.extract_from_table_with_llm(segment, company_id=1) == []
+
+
+def test_table_llm_happy_path():
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = _TABLE_LLM_JSON
+    mock_client.complete.return_value = mock_response
+
+    segment = build_segment(
+        segment_type="table",
+        raw_html=_TABLE_LLM_HTML,
+        raw_text=_TABLE_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    values = extractor.extract_from_table_with_llm(segment, company_id=42)
+
+    assert len(values) == 1
+    assert values[0].extraction_method == "llm_table"
+    assert values[0].cohort_type == "acquisition"
+    assert values[0].cohort_bucket_raw == "2021 Cohort"
+    assert values[0].company_id == 42
+
+
+def test_table_llm_exception_returns_empty():
+    # Unparseable JSON -> parse_json_response raises -> caught -> []
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.content = "}{not valid json}{"
+    mock_client.complete.return_value = mock_response
+
+    segment = build_segment(
+        segment_type="table",
+        raw_html=_TABLE_LLM_HTML,
+        raw_text=_TABLE_LLM_RAW,
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    extractor = ValueExtractor(llm_client=mock_client)
+    assert extractor.extract_from_table_with_llm(segment, company_id=1) == []
+
+
+# =============================================================================
+# extract_from_segment LLM Routing Tests
+# =============================================================================
+
+
+def test_segment_llm_succeeds():
+    # LLM returns values -> returned directly without rule-based fallback
+    segment = build_segment(
+        raw_text="We had 1,500 active customers.",
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    mock_client = MagicMock()
+    extractor = ValueExtractor(llm_client=mock_client)
+
+    fake_value = MagicMock()
+    with patch.object(ValueExtractor, "extract_from_text_with_llm", return_value=[fake_value]):
+        values = extractor.extract_from_segment(segment, company_id=1)
+
+    assert values == [fake_value]
+
+
+def test_segment_llm_empty_falls_back():
+    # LLM returns [] -> falls back to rule-based extraction
+    segment = build_segment(
+        raw_text="We had 1,500 active customers.",
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    mock_client = MagicMock()
+    extractor = ValueExtractor(llm_client=mock_client)
+
+    with patch.object(ValueExtractor, "extract_from_text_with_llm", return_value=[]):
+        values = extractor.extract_from_segment(segment, company_id=1)
+
+    assert len(values) >= 1
+    assert all(v.extraction_method == "rule_text_smart" for v in values)
+
+
+def test_segment_llm_exception_falls_back():
+    # LLM raises -> falls back to rule-based extraction
+    segment = build_segment(
+        raw_text="We had 1,500 active customers.",
+        candidate_metric_ids=["cm_active_customers_total"],
+    )
+    mock_client = MagicMock()
+    extractor = ValueExtractor(llm_client=mock_client)
+
+    with patch.object(
+        ValueExtractor, "extract_from_text_with_llm", side_effect=Exception("LLM failed")
+    ):
+        values = extractor.extract_from_segment(segment, company_id=1)
+
+    assert len(values) >= 1
+    assert all(v.extraction_method == "rule_text_smart" for v in values)
