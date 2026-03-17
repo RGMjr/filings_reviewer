@@ -6,9 +6,7 @@ This is a regression test for FIX-5 (Slack validation regression).
 """
 from decimal import Decimal
 
-import pytest
-
-from src.review.keyword_matching import KeywordMatcher, KeywordMatch
+from src.review.keyword_matching import KeywordMatch, KeywordMatcher
 from src.review.marker_row_parser import MarkerRowParser
 from src.review.number_parsing import NumberMatch
 

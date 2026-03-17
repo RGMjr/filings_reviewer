@@ -392,7 +392,7 @@ class TestOptimizationEffectiveness:
         enricher.enrich_batch(segments_run2)
 
         # Verify identical results
-        for i, (seg1, seg2) in enumerate(zip(segments_run1, segments_run2)):
+        for i, (seg1, seg2) in enumerate(zip(segments_run1, segments_run2, strict=True)):
             assert seg1.richness_score == seg2.richness_score, (
                 f"Segment {i}: scores differ ({seg1.richness_score} vs {seg2.richness_score})"
             )
@@ -622,8 +622,8 @@ class TestScalability:
         mixed_time = time.perf_counter() - start
 
         # Mixed should be between para and table times (with 20% tolerance)
-        min_expected = para_time * 0.8
-        max_expected = table_time * 1.2
+        _min_expected = para_time * 0.8
+        _max_expected = table_time * 1.2
 
         # Note: We only check that performance is reasonable, not exact
         # because CI environments have variable performance

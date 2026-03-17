@@ -462,7 +462,7 @@ def validate_filing(
     matched_candidates: set[int] = set()  # Candidate IDs matched
     tp_matches: list[ValidationMatch] = []
 
-    for score, candidate_id, candidate, entry, match_type in potential_matches:
+    for score, candidate_id, _candidate, entry, match_type in potential_matches:
         # Skip if candidate or entry already matched
         if candidate_id in matched_candidates:
             continue

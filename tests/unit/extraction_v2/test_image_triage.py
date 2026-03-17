@@ -452,7 +452,7 @@ class TestTriageBatch:
             width=500,
             height=400,
         )
-        result = stage.triage_images([asset])
+        stage.triage_images([asset])
 
         # Should be UNKNOWN with some relevance
         assert asset.classification == ImageClassification.UNKNOWN
@@ -484,8 +484,9 @@ class TestPipelineIntegration:
 
     def test_process_empty_context(self, stage: ImageTriageStage) -> None:
         """Process should handle empty images list."""
-        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
 
         context = PipelineContext(
             filing_id=1,
@@ -503,8 +504,9 @@ class TestPipelineIntegration:
 
     def test_process_with_images(self, stage: ImageTriageStage) -> None:
         """Process should classify and score images."""
-        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext, PipelineStage
 
         context = PipelineContext(
             filing_id=1,
@@ -538,8 +540,9 @@ class TestPipelineIntegration:
 
     def test_process_returns_metadata(self, stage: ImageTriageStage) -> None:
         """Process should return classification statistics."""
-        from src.extraction_v2.pipeline import PipelineContext
         from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext
 
         context = PipelineContext(
             filing_id=1,

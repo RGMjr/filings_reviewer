@@ -10,12 +10,13 @@ Schema alignment: sql/07_create_review_schema.sql
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 if TYPE_CHECKING:
+    from src.review.boundary_detection import TextBoundary
     from src.review.keyword_matching import KeywordMatch
     from src.review.number_parsing import NumberMatch
 
@@ -295,7 +296,7 @@ class CandidateFeatures:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CandidateFeatures":
+    def from_dict(cls, data: dict[str, Any]) -> CandidateFeatures:
         """Create from dictionary (e.g., from JSONB)."""
         return cls(
             keyword_distance=data.get("keyword_distance", 0),
@@ -410,7 +411,7 @@ class ReviewCandidate:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ReviewCandidate":
+    def from_row(cls, row: dict[str, Any]) -> ReviewCandidate:
         """Create from database row."""
         features_data = row.get("features")
         features = (
@@ -512,7 +513,7 @@ class ReviewDecision:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ReviewDecision":
+    def from_row(cls, row: dict[str, Any]) -> ReviewDecision:
         """Create from database row."""
         return cls(
             decision_id=row.get("decision_id"),
@@ -609,7 +610,7 @@ class LearnedPattern:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "LearnedPattern":
+    def from_row(cls, row: dict[str, Any]) -> LearnedPattern:
         """Create from database row."""
         return cls(
             pattern_id=row.get("pattern_id"),
@@ -803,8 +804,8 @@ class SegmentProcessingContext:
     word_positions: tuple[tuple[int, int, str], ...] | None  # For context extraction
 
     # Boundary detection results
-    boundaries: tuple[tuple[int, int], ...] | None  # Semantic boundaries
-    sentence_boundaries: tuple[tuple[int, int], ...] | None  # Sentence boundaries
+    boundaries: tuple[TextBoundary, ...] | None  # Semantic boundaries
+    sentence_boundaries: tuple[TextBoundary, ...] | None  # Sentence boundaries
 
     # Table parsing (optional, only for table segments)
     # Note: Can't be frozen since parsers are mutable, stored as Any

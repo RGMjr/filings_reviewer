@@ -22,8 +22,7 @@ Test Coverage:
 Total: 6+ tests covering critical UXI-2 scenarios
 """
 
-from tests.e2e.conftest import SELECTORS, BASE_URL, FILINGS_URL
-
+from tests.e2e.conftest import SELECTORS
 
 # =============================================================================
 # Test 1: Search Filters Metrics

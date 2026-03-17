@@ -22,7 +22,6 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
     IMAGE_REVIEW_STATUSES,
-    IMAGE_TIER_PRIORITY,
     KEYWORD_POSITIONS,
     PATTERN_STATUSES,
     PATTERN_TYPES,
@@ -1338,7 +1337,7 @@ class DatabaseAdapter:
 
         runner_up_entries: list[dict[str, Any]] = []
 
-        for position_key, group in position_groups.items():
+        for _position_key, group in position_groups.items():
             if len(group) < 2:
                 # No alternatives at this position
                 continue
@@ -1351,7 +1350,7 @@ class DatabaseAdapter:
             winner_metric = None
             winner_conf = None
 
-            for idx, cand in group:
+            for idx, _cand in group:
                 cand_id = final_ids[idx]
                 if cand_id in winner_metrics:
                     metric_id, conf = winner_metrics[cand_id]
@@ -1697,7 +1696,7 @@ class DatabaseAdapter:
                 # =====================================================================
                 # Execute Updates (winner replaces existing)
                 # =====================================================================
-                for input_idx, existing_id, new_cand, old_cand in to_update:
+                for _input_idx, existing_id, new_cand, old_cand in to_update:
                     # Log old candidate as suppressed
                     if log_suppressed:
                         suppression_entries.append(

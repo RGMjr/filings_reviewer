@@ -11,6 +11,8 @@ Test coverage target: >= 95% for _compute_richness_score() and detection methods
 """
 
 
+import dataclasses
+
 import pytest
 
 from src.extraction.models import SourceSegment
@@ -943,7 +945,7 @@ class TestFormulaWeightsValidation:
 
         weights = FormulaWeights.default()
 
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(dataclasses.FrozenInstanceError):
             weights.confidence_multiplier = 5.0  # type: ignore
 
     def test_negative_values_raise_error(self) -> None:

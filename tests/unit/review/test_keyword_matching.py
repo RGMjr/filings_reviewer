@@ -2118,7 +2118,7 @@ class TestShouldExcludeWithMarkerRowParser:
             ("575", 50),
         ]
 
-        for raw_text, expected_approx_pos in values:
+        for raw_text, _expected_approx_pos in values:
             actual_pos = text.find(raw_text)
             should_exclude, reason = matcher.should_exclude_for_number_context(
                 metric_id="cm_large_customers_period_end",
