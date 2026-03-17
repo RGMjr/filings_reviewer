@@ -1,6 +1,6 @@
 # Metric Extraction Pipeline
 
-**Version:** 2.2
+**Version:** 2.5
 **Last Updated:** 2025-12-26
 **Status:** Production Ready
 
