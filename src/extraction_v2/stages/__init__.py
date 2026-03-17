@@ -23,8 +23,8 @@ Usage:
 Stages are invoked sequentially by the pipeline orchestrator in src/extraction_v2/pipeline.py.
 """
 
-from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
+from src.extraction_v2.stages.ingestion import IngestionStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 
 __all__ = [

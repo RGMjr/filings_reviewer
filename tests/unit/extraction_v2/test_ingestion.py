@@ -4,11 +4,7 @@ Unit tests for IngestionStage (Stage 1).
 Tests lxml-based HTML parsing, XPath locators, and segment extraction.
 """
 
-import tempfile
 from pathlib import Path
-
-import pytest
-from lxml import etree
 
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.ingestion import IngestionStage

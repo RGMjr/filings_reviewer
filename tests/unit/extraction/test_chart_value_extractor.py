@@ -13,13 +13,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.extraction.chart_value_extractor import (
+    DEFAULT_EXTRACTION_PROMPT,
     ChartExtractionResult,
     ChartValueExtractor,
-    DEFAULT_EXTRACTION_PROMPT,
     ExtractedChartValue,
 )
 from src.llm.vision_client import VisionResponse
-
 
 # Mock responses from VIS-GPT4O-VALIDATION.md
 MOCK_SLACK_RESPONSE = """{
@@ -646,7 +645,7 @@ class TestExtractMethod:
         )
 
         extractor = ChartValueExtractor(vision_client=mock_vision_client)
-        result = extractor.extract(
+        extractor.extract(
             image_bytes=b"\xff\xd8\xff\xe0test",
             source_image="slack_arr.jpg",
             context="This shows ARR by cohort through FY2019",

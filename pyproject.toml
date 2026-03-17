@@ -82,6 +82,7 @@ markers = [
     "slow: Slow-running tests",
     "benchmark: Performance benchmark tests",
     "gold_standard: Gold standard regression tests (require database and gold standard data)",
+    "performance: Performance tests",
 ]
 
 # Logging

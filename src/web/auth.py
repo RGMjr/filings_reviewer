@@ -6,8 +6,9 @@ Provides API key authentication for protecting API routes.
 
 import hmac
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from flask import current_app, jsonify, request
 

@@ -17,7 +17,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from lxml import etree, html
 
@@ -25,9 +25,9 @@ from src.extraction_v2.models import (
     Document,
     ImageAsset,
     ImageClassification,
+    SectionType,
     Segment,
     SegmentType,
-    SectionType,
 )
 
 if TYPE_CHECKING:
@@ -630,7 +630,7 @@ class IngestionStage:
 
         # 2. Get context from nearby siblings
         # Get parent element (or use tree root if img is at top level)
-        context_root = parent if parent is not None else tree
+        _context_root = parent if parent is not None else tree
 
         # Get previous siblings (up to 2)
         if parent is not None:

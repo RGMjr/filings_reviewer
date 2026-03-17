@@ -1169,7 +1169,7 @@ class TestBuildMetricOrderClause:
 
     def test_includes_all_metrics_from_dict(self):
         """Verify every metric in METRIC_DISPLAY_ORDER appears in SQL."""
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
 
@@ -1193,7 +1193,7 @@ class TestBuildMetricOrderClause:
         """Verify the clause only contains hardcoded metric IDs from METRIC_DISPLAY_ORDER."""
         import re
 
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
 
@@ -1208,7 +1208,7 @@ class TestBuildMetricOrderClause:
         """Verify number of WHEN clauses matches dict entries."""
         import re
 
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
         when_clauses = re.findall(r"WHEN '[^']+' THEN \d+", clause)

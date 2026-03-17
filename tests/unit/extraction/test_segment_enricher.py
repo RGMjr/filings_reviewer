@@ -4513,7 +4513,7 @@ class TestTextCachingPerformance:
         enricher.enrich_batch(segments_run2)
 
         # Verify identical results
-        for i, (seg1, seg2) in enumerate(zip(segments_run1, segments_run2)):
+        for i, (seg1, seg2) in enumerate(zip(segments_run1, segments_run2, strict=True)):
             assert seg1.richness_score == seg2.richness_score, (
                 f"Segment {i}: scores differ ({seg1.richness_score} vs {seg2.richness_score})"
             )

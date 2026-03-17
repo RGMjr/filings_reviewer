@@ -128,7 +128,7 @@ class CohortChartDetector:
                 matched_keywords: list[str] = []
                 closest_distance = float("inf")
 
-                for kw_start, kw_end, keyword in keyword_positions:
+                for _kw_start, kw_end, keyword in keyword_positions:
                     # Calculate distance from keyword to image
                     # We use the keyword end position for "below" context
                     distance = img_info["text_pos"] - kw_end

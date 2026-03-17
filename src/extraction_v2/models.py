@@ -14,12 +14,11 @@ Design source: Claude V2 PRD MetricFact schema + GPT-5.2 PRD pragmatic constrain
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
-import uuid
-
 
 # ============================================================================
 # Enums

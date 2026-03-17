@@ -59,7 +59,7 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 - **Coverage**: 75% minimum (enforced), currently 87%
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
-- **Before committing**: Run the full test suite (`pytest -x -q`). If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
+- **Before committing**: Run the full test suite (`pytest -x -q`) when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 
 ## Core Design Principles
 

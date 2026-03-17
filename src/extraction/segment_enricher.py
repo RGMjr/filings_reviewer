@@ -1247,7 +1247,7 @@ class SegmentEnricher:
 
             # Find all cohort keyword matches in text
             keyword_matches: list[tuple[int, str]] = []  # (position, keyword)
-            text_lower = raw_text.lower()
+
 
             for pattern in self.COHORT_CHART_KEYWORDS:
                 for match in pattern.finditer(raw_text):

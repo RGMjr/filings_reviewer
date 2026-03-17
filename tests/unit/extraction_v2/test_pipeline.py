@@ -1,11 +1,10 @@
 """Tests for V2 extraction pipeline orchestrator."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.extraction_v2.models import MetricFact, ReviewStatus
+from src.extraction_v2.models import MetricFact
 from src.extraction_v2.pipeline import (
     PipelineConfig,
     PipelineContext,
@@ -378,7 +377,7 @@ class TestValidationStage:
         from src.extraction_v2.pipeline import ValidationStage
 
         stage = ValidationStage()
-        result = stage.process(context)
+        stage.process(context)
 
         assert context.facts[0].requires_review is True
         assert "auto-reject" in context.facts[0].review_reason.lower()
