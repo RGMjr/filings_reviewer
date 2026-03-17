@@ -45,6 +45,7 @@ def sample_filing_metadata():
         "cik": "0001234567",
         "accession_number": "0001234567-20-000001",
         "html_storage_path": "/tmp/test.html",
+        "html_content": None,
     }
 
 
@@ -818,6 +819,49 @@ def test_no_goldmines_logs_zero(
 
     # Clean up
     Path(temp_html_file).unlink()
+
+
+def test_process_filing_succeeds_with_db_html_content(pipeline, mock_db):
+    """File doesn't exist but html_content is set -> segmenter called with html_content."""
+    filing_metadata = {
+        "filing_id": 1,
+        "company_id": 100,
+        "cik": "0001234567",
+        "accession_number": "0001234567-20-000001",
+        "html_storage_path": "/nonexistent/path.html",
+        "html_content": "<html><body>Filing from DB</body></html>",
+    }
+    mock_db.query.return_value = [filing_metadata]
+
+    mock_segment = SourceSegment(
+        filing_id=1,
+        segment_type="paragraph",
+        sequence_index=0,
+        raw_text="Filing from DB",
+        contains_definition_flag=True,
+    )
+
+    pipeline.segmenter = Mock()
+    pipeline.segmenter.segment_filing = Mock(return_value=[mock_segment])
+    pipeline.classifier.classify_batch = Mock(return_value=[mock_segment])
+    pipeline.value_extractor.extract_from_segment = Mock(return_value=[])
+    pipeline.definition_extractor.extract_definitions = Mock(return_value=[])
+    pipeline.quality_scorer.score_filing = Mock(return_value=[])
+
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone = Mock(return_value={"source_segment_id": 1})
+    mock_conn.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = Mock(return_value=False)
+    mock_db.get_connection.return_value.__enter__ = Mock(return_value=mock_conn)
+    mock_db.get_connection.return_value.__exit__ = Mock(return_value=False)
+
+    result = pipeline.process_filing(filing_id=1)
+
+    assert result.success is True
+    pipeline.segmenter.segment_filing.assert_called_once()
+    call_kwargs = pipeline.segmenter.segment_filing.call_args[1]
+    assert call_kwargs.get("html_content") == "<html><body>Filing from DB</body></html>"
 
 
 # =============================================================================
