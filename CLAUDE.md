@@ -104,6 +104,7 @@ Use these slash commands for workflows:
 - `/merge-check` - Thorough merge readiness assessment (CI, migrations, imports, tests)
 - `/ci-fix` - Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass
 - `/plan-execute` - Execute a multi-phase plan with parallel sub-agents per independent wave
+- `/doc-audit` - Run documentation freshness audit (reports staleness, does not auto-fix)
 
 ## Implementation Rules
 
