@@ -13,11 +13,15 @@ from src.review.number_parsing import NumberMatch
 
 def test_wide_table_extracts_all_row_values():
     """
-    Test that values far from row heading keyword are still extracted
-    when they're in the same table row.
+    Test that values within max_keyword_distance are extracted from a single-row [CELL] segment.
 
-    Scenario: A table row with keyword in cell 0 and values in cells far away (>100 chars).
-    Expected: All values in the same row should be extracted, even if >100 chars from keyword.
+    Fix-B2 update: single-row segments (no [ROW] markers → is_table()=False) now use
+    distance filtering. Values within 100 chars of the keyword still match; values
+    beyond 100 chars do not. Real wide multi-row tables use [ROW] markers and get
+    is_table()=True (distance bypass applies via Phase 2.75).
+
+    Scenario: A table row with keyword in cell 0 and values at increasing distances.
+    Expected: Values within max_keyword_distance=100 match; values beyond do not.
     """
     # Simulate a wide table row with many columns
     # Cell 0: Row heading (keyword)
@@ -47,10 +51,9 @@ def test_wide_table_extracts_all_row_values():
         NumberMatch(start=149, end=152, raw_text="645", value=Decimal("645"), unit="count"),
     ]
 
-    # Parse table structure
+    # Parse table structure — no [ROW] markers → single row → is_table()=False
     parser = MarkerRowParser(text)
-    print(f"Is table: {parser.is_table()}, rows: {len(parser.get_rows())}")
-    # Single row in this case, but we still need same-row matching to work
+    assert parser.is_table() is False, "No [ROW] markers → single row → not a table"
 
     # Create keyword matcher with default config (100 char distance)
     matcher = KeywordMatcher(max_keyword_distance=100)
@@ -69,14 +72,14 @@ def test_wide_table_extracts_all_row_values():
         results.append((num.raw_text, len(matches), dist))
         print(f"Value {num.raw_text} at pos {num.start}: distance={dist}, matches={len(matches)}")
 
-    # Check results
-    # CURRENT BEHAVIOR (broken): Only last 2 values (575, 645) are extracted
-    # EXPECTED BEHAVIOR (fixed): All 5 values should be extracted
-    assert results[0][1] == 1, f"Value 135 should match keyword (got {results[0][1]} matches, dist={results[0][2]})"
-    assert results[1][1] == 1, f"Value 298 should match keyword (got {results[1][1]} matches, dist={results[1][2]})"
-    assert results[2][1] == 1, f"Value 575 should match keyword (got {results[2][1]} matches, dist={results[2][2]})"
-    assert results[3][1] == 1, f"Value 351 should match keyword (got {results[3][1]} matches, dist={results[3][2]})"
-    assert results[4][1] == 1, f"Value 645 should match keyword (got {results[4][1]} matches, dist={results[4][2]})"
+    # Fix-B2: distance filter applies for non-table (single-row) segments.
+    # Values within 100 chars of keyword (dist ≤ 100) match; beyond do not.
+    assert results[0][1] == 1, f"Value 135 (dist={results[0][2]}) should match"
+    assert results[1][1] == 1, f"Value 298 (dist={results[1][2]}) should match"
+    assert results[2][1] == 1, f"Value 575 (dist={results[2][2]}) should match"
+    assert results[3][1] == 1, f"Value 351 (dist={results[3][2]}) should match"
+    # Value 645 at distance 125 > 100: filtered out by distance for non-table segment
+    assert results[4][1] == 0, f"Value 645 (dist={results[4][2]}) should NOT match in non-table segment"
 
 
 def test_multi_row_table_prevents_cross_row_matches():

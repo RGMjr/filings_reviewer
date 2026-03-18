@@ -397,3 +397,44 @@ class TestFindSpelledNumbers:
         # Should find "10 million" as a single numeric match
         assert len(numbers) == 1
         assert numbers[0].value == Decimal("10000000")
+
+
+# =============================================================================
+# Fix B1: Suffix regex word boundary tests
+# =============================================================================
+
+
+class TestSuffixWordBoundary:
+    """Tests for single-letter suffix negative lookahead (Fix B1)."""
+
+    def test_m_suffix_not_captured_before_word(self):
+        """'10,000 members' should not capture 'm' from 'members' as suffix."""
+        text = "10,000 members"
+        matches = list(NUMBER_REGEX.finditer(text))
+        assert len(matches) == 1
+        assert matches[0].group("suffix") is None
+
+    def test_b_suffix_not_captured_from_word(self):
+        """'5,000 bytes' should not capture 'b' from 'bytes' as suffix."""
+        text = "5,000 bytes"
+        matches = list(NUMBER_REGEX.finditer(text))
+        assert len(matches) == 1
+        # 'b' in 'bytes' is followed by 'y' so negative lookahead blocks it
+        assert matches[0].group("suffix") is None
+
+    def test_m_standalone_suffix_still_works(self):
+        """'10m' standalone should still capture 'm' as suffix → 10 million."""
+        text = "ARR reached 10m"
+        matches = list(NUMBER_REGEX.finditer(text))
+        assert len(matches) == 1
+        assert matches[0].group("suffix") is not None
+        assert matches[0].group("suffix").lower() == "m"
+
+    def test_k_standalone_suffix_still_works(self):
+        """'100k' standalone should still capture 'k' as suffix → 100 thousand."""
+        text = "100k users"
+        matches = list(NUMBER_REGEX.finditer(text))
+        assert len(matches) == 1
+        # 'k' not followed by letter so captured
+        assert matches[0].group("suffix") is not None
+        assert matches[0].group("suffix").lower() == "k"
