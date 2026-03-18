@@ -60,10 +60,8 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        # Mock next candidate navigation (filter-aware)
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 124, "review_status": "pending"}
-        ]
+        # Mock next candidate navigation (lightweight ID-only query)
+        mock_db.get_next_pending_candidate_id.return_value = 124
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -112,7 +110,7 @@ class TestCreateDecision:
         }
         mock_db.get_decision_for_candidate.return_value = None
         mock_db.insert_review_decision.return_value = 456
-        mock_db.get_review_candidates_with_decisions.return_value = []  # No next candidate
+        mock_db.get_next_pending_candidate_id.return_value = None  # No next candidate
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -159,9 +157,7 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 124, "review_status": "pending"}
-        ]
+        mock_db.get_next_pending_candidate_id.return_value = 124
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -606,9 +602,7 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 999, "review_status": "pending"}
-        ]
+        mock_db.get_next_pending_candidate_id.return_value = 999
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -641,7 +635,7 @@ class TestCreateDecision:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.get_review_candidates_with_decisions.return_value = []  # No next candidate
+        mock_db.get_next_pending_candidate_id.return_value = None  # No next candidate
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -841,7 +835,7 @@ class TestValidationHelpers:
             "status": "active",
         }
         mock_db.insert_review_decision.return_value = 456
-        mock_db.get_review_candidates_with_decisions.return_value = []
+        mock_db.get_next_pending_candidate_id.return_value = None
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -1037,10 +1031,8 @@ class TestSkipCandidate:
             "review_status": "pending",
         }
         mock_db.update_candidate_status.return_value = True
-        # Mock next candidate navigation
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 124, "review_status": "pending"}
-        ]
+        # Mock next candidate navigation (lightweight ID-only query)
+        mock_db.get_next_pending_candidate_id.return_value = 124
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -1075,9 +1067,7 @@ class TestSkipCandidate:
             "review_status": "pending",
         }
         mock_db.update_candidate_status.return_value = True
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 124, "review_status": "pending"}
-        ]
+        mock_db.get_next_pending_candidate_id.return_value = 124
 
         # Make request with custom filters
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -1108,7 +1098,7 @@ class TestSkipCandidate:
             "review_status": "pending",
         }
         mock_db.update_candidate_status.return_value = True
-        mock_db.get_review_candidates_with_decisions.return_value = []  # No more candidates
+        mock_db.get_next_pending_candidate_id.return_value = None  # No more candidates
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):
@@ -1166,9 +1156,7 @@ class TestSkipCandidate:
             "review_status": "skipped",  # Already skipped
         }
         mock_db.update_candidate_status.return_value = True
-        mock_db.get_review_candidates_with_decisions.return_value = [
-            {"candidate_id": 124, "review_status": "pending"}
-        ]
+        mock_db.get_next_pending_candidate_id.return_value = 124
 
         # Make request
         with patch("src.web.routes.api.get_db", return_value=mock_db):

@@ -395,11 +395,9 @@ def review_filing(filing_id: int):
         db_confidence = filter_confidence if filter_confidence in ("high", "medium", "low") else None
         db_sort_by = sort_by if sort_by in ("position", "confidence_asc", "confidence_desc", "value_asc", "value_desc") else "position"
 
-        # Get total candidate count (unfiltered) for "Showing X of Y" display
-        all_candidates = db.get_review_candidates_with_decisions(
-            filing_id=filing_id, limit=None
-        )
-        total_candidates_unfiltered = len(all_candidates)
+        # Get lightweight summary (counts + available metrics) without fetching HTML
+        filing_summary = db.get_review_candidate_summary(filing_id=filing_id)
+        total_candidates_unfiltered = filing_summary["total"]
 
         # Get filtered candidates for this filing WITH their decisions
         candidates = db.get_review_candidates_with_decisions(
@@ -414,8 +412,11 @@ def review_filing(filing_id: int):
         # Get active metrics for reclassify dropdown
         metrics = _get_active_metrics()
 
-        # Get unique metrics in this filing for filter dropdown
-        available_metrics = _get_unique_metrics_for_filing(all_candidates)
+        # Build sorted available_metrics list from summary (no candidate fetch needed)
+        available_metrics = sorted(
+            filing_summary["available_metrics"],
+            key=lambda m: METRIC_DISPLAY_ORDER.get(m, 99),
+        )
 
         # Validate and get candidate_id parameter
         candidate_id_raw = request.args.get("candidate_id", type=int)
@@ -443,12 +444,8 @@ def review_filing(filing_id: int):
             "has_active_filters": has_active_filters,
         }
 
-        # Compute extraction date (earliest candidate creation) from all candidates
-        extraction_date = None
-        if all_candidates:
-            created_dates = [c.get("created_at") for c in all_candidates if c.get("created_at")]
-            if created_dates:
-                extraction_date = min(created_dates)
+        # Extraction date comes from the summary (MIN(created_at) across all candidates)
+        extraction_date = filing_summary["extraction_date"]
 
         # Render template with documented data contract
         # Template: review.html
