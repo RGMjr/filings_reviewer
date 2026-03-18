@@ -2291,3 +2291,130 @@ class TestShouldExcludeNonTableFallback:
         )
         # Falls back to window - "retention rate" is within 100 chars
         assert should_exclude is True
+
+
+# =============================================================================
+# Fix B2: has_table_structure requires is_table() (cell-only segments)
+# =============================================================================
+
+
+class TestHasTableStructureRequiresIsTable:
+    """Fix B2: segments with [CELL] but no [ROW] should use distance filtering."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher(max_keyword_distance=100)
+
+    def test_cell_only_segment_distance_filter_applied(self, matcher):
+        """[CELL]-only segment (no [ROW]) should apply distance filter, not skip it."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Keyword "net retention rate" is far from number 66 (beyond max_keyword_distance=100)
+        padding = "x" * 150
+        text = f"net retention rate {padding} [CELL] 66 [CELL]"
+
+        parser = MarkerRowParser(text)
+        assert parser.is_table() is False, "No [ROW] markers → single row → not a table"
+
+        num_start = text.index(" 66 ") + 1
+        number = NumberMatch(
+            start=num_start,
+            end=num_start + 2,
+            raw_text="66",
+            value=Decimal("66"),
+            unit="percentage",
+        )
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, text=text, table_row_parser=parser
+        )
+        # Distance filter applies → keyword too far → no match
+        nrr_keywords = [kw for kw in keywords if kw.metric_id == "cm_net_revenue_retention"]
+        assert len(nrr_keywords) == 0, "Distance filter should have blocked keyword >100 chars away"
+
+
+# =============================================================================
+# Fix B3: Fortune qualifier exclusion for cm_customers_period_end
+# =============================================================================
+
+
+class TestFortuneExclusion:
+    """Fix B3: Fortune list references should be excluded for customer counts."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher()
+
+    def test_fortune_100_excluded(self, matcher):
+        """'65 companies in the Fortune 100' should be excluded for cm_customers_period_end."""
+        text = "65 companies in the Fortune 100 use our platform"
+        num_pos = text.index("65")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_customers_period_end",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+        assert reason is not None and "fortune" in reason.lower()
+
+    def test_fortune_500_excluded(self, matcher):
+        """'Fortune 500' context should be excluded for cm_customers_period_end."""
+        text = "We serve 100 of the Fortune 500 enterprises"
+        num_pos = text.index("100")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_customers_period_end",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+
+
+# =============================================================================
+# Fix D: Definition/negative exclusions for NRR and revenue concentration
+# =============================================================================
+
+
+class TestDefinitionNegativeExclusions:
+    """Fix D: Definition text and negative assertions should be excluded."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher()
+
+    def test_nrr_definition_excluded(self, matcher):
+        """'We calculate Net Dollar Retention Rate as...' should be excluded for NRR."""
+        definition_text = "We calculate Net Dollar Retention Rate as 100% of ARR twelve months"
+        num_pos2 = definition_text.index("100")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_net_revenue_retention",
+            text=definition_text,
+            number_position=num_pos2,
+        )
+        assert should_exclude is True
+
+    def test_nrr_calculated_as_excluded(self, matcher):
+        """'calculated as' language should be excluded for NRR."""
+        text = "Net Dollar Retention Rate is calculated as 110% of ARR at beginning of period"
+        num_pos = text.index("110")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_net_revenue_retention",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+
+    def test_concentration_no_individual_excluded(self, matcher):
+        """'no individual foreign country contributed in excess of 10%' should be excluded."""
+        text = "No individual foreign country contributed in excess of 10% of revenue during the period"
+        num_pos = text.index("10")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_revenue_concentration",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True

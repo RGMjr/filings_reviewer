@@ -1773,27 +1773,36 @@ class TestSpelledOutNumberFilterExemption:
         return FalsePositiveFilter()
 
     def test_spelled_out_exempt_from_min_value(self, filter):
-        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
-        # "six" has value 6, which is below default min_value (10)
-        # But spelled-out numbers should be exempt
+        """Bare spelled-out number without magnitude is filtered by spelled_out_no_magnitude.
+
+        "six" passes the below_min_value check (exempt) but is caught by Fix A
+        (spelled_out_no_magnitude) because real metrics always pair word-numbers
+        with a magnitude ("six million"), so bare "six" is an ordinal/qualifier.
+        """
         number = NumberMatch(
             start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive("six months payback", number)
-        # Should NOT be filtered - spelled-out numbers are intentionally written
-        assert is_fp is False
-        assert reason is None
+        # Filtered by spelled_out_no_magnitude, not below_min_value
+        assert is_fp is True
+        assert reason == "spelled_out_no_magnitude"
 
-    def test_spelled_out_exempt_from_toc_proximity(self, filter):
-        """Spelled-out numbers near TOC should NOT be filtered."""
+    def test_spelled_out_filtered_by_no_magnitude_before_toc(self, filter):
+        """Bare spelled-out number is caught by spelled_out_no_magnitude before TOC check.
+
+        "six" (no magnitude) near a TOC is rejected by Fix A before the TOC
+        proximity check is reached — the TOC exemption applies only to numbers
+        that reach that check.
+        """
         text = "Table of Contents ... payback is six months"
         number = NumberMatch(
             start=text.find("six"), end=text.find("six") + 3,
             raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive(text, number)
-        # Should NOT be filtered - spelled numbers are not page numbers
-        assert is_fp is False
+        # Caught by spelled_out_no_magnitude before TOC proximity check
+        assert is_fp is True
+        assert reason == "spelled_out_no_magnitude"
 
     def test_numeric_small_value_still_filtered(self, filter):
         """Numeric small values should still be filtered (not exempt)."""
@@ -2003,3 +2012,83 @@ class TestMonthDDDatePattern:
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is True
         assert reason == "part_of_date"
+
+
+# =============================================================================
+# Fix A: Bare word-number (no magnitude) rejection tests
+# =============================================================================
+
+
+class TestSpelledOutNoMagnitudeFiltering:
+    """Bare word-numbers without magnitude words should be rejected (Fix A)."""
+
+    @pytest.fixture
+    def filter(self):
+        return FalsePositiveFilter()
+
+    def test_bare_three_rejected(self, filter):
+        """'three' with no magnitude word → spelled_out_no_magnitude."""
+        number = NumberMatch(
+            start=0, end=5, raw_text="three", value=Decimal("3"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("three customers", number)
+        assert is_fp is True
+        assert reason == "spelled_out_no_magnitude"
+
+    def test_bare_one_rejected(self, filter):
+        """'one' with no magnitude word → spelled_out_no_magnitude."""
+        number = NumberMatch(
+            start=0, end=3, raw_text="one", value=Decimal("1"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("one customers", number)
+        assert is_fp is True
+        assert reason == "spelled_out_no_magnitude"
+
+    def test_bare_nine_rejected(self, filter):
+        """'nine' with no magnitude word → spelled_out_no_magnitude."""
+        number = NumberMatch(
+            start=0, end=4, raw_text="nine", value=Decimal("9"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("nine customers", number)
+        assert is_fp is True
+        assert reason == "spelled_out_no_magnitude"
+
+    def test_six_million_not_rejected(self, filter):
+        """'six million' has magnitude word → should NOT be rejected."""
+        number = NumberMatch(
+            start=0, end=10, raw_text="six million", value=Decimal("6000000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("six million customers", number)
+        assert is_fp is False
+
+    def test_twelve_billion_not_rejected(self, filter):
+        """'twelve billion' has magnitude word → should NOT be rejected."""
+        number = NumberMatch(
+            start=0, end=14, raw_text="twelve billion", value=Decimal("12000000000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("twelve billion users", number)
+        assert is_fp is False
+
+    def test_twenty_thousand_not_rejected(self, filter):
+        """'twenty thousand' has magnitude word → should NOT be rejected."""
+        number = NumberMatch(
+            start=0, end=15, raw_text="twenty thousand", value=Decimal("20000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("twenty thousand customers", number)
+        assert is_fp is False
+
+    def test_fourteen_not_rejected(self, filter):
+        """'fourteen' (value=14 > 9) should NOT be rejected — legitimate small count."""
+        number = NumberMatch(
+            start=0, end=8, raw_text="fourteen", value=Decimal("14"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("fourteen enterprise customers", number)
+        assert is_fp is False
+
+    def test_forty_one_not_rejected(self, filter):
+        """'forty-one' (value=41 > 9) should NOT be rejected."""
+        number = NumberMatch(
+            start=0, end=9, raw_text="forty-one", value=Decimal("41"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("forty-one large customers", number)
+        assert is_fp is False

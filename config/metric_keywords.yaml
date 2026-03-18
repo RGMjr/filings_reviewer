@@ -122,6 +122,8 @@ cm_customers_period_end:
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
     # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
+    # FIX-B3: Exclude Fortune list references (e.g., "65 companies in the Fortune 100")
+    - 'fortune\s+\d+'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -281,8 +283,10 @@ cm_net_revenue_retention:
     - '\bnet\s+retention\b'
     - '\bnet\s+dollar\s+retention\b'
     - '\bndr\b'
-    - '\bretention\s+rate[^.;]{0,50}\d+%'
     - '\bnet\s+retention\s+rate\b'
+  exclusions:
+    - 'we\s+(?:calculate|define|compute|measure)\b'
+    - 'calculated\s+(?:as|by)\b'
   specific_patterns:
     - 'net\s+revenue\s+retention'
     - 'net\s+dollar\s+retention'
@@ -359,6 +363,10 @@ cm_revenue_concentration:
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
     - '\bcustomer\s+[A-D]\b'
+  exclusions:
+    - '\bno\s+(?:individual|single)\b'
+    - '\bdid\s+not\s+(?:exceed|comprise)\b'
+    - '\bin\s+excess\s+of\b'
 
 # =============================================================================
 # Revenue Predictability Metrics (DEPRECATED 2026-01-07)

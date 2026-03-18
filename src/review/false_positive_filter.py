@@ -96,7 +96,7 @@ import re
 from re import Pattern
 
 from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MAX, YEAR_MIN
-from src.review.number_parsing import NumberMatch
+from src.review.number_parsing import SPELLED_NUMBER_REGEX, NumberMatch
 
 logger = logging.getLogger(__name__)
 
@@ -756,6 +756,22 @@ class FalsePositiveFilter:
             is_decimal = "." in number.raw_text
             if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
                 return True, "below_min_value"
+
+        # Check if spelled-out single-digit number lacks a magnitude word.
+        # Bare "three", "one", "four" (values 1-9) are ordinals/qualifiers in
+        # SEC filings and should not be treated as metric counts.
+        # Scope: only single-digit word-numbers (value ≤ 9) to avoid blocking
+        # legitimate small counts like "fourteen customers" or "forty-one enterprises".
+        # Larger word-numbers with magnitude ("six million") are allowed by the
+        # magnitude group check. "twelve" in definition text is handled by Fix D.
+        spelled_match = SPELLED_NUMBER_REGEX.search(number.raw_text)
+        if (
+            spelled_match
+            and spelled_match.group("magnitude") is None
+            and value is not None
+            and float(value) <= 9
+        ):
+            return True, "spelled_out_no_magnitude"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":

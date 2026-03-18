@@ -580,9 +580,11 @@ class KeywordMatcher:
         # and rely on Phase 2.75 (table row filtering) instead. This prevents
         # missing values in wide tables where the row heading keyword is >100 chars
         # from some values in the same row. Distance is still computed for ranking.
-        # Note: We check for table_row_parser presence (not just is_table()) because
-        # single-row tables with [CELL] markers also need unrestricted same-row matching.
-        has_table_structure = table_row_parser is not None
+        # FIX-B2: Require is_table() to be True (2+ rows). Segments with [CELL] markers
+        # but no [ROW] markers (e.g. bullet lists) parse as 1 row → is_table()=False.
+        # Without this check, distance filtering is skipped for non-table segments,
+        # allowing keywords at distance 137-199 to match values in the same segment.
+        has_table_structure = table_row_parser is not None and table_row_parser.is_table()
 
         candidates_with_distance: list[tuple[KeywordMatch, int]] = []
         for kw in all_keywords:
