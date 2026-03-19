@@ -6,6 +6,47 @@ This document tracks known issues, limitations, and planned improvements identif
 
 ---
 
+## 9. Snap Filing (ID 32/33) — Mislabeled Data, Validation DB Empty
+
+**Status**: Open — blocked on validation DB rebuild
+**Severity**: Medium (validation set data loss)
+**Discovered**: 2025-12-27 (HRV-5)
+**Investigated**: 2026-03-19
+
+### Problem
+
+Filing ID 33 (and later reorganized to ID 32 in `gi3_richness_analysis.py`) is labeled "Snap"
+but the CIK on record (`0001644378`) belongs to **RMR Group Inc.** (a REIT management company),
+confirmed via SEC EDGAR API.
+
+The local dev DB validation dataset (Farfetch, Snap, Slack, Snowflake, etc.) was found to be
+**empty** as of 2026-03-19. The backup file `filings_backup.dump` contains only schema.
+
+### Confirmed Facts
+
+- Filing 33 CIK `0001644378` = RMR Group Inc. (confirmed 2026-03-19 via SEC API)
+- Snap's correct CIK = `0001564408`, form S-1/A, filed 2017-02-27, accession `0001193125-17-056992`
+- `gi3_richness_analysis.py` FILING_MAP comment was stale (said "IDs 31/33" were wrong; actually
+  IDs 32/34 had RLX Technology / Vodka Brands data per GR-FINAL_VALIDATION.md 2025-12-26)
+
+### Root Cause
+
+CIK `0001644378` was mistakenly used for Snap instead of `0001564408` when originally ingested.
+
+### Resolution Required
+
+1. Rebuild local dev validation DB (repopulate Farfetch, Slack, Samsara, SUSHI GINZA, etc.)
+2. Upsert Snap with correct CIK `0001564408` and fetch HTML
+3. Update `FILING_MAP` in `gi3_richness_analysis.py` with Snap's new filing ID
+4. Run extraction and add Snap to gold standard (separate task)
+
+### Partial Fix Applied (2026-03-19)
+
+- Corrected stale comment in `gi3_richness_analysis.py` FILING_MAP
+- Added inline note on Snap CIK pending fix
+
+---
+
 ## 6. Gold Standard Coverage Tests Failing for Farfetch
 
 **Status**: Open
