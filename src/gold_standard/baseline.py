@@ -284,7 +284,8 @@ def create_baseline_from_results(
     total_fn = sum(r.get("false_negatives", 0) for r in results)
 
     overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
-    overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+    _raw_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+    overall_recall = unique_recall if unique_recall is not None else _raw_recall
     overall_f1 = (
         2 * (overall_precision * overall_recall) / (overall_precision + overall_recall)
         if (overall_precision + overall_recall) > 0
