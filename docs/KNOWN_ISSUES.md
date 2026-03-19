@@ -2,7 +2,88 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-03-17
+**Last Updated**: 2026-03-19
+
+---
+
+## 6. Gold Standard Coverage Tests Failing for Farfetch
+
+**Status**: Open
+**Severity**: Medium
+**Discovered**: 2026-03-19
+
+### Problem
+
+Two tests in `tests/integration/test_gold_standard_coverage.py` were observed failing:
+- `test_candidate_generation_finds_active_consumers`
+- `test_candidate_generation_finds_number_of_orders`
+
+These failures were seen during a full suite run and appear unrelated to recent context-type tracking changes.
+
+### Likely Cause
+
+Probably linked to the Farfetch document fetch issue (Issue #2 below) — if the HTML for the Farfetch filing isn't locally available, candidate generation finds nothing. May resolve once the 78 cloud-stored filings are re-fetched on Render.
+
+### Next Steps
+
+- Reproduce in isolation: `python3 -m pytest tests/integration/test_gold_standard_coverage.py -v`
+- Confirm whether failure is due to missing HTML file or a pattern regression
+
+---
+
+## 7. Intermittent Deadlock in Extraction Pipeline Integration Test
+
+**Status**: Open
+**Severity**: Low (intermittent)
+**Discovered**: 2026-03-19
+
+### Problem
+
+`tests/integration/extraction/test_extraction_pipeline_integration.py::TestExtractionPipelineIntegration::test_process_filing_success` intermittently fails with a PostgreSQL deadlock during test setup:
+
+```
+psycopg.errors.deadlock_detected: deadlock detected
+DETAIL: Process A waits for AccessExclusiveLock on relation X; blocked by Process B.
+        Process B waits for AccessExclusiveLock on relation Y; blocked by Process A.
+```
+
+Reproduced twice in succession during the 2026-03-19 test session.
+
+### Likely Cause
+
+Two test processes (or test fixtures) are acquiring table-level locks in different orders during setup, creating a deadlock cycle. Possibly triggered by running many integration test sessions in quick succession without full connection teardown between runs.
+
+### Next Steps
+
+- Investigate whether the extraction pipeline test's setup fixture is acquiring locks that conflict with other concurrent fixtures
+- Check if adding retry logic on deadlock in the test setup would be sufficient
+
+---
+
+## 8. Connection Pool Exhaustion During Repeated Test Runs
+
+**Status**: Open
+**Severity**: Low (operational)
+**Discovered**: 2026-03-19
+
+### Problem
+
+Running the integration test suite multiple times in quick succession causes PostgreSQL to hit its connection limit:
+
+```
+FATAL: sorry, too many clients already
+```
+
+This causes test setup failures (not code failures) and requires a `docker stop/start filings-postgres` to recover.
+
+### Likely Cause
+
+Connection pools from previous test sessions are not being fully closed before the next run starts. The `psycopg_pool` pool workers retry connections in background threads that outlive the pytest session.
+
+### Next Steps
+
+- Check if `DatabaseAdapter` needs an explicit `close()` call in integration test teardown
+- Consider increasing PostgreSQL's `max_connections` setting in the Docker compose config as a short-term workaround
 
 ---
 
@@ -118,6 +199,9 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Gold Standard Methodology | Open | Low | Low | Process improvement |
 | Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
+| Gold Standard Coverage Tests Failing | Open | Medium | Low | Investigate once Farfetch re-fetch complete |
+| Extraction Pipeline Deadlock | Open | Low | Low | Intermittent; investigate fixture lock ordering |
+| Connection Pool Exhaustion | Open | Low | Low | Recover with docker restart; check pool teardown |
 
 ---
 
@@ -145,3 +229,4 @@ Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system
 - **2026-03-16**: Issue #6 resolved — default SECClient creation + removed null guard; 78 cloud-fetched files need re-fetch
 - **2026-03-16**: Issue #1 resolved — gold standard CSV updated to align with system taxonomy; no metric ID mismatches remain
 - **2026-03-17**: Archived resolved Issues #1 and #6; updated Farfetch contributing factors to reflect resolutions
+- **2026-03-19**: Added Issues #6–#8: Farfetch gold standard test failures, extraction pipeline deadlock, connection pool exhaustion
