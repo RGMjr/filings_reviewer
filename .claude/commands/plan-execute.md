@@ -17,6 +17,14 @@ Read the full plan provided by the user. For each phase/step, identify:
 
 Flag any phases that touch the same file — they CANNOT run in parallel (merge conflicts).
 
+### Step 1a: Branch protection
+
+If currently on main/master, create and check out a working branch before spawning agents:
+
+    git checkout -b plan-execute/<short-description>
+
+If already on a feature branch, stay on it. Never run plan-execute directly on main.
+
 ### Step 2: Build the dependency graph
 
 Group phases into waves:
@@ -43,6 +51,7 @@ Wait for user confirmation before proceeding if any conflicts were detected.
 For each phase in Wave 1, spawn a sub-agent using the Agent tool with:
 - `subagent_type`: `"general-purpose"`
 - `model`: `"sonnet"`
+- `isolation`: `"worktree"` — each agent works on an isolated copy of the repo; Agent tool auto-cleans up if no changes are made. This means agents can safely run in parallel even if wave analysis missed a file overlap.
 - `run_in_background`: `true` for all but the last (so they run concurrently)
 - A self-contained prompt that includes:
   - The exact phase description and all steps
@@ -73,6 +82,14 @@ pytest tests/unit/ -x -q --tb=short
 ```
 
 Report the final status. If anything fails, invoke the `/ci-fix` protocol to resolve it.
+
+If the plan was executed on a `plan-execute/*` branch, offer to merge to main:
+
+    git checkout main
+    git merge plan-execute/<short-description>
+    git branch -d plan-execute/<short-description>
+
+Wait for user confirmation before merging. Do not auto-merge.
 
 ### Step 7: Summary report
 
@@ -129,3 +146,4 @@ AFTER COMPLETING:
 - Each sub-agent implements ONLY its assigned phase — no scope expansion.
 - Always run a full CI check after all waves complete.
 - If the plan has only 1-2 steps, skip the parallel machinery and just execute sequentially.
+- If on main, create a `plan-execute/<description>` branch before spawning agents. Never execute directly on main.
