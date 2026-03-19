@@ -6,6 +6,13 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Merge main into earnings-call-exploration (2026-03-18)**
+- Resolved 37 conflicting files across V2 pipeline revert on main vs full V2 + transcript/presentation support on branch
+- Root cause of gold standard false regression: main's validate_against_gold_standard.py removed exclusion of "not a customer metric" GS entries from FN count — restored exclusion
+- Other key fixes: restored metric_keywords.yaml, false_positive_filter.py, fresh_extractor.py from branch; added deprecation skip to src/extraction/keyword_config.py; fixed golden test skip decorators; updated docs allowlist in pre-commit guard
+- Gold standard result: P=88.9%, R=63.7%, F1=74.2% (matches baseline exactly, no regression)
+- All 5120 unit tests pass
+
 **FP Rule Precision via text positioning (earnings-call-exploration, 2026-03-12)**
 - Phase 0 diagnostic found: `value_pos` IS found via `find()` for all FPs (no cross-segment binding); root causes were (1) zero-width spaces (`\u200b`) breaking `_DELTA_BY_MORE_RE`'s `\s+` and (2) `_COST_STRUCTURE_REVENUE_RE.search()` returning first match (far from value) not nearest
 - Fixes: `_DELTA_BY_MORE_RE` now uses `.{0,40}` + `[\s\u200b]+` between verb and "by", pre-window widened 30→60 chars; added "guidance range" to `_COST_STRUCTURE_REVENUE_RE`; switched to `finditer()` to check all occurrences for nearest match
