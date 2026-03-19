@@ -69,6 +69,7 @@ class GoldStandardEntry:
     source_quote: str  # "Quote/context"
     line_number: int  # Line number in CSV for reference
     is_definition_only: bool  # True if this is a definition without numeric value
+    duplicate_group: str = ''  # e.g. 'G001:primary' or 'G001:dup'; empty for singletons
 
 
 @dataclass
@@ -224,6 +225,7 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
                 source_quote=row.get('Quote/context', ''),
                 line_number=line_num,
                 is_definition_only=is_def_only,
+                duplicate_group=row.get('duplicate_group', ''),
             )
             entries.append(entry)
 
