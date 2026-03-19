@@ -36,11 +36,14 @@ if TYPE_CHECKING:
     from src.infra.db import DatabaseAdapter
 
 # Filing ID to Company Name mapping
-# Note: IDs 31/33 were incorrect (RLX Technology/Vodka Brands due to CIK mismatch)
-# IDs 39/40 are the real Snowflake/DocuSign filings downloaded via SEC API (2024-12)
+# History: Original IDs 32/34 had wrong data (RLX Technology / Vodka Brands due to CIK
+# mismatch, labeled as Snowflake/DocuSign). Fixed 2025-12-26: IDs 39/40 created for real
+# Snowflake/DocuSign. Filing 33 (labeled Snap, CIK 0001644378) contained RMR Group Inc.
+# data — mislabeling confirmed, correct Snap CIK is 0001564408.
+# IDs 31/33 no longer in use after DB reorganization.
 FILING_MAP = {
     29: "Farfetch Ltd",
-    32: "Snap",
+    32: "Snap",               # NOTE: CIK fix pending — correct CIK is 0001564408 (S-1/A 2017-02-27)
     34: "SUSHI GINZA ONODERA",
     35: "Slack Technologies",
     39: "Snowflake Inc",      # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)

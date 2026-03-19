@@ -337,8 +337,10 @@ Output:
 5. ✅ Exported decisions to CSV
 
 **Data Quality Issue**:
-- Snap (filing_id=33) contains wrong company data (RMR Inc. instead of Snap)
-- Recommendation: Re-fetch correct Snap S-1 filing
+- Snap (filing_id=33) contains wrong company data (RMR Group Inc. instead of Snap)
+- Root cause confirmed (2026-03-19): CIK 0001644378 = RMR Group Inc., not Snap
+- Snap correct CIK: 0001564408, S-1/A 2017-02-27, accession 0001193125-17-056992
+- Fix blocked on local dev validation DB rebuild — see KNOWN_ISSUES.md #9
 
 **Deliverables**:
 1. ✅ 3 of 4 filings fully reviewed (Snap had data issue)
