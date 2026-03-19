@@ -69,7 +69,7 @@ class CandidateGenerationConfig:
     # Keyword Proximity Settings
     # =========================================================================
 
-    max_keyword_distance: int = 100
+    max_keyword_distance: int = 120
     """Maximum character distance between number and metric keyword."""
 
     # =========================================================================

@@ -514,12 +514,16 @@ class CandidateGenerator:
                 segment_id=segment.get("source_segment_id"),
             )
 
-        # Skip definition segments - they explain metrics but don't contain values (EI-1)
-        if segment.get("contains_definition_flag"):
+        # Skip definition segments that have no numeric disclosure (EI-1).
+        # If a segment is both a definition AND contains a numeric disclosure, process it —
+        # SEC filings commonly define a metric and report its value in the same paragraph.
+        if segment.get("contains_definition_flag") and not segment.get(
+            "contains_numeric_disclosure_flag"
+        ):
             source_segment_id = segment.get("source_segment_id")
             logger.debug(
                 f"Skipping definition segment {source_segment_id}: "
-                "contains_definition_flag is True"
+                "contains_definition_flag is True and no numeric disclosure"
             )
             return None
 
