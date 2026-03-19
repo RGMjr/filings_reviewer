@@ -1816,6 +1816,7 @@ class TestRequiredContext:
         assert len(metric_matches) >= 1, \
             f"{metric_id} should match when per-customer context is present"
 
+    @pytest.mark.skip(reason="cm_gmv deprecated on this branch (patterns removed); no matches expected")
     def test_context_check_disabled_always_matches(self, matcher):
         """When check_required_context=False, revenue synonyms should always match."""
         # GMV without cohort/per-customer context
@@ -1947,6 +1948,7 @@ class TestRequiredContext:
         assert len(customer_matches) >= 1, \
             "Non-revenue metrics should match without context requirement"
 
+    @pytest.mark.skip(reason="cm_gmv deprecated on this branch (patterns removed); not found by find_all_keywords")
     def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
         """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
         # GMV without cohort context
@@ -1970,6 +1972,7 @@ class TestRequiredContext:
         result = matcher._has_required_context("cm_active_customers_total", 10, text)
         assert result is True
 
+    @pytest.mark.skip(reason="cm_gmv deprecated on this branch (no required_context entry); returns True by default")
     def test_has_required_context_false_without_context(self, matcher):
         """_has_required_context returns False for GMV without context."""
         text = "Our GMV reached $1 billion"

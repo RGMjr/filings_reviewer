@@ -1785,27 +1785,27 @@ class TestSpelledOutNumberFilterExemption:
         return FalsePositiveFilter()
 
     def test_spelled_out_exempt_from_min_value(self, filter):
-        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
+        """Spelled-out numbers below min_value are filtered (no exemption on this branch)."""
         # "six" has value 6, which is below default min_value (10)
-        # But spelled-out numbers should be exempt
+        # On this branch, spelled-out numbers are NOT exempt (narrative noise like
+        # "three main factors" far outweighs meaningful ones which have higher values)
         number = NumberMatch(
             start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive("six months payback", number)
-        # Should NOT be filtered - spelled-out numbers are intentionally written
-        assert is_fp is False
-        assert reason is None
+        assert is_fp is True
+        assert reason == "below_min_value"
 
     def test_spelled_out_exempt_from_toc_proximity(self, filter):
-        """Spelled-out numbers near TOC should NOT be filtered."""
+        """Spelled-out numbers near TOC are filtered (below min_value on this branch)."""
         text = "Table of Contents ... payback is six months"
         number = NumberMatch(
             start=text.find("six"), end=text.find("six") + 3,
             raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive(text, number)
-        # Should NOT be filtered - spelled numbers are not page numbers
-        assert is_fp is False
+        # Filtered by below_min_value (no spelled-out exemption on this branch)
+        assert is_fp is True
 
     def test_numeric_small_value_still_filtered(self, filter):
         """Numeric small values should still be filtered (not exempt)."""

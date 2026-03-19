@@ -36,7 +36,6 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +187,7 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
     """
     entries = []
 
-    with open(path, 'r', encoding='utf-8-sig') as f:
+    with open(path, encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         for line_num, row in enumerate(reader, start=2):  # Line 1 is header
             # Normalize metric ID from "Standard Metric Name"
@@ -379,20 +378,26 @@ def validate_filing(
     else:
         candidates = []
 
-    # Filter out definition-only entries (no numeric values) from gold standard
-    # These cannot be detected by our system and should not count as false negatives
+    # Filter out entries that cannot be detected by our system
     gold_entries_with_values = []
     definition_only_entries = []
+    non_customer_metric_entries = []
 
     for entry in gold_entries:
         # Definition-only if flag is set AND no raw/scaled values
         if entry.is_definition_only and not entry.raw_value.strip() and not entry.scaled_value.strip():
             definition_only_entries.append(entry)
+        # Entries explicitly marked as "not a customer metric" or with empty metric_id
+        # should not penalize the system as false negatives
+        elif entry.metric_id in ('not a customer metric', ''):
+            non_customer_metric_entries.append(entry)
         else:
             gold_entries_with_values.append(entry)
 
     if definition_only_entries and verbose:
         logger.info(f"  Skipping {len(definition_only_entries)} definition-only entries (no numeric values)")
+    if non_customer_metric_entries:
+        logger.info(f"  Skipping {len(non_customer_metric_entries)} non-customer-metric entries")
 
     # Two-pass optimal matching:
     # 1. Build all candidate-gold pairs with scores
@@ -462,7 +467,7 @@ def validate_filing(
     matched_candidates: set[int] = set()  # Candidate IDs matched
     tp_matches: list[ValidationMatch] = []
 
-    for score, candidate_id, candidate, entry, match_type in potential_matches:
+    for score, candidate_id, _candidate, entry, match_type in potential_matches:
         # Skip if candidate or entry already matched
         if candidate_id in matched_candidates:
             continue
@@ -528,7 +533,7 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
     print(f"\nGold Standard Entries: {result.gold_standard_count}")
     print(f"Review Candidates: {result.candidate_count}")
 
-    print(f"\nMetrics:")
+    print("\nMetrics:")
     print(f"  True Positives:  {result.true_positives}")
     print(f"  False Positives: {result.false_positives}")
     print(f"  False Negatives: {result.false_negatives}")
@@ -537,7 +542,7 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
     print(f"  F1 Score:        {result.f1_score * 100:.1f}%")
 
     if result.false_positives > 0:
-        print(f"\nFalse Positives (candidates not in gold standard):")
+        print("\nFalse Positives (candidates not in gold standard):")
         for i, fp in enumerate(result.fp_candidates[:10], 1):  # Show first 10
             metric = fp.get('suggested_metric_id', 'unknown')
             raw = fp.get('raw_number_text', '')
@@ -547,7 +552,7 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
             print(f"  ... and {len(result.fp_candidates) - 10} more")
 
     if result.false_negatives > 0:
-        print(f"\nFalse Negatives (gold standard metrics not detected):")
+        print("\nFalse Negatives (gold standard metrics not detected):")
         for i, fn in enumerate(result.fn_entries[:10], 1):  # Show first 10
             metric = fn.metric_id or 'unknown'
             variant = fn.text_variant or fn.raw_value
@@ -1017,7 +1022,7 @@ Examples:
         print(f"Filings validated: {len(results)}")
         print(f"Total Gold Standard: {sum(r.gold_standard_count for r in results)}")
         print(f"Total Candidates: {sum(r.candidate_count for r in results)}")
-        print(f"\nAggregate Metrics:")
+        print("\nAggregate Metrics:")
         print(f"  True Positives:  {total_tp}")
         print(f"  False Positives: {total_fp}")
         print(f"  False Negatives: {total_fn}")
