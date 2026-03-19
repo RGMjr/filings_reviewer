@@ -239,7 +239,7 @@ class TestGoldStandardRegression:
         gold_standard_tolerance,
         baseline_path,
     ):
-        """Log strict recall vs baseline (diagnostic only — does not gate CI; see test_unique_recall_above_baseline)."""
+        """Fail if recall (unique) drops below baseline threshold."""
         if baseline_metrics is None:
             pytest.skip(
                 f"Baseline file not found: {baseline_path}. "
@@ -249,16 +249,15 @@ class TestGoldStandardRegression:
         delta = current_metrics.overall.recall - baseline_metrics.overall.recall
         threshold = -gold_standard_tolerance
 
-        if delta < threshold:
-            logger.warning(
-                f"STRICT RECALL DIAGNOSTIC: {current_metrics.overall.recall:.1%} "
-                f"(baseline: {baseline_metrics.overall.recall:.1%}, "
-                f"delta: {delta:+.1%}, allowed: {threshold:+.1%}). "
-                f"Strict recall is inflated by gold standard duplicates — use unique_recall as the primary gate."
-            )
-        elif delta > 0:
+        assert delta >= threshold, (
+            f"RECALL REGRESSED: {current_metrics.overall.recall:.1%} "
+            f"(baseline: {baseline_metrics.overall.recall:.1%}, "
+            f"delta: {delta:+.1%}, allowed: {threshold:+.1%})"
+        )
+
+        if delta > 0:
             logger.info(
-                f"Strict recall improved: {current_metrics.overall.recall:.1%} "
+                f"Recall (unique) improved: {current_metrics.overall.recall:.1%} "
                 f"(+{delta:.1%} vs baseline)"
             )
 
@@ -288,38 +287,6 @@ class TestGoldStandardRegression:
         if delta > 0:
             logger.info(
                 f"F1 improved: {current_metrics.overall.f1:.1%} "
-                f"(+{delta:.1%} vs baseline)"
-            )
-
-    def test_unique_recall_above_baseline(
-        self,
-        current_metrics,
-        baseline_metrics,
-        gold_standard_tolerance,
-        baseline_path,
-    ):
-        """Fail if unique_recall drops below baseline threshold."""
-        if baseline_metrics is None:
-            pytest.skip(
-                f"Baseline file not found: {baseline_path}. "
-                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
-            )
-
-        if baseline_metrics.unique_recall is None or current_metrics.unique_recall is None:
-            pytest.skip("unique_recall not available in baseline or current metrics")
-
-        delta = current_metrics.unique_recall - baseline_metrics.unique_recall
-        threshold = -gold_standard_tolerance
-
-        assert delta >= threshold, (
-            f"UNIQUE_RECALL REGRESSED: {current_metrics.unique_recall:.1%} "
-            f"(baseline: {baseline_metrics.unique_recall:.1%}, "
-            f"delta: {delta:+.1%}, allowed: {threshold:+.1%})"
-        )
-
-        if delta > 0:
-            logger.info(
-                f"Unique recall improved: {current_metrics.unique_recall:.1%} "
                 f"(+{delta:.1%} vs baseline)"
             )
 
