@@ -59,12 +59,12 @@ FARFETCH_EXPECTED_VALUES = {
     # Number of Orders values
     "1305297": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_purchase_transactions_overall",
+        "expected_metric": "cm_transactions_by_cohort",
         "description": "Number of Orders (Dec 31, 2017)",
     },
     "853195": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_purchase_transactions_overall",
+        "expected_metric": "cm_transactions_by_cohort",
         "description": "Number of Orders (June 30, 2017)",
     },
 }
@@ -98,7 +98,7 @@ def gold_standard_dir() -> Path:
 @pytest.fixture
 def farfetch_filing_path(gold_standard_dir: Path) -> str | None:
     """Return path to Farfetch filing."""
-    path = gold_standard_dir / "Farfetch_Limited" / "filing.html"
+    path = Path("data/filings/0001740915/000119312518252315/primary.htm")
     if path.exists():
         return str(path)
     return None
@@ -194,10 +194,12 @@ class TestFarfetchGoldStandard:
     """Tests for Farfetch filing gold standard coverage."""
 
     @pytest.mark.skipif(
-        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
-        reason="Farfetch filing not available",
+        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        reason="Farfetch filing not available"
     )
-    def test_segmentation_captures_active_consumers(self, farfetch_filing_path: str) -> None:
+    def test_segmentation_captures_active_consumers(
+        self, farfetch_filing_path: str
+    ) -> None:
         """Verify segmenter captures 'Active Consumers' text."""
         segments = segment_filing(farfetch_filing_path)
 
@@ -208,17 +210,21 @@ class TestFarfetchGoldStandard:
         )
 
         # Check for Active Consumers keyword
-        found_keyword = any("Active Consumer" in seg.raw_text for seg in segments)
+        found_keyword = any(
+            "Active Consumer" in seg.raw_text for seg in segments
+        )
         assert found_keyword, (
             "'Active Consumers' not found in any segment. "
             "Check segmenter is capturing relevant content."
         )
 
     @pytest.mark.skipif(
-        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
-        reason="Farfetch filing not available",
+        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        reason="Farfetch filing not available"
     )
-    def test_candidate_generation_finds_active_consumers(self, farfetch_filing_path: str) -> None:
+    def test_candidate_generation_finds_active_consumers(
+        self, farfetch_filing_path: str
+    ) -> None:
         """Verify candidate generator finds Active Consumers values."""
         segments = segment_filing(farfetch_filing_path)
         candidates = generate_candidates(segments)
@@ -229,7 +235,8 @@ class TestFarfetchGoldStandard:
         # Check for the key value
         candidate = find_candidate_by_value(candidates, "1118047")
         assert candidate is not None, (
-            "Value 1,118,047 (Active Consumers) not found as candidate. Keywords may need updating."
+            "Value 1,118,047 (Active Consumers) not found as candidate. "
+            "Keywords may need updating."
         )
 
         # Verify it's matched to correct metric
@@ -239,10 +246,12 @@ class TestFarfetchGoldStandard:
         )
 
     @pytest.mark.skipif(
-        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
-        reason="Farfetch filing not available",
+        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        reason="Farfetch filing not available"
     )
-    def test_candidate_generation_finds_number_of_orders(self, farfetch_filing_path: str) -> None:
+    def test_candidate_generation_finds_number_of_orders(
+        self, farfetch_filing_path: str
+    ) -> None:
         """Verify candidate generator finds Number of Orders values."""
         segments = segment_filing(farfetch_filing_path)
         candidates = generate_candidates(segments)
@@ -250,20 +259,23 @@ class TestFarfetchGoldStandard:
         # Check for the key value
         candidate = find_candidate_by_value(candidates, "1305297")
         assert candidate is not None, (
-            "Value 1,305,297 (Number of Orders) not found as candidate. Keywords may need updating."
+            "Value 1,305,297 (Number of Orders) not found as candidate. "
+            "Keywords may need updating."
         )
 
-        # Verify it's matched to overall transaction metric
-        assert candidate.suggested_metric_id == "cm_purchase_transactions_overall", (
-            f"Expected cm_purchase_transactions_overall but got {candidate.suggested_metric_id}. "
+        # Verify it's matched to transaction metric
+        assert candidate.suggested_metric_id == "cm_transactions_by_cohort", (
+            f"Expected cm_transactions_by_cohort but got {candidate.suggested_metric_id}. "
             "Check keyword patterns."
         )
 
     @pytest.mark.skipif(
-        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
-        reason="Farfetch filing not available",
+        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        reason="Farfetch filing not available"
     )
-    def test_farfetch_gold_standard_coverage(self, farfetch_filing_path: str) -> None:
+    def test_farfetch_gold_standard_coverage(
+        self, farfetch_filing_path: str
+    ) -> None:
         """Verify all key Farfetch gold standard values are captured."""
         segments = segment_filing(farfetch_filing_path)
         candidates = generate_candidates(segments)
@@ -282,7 +294,8 @@ class TestFarfetchGoldStandard:
 
         # Require at least 80% coverage
         assert coverage >= 80, (
-            f"Gold standard coverage too low: {coverage:.1f}%. Missing values: {missing_values}"
+            f"Gold standard coverage too low: {coverage:.1f}%. "
+            f"Missing values: {missing_values}"
         )
 
         logger.info(
@@ -301,9 +314,11 @@ class TestSamsaraVisionGoldStandard:
 
     @pytest.mark.skipif(
         not Path("data/gold_standard/Samsara_Vision_Inc_/filing.html").exists(),
-        reason="Samsara Vision filing not available",
+        reason="Samsara Vision filing not available"
     )
-    def test_segmentation_captures_customer_table(self, samsara_vision_filing_path: str) -> None:
+    def test_segmentation_captures_customer_table(
+        self, samsara_vision_filing_path: str
+    ) -> None:
         """Verify segmenter captures customer concentration table."""
         segments = segment_filing(samsara_vision_filing_path)
 
@@ -311,12 +326,18 @@ class TestSamsaraVisionGoldStandard:
         found_39 = value_in_segments(segments, "39.90%")
         found_20 = value_in_segments(segments, "20.20%")
 
-        assert found_39, "Value '39.90%' not found in segments. Check segmenter table handling."
-        assert found_20, "Value '20.20%' not found in segments. Check segmenter table handling."
+        assert found_39, (
+            "Value '39.90%' not found in segments. "
+            "Check segmenter table handling."
+        )
+        assert found_20, (
+            "Value '20.20%' not found in segments. "
+            "Check segmenter table handling."
+        )
 
     @pytest.mark.skipif(
         not Path("data/gold_standard/Samsara_Vision_Inc_/filing.html").exists(),
-        reason="Samsara Vision filing not available",
+        reason="Samsara Vision filing not available"
     )
     def test_candidate_generation_finds_customer_concentration(
         self, samsara_vision_filing_path: str
@@ -343,9 +364,11 @@ class TestSamsaraVisionGoldStandard:
 
     @pytest.mark.skipif(
         not Path("data/gold_standard/Samsara_Vision_Inc_/filing.html").exists(),
-        reason="Samsara Vision filing not available",
+        reason="Samsara Vision filing not available"
     )
-    def test_samsara_vision_gold_standard_coverage(self, samsara_vision_filing_path: str) -> None:
+    def test_samsara_vision_gold_standard_coverage(
+        self, samsara_vision_filing_path: str
+    ) -> None:
         """Verify all key Samsara Vision gold standard values are captured."""
         segments = segment_filing(samsara_vision_filing_path)
         candidates = generate_candidates(segments)
@@ -364,7 +387,8 @@ class TestSamsaraVisionGoldStandard:
 
         # Require 100% coverage for Samsara Vision (it's a small gold standard)
         assert coverage == 100, (
-            f"Gold standard coverage incomplete: {coverage:.1f}%. Missing values: {missing_values}"
+            f"Gold standard coverage incomplete: {coverage:.1f}%. "
+            f"Missing values: {missing_values}"
         )
 
         logger.info(
@@ -383,9 +407,9 @@ class TestKeywordPatterns:
 
     def test_active_consumers_keyword_exists(self) -> None:
         """Verify 'active consumers' keyword is in metric patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.extraction.metric_classifier import MetricClassifier
 
-        keywords = get_metric_keywords().get("cm_active_customers_total", [])
+        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_active_customers_total", [])
 
         # Check for consumer patterns
         consumer_patterns = [k for k in keywords if "consumer" in k.lower()]
@@ -396,9 +420,9 @@ class TestKeywordPatterns:
 
     def test_number_of_orders_keyword_exists(self) -> None:
         """Verify 'number of orders' keyword is in metric patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.extraction.metric_classifier import MetricClassifier
 
-        keywords = get_metric_keywords().get("cm_transactions_by_cohort", [])
+        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_transactions_by_cohort", [])
 
         # Check for orders patterns
         orders_patterns = [k for k in keywords if "order" in k.lower()]
@@ -409,14 +433,13 @@ class TestKeywordPatterns:
 
     def test_customer_abc_keyword_exists(self) -> None:
         """Verify 'Customer A/B/C' keyword is in revenue concentration patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.extraction.metric_classifier import MetricClassifier
 
-        keywords = get_metric_keywords().get("cm_revenue_concentration", [])
+        keywords = MetricClassifier.METRIC_KEYWORDS.get("cm_revenue_concentration", [])
 
         # Check for Customer A/B/C pattern
         customer_patterns = [
-            k
-            for k in keywords
+            k for k in keywords
             if "customer" in k.lower() and ("[a-d]" in k.lower() or "[A-D]" in k)
         ]
         assert len(customer_patterns) > 0, (
@@ -434,10 +457,12 @@ class TestSegmentationRegression:
     """Tests to prevent segmentation regression (stale segment issue)."""
 
     @pytest.mark.skipif(
-        not Path("data/gold_standard/Farfetch_Limited/filing.html").exists(),
-        reason="Farfetch filing not available",
+        not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
+        reason="Farfetch filing not available"
     )
-    def test_farfetch_segment_count_reasonable(self, farfetch_filing_path: str) -> None:
+    def test_farfetch_segment_count_reasonable(
+        self, farfetch_filing_path: str
+    ) -> None:
         """Verify Farfetch produces reasonable segment count (not stale)."""
         segments = segment_filing(farfetch_filing_path)
 
@@ -452,9 +477,11 @@ class TestSegmentationRegression:
 
     @pytest.mark.skipif(
         not Path("data/gold_standard/Samsara_Vision_Inc_/filing.html").exists(),
-        reason="Samsara Vision filing not available",
+        reason="Samsara Vision filing not available"
     )
-    def test_samsara_vision_segment_count_reasonable(self, samsara_vision_filing_path: str) -> None:
+    def test_samsara_vision_segment_count_reasonable(
+        self, samsara_vision_filing_path: str
+    ) -> None:
         """Verify Samsara Vision produces reasonable segment count."""
         segments = segment_filing(samsara_vision_filing_path)
 

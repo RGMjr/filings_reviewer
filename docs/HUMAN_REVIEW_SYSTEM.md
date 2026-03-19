@@ -77,7 +77,7 @@ src/web/
 ### 1. Generate Candidates
 
 ```bash
-python3 scripts/generate_review_candidates.py --filing-ids 1,2,3,4,5
+python scripts/generate_review_candidates.py --filing-ids 1,2,3,4,5
 ```
 
 Options: `--limit`, `--batch-id`, `--dry-run`, `--no-progress`
@@ -88,7 +88,7 @@ Options: `--limit`, `--batch-id`, `--dry-run`, `--no-progress`
 export DATABASE_URL="postgresql://user:pass@localhost/filings_analysis"
 export SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
 export APP_ENV=production
-python3 scripts/run_review_server.py
+python scripts/run_review_server.py
 ```
 
 Review at: http://localhost:8000/filings
@@ -98,7 +98,7 @@ Review at: http://localhost:8000/filings
 After 5-10 filings reviewed:
 
 ```bash
-python3 scripts/analyze_review_patterns.py \
+python scripts/analyze_review_patterns.py \
     --min-precision 0.80 \
     --cross-validate \
     --include-two-feature \
@@ -123,7 +123,7 @@ WHERE pattern_id = 123;
 ### 5. Evaluate Improvement (E2)
 
 ```bash
-python3 scripts/evaluate_extraction_improvement.py --min-decisions 5 --detailed
+python scripts/evaluate_extraction_improvement.py --min-decisions 5 --detailed
 ```
 
 ---
@@ -225,9 +225,6 @@ Target metrics for production use:
 
 ## Related Documentation
 
-- `docs/V2_HUMAN_REVIEW_GUIDE.md` - V2 human review guide (fact-by-fact review with evidence packs)
 - `docs/architecture/extraction-pipeline.md` - Full extraction pipeline
 - `docs/development/metrics-taxonomy.md` - Metric definitions
 - `CLAUDE.md` - Quick reference for Claude Code
-
-> **Note:** This document covers the V1 candidate-based review system. For the V2 fact-based review system, see `docs/V2_HUMAN_REVIEW_GUIDE.md`.

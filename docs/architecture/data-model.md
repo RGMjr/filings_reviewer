@@ -672,6 +672,68 @@ When metric definition changes that affect comparability:
 
 ---
 
+---
+
+## Schema 09: Image Review and V2 Extraction Tables
+
+Two additional schema files extend the core data model. Both are applied but the V2 tables are inactive pending a full V2 pipeline deployment.
+
+### Image Review Tables (`sql/09_create_image_review_schema.sql`)
+
+Supports human-in-the-loop classification of chart images found in filings.
+
+**Grain:** `image_review_candidates` — one row per chart image candidate per filing.
+
+| Table | Purpose |
+|-------|---------|
+| `image_review_candidates` | Chart image candidates with context, detection tier, and cohort confidence score |
+| `image_review_decisions` | One-to-one human classification decisions (relevant/not_relevant) per candidate |
+
+**Key fields on `image_review_candidates`:**
+- `image_src`, `image_url` — image filename and full SEC URL
+- `detection_tier` — how discovered: `tier_1_cohort`, `tier_2_large`, `tier_3_all`, `seed_list`
+- `cohort_confidence` — numeric 0–1 heuristic confidence
+- `review_status` — `pending`, `reviewed`, `skipped`
+
+**Key fields on `image_review_decisions`:**
+- `decision` — `relevant` or `not_relevant`
+- `chart_type` — required when relevant: `cohort_table`, `cohort_heatmap`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`
+- `rejection_reason` — required when not relevant: `decorative`, `not_a_chart`, `wrong_subject`, `duplicate`, `unreadable`, `other`
+
+**Analysis views included:**
+- `v_image_review_progress_by_filing` — review completion percentage per filing
+- `v_image_decision_stats_by_tier` — decision distribution by detection tier
+- `v_image_chart_type_distribution` — chart type breakdown for relevant images
+- `v_image_rejection_reasons` — rejection patterns by tier
+
+---
+
+### V2 Extraction Tables (`sql/09_v2_schema.sql`)
+
+Schema for the V2 unified extraction pipeline (currently inactive — V2 pipeline was reverted). Tables are present in the database but unpopulated.
+
+| Table | Purpose |
+|-------|---------|
+| `v2_metric_facts` | Primary extraction output: every extracted metric with full provenance, confidence, and review status |
+| `v2_tables` | Reconstructed HTML tables with colspan/rowspan resolution and section context |
+| `v2_table_cells` | Individual cells with `header_path` and `stub_path` arrays for semantic binding |
+| `v2_image_assets` | Extracted images with classification (chart/decorative/logo) and optional OCR results |
+| `v2_segments` | DOM-native content blocks with hierarchical `section_path` and `section_type` |
+| `v2_documents` | Filing-level V2 processing metadata and status tracking |
+| `v2_review_decisions` | Human review decisions for V2 facts (accept/reject/correct) |
+
+**Notable design choices vs V1:**
+- `v2_metric_facts.source_locator` is JSONB (vs foreign key to `source_segments`)
+- `v2_metric_facts.evidence_pack` is JSONB capturing snippet HTML, header/stub paths, and context
+- All primary keys are UUID (vs BIGSERIAL in V1 tables)
+- `v2_table_cells.header_path` / `stub_path` are `TEXT[]` arrays enabling binding without joins
+
+**Analysis views included:**
+- `v2_facts_pending_review` — facts awaiting human review, ordered by confidence
+- `v2_extraction_summary` — per-document extraction statistics and review counts
+
+---
+
 ## Related Documentation
 
 - **System Architecture:** `docs/architecture/system-overview.md` - High-level design

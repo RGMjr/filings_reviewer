@@ -205,7 +205,8 @@ class UniverseBuilder:
 
         if classification_method == "uncertain":
             logger.warning(
-                f"Filing {filing.accession_number} ({filing.company_name}) requires manual review"
+                f"Filing {filing.accession_number} ({filing.company_name}) "
+                f"requires manual review"
             )
 
         return in_scope
@@ -259,7 +260,9 @@ class UniverseBuilder:
         in_scope_count = self.db.get_in_scope_filing_count()
 
         # SPAC count
-        spac_result = self.db.query("SELECT COUNT(*) as count FROM filings WHERE is_spac = true")
+        spac_result = self.db.query(
+            "SELECT COUNT(*) as count FROM filings WHERE is_spac = true"
+        )
         spac_count = spac_result[0]["count"] if spac_result else 0
 
         # First-time issuer count

@@ -17,13 +17,11 @@ class TestDeduplicateCandidatesImport:
     def test_import_from_deduplicator_module(self):
         """Should be importable from src.review.deduplicator."""
         from src.review.deduplicator import deduplicate_candidates as fn
-
         assert callable(fn)
 
     def test_import_from_review_package(self):
         """Should be importable from src.review (public API)."""
         from src.review import deduplicate_candidates as fn
-
         assert callable(fn)
 
 

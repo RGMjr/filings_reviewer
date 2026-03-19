@@ -1050,7 +1050,7 @@ class TestFeatureExtractorPerformance:
         # (~2ms per candidate on typical hardware)
         assert elapsed_time < 2.0, (
             f"Performance degradation: {elapsed_time:.3f}s for 1000 candidates "
-            f"({elapsed_time / 1000 * 1000:.3f}ms per candidate)"
+            f"({elapsed_time/1000*1000:.3f}ms per candidate)"
         )
 
     def test_compute_features_for_10000_candidates(self):
@@ -1072,7 +1072,7 @@ class TestFeatureExtractorPerformance:
         # (linear scaling with overhead)
         assert elapsed_time < 20.0, (
             f"Performance degradation: {elapsed_time:.3f}s for 10,000 candidates "
-            f"({elapsed_time / 10000 * 1000:.3f}ms per candidate)"
+            f"({elapsed_time/10000*1000:.3f}ms per candidate)"
         )
 
     def test_pattern_matching_performance(self):
@@ -1127,7 +1127,9 @@ class TestFeatureExtractorPerformance:
         elapsed_time = time.time() - start_time
 
         # Should be very fast with single instance reuse
-        assert elapsed_time < 1.0, f"Instance reuse inefficient: {elapsed_time:.3f}s for 1000 calls"
+        assert elapsed_time < 1.0, (
+            f"Instance reuse inefficient: {elapsed_time:.3f}s for 1000 calls"
+        )
 
     def test_module_level_function_performance(self):
         """Module-level compute_features should have similar performance."""
@@ -1141,7 +1143,9 @@ class TestFeatureExtractorPerformance:
 
         # Should be same performance (uses singleton instance)
         assert len(features_list) == 1000
-        assert elapsed_time < 2.0, f"Module function slow: {elapsed_time:.3f}s for 1000 candidates"
+        assert elapsed_time < 2.0, (
+            f"Module function slow: {elapsed_time:.3f}s for 1000 candidates"
+        )
 
     def test_memory_efficiency_no_accumulation(self):
         """Should not accumulate memory across many feature computations."""
@@ -1189,7 +1193,9 @@ class TestFeatureExtractorPerformance:
         for i in range(count):
             # Vary numeric properties
             number_value = Decimal(str(1000 + i * 100))
-            number_unit = ["count", "%", "usd", "thousands", "percent", "dollars"][i % 6]
+            number_unit = ["count", "%", "usd", "thousands", "percent", "dollars"][
+                i % 6
+            ]
             number_raw_text = str(number_value)
 
             # Vary keyword properties

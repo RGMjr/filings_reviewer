@@ -5,6 +5,7 @@ Tests pure Python implementations of chi-squared, t-test, and performance metric
 Target coverage: 90-95%
 """
 
+
 import pytest
 
 from src.review.statistical_tests import (
@@ -41,10 +42,8 @@ class TestChiSquaredTest:
         # Feature uniformly distributed across decisions (larger sample for validity)
         feature_values = ["A"] * 20 + ["B"] * 20  # 20 A, 20 B
         decision_values = (
-            ["accept"] * 10
-            + ["reject"] * 10  # 10 accept, 10 reject for A
-            + ["accept"] * 10
-            + ["reject"] * 10  # 10 accept, 10 reject for B
+            ["accept"] * 10 + ["reject"] * 10  # 10 accept, 10 reject for A
+            + ["accept"] * 10 + ["reject"] * 10  # 10 accept, 10 reject for B
         )
         result = chi_squared_test(feature_values, decision_values)
 
@@ -55,10 +54,11 @@ class TestChiSquaredTest:
     def test_chi_squared_strong_association(self):
         """Should detect strong association (high chi-squared)."""
         # Feature strongly correlated with decision
-        feature_values = ["risk_factors"] * 10 + ["not_risk"] * 10  # 10 risk, 10 not_risk
+        feature_values = (
+            ["risk_factors"] * 10 + ["not_risk"] * 10
+        )  # 10 risk, 10 not_risk
         decision_values = (
-            ["reject"] * 9
-            + ["accept"] * 1  # 9 reject, 1 accept in risk_factors
+            ["reject"] * 9 + ["accept"] * 1  # 9 reject, 1 accept in risk_factors
             + ["accept"] * 9
             + ["reject"] * 1  # 9 accept, 1 reject in not_risk
         )
@@ -230,7 +230,6 @@ class TestTTestIndependent:
         """Should compute p-value for large samples (df > 30)."""
         # Create large samples: n1=50, n2=50, df = 98 > 30
         import random
-
         random.seed(42)
         group1 = [random.gauss(10, 2) for _ in range(50)]  # mean~10, std~2
         group2 = [random.gauss(15, 2) for _ in range(50)]  # mean~15, std~2

@@ -22,12 +22,12 @@ Test Coverage:
 Total: 6+ tests covering critical UXI-2 scenarios
 """
 
-from tests.e2e.conftest import SELECTORS
+from tests.e2e.conftest import SELECTORS, BASE_URL, FILINGS_URL
+
 
 # =============================================================================
 # Test 1: Search Filters Metrics
 # =============================================================================
-
 
 def test_search_filters_metrics():
     """
@@ -66,7 +66,6 @@ def test_search_filters_metrics():
 # Test 2: Clear Button Resets Filter
 # =============================================================================
 
-
 def test_clear_button_resets_filter():
     """
     Test: Clicking the clear button (x) resets the search filter.
@@ -103,7 +102,6 @@ def test_clear_button_resets_filter():
 # Test 3: No Matches Message
 # =============================================================================
 
-
 def test_no_matches_message():
     """
     Test: Typing a non-matching search term shows "No matching metrics".
@@ -136,7 +134,6 @@ def test_no_matches_message():
 # =============================================================================
 # Test 4: Auto-Focus on Dropdown Open
 # =============================================================================
-
 
 def test_autofocus_on_open():
     """
@@ -172,7 +169,6 @@ def test_autofocus_on_open():
 # =============================================================================
 # Test 5: State Reset on Dropdown Close/Reopen
 # =============================================================================
-
 
 def test_state_reset_on_close():
     """
@@ -210,7 +206,6 @@ def test_state_reset_on_close():
 # Test 6: Arrow Navigation on Filtered Results
 # =============================================================================
 
-
 def test_arrow_navigation():
     """
     Test: Arrow Down key navigates to first visible metric from search input.
@@ -242,7 +237,6 @@ def test_arrow_navigation():
 # =============================================================================
 # Test 7: Single Match Enter Select with Submission Verification
 # =============================================================================
-
 
 def test_single_match_enter_select():
     """
@@ -289,7 +283,6 @@ def test_single_match_enter_select():
 # Test 8 (Optional): Case Insensitivity
 # =============================================================================
 
-
 def test_case_insensitivity():
     """
     Test: Search is case-insensitive ('ARR' and 'arr' show same results).
@@ -322,7 +315,6 @@ def test_case_insensitivity():
 # =============================================================================
 # Helper: Get First Review Candidate URL
 # =============================================================================
-
 
 def get_test_setup_instructions():
     """

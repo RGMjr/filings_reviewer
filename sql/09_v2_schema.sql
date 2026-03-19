@@ -122,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_v2_segments_sequence ON v2_segments(doc_id, seque
 CREATE TABLE IF NOT EXISTS v2_tables (
     table_id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     doc_id              BIGINT NOT NULL REFERENCES filings(filing_id) ON DELETE CASCADE,
-    segment_id          UUID REFERENCES v2_segments(segment_id) ON DELETE SET NULL,
+    segment_id          BIGINT REFERENCES source_segments(source_segment_id) ON DELETE SET NULL,
 
     -- DOM location
     dom_locator         TEXT NOT NULL,  -- XPath
@@ -193,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_v2_table_cells_stub_path ON v2_table_cells USING 
 CREATE TABLE IF NOT EXISTS v2_image_assets (
     img_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     doc_id              BIGINT NOT NULL REFERENCES filings(filing_id) ON DELETE CASCADE,
-    segment_id          UUID REFERENCES v2_segments(segment_id) ON DELETE SET NULL,
+    segment_id          BIGINT REFERENCES source_segments(source_segment_id) ON DELETE SET NULL,
 
     -- File info
     filename            TEXT NOT NULL,

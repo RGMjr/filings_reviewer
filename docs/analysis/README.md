@@ -1,6 +1,6 @@
-# Analysis & Task Outputs
+# Analysis & Evaluation Reports
 
-This directory contains all task output documents: validation reports, evaluation results, audits, investigations, research findings, and completion summaries.
+This directory contains validation reports, evaluation results, and analysis documentation for the filings analysis system.
 
 ---
 
@@ -52,6 +52,30 @@ This directory contains all task output documents: validation reports, evaluatio
 
 ---
 
+### HRV-6_VALIDATION_ANALYSIS.md
+
+**Status**: COMPLETE
+
+**Scope**: Post-review analysis of Slack and Farfetch human review sessions (HRV-3 and HRV-4), identifying false positive and false negative patterns, metric ID taxonomy mismatches, and prioritized improvement recommendations.
+
+---
+
+### HRV-16_VALIDATION_RESULTS.md
+
+**Status**: COMPLETE
+
+**Scope**: Post-Phase 4 validation results across Farfetch, Slack, and Samsara filings; documents the precision/recall trade-off achieved by Phase 4 filtering improvements (66.7% precision, 47.4% recall, 55.4% F1).
+
+---
+
+### SAMSARA_VISION_EXTRACTION_ANALYSIS.md
+
+**Status**: COMPLETE
+
+**Scope**: Root-cause analysis of extraction failures on the Samsara Vision filing, covering table parsing gaps, regulatory reference false positives, and industry-specific keyword limitations.
+
+---
+
 ### 🏭 GR-17_INDUSTRY_LABELING.md
 
 **Status**: In Progress - Labels created, filings not yet loaded
@@ -67,33 +91,6 @@ This directory contains all task output documents: validation reports, evaluatio
 6. iSpecimen Inc (B2B Healthcare)
 
 **Use**: Expand validation coverage from 2 filings to 8 filings for cross-industry generalization
-
----
-
-### Audits & Investigations
-
-| Document | Description |
-|----------|-------------|
-| **MET-1-metric-consistency-audit.md** | Metric consistency audit across filings |
-| **INV-1_FARFETCH_EXTRACTION_REPORT.md** | Farfetch extraction investigation report |
-
-### Research
-
-| Document | Description |
-|----------|-------------|
-| **VIS-1-chart-extraction-results.md** | Chart/vision extraction evaluation results |
-| **VIS-1a-extended-evaluation-results.md** | Extended vision evaluation results |
-| **VIS-GPT4O-VALIDATION.md** | GPT-4o vision validation results |
-| **SAMSARA_VISION_EXTRACTION_ANALYSIS.md** | Samsara vision extraction analysis |
-
-### Completion Summaries
-
-| Document | Description |
-|----------|-------------|
-| **DUP-2_COMPLETION_SUMMARY.md** | DUP-2 task completion summary |
-| **HRV-16_COMPLETION_SUMMARY.md** | HRV-16 task completion summary |
-| **IMG-1-1_COMPLETION_SUMMARY.md** | IMG-1-1 image extraction completion |
-| **IMG-1-2_COMPLETION_SUMMARY.md** | IMG-1-2 image extraction completion |
 
 ---
 
@@ -153,8 +150,11 @@ See `docs/archive/analysis/evaluation-reports/README.md` for details.
 | 2025-12-26 | WAVE_3_EVALUATION_REPORT.md | Wave 3 evaluation (archived) |
 | 2025-12-26 | COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md | **Current primary report** |
 | 2025-12-27 | HRV-3 through HRV-5 | Validation documentation added |
+| 2025-12-30 | HRV-6_VALIDATION_ANALYSIS.md | Human review session analysis (Slack + Farfetch) |
+| 2024-12-24 | SAMSARA_VISION_EXTRACTION_ANALYSIS.md | Samsara extraction failure root-cause |
+| 2026-01-04 | HRV-16_VALIDATION_RESULTS.md | Post-Phase 4 validation results |
 
 ---
 
 **Maintained By**: Claude Code
-**Last Updated**: 2026-02-09
+**Last Updated**: 2025-12-27

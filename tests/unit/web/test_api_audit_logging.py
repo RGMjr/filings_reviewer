@@ -54,7 +54,6 @@ class TestAuditHookRegistration:
         def capture_start_time(*args, **kwargs):
             # This mock is called after before_request runs
             from flask import g
-
             if hasattr(g, "request_start_time"):
                 start_time_captured["value"] = g.request_start_time
 
@@ -64,7 +63,9 @@ class TestAuditHookRegistration:
 
         with patch("src.web.routes.api.get_db") as mock_get_db:
             mock_get_db.return_value = mock_db
-            mock_get_db.side_effect = lambda: capture_start_time() or mock_db
+            mock_get_db.side_effect = lambda: (
+                capture_start_time() or mock_db
+            )
 
             # Make any API request
             client.post(

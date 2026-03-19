@@ -22,6 +22,7 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
     IMAGE_REVIEW_STATUSES,
+    IMAGE_TIER_PRIORITY,
     KEYWORD_POSITIONS,
     PATTERN_STATUSES,
     PATTERN_TYPES,
@@ -343,7 +344,9 @@ class DatabaseAdapter:
                 result = cur.fetchone()
                 filing_id = result["filing_id"]
 
-        logger.debug(f"Upserted filing: accession={accession_number}, filing_id={filing_id}")
+        logger.debug(
+            f"Upserted filing: accession={accession_number}, filing_id={filing_id}"
+        )
         return filing_id
 
     def execute(
@@ -614,7 +617,9 @@ class DatabaseAdapter:
             FROM source_segments
             WHERE source_segment_id = %(source_segment_id)s
         """
-        segment_results = self.query(segment_sql, {"source_segment_id": source_segment_id})
+        segment_results = self.query(
+            segment_sql, {"source_segment_id": source_segment_id}
+        )
 
         if not segment_results:
             # Source segment not found - return current context
@@ -658,7 +663,9 @@ class DatabaseAdapter:
             }
 
         # Concatenate all segment texts with separator
-        expanded_text = " ... ".join(seg["raw_text"] for seg in adjacent_results if seg["raw_text"])
+        expanded_text = " ... ".join(
+            seg["raw_text"] for seg in adjacent_results if seg["raw_text"]
+        )
 
         return {
             "expanded_context": expanded_text,
@@ -829,12 +836,12 @@ class DatabaseAdapter:
         # - Number appears in context_prefix from a different segment
         # - HTML markup inflates size, causing earlier truncation than raw_text
         for result in results:
-            segment_html = result.get("segment_html")
-            raw_number_text = result.get("raw_number_text")
-            triggering_keyword = result.get("triggering_keyword")
+            segment_html = result.get('segment_html')
+            raw_number_text = result.get('raw_number_text')
+            triggering_keyword = result.get('triggering_keyword')
 
             # Initialize dual display field
-            result["segment_html_table_only"] = None
+            result['segment_html_table_only'] = None
 
             # Check any segment with HTML (regardless of segment_type)
             if segment_html and raw_number_text and triggering_keyword:
@@ -847,7 +854,7 @@ class DatabaseAdapter:
                 if not (has_value and has_keyword):
                     # Check if the HTML contains a table - if so, preserve it for dual display
                     # This allows showing table structure alongside context_text with highlighting
-                    has_table = "<table" in segment_html.lower()
+                    has_table = '<table' in segment_html.lower()
 
                     if has_table and has_keyword:
                         # Table structure is useful even without the value highlighted
@@ -856,7 +863,7 @@ class DatabaseAdapter:
                             f"Segment HTML for candidate {result.get('candidate_id')} has table "
                             f"with keyword but value is truncated. Enabling dual display mode."
                         )
-                        result["segment_html_table_only"] = segment_html
+                        result['segment_html_table_only'] = segment_html
                     else:
                         logger.debug(
                             f"Segment HTML for candidate {result.get('candidate_id')} doesn't contain "
@@ -864,8 +871,8 @@ class DatabaseAdapter:
                         )
 
                     # Clear segment_html to force display of context_text instead
-                    result["segment_html"] = None
-                    result["segment_type"] = None
+                    result['segment_html'] = None
+                    result['segment_type'] = None
 
         return results
 
@@ -989,7 +996,9 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
-    def update_candidate_status(self, candidate_id: int, status: str) -> bool:
+    def update_candidate_status(
+        self, candidate_id: int, status: str
+    ) -> bool:
         """
         Update a candidate's review status.
 
@@ -1012,7 +1021,9 @@ class DatabaseAdapter:
             WHERE candidate_id = %(candidate_id)s
             RETURNING candidate_id
         """
-        result = self.execute(sql, {"candidate_id": candidate_id, "status": status}, fetch=True)
+        result = self.execute(
+            sql, {"candidate_id": candidate_id, "status": status}, fetch=True
+        )
         updated = bool(result)
         if updated:
             logger.debug(f"Updated candidate {candidate_id} status to {status}")
@@ -1020,7 +1031,9 @@ class DatabaseAdapter:
             logger.warning(f"No candidate found with id {candidate_id}")
         return updated
 
-    def bulk_update_candidate_status(self, candidate_ids: list[int], status: str) -> int:
+    def bulk_update_candidate_status(
+        self, candidate_ids: list[int], status: str
+    ) -> int:
         """
         Update status for multiple candidates efficiently.
 
@@ -1056,7 +1069,9 @@ class DatabaseAdapter:
                 )
                 rows_updated = cur.rowcount
 
-        logger.debug(f"Bulk updated {rows_updated} candidates to status '{status}'")
+        logger.debug(
+            f"Bulk updated {rows_updated} candidates to status '{status}'"
+        )
         return rows_updated
 
     # =========================================================================
@@ -1309,7 +1324,9 @@ class DatabaseAdapter:
         # position_key = (filing_id, source_segment_id, char_position)
         from collections import defaultdict
 
-        position_groups: dict[tuple, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+        position_groups: dict[tuple, list[tuple[int, dict[str, Any]]]] = defaultdict(
+            list
+        )
 
         for idx, candidate in enumerate(candidates):
             position_key = (
@@ -1384,7 +1401,9 @@ class DatabaseAdapter:
                         "keyword_distance": runner_cand["keyword_distance"],
                         "keyword_position": runner_cand["keyword_position"],
                         "suggested_metric_id": runner_cand.get("suggested_metric_id"),
-                        "suggestion_confidence": runner_cand.get("suggestion_confidence"),
+                        "suggestion_confidence": runner_cand.get(
+                            "suggestion_confidence"
+                        ),
                         "features": runner_cand.get("features"),
                         "winner_candidate_id": winner_id,
                         "suppression_reason": "runner_up",
@@ -1574,9 +1593,9 @@ class DatabaseAdapter:
                 # Candidates to insert (batch winners that don't lose to DB)
                 to_insert: list[tuple[int, dict[str, Any]]] = []
                 # Candidates to update (batch winners that beat DB)
-                to_update: list[
-                    tuple[int, int, dict[str, Any], dict[str, Any]]
-                ] = []  # (input_idx, existing_id, new_cand, old_cand)
+                to_update: list[tuple[int, int, dict[str, Any], dict[str, Any]]] = (
+                    []
+                )  # (input_idx, existing_id, new_cand, old_cand)
 
                 # Process with-segment candidates
                 for input_idx, ukey in with_segment_keys:
@@ -1591,7 +1610,9 @@ class DatabaseAdapter:
 
                         if new_conf > existing_conf:
                             # New wins: update existing row, log old as suppressed
-                            to_update.append((input_idx, existing_id, candidate, existing))
+                            to_update.append(
+                                (input_idx, existing_id, candidate, existing)
+                            )
                             final_ids[input_idx] = existing_id
                         else:
                             # Existing wins: skip insert, log new as suppressed
@@ -1628,7 +1649,9 @@ class DatabaseAdapter:
 
                         if new_conf > existing_conf:
                             # New wins
-                            to_update.append((input_idx, existing_id, candidate, existing))
+                            to_update.append(
+                                (input_idx, existing_id, candidate, existing)
+                            )
                             final_ids[input_idx] = existing_id
                         else:
                             # Existing wins
@@ -1690,12 +1713,18 @@ class DatabaseAdapter:
                                 "triggering_keyword": old_cand["triggering_keyword"],
                                 "keyword_distance": old_cand["keyword_distance"],
                                 "keyword_position": old_cand["keyword_position"],
-                                "suggested_metric_id": old_cand.get("suggested_metric_id"),
-                                "suggestion_confidence": old_cand.get("suggestion_confidence"),
+                                "suggested_metric_id": old_cand.get(
+                                    "suggested_metric_id"
+                                ),
+                                "suggestion_confidence": old_cand.get(
+                                    "suggestion_confidence"
+                                ),
                                 "features": old_cand.get("features"),
                                 "winner_candidate_id": existing_id,
                                 "suppression_reason": "lower_confidence",
-                                "winner_confidence": new_cand.get("suggestion_confidence"),
+                                "winner_confidence": new_cand.get(
+                                    "suggestion_confidence"
+                                ),
                                 "input_index": None,  # From DB, not input
                             }
                         )
@@ -1724,7 +1753,9 @@ class DatabaseAdapter:
                                     **loser_cand,
                                     "winner_candidate_id": winner_id,
                                     "suppression_reason": "lower_confidence",
-                                    "winner_confidence": winner_cand.get("suggestion_confidence"),
+                                    "winner_confidence": winner_cand.get(
+                                        "suggestion_confidence"
+                                    ),
                                     "input_index": loser_idx,
                                 }
                             )
@@ -1741,18 +1772,20 @@ class DatabaseAdapter:
                 # 'lower_confidence' in that it has a DIFFERENT metric_id than the winner.
                 if log_suppressed:
                     # Sanity check: all candidates should have a final_id by now
-                    assert all(fid is not None for fid in final_ids), "All final_ids must be set"
+                    assert all(
+                        fid is not None for fid in final_ids
+                    ), "All final_ids must be set"
 
                     runner_ups = self._identify_runner_ups(
-                        candidates,
-                        final_ids,
-                        winner_metrics,  # type: ignore
+                        candidates, final_ids, winner_metrics  # type: ignore
                     )
                     suppression_entries.extend(runner_ups)
 
                     # Bulk insert all suppression records (lower_confidence + runner_up)
                     if suppression_entries:
-                        suppressed_ids = self._bulk_log_suppressed(cur, suppression_entries)
+                        suppressed_ids = self._bulk_log_suppressed(
+                            cur, suppression_entries
+                        )
                         # Annotate entries with their DB IDs for return value
                         for i, entry in enumerate(suppression_entries):
                             entry["suppressed_id"] = suppressed_ids[i]
@@ -1773,7 +1806,9 @@ class DatabaseAdapter:
             return result_ids, suppression_entries
         return result_ids
 
-    def _execute_bulk_insert(self, cur, candidates: list[dict[str, Any]]) -> list[int]:
+    def _execute_bulk_insert(
+        self, cur, candidates: list[dict[str, Any]]
+    ) -> list[int]:
         """Execute bulk insert and return candidate_ids in order."""
         if not candidates:
             return []
@@ -1881,7 +1916,9 @@ class DatabaseAdapter:
         results = cur.fetchall()
         return [row["candidate_id"] for row in results]
 
-    def _execute_update(self, cur, candidate_id: int, candidate: dict[str, Any]) -> None:
+    def _execute_update(
+        self, cur, candidate_id: int, candidate: dict[str, Any]
+    ) -> None:
         """Update an existing candidate with new values."""
         features = candidate.get("features")
         features_json = json.dumps(features) if features else None
@@ -1967,11 +2004,15 @@ class DatabaseAdapter:
 
         # Validate rejection_category if provided
         if rejection_category is not None:
-            validate_enum(rejection_category, REJECTION_CATEGORIES, "rejection_category")
+            validate_enum(
+                rejection_category, REJECTION_CATEGORIES, "rejection_category"
+            )
 
         # Business rule: accept/reclassify require assigned_metric_id
         if decision in ("accept", "reclassify") and not assigned_metric_id:
-            raise ValidationError(f"Decision '{decision}' requires assigned_metric_id")
+            raise ValidationError(
+                f"Decision '{decision}' requires assigned_metric_id"
+            )
 
         # Business rule: rejection_category only valid for reject
         if decision != "reject" and rejection_category:
@@ -2088,7 +2129,9 @@ class DatabaseAdapter:
 
         # Validate rejection_category if provided
         if rejection_category is not None:
-            validate_enum(rejection_category, REJECTION_CATEGORIES, "rejection_category")
+            validate_enum(
+                rejection_category, REJECTION_CATEGORIES, "rejection_category"
+            )
 
         decision_ids = []
         failed_candidates = []
@@ -2173,7 +2216,9 @@ class DatabaseAdapter:
 
                     except Exception as e:
                         # If any unexpected error, let it bubble up to rollback entire transaction
-                        logger.error(f"Error inserting decision for candidate {candidate_id}: {e}")
+                        logger.error(
+                            f"Error inserting decision for candidate {candidate_id}: {e}"
+                        )
                         raise
 
         logger.info(
@@ -2241,7 +2286,7 @@ class DatabaseAdapter:
                 # Get candidate_id before deleting
                 cur.execute(
                     "SELECT candidate_id FROM review_decisions WHERE decision_id = %s",
-                    (decision_id,),
+                    (decision_id,)
                 )
                 result = cur.fetchone()
 
@@ -2252,15 +2297,20 @@ class DatabaseAdapter:
                 candidate_id = result["candidate_id"]
 
                 # Delete decision
-                cur.execute("DELETE FROM review_decisions WHERE decision_id = %s", (decision_id,))
+                cur.execute(
+                    "DELETE FROM review_decisions WHERE decision_id = %s",
+                    (decision_id,)
+                )
 
                 # Reset candidate status to pending
                 cur.execute(
                     "UPDATE review_candidates SET review_status = 'pending', updated_at = now() WHERE candidate_id = %s",
-                    (candidate_id,),
+                    (candidate_id,)
                 )
 
-        logger.info(f"Deleted decision {decision_id}, reset candidate {candidate_id} to pending")
+        logger.info(
+            f"Deleted decision {decision_id}, reset candidate {candidate_id} to pending"
+        )
         return True
 
     def get_decisions_for_filing(self, filing_id: int) -> list[dict]:
@@ -2283,7 +2333,9 @@ class DatabaseAdapter:
         """
         return self.query(sql, {"filing_id": filing_id})
 
-    def get_decision_statistics(self, filing_id: int | None = None) -> dict[str, Any]:
+    def get_decision_statistics(
+        self, filing_id: int | None = None
+    ) -> dict[str, Any]:
         """
         Get statistics on review decisions.
 
@@ -2438,7 +2490,9 @@ class DatabaseAdapter:
     # Analysis View Methods
     # =========================================================================
 
-    def get_decision_stats_by_metric(self, metric_id: str | None = None) -> list[dict]:
+    def get_decision_stats_by_metric(
+        self, metric_id: str | None = None
+    ) -> list[dict]:
         """
         Get decision statistics grouped by suggested metric.
 
@@ -2467,7 +2521,9 @@ class DatabaseAdapter:
 
         return self.query(sql, params)
 
-    def get_rejection_reasons(self, metric_id: str | None = None) -> list[dict]:
+    def get_rejection_reasons(
+        self, metric_id: str | None = None
+    ) -> list[dict]:
         """
         Get rejection reason statistics grouped by metric.
 
@@ -3099,7 +3155,9 @@ class DatabaseAdapter:
             "filings_with_pending": row["filings_with_pending"] or 0,
         }
 
-    def get_next_candidate_for_review(self, filing_id: int | None = None) -> dict | None:
+    def get_next_candidate_for_review(
+        self, filing_id: int | None = None
+    ) -> dict | None:
         """
         Get the next candidate needing review.
 
@@ -3618,7 +3676,6 @@ class DatabaseAdapter:
         # Validate detection_tier if provided
         if detection_tier is not None:
             from src.review.models import IMAGE_DETECTION_TIERS
-
             validate_enum(detection_tier, IMAGE_DETECTION_TIERS, "detection_tier")
 
         sql = """
@@ -3725,11 +3782,15 @@ class DatabaseAdapter:
 
         # Business rule: relevant requires chart_type
         if decision == "relevant" and not chart_type:
-            raise ValidationError("Decision 'relevant' requires chart_type")
+            raise ValidationError(
+                "Decision 'relevant' requires chart_type"
+            )
 
         # Business rule: not_relevant requires rejection_reason
         if decision == "not_relevant" and not rejection_reason:
-            raise ValidationError("Decision 'not_relevant' requires rejection_reason")
+            raise ValidationError(
+                "Decision 'not_relevant' requires rejection_reason"
+            )
 
         insert_sql = """
             INSERT INTO image_review_decisions (
@@ -4323,7 +4384,8 @@ def create_pooled_adapter(connection_string: str | None = None) -> DatabaseAdapt
         connection_string = os.environ.get("DATABASE_URL", "")
         if not connection_string:
             raise ValueError(
-                "connection_string not provided and DATABASE_URL environment variable not set"
+                "connection_string not provided and DATABASE_URL environment "
+                "variable not set"
             )
 
     pool = get_shared_pool(connection_string)

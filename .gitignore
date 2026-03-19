@@ -62,7 +62,6 @@ htmlcov/
 
 # Claude setup
 .claude.json
-.claude/agent-memory/
 
 # But keep project-specific Claude settings
 !.claude/settings.json
@@ -80,6 +79,23 @@ logs/*.jsonl
 # Generated analysis artifacts
 ops/review_artifacts/
 
+
 # Build artifacts
 *.egg-info/
 .playwright-mcp/
+
+# Runtime data and caches
+logs/
+data/llm_cache.db
+data/models/
+data/filings_spac_analysis/
+ops/review_artifacts/
+
+# Archives
+*.zip
+
+# Debug scripts
+debug_*.py
+
+# Corrupted SQL temp files
+sql/.!*

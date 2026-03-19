@@ -1,7 +1,3 @@
----
-description: Analyze test coverage gaps and generate test files following project patterns and conventions
----
-
 # Test Coverage Analyzer Skill
 
 **Version:** 1.0.0

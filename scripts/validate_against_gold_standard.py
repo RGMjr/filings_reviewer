@@ -45,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-from src.shared.keyword_config import metrics_are_equivalent
+from src.extraction.keyword_config import metrics_are_equivalent
 
 logger = logging.getLogger(__name__)
 
@@ -379,26 +379,20 @@ def validate_filing(
     else:
         candidates = []
 
-    # Filter out entries that cannot be detected by our system
+    # Filter out definition-only entries (no numeric values) from gold standard
+    # These cannot be detected by our system and should not count as false negatives
     gold_entries_with_values = []
     definition_only_entries = []
-    non_customer_metric_entries = []
 
     for entry in gold_entries:
         # Definition-only if flag is set AND no raw/scaled values
         if entry.is_definition_only and not entry.raw_value.strip() and not entry.scaled_value.strip():
             definition_only_entries.append(entry)
-        # Entries explicitly marked as "not a customer metric" or with empty metric_id
-        # should not penalize the system as false negatives
-        elif entry.metric_id in ('not a customer metric', ''):
-            non_customer_metric_entries.append(entry)
         else:
             gold_entries_with_values.append(entry)
 
     if definition_only_entries and verbose:
         logger.info(f"  Skipping {len(definition_only_entries)} definition-only entries (no numeric values)")
-    if non_customer_metric_entries:
-        logger.info(f"  Skipping {len(non_customer_metric_entries)} non-customer-metric entries")
 
     # Two-pass optimal matching:
     # 1. Build all candidate-gold pairs with scores

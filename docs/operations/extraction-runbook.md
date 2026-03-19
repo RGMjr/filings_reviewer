@@ -10,10 +10,10 @@ This runbook documents the correct procedures for re-extracting and re-segmentin
 
 | Task | Command |
 |------|---------|
-| Re-extract single filing (full pipeline) | `DATABASE_URL="..." python3 scripts/reextract_all_filings.py --filing-id <ID>` |
-| Re-extract all filings | `DATABASE_URL="..." python3 scripts/reextract_all_filings.py` |
-| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python3 scripts/generate_review_candidates.py --filing-ids <ID>` |
-| Diagnose segmentation issues | `DATABASE_URL="..." python3 scripts/debug_segmentation.py --filing-id <ID>` |
+| Re-extract single filing (full pipeline) | `DATABASE_URL="..." python scripts/reextract_all_filings.py --filing-id <ID>` |
+| Re-extract all filings | `DATABASE_URL="..." python scripts/reextract_all_filings.py` |
+| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python scripts/generate_review_candidates.py --filing-ids <ID>` |
+| Diagnose segmentation issues | `DATABASE_URL="..." python scripts/debug_segmentation.py --filing-id <ID>` |
 
 ---
 
@@ -30,7 +30,7 @@ HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Ge
 | If you modify... | You must re-run... |
 |------------------|-------------------|
 | `html_segmenter.py` | Full re-extraction (`reextract_all_filings.py`) |
-| `config/metric_keywords.yaml` | Delete old candidates, run `generate_review_candidates.py` |
+| `metric_classifier.py` keywords | Delete old candidates, run `generate_review_candidates.py` |
 | `keyword_matching.py` | Delete old candidates, run `generate_review_candidates.py` |
 | LLM prompts | Full re-extraction (`reextract_all_filings.py`) |
 
@@ -43,15 +43,15 @@ Use when: Segmenter logic changed, or you want to ensure fresh data.
 ```bash
 # 1. Check current state (dry run)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/reextract_all_filings.py --filing-id <FILING_ID> --dry-run
+    python scripts/reextract_all_filings.py --filing-id <FILING_ID> --dry-run
 
 # 2. Run full re-extraction (deletes segments, metric_values, re-runs pipeline)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/reextract_all_filings.py --filing-id <FILING_ID>
+    python scripts/reextract_all_filings.py --filing-id <FILING_ID>
 
 # 3. Regenerate review candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 **What this does:**
@@ -74,12 +74,12 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
 
 # 2. Regenerate candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 **What this does:**
 - Uses existing `source_segments` (does NOT re-segment)
-- Applies current keyword patterns from `config/metric_keywords.yaml`
+- Applies current keyword patterns from `metric_classifier.py`
 - Generates new `review_candidates`
 
 ---
@@ -134,7 +134,7 @@ EOF
 
 # 3. Regenerate candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 ---
@@ -146,7 +146,7 @@ Use when: A filing has missing or incorrect data and you need to investigate.
 ```bash
 # Run diagnostic script
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/debug_segmentation.py --filing-id <FILING_ID>
+    python scripts/debug_segmentation.py --filing-id <FILING_ID>
 ```
 
 **Output includes:**
@@ -165,11 +165,11 @@ Use when: Re-extracting multiple filings (e.g., after major segmenter changes).
 ```bash
 # 1. Test with dry run
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/reextract_all_filings.py --limit 5 --dry-run
+    python scripts/reextract_all_filings.py --limit 5 --dry-run
 
 # 2. Run limited batch first
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/reextract_all_filings.py --limit 5
+    python scripts/reextract_all_filings.py --limit 5
 
 # 3. Verify results before full run
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
@@ -177,11 +177,11 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
 
 # 4. Full re-extraction (can take hours)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/reextract_all_filings.py --batch-size 10
+    python scripts/reextract_all_filings.py --batch-size 10
 
 # 5. Regenerate all candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py
+    python scripts/generate_review_candidates.py
 ```
 
 ---
@@ -195,9 +195,9 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 ### Pitfall 2: Missing Keywords
 **Symptom:** Values are in segments but not matched to correct metric.
-**Cause:** Keyword patterns in `config/metric_keywords.yaml` don't include company-specific terminology.
+**Cause:** Keyword patterns in `metric_classifier.py` don't include company-specific terminology.
 **Fix:**
-1. Add keywords to `config/metric_keywords.yaml`
+1. Add keywords to `src/extraction/metric_classifier.py`
 2. Run Procedure 2 to regenerate candidates
 
 ### Pitfall 3: Regenerating Candidates Without Deleting Old Ones

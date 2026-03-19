@@ -1,20 +1,65 @@
 # CLAUDE.md
 
-## Environment
-
-Always use `python3` instead of `python` in all scripts, hooks, and subprocess calls. This project only has `python3` available.
-
-## Git Workflow
-
-Before creating a new PR, always check if one already exists for the current branch using `gh pr list --head <branch-name>`. Update existing PRs instead of creating duplicates.
-
-When committing changes, use `git status` first and only stage the specific files related to the current task. Never use `git add .` or `git add -A` without reviewing what's staged. Use `git add <specific-files>` instead.
-
-Always work in the correct worktree for the branch you're targeting. Run `git worktree list` if unsure which directory to use. Never delete branches that are checked out in worktrees.
-
 ## Project Overview
 
 Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclosures. Supports the Customer Metrics Accounting Standards Board (CMASB) initiative.
+
+## Architecture
+
+```
+src/
+├── infra/          # db.py, sec_client.py, http_client.py, logging_config.py, pool.py, validation.py, exceptions.py
+├── universe/       # Filing discovery: classifiers.py, universe_builder.py
+├── filing_fetcher/ # Document retrieval and caching
+├── extraction/     # Metric extraction (V1 - production)
+├── extraction_v2/  # Image/OCR pipeline (NOT in production — V2 was reverted; code present but inactive)
+├── review/         # Human review: candidate_generator, pattern_analyzer
+├── web/            # Flask app: routes/, templates/, static/
+├── llm/            # OpenAI integration with SQLite-backed caching; includes vision_client.py and prompts.py
+└── gold_standard/  # Validation: baseline.py, fresh_extractor.py
+config/
+└── metric_keywords.yaml  # Metric keyword patterns (authoritative source)
+```
+
+**Pipeline (V1):** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
+
+## Key Commands
+
+```bash
+uv pip install -r requirements.txt # Install dependencies
+pytest -v                          # Run all tests
+pytest --cov=src --cov-report=html # Run with coverage
+black src/ tests/                  # Format code
+ruff check src/ tests/             # Lint
+mypy src/review/ --strict          # Type checking
+```
+
+## Environment Setup
+
+```bash
+# .env file (see .env.template)
+DATABASE_URL=postgresql://user:password@localhost/filings_analysis
+SEC_USER_AGENT="YourName contact@example.com"
+```
+
+## Docker
+
+```bash
+docker compose up -d   # Start PostgreSQL (port 5433)
+docker compose down    # Stop
+# Connection: postgresql://dev:dev@localhost:5433/filings_analysis
+```
+
+## Database
+
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-09).
+
+## Testing Standards
+
+- **Coverage**: 75% minimum (enforced), currently 87%
+- **Type safety**: `src/review/` passes `mypy --strict`
+- **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
+- **Before committing**: Run the full test suite (`pytest -x -q`). If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 
 ## Core Design Principles
 
@@ -23,62 +68,65 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
 
-## Testing Standards
+## Web Routes
 
-- **Coverage**: 75% minimum (enforced), currently 87%
-- **Type safety**: `src/review/` passes `mypy --strict`
-- **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
-- **Pre-commit requirement**: Run full test suite (`pytest`) before committing. All tests must pass.
+- `src/web/routes/review.py` / `api.py`: Text/metric review interface
+- `src/web/routes/review_images.py` / `api_images.py`: Image review interface
+- API auth: `@require_api_key` decorator, configure via `FILINGS_API_KEY` env var
+
+## SEC EDGAR Integration
+
+- **Rate Limiting**: 100ms minimum between requests
+- **User-Agent**: Required via `SEC_USER_AGENT` env var
+
+## Documentation
+
+See `docs/README.md` for complete index. Key docs:
+- `docs/architecture/system-overview.md` - System architecture
+- `docs/architecture/extraction-decisions.md` - Extraction logic history
+- `docs/HUMAN_REVIEW_SYSTEM.md` - Review workflow
 
 ## Context-Specific Rules
 
 Claude Code loads path-specific rules automatically from `.claude/rules/`:
 - `extraction.md` - Loaded when editing `src/extraction/**` or `config/metric_keywords.yaml`
-- `testing.md` - Loaded when editing `tests/**`
 - `gold-standard.md` - Loaded when working with gold standard validation
-- `docs.md` - Loaded when editing `docs/**`; defines canonical folder structure and placement rules
+- `testing.md` - Loaded when editing `tests/**`
 
 ## Available Commands
 
+Use these slash commands for workflows:
 - `/task-create [ID]` - Create a worker prompt for a task
 - `/task-run [ID]` - Execute an existing worker prompt
 - `/ralph [mode]` - Start Ralph Loop for autonomous execution
 - `/metric-lifecycle` - Guide for adding/removing metrics
+- `/commit` - Safe commit: runs ruff + pytest before committing
+- `/merge-check` - Thorough merge readiness assessment (CI, migrations, imports, tests)
+- `/ci-fix` - Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass
+- `/plan-execute` - Execute a multi-phase plan with parallel sub-agents per independent wave
 
-## Session Approach (MANDATORY)
+## Implementation Rules
 
-BEFORE planning or implementing ANY task, you MUST:
-1. Classify the task against the table below
-2. State which execution approach you will use and why
-3. Use the matched workflow — do NOT default to interactive when a structured workflow applies
+- Execute ONLY the steps specified. Do not expand scope, fix adjacent issues, or refactor beyond what was asked.
+- When given a numbered plan, implement exactly those items. Do not add extra steps or address anything not listed.
+- If you notice a related issue while working, call it out to the user rather than silently fixing it.
 
-| Task characteristics | Required approach |
-|---|---|
-| Single file, <3 changes | Interactive session |
-| Multi-file, defined acceptance criteria | `/ralph develop --isolated` |
-| Non-extraction multi-file changes | `dev-implementer` agent or `/ralph develop` |
-| Investigation/debugging | `/ralph analyze`, then `/ralph implement` |
-| Extraction code + keyword changes | `/ralph develop` + gold-standard-validator agent |
-| Large refactor (>10 files) | Team: implementer + test-runner + reviewer |
-| Bulk extraction or validation | `/ralph extract` or `/ralph validate` |
+## Git Operations
 
-- **Escalation rule (ENFORCED)**: If an interactive session reaches 5+ commits, STOP and switch to Ralph.
-- **Freshness rule (ENFORCED)**: After any session with 3+ commits, update `ops/ITERATION_CONTEXT.md`.
+- Before any force-push, force-merge, rebase, or reset --hard: show the exact command, show current branch/HEAD state, and wait for explicit user confirmation ("yes" — not a number, not ambiguous input).
+- Never interpret ambiguous input as approval for destructive git operations.
+- Never use `git add -A` or `git add .` without explicit user instruction. Stage specific files by name.
 
-Skipping methodology selection is a blocking error. State your choice before proceeding.
+## Code Review / Audits
 
-## Extraction Team Workflow
+- When performing merge readiness assessments or code audits, do a thorough deep pass the first time. Do not produce superficial reports.
+- Always check: CI status on the branch, migration file registration and ordering, import statements in changed files.
+- Dropped imports and empty regex patterns from config moves are common failure modes — check for these explicitly.
 
-For changes to extraction code, keyword config, or FP rules, use the multi-agent pattern:
+## Shell Commands
 
-1. **Create team**: `TeamCreate` with `extraction-implementer` + `keyword-config-checker` + `gold-standard-validator` (+ `pipeline-debugger` if regression expected)
-2. **Structure tasks**: implement → check keywords → validate gold standard (with `blockedBy` dependencies)
-3. **Implementer** makes changes, self-tests, marks task complete
-4. **Keyword checker** validates regex compilation, pattern overlaps, and REQUIRE_BOTH logic (fast, seconds)
-5. **Validator** runs gold standard, reports regressions, blocks merge if scores drop
-6. **On regression**: Add `pipeline-debugger` task to trace the root cause through V2 stages, then loop back to implementer
-
-Use this pattern for: keyword changes, classifier logic, FP filter rules, new gold standard filings.
+- For multi-line shell commands, use heredocs or chain with `&&` / `;` on a single line.
+- Do not use bare newlines between commands — they break in zsh.
 
 ## Gold Standard Validation
 

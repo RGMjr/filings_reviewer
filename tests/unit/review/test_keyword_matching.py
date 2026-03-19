@@ -179,9 +179,7 @@ class TestCalculateDistance:
     def test_keyword_before_number(self, matcher):
         """Distance when keyword is before number."""
         number = NumberMatch(start=50, end=55, raw_text="1000", value=Decimal(1000), unit="count")
-        keyword = KeywordMatch(
-            start=10, end=25, keyword="customers", metric_id="cm_active", pattern=""
-        )
+        keyword = KeywordMatch(start=10, end=25, keyword="customers", metric_id="cm_active", pattern="")
 
         distance = matcher.calculate_distance(number, keyword)
         assert distance == 25  # 50 - 25 = 25
@@ -189,9 +187,7 @@ class TestCalculateDistance:
     def test_keyword_after_number(self, matcher):
         """Distance when keyword is after number."""
         number = NumberMatch(start=10, end=15, raw_text="1000", value=Decimal(1000), unit="count")
-        keyword = KeywordMatch(
-            start=30, end=45, keyword="customers", metric_id="cm_active", pattern=""
-        )
+        keyword = KeywordMatch(start=30, end=45, keyword="customers", metric_id="cm_active", pattern="")
 
         distance = matcher.calculate_distance(number, keyword)
         assert distance == 15  # 30 - 15 = 15
@@ -199,9 +195,7 @@ class TestCalculateDistance:
     def test_overlapping_spans(self, matcher):
         """Distance is 0 when spans overlap."""
         number = NumberMatch(start=20, end=30, raw_text="1000", value=Decimal(1000), unit="count")
-        keyword = KeywordMatch(
-            start=25, end=35, keyword="customers", metric_id="cm_active", pattern=""
-        )
+        keyword = KeywordMatch(start=25, end=35, keyword="customers", metric_id="cm_active", pattern="")
 
         distance = matcher.calculate_distance(number, keyword)
         assert distance == 0
@@ -264,9 +258,7 @@ class TestSubstringDeduplication:
 
         # Should have only LTV/CAC ratio (the most specific/longest match)
         matched_keywords = [kw.keyword for kw in keywords_near_number]
-        assert len(matched_keywords) == 1, (
-            f"Expected 1 keyword (LTV/CAC), got {len(matched_keywords)}: {matched_keywords}"
-        )
+        assert len(matched_keywords) == 1, f"Expected 1 keyword (LTV/CAC), got {len(matched_keywords)}: {matched_keywords}"
 
         # Should be the LTV/CAC ratio metric
         assert any("LTV/CAC" in kw or "ltv/cac" in kw.lower() for kw in matched_keywords)
@@ -275,9 +267,7 @@ class TestSubstringDeduplication:
         """Compound metrics should prevent substring matches at overlapping positions."""
         matcher = KeywordMatcher(max_keyword_distance=100)
         text = "Net Revenue Retention was 120% for the year."
-        number = NumberMatch(
-            start=26, end=30, raw_text="120%", value=Decimal("120"), unit="percent"
-        )
+        number = NumberMatch(start=26, end=30, raw_text="120%", value=Decimal("120"), unit="percent")
 
         all_keywords = matcher.find_all_keywords(text)
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
@@ -324,7 +314,9 @@ class TestCrossMetricSubstringSuppression:
         matcher = KeywordMatcher(max_keyword_distance=100)
         # The keyword pattern for cm_large_customers matches "Paid Customers > $1"
         text = "We have 500 Paid Customers > $100,000 in ARR"
-        number = NumberMatch(start=8, end=11, raw_text="500", value=Decimal("500"), unit="count")
+        number = NumberMatch(
+            start=8, end=11, raw_text="500", value=Decimal("500"), unit="count"
+        )
 
         all_keywords = matcher.find_all_keywords(text)
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
@@ -333,21 +325,23 @@ class TestCrossMetricSubstringSuppression:
         metric_ids = [kw.metric_id for kw in keywords_near_number]
 
         # The longer pattern should win
-        assert "cm_large_customers_period_end" in metric_ids, (
-            f"Expected cm_large_customers_period_end, got {metric_ids}"
-        )
+        assert (
+            "cm_large_customers_period_end" in metric_ids
+        ), f"Expected cm_large_customers_period_end, got {metric_ids}"
 
         # cm_customers_period_end should be suppressed as substring
-        assert "cm_customers_period_end" not in metric_ids, (
-            f"cm_customers_period_end should be suppressed, got {metric_ids}"
-        )
+        assert (
+            "cm_customers_period_end" not in metric_ids
+        ), f"cm_customers_period_end should be suppressed, got {metric_ids}"
 
     def test_cross_metric_non_overlapping_both_kept(self):
         """Non-overlapping keywords from different metrics should both be kept."""
         matcher = KeywordMatcher(max_keyword_distance=150)
         # "customers" at one position, "retention" at another (different metrics)
         text = "We had 1000 paying customers and our net dollar retention was strong"
-        number = NumberMatch(start=8, end=12, raw_text="1000", value=Decimal("1000"), unit="count")
+        number = NumberMatch(
+            start=8, end=12, raw_text="1000", value=Decimal("1000"), unit="count"
+        )
 
         all_keywords = matcher.find_all_keywords(text)
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
@@ -362,7 +356,9 @@ class TestCrossMetricSubstringSuppression:
         # Create a scenario where keywords might overlap but neither is substring
         # This tests that we only suppress when there's actual substring relationship
         text = "Our 95% customer retention rate was strong"
-        number = NumberMatch(start=4, end=7, raw_text="95%", value=Decimal("95"), unit="percent")
+        number = NumberMatch(
+            start=4, end=7, raw_text="95%", value=Decimal("95"), unit="percent"
+        )
 
         all_keywords = matcher.find_all_keywords(text)
         keywords_near_number = matcher.find_keywords_near_number(number, all_keywords)
@@ -441,7 +437,7 @@ class TestP1DistanceFirstSorting:
         # When sorted by (distance, -length), closest comes first
         if len(distances) >= 2:
             first_dist = distances[0][1]
-            second_dist = distances[1][1] if len(distances) > 1 else float("inf")
+            second_dist = distances[1][1] if len(distances) > 1 else float('inf')
             # First keyword should have smaller or equal distance
             assert first_dist <= second_dist, (
                 f"Expected first keyword to be closest, "
@@ -623,9 +619,7 @@ class TestP1AmbiguityLogging:
         matcher.find_keywords_near_number(number, all_keywords)
 
         # Should not log ambiguity messages
-        ambiguity_logs = [
-            record for record in caplog.records if "Ambiguous match" in record.message
-        ]
+        ambiguity_logs = [record for record in caplog.records if "Ambiguous match" in record.message]
         assert len(ambiguity_logs) == 0
 
 
@@ -730,9 +724,7 @@ class TestP15SentenceAwareMatching:
         )
 
         # WITHOUT sentence filtering
-        matcher_no_sent = KeywordMatcher(
-            respect_sentence_boundaries=False, max_keyword_distance=150
-        )
+        matcher_no_sent = KeywordMatcher(respect_sentence_boundaries=False, max_keyword_distance=150)
         keywords_no_filter = matcher_no_sent.find_keywords_near_number(
             number, all_keywords, sentence_boundaries=sentences
         )
@@ -785,12 +777,10 @@ class TestP15SentenceAwareMatching:
         all_keywords = matcher.find_all_keywords(text)
 
         # Verify we found keywords in both sentences
-        assert any("customer" in kw.keyword.lower() for kw in all_keywords), (
+        assert any("customer" in kw.keyword.lower() for kw in all_keywords), \
             "Should find 'active customers' keyword"
-        )
-        assert any("retention" in kw.keyword.lower() for kw in all_keywords), (
+        assert any("retention" in kw.keyword.lower() for kw in all_keywords), \
             "Should find 'net revenue retention' keyword"
-        )
 
         # 50000 should only match keywords in sentence 1
         keywords1 = matcher.find_keywords_near_number(
@@ -804,27 +794,23 @@ class TestP15SentenceAwareMatching:
 
         # Keywords for 50000 should be "active customers" (sentence 1)
         for kw in keywords1:
-            assert sentences[0].contains_position(kw.start), (
+            assert sentences[0].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 1 ({sentences[0].start}-{sentences[0].end})"
-            )
 
         # Keywords for 120% should be "net revenue retention" (sentence 2)
         for kw in keywords2:
-            assert sentences[1].contains_position(kw.start), (
+            assert sentences[1].contains_position(kw.start), \
                 f"Keyword '{kw.keyword}' at pos {kw.start} should be in sentence 2 ({sentences[1].start}-{sentences[1].end})"
-            )
 
         # Verify the key behavior: 50000 should NOT match "net revenue retention"
         keywords1_ids = {kw.metric_id for kw in keywords1}
-        assert "cm_net_revenue_retention" not in keywords1_ids, (
+        assert "cm_net_revenue_retention" not in keywords1_ids, \
             "50000 should not match net revenue retention (different sentence)"
-        )
 
         # Verify the key behavior: 120% should NOT match "active customers"
         keywords2_ids = {kw.metric_id for kw in keywords2}
-        assert "cm_active_customers_total" not in keywords2_ids, (
+        assert "cm_active_customers_total" not in keywords2_ids, \
             "120% should not match active customers (different sentence)"
-        )
 
     def test_fallback_when_no_same_sentence_keywords(self):
         """If no keywords in same sentence, should keep all candidates."""
@@ -939,7 +925,9 @@ class TestP15SentenceAwareMatching:
         all_keywords = matcher.find_all_keywords(text)
 
         # Pass None for sentence_boundaries
-        keywords = matcher.find_keywords_near_number(number, all_keywords, sentence_boundaries=None)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=None
+        )
 
         # Should return keywords without sentence filtering (behaves like P1)
         assert len(keywords) >= 1
@@ -960,7 +948,9 @@ class TestP15SentenceAwareMatching:
         all_keywords = matcher.find_all_keywords(text)
 
         # Pass empty list for sentence_boundaries
-        keywords = matcher.find_keywords_near_number(number, all_keywords, sentence_boundaries=[])
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, sentence_boundaries=[]
+        )
 
         # Should return keywords without filtering
         assert len(keywords) >= 1
@@ -1190,7 +1180,8 @@ class TestKeywordDirection:
         )
 
         matcher_with_boundaries = KeywordMatcher(
-            respect_bullet_boundaries=True, max_keyword_distance=100
+            respect_bullet_boundaries=True,
+            max_keyword_distance=100
         )
         all_keywords = matcher_with_boundaries.find_all_keywords(text)
         keywords = matcher_with_boundaries.find_keywords_near_number(
@@ -1236,7 +1227,9 @@ class TestPostValueMultiplier:
         all_keywords = matcher.find_all_keywords(text)
 
         # Create number match for "100" (starts at position 17)
-        number = NumberMatch(start=17, end=20, raw_text="100", value=Decimal("100"), unit="count")
+        number = NumberMatch(
+            start=17, end=20, raw_text="100", value=Decimal("100"), unit="count"
+        )
 
         # Find keywords near number
         keywords = matcher.find_keywords_near_number(number, all_keywords)
@@ -1256,7 +1249,9 @@ class TestPostValueMultiplier:
 
         all_keywords = matcher.find_all_keywords(text)
 
-        number = NumberMatch(start=44, end=47, raw_text="100", value=Decimal("100"), unit="count")
+        number = NumberMatch(
+            start=44, end=47, raw_text="100", value=Decimal("100"), unit="count"
+        )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords)
 
@@ -1288,7 +1283,9 @@ class TestPostValueMultiplier:
         all_keywords_strict = matcher_strict.find_all_keywords(text)
         all_keywords_neutral = matcher_neutral.find_all_keywords(text)
 
-        number = NumberMatch(start=22, end=25, raw_text="100", value=Decimal("100"), unit="count")
+        number = NumberMatch(
+            start=22, end=25, raw_text="100", value=Decimal("100"), unit="count"
+        )
 
         # With strict multiplier, post-value penalty is higher
         keywords_strict = matcher_strict.find_keywords_near_number(number, all_keywords_strict)
@@ -1312,7 +1309,9 @@ class TestPostValueMultiplier:
         text = "active customers 100 revenue"
         all_keywords = matcher_longest.find_all_keywords(text)
 
-        number = NumberMatch(start=17, end=20, raw_text="100", value=Decimal("100"), unit="count")
+        number = NumberMatch(
+            start=17, end=20, raw_text="100", value=Decimal("100"), unit="count"
+        )
 
         keywords = matcher_longest.find_keywords_near_number(number, all_keywords)
 
@@ -1333,7 +1332,9 @@ class TestPostValueMultiplier:
         text = "revenue100margin"
         all_keywords = matcher.find_all_keywords(text)
 
-        number = NumberMatch(start=7, end=10, raw_text="100", value=Decimal("100"), unit="count")
+        number = NumberMatch(
+            start=7, end=10, raw_text="100", value=Decimal("100"), unit="count"
+        )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords)
 
@@ -1364,7 +1365,9 @@ class TestL4ContextDependentMultipliers:
         text = "We achieved 5% (churn rate) improvement"
         all_keywords = matcher.find_all_keywords(text)
 
-        number = NumberMatch(start=12, end=14, raw_text="5%", value=Decimal("5"), unit="percent")
+        number = NumberMatch(
+            start=12, end=14, raw_text="5%", value=Decimal("5"), unit="percent"
+        )
 
         keywords = matcher.find_keywords_near_number(number, all_keywords, text=text)
 
@@ -1681,37 +1684,23 @@ class TestRequiredContext:
         assert METRIC_REQUIRED_CONTEXT is not None
         assert isinstance(METRIC_REQUIRED_CONTEXT, dict)
 
-    def test_all_revenue_synonyms_deprecated(self):
-        """All revenue synonym metrics should be deprecated."""
-        for metric_id in self.REVENUE_SYNONYM_METRICS:
-            assert is_metric_deprecated(metric_id), f"{metric_id} should be deprecated"
-
     def test_revenue_synonyms_have_required_context(self):
-        """All non-deprecated revenue synonym metrics should have required_context in YAML config."""
-        from src.extraction.keyword_config import get_required_context
-        from src.extraction.keyword_config import is_metric_deprecated
-
-        # Deprecated metrics no longer have patterns/required_context
-        raw_context = get_required_context()
+        """All active revenue synonym metrics should have required context."""
         for metric_id in self.REVENUE_SYNONYM_METRICS:
+            # Skip deprecated metrics (FIX-A: cm_billings was deprecated)
             if is_metric_deprecated(metric_id):
-                # Deprecated metrics are filtered out and don't need required_context
-                assert metric_id not in raw_context
-            else:
-                assert metric_id in raw_context, (
-                    f"{metric_id} should have required_context defined in YAML"
-                )
-                assert "patterns" in raw_context[metric_id]
-                assert "proximity_chars" in raw_context[metric_id]
+                continue
+            assert metric_id in METRIC_REQUIRED_CONTEXT, \
+                f"{metric_id} should have required_context defined"
+            assert "patterns" in METRIC_REQUIRED_CONTEXT[metric_id]
+            assert "proximity_chars" in METRIC_REQUIRED_CONTEXT[metric_id]
 
     def test_arr_mrr_not_context_gated(self):
         """ARR and MRR should NOT have required context (inherently customer-related)."""
         assert "cm_arr" not in METRIC_REQUIRED_CONTEXT
         assert "cm_mrr" not in METRIC_REQUIRED_CONTEXT
 
-    @pytest.mark.parametrize(
-        "metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)]
-    )
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_without_context_no_match(self, matcher, metric_id):
         """Revenue synonyms without cohort/per-customer context should not generate matches."""
         # Build text with the metric keyword but NO cohort/per-customer context
@@ -1730,8 +1719,7 @@ class TestRequiredContext:
         # Create a number match for the dollar value
         # Find the first number-like pattern
         import re
-
-        num_match = re.search(r"\$[\d,]+", text)
+        num_match = re.search(r'\$[\d,]+', text)
         assert num_match is not None
 
         number = NumberMatch(
@@ -1749,18 +1737,15 @@ class TestRequiredContext:
 
         # Should NOT find the revenue synonym metric
         metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
-        assert len(metric_matches) == 0, (
+        assert len(metric_matches) == 0, \
             f"{metric_id} should not match without cohort/per-customer context"
-        )
 
-    @pytest.mark.parametrize(
-        "metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)]
-    )
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_with_cohort_context_generates_match(self, matcher, metric_id):
         """Revenue synonyms with cohort context should generate matches."""
         # Build text with the metric keyword AND cohort context
         metric_texts = {
-            "cm_gmv": "Our cohort analysis shows GMV of $1 billion by acquisition year",
+            "cm_gmv": "Cohort retention was strong; GMV reached $1 billion overall",
             "cm_tcv": "TCV by cohort reached $500 million for the 2020 vintage",
             "cm_acv": "ACV per cohort increased to $50,000 on average",
             "cm_bookings": "Cohort bookings were $200 million in 2020",
@@ -1772,8 +1757,7 @@ class TestRequiredContext:
 
         # Create a number match
         import re
-
-        num_match = re.search(r"\$[\d,]+", text)
+        num_match = re.search(r'\$[\d,]+', text)
         assert num_match is not None
 
         number = NumberMatch(
@@ -1791,11 +1775,10 @@ class TestRequiredContext:
 
         # Should find the revenue synonym metric
         metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
-        assert len(metric_matches) >= 1, f"{metric_id} should match when cohort context is present"
+        assert len(metric_matches) >= 1, \
+            f"{metric_id} should match when cohort context is present"
 
-    @pytest.mark.parametrize(
-        "metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)]
-    )
+    @pytest.mark.parametrize("metric_id", [m for m in REVENUE_SYNONYM_METRICS if not is_metric_deprecated(m)])
     def test_revenue_synonym_with_per_customer_context_generates_match(self, matcher, metric_id):
         """Revenue synonyms with per-customer context should generate matches."""
         # Build text with the metric keyword AND per-customer context
@@ -1812,8 +1795,7 @@ class TestRequiredContext:
 
         # Create a number match
         import re
-
-        num_match = re.search(r"\$[\d,]+", text)
+        num_match = re.search(r'\$[\d,]+', text)
         assert num_match is not None
 
         number = NumberMatch(
@@ -1831,22 +1813,63 @@ class TestRequiredContext:
 
         # Should find the revenue synonym metric
         metric_matches = [kw for kw in keywords if kw.metric_id == metric_id]
-        assert len(metric_matches) >= 1, (
+        assert len(metric_matches) >= 1, \
             f"{metric_id} should match when per-customer context is present"
-        )
 
-    def test_deprecated_revenue_synonyms_not_in_keywords(self, matcher):
-        """Deprecated revenue synonyms should not appear in find_all_keywords results."""
-        # All revenue synonyms are deprecated, so none should be found
-        text = "Our GMV reached $1 billion and bookings were $500 million"
+    def test_context_check_disabled_always_matches(self, matcher):
+        """When check_required_context=False, revenue synonyms should always match."""
+        # GMV without cohort/per-customer context
+        text = "Our GMV reached $1 billion in the quarter"
 
         all_keywords = matcher.find_all_keywords(text)
 
-        for metric_id in self.REVENUE_SYNONYM_METRICS:
-            matches = [kw for kw in all_keywords if kw.metric_id == metric_id]
-            assert len(matches) == 0, (
-                f"Deprecated metric {metric_id} should not appear in keyword matches"
-            )
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # With required context check DISABLED
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=False, text=text
+        )
+
+        # Should find GMV even without context
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "GMV should match when check_required_context=False"
+
+    def test_context_too_far_no_match(self, matcher):
+        """Context beyond proximity_chars should not satisfy requirement."""
+        # GMV with cohort context, but very far apart (more than 1500 chars)
+        padding = "x" * 2000  # 2000 chars of padding
+        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
+
+        all_keywords = matcher.find_all_keywords(text)
+
+        import re
+        num_match = re.search(r'\$[\d,]+', text)
+        number = NumberMatch(
+            start=num_match.start(),
+            end=num_match.end(),
+            raw_text=num_match.group(),
+            value=Decimal("1000000000"),
+            unit="currency",
+        )
+
+        # Context is too far away
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, check_required_context=True, text=text
+        )
+
+        # Should NOT find GMV because cohort context is too far
+        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) == 0, \
+            "GMV should not match when context is beyond proximity_chars"
 
     def test_arr_matches_without_context(self, matcher):
         """ARR should match even without cohort/per-customer context."""
@@ -1856,8 +1879,7 @@ class TestRequiredContext:
         all_keywords = matcher.find_all_keywords(text)
 
         import re
-
-        num_match = re.search(r"\$[\d,]+", text)
+        num_match = re.search(r'\$[\d,]+', text)
         number = NumberMatch(
             start=num_match.start(),
             end=num_match.end(),
@@ -1872,9 +1894,8 @@ class TestRequiredContext:
 
         # Should find ARR (not context-gated)
         arr_matches = [kw for kw in keywords if kw.metric_id == "cm_arr"]
-        assert len(arr_matches) >= 1, (
+        assert len(arr_matches) >= 1, \
             "ARR should match without cohort context (inherently customer-related)"
-        )
 
     def test_mrr_matches_without_context(self, matcher):
         """MRR should match even without cohort/per-customer context."""
@@ -1884,8 +1905,7 @@ class TestRequiredContext:
         all_keywords = matcher.find_all_keywords(text)
 
         import re
-
-        num_match = re.search(r"\$[\d,]+", text)
+        num_match = re.search(r'\$[\d,]+', text)
         number = NumberMatch(
             start=num_match.start(),
             end=num_match.end(),
@@ -1900,9 +1920,8 @@ class TestRequiredContext:
 
         # Should find MRR (not context-gated)
         mrr_matches = [kw for kw in keywords if kw.metric_id == "cm_mrr"]
-        assert len(mrr_matches) >= 1, (
+        assert len(mrr_matches) >= 1, \
             "MRR should match without cohort context (inherently customer-related)"
-        )
 
     def test_non_revenue_metrics_unaffected(self, matcher):
         """Non-revenue synonym metrics should not be affected by context check."""
@@ -1925,9 +1944,20 @@ class TestRequiredContext:
 
         # Should find active customers
         customer_matches = [kw for kw in keywords if kw.metric_id == "cm_active_customers_total"]
-        assert len(customer_matches) >= 1, (
+        assert len(customer_matches) >= 1, \
             "Non-revenue metrics should match without context requirement"
-        )
+
+    def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
+        """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
+        # GMV without cohort context
+        text = "Our GMV reached $1 billion in the quarter"
+
+        # find_all_keywords should still find GMV
+        all_keywords = matcher.find_all_keywords(text)
+
+        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
+        assert len(gmv_matches) >= 1, \
+            "find_all_keywords should find GMV (for classification/enrichment purposes)"
 
     def test_has_required_context_method_exists(self, matcher):
         """KeywordMatcher should have _has_required_context method."""
@@ -1940,12 +1970,16 @@ class TestRequiredContext:
         result = matcher._has_required_context("cm_active_customers_total", 10, text)
         assert result is True
 
-    def test_has_required_context_true_for_deprecated_metrics(self, matcher):
-        """_has_required_context returns True for deprecated metrics (not in context dict)."""
+    def test_has_required_context_false_without_context(self, matcher):
+        """_has_required_context returns False for GMV without context."""
         text = "Our GMV reached $1 billion"
-        # Deprecated metrics are filtered from METRIC_REQUIRED_CONTEXT,
-        # so _has_required_context returns True (no gate)
         result = matcher._has_required_context("cm_gmv", 4, text)
+        assert result is False
+
+    def test_has_required_context_true_with_cohort(self, matcher):
+        """_has_required_context returns True for GMV with cohort context."""
+        text = "Our cohort GMV reached $1 billion"
+        result = matcher._has_required_context("cm_gmv", 11, text)
         assert result is True
 
 
@@ -2027,9 +2061,7 @@ class TestShouldExcludeWithMarkerRowParser:
             number_position=32,  # position of "135"
             table_row_parser=parser,
         )
-        assert should_exclude is False, (
-            f"Value should NOT be excluded - 'retention rate' is in different row. Got: {reason}"
-        )
+        assert should_exclude is False, f"Value should NOT be excluded - 'retention rate' is in different row. Got: {reason}"
 
     def test_exclusion_triggers_when_pattern_in_same_row(self, matcher):
         """Exclusion pattern IN the same row SHOULD trigger exclusion."""
@@ -2094,9 +2126,7 @@ class TestShouldExcludeWithMarkerRowParser:
                 number_position=actual_pos,
                 table_row_parser=parser,
             )
-            assert should_exclude is False, (
-                f"Value '{raw_text}' should NOT be excluded - retention rate in different row. Got: {reason}"
-            )
+            assert should_exclude is False, f"Value '{raw_text}' should NOT be excluded - retention rate in different row. Got: {reason}"
 
     def test_value_in_retention_row_is_excluded(self, matcher):
         """Value in retention rate row SHOULD be excluded from large customers metric."""
@@ -2173,9 +2203,7 @@ class TestShouldExcludeWithTableRowParser:
             number_position=value_pos,
             table_row_parser=parser,
         )
-        assert should_exclude is False, (
-            f"Value should NOT be excluded with HTML parser. Got: {reason}"
-        )
+        assert should_exclude is False, f"Value should NOT be excluded with HTML parser. Got: {reason}"
 
     def test_html_parser_same_row_exclusion(self, matcher):
         """HTML parser should exclude when pattern IS in same row."""

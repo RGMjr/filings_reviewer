@@ -144,7 +144,7 @@ document_url,company,metric_id,is_new_metric,text_variant,raw_value,scaled_value
 
 #### 1. `scripts/validate_against_gold_standard.py`
 ```
-Usage: python3 scripts/validate_against_gold_standard.py [--filing-id N] [--all]
+Usage: python scripts/validate_against_gold_standard.py [--filing-id N] [--all]
 
 Purpose: Compare review candidates against gold standard CSV
 
@@ -164,7 +164,7 @@ Output:
 
 #### 2. `scripts/export_review_decisions.py`
 ```
-Usage: python3 scripts/export_review_decisions.py [--output FILE]
+Usage: python scripts/export_review_decisions.py [--output FILE]
 
 Purpose: Export web review decisions to CSV format matching gold standard
 
@@ -226,12 +226,12 @@ Output:
 **Process**:
 1. ✅ Generate review candidates for Slack filing:
    ```bash
-   DATABASE_URL="..." python3 scripts/generate_review_candidates.py --filing-id 35
+   DATABASE_URL="..." python scripts/generate_review_candidates.py --filing-id 35
    ```
    Result: 111 candidates generated from 80 segments
 2. ⏸️ Start web review interface:
    ```bash
-   DATABASE_URL="..." python3 -m src.web.app
+   DATABASE_URL="..." python -m src.web.app
    ```
 3. ⏸️ Review each candidate in web interface:
    - Accept: System correctly identified a real metric
@@ -239,7 +239,7 @@ Output:
    - Note patterns in rejected candidates
 4. ⏸️ Run validation script:
    ```bash
-   python3 scripts/validate_against_gold_standard.py --filing-id 35
+   python scripts/validate_against_gold_standard.py --filing-id 35
    ```
 5. ⏸️ Document findings
 

@@ -110,7 +110,9 @@ class FilingFetcher:
             or "/" in accession_number.replace("-", "")
             or "\\" in accession_number
         ):
-            raise ValueError("Invalid accession number: contains path traversal characters")
+            raise ValueError(
+                "Invalid accession number: contains path traversal characters"
+            )
 
         # Additional validation: CIK should be numeric
         if not cik.isdigit():
@@ -193,12 +195,16 @@ class FilingFetcher:
                     return False, "iXBRL file missing body content"
 
                 # iXBRL format validated - return success early
-                logger.debug(f"Detected iXBRL format for {cik}/{accession_number}")
+                logger.debug(
+                    f"Detected iXBRL format for {cik}/{accession_number}"
+                )
                 return True, None
 
         # Check 4: Detect filing format (SGML vs modern HTML)
         has_document_tag = "<DOCUMENT>" in html
-        has_html_structure = any(tag in html for tag in ["<!DOCTYPE", "<HTML>", "<html>"])
+        has_html_structure = any(
+            tag in html for tag in ["<!DOCTYPE", "<HTML>", "<html>"]
+        )
         has_sgml_structure = "<TEXT>" in html
 
         is_sgml_format = has_document_tag and has_sgml_structure
@@ -243,7 +249,9 @@ class FilingFetcher:
                 "<table",
             ]
 
-            has_filing_elements = sum(1 for elem in filing_elements if elem in html_lower) >= 2
+            has_filing_elements = (
+                sum(1 for elem in filing_elements if elem in html_lower) >= 2
+            )
 
             if not has_filing_elements:
                 return False, "Modern HTML filing missing expected structural elements"
@@ -285,7 +293,9 @@ class FilingFetcher:
                 # Resolve primary document URL if it's a directory URL
                 primary_doc_url = filing_metadata.primary_doc_url
                 if primary_doc_url.endswith("/") and self.sec_client:
-                    logger.debug(f"Resolving primary doc URL for {cik}/{accession_number}")
+                    logger.debug(
+                        f"Resolving primary doc URL for {cik}/{accession_number}"
+                    )
                     resolved_url = self.sec_client.resolve_primary_document_url(
                         cik, accession_number
                     )
@@ -331,10 +341,14 @@ class FilingFetcher:
                         txt_path_str = str(txt_path)
                 except requests.HTTPError as e:
                     # TXT file not available (404) - this is OK, HTML is sufficient
-                    logger.warning(f"TXT file not available for {cik}/{accession_number}: {e}")
+                    logger.warning(
+                        f"TXT file not available for {cik}/{accession_number}: {e}"
+                    )
                 except Exception as e:
                     # Other TXT errors - log but don't fail entire fetch
-                    logger.warning(f"Error fetching TXT for {cik}/{accession_number}: {e}")
+                    logger.warning(
+                        f"Error fetching TXT for {cik}/{accession_number}: {e}"
+                    )
 
             # Create FilingContent result
             content = FilingContent(
@@ -394,7 +408,8 @@ class FilingFetcher:
         except Exception as e:
             # Unexpected errors - log with full traceback for debugging
             error_msg = (
-                f"Unexpected error fetching {cik}/{accession_number}: {type(e).__name__}: {e}"
+                f"Unexpected error fetching {cik}/{accession_number}: "
+                f"{type(e).__name__}: {e}"
             )
             logger.critical(error_msg, exc_info=True)
 
@@ -452,7 +467,9 @@ class FilingFetcher:
             )
             return False
 
-    def _update_database_error(self, cik: str, accession_number: str, error_msg: str) -> bool:
+    def _update_database_error(
+        self, cik: str, accession_number: str, error_msg: str
+    ) -> bool:
         """
         Update database to record fetch error.
 
@@ -485,7 +502,9 @@ class FilingFetcher:
             )
             return False
 
-    def get_filing_content(self, cik: str, accession_number: str) -> FilingContent | None:
+    def get_filing_content(
+        self, cik: str, accession_number: str
+    ) -> FilingContent | None:
         """
         Get cached filing content if it exists.
 

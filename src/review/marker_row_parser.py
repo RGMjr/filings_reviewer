@@ -109,7 +109,9 @@ class MarkerRowParser:
             row_end = current_pos + len(row_text)
 
             # Extract header (first cell) if non-numeric
-            header_text, header_start, header_end = self._extract_header(row_text, row_start)
+            header_text, header_start, header_end = self._extract_header(
+                row_text, row_start
+            )
 
             self._rows.append(
                 MarkerRow(

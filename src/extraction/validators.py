@@ -31,17 +31,11 @@ class SegmentValidator:
         """
         if not isinstance(filing_id, int):
             raise ValidationError(
-                f"filing_id must be an integer, got {type(filing_id).__name__}",
-                field_name="filing_id",
-                invalid_value=filing_id,
+                f"filing_id must be an integer, got {type(filing_id).__name__}", field_name="filing_id", invalid_value=filing_id
             )
 
         if filing_id <= 0:
-            raise ValidationError(
-                f"filing_id must be positive, got {filing_id}",
-                field_name="filing_id",
-                invalid_value=filing_id,
-            )
+            raise ValidationError(f"filing_id must be positive, got {filing_id}", field_name="filing_id", invalid_value=filing_id)
 
     @staticmethod
     def validate_html_path(html_path: str) -> Path:
@@ -60,15 +54,11 @@ class SegmentValidator:
         """
         if not isinstance(html_path, str):
             raise ValidationError(
-                f"html_path must be a string, got {type(html_path).__name__}",
-                field_name="html_path",
-                invalid_value=html_path,
+                f"html_path must be a string, got {type(html_path).__name__}", field_name="html_path", invalid_value=html_path
             )
 
         if not html_path.strip():
-            raise ValidationError(
-                "html_path cannot be empty", field_name="html_path", invalid_value=html_path
-            )
+            raise ValidationError("html_path cannot be empty", field_name="html_path", invalid_value=html_path)
 
         # Security: check for path traversal attempts
         if ".." in html_path or html_path.startswith("/"):
@@ -80,9 +70,7 @@ class SegmentValidator:
             raise FileNotFoundError(f"HTML file not found: {html_path}")
 
         if not path.is_file():
-            raise ValidationError(
-                f"Path is not a file: {html_path}", field_name="html_path", invalid_value=html_path
-            )
+            raise ValidationError(f"Path is not a file: {html_path}", field_name="html_path", invalid_value=html_path)
 
         if not os.access(path, os.R_OK):
             raise PermissionError(f"Cannot read file: {html_path}")
@@ -109,26 +97,15 @@ class SegmentValidator:
         # Validate filing_id
         if segment.filing_id <= 0:
             raise ValidationError(
-                f"Segment filing_id must be positive, got {segment.filing_id}",
-                field_name="filing_id",
-                invalid_value=segment.filing_id,
+                f"Segment filing_id must be positive, got {segment.filing_id}", field_name="filing_id", invalid_value=segment.filing_id
             )
 
         # Validate segment_type
         if not segment.segment_type:
-            raise ValidationError(
-                "Segment must have segment_type",
-                field_name="segment_type",
-                invalid_value=segment.segment_type,
-            )
+            raise ValidationError("Segment must have segment_type", field_name="segment_type", invalid_value=segment.segment_type)
 
         # Validate sequence_index for non-empty segments
-        if (
-            segment.raw_text is not None
-            and isinstance(segment.raw_text, str)
-            and len(segment.raw_text) > 0
-            and segment.sequence_index < 0
-        ):
+        if segment.raw_text is not None and isinstance(segment.raw_text, str) and len(segment.raw_text) > 0 and segment.sequence_index < 0:
             raise ValidationError(
                 f"Segment sequence_index must be >= 0, got {segment.sequence_index}",
                 field_name="sequence_index",
@@ -147,25 +124,13 @@ class SegmentValidator:
             ValidationError: If lengths are invalid
         """
         if not isinstance(min_length, int) or not isinstance(max_length, int):
-            raise ValidationError(
-                "min_length and max_length must be integers",
-                field_name="length",
-                invalid_value=(min_length, max_length),
-            )
+            raise ValidationError("min_length and max_length must be integers", field_name="length", invalid_value=(min_length, max_length))
 
         if min_length < 0:
-            raise ValidationError(
-                f"min_length must be non-negative, got {min_length}",
-                field_name="min_length",
-                invalid_value=min_length,
-            )
+            raise ValidationError(f"min_length must be non-negative, got {min_length}", field_name="min_length", invalid_value=min_length)
 
         if max_length <= 0:
-            raise ValidationError(
-                f"max_length must be positive, got {max_length}",
-                field_name="max_length",
-                invalid_value=max_length,
-            )
+            raise ValidationError(f"max_length must be positive, got {max_length}", field_name="max_length", invalid_value=max_length)
 
         if min_length > max_length:
             raise ValidationError(
@@ -194,17 +159,11 @@ class ClassificationValidator:
         """
         if not isinstance(score, (int, float)):
             raise ValidationError(
-                f"{field_name} must be a number, got {type(score).__name__}",
-                field_name=field_name,
-                invalid_value=score,
+                f"{field_name} must be a number, got {type(score).__name__}", field_name=field_name, invalid_value=score
             )
 
         if not (0.0 <= score <= 1.0):
-            raise ValidationError(
-                f"{field_name} must be in [0, 1] range, got {score}",
-                field_name=field_name,
-                invalid_value=score,
-            )
+            raise ValidationError(f"{field_name} must be in [0, 1] range, got {score}", field_name=field_name, invalid_value=score)
 
     @staticmethod
     def validate_metric_ids(metric_ids: list[str]) -> None:
@@ -218,9 +177,7 @@ class ClassificationValidator:
         """
         if not isinstance(metric_ids, list):
             raise ValidationError(
-                f"metric_ids must be a list, got {type(metric_ids).__name__}",
-                field_name="metric_ids",
-                invalid_value=metric_ids,
+                f"metric_ids must be a list, got {type(metric_ids).__name__}", field_name="metric_ids", invalid_value=metric_ids
             )
 
         for i, metric_id in enumerate(metric_ids):
@@ -232,11 +189,7 @@ class ClassificationValidator:
                 )
 
             if not metric_id.strip():
-                raise ValidationError(
-                    f"metric_ids[{i}] cannot be empty",
-                    field_name=f"metric_ids[{i}]",
-                    invalid_value=metric_id,
-                )
+                raise ValidationError(f"metric_ids[{i}] cannot be empty", field_name=f"metric_ids[{i}]", invalid_value=metric_id)
 
     @staticmethod
     def validate_segment_for_classification(segment: SourceSegment) -> None:
@@ -253,11 +206,7 @@ class ClassificationValidator:
 
         # Additional checks for classification
         if segment.raw_text is None:
-            raise ValidationError(
-                "Segment must have raw_text for classification",
-                field_name="raw_text",
-                invalid_value=None,
-            )
+            raise ValidationError("Segment must have raw_text for classification", field_name="raw_text", invalid_value=None)
 
         if not isinstance(segment.raw_text, str):
             raise ValidationError(

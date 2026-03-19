@@ -53,7 +53,7 @@ This document describes the integration of OpenAI's GPT-4o-mini model for enhanc
 
 ## Components
 
-### 1. OpenAI Client (`src/llm/openai_client.py`) and Vision Client (`src/llm/vision_client.py`)
+### 1. OpenAI Client (`src/llm/openai_client.py`)
 
 **Class:** `OpenAIClient`
 
@@ -189,7 +189,67 @@ All prompts return structured JSON for easy parsing:
 
 ## Testing
 
-Unit tests for the LLM module are in `tests/unit/llm/`. The standalone `scripts/test_llm_client.py` script was removed during dead-code cleanup (commit 378b37f).
+### Test Script: `scripts/test_llm_client.py`
+
+**Tests Performed:**
+
+1. ✅ **Client Initialization**
+   - API key validation
+   - Model configuration
+   - Tokenizer initialization
+
+2. ✅ **Simple Completion**
+   - Basic prompt-response cycle
+   - Token counting verification
+   - Cost calculation validation
+
+3. ✅ **Metric Extraction**
+   - Value extraction from sample text
+   - JSON parsing and validation
+   - Cost tracking
+
+4. ✅ **Cost Summary**
+   - Cumulative statistics
+   - Average cost per request
+
+**Test Results:**
+```
+================================================================================
+Testing OpenAI Client with GPT-4o-mini
+================================================================================
+
+1. Initializing OpenAI client...
+   ✓ Client initialized successfully
+   Model: gpt-4o-mini
+   Temperature: 0.1
+
+2. Testing simple completion...
+   ✓ Response: 4
+   Input tokens: 13
+   Output tokens: 1
+   Cost: $0.000003
+   Latency: 1279ms
+
+3. Testing metric extraction prompt...
+   ✓ Response received (76 tokens)
+   Cost: $0.000109
+
+   Extracted data:
+   ----------------------------------------------------------------------------
+     • monthly_active_users: 125 millions
+       Period: December 31, 2023
+
+4. Cost summary:
+   ----------------------------------------------------------------------------
+   Total requests: 2
+   Total tokens: 511
+   Total cost: $0.000100
+   Avg cost/request: $0.000100
+
+================================================================================
+✓ All tests passed!
+================================================================================
+```
 
 ---
 
@@ -204,7 +264,7 @@ Unit tests for the LLM module are in `tests/unit/llm/`. The standalone `scripts/
 | Token Counting | ✅ Complete | tiktoken integration |
 | Cost Tracking | ✅ Complete | `CostTracker` class |
 | Error Handling | ✅ Complete | Retry logic with backoff |
-| Vision Client | ✅ Complete | `src/llm/vision_client.py` |
+| Testing | ✅ Complete | `scripts/test_llm_client.py` |
 
 ### Phase 2: Pipeline Integration ✅ COMPLETE
 
@@ -418,7 +478,10 @@ openai>=1.0.0      # OpenAI API client
 tiktoken>=0.5.0    # Token counting
 ```
 
-**Installation:** Managed via `uv sync --all-extras` (declared in `pyproject.toml`).
+**Installation:**
+```bash
+pip install openai tiktoken
+```
 
 **Environment:**
 ```bash
@@ -432,7 +495,7 @@ export OPENAI_API_KEY="sk-..."
 - **OpenAI API Docs:** https://platform.openai.com/docs/api-reference
 - **GPT-4o-mini Pricing:** https://openai.com/api/pricing/
 - **tiktoken:** https://github.com/openai/tiktoken
-- **Development Plan:** `ops/DEVELOPMENT_PLAN.md` Sprint 3
+- **Development Plan:** `DEVELOPMENT_PLAN.md` Sprint 3
 
 ---
 

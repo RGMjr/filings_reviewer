@@ -119,59 +119,8 @@ Result: P=60%→72%, FP 28→16, F1=57%→61%. SEC gold standard unchanged.
 
 ---
 
-## Previous Tasks
+## Results Summary
 
-### V2-PHASE-12: Database Persistence ✅ COMPLETE (2026-02-04)
-- All 12 ACs met
-- persistence.py 750 lines, 18 tests pass, 93% coverage
-- Committed as fda152b
-
-### V2-PHASE-11: Validation & Review Routing Stage ✅ COMPLETE (2026-02-04)
-- All 11 ACs met
-- 31 tests, 98% coverage
-- Committed as 243f518
-
-### V2-PHASE-10: Deduplication Stage ✅ COMPLETE (2026-02-04)
-- All 10 ACs met
-- 35 tests, 96% coverage
-- Committed as 5049fb2
-
-### V2-PHASE-9: Fact Construction Stage ✅ COMPLETE (2026-02-04)
-- All 12 ACs met
-- 22 tests, 94% coverage
-- Committed as 6a26eba
-
-### V2-PHASE-8: Period Inference Stage ✅ COMPLETE (2026-02-04)
-- All ACs met
-- Committed as 4e68bf4
-
-### V2-PHASE-7-IMPROVEMENTS: Value Binding Improvements ✅ COMPLETE (2026-02-04)
-- All 10 ACs met
-- 44 tests, 93% coverage
-
-### V2-PHASE-7: Value Binding Stage ✅ COMPLETE (2026-02-04)
-- All 16 ACs met
-- 92% coverage, 40 tests
-- Core implementation done
-
-### V2-PHASE-6: Candidate Generation ✅ COMPLETE (2026-02-03)
-- All ACs met
-- 96% coverage, 42 tests
-
-### V2-05: OCR & Chart Extraction ✅ COMPLETE (2026-02-03)
-- All 10 ACs met
-- 85% coverage, 22 tests
-- Committed to main
-
-### V2-04: Image Triage ✅ COMPLETE (2026-02-03)
-- All ACs met
-- 94% coverage
-- Committed to main
-
-### V2-PHASE-3: Table Reconstruction ✅ COMPLETE (2026-02-02)
-- All 11 ACs met
-- 87% coverage, 11 tests
-
-### V2-PHASE-2: Section Classification ✅ COMPLETE (2026-02-02)
-- All 14 ACs met
-- 93% coverage, 49 tests
+**Completed**: 0/10
+**Total Iterations**: 0
+**Files Changed**: None yet

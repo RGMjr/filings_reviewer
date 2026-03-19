@@ -19,7 +19,7 @@ paths:
 
 ### 1. Quick Check (during development)
 ```bash
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
 ```
 Review delta: positive = improvement, negative = regression.
 
@@ -37,7 +37,7 @@ All tests must pass. Regressions cause test failures.
 
 ### 4. Update Baseline (after intentional changes)
 ```bash
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
+python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
 ```
 Commit the updated `data/gold_standard/baseline_metrics.json`.
 

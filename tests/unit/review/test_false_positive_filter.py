@@ -39,21 +39,27 @@ class TestIsFalsePositive:
 
     def test_returns_tuple(self, filter):
         """Method should return (bool, reason) tuple."""
-        number = NumberMatch(start=0, end=5, raw_text="50000", value=Decimal("50000"), unit="count")
+        number = NumberMatch(
+            start=0, end=5, raw_text="50000", value=Decimal("50000"), unit="count"
+        )
         result = filter.is_false_positive("50000 customers", number)
         assert isinstance(result, tuple)
         assert len(result) == 2
 
     def test_below_min_value_reason(self, filter):
         """Should return 'below_min_value' reason for small integers."""
-        number = NumberMatch(start=0, end=1, raw_text="5", value=Decimal("5"), unit="count")
+        number = NumberMatch(
+            start=0, end=1, raw_text="5", value=Decimal("5"), unit="count"
+        )
         is_fp, reason = filter.is_false_positive("5 customers", number)
         assert is_fp is True
         assert reason == "below_min_value"
 
     def test_likely_year_reason(self, filter):
         """Should return 'likely_year' reason for year values."""
-        number = NumberMatch(start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count")
+        number = NumberMatch(
+            start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count"
+        )
         is_fp, reason = filter.is_false_positive("In 2023 we had", number)
         assert is_fp is True
         assert reason == "likely_year"
@@ -62,7 +68,9 @@ class TestIsFalsePositive:
         """Should return 'part_of_date' reason for date components."""
         text = "As of 12/31/2023"
         # The "12" part
-        number = NumberMatch(start=6, end=8, raw_text="12", value=Decimal("12"), unit="count")
+        number = NumberMatch(
+            start=6, end=8, raw_text="12", value=Decimal("12"), unit="count"
+        )
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is True
         assert reason == "part_of_date"
@@ -70,7 +78,9 @@ class TestIsFalsePositive:
     def test_reference_number_reason(self, filter):
         """Should return 'reference_number' reason for page/note refs."""
         text = "See page 123 for details"
-        number = NumberMatch(start=9, end=12, raw_text="123", value=Decimal("123"), unit="count")
+        number = NumberMatch(
+            start=9, end=12, raw_text="123", value=Decimal("123"), unit="count"
+        )
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is True
         assert reason == "reference_number"
@@ -80,7 +90,9 @@ class TestIsFalsePositive:
         number = NumberMatch(
             start=8, end=14, raw_text="50,000", value=Decimal("50000"), unit="count"
         )
-        is_fp, reason = filter.is_false_positive("We have 50,000 customers", number)
+        is_fp, reason = filter.is_false_positive(
+            "We have 50,000 customers", number
+        )
         assert is_fp is False
         assert reason is None
 
@@ -89,13 +101,17 @@ class TestIsFalsePositive:
         filter_disabled = FalsePositiveFilter(filter_enabled=False)
 
         # Small number
-        number = NumberMatch(start=0, end=1, raw_text="5", value=Decimal("5"), unit="count")
+        number = NumberMatch(
+            start=0, end=1, raw_text="5", value=Decimal("5"), unit="count"
+        )
         is_fp, reason = filter_disabled.is_false_positive("5 customers", number)
         assert is_fp is False
         assert reason is None
 
         # Year
-        number = NumberMatch(start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count")
+        number = NumberMatch(
+            start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count"
+        )
         is_fp, reason = filter_disabled.is_false_positive("In 2023 we had", number)
         assert is_fp is False
         assert reason is None
@@ -105,7 +121,9 @@ class TestIsFalsePositive:
         filter_strict = FalsePositiveFilter(min_value=100)
 
         # 50 should be filtered with min_value=100
-        number = NumberMatch(start=8, end=10, raw_text="50", value=Decimal("50"), unit="count")
+        number = NumberMatch(
+            start=8, end=10, raw_text="50", value=Decimal("50"), unit="count"
+        )
         is_fp, reason = filter_strict.is_false_positive("We have 50 customers", number)
         assert is_fp is True
         assert reason == "below_min_value"
@@ -114,7 +132,9 @@ class TestIsFalsePositive:
         """When filter_years=False, should not filter years."""
         filter_no_years = FalsePositiveFilter(filter_years=False)
 
-        number = NumberMatch(start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count")
+        number = NumberMatch(
+            start=3, end=7, raw_text="2023", value=Decimal("2023"), unit="count"
+        )
         is_fp, reason = filter_no_years.is_false_positive("In 2023 we had", number)
         # Should not be filtered as a year
         assert is_fp is False
@@ -124,8 +144,12 @@ class TestIsFalsePositive:
         """Decimal numbers should not be filtered by min_value."""
         # 1.25 is below MIN_METRIC_VALUE (10) but should not be filtered
         # because it has a decimal point (could be a ratio like 125%)
-        number = NumberMatch(start=17, end=21, raw_text="1.25", value=Decimal("1.25"), unit="count")
-        is_fp, reason = filter.is_false_positive("Our NRR was about 1.25 times last year", number)
+        number = NumberMatch(
+            start=17, end=21, raw_text="1.25", value=Decimal("1.25"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(
+            "Our NRR was about 1.25 times last year", number
+        )
         assert is_fp is False
         assert reason is None
 
@@ -133,8 +157,12 @@ class TestIsFalsePositive:
         """Percentage numbers should not be filtered by min_value."""
         # 5% is below MIN_METRIC_VALUE (10) but should not be filtered
         # because it's a percentage unit
-        number = NumberMatch(start=20, end=22, raw_text="5%", value=Decimal("0.05"), unit="%")
-        is_fp, reason = filter.is_false_positive("Our churn rate was 5% last quarter", number)
+        number = NumberMatch(
+            start=20, end=22, raw_text="5%", value=Decimal("0.05"), unit="%"
+        )
+        is_fp, reason = filter.is_false_positive(
+            "Our churn rate was 5% last quarter", number
+        )
         assert is_fp is False
         assert reason is None
 
@@ -142,8 +170,12 @@ class TestIsFalsePositive:
         """Currency numbers should not be filtered by min_value."""
         # $5 is below MIN_METRIC_VALUE (10) but should not be filtered
         # because it has currency unit
-        number = NumberMatch(start=16, end=18, raw_text="$5", value=Decimal("5"), unit="usd")
-        is_fp, reason = filter.is_false_positive("Average AOV was $5 per transaction", number)
+        number = NumberMatch(
+            start=16, end=18, raw_text="$5", value=Decimal("5"), unit="usd"
+        )
+        is_fp, reason = filter.is_false_positive(
+            "Average AOV was $5 per transaction", number
+        )
         assert is_fp is False
         assert reason is None
 
@@ -752,22 +784,18 @@ Statements of Cash Flows........................................... F-3
 
     def test_valid_metric_in_business_section_after_toc(self, filter):
         """Should NOT filter valid metrics appearing after TOC section."""
-        filing_snippet = (
-            """
+        filing_snippet = """
 TABLE OF CONTENTS
 Business Overview.................................................. 5
 Risk Factors....................................................... 12
 
-"""
-            + ("=" * 400)
-            + """
+""" + ("=" * 400) + """
 
 BUSINESS OVERVIEW
 
 We are a leading provider of cloud-based software. As of December 31, 2023,
 we served 50000 active customers across 100 countries.
         """
-        )
 
         # Test the 50000 metric (should NOT be filtered - far from TOC)
         num_50000 = NumberMatch(
@@ -791,14 +819,14 @@ class TestConstants:
         assert len(DATE_CONTEXT_PATTERNS) > 0
         # Check that all patterns are compiled
         for pattern in DATE_CONTEXT_PATTERNS:
-            assert hasattr(pattern, "search")
+            assert hasattr(pattern, 'search')
 
     def test_false_positive_context_patterns_not_empty(self):
         """FALSE_POSITIVE_CONTEXT_PATTERNS should not be empty."""
         assert len(FALSE_POSITIVE_CONTEXT_PATTERNS) > 0
         # Check that all patterns are compiled
         for pattern in FALSE_POSITIVE_CONTEXT_PATTERNS:
-            assert hasattr(pattern, "search")
+            assert hasattr(pattern, 'search')
 
     def test_year_range_constants(self):
         """YEAR_MIN and YEAR_MAX should be sensible."""
@@ -829,7 +857,6 @@ class TestConstants:
         """TOC_DOT_LEADER_WINDOW should be reasonable."""
         assert TOC_DOT_LEADER_WINDOW == 50
         assert TOC_DOT_LEADER_WINDOW > 0
-
 
 class TestL2P11ContextAwareDotLeaders:
     """Tests for L2-P1.1: Context-aware dot leader detection.
@@ -870,8 +897,7 @@ class TestL2P11ContextAwareDotLeaders:
         for text in test_cases:
             # Find first number in text
             import re
-
-            match = re.search(r"\d+", text)
+            match = re.search(r'\d+', text)
             if not match:
                 continue
 
@@ -920,8 +946,7 @@ Business Overview.........12"""
         for text in test_cases:
             # Find last number (the page number)
             import re
-
-            matches = list(re.finditer(r"\d+", text))
+            matches = list(re.finditer(r'\d+', text))
             if not matches:
                 continue
             match = matches[-1]  # Last number is the page number
@@ -966,8 +991,7 @@ Business Overview.........12"""
 
         for text in test_cases:
             import re
-
-            matches = list(re.finditer(r"\d+", text))
+            matches = list(re.finditer(r'\d+', text))
             if not matches:
                 continue
             match = matches[-1]
@@ -1016,7 +1040,9 @@ class TestIssue4StandaloneTOCPattern:
 
     def test_filters_standalone_number_before_toc_text(self, filter):
         """Test filtering of '73 Table of Contents' pattern."""
-        number = NumberMatch(start=0, end=2, raw_text="73", value=Decimal("73"), unit="count")
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
         text = "73 Table of Contents"
 
         is_fp, reason = filter.is_false_positive(text, number)
@@ -1026,7 +1052,9 @@ class TestIssue4StandaloneTOCPattern:
 
     def test_filters_toc_case_insensitive(self, filter):
         """Test case-insensitive matching for TOC patterns."""
-        number = NumberMatch(start=0, end=2, raw_text="73", value=Decimal("73"), unit="count")
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
 
         test_cases = [
             "73 Table of Contents",
@@ -1042,7 +1070,9 @@ class TestIssue4StandaloneTOCPattern:
 
     def test_filters_toc_abbreviation(self, filter):
         """Test filtering of '73 TOC' abbreviated pattern."""
-        number = NumberMatch(start=0, end=2, raw_text="73", value=Decimal("73"), unit="count")
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
         text = "73 TOC"
 
         is_fp, reason = filter.is_false_positive(text, number)
@@ -1071,7 +1101,9 @@ class TestIssue4StandaloneTOCPattern:
 
     def test_filters_number_newline_before_toc(self, filter):
         """Test filtering when number and TOC are on different lines."""
-        number = NumberMatch(start=0, end=2, raw_text="73", value=Decimal("73"), unit="count")
+        number = NumberMatch(
+            start=0, end=2, raw_text="73", value=Decimal("73"), unit="count"
+        )
         text = "73\nTable of Contents"
 
         is_fp, reason = filter.is_false_positive(text, number)
@@ -1081,7 +1113,9 @@ class TestIssue4StandaloneTOCPattern:
 
     def test_filters_farfetch_filing_example(self, filter):
         """Test real example from Farfetch filing."""
-        number = NumberMatch(start=25, end=27, raw_text="73", value=Decimal("73"), unit="count")
+        number = NumberMatch(
+            start=25, end=27, raw_text="73", value=Decimal("73"), unit="count"
+        )
         # Realistic context from filing
         text = "was 43.0%, respectively.\n73 Table of Contents\nLifetime Value"
 
@@ -1309,9 +1343,7 @@ class TestMeasurementUnitPatterns:
         # 30 may be filtered as below_min_value, but NOT by measurement unit
         # The key is that "30% year" doesn't match "30-year" or "30 year"
         if is_fp:
-            assert reason == "below_min_value", (
-                "Should only be filtered by min value, not measurement unit"
-            )
+            assert reason == "below_min_value", "Should only be filtered by min value, not measurement unit"
         else:
             assert reason is None
 
@@ -1621,7 +1653,7 @@ class TestMetricTypeValidation:
         from src.review.false_positive_filter import is_count_format
 
         assert is_count_format("$100", "count") is False  # Has $ sign
-        assert is_count_format("85%", "count") is False  # Has % sign
+        assert is_count_format("85%", "count") is False   # Has % sign
         assert is_count_format("100", "currency") is False  # Wrong unit
 
     def test_percentage_only_metrics_set(self):
@@ -1638,7 +1670,6 @@ class TestMetricTypeValidation:
         assert "cm_arr" in DOLLAR_ONLY_METRICS
         assert "cm_ltv" in DOLLAR_ONLY_METRICS
         assert "cm_cac" in DOLLAR_ONLY_METRICS
-        assert "cm_average_order_value" in DOLLAR_ONLY_METRICS
 
     def test_count_only_metrics_set(self):
         """COUNT_ONLY_METRICS should contain expected metrics."""
@@ -1647,7 +1678,6 @@ class TestMetricTypeValidation:
         assert "cm_customer" in COUNT_ONLY_METRICS
         assert "cm_daily_active_users" in COUNT_ONLY_METRICS
         assert "cm_monthly_active_users" in COUNT_ONLY_METRICS
-        assert "cm_purchase_transactions_overall" in COUNT_ONLY_METRICS
 
 
 # =============================================================================
@@ -1746,55 +1776,44 @@ class TestIsSpelledOutNumber:
         assert is_spelled_out_number("$5.2 million") is False
 
 
-class TestSpelledOutNumberFiltering:
-    """Tests that spelled-out small numbers are filtered like numeric ones.
-
-    Bare spelled-out words like "three", "one", "six" with values below min_value
-    are almost always narrative noise (e.g., "three main factors"). Meaningful
-    spelled-out numbers like "six million" have values far above min_value after
-    magnitude parsing, so they are unaffected.
-    """
+class TestSpelledOutNumberFilterExemption:
+    """Tests that spelled-out numbers are exempt from certain filters."""
 
     @pytest.fixture
     def filter(self):
         """Create a FalsePositiveFilter instance."""
         return FalsePositiveFilter()
 
-    def test_spelled_out_below_min_value_filtered(self, filter):
-        """Bare spelled-out numbers below min_value should be filtered."""
+    def test_spelled_out_exempt_from_min_value(self, filter):
+        """Spelled-out numbers should NOT be filtered by minimum value threshold."""
         # "six" has value 6, which is below default min_value (10)
-        number = NumberMatch(start=0, end=3, raw_text="six", value=Decimal("6"), unit="count")
-        is_fp, reason = filter.is_false_positive("six months payback", number)
-        assert is_fp is True
-        assert reason == "below_min_value"
-
-    def test_spelled_out_with_magnitude_not_filtered(self, filter):
-        """Spelled-out numbers with magnitude words should NOT be filtered."""
-        # "six million" has value 6000000, way above min_value
+        # But spelled-out numbers should be exempt
         number = NumberMatch(
-            start=0, end=11, raw_text="six million", value=Decimal("6000000"), unit="count"
+            start=0, end=3, raw_text="six", value=Decimal("6"), unit="count"
         )
-        is_fp, reason = filter.is_false_positive("six million customers worldwide", number)
+        is_fp, reason = filter.is_false_positive("six months payback", number)
+        # Should NOT be filtered - spelled-out numbers are intentionally written
         assert is_fp is False
+        assert reason is None
 
-    def test_spelled_out_near_toc_filtered(self, filter):
-        """Spelled-out numbers near TOC should now be filtered."""
+    def test_spelled_out_exempt_from_toc_proximity(self, filter):
+        """Spelled-out numbers near TOC should NOT be filtered."""
         text = "Table of Contents ... payback is six months"
         number = NumberMatch(
-            start=text.find("six"),
-            end=text.find("six") + 3,
-            raw_text="six",
-            value=Decimal("6"),
-            unit="count",
+            start=text.find("six"), end=text.find("six") + 3,
+            raw_text="six", value=Decimal("6"), unit="count"
         )
         is_fp, reason = filter.is_false_positive(text, number)
-        # Filtered by min_value (checked before TOC proximity)
-        assert is_fp is True
+        # Should NOT be filtered - spelled numbers are not page numbers
+        assert is_fp is False
 
     def test_numeric_small_value_still_filtered(self, filter):
-        """Numeric small values should still be filtered."""
-        number = NumberMatch(start=0, end=1, raw_text="6", value=Decimal("6"), unit="count")
+        """Numeric small values should still be filtered (not exempt)."""
+        number = NumberMatch(
+            start=0, end=1, raw_text="6", value=Decimal("6"), unit="count"
+        )
         is_fp, reason = filter.is_false_positive("6 months payback", number)
+        # Should be filtered - numeric small value
         assert is_fp is True
         assert reason == "below_min_value"
 

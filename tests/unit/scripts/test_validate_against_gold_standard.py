@@ -124,9 +124,7 @@ class TestLoadGoldStandard:
         csv_content = """Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
 https://example.com/filing1,Test Corp,cm_dau,,daily active users,10 million,10,million,Q1 2023,Users who log in daily,"We had 10 million daily active users"
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, encoding="utf-8-sig"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8-sig') as f:
             f.write(csv_content)
             temp_path = Path(f.name)
 
@@ -145,9 +143,7 @@ https://example.com/filing1,Test Corp,cm_dau,,daily active users,10 million,10,m
         csv_content = """Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
 https://example.com/filing1,Test Corp,,cm_custom_metric,custom metric,5,5,,Q1 2023,Custom definition,"Quote here"
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, encoding="utf-8-sig"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8-sig') as f:
             f.write(csv_content)
             temp_path = Path(f.name)
 
@@ -161,16 +157,14 @@ https://example.com/filing1,Test Corp,,cm_custom_metric,custom metric,5,5,,Q1 20
 
     def test_parse_multiline_quotes(self):
         """Test parsing entries with multi-line quoted fields."""
-        csv_content = """Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
+        csv_content = '''Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
 https://example.com,Test Corp,cm_arr,,ARR,1 billion,1,billion,2023,"Annual recurring revenue, which is
 calculated as the monthly
 recurring revenue times 12","We define annual recurring revenue
 as the sum of all subscription
 fees over a 12-month period"
-"""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, encoding="utf-8-sig"
-        ) as f:
+'''
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8-sig') as f:
             f.write(csv_content)
             temp_path = Path(f.name)
 
@@ -188,9 +182,7 @@ fees over a 12-month period"
         csv_content = """Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
 https://example.com,Caf\u00e9 Corp,cm_users,,users,100,100,,2023,User count,"100 users"
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False, encoding="utf-8-sig"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8-sig') as f:
             f.write(csv_content)
             temp_path = Path(f.name)
 
@@ -209,34 +201,16 @@ class TestGetEntriesForCompany:
         """Test company name matching is case-insensitive."""
         entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Slack Technologies",
-                metric_id="cm_dau",
-                is_new_metric=False,
-                text_variant="",
-                raw_value="",
-                scaled_value="",
-                scale_unit="",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=1,
-                is_definition_only=False,
+                document_url="", company="Slack Technologies", metric_id="cm_dau",
+                is_new_metric=False, text_variant="", raw_value="", scaled_value="",
+                scale_unit="", period="", definition="", source_quote="", line_number=1,
+                is_definition_only=False
             ),
             GoldStandardEntry(
-                document_url="",
-                company="Another Corp",
-                metric_id="cm_arr",
-                is_new_metric=False,
-                text_variant="",
-                raw_value="",
-                scaled_value="",
-                scale_unit="",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=2,
-                is_definition_only=False,
+                document_url="", company="Another Corp", metric_id="cm_arr",
+                is_new_metric=False, text_variant="", raw_value="", scaled_value="",
+                scale_unit="", period="", definition="", source_quote="", line_number=2,
+                is_definition_only=False
             ),
         ]
 
@@ -251,19 +225,10 @@ class TestGetEntriesForCompany:
         """Test no match returns empty list."""
         entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Slack Technologies",
-                metric_id="cm_dau",
-                is_new_metric=False,
-                text_variant="",
-                raw_value="",
-                scaled_value="",
-                scale_unit="",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=1,
-                is_definition_only=False,
+                document_url="", company="Slack Technologies", metric_id="cm_dau",
+                is_new_metric=False, text_variant="", raw_value="", scaled_value="",
+                scale_unit="", period="", definition="", source_quote="", line_number=1,
+                is_definition_only=False
             ),
         ]
 
@@ -277,72 +242,52 @@ class TestMatchCandidateToGoldStandard:
     def test_exact_metric_and_value_match(self):
         """Test matching with exact metric ID and value."""
         candidate = {
-            "candidate_id": 1,
-            "suggested_metric_id": "cm_dau",
-            "parsed_value": 10_000_000,
-            "raw_number_text": "10 million",
-            "context_text": "We had 10 million daily active users",
+            'candidate_id': 1,
+            'suggested_metric_id': 'cm_dau',
+            'parsed_value': 10_000_000,
+            'raw_number_text': '10 million',
+            'context_text': 'We had 10 million daily active users',
         }
 
         gold_entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Test",
-                metric_id="cm_dau",
-                is_new_metric=False,
-                text_variant="daily active users",
-                raw_value="10 million",
-                scaled_value="10",
-                scale_unit="million",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=5,
-                is_definition_only=False,
+                document_url="", company="Test", metric_id="cm_dau",
+                is_new_metric=False, text_variant="daily active users",
+                raw_value="10 million", scaled_value="10", scale_unit="million",
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
         matched_entries: set[int] = set()
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+        match, match_type = match_candidate_to_gold_standard(candidate, gold_entries, matched_entries)
 
         assert match is not None
         assert match.line_number == 5
-        assert "value" in match_type.lower() or "metric" in match_type.lower()
+        assert 'value' in match_type.lower() or 'metric' in match_type.lower()
 
     def test_close_value_match(self):
         """Test matching with close value (within 1%)."""
         candidate = {
-            "candidate_id": 1,
-            "suggested_metric_id": "cm_revenue",
-            "parsed_value": 1_005_000,  # Within 1% of 1,000,000
-            "raw_number_text": "1.005 million",
-            "context_text": "Revenue of 1.005 million",
+            'candidate_id': 1,
+            'suggested_metric_id': 'cm_revenue',
+            'parsed_value': 1_005_000,  # Within 1% of 1,000,000
+            'raw_number_text': '1.005 million',
+            'context_text': 'Revenue of 1.005 million',
         }
 
         gold_entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Test",
-                metric_id="cm_revenue",
-                is_new_metric=False,
-                text_variant="revenue",
-                raw_value="1 million",
-                scaled_value="1",
-                scale_unit="million",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=10,
-                is_definition_only=False,
+                document_url="", company="Test", metric_id="cm_revenue",
+                is_new_metric=False, text_variant="revenue",
+                raw_value="1 million", scaled_value="1", scale_unit="million",
+                period="", definition="", source_quote="", line_number=10,
+                is_definition_only=False
             ),
         ]
 
         matched_entries: set[int] = set()
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+        match, match_type = match_candidate_to_gold_standard(candidate, gold_entries, matched_entries)
 
         assert match is not None
         assert match.line_number == 10
@@ -350,71 +295,51 @@ class TestMatchCandidateToGoldStandard:
     def test_no_match_returns_none(self):
         """Test no match returns None."""
         candidate = {
-            "candidate_id": 1,
-            "suggested_metric_id": "cm_unknown",
-            "parsed_value": 999,
-            "raw_number_text": "999",
-            "context_text": "Some unrelated text",
+            'candidate_id': 1,
+            'suggested_metric_id': 'cm_unknown',
+            'parsed_value': 999,
+            'raw_number_text': '999',
+            'context_text': 'Some unrelated text',
         }
 
         gold_entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Test",
-                metric_id="cm_dau",
-                is_new_metric=False,
-                text_variant="daily active users",
-                raw_value="10 million",
-                scaled_value="",
-                scale_unit="",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=5,
-                is_definition_only=False,
+                document_url="", company="Test", metric_id="cm_dau",
+                is_new_metric=False, text_variant="daily active users",
+                raw_value="10 million", scaled_value="", scale_unit="",
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
         matched_entries: set[int] = set()
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+        match, match_type = match_candidate_to_gold_standard(candidate, gold_entries, matched_entries)
 
         assert match is None
 
     def test_already_matched_entry_skipped(self):
         """Test already matched entries are skipped."""
         candidate = {
-            "candidate_id": 2,
-            "suggested_metric_id": "cm_dau",
-            "parsed_value": 10_000_000,
-            "raw_number_text": "10 million",
-            "context_text": "daily active users",
+            'candidate_id': 2,
+            'suggested_metric_id': 'cm_dau',
+            'parsed_value': 10_000_000,
+            'raw_number_text': '10 million',
+            'context_text': 'daily active users',
         }
 
         gold_entries = [
             GoldStandardEntry(
-                document_url="",
-                company="Test",
-                metric_id="cm_dau",
-                is_new_metric=False,
-                text_variant="daily active users",
-                raw_value="10 million",
-                scaled_value="",
-                scale_unit="",
-                period="",
-                definition="",
-                source_quote="",
-                line_number=5,
-                is_definition_only=False,
+                document_url="", company="Test", metric_id="cm_dau",
+                is_new_metric=False, text_variant="daily active users",
+                raw_value="10 million", scaled_value="", scale_unit="",
+                period="", definition="", source_quote="", line_number=5,
+                is_definition_only=False
             ),
         ]
 
         # Mark entry as already matched
         matched_entries: set[int] = {5}
-        match, match_type = match_candidate_to_gold_standard(
-            candidate, gold_entries, matched_entries
-        )
+        match, match_type = match_candidate_to_gold_standard(candidate, gold_entries, matched_entries)
 
         assert match is None
 
@@ -493,19 +418,11 @@ class TestResultToDict:
     def test_serializes_correctly(self):
         """Test result converts to JSON-serializable dict."""
         fn_entry = GoldStandardEntry(
-            document_url="https://example.com",
-            company="Test",
-            metric_id="cm_missing",
-            is_new_metric=False,
-            text_variant="missing metric",
-            raw_value="100",
-            scaled_value="",
-            scale_unit="",
-            period="",
-            definition="",
-            source_quote="",
-            line_number=42,
-            is_definition_only=False,
+            document_url="https://example.com", company="Test", metric_id="cm_missing",
+            is_new_metric=False, text_variant="missing metric",
+            raw_value="100", scaled_value="", scale_unit="",
+            period="", definition="", source_quote="", line_number=42,
+            is_definition_only=False
         )
 
         result = ValidationResult(
@@ -519,17 +436,17 @@ class TestResultToDict:
             precision=0.667,
             recall=0.8,
             f1_score=0.727,
-            fp_candidates=[{"candidate_id": 1, "suggested_metric_id": "cm_fp"}],
+            fp_candidates=[{'candidate_id': 1, 'suggested_metric_id': 'cm_fp'}],
             fn_entries=[fn_entry],
             tp_matches=[],
         )
 
         d = result_to_dict(result)
 
-        assert d["filing_id"] == 123
-        assert d["company_name"] == "Test Corp"
-        assert d["metrics"]["true_positives"] == 8
-        assert d["metrics"]["precision"] == 0.667
-        assert len(d["false_positives"]) == 1
-        assert len(d["false_negatives"]) == 1
-        assert d["false_negatives"][0]["line_number"] == 42
+        assert d['filing_id'] == 123
+        assert d['company_name'] == "Test Corp"
+        assert d['metrics']['true_positives'] == 8
+        assert d['metrics']['precision'] == 0.667
+        assert len(d['false_positives']) == 1
+        assert len(d['false_negatives']) == 1
+        assert d['false_negatives'][0]['line_number'] == 42

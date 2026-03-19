@@ -137,9 +137,10 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 At the END of each iteration, before committing:
 
 1. Move "Current Focus" item to "Last Completed" with result
-2. Set new "Current Focus" from ops/DEVELOPMENT_PLAN.md
+2. Set new "Current Focus" from DEVELOPMENT_PLAN.md
 3. Update "Test Status" with coverage % and any failures
 4. Add any technical discoveries to "Key Learnings"
-5. Note any blockers for next iteration
+5. List files modified in "Files Changed"
+6. Note any blockers for next iteration
 
-Keep this file under 65 lines - distill, don't dump.
+Keep this file under 50 lines - distill, don't dump.

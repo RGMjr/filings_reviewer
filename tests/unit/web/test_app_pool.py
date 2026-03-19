@@ -222,7 +222,9 @@ class TestHealthEndpoint:
                     error=None,
                 )
 
-                with patch("src.infra.pool.check_pool_health", return_value=healthy_report):
+                with patch(
+                    "src.infra.pool.check_pool_health", return_value=healthy_report
+                ):
                     with app.test_client() as client:
                         response = client.get("/health")
 
@@ -259,7 +261,9 @@ class TestHealthEndpoint:
                     error="Connection pool exhausted",
                 )
 
-                with patch("src.infra.pool.check_pool_health", return_value=unhealthy_report):
+                with patch(
+                    "src.infra.pool.check_pool_health", return_value=unhealthy_report
+                ):
                     with app.test_client() as client:
                         response = client.get("/health")
 

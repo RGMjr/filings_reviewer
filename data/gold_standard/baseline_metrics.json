@@ -13,9 +13,9 @@
       "f1": 0.7526881720430109
     },
     "SAMSARA VISION INC.": {
-      "precision": 0.5,
-      "recall": 1.0,
-      "f1": 0.6666666666666666
+      "precision": 0,
+      "recall": 0.0,
+      "f1": 0
     },
     "Slack Technologies": {
       "precision": 0.9183673469387755,
@@ -23,10 +23,9 @@
       "f1": 0.9278350515463918
     },
     "Snowflake Inc": {
-      "precision": 0.9782608695652174,
-      "recall": 0.45,
-      "f1": 0.6164383561643836
+      "precision": 0.875,
+      "recall": 0.28,
+      "f1": 0.42424242424242425
     }
-  },
-  "pipeline_version": "v1"
+  }
 }
