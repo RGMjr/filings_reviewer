@@ -140,6 +140,10 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
+    # Snowflake-style phrasing: "customers with trailing 12-month product revenue greater than $X"
+    - '\bcustomers?\s+with\s+trailing\s+\d+[- ]month\s+(?:\w+\s+)*revenue\s+(?:greater\s+than|more\s+than|over|above|exceeding|>)\s*\$'
+    # Snowflake narrative: "customers that contributed more than $X million in trailing..."
+    - '\bcustomers?\s+(?:that\s+)?contributed\s+(?:more\s+than|over|above)\s+\$'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -149,6 +153,8 @@ cm_large_customers_period_end:
   specific_patterns:
     - 'enterprise\s+customers?'
     - 'large\s+customers?'
+    - 'customers?\s+with\s+trailing'
+    - 'customers?\s+(?:that\s+)?contributed'
 
 cm_customers_period_end_by_tenure:
   patterns:

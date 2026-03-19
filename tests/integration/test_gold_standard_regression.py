@@ -69,6 +69,7 @@ def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     from scripts.validate_against_gold_standard import (
         get_entries_for_company,
         load_gold_standard,
+        normalize_company_name,
         validate_filing,
     )
 
@@ -82,16 +83,18 @@ def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     for company in companies:
         company_entries = get_entries_for_company(gold_entries, company)
 
-        # Find filing in database
-        query = """
-            SELECT f.filing_id, c.company_name
-            FROM filings f
-            JOIN companies c ON f.company_id = c.company_id
-            WHERE LOWER(c.company_name) = LOWER(%(company)s)
-            LIMIT 1
-        """
-        filing_rows = db.query(query, {'company': company})
-        filing_id = filing_rows[0]['filing_id'] if filing_rows else None
+        # Find filing in database using normalized name matching
+        # (handles "Ltd" vs "Limited", "Inc" vs "Incorporated", etc.)
+        all_filings = db.query(
+            "SELECT f.filing_id, c.company_name FROM filings f JOIN companies c ON f.company_id = c.company_id",
+            {},
+        )
+        filing_id = None
+        normalized_search = normalize_company_name(company)
+        for row in all_filings:
+            if normalize_company_name(row['company_name']) == normalized_search:
+                filing_id = row['filing_id']
+                break
 
         result = validate_filing(db, filing_id, company, company_entries)
 
@@ -278,6 +281,38 @@ class TestGoldStandardRegression:
         if delta > 0:
             logger.info(
                 f"F1 improved: {current_metrics.overall.f1:.1%} "
+                f"(+{delta:.1%} vs baseline)"
+            )
+
+    def test_unique_recall_above_baseline(
+        self,
+        current_metrics,
+        baseline_metrics,
+        gold_standard_tolerance,
+        baseline_path,
+    ):
+        """Fail if unique_recall drops below baseline threshold."""
+        if baseline_metrics is None:
+            pytest.skip(
+                f"Baseline file not found: {baseline_path}. "
+                f"Create with: python scripts/validate_against_gold_standard.py --all --update-baseline"
+            )
+
+        if baseline_metrics.unique_recall is None or current_metrics.unique_recall is None:
+            pytest.skip("unique_recall not available in baseline or current metrics")
+
+        delta = current_metrics.unique_recall - baseline_metrics.unique_recall
+        threshold = -gold_standard_tolerance
+
+        assert delta >= threshold, (
+            f"UNIQUE_RECALL REGRESSED: {current_metrics.unique_recall:.1%} "
+            f"(baseline: {baseline_metrics.unique_recall:.1%}, "
+            f"delta: {delta:+.1%}, allowed: {threshold:+.1%})"
+        )
+
+        if delta > 0:
+            logger.info(
+                f"Unique recall improved: {current_metrics.unique_recall:.1%} "
                 f"(+{delta:.1%} vs baseline)"
             )
 

@@ -96,6 +96,11 @@ class ValidationResult:
     fp_candidates: list[dict]  # Candidates not matching gold standard
     fn_entries: list[GoldStandardEntry]  # Gold standard entries not matched
     tp_matches: list[ValidationMatch]  # Matched pairs for debugging
+    # Unique-value recall: deduplicates gold standard entries with same (metric, value)
+    # to avoid penalizing for gold standard repetition. Strict recall is unchanged.
+    unique_gold_count: int = 0
+    duplicate_tps: int = 0  # Gold entries counted as TP because identical combo already matched
+    unique_recall: float = 0.0
 
 
 def normalize_metric_id(raw_id: str) -> str:
@@ -500,6 +505,32 @@ def validate_filing(
     # Collect FN entries (only from gold entries with values)
     fn_entries = [e for e in gold_entries_with_values if e.line_number not in matched_entries]
 
+    # Compute unique-value recall: entries with the same (metric_id, normalized_value) as an
+    # already-matched entry count as duplicate TPs rather than false negatives.
+    matched_combos: set[tuple[str, float | None]] = set()
+    for m in tp_matches:
+        combo = (
+            normalize_metric_id(m.gold_entry.metric_id or ''),
+            normalize_value(m.gold_entry.raw_value) or normalize_value(m.gold_entry.scaled_value),
+        )
+        matched_combos.add(combo)
+
+    duplicate_tps = 0
+    unique_fn_entries: list[GoldStandardEntry] = []
+    for e in fn_entries:
+        combo = (
+            normalize_metric_id(e.metric_id or ''),
+            normalize_value(e.raw_value) or normalize_value(e.scaled_value),
+        )
+        if combo in matched_combos:
+            duplicate_tps += 1
+        else:
+            unique_fn_entries.append(e)
+
+    unique_gold_count = len(gold_entries_with_values) - duplicate_tps
+    unique_tps = true_positives  # each TP candidate matches exactly one unique combo
+    unique_recall = unique_tps / unique_gold_count if unique_gold_count > 0 else 0
+
     return ValidationResult(
         filing_id=filing_id,
         company_name=company_name,
@@ -514,6 +545,9 @@ def validate_filing(
         fp_candidates=fp_candidates,
         fn_entries=fn_entries,
         tp_matches=tp_matches,
+        unique_gold_count=unique_gold_count,
+        duplicate_tps=duplicate_tps,
+        unique_recall=unique_recall,
     )
 
 
@@ -535,6 +569,11 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
     print(f"  Precision:       {result.precision * 100:.1f}%")
     print(f"  Recall:          {result.recall * 100:.1f}%")
     print(f"  F1 Score:        {result.f1_score * 100:.1f}%")
+    if result.duplicate_tps > 0:
+        print(f"\n  Unique-value recall (dedup gold standard repetitions):")
+        print(f"    Duplicate TPs (same metric+value already matched): {result.duplicate_tps}")
+        print(f"    Unique gold entries: {result.unique_gold_count}")
+        print(f"    Unique Recall:       {result.unique_recall * 100:.1f}%")
 
     if result.false_positives > 0:
         print(f"\nFalse Positives (candidates not in gold standard):")
@@ -1059,12 +1098,18 @@ Examples:
             for r in results
         ]
 
+        # Compute overall unique_recall (dedup-adjusted recall across all filings)
+        total_unique_tp = sum(r.true_positives for r in results)
+        total_unique_gold = sum(r.unique_gold_count for r in results if r.unique_gold_count > 0)
+        overall_unique_recall = total_unique_tp / total_unique_gold if total_unique_gold > 0 else None
+
         # Update baseline if requested
         if args.update_baseline:
             baseline_path = Path(args.baseline_path)
             current_baseline = create_baseline_from_results(
                 results_for_baseline,
                 description=f"Validation run with {len(results)} filings",
+                unique_recall=overall_unique_recall,
             )
             save_baseline(current_baseline, baseline_path)
             print(f"\n✓ Baseline saved to {baseline_path}")
@@ -1081,7 +1126,9 @@ Examples:
                 baseline = load_baseline(baseline_path)
 
                 # Create current metrics for comparison
-                current_metrics = create_baseline_from_results(results_for_baseline)
+                current_metrics = create_baseline_from_results(
+                    results_for_baseline, unique_recall=overall_unique_recall
+                )
 
                 # Compare
                 comparison = compare_to_baseline(
