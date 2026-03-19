@@ -1818,8 +1818,8 @@ class TestRequiredContext:
 
     def test_context_check_disabled_always_matches(self, matcher):
         """When check_required_context=False, revenue synonyms should always match."""
-        # GMV without cohort/per-customer context
-        text = "Our GMV reached $1 billion in the quarter"
+        # Bookings without cohort/per-customer context (cm_gmv is deprecated; use cm_bookings)
+        text = "Our bookings reached $1 billion in the quarter"
 
         all_keywords = matcher.find_all_keywords(text)
 
@@ -1838,16 +1838,17 @@ class TestRequiredContext:
             number, all_keywords, check_required_context=False, text=text
         )
 
-        # Should find GMV even without context
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "GMV should match when check_required_context=False"
+        # Should find bookings even without context
+        bookings_matches = [kw for kw in keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) >= 1, \
+            "Bookings should match when check_required_context=False"
 
     def test_context_too_far_no_match(self, matcher):
         """Context beyond proximity_chars should not satisfy requirement."""
-        # GMV with cohort context, but very far apart (more than 1500 chars)
+        # Bookings with cohort context, but very far apart (more than 1500 chars)
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
         padding = "x" * 2000  # 2000 chars of padding
-        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
+        text = f"Bookings were $1 billion for the quarter. {padding} The cohort analysis shows growth."
 
         all_keywords = matcher.find_all_keywords(text)
 
@@ -1866,10 +1867,10 @@ class TestRequiredContext:
             number, all_keywords, check_required_context=True, text=text
         )
 
-        # Should NOT find GMV because cohort context is too far
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) == 0, \
-            "GMV should not match when context is beyond proximity_chars"
+        # Should NOT find bookings because cohort context is too far
+        bookings_matches = [kw for kw in keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) == 0, \
+            "Bookings should not match when context is beyond proximity_chars"
 
     def test_arr_matches_without_context(self, matcher):
         """ARR should match even without cohort/per-customer context."""
@@ -1949,15 +1950,15 @@ class TestRequiredContext:
 
     def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
         """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
-        # GMV without cohort context
-        text = "Our GMV reached $1 billion in the quarter"
+        # Bookings without cohort context (cm_gmv is deprecated; use cm_bookings)
+        text = "Our bookings reached $1 billion in the quarter"
 
-        # find_all_keywords should still find GMV
+        # find_all_keywords should still find bookings
         all_keywords = matcher.find_all_keywords(text)
 
-        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "find_all_keywords should find GMV (for classification/enrichment purposes)"
+        bookings_matches = [kw for kw in all_keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) >= 1, \
+            "find_all_keywords should find bookings (for classification/enrichment purposes)"
 
     def test_has_required_context_method_exists(self, matcher):
         """KeywordMatcher should have _has_required_context method."""
@@ -1971,15 +1972,17 @@ class TestRequiredContext:
         assert result is True
 
     def test_has_required_context_false_without_context(self, matcher):
-        """_has_required_context returns False for GMV without context."""
-        text = "Our GMV reached $1 billion"
-        result = matcher._has_required_context("cm_gmv", 4, text)
+        """_has_required_context returns False for bookings without context."""
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
+        text = "Our bookings reached $1 billion"
+        result = matcher._has_required_context("cm_bookings", 4, text)
         assert result is False
 
     def test_has_required_context_true_with_cohort(self, matcher):
-        """_has_required_context returns True for GMV with cohort context."""
-        text = "Our cohort GMV reached $1 billion"
-        result = matcher._has_required_context("cm_gmv", 11, text)
+        """_has_required_context returns True for bookings with cohort context."""
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
+        text = "Our cohort bookings reached $1 billion"
+        result = matcher._has_required_context("cm_bookings", 11, text)
         assert result is True
 
 
