@@ -203,6 +203,7 @@ class ExtractionPipeline:
             logger.error(
                 f"✗ Data error processing filing {filing_id}: {e}", exc_info=True
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except OSError as e:
@@ -210,6 +211,7 @@ class ExtractionPipeline:
             logger.error(
                 f"✗ File error processing filing {filing_id}: {e}", exc_info=True
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except Exception as e:
@@ -219,6 +221,7 @@ class ExtractionPipeline:
                 f"{type(e).__name__}: {e}",
                 exc_info=True,
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
     def process_batch(self, filing_ids: list[int]) -> dict[str, int]:
@@ -402,6 +405,16 @@ class ExtractionPipeline:
         )
 
         return result
+
+    def _mark_extraction_failed(self, filing_id: int) -> None:
+        """Set processing_status to 'extraction_failed' so the cron job skips retrying broken filings."""
+        try:
+            self.db.execute(
+                "UPDATE filings SET processing_status = 'extraction_failed', updated_at = now() WHERE filing_id = %(filing_id)s",
+                {"filing_id": filing_id},
+            )
+        except Exception:
+            logger.warning(f"Could not update processing_status for filing {filing_id}", exc_info=True)
 
     def _write_results(
         self,
@@ -616,6 +629,12 @@ class ExtractionPipeline:
                         """,
                         inc.to_dict(),
                     )
+
+                # Mark filing as extracted so cron job skips it on next run
+                cur.execute(
+                    "UPDATE filings SET processing_status = 'extracted', updated_at = now() WHERE filing_id = %(filing_id)s",
+                    {"filing_id": filing_id},
+                )
 
         logger.info(f"    Inserted {len(segments)} source segments")
         logger.info(f"    Inserted {len(valid_values)} metric values")

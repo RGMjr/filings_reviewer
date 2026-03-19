@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: filings-reviewer
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # set manually — works with Neon or Render Postgres
+      - key: SECRET_KEY
+        generateValue: true
+      - key: APP_ENV
+        value: production
+      - key: FILINGS_API_KEY
+        sync: false
+
+  - type: cron
+    name: filings-extraction
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python3 scripts/run_batch_pipeline.py
+    schedule: "0 6 * * *"  # Daily at 6am UTC
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: BATCH_LIMIT
+        value: "50"
