@@ -309,6 +309,30 @@ class IngestionStage:
 
         return True
 
+    def _is_invisible_alt_text(self, element: etree._Element) -> bool:
+        """
+        Check if element contains only invisible accessibility fallback text.
+
+        Some image-heavy EDGAR filings (e.g. SNAP investor letters) include hidden
+        text behind full-page JPG images styled with font-size:1pt;color:white.
+        This text is never visible to readers and generates false positive segments.
+
+        Detection: element or any <font> descendant has BOTH font-size <= 1pt AND
+        color:white in its style attribute.
+
+        Args:
+            element: lxml Element to check
+
+        Returns:
+            True if element appears to contain only invisible alt text
+        """
+        candidates = [element] + list(element.iter("font"))
+        for node in candidates:
+            style = (node.get("style") or "").replace(" ", "")
+            if re.search(r"font-size:1(?:\.0)?pt", style) and "color:white" in style:
+                return True
+        return False
+
     def _should_skip_div_wrapper(self, div_element: etree._Element) -> bool:
         """
         Check if a div should be skipped because it only wraps a table.
@@ -548,6 +572,10 @@ class IngestionStage:
         # Using tree.iter() to traverse all elements in document order
         for element in tree.iter():
             if not self._is_paragraph_element(element):
+                continue
+
+            # Skip invisible accessibility fallback text (e.g. SNAP investor letters)
+            if self._is_invisible_alt_text(element):
                 continue
 
             # AC-6: Skip div that only wraps a table (deduplication)
