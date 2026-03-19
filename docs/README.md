@@ -369,6 +369,11 @@ Workflow commands for common tasks:
 | `/task-run [ID]` | Execute an existing worker prompt with approval gates |
 | `/ralph [mode]` | Start Ralph Loop for autonomous execution |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/commit` | Safe commit: runs ruff + pytest before committing |
+| `/merge-check` | Thorough merge readiness assessment (CI, migrations, imports, tests) |
+| `/ci-fix` | Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass |
+| `/plan-execute` | Execute a multi-phase plan with parallel sub-agents per independent wave |
+| `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 
 ### Skills (`.claude/skills/`)
 

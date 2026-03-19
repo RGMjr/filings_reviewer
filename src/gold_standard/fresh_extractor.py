@@ -318,6 +318,40 @@ def extract_fresh(
     # Parse URL
     parsed = parse_sec_url(document_url)
     if parsed is None:
+        # URL parsing failed — try gold_standard local path if company_name provided
+        if company_name:
+            normalized = _normalize_company_for_path(company_name)
+            gold_path = Path("data/gold_standard") / normalized / "filing.html"
+            if gold_path.exists():
+                logger.info(
+                    f"URL parsing failed for {document_url}; "
+                    f"using local gold_standard file: {gold_path}"
+                )
+                candidates, segment_count, error = segment_and_generate(
+                    gold_path,
+                    filing_id=filing_id,
+                    company_id=company_id,
+                    config=config,
+                )
+                if error:
+                    return ExtractionResult(
+                        document_url=document_url,
+                        success=False,
+                        error_message=error,
+                        segments_count=segment_count,
+                        candidates=[],
+                        local_path=gold_path,
+                        elapsed_seconds=time.time() - start_time,
+                    )
+                return ExtractionResult(
+                    document_url=document_url,
+                    success=True,
+                    error_message=None,
+                    segments_count=segment_count,
+                    candidates=candidates,
+                    local_path=gold_path,
+                    elapsed_seconds=time.time() - start_time,
+                )
         return ExtractionResult(
             document_url=document_url,
             success=False,

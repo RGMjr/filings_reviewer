@@ -8,7 +8,6 @@ import pytest
 from src.llm.cache import CacheConfig
 from src.llm.openai_client import CostTracker, LLMResponse, OpenAIClient
 
-
 # Use disabled cache for all tests unless explicitly testing cache
 DISABLED_CACHE_CONFIG = CacheConfig(enabled=False)
 
@@ -602,23 +601,69 @@ class TestCostSummary:
             assert client.get_cost_summary()["total_cost_usd"] == 0
 
 
+def _make_stateful_pg_conn():
+    """
+    Return a mock psycopg connection backed by an in-memory dict.
+
+    Supports the subset of SQL used by LLMCache: CREATE TABLE/INDEX (ignored),
+    INSERT ... ON CONFLICT, SELECT with cache_key lookup, DELETE, and COUNT(*).
+    """
+    store: dict = {}
+
+    def execute(sql, params=None):
+        cursor = MagicMock()
+        sql_stripped = sql.strip().upper()
+
+        if sql_stripped.startswith("CREATE"):
+            cursor.fetchone.return_value = None
+            cursor.rowcount = 0
+        elif sql_stripped.startswith("INSERT"):
+            # params: (cache_key, cache_version, model, content, in_tok, out_tok)
+            key = params[0]
+            store[key] = (params[3], params[4], params[5])
+            cursor.fetchone.return_value = None
+            cursor.rowcount = 1
+        elif sql_stripped.startswith("SELECT") and "COUNT(*)" in sql_stripped:
+            n = len(store)
+            cursor.fetchone.return_value = (n, 0, 0)
+            cursor.rowcount = 0
+        elif sql_stripped.startswith("SELECT"):
+            key = params[0] if params else None
+            row = store.get(key)
+            cursor.fetchone.return_value = row
+            cursor.rowcount = 0
+        elif sql_stripped.startswith("DELETE"):
+            deleted = len(store)
+            store.clear()
+            cursor.rowcount = deleted
+        else:
+            cursor.fetchone.return_value = None
+            cursor.rowcount = 0
+
+        return cursor
+
+    conn = MagicMock()
+    conn.execute.side_effect = execute
+    conn.autocommit = False
+    return conn
+
+
 class TestCacheIntegration:
     """Tests for cache integration with OpenAI client."""
 
-    def test_cache_hit_returns_cached_response(self, mock_tiktoken, mock_openai_response, tmp_path):
+    def test_cache_hit_returns_cached_response(self, mock_tiktoken, mock_openai_response):
         """Test that cache hits return cached responses without API call."""
-        import tempfile
-        import os
+        mock_pg_conn = _make_stateful_pg_conn()
 
-        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class, \
+             patch("src.llm.cache.psycopg.connect", return_value=mock_pg_conn):
             mock_instance = MagicMock()
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
-            # Create cache with temp db
             cache_config = CacheConfig(
                 enabled=True,
-                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                connection_string="postgresql://mock/db",
                 cache_version="test_v1",
             )
 
@@ -635,18 +680,19 @@ class TestCacheIntegration:
             assert response2.content == response1.content
             assert mock_instance.chat.completions.create.call_count == 1  # Still 1
 
-    def test_different_prompts_not_cached(self, mock_tiktoken, mock_openai_response, tmp_path):
+    def test_different_prompts_not_cached(self, mock_tiktoken, mock_openai_response):
         """Test that different prompts are not returned from cache."""
-        import os
+        mock_pg_conn = _make_stateful_pg_conn()
 
-        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class, \
+             patch("src.llm.cache.psycopg.connect", return_value=mock_pg_conn):
             mock_instance = MagicMock()
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
             cache_config = CacheConfig(
                 enabled=True,
-                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                connection_string="postgresql://mock/db",
                 cache_version="test_v1",
             )
 
@@ -658,18 +704,19 @@ class TestCacheIntegration:
 
             assert mock_instance.chat.completions.create.call_count == 2
 
-    def test_get_cache_stats(self, mock_tiktoken, mock_openai_response, tmp_path):
+    def test_get_cache_stats(self, mock_tiktoken, mock_openai_response):
         """Test that cache statistics are correctly reported."""
-        import os
+        mock_pg_conn = _make_stateful_pg_conn()
 
-        with patch("src.llm.openai_client.OpenAI") as mock_openai_class:
+        with patch("src.llm.openai_client.OpenAI") as mock_openai_class, \
+             patch("src.llm.cache.psycopg.connect", return_value=mock_pg_conn):
             mock_instance = MagicMock()
             mock_instance.chat.completions.create.return_value = mock_openai_response
             mock_openai_class.return_value = mock_instance
 
             cache_config = CacheConfig(
                 enabled=True,
-                db_path=os.path.join(str(tmp_path), "test_cache.db"),
+                connection_string="postgresql://mock/db",
                 cache_version="test_v1",
             )
 

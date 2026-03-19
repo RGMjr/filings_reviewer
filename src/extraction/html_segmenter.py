@@ -166,16 +166,24 @@ class HTMLSegmenter:
         self._boundary_detector = BoundaryDetector()
 
     def segment_filing(
-        self, filing_id: int, html_path: str, raise_on_error: bool = False
+        self,
+        filing_id: int,
+        html_path: str = "",
+        raise_on_error: bool = False,
+        *,
+        html_content: str | None = None,
     ) -> list[SourceSegment]:
         """
         Parse filing HTML and return list of source segments.
 
         Args:
             filing_id: Database filing ID
-            html_path: Path to HTML file
+            html_path: Path to HTML file. Required when html_content is None.
             raise_on_error: If True, raise exceptions instead of returning empty list
                 (default: False for backward compatibility)
+            html_content: Pre-loaded HTML string. When provided, file reading and
+                path validation are skipped; html_path is used only for log messages.
+                The caller is responsible for correct decoding.
 
         Returns:
             List of SourceSegment objects (not yet inserted to DB)
@@ -188,35 +196,43 @@ class HTMLSegmenter:
         start_time = time.time()
 
         # Validate inputs
+        validated_path = None
         try:
             SegmentValidator.validate_filing_id(filing_id)
-            validated_path = SegmentValidator.validate_html_path(html_path)
+            if html_content is None:
+                validated_path = SegmentValidator.validate_html_path(html_path)
         except (ValidationError, FileNotFoundError, PermissionError) as e:
             if raise_on_error:
                 raise
             logger.error(f"Validation failed for filing {filing_id}: {e}")
             return []
 
-        logger.info(f"Segmenting filing {filing_id} from {html_path}")
+        # Determine label used in log messages and error objects
+        path_label = str(validated_path) if validated_path is not None else (html_path or "<provided content>")
+
+        logger.info(f"Segmenting filing {filing_id} from {path_label}")
 
         # Initialize metrics
         self._metrics = SegmentationMetrics(filing_id=filing_id)
 
-        # Read HTML file with encoding detection
-        try:
-            html_content, encoding_used = self._read_html_file_with_encoding(str(validated_path))
-            self._metrics.encoding_used = encoding_used
-        except EncodingError as e:
-            if raise_on_error:
-                raise
-            logger.error(f"Encoding error for filing {filing_id}: {e}")
-            self._metrics.warnings.append(f"Encoding error: {e}")
-            return []
+        # Resolve HTML content: from provided string or file
+        if html_content is None:
+            try:
+                html_content, encoding_used = self._read_html_file_with_encoding(path_label)
+                self._metrics.encoding_used = encoding_used
+            except EncodingError as e:
+                if raise_on_error:
+                    raise
+                logger.error(f"Encoding error for filing {filing_id}: {e}")
+                self._metrics.warnings.append(f"Encoding error: {e}")
+                return []
+        else:
+            self._metrics.encoding_used = "provided"
 
         if not html_content:
             msg = f"Empty HTML content for filing {filing_id}"
             if raise_on_error:
-                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+                raise HTMLParsingError(msg, filing_id=filing_id, html_path=path_label)
             logger.warning(msg)
             self._metrics.warnings.append("Empty HTML content")
             return []
@@ -228,7 +244,7 @@ class HTMLSegmenter:
             msg = f"Failed to parse HTML for filing {filing_id}: {e}"
             if raise_on_error:
                 raise HTMLParsingError(
-                    msg, filing_id=filing_id, html_path=str(validated_path)
+                    msg, filing_id=filing_id, html_path=path_label
                 ) from e
             logger.error(msg)
             self._metrics.warnings.append(f"Parse error: {e}")
@@ -239,7 +255,7 @@ class HTMLSegmenter:
         if not main_content:
             msg = f"Could not find main content in filing {filing_id}"
             if raise_on_error:
-                raise HTMLParsingError(msg, filing_id=filing_id, html_path=str(validated_path))
+                raise HTMLParsingError(msg, filing_id=filing_id, html_path=path_label)
             logger.warning(msg)
             self._metrics.warnings.append("No main content found")
             return []

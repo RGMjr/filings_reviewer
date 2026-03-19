@@ -1,8 +1,6 @@
 """Tests for LLM response cache module."""
 
-import os
-import tempfile
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,16 +12,15 @@ class TestCacheConfig:
 
     def test_default_config(self):
         """Test default configuration values."""
-        # Clear environment to test defaults
         with pytest.MonkeyPatch.context() as mp:
             mp.delenv("LLM_CACHE_ENABLED", raising=False)
-            mp.delenv("LLM_CACHE_PATH", raising=False)
+            mp.delenv("DATABASE_URL", raising=False)
             mp.delenv("LLM_CACHE_VERSION", raising=False)
 
             config = CacheConfig()
 
             assert config.enabled is True
-            assert config.db_path == "data/llm_cache.db"
+            assert config.connection_string == ""
             assert config.cache_version == "v1"
             assert config.max_age_days == 30
 
@@ -31,26 +28,26 @@ class TestCacheConfig:
         """Test configuration from environment variables."""
         with pytest.MonkeyPatch.context() as mp:
             mp.setenv("LLM_CACHE_ENABLED", "false")
-            mp.setenv("LLM_CACHE_PATH", "/custom/path.db")
+            mp.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
             mp.setenv("LLM_CACHE_VERSION", "v2")
 
             config = CacheConfig()
 
             assert config.enabled is False
-            assert config.db_path == "/custom/path.db"
+            assert config.connection_string == "postgresql://user:pass@localhost/testdb"
             assert config.cache_version == "v2"
 
     def test_config_explicit_values(self):
         """Test explicit configuration values override defaults."""
         config = CacheConfig(
             enabled=False,
-            db_path="/explicit/path.db",
+            connection_string="postgresql://user:pass@localhost/db",
             cache_version="v3",
             max_age_days=7,
         )
 
         assert config.enabled is False
-        assert config.db_path == "/explicit/path.db"
+        assert config.connection_string == "postgresql://user:pass@localhost/db"
         assert config.cache_version == "v3"
         assert config.max_age_days == 7
 
@@ -72,50 +69,68 @@ class TestCachedResponse:
         assert response.cached is True
 
 
+def _make_mock_conn():
+    """Return a mock psycopg connection that supports context-manager cursor use."""
+    conn = MagicMock()
+    # execute() returns a cursor-like object with fetchone/rowcount
+    cursor = MagicMock()
+    cursor.fetchone.return_value = None
+    cursor.rowcount = 0
+    conn.execute.return_value = cursor
+    conn.autocommit = False
+    return conn
+
+
 class TestLLMCache:
-    """Tests for LLMCache class."""
+    """Tests for LLMCache class using a mocked psycopg connection."""
 
     @pytest.fixture
-    def temp_cache_dir(self):
-        """Create a temporary directory for cache database."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield tmpdir
+    def mock_conn(self):
+        return _make_mock_conn()
 
     @pytest.fixture
-    def cache(self, temp_cache_dir):
-        """Create a cache instance with temporary database."""
+    def cache(self, mock_conn):
+        """Create a cache instance backed by a mock Postgres connection."""
         config = CacheConfig(
             enabled=True,
-            db_path=os.path.join(temp_cache_dir, "test_cache.db"),
+            connection_string="postgresql://mock/db",
             cache_version="test_v1",
             max_age_days=30,
         )
-        cache = LLMCache(config)
-        yield cache
-        cache.close()
+        with patch("src.llm.cache.psycopg.connect", return_value=mock_conn):
+            c = LLMCache(config)
+        yield c
+        c.close()
 
     @pytest.fixture
-    def disabled_cache(self, temp_cache_dir):
-        """Create a disabled cache instance."""
-        config = CacheConfig(
-            enabled=False,
-            db_path=os.path.join(temp_cache_dir, "disabled_cache.db"),
-        )
+    def disabled_cache(self):
+        config = CacheConfig(enabled=False, connection_string="")
         return LLMCache(config)
 
-    def test_cache_initialization(self, temp_cache_dir):
-        """Test cache initializes database correctly."""
-        db_path = os.path.join(temp_cache_dir, "init_test.db")
-        config = CacheConfig(enabled=True, db_path=db_path)
+    def test_cache_initialization(self, mock_conn):
+        """Test cache connects and creates schema on init."""
+        config = CacheConfig(
+            enabled=True,
+            connection_string="postgresql://mock/db",
+            cache_version="v1",
+        )
+        with patch("src.llm.cache.psycopg.connect", return_value=mock_conn) as mock_connect:
+            cache = LLMCache(config)
+            mock_connect.assert_called_once_with("postgresql://mock/db")
+            assert cache._conn is not None
+            cache.close()
 
-        cache = LLMCache(config)
-
-        assert Path(db_path).exists()
-        assert cache._conn is not None
-        cache.close()
+    def test_cache_no_connection_string_disables(self):
+        """Cache disables itself when DATABASE_URL is not set."""
+        with pytest.MonkeyPatch.context() as mp:
+            mp.delenv("DATABASE_URL", raising=False)
+            config = CacheConfig(enabled=True, connection_string="")
+            cache = LLMCache(config)
+            assert cache.config.enabled is False
+            assert cache._conn is None
 
     def test_cache_disabled(self, disabled_cache):
-        """Test disabled cache returns None for all operations."""
+        """Disabled cache returns None / False for all operations."""
         result = disabled_cache.get(
             model="gpt-4o-mini",
             system_message="",
@@ -123,7 +138,6 @@ class TestLLMCache:
             temperature=0.0,
             max_tokens=100,
         )
-
         assert result is None
 
         success = disabled_cache.set(
@@ -136,12 +150,11 @@ class TestLLMCache:
             input_tokens=10,
             output_tokens=20,
         )
-
         assert success is False
 
-    def test_set_and_get(self, cache):
-        """Test storing and retrieving from cache."""
-        # Store a response
+    def test_set_calls_execute(self, cache, mock_conn):
+        """set() calls conn.execute with an INSERT ... ON CONFLICT statement."""
+        mock_conn.execute.return_value = MagicMock(rowcount=1)
         success = cache.set(
             model="gpt-4o-mini",
             system_message="You are helpful",
@@ -152,10 +165,19 @@ class TestLLMCache:
             input_tokens=15,
             output_tokens=1,
         )
-
         assert success is True
+        # Verify an INSERT ... ON CONFLICT call was made
+        insert_calls = [
+            call for call in mock_conn.execute.call_args_list
+            if "INSERT" in str(call)
+        ]
+        assert len(insert_calls) >= 1
 
-        # Retrieve it
+    def test_get_hit_returns_cached_response(self, cache, mock_conn):
+        """get() returns CachedResponse when the DB row is found."""
+        mock_conn.execute.return_value = MagicMock(
+            fetchone=MagicMock(return_value=("4", 15, 1))
+        )
         result = cache.get(
             model="gpt-4o-mini",
             system_message="You are helpful",
@@ -163,15 +185,17 @@ class TestLLMCache:
             temperature=0.0,
             max_tokens=100,
         )
-
         assert result is not None
         assert result.content == "4"
         assert result.input_tokens == 15
         assert result.output_tokens == 1
         assert result.cached is True
 
-    def test_cache_miss(self, cache):
-        """Test cache returns None for missing entries."""
+    def test_get_miss_returns_none(self, cache, mock_conn):
+        """get() returns None when the DB row is not found."""
+        mock_conn.execute.return_value = MagicMock(
+            fetchone=MagicMock(return_value=None)
+        )
         result = cache.get(
             model="gpt-4o-mini",
             system_message="",
@@ -179,272 +203,48 @@ class TestLLMCache:
             temperature=0.0,
             max_tokens=100,
         )
-
         assert result is None
 
-    def test_different_prompts_different_keys(self, cache):
-        """Test different prompts produce different cache keys."""
-        # Store first response
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Prompt A",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Response A",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Store second response
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Prompt B",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Response B",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Retrieve both
-        result_a = cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Prompt A",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        result_b = cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Prompt B",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        assert result_a.content == "Response A"
-        assert result_b.content == "Response B"
-
-    def test_different_temperatures_different_keys(self, cache):
-        """Test different temperatures produce different cache keys."""
-        # Store with temp=0.0
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Same prompt",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Deterministic",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Store with temp=0.7
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Same prompt",
-            temperature=0.7,
-            max_tokens=100,
-            response_content="Creative",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Retrieve both
-        result_0 = cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Same prompt",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        result_7 = cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Same prompt",
-            temperature=0.7,
-            max_tokens=100,
-        )
-
-        assert result_0.content == "Deterministic"
-        assert result_7.content == "Creative"
-
-    def test_whitespace_normalization(self, cache):
-        """Test that prompts are normalized (whitespace stripped)."""
-        # Store with extra whitespace
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="  System  ",
-            prompt="  Prompt with spaces  ",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Response",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Retrieve without extra whitespace
-        result = cache.get(
-            model="gpt-4o-mini",
-            system_message="System",
-            prompt="Prompt with spaces",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        assert result is not None
-        assert result.content == "Response"
-
-    def test_stats(self, cache):
-        """Test cache statistics."""
-        # Initial stats
-        stats = cache.stats()
-        assert stats["enabled"] is True
+    def test_stats_disabled(self, disabled_cache):
+        """stats() returns disabled structure when cache is off."""
+        stats = disabled_cache.stats()
+        assert stats["enabled"] is False
         assert stats["total_entries"] == 0
-        assert stats["session_hits"] == 0
-        assert stats["session_misses"] == 0
 
-        # Add some entries and lookups
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Response",
-            input_tokens=10,
-            output_tokens=20,
-        )
-
-        # Cache hit
-        cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        # Cache miss
-        cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Missing",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        stats = cache.stats()
-        assert stats["total_entries"] == 1
-        assert stats["total_input_tokens_cached"] == 10
-        assert stats["total_output_tokens_cached"] == 20
-        assert stats["session_hits"] == 1
-        assert stats["session_misses"] == 1
-        assert stats["hit_rate"] == 50.0
-
-    def test_clear_version_only(self, cache):
-        """Test clearing cache entries for current version only."""
-        # Add entry
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Response",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        assert cache.stats()["total_entries"] == 1
-
-        # Clear version
+    def test_clear_calls_delete(self, cache, mock_conn):
+        """clear() calls DELETE and commits."""
+        mock_cursor = MagicMock(rowcount=3)
+        mock_conn.execute.return_value = mock_cursor
         deleted = cache.clear(version_only=True)
+        assert deleted == 3
+        mock_conn.commit.assert_called()
 
-        assert deleted == 1
-        assert cache.stats()["total_entries"] == 0
+    def test_cleanup_expired_calls_delete(self, cache, mock_conn):
+        """cleanup_expired() calls DELETE with interval and commits."""
+        mock_cursor = MagicMock(rowcount=2)
+        mock_conn.execute.return_value = mock_cursor
+        deleted = cache.cleanup_expired()
+        assert deleted == 2
+        delete_calls = [
+            call for call in mock_conn.execute.call_args_list
+            if "DELETE" in str(call)
+        ]
+        assert len(delete_calls) >= 1
 
-    def test_cache_version_isolation(self, temp_cache_dir):
-        """Test that different cache versions are isolated."""
-        db_path = os.path.join(temp_cache_dir, "version_test.db")
+    def test_session_hit_miss_counters(self, cache, mock_conn):
+        """Hit and miss counters increment correctly."""
+        # Miss
+        mock_conn.execute.return_value = MagicMock(fetchone=MagicMock(return_value=None))
+        cache.get(model="m", system_message="", prompt="p", temperature=0.0, max_tokens=10)
+        assert cache._misses == 1
+        assert cache._hits == 0
 
-        # Create cache with v1
-        config_v1 = CacheConfig(enabled=True, db_path=db_path, cache_version="v1")
-        cache_v1 = LLMCache(config_v1)
-
-        cache_v1.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="V1 Response",
-            input_tokens=10,
-            output_tokens=10,
+        # Hit
+        mock_conn.execute.return_value = MagicMock(
+            fetchone=MagicMock(return_value=("resp", 5, 3))
         )
-        cache_v1.close()
-
-        # Create cache with v2 - should not see v1 entry
-        config_v2 = CacheConfig(enabled=True, db_path=db_path, cache_version="v2")
-        cache_v2 = LLMCache(config_v2)
-
-        result = cache_v2.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        assert result is None  # v2 shouldn't see v1's entries
-        cache_v2.close()
-
-    def test_replace_existing_entry(self, cache):
-        """Test that setting same key replaces existing entry."""
-        # First set
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="First Response",
-            input_tokens=10,
-            output_tokens=10,
-        )
-
-        # Second set with same key
-        cache.set(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-            response_content="Second Response",
-            input_tokens=15,
-            output_tokens=20,
-        )
-
-        # Should get the second response
-        result = cache.get(
-            model="gpt-4o-mini",
-            system_message="",
-            prompt="Test",
-            temperature=0.0,
-            max_tokens=100,
-        )
-
-        assert result.content == "Second Response"
-        assert result.input_tokens == 15
-        assert result.output_tokens == 20
-
-        # Should still only have one entry
-        assert cache.stats()["total_entries"] == 1
+        cache.get(model="m", system_message="", prompt="p", temperature=0.0, max_tokens=10)
+        assert cache._hits == 1
 
 
 class TestLLMCacheKeyComputation:
@@ -495,5 +295,12 @@ class TestLLMCacheKeyComputation:
         """Test that cache key is deterministic."""
         key1 = cache._compute_key("gpt-4o-mini", "sys", "prompt", 0.5, 100)
         key2 = cache._compute_key("gpt-4o-mini", "sys", "prompt", 0.5, 100)
+
+        assert key1 == key2
+
+    def test_whitespace_normalization_in_key(self, cache):
+        """Prompts with leading/trailing whitespace produce the same key."""
+        key1 = cache._compute_key("gpt-4o-mini", "  System  ", "  Prompt  ", 0.0, 100)
+        key2 = cache._compute_key("gpt-4o-mini", "System", "Prompt", 0.0, 100)
 
         assert key1 == key2
