@@ -1658,6 +1658,8 @@ class TestMetricTypeValidation:
         assert "cm_arr" in DOLLAR_ONLY_METRICS
         assert "cm_ltv" in DOLLAR_ONLY_METRICS
         assert "cm_cac" in DOLLAR_ONLY_METRICS
+        assert "cm_gmv" in DOLLAR_ONLY_METRICS
+        assert "cm_average_order_value" in DOLLAR_ONLY_METRICS
 
     def test_count_only_metrics_set(self):
         """COUNT_ONLY_METRICS should contain expected metrics."""

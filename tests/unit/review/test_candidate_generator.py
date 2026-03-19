@@ -4254,3 +4254,107 @@ class TestRevenueByCohortPatterns:
         assert len(cohort_candidates) == 0, (
             "NRR percentage should not generate cm_revenue_by_cohort candidates"
         )
+
+
+# =============================================================================
+# GMV and AOV Dollar-Only Type Validation Tests (Phase 3b)
+# =============================================================================
+
+
+class TestGmvAovDollarOnlyValidation:
+    """Tests that cm_gmv and cm_average_order_value reject percentage and plain-count
+    values, keeping only dollar-denominated values.
+
+    These metrics are inherently monetary; growth-rate percentages (e.g., 'GMV grew
+    55.6%') near their keywords should not be extracted as metric values."""
+
+    @pytest.fixture
+    def generator(self):
+        return CandidateGenerator()
+
+    def test_gmv_growth_rate_percentage_rejected(self, generator):
+        """Growth-rate percentage near 'GMV' keyword should not produce cm_gmv candidate."""
+        # Include 'per customer' to satisfy required_context for cm_gmv,
+        # replicating the Farfetch KPI table where per-customer context appears alongside GMV.
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "GMV per customer grew significantly. "
+                    "Our GMV was $909.8 million in 2017, up 55.6% over 2016."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        gmv_pct_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id == "cm_gmv" and "%" in (c.raw_number_text or "")
+        ]
+        assert len(gmv_pct_candidates) == 0, (
+            "Growth rate percentage should not generate cm_gmv candidate"
+        )
+
+    def test_gmv_dollar_amount_accepted(self, generator):
+        """Dollar-denominated GMV should produce cm_gmv candidate."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "GMV per customer has grown. "
+                    "Our Gross Merchandise Value was $909.8 million for the year."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        gmv_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_gmv"
+        ]
+        assert len(gmv_candidates) > 0, (
+            "Dollar-denominated GMV should generate cm_gmv candidate"
+        )
+
+    def test_aov_growth_rate_percentage_rejected(self, generator):
+        """Growth-rate percentage near AOV keyword should not produce cm_average_order_value."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Average Order Value increased 31.7% year over year.",
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        aov_pct_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id == "cm_average_order_value"
+            and "%" in (c.raw_number_text or "")
+        ]
+        assert len(aov_pct_candidates) == 0, (
+            "Growth rate percentage should not generate cm_average_order_value candidate"
+        )
+
+    def test_aov_dollar_amount_accepted(self, generator):
+        """Dollar-denominated AOV should produce cm_average_order_value candidate."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our Average Order Value was $622.1 for the six months ended June 30.",
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        aov_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_average_order_value"
+        ]
+        assert len(aov_candidates) > 0, (
+            "Dollar-denominated AOV should generate cm_average_order_value candidate"
+        )

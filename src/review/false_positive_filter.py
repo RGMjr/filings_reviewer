@@ -331,6 +331,8 @@ DOLLAR_ONLY_METRICS: set[str] = {
     'cm_ltv',  # Lifetime value
     'cm_cac',  # Customer acquisition cost
     'cm_arpu',  # Average revenue per user
+    'cm_gmv',  # GMV is monetary; percentages are growth rates not values
+    'cm_average_order_value',  # AOV is monetary; "31.7%" is a growth rate not an AOV
 }
 
 # Metrics that should ONLY be counts (not percentages or dollars)
