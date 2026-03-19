@@ -2,15 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-03-16
-
----
-
-## 1. Metric ID Mismatch Between Gold Standard and System
-
-**Status**: ✅ Resolved (2026-03-16)
-
-Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system taxonomy in `config/metric_keywords.yaml`. No remaining ID mismatches. See git log (2026-03-16) for full resolution details.
+**Last Updated**: 2026-03-17
 
 ---
 
@@ -27,7 +19,7 @@ Only 1 of 8 non-chart Farfetch gold standard values matched during validation.
 ### Contributing Factors
 
 1. ~~**Metric ID mismatch** (see Issue #1)~~ — resolved; gold standard IDs now aligned
-2. **URL issue**: `sec_html_url` for Farfetch resolves to a directory index (see Issue #6), so no segments are extracted
+2. ~~**URL issue**: `sec_html_url` for Farfetch resolves to a directory index (see Issue #6)~~ — resolved; re-fetch 78 cloud-stored filings on Render
 3. **Value normalization differences**: Gold uses exact values, system may normalize differently
 4. **Missing patterns**: Some keywords may not trigger candidate generation
 
@@ -40,7 +32,7 @@ The CAC payback period value "six" (months) was not being extracted:
 
 ### Remaining Gaps
 
-- Farfetch recall is blocked by the directory index bug (Issue #6); re-evaluate after that is fixed
+- Re-evaluate Farfetch recall after cloud re-fetch of 78 filings is complete
 - Review Active Consumers, Number of Orders, Take Rate patterns once document fetch is working
 
 ---
@@ -122,18 +114,22 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 | Issue | Status | Priority | Effort | Impact |
 |-------|--------|----------|--------|--------|
-| Metric ID Mismatch | **Resolved** | — | — | Recall measurements now accurate |
-| Low Farfetch Recall | Open | Medium | Medium | Blocked by Issue #6 |
+| Low Farfetch Recall | Open | Medium | Medium | Blocked pending cloud re-fetch |
 | Gold Standard Methodology | Open | Low | Low | Process improvement |
 | Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
-| FilingFetcher Directory Index | **Resolved** | — | — | Re-fetch cloud filings to get actual documents |
 
 ---
 
----
+## Archive (Resolved Issues)
 
-## 6. FilingFetcher Downloads Directory Index Instead of Primary Document
+### Issue #1: Metric ID Mismatch Between Gold Standard and System
+
+**Status**: ✅ Resolved (2026-03-16)
+
+Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system taxonomy in `config/metric_keywords.yaml`. No remaining ID mismatches. See git log (2026-03-16) for full resolution details.
+
+### Issue #6: FilingFetcher Downloads Directory Index Instead of Primary Document
 
 **Status**: ✅ Resolved (2026-03-16)
 
@@ -148,3 +144,4 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 - **2026-03-16**: Added Issue #6 — FilingFetcher directory index bug
 - **2026-03-16**: Issue #6 resolved — default SECClient creation + removed null guard; 78 cloud-fetched files need re-fetch
 - **2026-03-16**: Issue #1 resolved — gold standard CSV updated to align with system taxonomy; no metric ID mismatches remain
+- **2026-03-17**: Archived resolved Issues #1 and #6; updated Farfetch contributing factors to reflect resolutions

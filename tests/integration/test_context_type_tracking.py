@@ -34,7 +34,7 @@ class TestContextTypeTracking:
 
     def test_table_context_type(self, db, generator):
         """Table segments should have context_type='table'."""
-        text = "Gross margin was 52% for the year."
+        text = "Retention rate was 92% for the year."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -59,7 +59,7 @@ class TestContextTypeTracking:
 
     def test_bullet_context_type(self, db, generator):
         """Bullet points should have context_type='bullet'."""
-        text = "• Gross margin was 52% for the year"
+        text = "• Retention rate was 92% for the year"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -85,7 +85,7 @@ class TestContextTypeTracking:
     def test_parenthetical_context_type(self, db, generator):
         """Parenthetical text (NUMBER in parentheses) should have context_type='parenthetical'."""
         # Note: Parenthetical detection checks if NUMBER is inside parentheses
-        text = "The company achieved (52% gross margin) improvement"
+        text = "The company achieved (92% retention rate) improvement"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -110,7 +110,7 @@ class TestContextTypeTracking:
 
     def test_copula_context_type(self, db, generator):
         """Copula verb pattern should have context_type='copula'."""
-        text = "Gross margin was 52% in the quarter"
+        text = "Retention rate was 92% in the quarter"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -135,7 +135,7 @@ class TestContextTypeTracking:
 
     def test_default_context_type(self, db, generator):
         """No special context should have context_type='default'."""
-        text = "The company increased from gross margin measurement levels by reaching 52 percent"
+        text = "The company increased from retention rate measurement levels by reaching 92%"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -160,7 +160,7 @@ class TestContextTypeTracking:
 
     def test_context_type_serialization(self, db, generator):
         """Context type should survive serialization round-trip."""
-        text = "• Gross margin was 52%"
+        text = "• Retention rate was 92%"
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
