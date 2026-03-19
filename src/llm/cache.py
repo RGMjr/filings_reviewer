@@ -1,5 +1,5 @@
 """
-LLM Response Cache with SQLite backend.
+LLM Response Cache with PostgreSQL backend.
 
 Provides caching for LLM API responses to reduce costs and latency
 for repeated or near-repeated prompts.
@@ -12,11 +12,11 @@ import hashlib
 import json
 import logging
 import os
-import sqlite3
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+import psycopg
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,8 @@ class CacheConfig:
         default_factory=lambda: os.environ.get("LLM_CACHE_ENABLED", "true").lower()
         == "true"
     )
-    db_path: str = field(
-        default_factory=lambda: os.environ.get(
-            "LLM_CACHE_PATH", "data/llm_cache.db"
-        )
+    connection_string: str = field(
+        default_factory=lambda: os.environ.get("DATABASE_URL", "")
     )
     cache_version: str = field(
         default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v1")
@@ -52,13 +50,13 @@ class CachedResponse:
 
 class LLMCache:
     """
-    SQLite-backed cache for LLM responses.
+    PostgreSQL-backed cache for LLM responses.
 
     Thread-safe using a lock around database operations.
-    For production with multiple workers, consider upgrading to Redis or Postgres.
+    Reuses a single persistent connection; reconnects on error.
     """
 
-    def __init__(self, config: Optional[CacheConfig] = None):
+    def __init__(self, config: CacheConfig | None = None):
         """
         Initialize the LLM cache.
 
@@ -66,7 +64,7 @@ class LLMCache:
             config: Cache configuration. If None, uses defaults from environment.
         """
         self.config = config or CacheConfig()
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: psycopg.Connection | None = None
         self._lock = threading.Lock()
 
         # Statistics
@@ -76,15 +74,24 @@ class LLMCache:
         if self.config.enabled:
             self._init_db()
 
-    def _init_db(self) -> None:
-        """Initialize the SQLite database and create schema if needed."""
+    def _safe_rollback(self) -> None:
+        """Roll back the current transaction, ignoring errors (e.g. closed connection)."""
         try:
-            Path(self.config.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(
-                self.config.db_path,
-                check_same_thread=False,
-                timeout=10.0,
-            )
+            if self._conn:
+                self._conn.rollback()
+        except psycopg.Error:
+            pass
+
+    def _init_db(self) -> None:
+        """Initialize the PostgreSQL connection and create schema if needed."""
+        if not self.config.connection_string:
+            logger.warning("LLM_CACHE_ENABLED=true but DATABASE_URL not set; cache disabled")
+            self.config.enabled = False
+            return
+
+        try:
+            self._conn = psycopg.connect(self.config.connection_string)
+            self._conn.autocommit = False
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_cache (
                     cache_key TEXT PRIMARY KEY,
@@ -93,18 +100,18 @@ class LLMCache:
                     response_content TEXT NOT NULL,
                     input_tokens INTEGER NOT NULL,
                     output_tokens INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
             self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cache_version ON llm_cache(cache_version)"
+                "CREATE INDEX IF NOT EXISTS idx_llm_cache_version ON llm_cache(cache_version)"
             )
             self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_at ON llm_cache(created_at)"
+                "CREATE INDEX IF NOT EXISTS idx_llm_cache_created_at ON llm_cache(created_at)"
             )
             self._conn.commit()
-            logger.info(f"LLM cache initialized at {self.config.db_path}")
-        except sqlite3.Error as e:
+            logger.info("LLM cache initialized (PostgreSQL)")
+        except psycopg.Error as e:
             logger.error(f"Failed to initialize LLM cache: {e}")
             self.config.enabled = False
             self._conn = None
@@ -160,7 +167,7 @@ class LLMCache:
         temperature: float,
         max_tokens: int,
         **kwargs: Any,
-    ) -> Optional[CachedResponse]:
+    ) -> CachedResponse | None:
         """
         Get a cached response if it exists and is valid.
 
@@ -184,21 +191,17 @@ class LLMCache:
 
         with self._lock:
             try:
-                cursor = self._conn.execute(
+                row = self._conn.execute(
                     """
                     SELECT response_content, input_tokens, output_tokens
                     FROM llm_cache
-                    WHERE cache_key = ? AND cache_version = ?
-                    AND created_at > datetime('now', ?)
-                """,
-                    (
-                        cache_key,
-                        self.config.cache_version,
-                        f"-{self.config.max_age_days} days",
-                    ),
-                )
+                    WHERE cache_key = %s AND cache_version = %s
+                    AND created_at > NOW() - make_interval(days => %s)
+                    """,
+                    (cache_key, self.config.cache_version, self.config.max_age_days),
+                ).fetchone()
+                self._conn.commit()
 
-                row = cursor.fetchone()
                 if row:
                     self._hits += 1
                     logger.debug(f"Cache HIT for key {cache_key[:8]}...")
@@ -213,8 +216,9 @@ class LLMCache:
                 logger.debug(f"Cache MISS for key {cache_key[:8]}...")
                 return None
 
-            except sqlite3.Error as e:
+            except psycopg.Error as e:
                 logger.error(f"Cache get error: {e}")
+                self._safe_rollback()
                 return None
 
     def set(
@@ -257,10 +261,17 @@ class LLMCache:
             try:
                 self._conn.execute(
                     """
-                    INSERT OR REPLACE INTO llm_cache
+                    INSERT INTO llm_cache
                     (cache_key, cache_version, model, response_content, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (cache_key) DO UPDATE SET
+                        cache_version = EXCLUDED.cache_version,
+                        model = EXCLUDED.model,
+                        response_content = EXCLUDED.response_content,
+                        input_tokens = EXCLUDED.input_tokens,
+                        output_tokens = EXCLUDED.output_tokens,
+                        created_at = NOW()
+                    """,
                     (
                         cache_key,
                         self.config.cache_version,
@@ -274,8 +285,9 @@ class LLMCache:
                 logger.debug(f"Cache SET for key {cache_key[:8]}...")
                 return True
 
-            except sqlite3.Error as e:
+            except psycopg.Error as e:
                 logger.error(f"Cache set error: {e}")
+                self._safe_rollback()
                 return False
 
     def stats(self) -> dict[str, Any]:
@@ -303,19 +315,19 @@ class LLMCache:
 
         with self._lock:
             try:
-                cursor = self._conn.execute(
+                row = self._conn.execute(
                     """
                     SELECT
                         COUNT(*) as total_entries,
                         COALESCE(SUM(input_tokens), 0) as total_input_tokens,
                         COALESCE(SUM(output_tokens), 0) as total_output_tokens
                     FROM llm_cache
-                    WHERE cache_version = ?
-                """,
+                    WHERE cache_version = %s
+                    """,
                     (self.config.cache_version,),
-                )
+                ).fetchone()
+                self._conn.commit()
 
-                row = cursor.fetchone()
                 total_requests = self._hits + self._misses
                 hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0.0
 
@@ -329,8 +341,9 @@ class LLMCache:
                     "hit_rate": round(hit_rate, 1),
                 }
 
-            except sqlite3.Error as e:
+            except psycopg.Error as e:
                 logger.error(f"Cache stats error: {e}")
+                self._safe_rollback()
                 return {
                     "enabled": True,
                     "error": str(e),
@@ -356,7 +369,7 @@ class LLMCache:
             try:
                 if version_only:
                     cursor = self._conn.execute(
-                        "DELETE FROM llm_cache WHERE cache_version = ?",
+                        "DELETE FROM llm_cache WHERE cache_version = %s",
                         (self.config.cache_version,),
                     )
                 else:
@@ -367,8 +380,9 @@ class LLMCache:
                 logger.info(f"Cleared {deleted} cache entries")
                 return deleted
 
-            except sqlite3.Error as e:
+            except psycopg.Error as e:
                 logger.error(f"Cache clear error: {e}")
+                self._safe_rollback()
                 return 0
 
     def cleanup_expired(self) -> int:
@@ -384,8 +398,8 @@ class LLMCache:
         with self._lock:
             try:
                 cursor = self._conn.execute(
-                    "DELETE FROM llm_cache WHERE created_at <= datetime('now', ?)",
-                    (f"-{self.config.max_age_days} days",),
+                    "DELETE FROM llm_cache WHERE created_at <= NOW() - make_interval(days => %s)",
+                    (self.config.max_age_days,),
                 )
                 self._conn.commit()
                 deleted = cursor.rowcount
@@ -393,8 +407,9 @@ class LLMCache:
                     logger.info(f"Cleaned up {deleted} expired cache entries")
                 return deleted
 
-            except sqlite3.Error as e:
+            except psycopg.Error as e:
                 logger.error(f"Cache cleanup error: {e}")
+                self._safe_rollback()
                 return 0
 
     def close(self) -> None:
