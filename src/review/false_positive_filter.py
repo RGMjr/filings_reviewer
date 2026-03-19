@@ -348,6 +348,8 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_active_customers_total',
     'cm_large_customers_period_end',
     'cm_new_customers_acquired',
+    # Transaction count (added 2026-03-19 - % and $ values are gross margin/take rates, not order counts)
+    'cm_purchase_transactions_overall',
 }
 
 
