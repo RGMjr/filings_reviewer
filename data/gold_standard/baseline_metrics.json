@@ -1,32 +1,32 @@
 {
-  "baseline_date": "2026-03-19T15:55:01.126322+00:00",
+  "baseline_date": "2026-03-20T13:25:02.168644+00:00",
   "description": "Validation run with 4 filings",
   "overall": {
-    "precision": 0.0,
-    "recall": 0.0,
-    "f1": 0.0
+    "precision": 0.8405797101449275,
+    "recall": 0.7295597484276729,
+    "f1": 0.781144781144781
   },
   "by_company": {
     "Farfetch Limited": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.7045454545454546,
+      "recall": 0.5,
+      "f1": 0.5849056603773585
     },
     "SAMSARA VISION INC.": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666
     },
     "Slack Technologies": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 1.0,
+      "recall": 0.9772727272727273,
+      "f1": 0.9885057471264368
     },
     "Snowflake Inc": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.8666666666666667,
+      "recall": 0.78,
+      "f1": 0.8210526315789474
     }
   },
-  "unique_recall": 0.0
+  "unique_recall": 0.7295597484276729
 }

@@ -32,6 +32,9 @@ pytest --cov=src --cov-report=html # Run with coverage
 black src/ tests/                  # Format code
 ruff check src/ tests/             # Lint
 mypy src/review/ --strict          # Type checking
+
+# Gold standard validation (fresh mode — no database required)
+pytest -m gold_standard --gold-standard-mode=fresh -v
 ```
 
 ## Environment Setup
@@ -42,7 +45,10 @@ DATABASE_URL=postgresql://user:password@localhost/filings_analysis
 SEC_USER_AGENT="YourName contact@example.com"
 ```
 
-## Docker
+## Docker (local development only)
+
+Docker runs a local PostgreSQL instance for development and integration tests.
+Production uses Neon (cloud PostgreSQL).
 
 ```bash
 docker compose up -d   # Start PostgreSQL (port 5433)
@@ -52,7 +58,12 @@ docker compose down    # Stop
 
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-09).
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-10).
+
+**Production**: Neon (cloud PostgreSQL) — connection string format:
+`postgresql://user:password@host.neon.tech/dbname?sslmode=require`
+
+**Local dev**: Docker PostgreSQL (port 5433) — see Docker section above.
 
 ## Testing Standards
 
@@ -111,6 +122,18 @@ Use these slash commands for workflows:
 - Execute ONLY the steps specified. Do not expand scope, fix adjacent issues, or refactor beyond what was asked.
 - When given a numbered plan, implement exactly those items. Do not add extra steps or address anything not listed.
 - If you notice a related issue while working, call it out to the user rather than silently fixing it.
+
+## Pre-Implementation Gate
+
+For any change touching 3+ files or involving extraction/config/migration changes, complete this pre-flight checklist before writing code:
+
+1. **ASSUMPTION AUDIT**: List every assumption in the plan. For each one, run a command (Read/Grep/Bash) to verify it against the current codebase state. Flag any stale or incorrect assumptions.
+2. **SCOPE CHECK**: Confirm the plan only touches what was requested. List any out-of-scope changes and remove them.
+3. **RULES COMPLIANCE**: Re-read CLAUDE.md and verify every planned action complies. Flag violations.
+4. **RISK ASSESSMENT**: Check shared imports, migration ordering, and tests that depend on changed behavior. What could this break?
+5. **MINIMAL PATH**: Identify the smallest set of changes that achieves the goal.
+
+Show the completed checklist and get user approval before proceeding with implementation.
 
 ## Git Operations
 

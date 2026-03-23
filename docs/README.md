@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.3
+**Version:** 2.4
 **Status:** Production Ready
-**Last Updated:** 2026-03-16
+**Last Updated:** 2026-03-22
 
 ---
 
@@ -396,7 +396,15 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.3 (Current - 2026-03-16)
+### Version 2.4 (Current - 2026-03-22)
+- ✅ Fresh mode validation: `test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh` (no DB required)
+- ✅ `scripts/apply_all_migrations.py` added — applies all 14 SQL migrations in canonical order
+- ✅ Neon (cloud PostgreSQL) documented as production DB in CLAUDE.md and `.env.template`
+- ✅ `*.dump` added to `.gitignore` to prevent accidental production data commits
+- ✅ Issue #9 partially resolved: validation DB dependency eliminated; Snap CIK fix still pending
+- ✅ `baseline.json` and `baseline_metrics.json` synced to stable fresh-mode metrics (P:84.1%, R:73.0%, F1:78.1%)
+
+### Version 2.3 (2026-03-16)
 - ✅ Cloud deployment runbook added (Render + Neon DB)
 - ✅ FilingFetcher directory URL bug fix (Issue #6)
 - ✅ GR-16 complete: Snowflake/DocuSign goldmine labels added
