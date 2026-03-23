@@ -5,11 +5,14 @@ pytest integration tests that validate metrics against the gold standard baselin
 and fail CI when regressions occur.
 
 Usage:
-    # Run gold standard tests only
-    pytest -m gold_standard -v
+    # Run gold standard tests (fresh mode — recommended, no database required)
+    pytest -m gold_standard --gold-standard-mode=fresh -v
 
     # Run with custom tolerance (default: 1%)
-    pytest -m gold_standard --gold-standard-tolerance=0.02 -v
+    pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-tolerance=0.02 -v
+
+    # Run in db mode (requires populated database with gold standard filings)
+    pytest -m gold_standard --gold-standard-mode=db -v
 
     # Skip gold standard tests
     pytest -m "not gold_standard"
@@ -18,11 +21,14 @@ These tests compare current extraction performance against a saved baseline.
 When precision, recall, or F1 drops below the baseline threshold, tests fail
 with clear diagnostic messages.
 
-Prerequisites:
+Prerequisites (fresh mode):
     - Gold standard data must exist in data/gold_standard/
     - Baseline file must exist at data/gold_standard/baseline.json
-      (create with: python scripts/validate_against_gold_standard.py --all --update-baseline)
-    - Database must contain gold standard filings
+      (create with: python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline --baseline-path data/gold_standard/baseline.json)
+    - Per-company HTML files must be cached in data/gold_standard/{Company_Name}/filing.html
+
+Prerequisites (db mode):
+    - All of the above, plus a populated PostgreSQL database with gold standard filings
 """
 
 import logging
@@ -58,10 +64,12 @@ BASELINE_PATH = Path("data/gold_standard/baseline.json")
 
 def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     """
-    Run gold standard validation and return results.
+    Run gold standard validation using database candidates and return results.
 
     This mirrors the logic in scripts/validate_against_gold_standard.py
     but returns structured data for test assertions.
+
+    Requires a populated PostgreSQL database with gold standard filings.
     """
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -117,6 +125,74 @@ def run_validation(db, gold_standard_path: Path) -> list[dict[str, Any]]:
     return results
 
 
+def run_fresh_validation(gold_standard_path: Path) -> list[dict[str, Any]]:
+    """
+    Run gold standard validation using fresh extraction (no database required).
+
+    Re-segments the cached local HTML for each gold standard company and
+    generates candidates from scratch. Requires per-company HTML files at
+    data/gold_standard/{Company_Name}/filing.html.
+    """
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    from scripts.validate_against_gold_standard import (
+        get_entries_for_company,
+        get_fresh_candidates,
+        load_gold_standard,
+        validate_filing,
+    )
+
+    gold_entries = load_gold_standard(gold_standard_path)
+    companies = sorted(set(e.company for e in gold_entries))
+
+    results = []
+    for company in companies:
+        company_entries = get_entries_for_company(gold_entries, company)
+
+        document_url = company_entries[0].document_url if company_entries else None
+        if not document_url:
+            logger.warning(f"Skipping {company}: no document URL in gold standard")
+            continue
+
+        candidates = get_fresh_candidates(
+            document_url=document_url,
+            filings_dir="data/filings",
+            allow_sec_fetch=False,
+            company_name=company,
+        )
+
+        result = validate_filing(
+            db=None,
+            filing_id=None,
+            company_name=company,
+            gold_entries=company_entries,
+            candidates_override=candidates,
+        )
+
+        results.append({
+            'company_name': result.company_name,
+            'filing_id': result.filing_id,
+            'gold_standard_count': result.gold_standard_count,
+            'candidate_count': result.candidate_count,
+            'true_positives': result.true_positives,
+            'false_positives': result.false_positives,
+            'false_negatives': result.false_negatives,
+            'precision': result.precision,
+            # Use unique_recall (not raw recall) for the 'recall' key, consistent with
+            # scripts/validate_against_gold_standard.py's results_for_baseline construction.
+            # The baseline is built from unique_recall per company; mismatching here
+            # produces false per-company regressions.
+            'recall': result.unique_recall,
+            'f1_score': result.f1_score,
+            'unique_recall': result.unique_recall,
+            'unique_gold_count': result.unique_gold_count,
+            'duplicate_tps': result.duplicate_tps,
+        })
+
+    return results
+
+
 def results_to_baseline_metrics(results: list[dict[str, Any]]) -> BaselineMetrics:
     """Convert validation results to BaselineMetrics for comparison."""
     total_unique_tp = sum(r['true_positives'] for r in results)
@@ -137,16 +213,21 @@ def gold_standard_csv_path():
 
 
 @pytest.fixture(scope="module")
-def validation_results(test_db_adapter, gold_standard_csv_path):
+def validation_results(gold_standard_mode, test_db_adapter, gold_standard_csv_path):
     """
     Run validation and cache results for the module.
 
     This is module-scoped to avoid running validation multiple times.
+    In fresh mode, candidates are re-extracted from local HTML files (no database required).
+    In db mode, candidates are read from the database (requires populated PostgreSQL).
     """
     if not gold_standard_csv_path.exists():
         pytest.skip(f"Gold standard CSV not found: {gold_standard_csv_path}")
 
-    return run_validation(test_db_adapter, gold_standard_csv_path)
+    if gold_standard_mode == "fresh":
+        return run_fresh_validation(gold_standard_csv_path)
+    else:
+        return run_validation(test_db_adapter, gold_standard_csv_path)
 
 
 @pytest.fixture(scope="module")
@@ -437,7 +518,7 @@ class TestGoldStandardMetrics:
             assert 0.0 <= scores.f1 <= 1.0, f"Invalid F1 for {company}"
 
     def test_validation_covers_all_gold_standard_companies(
-        self, validation_results, gold_standard_csv_path
+        self, gold_standard_mode, validation_results, gold_standard_csv_path
     ):
         """Verify all gold standard companies are validated."""
         if not gold_standard_csv_path.exists():
@@ -450,7 +531,13 @@ class TestGoldStandardMetrics:
         validated_companies = set(r['company_name'] for r in validation_results)
 
         missing = expected_companies - validated_companies
-        assert not missing, (
-            f"Missing validation for companies: {missing}. "
-            f"Ensure these companies exist in the database."
-        )
+        if gold_standard_mode == "fresh":
+            assert not missing, (
+                f"Missing validation for companies: {missing}. "
+                f"Ensure these companies have cached HTML at data/gold_standard/{{Company_Name}}/filing.html"
+            )
+        else:
+            assert not missing, (
+                f"Missing validation for companies: {missing}. "
+                f"Ensure these companies exist in the database."
+            )

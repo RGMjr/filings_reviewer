@@ -2,16 +2,17 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-03-19
+**Last Updated**: 2026-03-22
 
 ---
 
-## 9. Snap Filing (ID 32/33) — Mislabeled Data, Validation DB Empty
+## 9. Snap Filing (ID 32/33) — Mislabeled Data (Validation DB Dependency Resolved)
 
-**Status**: Open — blocked on validation DB rebuild
-**Severity**: Medium (validation set data loss)
+**Status**: Partially resolved — validation DB dependency eliminated; Snap CIK fix still pending
+**Severity**: Low (Snap not yet in gold standard; gold standard validation no longer DB-dependent)
 **Discovered**: 2025-12-27 (HRV-5)
 **Investigated**: 2026-03-19
+**Updated**: 2026-03-19
 
 ### Problem
 
@@ -19,8 +20,8 @@ Filing ID 33 (and later reorganized to ID 32 in `gi3_richness_analysis.py`) is l
 but the CIK on record (`0001644378`) belongs to **RMR Group Inc.** (a REIT management company),
 confirmed via SEC EDGAR API.
 
-The local dev DB validation dataset (Farfetch, Snap, Slack, Snowflake, etc.) was found to be
-**empty** as of 2026-03-19. The backup file `filings_backup.dump` contains only schema.
+The local dev DB validation dataset was found to be **empty** as of 2026-03-19. The backup file
+`filings_backup.dump` contains only schema, not data.
 
 ### Confirmed Facts
 
@@ -33,12 +34,19 @@ The local dev DB validation dataset (Farfetch, Snap, Slack, Snowflake, etc.) was
 
 CIK `0001644378` was mistakenly used for Snap instead of `0001564408` when originally ingested.
 
-### Resolution Required
+### Resolution (2026-03-19)
 
-1. Rebuild local dev validation DB (repopulate Farfetch, Slack, Samsara, SUSHI GINZA, etc.)
-2. Upsert Snap with correct CIK `0001564408` and fetch HTML
-3. Update `FILING_MAP` in `gi3_richness_analysis.py` with Snap's new filing ID
-4. Run extraction and add Snap to gold standard (separate task)
+The empty local validation DB is no longer a blocker. Gold standard validation now runs in
+**fresh mode** (`pytest -m gold_standard --gold-standard-mode=fresh -v`), which re-extracts
+candidates directly from locally cached HTML files without requiring a populated database.
+
+`test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh`, making the
+validation reproducible without any database setup. The `*.dump` pattern is now in `.gitignore`
+to prevent accidentally committing production database dumps.
+
+### Remaining (Low Priority)
+
+- Upsert Snap with correct CIK `0001564408` and add to gold standard (separate task, not blocking)
 
 ### Partial Fix Applied (2026-03-19)
 
@@ -243,6 +251,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Gold Standard Coverage Tests Failing | Open | Medium | Low | Investigate once Farfetch re-fetch complete |
 | Extraction Pipeline Deadlock | Open | Low | Low | Intermittent; investigate fixture lock ordering |
 | Connection Pool Exhaustion | Open | Low | Low | Recover with docker restart; check pool teardown |
+| Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 
 ---
 
@@ -271,3 +280,4 @@ Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system
 - **2026-03-16**: Issue #1 resolved — gold standard CSV updated to align with system taxonomy; no metric ID mismatches remain
 - **2026-03-17**: Archived resolved Issues #1 and #6; updated Farfetch contributing factors to reflect resolutions
 - **2026-03-19**: Added Issues #6–#8: Farfetch gold standard test failures, extraction pipeline deadlock, connection pool exhaustion
+- **2026-03-19**: Issue #9 partially resolved — fresh mode validation eliminates DB dependency; `*.dump` added to `.gitignore`

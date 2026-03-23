@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Apply SQL migrations to the database.
+Apply SQL seed migrations to the database.
+
+NOTE: This script applies only 2 of the 14 SQL files (03 and 04_seed_metrics_taxonomy).
+It is NOT a full migration runner — it was written to seed the metrics taxonomy on a
+schema that was already set up by other means.
+
+To apply ALL migrations in order, use scripts/apply_all_migrations.py instead.
 """
 
 import logging
