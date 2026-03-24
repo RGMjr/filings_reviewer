@@ -2094,3 +2094,168 @@ class TestSpelledOutNoMagnitudeFiltering:
         )
         is_fp, reason = filter.is_false_positive("forty-one large customers", number)
         assert is_fp is False
+
+
+# =============================================================================
+# Temporal Spelled-Number Filter Tests
+# =============================================================================
+
+
+class TestTemporalSpelledNumberFilter:
+    """Spelled-out numbers adjacent to temporal units should be filtered."""
+
+    @pytest.fixture
+    def filter(self):
+        return FalsePositiveFilter()
+
+    def test_twelve_months_filtered(self, filter):
+        """'twelve months prior' should be filtered as reference_number."""
+        number = NumberMatch(
+            start=0, end=6, raw_text="twelve", value=Decimal("12"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("twelve months prior to the offering", number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_twenty_four_months_filtered(self, filter):
+        """'twenty-four months' should be filtered as reference_number."""
+        number = NumberMatch(
+            start=0, end=11, raw_text="twenty-four", value=Decimal("24"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(
+            "twenty-four months ended December 31, 2023", number
+        )
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_twelve_customers_not_filtered(self, filter):
+        """'twelve customers' has no temporal unit — should NOT be filtered here."""
+        number = NumberMatch(
+            start=0, end=6, raw_text="twelve", value=Decimal("12"), unit="count"
+        )
+        # Note: may still be filtered by spelled_out_no_magnitude for value <= 9,
+        # but 12 > 9 so it is not filtered by that rule.
+        is_fp, reason = filter.is_false_positive("twelve enterprise customers", number)
+        # Should not be filtered by the temporal pattern
+        assert reason != "reference_number"
+
+    def test_twelve_million_users_not_filtered(self, filter):
+        """'twelve million' has magnitude — bypasses spelled_out_no_magnitude anyway."""
+        number = NumberMatch(
+            start=0, end=14, raw_text="twelve million", value=Decimal("12000000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive("twelve million users", number)
+        assert is_fp is False
+
+
+# =============================================================================
+# Fortune/Forbes List Filter Tests
+# =============================================================================
+
+
+class TestFortuneForbesListFilter:
+    """Numbers in Fortune/Forbes list references should be filtered."""
+
+    @pytest.fixture
+    def filter(self):
+        return FalsePositiveFilter()
+
+    def test_fortune_100_number_filtered(self, filter):
+        """'65 of the Fortune 100' — 65 should be filtered."""
+        text = "65 of the Fortune 100 companies use our platform"
+        number = NumberMatch(
+            start=0, end=2, raw_text="65", value=Decimal("65"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_fortune_500_rank_filtered(self, filter):
+        """'companies in the Fortune 500' — 500 should be filtered."""
+        text = "companies in the Fortune 500"
+        number = NumberMatch(
+            start=25, end=28, raw_text="500", value=Decimal("500"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_unrelated_number_not_filtered(self, filter):
+        """'50,000 customers' has no Fortune context — should NOT be filtered."""
+        text = "We had 50,000 active customers"
+        number = NumberMatch(
+            start=7, end=13, raw_text="50,000", value=Decimal("50000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+
+# =============================================================================
+# Negative Assertion Filter Tests
+# =============================================================================
+
+
+class TestNegativeAssertionFilter:
+    """Numbers that are thresholds in negative concentration assertions should be filtered."""
+
+    @pytest.fixture
+    def filter(self):
+        return FalsePositiveFilter()
+
+    def test_no_single_customer_exceeded(self, filter):
+        """'No single customer amounted for more than 10%' — 10 filtered."""
+        text = "No single customer amounted for more than 10% of Group revenues"
+        number = NumberMatch(
+            start=41, end=43, raw_text="10", value=Decimal("10"), unit="percent"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_no_customer_exceeded(self, filter):
+        """'no customer exceeded 10% of revenue' — 10 filtered."""
+        text = "no customer exceeded 10% of revenue"
+        number = NumberMatch(
+            start=21, end=23, raw_text="10", value=Decimal("10"), unit="percent"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_none_of_customers_accounted(self, filter):
+        """'None of our customers accounted for more than 10%' — 10 filtered."""
+        text = "None of our customers accounted for more than 10% of our total revenue"
+        number = NumberMatch(
+            start=46, end=48, raw_text="10", value=Decimal("10"), unit="percent"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "reference_number"
+
+    def test_largest_customer_represented_not_filtered(self, filter):
+        """'our largest customer represented 15%' — positive assertion, should NOT filter."""
+        text = "our largest customer represented 15% of revenue in fiscal 2023"
+        number = NumberMatch(
+            start=33, end=35, raw_text="15", value=Decimal("15"), unit="percent"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_customer_exceeded_spend_not_filtered(self, filter):
+        """'a customer exceeded $100,000 in annual spend' — positive, should NOT filter."""
+        text = "a customer exceeded $100,000 in annual spend"
+        number = NumberMatch(
+            start=21, end=27, raw_text="100000", value=Decimal("100000"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_nearby_metric_not_filtered_by_assertion(self, filter):
+        """Metric in same context as negative assertion should NOT be filtered if not the threshold."""
+        # NRR of 158% is a real metric; the 10% concentration threshold is separate
+        text = "Our net revenue retention rate was 158%. No single customer represented more than 10% of revenue."
+        number = NumberMatch(
+            start=35, end=38, raw_text="158", value=Decimal("158"), unit="percent"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
