@@ -636,6 +636,9 @@ class TestTranscriptAnnotationValidation:
         These are v2_likely=yes annotations with clear, unambiguous numeric values
         that the pipeline is expected to reliably capture.
         """
+        if not transcript_results:
+            pytest.skip(f"No transcript files found at {TRANSCRIPTS_DIR} — cannot run spot checks")
+
         passed = []
         failed = []
 
