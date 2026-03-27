@@ -246,10 +246,10 @@ def test_transcript_filing_id(db_adapter: DatabaseAdapter) -> int:
                 """
                 INSERT INTO filings (
                     company_id, form_type, document_type, ticker,
-                    document_date, transcript_source
+                    filing_date, document_date, transcript_source
                 ) VALUES (
                     %(company_id)s, 'earnings_call', 'earnings_call', 'CRM',
-                    '2025-02-26', 'test:transcript_e2e'
+                    '2025-02-26', '2025-02-26', 'test:transcript_e2e'
                 )
                 RETURNING filing_id
                 """,
