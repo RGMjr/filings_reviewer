@@ -28,8 +28,8 @@ import pytest
 from src.extraction_v2.models import (
     BoundValue,
     MetricCandidate,
-    Segment,
     SectionType,
+    Segment,
     SegmentType,
     SourceLocator,
     SourceType,
@@ -37,8 +37,8 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.stages.false_positive_filter import (
     FalsePositiveFilterStage,
-    _is_v2_false_positive,
     _is_percent_in_keyword_clause,
+    _is_v2_false_positive,
     _make_number_matches,
 )
 
@@ -2729,7 +2729,7 @@ class TestRevenueConcentrationContextRule:
         """
         # Simulate segment with "Cost of Revenue" far from value, "guidance range" nearby
         preamble = "Cost of Revenue " + "x" * 400
-        tail = f"our full year cost structure guidance range of 18% to 19%"
+        tail = "our full year cost structure guidance range of 18% to 19%"
         source = preamble + tail
         bv = _make_bound_value("c1", 18.0, "18%", Unit.PERCENT)
         is_fp, reason = _is_v2_false_positive(
@@ -2771,3 +2771,113 @@ class TestGoalOfServingGuidance:
             relaxed=False, section_type=SectionType.PREPARED_REMARKS
         )
         assert reason != "v2_forward_guidance"
+
+
+# ============================================================================
+# Test: V2-native — Transactions per account rule
+# ============================================================================
+
+
+class TestTransactionsPerAccountRule:
+    """_rule_transactions_per_account suppresses TPA ratios mis-classified as
+    expansion revenue or count-type metric values."""
+
+    def test_tpa_fires_for_expansion_revenue(self):
+        """'57.6 transactions per active account' → rejected for cm_expansion_revenue."""
+        source = "PayPal generated 57.6 transactions per active account in the quarter."
+        bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_expansion_revenue"
+        )
+        assert is_fp is True
+        assert reason == "v2_transactions_per_account"
+
+    def test_tpa_fires_for_active_customers_total(self):
+        """'57.6 transactions per active account' → rejected for cm_active_customers_total."""
+        source = "We saw 57.6 transactions per active account on our platform."
+        bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason == "v2_transactions_per_account"
+
+    def test_tpa_does_not_fire_for_unrelated_text(self):
+        """No TPA phrase → cm_expansion_revenue value is NOT suppressed."""
+        source = "Cross-sell revenue of 50 million was driven by upsell motions."
+        bv = _make_bound_value("c1", 50.0, "50 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_expansion_revenue"
+        )
+        assert reason != "v2_transactions_per_account"
+
+    def test_tpa_does_not_fire_for_unrelated_metric(self):
+        """TPA phrase is present but metric is cm_arr → rule does not fire."""
+        source = "ARR reached 57.6 billion; transactions per active account were flat."
+        bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert reason != "v2_transactions_per_account"
+
+    def test_tpa_fires_at_85_char_distance(self):
+        """PYPL-style prose: phrase ~85 chars before value → rejected within 150-char window."""
+        # Real PYPL prose: phrase ends ~85 chars before "57.6"
+        source = (
+            "Payment transactions per active account ('TPA') on a trailing "
+            "12-month basis decreased 6% to 57.6"
+        )
+        bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason == "v2_transactions_per_account"
+
+
+# ============================================================================
+# Test: _DELTA_COUNT_RE — "or by" prefix pattern
+# ============================================================================
+
+
+class TestDeltaCountOrBy:
+    """_DELTA_COUNT_RE now matches ',? or by' prefix in addition to existing patterns."""
+
+    def test_or_by_fires(self):
+        """'or by 0.3 million' immediately before value → rejected as delta."""
+        source = "active accounts grew or by 0.3 million customers this quarter"
+        bv = _make_bound_value("c1", 300_000.0, "0.3 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+    def test_comma_or_by_fires(self):
+        """', or by 4.7 million' immediately before value → rejected as delta."""
+        source = "the customer base increased by 2 million, or by 4.7 million accounts"
+        bv = _make_bound_value("c1", 4_700_000.0, "4.7 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+    def test_or_by_approximately_fires(self):
+        """'or by approximately 1.2 million' immediately before value → rejected as delta."""
+        source = "MAU increased 5%, or by approximately 1.2 million users"
+        bv = _make_bound_value("c1", 1_200_000.0, "1.2 million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_monthly_active_users"
+        )
+        assert is_fp is True
+        assert reason == "v2_delta_count_value"
+
+    def test_unrelated_or_does_not_fire(self):
+        """'one or two million' — ambiguous 'or' not matched by delta pattern."""
+        source = "we expect one or two million active customers by year end"
+        bv = _make_bound_value("c1", 2_000_000.0, "two million", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert reason != "v2_delta_count_value"

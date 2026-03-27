@@ -508,6 +508,7 @@ _DELTA_COUNT_RE = re.compile(
     r"(?:an?\s+)?(?:increase|decrease)\s+of"
     r"|(?:up|down)\s+(?:by\s+)?(?:more\s+than\s+|approximately\s+|nearly\s+|over\s+|about\s+)?"
     r"|(?:net\s+)?(?:additions?)\s+of"
+    r"|,?\s*or\s+by\s+(?:more\s+than\s+|approximately\s+|nearly\s+|over\s+|about\s+)?"
     r")\s*$",
     re.IGNORECASE,
 )
@@ -522,6 +523,16 @@ _DELTA_BY_MORE_RE = re.compile(
 # appears immediately adjacent to engagement vocabulary.
 _CONTENT_ENGAGEMENT_RE = re.compile(
     r"\b(?:views?|impressions?|streams?|page\s+views?|video\s+views?)\b",
+    re.IGNORECASE,
+)
+
+# Transactions-per-account ratio context — "transactions per account" or
+# "transactions per active account".  When this phrase appears near a value
+# bound to expansion revenue or an active-account count metric, the value is
+# a TPA ratio (e.g., 57.6 transactions per active account), not an absolute
+# revenue or customer count.
+_TRANSACTIONS_PER_ACCOUNT_RE = re.compile(
+    r"\btransactions?\s+per\s+(?:active\s+)?account",
     re.IGNORECASE,
 )
 
@@ -547,6 +558,38 @@ def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -
         value_pos = source_text.find(raw)
         if value_pos >= 0 and abs(engagement_match.start() - value_pos) <= 60:
             return "v2_content_engagement"
+    return None
+
+
+def _rule_transactions_per_account(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Suppress TPA (transactions per active account) ratio values mis-classified
+    as expansion revenue or active account counts.
+
+    Fires when the phrase 'transactions per [active] account' appears within
+    150 characters of the bound value, and the metric is cm_expansion_revenue
+    or a count-type metric.  TPA is a ratio (e.g., 57.6 transactions per
+    active account) — never an absolute expansion revenue or customer count.
+
+    The window is 150 chars to cover prose like:
+    "Payment transactions per active account ('TPA') on a trailing 12-month
+    basis decreased 6% to 57.6" where the phrase precedes the value by ~85
+    chars.
+    """
+    if metric_id not in {"cm_expansion_revenue"} | _COUNT_TYPE_METRICS:
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos == -1:
+        return None
+    match = _TRANSACTIONS_PER_ACCOUNT_RE.search(source_text)
+    if match and abs(match.start() - value_pos) <= 150:
+        return "v2_transactions_per_account"
     return None
 
 
@@ -893,6 +936,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("tier_qualifier", _rule_tier_qualifier),
     ("dollar_threshold_customer", _rule_dollar_threshold_customer),
     ("content_engagement", _rule_content_engagement),
+    ("transactions_per_account", _rule_transactions_per_account),
     ("delta_count_value", _rule_delta_count_value),
     ("growth_rate_percent", _rule_growth_rate_percent),
     ("arpu_percent", _rule_arpu_percent),

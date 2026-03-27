@@ -30,6 +30,9 @@ data/filings/
 # HuggingFace transcript cache (downloaded on demand)
 data/transcripts/
 
+# Downloaded investor presentations (use scripts/ingest_presentations.py to fetch)
+data/presentations/
+
 # But keep fixture metadata
 !data/fixtures/*.json
 
