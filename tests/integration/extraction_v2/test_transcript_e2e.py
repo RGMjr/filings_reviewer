@@ -724,10 +724,10 @@ class TestTranscriptDBSchema:
                     """
                     INSERT INTO filings (
                         company_id, form_type, document_type, ticker,
-                        document_date, transcript_source
+                        filing_date, document_date, transcript_source
                     ) VALUES (
                         %(company_id)s, 'earnings_call', 'earnings_call', 'CRM',
-                        '2025-02-26', 'test:no_cik_check'
+                        '2025-02-26', '2025-02-26', 'test:no_cik_check'
                     )
                     RETURNING filing_id
                     """,
