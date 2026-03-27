@@ -802,25 +802,10 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, and decimals)
-        # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
-        # Note: Spelled-out numbers ("three", "one") are no longer exempted because
-        # bare spelled-out words below min_value are almost always narrative noise
-        # (e.g., "three main factors"), while meaningful ones ("six million") have
-        # values far above min_value after magnitude parsing.
-        if number.unit == "count" and value is not None:
-            is_decimal = "." in number.raw_text
-            if not is_decimal and abs(float(value)) < self.min_value:
-                return True, "below_min_value"
-
-        # Check for ambiguous magnitude suffix (e.g., "375 b", "610 b")
-        # A space before a single-letter suffix usually means a column label, not "billion"
-        if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
-            return True, "ambiguous_magnitude_suffix"
-
         # Check if spelled-out single-digit number lacks a magnitude word.
         # Bare "three", "one", "four" (values 1-9) are ordinals/qualifiers in
         # SEC filings and should not be treated as metric counts.
+        # Must run BEFORE below_min_value so "six" is caught here, not there.
         # Scope: only single-digit word-numbers (value ≤ 9) to avoid blocking
         # legitimate small counts like "fourteen customers" or "forty-one enterprises".
         # Larger word-numbers with magnitude ("six million") are allowed by the
@@ -833,6 +818,18 @@ class FalsePositiveFilter:
             and float(value) <= 9
         ):
             return True, "spelled_out_no_magnitude"
+
+        # Check minimum value threshold (skip for percentages, currency, and decimals)
+        # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
+        if number.unit == "count" and value is not None:
+            is_decimal = "." in number.raw_text
+            if not is_decimal and abs(float(value)) < self.min_value:
+                return True, "below_min_value"
+
+        # Check for ambiguous magnitude suffix (e.g., "375 b", "610 b")
+        # A space before a single-letter suffix usually means a column label, not "billion"
+        if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
+            return True, "ambiguous_magnitude_suffix"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":

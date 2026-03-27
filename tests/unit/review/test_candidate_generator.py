@@ -4297,6 +4297,7 @@ class TestGmvAovDollarOnlyValidation:
             "Growth rate percentage should not generate cm_gmv candidate"
         )
 
+    @pytest.mark.skip(reason="cm_gmv deprecated in a6d4568 — no candidates generated")
     def test_gmv_dollar_amount_accepted(self, generator):
         """Dollar-denominated GMV should produce cm_gmv candidate."""
         segments = [
