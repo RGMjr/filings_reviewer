@@ -169,6 +169,10 @@ class TestE2ESlackFiling:
             PipelineStage.VALIDATION,
         }
 
+        # Image stages are skipped when OPENAI_API_KEY is not set (e.g. in CI)
+        if not os.getenv("OPENAI_API_KEY"):
+            expected_stages -= {PipelineStage.IMAGE_TRIAGE, PipelineStage.OCR_CHART_EXTRACTION}
+
         assert executed_stages == expected_stages, (
             f"Missing stages: {expected_stages - executed_stages}"
         )
