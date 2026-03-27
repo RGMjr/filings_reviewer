@@ -217,12 +217,6 @@ config = PipelineConfig()
 
 **Phase D (complete, 2026-03-03):** Monitoring, batch improvements, ingest_all wrapper, and M5 gold standard tooling. New scripts: `check_new_documents.py` (monitors HuggingFace + EDGAR for unprocessed documents), `ingest_all.py` (unified wrapper for both sources), `review_presentation_annotations.py` (terminal review UI), `merge_presentation_annotations.py` (60/40 split), `validate_presentation_extraction.py` (R/P/F1 benchmark). Circuit breaker (`--max-failures`) and `--resume` checkpointing added to both ingest scripts. See `docs/operations/BATCH_INGESTION.md` for full usage.
 
-**Spike scripts:**
-- `scripts/spike/collect_samples.py` — HuggingFace dataset downloader
-- `scripts/spike/convert_transcript_to_html.py` — text-to-HTML converter
-- `scripts/spike/run_poc.py` — pipeline POC runner
-
-**Spike data:** `data/spike_samples/` (22 transcripts, 77 annotations), `data/spike_results/` (per-file results)
 
 **Transcript gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 91 annotations, 20 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
 
