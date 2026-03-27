@@ -275,7 +275,6 @@ def _process_one(
         pipe_result = pipeline.process(
             html_path=tmp_path,
             filing_id=-1,  # placeholder — replaced on persist
-            document_type="earnings_call",
             document_date=metadata.document_date,
         )
         result.fact_count = pipe_result.fact_count
@@ -314,7 +313,6 @@ def _process_one(
         pipe_result2 = pipeline.process(
             html_path=tmp_path,
             filing_id=filing_id,
-            document_type="earnings_call",
             document_date=metadata.document_date,
         )
         persist_result = V2PersistenceAdapter(db_adapter).persist_pipeline_result(

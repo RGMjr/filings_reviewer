@@ -15,23 +15,20 @@ Tests cover:
 from __future__ import annotations
 
 import json
-import os
-import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from src.infra.document_source import DocumentMetadata, DocumentSource
 from src.infra.fmp_source import (
-    FMPTranscriptSource,
-    SOURCE_PREFIX,
     _CACHE_TTL_DAYS,
+    SOURCE_PREFIX,
+    FMPTranscriptSource,
     _build_source_id,
     _is_cache_fresh,
 )
-
 
 # ============================================================================
 # Module-level helpers

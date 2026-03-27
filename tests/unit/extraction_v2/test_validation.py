@@ -99,7 +99,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.90)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
@@ -123,7 +123,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.15)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         assert fact.review_status == ReviewStatus.PENDING_REVIEW
@@ -148,7 +148,7 @@ class TestConfidenceRouting:
         fact = create_valid_fact(confidence=0.0)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         assert "auto-reject candidate" in fact.review_reason.lower()
@@ -278,7 +278,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.OCR_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         assert "OCR" in fact.review_reason
@@ -289,7 +289,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.CHART)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         assert "Chart" in fact.review_reason
@@ -300,7 +300,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.HTML_TABLE)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is False
         assert fact.review_reason is None
@@ -311,7 +311,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95, source_type=SourceType.TEXT)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is False
         assert fact.review_reason is None
@@ -326,7 +326,7 @@ class TestReviewReasonAssignment:
         )
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         # Should have multiple reasons joined by semicolon
@@ -340,7 +340,7 @@ class TestReviewReasonAssignment:
         fact = create_valid_fact(confidence=0.95)
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.review_reason is None
 
@@ -351,7 +351,7 @@ class TestReviewReasonAssignment:
         fact.review_reason = "Period ambiguous"
         context = MockPipelineContext(deduplicated_facts=[fact])
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is True
         assert "Period ambiguous" in fact.review_reason
@@ -405,7 +405,7 @@ class TestEdgeCases:
         # Use EmptyConfig so init thresholds are used
         context = MockPipelineContext(deduplicated_facts=[fact], config=EmptyConfig())
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
@@ -420,7 +420,7 @@ class TestEdgeCases:
         )
         context = MockPipelineContext(deduplicated_facts=[fact], config=config)
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED

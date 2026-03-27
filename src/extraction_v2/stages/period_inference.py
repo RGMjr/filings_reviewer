@@ -30,7 +30,6 @@ from src.extraction_v2.models import (
 from src.extraction_v2.text_utils import find_sentence_bounds
 
 if TYPE_CHECKING:
-    from src.extraction_v2.models import Segment, Table
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
@@ -308,7 +307,7 @@ class PeriodInferenceStage:
 
             # Get document_date for transcript quarter inference (must be a real date)
             raw_doc_date = getattr(context, "document_date", None)
-            document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
+            _document_date: date | None = raw_doc_date if isinstance(raw_doc_date, date) else None
 
             # Load fiscal year end metadata from document (set by IngestionStage)
             self._fy_end_month = (

@@ -40,3 +40,33 @@ ALTER TABLE v2_segments
 
 COMMENT ON CONSTRAINT v2_segments_section_type_check ON v2_segments IS
     'Allowed section types: SEC filing sections (cover, mda, etc.), transcript sections (prepared_remarks, qa, operator, disclaimer), and presentation slide sections (presentation_slide, title_slide, key_metrics, financial_overview, guidance, appendix)';
+
+-- Extend v2_tables section_type CHECK constraint to match v2_segments.
+ALTER TABLE v2_tables
+    DROP CONSTRAINT IF EXISTS v2_tables_section_type_check;
+
+ALTER TABLE v2_tables
+    ADD CONSTRAINT v2_tables_section_type_check
+    CHECK (section_type = ANY (ARRAY[
+        'cover'::text, 'risk_factors'::text, 'mda'::text, 'business'::text,
+        'financials'::text, 'notes'::text, 'exhibits'::text, 'signatures'::text,
+        'other'::text, 'unknown'::text,
+        'prepared_remarks'::text, 'qa'::text, 'operator'::text, 'disclaimer'::text,
+        'presentation_slide'::text, 'title_slide'::text, 'key_metrics'::text,
+        'financial_overview'::text, 'guidance'::text, 'appendix'::text
+    ]));
+
+-- Extend v2_image_assets section_type CHECK constraint to match v2_segments.
+ALTER TABLE v2_image_assets
+    DROP CONSTRAINT IF EXISTS v2_image_assets_section_type_check;
+
+ALTER TABLE v2_image_assets
+    ADD CONSTRAINT v2_image_assets_section_type_check
+    CHECK (section_type = ANY (ARRAY[
+        'cover'::text, 'risk_factors'::text, 'mda'::text, 'business'::text,
+        'financials'::text, 'notes'::text, 'exhibits'::text, 'signatures'::text,
+        'other'::text, 'unknown'::text,
+        'prepared_remarks'::text, 'qa'::text, 'operator'::text, 'disclaimer'::text,
+        'presentation_slide'::text, 'title_slide'::text, 'key_metrics'::text,
+        'financial_overview'::text, 'guidance'::text, 'appendix'::text
+    ]));

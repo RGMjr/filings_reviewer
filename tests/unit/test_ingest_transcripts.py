@@ -18,22 +18,19 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # The script adds project root to sys.path on import; mimic that here
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.ingest_transcripts import (
+from scripts.ingest_transcripts import (  # noqa: E402
     IngestResult,
     IngestSummary,
     _get_or_create_company,
     _is_already_ingested,
     _upsert_transcript_filing,
 )
-
 
 # ============================================================================
 # IngestSummary Tests

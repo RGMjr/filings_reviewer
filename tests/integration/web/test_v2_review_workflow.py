@@ -23,9 +23,7 @@ from tests.integration.conftest import (
     create_test_company_and_filing,
     create_test_v2_document,
     create_test_v2_fact,
-    create_test_v2_decision,
 )
-
 
 # =============================================================================
 # Module-level fixtures
@@ -411,7 +409,7 @@ class TestV2DecisionAPI:
             period_end="2023-12-31",
             period_start="2023-01-01",
         )
-        fact_id_2 = create_test_v2_fact(
+        create_test_v2_fact(
             db_adapter,
             filing_id,
             period_end="2022-12-31",

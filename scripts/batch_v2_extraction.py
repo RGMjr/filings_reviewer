@@ -41,7 +41,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add project root to path
@@ -49,6 +49,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
+
 from src.extraction_v2.logging_config import configure_logging  # noqa: E402
 
 load_dotenv()
@@ -310,7 +311,7 @@ class BatchV2Runner:
         """Save progress checkpoint to disk."""
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         checkpoint = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "last_filing_id": last_filing_id,
             "processed": stats.processed,
             "succeeded": stats.succeeded,
@@ -618,10 +619,10 @@ def main() -> None:
 
     # Write summary JSON report
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     summary_path = LOGS_DIR / f"batch_v2_summary_{timestamp}.json"
     summary = {
-        "run_date": datetime.now(timezone.utc).isoformat(),
+        "run_date": datetime.now(UTC).isoformat(),
         "total_filings": stats.total_filings,
         "succeeded": stats.succeeded,
         "failed": stats.failed,

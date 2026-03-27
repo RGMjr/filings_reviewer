@@ -415,7 +415,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        stage.process(context)
 
         assert len(context.deduplicated_facts) == 1
         primary = context.deduplicated_facts[0]
@@ -434,7 +434,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        stage.process(context)
 
         # Two facts with None values are duplicates (same identity)
         assert len(context.deduplicated_facts) == 1
@@ -449,7 +449,7 @@ class TestEdgeCases:
             ]
         )
 
-        result = stage.process(context)
+        stage.process(context)
 
         # Two facts with None periods are duplicates
         assert len(context.deduplicated_facts) == 1
@@ -563,7 +563,7 @@ class TestConfigIntegration:
             ],
         )
 
-        result = stage.process(context)
+        stage.process(context)
 
         # With 15% tolerance, these should be grouped
         assert len(context.deduplicated_facts) == 1

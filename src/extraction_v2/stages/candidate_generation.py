@@ -18,14 +18,6 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from src.shared.keyword_config import (
-    KeywordConfigError,
-    get_exclusion_patterns,
-    get_metric_keywords,
-    get_required_context,
-    get_specific_patterns,
-    is_metric_deprecated,
-)
 from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
     ImageAsset,
@@ -34,6 +26,14 @@ from src.extraction_v2.models import (
     SegmentType,
     SourceLocator,
     SourceType,
+)
+from src.shared.keyword_config import (
+    KeywordConfigError,
+    get_exclusion_patterns,
+    get_metric_keywords,
+    get_required_context,
+    get_specific_patterns,
+    is_metric_deprecated,
 )
 
 if TYPE_CHECKING:

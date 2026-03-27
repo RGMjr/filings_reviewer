@@ -17,16 +17,15 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.merge_presentation_annotations import (
+from scripts.merge_presentation_annotations import (  # noqa: E402
     assign_split,
     dedup_annotations,
     filter_valid_annotations,
 )
-from scripts.validate_presentation_extraction import (
+from scripts.validate_presentation_extraction import (  # noqa: E402
     compute_scores,
     match_facts_to_annotations,
 )
-
 
 # ============================================================================
 # filter_valid_annotations

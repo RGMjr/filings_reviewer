@@ -398,7 +398,7 @@ class TestOCRTableFeeding:
         )
         context.images = [asset]
 
-        result = stage.process(context)
+        stage.process(context)
 
         # Tables list should remain empty
         assert len(context.tables) == 0
@@ -800,7 +800,6 @@ class TestV2PipelineSecClient:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """V2Pipeline passes sec_client through to OCRExtractionStage."""
-        import pytest
         from src.extraction_v2.pipeline import V2Pipeline
 
         # Provide a fake API key so image/chart extraction is not disabled

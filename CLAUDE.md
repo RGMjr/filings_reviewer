@@ -162,8 +162,6 @@ See `.claude/rules/gold-standard.md` for full workflow (auto-loaded when relevan
 
 ## V2 Extraction Pipeline
 
-When working on the V2 pipeline, always operate in the v2-rewrite worktree directory, not the main working directory. Check `git worktree list` if unsure.
-
 The V2 pipeline (`src/extraction_v2/`) is a ground-up redesign with key improvements:
 - **10x faster parsing** via lxml (vs BeautifulSoup)
 - **Stable XPath locators** for every source element
@@ -192,7 +190,6 @@ See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_I
 
 ## Beyond SEC: Transcript & Presentation Support
 
-**Branch:** `earnings-call-exploration` (worktree: `filings_reviewer_beyond_sec`)
 **Status:** Phase A complete (12/12 ACs), Phase A+ complete (all targets met), Phase B complete, Phase C complete (M1-M4, M6; M5 deferred), Phase D complete
 **Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 

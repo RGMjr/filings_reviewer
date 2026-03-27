@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
 from src.extraction_v2.transcript_converter import (
     DocumentMetadata,
     _detect_section,
@@ -24,7 +22,6 @@ from src.extraction_v2.transcript_converter import (
     _split_sentences,
     convert_transcript_to_html,
 )
-
 
 # ============================================================================
 # HTML Escaping
@@ -265,7 +262,7 @@ class TestConvertTranscriptToHtml:
         assert "&amp;" in html
         # Should NOT have raw < or & in body
         body_start = html.index("<body>")
-        body = html[body_start:]
+        html[body_start:]
         # Raw & should not appear (only &amp; etc)
 
     def test_continuation_paragraphs(self):

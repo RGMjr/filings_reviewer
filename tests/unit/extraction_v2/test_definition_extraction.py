@@ -133,7 +133,7 @@ class TestNoDefinitionSegments:
             segments=[seg],
             candidates=[],  # no candidates
         )
-        result = stage.process(ctx)
+        stage.process(ctx)
         assert ctx.definitions == []
 
 

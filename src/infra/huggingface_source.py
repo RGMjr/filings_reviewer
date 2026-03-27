@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from src.extraction_v2.transcript_converter import convert_transcript_to_html
-from src.infra.document_source import DocumentMetadata, DocumentSource
+from src.infra.document_source import DocumentMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ class HuggingFaceTranscriptSource:
             row = dataset[entry["idx"]]
             raw_text = row.get("content", row.get("text", row.get("transcript", "")))
         except ImportError:
-            raise ImportError("datasets package not installed. Run: pip install datasets")
+            raise ImportError("datasets package not installed. Run: pip install datasets") from None
 
         # Convert to HTML
         title = entry.get("title", f"{entry.get('ticker', 'Unknown')} Earnings Call")

@@ -10,10 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
-
 from src.infra.company_mapping import CompanyInfo, get_company_info, list_known_tickers
-
 
 # ============================================================================
 # CompanyInfo Tests

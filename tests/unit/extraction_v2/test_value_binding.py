@@ -13,7 +13,6 @@ Tests cover:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,16 +22,15 @@ from src.extraction_v2.models import (
     BoundValue,
     Cell,
     MetricCandidate,
+    SectionType,
     Segment,
     SegmentType,
-    SectionType,
     SourceLocator,
     SourceType,
     Table,
     Unit,
 )
 from src.extraction_v2.stages.value_binding import ValueBindingStage
-
 
 # ============================================================================
 # Test Fixtures
@@ -1737,14 +1735,14 @@ class TestTranscriptBindingFeatures:
 
         # SEC context (100 char proximity) — should NOT find value
         context_sec = MockPipelineContext(segments=[segment], candidates=[candidate])
-        result_sec = stage.process(context_sec)  # type: ignore
+        stage.process(context_sec)  # type: ignore
         assert len(context_sec.bound_values) == 0
 
         # Transcript context (250 char proximity) — should find value
         context_tx = TranscriptPipelineContext(
             segments=[segment], candidates=[candidate]
         )
-        result_tx = stage.process(context_tx)  # type: ignore
+        stage.process(context_tx)  # type: ignore
         assert len(context_tx.bound_values) >= 1
 
     def test_adjacent_sentence_bonus_in_transcript(self) -> None:
@@ -1803,7 +1801,7 @@ class TestTranscriptBindingFeatures:
         context = TranscriptPipelineContext(
             segments=[segment], candidates=[candidate]
         )
-        result = stage.process(context)  # type: ignore
+        stage.process(context)  # type: ignore
         assert len(context.bound_values) >= 1
 
         bv = context.bound_values[0]
@@ -1850,7 +1848,7 @@ class TestTranscriptBindingFeatures:
         context = TranscriptPipelineContext(
             segments=[segment], candidates=[candidate]
         )
-        result = stage.process(context)  # type: ignore
+        stage.process(context)  # type: ignore
         assert len(context.bound_values) >= 1
         # "150 million" should parse to 150,000,000
         values = [bv.value for bv in context.bound_values]
@@ -1877,7 +1875,7 @@ class TestTranscriptBindingFeatures:
 
         # SEC context (not transcript) — no adjacent bonus
         context = MockPipelineContext(segments=[segment], candidates=[candidate])
-        result = stage.process(context)  # type: ignore
+        stage.process(context)  # type: ignore
         if context.bound_values:
             bv = context.bound_values[0]
             # Should NOT have adjacent sentence bonus in SEC mode
