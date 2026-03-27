@@ -166,6 +166,8 @@ cm_customers_period_end:
     - '\btrailblazers?\b'
     # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
     - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
+    # FIX-B3: Exclude Fortune list references (e.g., "65 companies in the Fortune 100")
+    - 'fortune\s+\d+'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -185,10 +187,10 @@ cm_large_customers_period_end:
     # Transcript: "400 deals over $1 million" (CRM) — require $ sign to avoid extracting
     # the deal count (400) or the non-dollar threshold ("deals over a million")
     - '\bdeals?\s+over\s+\$'
-    # Snowflake-style patterns: "customers that contributed more than $X"
-    - '\bcustomers?\s+(?:that\s+)?(?:contributed|contributing)\s+(?:more\s+than|over|above)\s*\$[\d,]+'
-    # Snowflake-style patterns: "customers with trailing 12-month ... greater than $X"
-    - '\bcustomers?\s+with\s+[\w\s-]+(?:greater\s+than|over|above|more\s+than)\s*\$[\d,]+'
+    # Snowflake-style phrasing: "customers with trailing 12-month product revenue greater than $X"
+    - '\bcustomers?\s+with\s+trailing\s+\d+[- ]month\s+(?:\w+\s+)*revenue\s+(?:greater\s+than|more\s+than|over|above|exceeding|>)\s*\$'
+    # Snowflake narrative: "customers that contributed more than $X million in trailing..."
+    - '\bcustomers?\s+(?:that\s+)?contributed\s+(?:more\s+than|over|above)\s+\$'
     # Transcript: "900,000 have 4 or more workloads" (MSFT) — customers using multiple products
     - '\bhave\s+\d+\s+or\s+more\s+workloads?\b'
   exclusions:
@@ -200,6 +202,8 @@ cm_large_customers_period_end:
   specific_patterns:
     - 'enterprise\s+customers?'
     - 'large\s+customers?'
+    - 'customers?\s+with\s+trailing'
+    - 'customers?\s+(?:that\s+)?contributed'
 
 cm_customers_period_end_by_tenure:
   patterns:
@@ -218,6 +222,9 @@ cm_revenue_by_cohort:
     - '\bgmv[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\bgmv\b'
     - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
+    # Existing/new customer revenue split (e.g., "94% of revenue derived from existing customers")
+    - '\brevenue[^.;]{0,80}(?:from|derived\s+from)\s+(?:existing|new)\s+customers?\b'
+    - '\b(?:existing|new)\s+customers?[^.;]{0,80}\brevenue\b'
 
 cm_transactions_by_cohort:
   patterns:
@@ -371,8 +378,10 @@ cm_net_revenue_retention:
     - '\bnet\s+retention\b'
     - '\bnet\s+dollar\s+retention\b'
     - '\bndr\b'
-    - '\bretention\s+rate[^.;]{0,50}\d+%'
     - '\bnet\s+retention\s+rate\b'
+  exclusions:
+    - 'we\s+(?:calculate|define|compute|measure)\b'
+    - 'calculated\s+(?:as|by)\b'
   specific_patterns:
     - 'net\s+revenue\s+retention'
     - 'net\s+dollar\s+retention'
@@ -491,6 +500,9 @@ cm_revenue_concentration:
     - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform)\s+revenue\b'
     - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
     - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
+    - '\bno\s+(?:individual|single)\b'
+    - '\bdid\s+not\s+(?:exceed|comprise)\b'
+    - '\bin\s+excess\s+of\b'
 
 # =============================================================================
 # Revenue Predictability Metrics (DEPRECATED 2026-01-07)
@@ -539,8 +551,20 @@ cm_repeat_purchase_rate:
 # Patterns retained for historical data interpretation but metric is deprecated.
 
 cm_gmv:
+  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   status: deprecated
-  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
+  deprecation_reason: "Financial platform metric, not customer-specific. Generated FPs for Farfetch (inventory value, subsidiary revenue, share-based expense)."
+  <<: *revenue_synonym_context
+  patterns:
+    - '\bgmv\b'
+    - '\bgross\s+merchandise\s+value\b'
+    - '\bgross\s+merchandise\s+volume\b'
+    - '\bgross\s+booking\s+value\b'
+    - '\bgross\s+bookings\s+value\b'
+    - '\bgross\s+transaction\s+value\b'
+    - '\btotal\s+transaction\s+value\b'
+    - '\bgross\s+order\s+value\b'
+    - '\bplatform\s+(?:transaction\s+)?volume\b'
 
 # cm_take_rate: REMOVED (2026-01-02)
 # Rationale: Take rate is a platform/marketplace revenue metric, not a customer metric.

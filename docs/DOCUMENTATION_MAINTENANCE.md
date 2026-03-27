@@ -2,11 +2,21 @@
 
 **Purpose**: Keep project documentation lean and useful by regular cleanup.
 
+**Last Audit Run**: 2026-03-16
+
+**Critical-path docs that must stay current**:
+- `CLAUDE.md` — architecture, commands list, test coverage percentage
+- `docs/README.md` — version history, implementation status table
+- `docs/PROJECT_TASK_INVENTORY.md` — task counts and plan statuses
+- `docs/KNOWN_ISSUES.md` — active known issues (archive resolved items)
+
+**Primary execution mechanism**: Run `/doc-audit` for all quarterly freshness checks. The command audits all critical-path docs and reports findings without auto-fixing.
+
 ---
 
 ## Quarterly Cleanup Checklist
 
-Run this checklist every quarter (or when archive exceeds 100 files):
+Run `/doc-audit` each quarter (or when archive exceeds 100 files), then address findings:
 
 ### 1. Archive Cleanup
 

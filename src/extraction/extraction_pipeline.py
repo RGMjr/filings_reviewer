@@ -122,7 +122,9 @@ class ExtractionPipeline:
             # Step 1: Segment HTML
             logger.info("  Stage 1: Segmenting HTML")
             segments = self.segmenter.segment_filing(
-                filing_id=filing_id, html_path=filing["html_storage_path"]
+                filing_id=filing_id,
+                html_path=filing["html_storage_path"] or "",
+                html_content=filing.get("html_content"),
             )
 
             if not segments:
@@ -201,6 +203,7 @@ class ExtractionPipeline:
             logger.error(
                 f"✗ Data error processing filing {filing_id}: {e}", exc_info=True
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except OSError as e:
@@ -208,6 +211,7 @@ class ExtractionPipeline:
             logger.error(
                 f"✗ File error processing filing {filing_id}: {e}", exc_info=True
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
         except Exception as e:
@@ -217,6 +221,7 @@ class ExtractionPipeline:
                 f"{type(e).__name__}: {e}",
                 exc_info=True,
             )
+            self._mark_extraction_failed(filing_id)
             return ExtractionResult(filing_id=filing_id, success=False, error=str(e))
 
     def process_batch(self, filing_ids: list[int]) -> dict[str, int]:
@@ -275,7 +280,8 @@ class ExtractionPipeline:
         """Fetch filing metadata from database."""
         result = self.db.query(
             """
-            SELECT filing_id, company_id, cik, accession_number, html_storage_path
+            SELECT filing_id, company_id, cik, accession_number, html_storage_path,
+                   html_content
             FROM filings
             WHERE filing_id = %(filing_id)s
         """,
@@ -287,12 +293,14 @@ class ExtractionPipeline:
 
         filing = result[0]
 
-        # Check if HTML file exists
-        if (
-            not filing["html_storage_path"]
-            or not Path(filing["html_storage_path"]).exists()
-        ):
-            logger.error(f"HTML file not found: {filing['html_storage_path']}")
+        # Check if HTML is available via file or DB content
+        has_file = bool(
+            filing["html_storage_path"]
+            and Path(filing["html_storage_path"]).exists()
+        )
+        has_db_content = bool(filing.get("html_content"))
+        if not has_file and not has_db_content:
+            logger.error(f"No HTML available for filing {filing_id}: file={filing['html_storage_path']}")
             return None
 
         return filing
@@ -397,6 +405,16 @@ class ExtractionPipeline:
         )
 
         return result
+
+    def _mark_extraction_failed(self, filing_id: int) -> None:
+        """Set processing_status to 'extraction_failed' so the cron job skips retrying broken filings."""
+        try:
+            self.db.execute(
+                "UPDATE filings SET processing_status = 'extraction_failed', updated_at = now() WHERE filing_id = %(filing_id)s",
+                {"filing_id": filing_id},
+            )
+        except Exception:
+            logger.warning(f"Could not update processing_status for filing {filing_id}", exc_info=True)
 
     def _write_results(
         self,
@@ -611,6 +629,12 @@ class ExtractionPipeline:
                         """,
                         inc.to_dict(),
                     )
+
+                # Mark filing as extracted so cron job skips it on next run
+                cur.execute(
+                    "UPDATE filings SET processing_status = 'extracted', updated_at = now() WHERE filing_id = %(filing_id)s",
+                    {"filing_id": filing_id},
+                )
 
         logger.info(f"    Inserted {len(segments)} source segments")
         logger.info(f"    Inserted {len(valid_values)} metric values")

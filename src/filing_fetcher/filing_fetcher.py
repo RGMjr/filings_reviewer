@@ -16,7 +16,7 @@ from pathlib import Path
 
 import requests
 
-from src.infra.sec_client import FilingMetadata
+from src.infra.sec_client import FilingMetadata, SECClient
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class FilingContent:
     html_path: str
     txt_path: str | None = None
     fetched_at: datetime | None = None
+    html_content: str | None = None
 
 
 class FilingFetcher:
@@ -78,7 +79,7 @@ class FilingFetcher:
         self.session.headers.update({"User-Agent": user_agent})
 
         self.db = db
-        self.sec_client = sec_client
+        self.sec_client = sec_client or SECClient(user_agent=user_agent)
         self._last_request_time = 0.0
 
     def _rate_limit(self):
@@ -287,12 +288,14 @@ class FilingFetcher:
         # Track resolved URL to persist to database
         resolved_url_for_db = None
 
+        html_text: str | None = None
+
         try:
             # Fetch HTML filing
             if not html_path.exists():
                 # Resolve primary document URL if it's a directory URL
                 primary_doc_url = filing_metadata.primary_doc_url
-                if primary_doc_url.endswith("/") and self.sec_client:
+                if primary_doc_url.endswith("/"):
                     logger.debug(
                         f"Resolving primary doc URL for {cik}/{accession_number}"
                     )
@@ -318,6 +321,7 @@ class FilingFetcher:
                     raise ValueError(f"Invalid filing content: {error_msg}")
 
                 html_path.write_text(response.text, encoding="utf-8")
+                html_text = response.text
                 logger.info(f"Saved HTML to {html_path}")
             else:
                 logger.debug(f"HTML already cached: {html_path}")
@@ -357,6 +361,7 @@ class FilingFetcher:
                 html_path=str(html_path),
                 txt_path=txt_path_str,
                 fetched_at=datetime.now(),
+                html_content=html_text,
             )
 
             # Update database if available
@@ -445,6 +450,7 @@ class FilingFetcher:
                     html_fetch_error = NULL,
                     processing_status = 'fetched',
                     sec_html_url = COALESCE(%(resolved_url)s, sec_html_url),
+                    html_content = COALESCE(%(html_content)s, html_content),
                     updated_at = now()
                 WHERE accession_number = %(accession)s
             """
@@ -456,6 +462,7 @@ class FilingFetcher:
                     "fetched_at": content.fetched_at,
                     "accession": content.accession_number,
                     "resolved_url": resolved_url,
+                    "html_content": content.html_content,
                 },
             )
             logger.debug(f"Updated database for {content.accession_number}")
@@ -520,6 +527,18 @@ class FilingFetcher:
         txt_path = storage_dir / "complete.txt"
 
         if not html_path.exists():
+            if self.db:
+                rows = self.db.query(
+                    "SELECT html_content FROM filings WHERE cik = %(cik)s AND accession_number = %(accession)s AND html_content IS NOT NULL",
+                    {"cik": cik, "accession": accession_number},
+                )
+                if rows:
+                    return FilingContent(
+                        cik=cik,
+                        accession_number=accession_number,
+                        html_path=str(html_path),
+                        html_content=rows[0]["html_content"],
+                    )
             return None
 
         return FilingContent(

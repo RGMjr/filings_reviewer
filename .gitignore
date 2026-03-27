@@ -64,6 +64,7 @@ htmlcov/
 # Archives and logs
 /Archive/
 *.log
+*.dump
 
 # But keep docs/archive
 !docs/archive/

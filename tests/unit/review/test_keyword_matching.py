@@ -1819,8 +1819,8 @@ class TestRequiredContext:
     @pytest.mark.skip(reason="cm_gmv deprecated on this branch (patterns removed); no matches expected")
     def test_context_check_disabled_always_matches(self, matcher):
         """When check_required_context=False, revenue synonyms should always match."""
-        # GMV without cohort/per-customer context
-        text = "Our GMV reached $1 billion in the quarter"
+        # Bookings without cohort/per-customer context (cm_gmv is deprecated; use cm_bookings)
+        text = "Our bookings reached $1 billion in the quarter"
 
         all_keywords = matcher.find_all_keywords(text)
 
@@ -1839,16 +1839,17 @@ class TestRequiredContext:
             number, all_keywords, check_required_context=False, text=text
         )
 
-        # Should find GMV even without context
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "GMV should match when check_required_context=False"
+        # Should find bookings even without context
+        bookings_matches = [kw for kw in keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) >= 1, \
+            "Bookings should match when check_required_context=False"
 
     def test_context_too_far_no_match(self, matcher):
         """Context beyond proximity_chars should not satisfy requirement."""
-        # GMV with cohort context, but very far apart (more than 1500 chars)
+        # Bookings with cohort context, but very far apart (more than 1500 chars)
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
         padding = "x" * 2000  # 2000 chars of padding
-        text = f"GMV was $1 billion for the quarter. {padding} The cohort analysis shows growth."
+        text = f"Bookings were $1 billion for the quarter. {padding} The cohort analysis shows growth."
 
         all_keywords = matcher.find_all_keywords(text)
 
@@ -1867,10 +1868,10 @@ class TestRequiredContext:
             number, all_keywords, check_required_context=True, text=text
         )
 
-        # Should NOT find GMV because cohort context is too far
-        gmv_matches = [kw for kw in keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) == 0, \
-            "GMV should not match when context is beyond proximity_chars"
+        # Should NOT find bookings because cohort context is too far
+        bookings_matches = [kw for kw in keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) == 0, \
+            "Bookings should not match when context is beyond proximity_chars"
 
     def test_arr_matches_without_context(self, matcher):
         """ARR should match even without cohort/per-customer context."""
@@ -1951,15 +1952,15 @@ class TestRequiredContext:
     @pytest.mark.skip(reason="cm_gmv deprecated on this branch (patterns removed); not found by find_all_keywords")
     def test_revenue_synonyms_still_in_find_all_keywords(self, matcher):
         """Revenue synonyms should still be found by find_all_keywords (classification preserved)."""
-        # GMV without cohort context
-        text = "Our GMV reached $1 billion in the quarter"
+        # Bookings without cohort context (cm_gmv is deprecated; use cm_bookings)
+        text = "Our bookings reached $1 billion in the quarter"
 
-        # find_all_keywords should still find GMV
+        # find_all_keywords should still find bookings
         all_keywords = matcher.find_all_keywords(text)
 
-        gmv_matches = [kw for kw in all_keywords if kw.metric_id == "cm_gmv"]
-        assert len(gmv_matches) >= 1, \
-            "find_all_keywords should find GMV (for classification/enrichment purposes)"
+        bookings_matches = [kw for kw in all_keywords if kw.metric_id == "cm_bookings"]
+        assert len(bookings_matches) >= 1, \
+            "find_all_keywords should find bookings (for classification/enrichment purposes)"
 
     def test_has_required_context_method_exists(self, matcher):
         """KeywordMatcher should have _has_required_context method."""
@@ -1974,15 +1975,17 @@ class TestRequiredContext:
 
     @pytest.mark.skip(reason="cm_gmv deprecated on this branch (no required_context entry); returns True by default")
     def test_has_required_context_false_without_context(self, matcher):
-        """_has_required_context returns False for GMV without context."""
-        text = "Our GMV reached $1 billion"
-        result = matcher._has_required_context("cm_gmv", 4, text)
+        """_has_required_context returns False for bookings without context."""
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
+        text = "Our bookings reached $1 billion"
+        result = matcher._has_required_context("cm_bookings", 4, text)
         assert result is False
 
     def test_has_required_context_true_with_cohort(self, matcher):
-        """_has_required_context returns True for GMV with cohort context."""
-        text = "Our cohort GMV reached $1 billion"
-        result = matcher._has_required_context("cm_gmv", 11, text)
+        """_has_required_context returns True for bookings with cohort context."""
+        # cm_gmv is deprecated; use cm_bookings which also has *revenue_synonym_context
+        text = "Our cohort bookings reached $1 billion"
+        result = matcher._has_required_context("cm_bookings", 11, text)
         assert result is True
 
 
@@ -2121,7 +2124,7 @@ class TestShouldExcludeWithMarkerRowParser:
             ("575", 50),
         ]
 
-        for raw_text, expected_approx_pos in values:
+        for raw_text, _expected_approx_pos in values:
             actual_pos = text.find(raw_text)
             should_exclude, reason = matcher.should_exclude_for_number_context(
                 metric_id="cm_large_customers_period_end",
@@ -2293,4 +2296,131 @@ class TestShouldExcludeNonTableFallback:
             table_row_parser=parser,
         )
         # Falls back to window - "retention rate" is within 100 chars
+        assert should_exclude is True
+
+
+# =============================================================================
+# Fix B2: has_table_structure requires is_table() (cell-only segments)
+# =============================================================================
+
+
+class TestHasTableStructureRequiresIsTable:
+    """Fix B2: segments with [CELL] but no [ROW] should use distance filtering."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher(max_keyword_distance=100)
+
+    def test_cell_only_segment_distance_filter_applied(self, matcher):
+        """[CELL]-only segment (no [ROW]) should apply distance filter, not skip it."""
+        from src.review.marker_row_parser import MarkerRowParser
+
+        # Keyword "net retention rate" is far from number 66 (beyond max_keyword_distance=100)
+        padding = "x" * 150
+        text = f"net retention rate {padding} [CELL] 66 [CELL]"
+
+        parser = MarkerRowParser(text)
+        assert parser.is_table() is False, "No [ROW] markers → single row → not a table"
+
+        num_start = text.index(" 66 ") + 1
+        number = NumberMatch(
+            start=num_start,
+            end=num_start + 2,
+            raw_text="66",
+            value=Decimal("66"),
+            unit="percentage",
+        )
+        all_keywords = matcher.find_all_keywords(text)
+        keywords = matcher.find_keywords_near_number(
+            number, all_keywords, text=text, table_row_parser=parser
+        )
+        # Distance filter applies → keyword too far → no match
+        nrr_keywords = [kw for kw in keywords if kw.metric_id == "cm_net_revenue_retention"]
+        assert len(nrr_keywords) == 0, "Distance filter should have blocked keyword >100 chars away"
+
+
+# =============================================================================
+# Fix B3: Fortune qualifier exclusion for cm_customers_period_end
+# =============================================================================
+
+
+class TestFortuneExclusion:
+    """Fix B3: Fortune list references should be excluded for customer counts."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher()
+
+    def test_fortune_100_excluded(self, matcher):
+        """'65 companies in the Fortune 100' should be excluded for cm_customers_period_end."""
+        text = "65 companies in the Fortune 100 use our platform"
+        num_pos = text.index("65")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_customers_period_end",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+        assert reason is not None and "fortune" in reason.lower()
+
+    def test_fortune_500_excluded(self, matcher):
+        """'Fortune 500' context should be excluded for cm_customers_period_end."""
+        text = "We serve 100 of the Fortune 500 enterprises"
+        num_pos = text.index("100")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_customers_period_end",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+
+
+# =============================================================================
+# Fix D: Definition/negative exclusions for NRR and revenue concentration
+# =============================================================================
+
+
+class TestDefinitionNegativeExclusions:
+    """Fix D: Definition text and negative assertions should be excluded."""
+
+    @pytest.fixture
+    def matcher(self):
+        return KeywordMatcher()
+
+    def test_nrr_definition_excluded(self, matcher):
+        """'We calculate Net Dollar Retention Rate as...' should be excluded for NRR."""
+        definition_text = "We calculate Net Dollar Retention Rate as 100% of ARR twelve months"
+        num_pos2 = definition_text.index("100")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_net_revenue_retention",
+            text=definition_text,
+            number_position=num_pos2,
+        )
+        assert should_exclude is True
+
+    def test_nrr_calculated_as_excluded(self, matcher):
+        """'calculated as' language should be excluded for NRR."""
+        text = "Net Dollar Retention Rate is calculated as 110% of ARR at beginning of period"
+        num_pos = text.index("110")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_net_revenue_retention",
+            text=text,
+            number_position=num_pos,
+        )
+        assert should_exclude is True
+
+    def test_concentration_no_individual_excluded(self, matcher):
+        """'no individual foreign country contributed in excess of 10%' should be excluded."""
+        text = "No individual foreign country contributed in excess of 10% of revenue during the period"
+        num_pos = text.index("10")
+
+        should_exclude, reason = matcher.should_exclude_for_number_context(
+            metric_id="cm_revenue_concentration",
+            text=text,
+            number_position=num_pos,
+        )
         assert should_exclude is True

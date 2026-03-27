@@ -96,7 +96,7 @@ import re
 from re import Pattern
 
 from src.review.config import DEFAULT_CONFIG, MIN_METRIC_VALUE, YEAR_MAX, YEAR_MIN
-from src.review.number_parsing import NumberMatch
+from src.review.number_parsing import SPELLED_NUMBER_REGEX, NumberMatch
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +192,45 @@ FALSE_POSITIVE_CONTEXT_PATTERNS: list[Pattern[str]] = [
     # These describe measurement timeframes, not actual metric values
     re.compile(r"\b\d+[-\s]?(?:hour|day|week|month|year|period|quarter)s?\b", re.IGNORECASE),
     re.compile(r"\b\d+[-\s]?(?:minute|second)s?\b", re.IGNORECASE),
+    # Spelled-out temporal references: "twelve months", "twenty-four months"
+    re.compile(
+        r"\b(?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+        r"nineteen|"
+        r"(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+        r"(?:[-\s]+(?:one|two|three|four|five|six|seven|eight|nine))?"
+        r")\s*[-\s]?\s*"
+        r"(?:month|year|day|week|hour|minute|second|quarter|period)s?\b",
+        re.IGNORECASE,
+    ),
+    # Fortune/Forbes list references: "65 of the Fortune 100", "companies in the Fortune 500"
+    # Two patterns: leading-count ("65 of the Fortune 100") and rank-only ("Fortune 500")
+    # Note: "Inc." deliberately excluded — it is a company name suffix, not a magazine reference.
+    re.compile(
+        r"\b\d+\s+(?:of\s+the\s+|companies?\s+in\s+the\s+)?(?:Fortune|Forbes)\s+\d+",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:Fortune|Forbes)\s+\d+", re.IGNORECASE),
+    # Negative customer concentration assertions — "no customer exceeded 10%"
+    # Patterns extend through the threshold number so the overlap check fires only on that number.
+    # Example: "No single customer represented more than 10%" → filters "10", not nearby metrics.
+    re.compile(
+        r"\bno\s+(?:single\s+|individual\s+)?(?:customer|client|user|account)"
+        r"\s+(?:\w+\s+){0,4}"
+        r"(?:exceeded|represented|amounted(?:\s+for)?|accounted\s+for|comprised)"
+        r"\s+(?:more\s+than\s+|less\s+than\s+|at\s+least\s+)?"
+        r"(?:\w+\s+){0,2}"
+        r"\d+(?:\.\d+)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bnone\s+of\s+(?:our\s+)?(?:customers|clients|users|accounts)"
+        r"\s+(?:\w+\s+){0,4}"
+        r"(?:accounted\s+for|represented|exceeded)"
+        r"\s+(?:more\s+than\s+|less\s+than\s+|at\s+least\s+)?"
+        r"(?:\w+\s+){0,2}"
+        r"\d+(?:\.\d+)?",
+        re.IGNORECASE,
+    ),
 ]
 
 # Label-embedded value pattern (CMS-2)
@@ -339,7 +378,8 @@ DOLLAR_ONLY_METRICS: set[str] = {
     'cm_ltv',  # Lifetime value
     'cm_cac',  # Customer acquisition cost
     'cm_arpu',  # Average revenue per user
-    'cm_average_order_value',  # AOV should be $X, not percentages
+    'cm_gmv',  # GMV is monetary; percentages are growth rates not values
+    'cm_average_order_value',  # AOV is monetary; "31.7%" is a growth rate not an AOV
 }
 
 # Metrics that should ONLY be counts (not percentages or dollars)
@@ -355,7 +395,8 @@ COUNT_ONLY_METRICS: set[str] = {
     'cm_active_customers_total',
     'cm_large_customers_period_end',
     'cm_new_customers_acquired',
-    'cm_purchase_transactions_overall',  # Order count, not percentages
+    # Transaction count (added 2026-03-19 - % and $ values are gross margin/take rates, not order counts)
+    'cm_purchase_transactions_overall',
 }
 
 
@@ -776,6 +817,22 @@ class FalsePositiveFilter:
         # A space before a single-letter suffix usually means a column label, not "billion"
         if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
             return True, "ambiguous_magnitude_suffix"
+
+        # Check if spelled-out single-digit number lacks a magnitude word.
+        # Bare "three", "one", "four" (values 1-9) are ordinals/qualifiers in
+        # SEC filings and should not be treated as metric counts.
+        # Scope: only single-digit word-numbers (value ≤ 9) to avoid blocking
+        # legitimate small counts like "fourteen customers" or "forty-one enterprises".
+        # Larger word-numbers with magnitude ("six million") are allowed by the
+        # magnitude group check. "twelve" in definition text is handled by Fix D.
+        spelled_match = SPELLED_NUMBER_REGEX.search(number.raw_text)
+        if (
+            spelled_match
+            and spelled_match.group("magnitude") is None
+            and value is not None
+            and float(value) <= 9
+        ):
+            return True, "spelled_out_no_magnitude"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":

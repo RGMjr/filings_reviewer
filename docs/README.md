@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.2
+**Version:** 2.4
 **Status:** Production Ready
-**Last Updated:** 2026-03-15
+**Last Updated:** 2026-03-22
 
 ---
 
@@ -81,8 +81,9 @@ Completed and in-progress improvement plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ Goldmine improvement plan (production ready, targets exceeded) | Developers |
-| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | HRV-series validation plan (5/6 complete, Phase 4 pending) | Developers |
+| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ CLOSED — All 18 tasks complete (80% recall, 95% precision) | Developers |
+| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | ✅ CLOSED — All 6 HRV tasks complete | Developers |
+| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | Active task inventory across all workstreams | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 | **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations | Developers |
@@ -368,6 +369,11 @@ Workflow commands for common tasks:
 | `/task-run [ID]` | Execute an existing worker prompt with approval gates |
 | `/ralph [mode]` | Start Ralph Loop for autonomous execution |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/commit` | Safe commit: runs ruff + pytest before committing |
+| `/merge-check` | Thorough merge readiness assessment (CI, migrations, imports, tests) |
+| `/ci-fix` | Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass |
+| `/plan-execute` | Execute a multi-phase plan with parallel sub-agents per independent wave |
+| `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 
 ### Skills (`.claude/skills/`)
 
@@ -390,7 +396,23 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.2 (Current - 2025-12-29)
+### Version 2.4 (Current - 2026-03-22)
+- ✅ Fresh mode validation: `test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh` (no DB required)
+- ✅ `scripts/apply_all_migrations.py` added — applies all 14 SQL migrations in canonical order
+- ✅ Neon (cloud PostgreSQL) documented as production DB in CLAUDE.md and `.env.template`
+- ✅ `*.dump` added to `.gitignore` to prevent accidental production data commits
+- ✅ Issue #9 partially resolved: validation DB dependency eliminated; Snap CIK fix still pending
+- ✅ `baseline.json` and `baseline_metrics.json` synced to stable fresh-mode metrics (P:84.1%, R:73.0%, F1:78.1%)
+
+### Version 2.3 (2026-03-16)
+- ✅ Cloud deployment runbook added (Render + Neon DB)
+- ✅ FilingFetcher directory URL bug fix (Issue #6)
+- ✅ GR-16 complete: Snowflake/DocuSign goldmine labels added
+- ✅ Goldmine remediation plan (GR) closed: all 18 tasks complete
+- ✅ Human review validation plan (HRV) closed: all 6 tasks complete
+- ✅ `/commit` skill enhanced with doc freshness checks and auto-push
+
+### Version 2.2 (2025-12-29)
 - ✅ Goldmine remediation complete (80% recall, 95% precision, 87% F1)
 - ✅ HRV-1 through HRV-5 validation complete
 - ✅ Performance optimizations (+33% throughput)

@@ -343,13 +343,17 @@ def extract_fresh(
     # Parse URL
     parsed = parse_sec_url(document_url)
     if parsed is None:
-        # URL doesn't match sec.gov pattern — try gold_standard directory as fallback
+        # URL parsing failed — try gold_standard local path if company_name provided
         if company_name:
-            gold_standard_path = _find_gold_standard_filing(company_name)
-            if gold_standard_path is not None:
-                logger.info(f"Non-standard URL, using gold_standard filing: {gold_standard_path}")
+            normalized = _normalize_company_for_path(company_name)
+            gold_path = Path("data/gold_standard") / normalized / "filing.html"
+            if gold_path.exists():
+                logger.info(
+                    f"URL parsing failed for {document_url}; "
+                    f"using local gold_standard file: {gold_path}"
+                )
                 candidates, segment_count, error = segment_and_generate(
-                    gold_standard_path,
+                    gold_path,
                     filing_id=filing_id,
                     company_id=company_id,
                     config=config,
@@ -361,7 +365,7 @@ def extract_fresh(
                         error_message=error,
                         segments_count=segment_count,
                         candidates=[],
-                        local_path=gold_standard_path,
+                        local_path=gold_path,
                         elapsed_seconds=time.time() - start_time,
                     )
                 return ExtractionResult(
@@ -370,7 +374,7 @@ def extract_fresh(
                     error_message=None,
                     segments_count=segment_count,
                     candidates=candidates,
-                    local_path=gold_standard_path,
+                    local_path=gold_path,
                     elapsed_seconds=time.time() - start_time,
                 )
         return ExtractionResult(

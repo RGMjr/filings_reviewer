@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete)
+**Last Verified**: 2026-03-16
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -10,10 +10,10 @@
 
 | Plan | Total Tasks | Complete | Partial | Pending | Blocked | Dropped/Deferred |
 |------|-------------|----------|---------|---------|---------|------------------|
-| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 | 0 |
+| GOLDMINE_REMEDIATION (GR) | 18 | 18 | 0 | 0 | 0 | 0 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 | 0 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 | 0 |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 19 | 0 | 0 | 0 | 0 |
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 3 | 0 | 0 | 0 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 | 0 |
@@ -21,13 +21,14 @@
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 | 0 |
 | IMAGE_EXTRACTION (IMG) | 11 | 9 | 0 | 0 | 0 | 2 |
 | VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
-| **TOTAL** | **106** | **93** | **0** | **1** | **3** | **9** |
+| **TOTAL** | **106** | **96** | **0** | **0** | **1** | **9** |
 
 **Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
-**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization)
+**Remaining Work**: HRI blocked (1 task — multi-user infrastructure); VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization). GR and HRV plans closed.
+**Note**: Work landed 2026-01-14 to 2026-03-16 (FilingFetcher bug fix, cloud deployment runbook, `/ci-fix` + `/plan-execute` + `/doc-audit` commands, `/commit` enhancement, V2 revert) was maintenance and not tracked through formal task IDs. See git log for details.
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -36,7 +37,7 @@
 
 ### GOLDMINE_REMEDIATION_PLAN.md
 **Location**: `docs/GOLDMINE_REMEDIATION_PLAN.md`
-**Status**: 🟢 PRODUCTION READY - Phase 0-2 Complete, Phase 3 partial (16/18 tasks complete, GR-10 pending, GR-16 blocked)
+**Status**: ✅ CLOSED — All 18 tasks complete (GR-16 done 2026-03-16; GR-10 superseded by GR-18)
 **Goal**: Improve goldmine recall from 52% to 70-75% → **ACHIEVED: 80% recall**
 
 ### EXTRACTION_IMPROVEMENT_PLAN.md
@@ -51,7 +52,7 @@
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
 **Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
-**Status**: ✅ PHASE 4 COMPLETE - 18/19 tasks done (1 deferred), Wave 4
+**Status**: ✅ CLOSED — All 19 tasks complete (HRV-6 done 2026-03-16; deliverable: `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`)
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
 ### UX_IMPROVEMENT_PLAN.md

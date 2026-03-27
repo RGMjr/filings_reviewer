@@ -666,7 +666,7 @@ class TestEdgeCaseCoverage:
         parser = TableRowParser(html, text)
 
         # Should handle gracefully
-        row = parser.get_row_at_position(0)
+        parser.get_row_at_position(0)
         # Might be None or the fallback row
         # Just ensure no error
         assert True
@@ -727,7 +727,7 @@ class TestEdgeCaseCoverage:
         parser = TableRowParser(html, text)
 
         # Position at len(text) should be outside
-        row = parser.get_row_at_position(len(text))
+        parser.get_row_at_position(len(text))
         # Depends on implementation - might be None or last row extended
         # Just ensure no error
         assert True

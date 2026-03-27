@@ -183,7 +183,7 @@ NUMBER_PATTERN = r"""
         (?:\.\d+)?                              # Optional decimal part
     )
     \s*
-    (?P<suffix>million|billion|thousand|mn|bn|k|m|b|%|percent)?  # Optional suffix
+    (?P<suffix>million|billion|thousand|mn|bn|percent|%|[kmb](?![a-zA-Z]))?  # Optional suffix
 """
 
 NUMBER_REGEX = re.compile(NUMBER_PATTERN, re.IGNORECASE | re.VERBOSE)

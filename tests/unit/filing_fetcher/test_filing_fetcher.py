@@ -152,6 +152,44 @@ class TestFetchFiling:
         assert content.accession_number == "0001234567-12-123456"
         assert Path(content.html_path).exists()
 
+    def test_fetch_filing_with_directory_url_no_explicit_sec_client(
+        self, tmp_path, valid_filing_html
+    ):
+        """Test that a FilingFetcher constructed without sec_client still resolves directory URLs.
+
+        Regression test for bug where sec_client defaulted to None and the resolution
+        code path was silently skipped, causing directory listing pages to be saved as
+        primary.htm instead of the actual filing document.
+        """
+        fetcher = FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+        # Patch the auto-created sec_client on the instance
+        fetcher.sec_client = Mock()
+        fetcher.sec_client.resolve_primary_document_url.return_value = (
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        )
+
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
+            txt_url=None,
+        )
+
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher.session, "get", return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is not None
+        fetcher.sec_client.resolve_primary_document_url.assert_called_once_with(
+            "0001234567", "0001234567-12-123456"
+        )
+
     def test_fetch_filing_with_directory_url(self, fetcher, valid_filing_html):
         """Test fetching filing with directory URL that needs resolution."""
         metadata = FilingMetadata(
@@ -898,6 +936,139 @@ class TestFetchFilingErrorHandling:
         assert content is not None
         assert content.txt_path is not None
         assert "complete.txt" in content.txt_path
+
+
+class TestHtmlContentStorage:
+    """Test suite for html_content field on FilingContent and DB storage."""
+
+    @pytest.fixture
+    def fetcher_with_db(self, tmp_path):
+        """Create a FilingFetcher with mocked database."""
+        mock_db = Mock()
+        mock_sec_client = Mock()
+        return FilingFetcher(
+            storage_root=str(tmp_path / "test_filings"),
+            db=mock_db,
+            sec_client=mock_sec_client,
+        )
+
+    @pytest.fixture
+    def valid_filing_html(self):
+        return (
+            """
+<DOCUMENT>
+<TYPE>S-1
+<TEXT>
+<HTML>
+<HEAD><TITLE>S-1</TITLE></HEAD>
+<BODY>
+<P>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</P>
+<P>FORM S-1</P>
+<P>REGISTRATION STATEMENT</P>
+"""
+            + "X" * 20000
+        )
+
+    def test_fetch_filing_populates_html_content(self, fetcher_with_db, valid_filing_html):
+        """Fresh fetch sets html_content=response.text on returned FilingContent."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/test.htm",
+        )
+
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher_with_db.session, "get", return_value=mock_response):
+            content = fetcher_with_db.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is not None
+        assert content.html_content == valid_filing_html
+
+    def test_fetch_filing_cached_html_content_is_none(self, fetcher_with_db, valid_filing_html):
+        """Cached branch sets html_content=None (DB was populated on original fetch)."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/test.htm",
+        )
+
+        # Pre-cache the file
+        storage_dir = fetcher_with_db._get_storage_dir("0001234567", "0001234567-12-123456")
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        (storage_dir / "primary.htm").write_text(valid_filing_html)
+
+        with patch.object(fetcher_with_db.session, "get") as mock_get:
+            content = fetcher_with_db.fetch_filing(metadata, fetch_txt=False)
+            mock_get.assert_not_called()
+
+        assert content is not None
+        assert content.html_content is None
+
+    def test_update_database_includes_html_content(self, fetcher_with_db, valid_filing_html):
+        """_update_database() passes html_content param with COALESCE."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/test.htm",
+        )
+
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        with patch.object(fetcher_with_db.session, "get", return_value=mock_response):
+            fetcher_with_db.fetch_filing(metadata, fetch_txt=False)
+
+        call_args = fetcher_with_db.db.execute.call_args
+        sql = call_args[0][0]
+        params = call_args[0][1]
+        assert "html_content" in sql
+        assert "COALESCE" in sql
+        assert "html_content" in params
+        assert params["html_content"] == valid_filing_html
+
+    def test_get_filing_content_db_fallback(self, fetcher_with_db):
+        """File missing + DB has content -> returns FilingContent with html_content."""
+        fetcher_with_db.db.query.return_value = [{"html_content": "<html>from db</html>"}]
+
+        content = fetcher_with_db.get_filing_content("0001234567", "0001234567-12-123456")
+
+        assert content is not None
+        assert content.html_content == "<html>from db</html>"
+        fetcher_with_db.db.query.assert_called_once()
+
+    def test_get_filing_content_no_db_no_file(self, tmp_path):
+        """No file and no DB -> returns None."""
+        fetcher = FilingFetcher(storage_root=str(tmp_path / "test_filings"))
+
+        content = fetcher.get_filing_content("0001234567", "0001234567-12-123456")
+
+        assert content is None
+
+    def test_get_filing_content_prefers_file(self, fetcher_with_db):
+        """File exists -> no DB query made."""
+        cik = "0001234567"
+        accession = "0001234567-12-123456"
+        storage_dir = fetcher_with_db._get_storage_dir(cik, accession)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        (storage_dir / "primary.htm").write_text("<html>cached</html>")
+
+        content = fetcher_with_db.get_filing_content(cik, accession)
+
+        assert content is not None
+        fetcher_with_db.db.query.assert_not_called()
 
 
 class TestDatabaseIntegration:

@@ -218,9 +218,10 @@ def test_review_filing_queries_filing_and_candidates(client, mock_db, mock_rende
     # Mock filing query
     mock_db.query.return_value = [{"filing_id": 1, "company_id": 1, "company_name": "Test", "cik": "0001234567", "accession_number": "0001234567-21-000001", "form_type": "S-1", "filing_date": datetime(2021, 1, 1)}]
 
-    # Mock candidates WITH decisions (new optimized method)
-    # Note: Called twice now (once for all candidates, once for filtered)
+    # Mock candidates WITH decisions (filtered query)
     mock_db.get_review_candidates_with_decisions.return_value = [{"candidate_id": 1, "review_status": "pending", "filing_id": 1, "char_position": 100, "context_text": "Test", "raw_number_text": "100", "triggering_keyword": "test", "keyword_distance": 5, "keyword_position": "after", "suggested_metric_id": "cm_arr", "decision_id": None, "decision": None, "assigned_metric_id": None, "rejection_category": None, "rejection_reason": None, "reviewer_notes": None, "reviewer_id": None, "review_time_seconds": None, "decision_created_at": None}]
+    # Mock summary (replaces unfiltered full-fetch for count/metrics/extraction_date)
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     # Mock _get_active_metrics to avoid Flask g context issues
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
@@ -230,8 +231,9 @@ def test_review_filing_queries_filing_and_candidates(client, mock_db, mock_rende
 
         assert response.status_code == 200
         mock_db.query.assert_called_once()
-        # Called twice: once for all candidates (unfiltered count), once for filtered results
-        assert mock_db.get_review_candidates_with_decisions.call_count == 2
+        # Called once for filtered results; summary handled by get_review_candidate_summary
+        assert mock_db.get_review_candidates_with_decisions.call_count == 1
+        mock_db.get_review_candidate_summary.assert_called_once_with(filing_id=1)
 
 
 def test_review_filing_redirects_on_not_found(client, mock_db):
@@ -268,6 +270,7 @@ def test_review_filing_applies_status_filter(client, mock_db, mock_render_templa
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -275,11 +278,11 @@ def test_review_filing_applies_status_filter(client, mock_db, mock_render_templa
         response = client.get("/review/1?status=pending")
 
         assert response.status_code == 200
-        # Should be called twice: once for total count, once for filtered
-        assert mock_db.get_review_candidates_with_decisions.call_count == 2
-        # Second call should have status filter
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
-        assert second_call_kwargs["status"] == "pending"
+        # Called once for filtered results; total count via get_review_candidate_summary
+        assert mock_db.get_review_candidates_with_decisions.call_count == 1
+        # The single call should have the status filter applied
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+        assert call_kwargs["status"] == "pending"
 
 
 def test_review_filing_applies_metric_filter(client, mock_db, mock_render_template):
@@ -288,6 +291,7 @@ def test_review_filing_applies_metric_filter(client, mock_db, mock_render_templa
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -295,8 +299,8 @@ def test_review_filing_applies_metric_filter(client, mock_db, mock_render_templa
         response = client.get("/review/1?metric=cm_arr")
 
         assert response.status_code == 200
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
-        assert second_call_kwargs["metric_id"] == "cm_arr"
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+        assert call_kwargs["metric_id"] == "cm_arr"
 
 
 def test_review_filing_applies_confidence_filter(client, mock_db, mock_render_template):
@@ -305,6 +309,7 @@ def test_review_filing_applies_confidence_filter(client, mock_db, mock_render_te
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "suggestion_confidence": 0.8, "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -312,8 +317,8 @@ def test_review_filing_applies_confidence_filter(client, mock_db, mock_render_te
         response = client.get("/review/1?confidence=high")
 
         assert response.status_code == 200
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
-        assert second_call_kwargs["confidence_level"] == "high"
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+        assert call_kwargs["confidence_level"] == "high"
 
 
 def test_review_filing_applies_sort_parameter(client, mock_db, mock_render_template):
@@ -322,6 +327,7 @@ def test_review_filing_applies_sort_parameter(client, mock_db, mock_render_templ
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "suggestion_confidence": 0.8, "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -329,8 +335,8 @@ def test_review_filing_applies_sort_parameter(client, mock_db, mock_render_templ
         response = client.get("/review/1?sort=confidence_desc")
 
         assert response.status_code == 200
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
-        assert second_call_kwargs["sort_by"] == "confidence_desc"
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+        assert call_kwargs["sort_by"] == "confidence_desc"
 
 
 def test_review_filing_invalid_filter_values_ignored(client, mock_db, mock_render_template):
@@ -339,6 +345,7 @@ def test_review_filing_invalid_filter_values_ignored(client, mock_db, mock_rende
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -346,11 +353,11 @@ def test_review_filing_invalid_filter_values_ignored(client, mock_db, mock_rende
         response = client.get("/review/1?status=invalid&confidence=invalid&sort=invalid")
 
         assert response.status_code == 200
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
         # Invalid values should be ignored (None or default)
-        assert second_call_kwargs["status"] is None
-        assert second_call_kwargs["confidence_level"] is None
-        assert second_call_kwargs["sort_by"] == "position"  # default
+        assert call_kwargs["status"] is None
+        assert call_kwargs["confidence_level"] is None
+        assert call_kwargs["sort_by"] == "position"  # default
 
 
 def test_review_filing_combined_filters(client, mock_db, mock_render_template):
@@ -359,6 +366,7 @@ def test_review_filing_combined_filters(client, mock_db, mock_render_template):
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "suggestion_confidence": 0.8, "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -366,11 +374,11 @@ def test_review_filing_combined_filters(client, mock_db, mock_render_template):
         response = client.get("/review/1?status=pending&metric=cm_arr&confidence=high&sort=confidence_desc")
 
         assert response.status_code == 200
-        second_call_kwargs = mock_db.get_review_candidates_with_decisions.call_args_list[1][1]
-        assert second_call_kwargs["status"] == "pending"
-        assert second_call_kwargs["metric_id"] == "cm_arr"
-        assert second_call_kwargs["confidence_level"] == "high"
-        assert second_call_kwargs["sort_by"] == "confidence_desc"
+        call_kwargs = mock_db.get_review_candidates_with_decisions.call_args[1]
+        assert call_kwargs["status"] == "pending"
+        assert call_kwargs["metric_id"] == "cm_arr"
+        assert call_kwargs["confidence_level"] == "high"
+        assert call_kwargs["sort_by"] == "confidence_desc"
 
 
 def test_review_filing_template_receives_filter_context(client, mock_db, mock_render_template):
@@ -380,6 +388,8 @@ def test_review_filing_template_receives_filter_context(client, mock_db, mock_re
         {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100},
         {"candidate_id": 2, "review_status": "pending", "suggested_metric_id": "cm_mrr", "char_position": 200}
     ]
+    # Summary provides available_metrics across all candidates (unfiltered)
+    mock_db.get_review_candidate_summary.return_value = {"total": 2, "reviewed": 0, "pending": 2, "extraction_date": None, "available_metrics": ["cm_arr", "cm_mrr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -394,7 +404,7 @@ def test_review_filing_template_receives_filter_context(client, mock_db, mock_re
         assert template_context["current_filters"]["metric"] == "cm_arr"
         assert template_context["current_filters"]["has_active_filters"] is True
         assert "available_metrics" in template_context
-        # available_metrics should include both cm_arr and cm_mrr from all_candidates
+        # available_metrics comes from summary (all candidates, not filtered)
         assert "cm_arr" in template_context["available_metrics"]
         assert "cm_mrr" in template_context["available_metrics"]
 
@@ -402,18 +412,12 @@ def test_review_filing_template_receives_filter_context(client, mock_db, mock_re
 def test_review_filing_unfiltered_count_in_context(client, mock_db, mock_render_template):
     """Test review_filing provides both filtered and unfiltered counts."""
     mock_db.query.return_value = [{"filing_id": 1, "company_id": 1, "company_name": "Test", "cik": "0001234567", "accession_number": "0001234567-21-000001", "form_type": "S-1", "filing_date": datetime(2021, 1, 1)}]
-    # First call (all candidates): 3 candidates
-    # Second call (filtered): 1 candidate
-    mock_db.get_review_candidates_with_decisions.side_effect = [
-        [
-            {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100},
-            {"candidate_id": 2, "review_status": "reviewed", "suggested_metric_id": "cm_arr", "char_position": 200},
-            {"candidate_id": 3, "review_status": "reviewed", "suggested_metric_id": "cm_arr", "char_position": 300}
-        ],
-        [
-            {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100}
-        ]
+    # Filtered query returns 1 candidate
+    mock_db.get_review_candidates_with_decisions.return_value = [
+        {"candidate_id": 1, "review_status": "pending", "suggested_metric_id": "cm_arr", "char_position": 100}
     ]
+    # Summary provides unfiltered total (3 candidates across all statuses)
+    mock_db.get_review_candidate_summary.return_value = {"total": 3, "reviewed": 2, "pending": 1, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -432,6 +436,7 @@ def test_review_filing_all_status_values_supported(client, mock_db, mock_render_
     mock_db.get_review_candidates_with_decisions.return_value = [
         {"candidate_id": 1, "review_status": "skipped", "suggested_metric_id": "cm_arr", "char_position": 100}
     ]
+    mock_db.get_review_candidate_summary.return_value = {"total": 1, "reviewed": 0, "pending": 0, "extraction_date": None, "available_metrics": ["cm_arr"]}
 
     with patch("src.web.routes.review._get_active_metrics") as mock_metrics:
         mock_metrics.return_value = []
@@ -1169,7 +1174,7 @@ class TestBuildMetricOrderClause:
 
     def test_includes_all_metrics_from_dict(self):
         """Verify every metric in METRIC_DISPLAY_ORDER appears in SQL."""
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
 
@@ -1193,7 +1198,7 @@ class TestBuildMetricOrderClause:
         """Verify the clause only contains hardcoded metric IDs from METRIC_DISPLAY_ORDER."""
         import re
 
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
 
@@ -1208,7 +1213,7 @@ class TestBuildMetricOrderClause:
         """Verify number of WHEN clauses matches dict entries."""
         import re
 
-        from src.web.routes.review import _build_metric_order_clause, METRIC_DISPLAY_ORDER
+        from src.web.routes.review import METRIC_DISPLAY_ORDER, _build_metric_order_clause
 
         clause = _build_metric_order_clause()
         when_clauses = re.findall(r"WHEN '[^']+' THEN \d+", clause)

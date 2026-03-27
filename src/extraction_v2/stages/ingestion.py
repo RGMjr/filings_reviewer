@@ -701,6 +701,7 @@ class IngestionStage:
                     nearby_parts.append(text)
 
         # 2. Get context from nearby siblings — only process if parent exists
+
         # Get previous siblings (up to 2)
         if parent is not None:
             prev_siblings: list[str] = []

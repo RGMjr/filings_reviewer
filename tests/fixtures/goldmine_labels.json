@@ -97,6 +97,66 @@
       "precision_threshold": 0.70,
       "recall_threshold": 0.50,
       "notes": "B2B biotech with active customer organization metrics"
+    },
+    "0001640147/000162828020013518": {
+      "company_name": "Snowflake Inc.",
+      "form_type": "S-1/A",
+      "expected_goldmine_count": 4,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Net Revenue Retention Rate",
+          "min_richness": 6.5,
+          "rationale": "NRR definition with multi-year trend data (158% in FY2020) — core cloud growth metric with definition, temporal comparison, and cohort context"
+        },
+        {
+          "text_contains": "customers with trailing 12-month product revenue",
+          "min_richness": 6.0,
+          "rationale": "Customer tier cohort disclosure showing growth within high-value spend bands (>$1M ARR cohort: 7 customers in FY2019 to 56 in FY2020)"
+        },
+        {
+          "text_contains": "Remaining Performance Obligations",
+          "min_richness": 5.5,
+          "rationale": "RPO metric with temporal growth data — contracted future revenue indicating customer commitment"
+        },
+        {
+          "text_contains": "Forbes Global 2000",
+          "min_richness": 5.0,
+          "rationale": "Enterprise customer penetration metric (146 of Forbes Global 2000) providing customer quality context"
+        }
+      ],
+      "precision_threshold": 0.75,
+      "recall_threshold": 0.60,
+      "notes": "Cloud data platform — high NRR (158%), customer spend-tier cohorts, RPO, enterprise penetration. Dense customer metrics section. Labels created from known S-1/A content; segments will be testable after enrichment pipeline runs."
+    },
+    "0001261333/000119312518270936": {
+      "company_name": "DocuSign, Inc.",
+      "form_type": "S-1",
+      "expected_goldmine_count": 4,
+      "expected_goldmine_sections": [
+        {
+          "text_contains": "Net Dollar Retention Rate",
+          "min_richness": 6.5,
+          "rationale": "NDR definition with multi-year trend (~114% FY2018) — primary expansion revenue metric with definition, calculation, and temporal data"
+        },
+        {
+          "text_contains": "customers as of",
+          "min_richness": 6.0,
+          "rationale": "Total customer count with multi-year growth trajectory (~295K customers by FY2018)"
+        },
+        {
+          "text_contains": "enterprise customers",
+          "min_richness": 5.5,
+          "rationale": "Enterprise vs. commercial customer segmentation showing high-value cohort size and growth"
+        },
+        {
+          "text_contains": "Annual Recurring Revenue",
+          "min_richness": 5.5,
+          "rationale": "ARR metric with temporal growth and customer cohort breakdown"
+        }
+      ],
+      "precision_threshold": 0.75,
+      "recall_threshold": 0.60,
+      "notes": "E-signature SaaS — NDR, total and enterprise customer counts, ARR. Strong quantitative customer metrics disclosure. Labels created from known S-1 content; segments will be testable after enrichment pipeline runs."
     }
   },
   "validation_criteria": {

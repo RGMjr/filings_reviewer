@@ -1,6 +1,6 @@
 # Human Review Validation Plan (HRV-Series)
 
-**Plan Status**: 🟡 IN PROGRESS (5 of 6 tasks complete, Phase 4 improvements pending)
+**Plan Status**: ✅ COMPLETE (6 of 6 tasks complete)
 **Created**: 2025-12-26
 **Owner**: Analytics Team
 **Priority**: HIGH (build confidence before scaling)
@@ -337,8 +337,10 @@ Output:
 5. ✅ Exported decisions to CSV
 
 **Data Quality Issue**:
-- Snap (filing_id=33) contains wrong company data (RMR Inc. instead of Snap)
-- Recommendation: Re-fetch correct Snap S-1 filing
+- Snap (filing_id=33) contains wrong company data (RMR Group Inc. instead of Snap)
+- Root cause confirmed (2026-03-19): CIK 0001644378 = RMR Group Inc., not Snap
+- Snap correct CIK: 0001564408, S-1/A 2017-02-27, accession 0001193125-17-056992
+- Fix blocked on local dev validation DB rebuild — see KNOWN_ISSUES.md #9
 
 **Deliverables**:
 1. ✅ 3 of 4 filings fully reviewed (Snap had data issue)
@@ -359,7 +361,7 @@ Output:
 **ID**: HRV-6
 **Name**: Synthesize findings into actionable improvement recommendations
 **Workstream**: Analysis
-**Status**: 🟡 PENDING
+**Status**: ✅ COMPLETE (2026-03-16 — deliverable: `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`)
 **Time Estimate**: 2-3 hours
 **Risk Level**: NONE
 **Parallel With**: None
@@ -405,11 +407,11 @@ Comprehensive validation report containing:
 - Update success criteria based on validation results
 
 **Acceptance Criteria**:
-- [ ] Validation report created with all 5 sections
-- [ ] Top 5 FP patterns documented with examples
-- [ ] Top 5 FN patterns documented with examples
-- [ ] Prioritized improvement recommendations
-- [ ] GOLDMINE_REMEDIATION_PLAN.md updated with findings
+- [x] Validation report created — see `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`
+- [x] Top 5 FP patterns documented with examples
+- [x] Top 5 FN patterns documented with examples
+- [x] Prioritized improvement recommendations
+- [x] GOLDMINE_REMEDIATION_PLAN.md updated with findings
 
 ---
 
@@ -531,9 +533,9 @@ Known filings (as of 2025-12-26):
 
 ---
 
-**Last Updated**: 2025-12-29
+**Last Updated**: 2026-03-16
 **Plan Owner**: Analytics Team
-**Status**: 🟡 IN PROGRESS - HRV-1 to HRV-5 complete, HRV-6 and Phase 4 (HRV-7 to HRV-16) pending
+**Status**: ✅ COMPLETE — All 6 HRV tasks done. Deliverable: `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`
 
 **Recent Enhancements** (2025-12-29):
 - Cohort chart image detection implemented (segment-level + filing-level)

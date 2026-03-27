@@ -348,7 +348,7 @@ class TestTableAwareDetection:
         )
 
         # With row validation disabled, cross-row match should be allowed
-        customer_candidates = [c for c in candidates if "customer" in c.keyword.lower()]
+        [c for c in candidates if "customer" in c.keyword.lower()]
         # May still be rejected due to distance, but row constraint is not the reason
         # Just verify no exception is raised
         assert isinstance(candidates, list)
@@ -593,7 +593,7 @@ class TestEdgeCases:
         candidates = detector.detect(text)
 
         # Negative numbers should still be detected
-        values = [c.value for c in candidates]
+        [c.value for c in candidates]
         # -5 should be detected (as percentage, so -0.05)
         # Note: depends on NumberParser handling
 
@@ -667,7 +667,7 @@ class TestEdgeCases:
         candidates = detector.detect(text)
 
         # Both "customers" and "users" should match 1000
-        keywords = {c.keyword.lower() for c in candidates}
+        {c.keyword.lower() for c in candidates}
         matched_1000 = [c for c in candidates if c.value == Decimal("1000")]
         # At least one match
         assert len(matched_1000) >= 1

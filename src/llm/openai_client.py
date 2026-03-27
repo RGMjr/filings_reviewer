@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 try:
     import tiktoken
@@ -26,7 +26,7 @@ try:
 except ImportError as e:
     raise ImportError("OpenAI package not installed. Run: pip install openai tiktoken") from e
 
-from src.llm.cache import CacheConfig, CachedResponse, LLMCache
+from src.llm.cache import CacheConfig, LLMCache
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class OpenAIClient:
         max_tokens: int = 4096,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        cache_config: Optional[CacheConfig] = None,
+        cache_config: CacheConfig | None = None,
     ):
         """
         Initialize OpenAI client.

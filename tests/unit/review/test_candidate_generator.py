@@ -2761,7 +2761,7 @@ class TestConfigSystemAdoption:
         generator = CandidateGenerator()  # Uses DEFAULT_CONFIG internally
 
         # Verify config is applied
-        assert generator.config.max_keyword_distance == 100
+        assert generator.config.max_keyword_distance == 120
         assert generator.config.min_metric_value == 10
         assert generator.config.filter_false_positives is True
         assert generator.config.compute_confidence is True
@@ -4152,3 +4152,209 @@ class TestCrossMetricSubstringSuppression:
             c.suggested_metric_id != "cm_large_customers_period_end"
             for c in candidates if c.parsed_value == Decimal("100")
         ), "100K threshold value should not generate large_customers candidate"
+
+
+# =============================================================================
+# cm_revenue_by_cohort Pattern Tests
+# =============================================================================
+
+
+class TestRevenueByCohortPatterns:
+    """Tests for cm_revenue_by_cohort keyword patterns, including the
+    'derived from existing customers' patterns added for Snowflake-style text."""
+
+    @pytest.fixture
+    def generator(self):
+        return CandidateGenerator()
+
+    def test_existing_customer_revenue_percent_matches(self, generator):
+        """'X% of revenue derived from existing customers' should match cm_revenue_by_cohort."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "Approximately 94% of our revenue during the six months ended "
+                    "July 31, 2020 was derived from existing customers."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        cohort_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_revenue_by_cohort"
+        ]
+        assert len(cohort_candidates) > 0, (
+            "Expected cm_revenue_by_cohort candidate for 'revenue derived from existing customers'"
+        )
+
+    def test_new_customer_revenue_percent_matches(self, generator):
+        """'X% of revenue derived from new customers' should match cm_revenue_by_cohort."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "Approximately 16% of our revenue during fiscal year 2020 "
+                    "was derived from new customers."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        cohort_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_revenue_by_cohort"
+        ]
+        assert len(cohort_candidates) > 0, (
+            "Expected cm_revenue_by_cohort candidate for 'revenue derived from new customers'"
+        )
+
+    def test_financial_boilerplate_does_not_match(self, generator):
+        """Plain revenue sentences without existing/new customer language should not match."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "Our revenue for the year ended January 31, 2020 was $264.7 million, "
+                    "representing 86% growth year over year."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        cohort_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_revenue_by_cohort"
+        ]
+        assert len(cohort_candidates) == 0, (
+            "Plain revenue boilerplate should not generate cm_revenue_by_cohort candidates"
+        )
+
+    def test_nrr_percentage_does_not_match(self, generator):
+        """NRR percentage should not be classified as cm_revenue_by_cohort."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "Our net revenue retention rate was 158% for the trailing "
+                    "twelve-month period ended July 31, 2020."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        cohort_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_revenue_by_cohort"
+        ]
+        assert len(cohort_candidates) == 0, (
+            "NRR percentage should not generate cm_revenue_by_cohort candidates"
+        )
+
+
+# =============================================================================
+# GMV and AOV Dollar-Only Type Validation Tests (Phase 3b)
+# =============================================================================
+
+
+class TestGmvAovDollarOnlyValidation:
+    """Tests that cm_gmv and cm_average_order_value reject percentage and plain-count
+    values, keeping only dollar-denominated values.
+
+    These metrics are inherently monetary; growth-rate percentages (e.g., 'GMV grew
+    55.6%') near their keywords should not be extracted as metric values."""
+
+    @pytest.fixture
+    def generator(self):
+        return CandidateGenerator()
+
+    def test_gmv_growth_rate_percentage_rejected(self, generator):
+        """Growth-rate percentage near 'GMV' keyword should not produce cm_gmv candidate."""
+        # Include 'per customer' to satisfy required_context for cm_gmv,
+        # replicating the Farfetch KPI table where per-customer context appears alongside GMV.
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "GMV per customer grew significantly. "
+                    "Our GMV was $909.8 million in 2017, up 55.6% over 2016."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        gmv_pct_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id == "cm_gmv" and "%" in (c.raw_number_text or "")
+        ]
+        assert len(gmv_pct_candidates) == 0, (
+            "Growth rate percentage should not generate cm_gmv candidate"
+        )
+
+    def test_gmv_dollar_amount_accepted(self, generator):
+        """Dollar-denominated GMV should produce cm_gmv candidate."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": (
+                    "GMV per customer has grown. "
+                    "Our Gross Merchandise Value was $909.8 million for the year."
+                ),
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        gmv_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_gmv"
+        ]
+        assert len(gmv_candidates) > 0, (
+            "Dollar-denominated GMV should generate cm_gmv candidate"
+        )
+
+    def test_aov_growth_rate_percentage_rejected(self, generator):
+        """Growth-rate percentage near AOV keyword should not produce cm_average_order_value."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Average Order Value increased 31.7% year over year.",
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        aov_pct_candidates = [
+            c for c in candidates
+            if c.suggested_metric_id == "cm_average_order_value"
+            and "%" in (c.raw_number_text or "")
+        ]
+        assert len(aov_pct_candidates) == 0, (
+            "Growth rate percentage should not generate cm_average_order_value candidate"
+        )
+
+    def test_aov_dollar_amount_accepted(self, generator):
+        """Dollar-denominated AOV should produce cm_average_order_value candidate."""
+        segments = [
+            {
+                "source_segment_id": 1,
+                "raw_text": "Our Average Order Value was $622.1 for the six months ended June 30.",
+                "segment_type": "paragraph",
+            }
+        ]
+        candidates = generator.generate_for_filing(
+            filing_id=1, company_id=1, segments=segments
+        )
+        aov_candidates = [
+            c for c in candidates if c.suggested_metric_id == "cm_average_order_value"
+        ]
+        assert len(aov_candidates) > 0, (
+            "Dollar-denominated AOV should generate cm_average_order_value candidate"
+        )

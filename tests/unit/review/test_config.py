@@ -58,7 +58,7 @@ class TestCandidateGenerationConfig:
     def test_default_config_instance(self):
         """DEFAULT_CONFIG should be a valid configuration instance."""
         assert isinstance(DEFAULT_CONFIG, CandidateGenerationConfig)
-        assert DEFAULT_CONFIG.max_keyword_distance == 100
+        assert DEFAULT_CONFIG.max_keyword_distance == 120
         assert DEFAULT_CONFIG.prefer_closest_keyword is True
         assert DEFAULT_CONFIG.respect_bullet_boundaries is True
 

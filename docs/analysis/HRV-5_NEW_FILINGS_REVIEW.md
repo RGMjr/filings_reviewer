@@ -25,11 +25,17 @@ The filing labeled as "Snap" (filing_id=33) contains data for a different compan
 - "Managed REITs"
 - EBITDA calculations for a REIT company
 
-**Root Cause**: The CIK (0001644378) may be incorrect or the filing data was fetched incorrectly.
+**Root Cause**: CIK `0001644378` belongs to **RMR Group Inc.** (confirmed 2026-03-19 via SEC API),
+not Snap. The wrong CIK was used when this filing was ingested.
+
+**Snap's correct data**: CIK `0001564408`, form S-1/A, filed 2017-02-27,
+accession `0001193125-17-056992`, URL:
+`https://www.sec.gov/Archives/edgar/data/0001564408/000119312517056992/d270216ds1a.htm`
 
 **Impact**: No candidates were generated for Snap, reducing the expected metric yield.
 
-**Recommendation**: Investigate and re-fetch the correct Snap S-1 filing data.
+**Status (2026-03-19)**: Investigation complete. Fix blocked on local dev validation DB rebuild
+(DB is empty). See `docs/KNOWN_ISSUES.md` issue #9 for resolution steps.
 
 ## Snowflake Review
 

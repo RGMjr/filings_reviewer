@@ -45,6 +45,7 @@ def sample_filing_metadata():
         "cik": "0001234567",
         "accession_number": "0001234567-20-000001",
         "html_storage_path": "/tmp/test.html",
+        "html_content": None,
     }
 
 
@@ -820,6 +821,49 @@ def test_no_goldmines_logs_zero(
     Path(temp_html_file).unlink()
 
 
+def test_process_filing_succeeds_with_db_html_content(pipeline, mock_db):
+    """File doesn't exist but html_content is set -> segmenter called with html_content."""
+    filing_metadata = {
+        "filing_id": 1,
+        "company_id": 100,
+        "cik": "0001234567",
+        "accession_number": "0001234567-20-000001",
+        "html_storage_path": "/nonexistent/path.html",
+        "html_content": "<html><body>Filing from DB</body></html>",
+    }
+    mock_db.query.return_value = [filing_metadata]
+
+    mock_segment = SourceSegment(
+        filing_id=1,
+        segment_type="paragraph",
+        sequence_index=0,
+        raw_text="Filing from DB",
+        contains_definition_flag=True,
+    )
+
+    pipeline.segmenter = Mock()
+    pipeline.segmenter.segment_filing = Mock(return_value=[mock_segment])
+    pipeline.classifier.classify_batch = Mock(return_value=[mock_segment])
+    pipeline.value_extractor.extract_from_segment = Mock(return_value=[])
+    pipeline.definition_extractor.extract_definitions = Mock(return_value=[])
+    pipeline.quality_scorer.score_filing = Mock(return_value=[])
+
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone = Mock(return_value={"source_segment_id": 1})
+    mock_conn.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = Mock(return_value=False)
+    mock_db.get_connection.return_value.__enter__ = Mock(return_value=mock_conn)
+    mock_db.get_connection.return_value.__exit__ = Mock(return_value=False)
+
+    result = pipeline.process_filing(filing_id=1)
+
+    assert result.success is True
+    pipeline.segmenter.segment_filing.assert_called_once()
+    call_kwargs = pipeline.segmenter.segment_filing.call_args[1]
+    assert call_kwargs.get("html_content") == "<html><body>Filing from DB</body></html>"
+
+
 # =============================================================================
 # G11: Regression Tests
 # =============================================================================
@@ -904,3 +948,43 @@ def test_pipeline_still_completes_successfully_with_enrichment(
 
     # Clean up
     Path(temp_html_file).unlink()
+
+
+# =============================================================================
+# processing_status update tests (Step 4: Cloud Batch Pipeline)
+# =============================================================================
+
+
+def test_write_results_sets_processing_status_extracted(pipeline, mock_db):
+    """_write_results must UPDATE processing_status to 'extracted' inside the transaction."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone = Mock(return_value={"source_segment_id": 1})
+    mock_conn.cursor.return_value.__enter__ = Mock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = Mock(return_value=False)
+    mock_db.get_connection.return_value.__enter__ = Mock(return_value=mock_conn)
+    mock_db.get_connection.return_value.__exit__ = Mock(return_value=False)
+
+    pipeline._write_results(filing_id=42, segments=[], values=[], definitions=[], incidences=[])
+
+    # Collect all SQL strings executed on the cursor
+    executed_sql = [call.args[0] for call in mock_cursor.execute.call_args_list]
+    status_updates = [s for s in executed_sql if "processing_status" in s and "extracted" in s]
+    assert status_updates, "Expected an UPDATE setting processing_status='extracted'"
+    assert any("filing_id" in s for s in status_updates)
+
+
+def test_process_filing_sets_extraction_failed_on_error(pipeline, mock_db):
+    """On extraction failure, processing_status must be set to 'extraction_failed'."""
+    mock_db.query.side_effect = Exception("DB blew up")
+
+    result = pipeline.process_filing(filing_id=7)
+
+    assert result.success is False
+    # _mark_extraction_failed calls db.execute with 'extraction_failed'
+    execute_calls = mock_db.execute.call_args_list
+    failed_updates = [
+        c for c in execute_calls
+        if "extraction_failed" in str(c)
+    ]
+    assert failed_updates, "Expected db.execute call setting processing_status='extraction_failed'"

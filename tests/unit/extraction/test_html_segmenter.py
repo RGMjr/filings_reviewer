@@ -910,6 +910,71 @@ def test_validation_empty_html_path_raises():
     assert "html_path" in str(exc_info.value).lower()
 
 
+# ===== html_content string-input path =====
+
+
+def test_segment_filing_html_content_produces_segments(sample_html_simple):
+    """html_content parameter bypasses file reading and produces segments."""
+    segmenter = HTMLSegmenter()
+    segments = segmenter.segment_filing(filing_id=1, html_content=sample_html_simple)
+    assert len(segments) > 0
+    assert all(s.filing_id == 1 for s in segments)
+
+
+def test_segment_filing_html_content_matches_file_path(sample_html_simple, temp_html_file):
+    """html_content produces the same segments as reading from a file."""
+    html_path = temp_html_file(sample_html_simple)
+    segmenter = HTMLSegmenter()
+
+    try:
+        segments_from_file = segmenter.segment_filing(filing_id=1, html_path=html_path)
+        segments_from_content = segmenter.segment_filing(filing_id=1, html_content=sample_html_simple)
+    finally:
+        Path(html_path).unlink()
+
+    assert len(segments_from_file) == len(segments_from_content)
+    for s_file, s_content in zip(segments_from_file, segments_from_content, strict=True):
+        assert s_file.raw_text == s_content.raw_text
+        assert s_file.segment_type == s_content.segment_type
+
+
+def test_segment_filing_html_content_records_encoding_provided(sample_html_simple):
+    """Metrics record encoding_used as 'provided' when html_content is passed."""
+    segmenter = HTMLSegmenter()
+    segmenter.segment_filing(filing_id=1, html_content=sample_html_simple)
+    metrics = segmenter.get_metrics()
+    assert metrics is not None
+    assert metrics.encoding_used == "provided"
+
+
+def test_segment_filing_html_content_empty_returns_empty():
+    """Empty html_content string returns empty list without raising."""
+    segmenter = HTMLSegmenter()
+    segments = segmenter.segment_filing(filing_id=1, html_content="")
+    assert segments == []
+
+
+def test_segment_filing_html_content_invalid_filing_id_raises():
+    """Invalid filing_id still raises ValidationError even when html_content is provided."""
+    from src.extraction.exceptions import ValidationError
+
+    segmenter = HTMLSegmenter()
+    with pytest.raises(ValidationError):
+        segmenter.segment_filing(filing_id=-1, html_content="<html></html>", raise_on_error=True)
+
+
+def test_segment_filing_html_content_uses_html_path_for_label(sample_html_simple):
+    """html_path is used in log messages when html_content is also provided."""
+    segmenter = HTMLSegmenter()
+    # Should not raise; html_path used only as a label, not for file access
+    segments = segmenter.segment_filing(
+        filing_id=1,
+        html_path="/nonexistent/path.html",
+        html_content=sample_html_simple,
+    )
+    assert len(segments) > 0
+
+
 # ===== Metrics Tests (Phase 3.2) =====
 
 

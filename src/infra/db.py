@@ -22,7 +22,6 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
     IMAGE_REVIEW_STATUSES,
-    IMAGE_TIER_PRIORITY,
     KEYWORD_POSITIONS,
     PATTERN_STATUSES,
     PATTERN_TYPES,
@@ -788,6 +787,9 @@ class DatabaseAdapter:
                     review_time_seconds,
                     created_at
                 FROM review_decisions
+                WHERE candidate_id IN (
+                    SELECT candidate_id FROM review_candidates WHERE filing_id = %(filing_id)s
+                )
                 ORDER BY candidate_id, created_at DESC
             ) rd ON rc.candidate_id = rd.candidate_id
             WHERE rc.filing_id = %(filing_id)s
@@ -875,6 +877,114 @@ class DatabaseAdapter:
                     result['segment_type'] = None
 
         return results
+
+    def get_review_candidate_summary(self, filing_id: int) -> dict:
+        """
+        Get aggregate summary of review candidates for a filing without fetching HTML.
+
+        Returns counts by status, extraction date, and available metric IDs — replacing
+        the expensive unfiltered get_review_candidates_with_decisions() call that was
+        used only for these aggregates.
+
+        Args:
+            filing_id: Filing to summarize
+
+        Returns:
+            Dict with keys: total, reviewed, pending, extraction_date, available_metrics
+        """
+        sql = """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE review_status = 'reviewed') AS reviewed,
+                COUNT(*) FILTER (WHERE review_status = 'pending') AS pending,
+                MIN(created_at) AS extraction_date,
+                ARRAY_AGG(DISTINCT suggested_metric_id)
+                    FILTER (WHERE suggested_metric_id IS NOT NULL) AS available_metrics
+            FROM review_candidates
+            WHERE filing_id = %(filing_id)s
+        """
+        results = self.query(sql, {"filing_id": filing_id})
+        if results:
+            row = results[0]
+            return {
+                "total": row["total"] or 0,
+                "reviewed": row["reviewed"] or 0,
+                "pending": row["pending"] or 0,
+                "extraction_date": row["extraction_date"],
+                "available_metrics": row["available_metrics"] or [],
+            }
+        return {"total": 0, "reviewed": 0, "pending": 0, "extraction_date": None, "available_metrics": []}
+
+    def get_next_pending_candidate_id(
+        self,
+        filing_id: int,
+        current_candidate_id: int,
+        status: str | None = "pending",
+        metric_id: str | None = None,
+        confidence_level: str | None = None,
+        sort_by: str = "position",
+    ) -> int | None:
+        """
+        Find the next candidate ID in the filtered, sorted list after the current one.
+
+        Fetches only IDs (no HTML), making this much cheaper than loading full candidates.
+        Wraps around to the beginning if the current candidate is last in the list.
+
+        Args:
+            filing_id: Filing to search within
+            current_candidate_id: The candidate we're navigating away from
+            status: Filter by review_status (None = no filter)
+            metric_id: Filter by suggested_metric_id (None = no filter)
+            confidence_level: Filter by confidence tier ('high', 'medium', 'low'; None = no filter)
+            sort_by: Sort order matching get_review_candidates_with_decisions sort options
+
+        Returns:
+            The next candidate_id, or None if no other candidate exists in the filtered list
+        """
+        sort_map = {
+            "position": "char_position",
+            "confidence_asc": "suggestion_confidence ASC, char_position",
+            "confidence_desc": "suggestion_confidence DESC, char_position",
+            "value_asc": "parsed_value ASC, char_position",
+            "value_desc": "parsed_value DESC, char_position",
+        }
+        order_by = sort_map.get(sort_by, "char_position")
+
+        where_clauses = ["filing_id = %(filing_id)s"]
+        params: dict[str, Any] = {"filing_id": filing_id}
+
+        if status is not None:
+            where_clauses.append("review_status = %(status)s")
+            params["status"] = status
+        if metric_id is not None:
+            where_clauses.append("suggested_metric_id = %(metric_id)s")
+            params["metric_id"] = metric_id
+        if confidence_level == "high":
+            where_clauses.append("suggestion_confidence >= 0.7")
+        elif confidence_level == "medium":
+            where_clauses.append("suggestion_confidence >= 0.4 AND suggestion_confidence < 0.7")
+        elif confidence_level == "low":
+            where_clauses.append("suggestion_confidence < 0.4")
+
+        where_sql = " AND ".join(where_clauses)
+        sql = f"SELECT candidate_id FROM review_candidates WHERE {where_sql} ORDER BY {order_by}"
+        rows = self.query(sql, params)
+        ids = [r["candidate_id"] for r in rows]
+
+        if not ids:
+            return None
+
+        try:
+            current_index = ids.index(current_candidate_id)
+            next_index = current_index + 1
+            if next_index < len(ids):
+                return ids[next_index]
+            # Wrap: first in list that isn't the current candidate
+            first = ids[0]
+            return first if first != current_candidate_id else None
+        except ValueError:
+            # current_candidate_id filtered out (e.g., just reviewed and status=pending)
+            return ids[0] if ids else None
 
     def get_all_reviewed_candidates_with_decisions(
         self,
@@ -1338,7 +1448,7 @@ class DatabaseAdapter:
 
         runner_up_entries: list[dict[str, Any]] = []
 
-        for position_key, group in position_groups.items():
+        for _position_key, group in position_groups.items():
             if len(group) < 2:
                 # No alternatives at this position
                 continue
@@ -1351,7 +1461,7 @@ class DatabaseAdapter:
             winner_metric = None
             winner_conf = None
 
-            for idx, cand in group:
+            for idx, _cand in group:
                 cand_id = final_ids[idx]
                 if cand_id in winner_metrics:
                     metric_id, conf = winner_metrics[cand_id]
@@ -1697,7 +1807,7 @@ class DatabaseAdapter:
                 # =====================================================================
                 # Execute Updates (winner replaces existing)
                 # =====================================================================
-                for input_idx, existing_id, new_cand, old_cand in to_update:
+                for _input_idx, existing_id, new_cand, old_cand in to_update:
                     # Log old candidate as suppressed
                     if log_suppressed:
                         suppression_entries.append(

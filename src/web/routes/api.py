@@ -1378,46 +1378,18 @@ def _get_next_candidate_info(
     if db_status is None:
         db_status = "pending"
 
-    # Get filtered, sorted candidates
-    candidates = db.get_review_candidates_with_decisions(
+    # Get next candidate ID using lightweight query (IDs only, no HTML)
+    next_candidate_id = db.get_next_pending_candidate_id(
         filing_id=filing_id,
+        current_candidate_id=current_candidate_id,
         status=db_status,
         metric_id=db_metric_id,
         confidence_level=db_confidence,
         sort_by=db_sort_by,
-        limit=None,
     )
 
-    if not candidates:
+    if next_candidate_id is None:
         return None
-
-    # Find current candidate index in the sorted list
-    current_index = None
-    for i, c in enumerate(candidates):
-        if c["candidate_id"] == current_candidate_id:
-            current_index = i
-            break
-
-    # If current candidate is in the list, get the next one
-    if current_index is not None:
-        # Next candidate is the one after current in sorted order
-        next_index = current_index + 1
-        if next_index < len(candidates):
-            next_candidate = candidates[next_index]
-        else:
-            # Wrap around to beginning
-            next_candidate = candidates[0]
-    else:
-        # Current candidate not in filtered list (e.g., just reviewed it)
-        # Return the first candidate in the filtered list
-        next_candidate = candidates[0]
-
-    # Don't return the same candidate we're on
-    if next_candidate["candidate_id"] == current_candidate_id:
-        # Only one candidate in filtered list, and it's the current one
-        return None
-
-    next_candidate_id = next_candidate["candidate_id"]
 
     # Build URL with filter parameters preserved
     url = f"/review/{filing_id}?candidate_id={next_candidate_id}"

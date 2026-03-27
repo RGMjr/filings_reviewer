@@ -49,10 +49,11 @@ class BaselineMetrics:
     description: str | None
     overall: MetricScores
     by_company: dict[str, MetricScores]
+    unique_recall: float | None = None  # Recall after deduplicating repeated gold entries
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
-        return {
+        d: dict[str, Any] = {
             "baseline_date": self.baseline_date,
             "description": self.description,
             "overall": asdict(self.overall),
@@ -60,6 +61,9 @@ class BaselineMetrics:
                 company: asdict(scores) for company, scores in self.by_company.items()
             },
         }
+        if self.unique_recall is not None:
+            d["unique_recall"] = self.unique_recall
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BaselineMetrics:
@@ -109,6 +113,7 @@ class BaselineMetrics:
             description=data.get("description"),
             overall=overall,
             by_company=by_company,
+            unique_recall=data.get("unique_recall"),
         )
 
 
@@ -258,6 +263,7 @@ def compare_to_baseline(
 def create_baseline_from_results(
     results: list[dict[str, Any]],
     description: str | None = None,
+    unique_recall: float | None = None,
 ) -> BaselineMetrics:
     """
     Create a baseline from validation results.
@@ -278,7 +284,8 @@ def create_baseline_from_results(
     total_fn = sum(r.get("false_negatives", 0) for r in results)
 
     overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
-    overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+    _raw_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+    overall_recall = unique_recall if unique_recall is not None else _raw_recall
     overall_f1 = (
         2 * (overall_precision * overall_recall) / (overall_precision + overall_recall)
         if (overall_precision + overall_recall) > 0
@@ -309,4 +316,5 @@ def create_baseline_from_results(
         description=description,
         overall=overall,
         by_company=by_company,
+        unique_recall=unique_recall,
     )

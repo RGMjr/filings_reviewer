@@ -68,6 +68,7 @@ class GoldStandardEntry:
     source_quote: str  # "Quote/context"
     line_number: int  # Line number in CSV for reference
     is_definition_only: bool  # True if this is a definition without numeric value
+    duplicate_group: str = ''  # e.g. 'G001:primary' or 'G001:dup'; empty for singletons
 
 
 @dataclass
@@ -95,6 +96,11 @@ class ValidationResult:
     fp_candidates: list[dict]  # Candidates not matching gold standard
     fn_entries: list[GoldStandardEntry]  # Gold standard entries not matched
     tp_matches: list[ValidationMatch]  # Matched pairs for debugging
+    # Unique-value recall: deduplicates gold standard entries with same (metric, value)
+    # to avoid penalizing for gold standard repetition. Strict recall is unchanged.
+    unique_gold_count: int = 0
+    duplicate_tps: int = 0  # Gold entries counted as TP because identical combo already matched
+    unique_recall: float = 0.0
 
 
 def normalize_metric_id(raw_id: str) -> str:
@@ -218,6 +224,7 @@ def load_gold_standard(path: Path) -> list[GoldStandardEntry]:
                 source_quote=row.get('Quote/context', ''),
                 line_number=line_num,
                 is_definition_only=is_def_only,
+                duplicate_group=row.get('duplicate_group', ''),
             )
             entries.append(entry)
 
@@ -497,13 +504,39 @@ def validate_filing(
 
     precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
     recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
-    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
     # Collect FP candidates
     fp_candidates = [c for c in candidates if c['candidate_id'] not in matched_candidates]
 
     # Collect FN entries (only from gold entries with values)
     fn_entries = [e for e in gold_entries_with_values if e.line_number not in matched_entries]
+
+    # Compute unique-value recall: entries with the same (metric_id, normalized_value) as an
+    # already-matched entry count as duplicate TPs rather than false negatives.
+    matched_combos: set[tuple[str, float | None]] = set()
+    for m in tp_matches:
+        combo = (
+            normalize_metric_id(m.gold_entry.metric_id or ''),
+            normalize_value(m.gold_entry.raw_value) or normalize_value(m.gold_entry.scaled_value),
+        )
+        matched_combos.add(combo)
+
+    duplicate_tps = 0
+    unique_fn_entries: list[GoldStandardEntry] = []
+    for e in fn_entries:
+        combo = (
+            normalize_metric_id(e.metric_id or ''),
+            normalize_value(e.raw_value) or normalize_value(e.scaled_value),
+        )
+        if combo in matched_combos:
+            duplicate_tps += 1
+        else:
+            unique_fn_entries.append(e)
+
+    unique_gold_count = len(gold_entries_with_values) - duplicate_tps
+    unique_tps = true_positives  # each TP candidate matches exactly one unique combo
+    unique_recall = unique_tps / unique_gold_count if unique_gold_count > 0 else 0
+    f1_score = 2 * (precision * unique_recall) / (precision + unique_recall) if (precision + unique_recall) > 0 else 0
 
     return ValidationResult(
         filing_id=filing_id,
@@ -519,6 +552,9 @@ def validate_filing(
         fp_candidates=fp_candidates,
         fn_entries=fn_entries,
         tp_matches=tp_matches,
+        unique_gold_count=unique_gold_count,
+        duplicate_tps=duplicate_tps,
+        unique_recall=unique_recall,
     )
 
 
@@ -538,8 +574,9 @@ def print_validation_report(result: ValidationResult, verbose: bool = False):
     print(f"  False Positives: {result.false_positives}")
     print(f"  False Negatives: {result.false_negatives}")
     print(f"  Precision:       {result.precision * 100:.1f}%")
-    print(f"  Recall:          {result.recall * 100:.1f}%")
+    print(f"  Recall (unique): {result.unique_recall * 100:.1f}%")
     print(f"  F1 Score:        {result.f1_score * 100:.1f}%")
+    print(f"  Raw Recall:      {result.recall * 100:.1f}%")
 
     if result.false_positives > 0:
         print("\nFalse Positives (candidates not in gold standard):")
@@ -597,7 +634,7 @@ def print_baseline_comparison(
     # Format each row
     rows = [
         ("Precision:", current_precision, baseline_precision, comparison.precision_delta, "precision"),
-        ("Recall:", current_recall, baseline_recall, comparison.recall_delta, "recall"),
+        ("Recall (unique):", current_recall, baseline_recall, comparison.recall_delta, "recall"),
         ("F1 Score:", current_f1, baseline_f1, comparison.f1_delta, "f1"),
     ]
 
@@ -640,6 +677,10 @@ def result_to_dict(result: ValidationResult) -> dict:
                 'candidate_id': fp['candidate_id'],
                 'metric_id': fp.get('suggested_metric_id'),
                 'raw_number_text': fp.get('raw_number_text'),
+                'parsed_value': fp.get('parsed_value'),
+                'parsed_unit': fp.get('parsed_unit'),
+                'context_text': fp.get('context_text'),
+                'triggering_keyword': fp.get('triggering_keyword'),
                 'source_segment_id': fp.get('source_segment_id'),
             }
             for fp in result.fp_candidates
@@ -1006,6 +1047,11 @@ Examples:
     for result in results:
         print_validation_report(result, args.verbose)
 
+    # Compute overall unique recall (dedup-adjusted recall across all filings)
+    _total_unique_tp = sum(r.true_positives for r in results)
+    _total_unique_gold = sum(r.unique_gold_count for r in results if r.unique_gold_count > 0)
+    overall_unique_recall: float | None = _total_unique_tp / _total_unique_gold if _total_unique_gold > 0 else None
+
     # Print summary if multiple filings
     if len(results) > 1:
         total_tp = sum(r.true_positives for r in results)
@@ -1014,7 +1060,8 @@ Examples:
 
         overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
         overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-        overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+        _ur = overall_unique_recall if overall_unique_recall is not None else overall_recall
+        overall_f1 = 2 * (overall_precision * _ur) / (overall_precision + _ur) if (overall_precision + _ur) > 0 else 0
 
         print('\n' + '=' * 60)
         print('OVERALL SUMMARY')
@@ -1027,8 +1074,9 @@ Examples:
         print(f"  False Positives: {total_fp}")
         print(f"  False Negatives: {total_fn}")
         print(f"  Precision:       {overall_precision * 100:.1f}%")
-        print(f"  Recall:          {overall_recall * 100:.1f}%")
+        print(f"  Recall (unique): {_ur * 100:.1f}%")
         print(f"  F1 Score:        {overall_f1 * 100:.1f}%")
+        print(f"  Raw Recall:      {overall_recall * 100:.1f}%")
 
     # Handle baseline comparison and update
     exit_code = 0  # Will be set to 1 if regression detected with --fail-on-regression
@@ -1048,9 +1096,11 @@ Examples:
 
         overall_precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
         overall_recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-        overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+        _ur = overall_unique_recall if overall_unique_recall is not None else overall_recall
+        overall_f1 = 2 * (overall_precision * _ur) / (overall_precision + _ur) if (overall_precision + _ur) > 0 else 0
 
         # Convert results to format expected by create_baseline_from_results
+        # Use unique recall as the canonical recall for each company
         results_for_baseline = [
             {
                 'company_name': r.company_name,
@@ -1058,7 +1108,7 @@ Examples:
                 'false_positives': r.false_positives,
                 'false_negatives': r.false_negatives,
                 'precision': r.precision,
-                'recall': r.recall,
+                'recall': r.unique_recall,
                 'f1_score': r.f1_score,
             }
             for r in results
@@ -1070,13 +1120,14 @@ Examples:
             current_baseline = create_baseline_from_results(
                 results_for_baseline,
                 description=f"Validation run with {len(results)} filings",
+                unique_recall=overall_unique_recall,
             )
             save_baseline(current_baseline, baseline_path)
             print(f"\n✓ Baseline saved to {baseline_path}")
             print(f"  Date: {current_baseline.baseline_date[:10]}")
             print(f"  Companies: {len(current_baseline.by_company)}")
             print(f"  Precision: {current_baseline.overall.precision * 100:.1f}%")
-            print(f"  Recall: {current_baseline.overall.recall * 100:.1f}%")
+            print(f"  Recall (unique): {current_baseline.overall.recall * 100:.1f}%")
             print(f"  F1 Score: {current_baseline.overall.f1 * 100:.1f}%")
 
         # Compare to baseline if requested
@@ -1086,7 +1137,9 @@ Examples:
                 baseline = load_baseline(baseline_path)
 
                 # Create current metrics for comparison
-                current_metrics = create_baseline_from_results(results_for_baseline)
+                current_metrics = create_baseline_from_results(
+                    results_for_baseline, unique_recall=overall_unique_recall
+                )
 
                 # Compare
                 comparison = compare_to_baseline(
@@ -1100,7 +1153,7 @@ Examples:
                     comparison=comparison,
                     baseline_date=baseline.baseline_date,
                     current_precision=overall_precision,
-                    current_recall=overall_recall,
+                    current_recall=_ur,
                     current_f1=overall_f1,
                 )
 

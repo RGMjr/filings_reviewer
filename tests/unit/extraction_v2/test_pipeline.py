@@ -408,7 +408,7 @@ class TestValidationStage:
         from src.extraction_v2.pipeline import ValidationStage
 
         stage = ValidationStage()
-        result = stage.process(context)
+        stage.process(context)
 
         assert context.facts[0].requires_review is True
         assert "auto-reject" in context.facts[0].review_reason.lower()

@@ -129,6 +129,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from src.review.boundary_detection import TextBoundary
     from src.review.marker_row_parser import MarkerRowParser
     from src.review.table_structure import TableRowParser
 
@@ -152,7 +153,6 @@ from src.review.false_positive_filter import (
     FalsePositiveFilter,
     is_count_format,
     is_dollar_format,
-    is_percentage_format,
     should_treat_as_percentage,
 )
 from src.review.feature_extractor import (
@@ -514,12 +514,16 @@ class CandidateGenerator:
                 segment_id=segment.get("source_segment_id"),
             )
 
-        # Skip definition segments - they explain metrics but don't contain values (EI-1)
-        if segment.get("contains_definition_flag"):
+        # Skip definition segments that have no numeric disclosure (EI-1).
+        # If a segment is both a definition AND contains a numeric disclosure, process it —
+        # SEC filings commonly define a metric and report its value in the same paragraph.
+        if segment.get("contains_definition_flag") and not segment.get(
+            "contains_numeric_disclosure_flag"
+        ):
             source_segment_id = segment.get("source_segment_id")
             logger.debug(
                 f"Skipping definition segment {source_segment_id}: "
-                "contains_definition_flag is True"
+                "contains_definition_flag is True and no numeric disclosure"
             )
             return None
 
@@ -561,7 +565,7 @@ class CandidateGenerator:
         word_positions = self._context_extractor.parse_text_into_words(text)
 
         # Pre-compute semantic boundaries once for efficiency (P1 enhancement)
-        boundaries: list[tuple[int, int]] | None = None
+        boundaries: list[TextBoundary] | None = None
         detector: BoundaryDetector | None = None
         if self.config.enable_boundary_detection:
             detector = BoundaryDetector()
@@ -569,7 +573,7 @@ class CandidateGenerator:
             logger.debug(f"Detected {len(boundaries)} semantic boundaries in segment")
 
         # Pre-compute sentence boundaries for P1.5 sentence-aware filtering
-        sentence_boundaries: list[tuple[int, int]] | None = None
+        sentence_boundaries: list[TextBoundary] | None = None
         if self.config.detect_sentences:
             if detector is None:
                 detector = BoundaryDetector()

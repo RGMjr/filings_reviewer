@@ -6,15 +6,15 @@ detects cohort chart images in SEC filing HTML by finding cohort-related
 keywords near <img> tags.
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 
 from src.extraction.cohort_chart_detector import (
     CohortChartCandidate,
     CohortChartDetector,
 )
-
 
 # =============================================================================
 # Test Fixtures - HTML Templates
@@ -470,7 +470,7 @@ class TestDetectFromFile:
         html_file = tmp_path / "test.html"
         html_file.write_text(HTML_COHORT_WITH_IMAGE)
 
-        with patch.object(Path, "read_text", side_effect=IOError("Read error")):
+        with patch.object(Path, "read_text", side_effect=OSError("Read error")):
             results = detector.detect_from_file(html_file)
 
         assert results == []

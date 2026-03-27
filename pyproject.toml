@@ -87,6 +87,7 @@ markers = [
     "benchmark: Performance benchmark tests",
     "gold_standard: Gold standard regression tests (require database and gold standard data)",
     "transcript_gold_standard: Transcript gold standard regression tests (require transcript gold standard data)",
+    "performance: Performance tests",
 ]
 
 # Logging
