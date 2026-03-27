@@ -28,6 +28,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -147,7 +148,8 @@ select = [
     "UP",  # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
+    "E501",   # line too long (handled by black)
+    "UP042",  # str+Enum -> StrEnum (pre-existing V2 pattern, refactor deferred)
 ]
 
 [tool.ruff.lint.isort]
