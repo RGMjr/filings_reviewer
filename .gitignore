@@ -36,6 +36,11 @@ data/transcripts/
 # Keep transcript gold standard annotations
 !data/transcript_gold_standard/*.csv
 
+# Keep gold standard annotations, baselines, and filing metadata
+!data/gold_standard/**/*.json
+!data/gold_standard/*.json
+!data/gold_standard/*.csv
+
 # Keep presentation gold standard annotations and baseline
 !data/presentation_gold_standard/*.csv
 !data/presentation_gold_standard/*.json

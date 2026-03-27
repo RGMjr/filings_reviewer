@@ -19,7 +19,8 @@ import csv
 import json
 import logging
 import re
-from dataclasses import dataclass, field, replace as dc_replace
+from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from datetime import date
 from decimal import InvalidOperation
 from pathlib import Path
@@ -414,12 +415,15 @@ class V2GoldStandardValidator:
         pipeline = pipeline_override if pipeline_override is not None else self.v2_pipeline
 
         # Run V2 pipeline
+        filing_metadata = self._load_filing_metadata(company_name)
         v2_context: PipelineContext | None = None
         all_v2_facts: list[MetricFact] = []
         try:
             v2_result = pipeline.process(
                 html_path=filing_path,
                 filing_id=0,  # Placeholder, not persisting
+                cik=filing_metadata.get("cik", ""),
+                accession_number=filing_metadata.get("accession_number", ""),
             )
             if not v2_result.success:
                 logger.error(f"V2 pipeline failed for {company_name}: {v2_result.error_message}")
