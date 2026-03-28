@@ -154,10 +154,10 @@ def test_navigation_handles_completion(client, test_filing, db):
     assert "/filings" in response.location
 
 
-def test_invalid_filing_returns_404(client):
-    """Test 404 returned for non-existent filing."""
+def test_invalid_filing_redirects(client):
+    """Test that non-existent filing redirects to filing list (route catches abort and redirects)."""
     response = client.get("/review/99999")
-    assert response.status_code == 404
+    assert response.status_code == 302
 
 
 def test_invalid_candidate_returns_404(client, test_filing):
