@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from src.infra.db import DatabaseAdapter
 from src.web.app import create_app
 from tests.integration.conftest import create_test_company_and_filing
 
@@ -29,9 +28,9 @@ def client(app):
 
 
 @pytest.fixture
-def db(test_db_url):
-    """Create database adapter for test setup."""
-    return DatabaseAdapter(test_db_url)
+def db(clean_db):
+    """Create database adapter for test setup (clean state per test)."""
+    return clean_db
 
 
 @pytest.fixture
