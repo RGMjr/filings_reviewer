@@ -1,0 +1,23 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+Adobe,ADBE,2024-12-11,cm_expansion_revenue,16000000000,count,FY2024,text,"Firefly Power Generation's across our tools surpassed 16 billion, with every month this past quarter setting a new record",MEDIUM,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_new_customers_acquired,60561,count,Q4 2024,text,We ended Q4 2024 with 60561 employees globally,MEDIUM,prepared_remarks,true
+Adobe,ADBE,2024-12-11,cm_arr,578000000,currency,Q4 FY2024,text,"In Q4, we achieved net new digital media ARR of $578 million",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,2000000000,currency,FY2024,text,We ended the year with just over $2 billion of net new digital media ARR for the first time ever,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,1000000000,currency,Q4 FY2024,text,The book of business for Adobe Experience Platform and native apps surpassed $1 billion in the quarter,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,173000000,currency,Q4 FY2024,text,"In Q4, we achieved document cloud revenue of $843 million, growing 17% year-over-year. We set a record for net new Document Cloud ARR of $173 million",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,3480000000,currency,Q4 FY2024,text,"with ending ARR of $3.48 billion, growing 23% year-over-year",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,405000000,currency,Q4 FY2024,text,Net new Creative Cloud ARR was $405 million,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,17330000000,currency,Q4 FY2024,text,"We exited the quarter with $17.33 billion of digital media ARR, growing our ending ARR book of business 13% year-over-year",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_monthly_active_users,650000000,count,Q4 FY2024,text,"Continued growth of monthly active users, which grew over 25% year-over-year, surpassing 650 million paid and free users",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_large_customers_period_end,48,count,Q4 FY2024,text,with 48 of the Fortune 100 companies now leveraging these solutions,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_large_customers_period_end,85,count,Q4 FY2024,text,Continued strength in retention and expansion across our enterprise customers with digital experience solutions being leveraged by 85 of the Fortune 100 companies,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,21510000000,currency,FY2024,text,"We achieved record revenue of $21.51 billion, representing 11% year-over-year growth",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,15860000000,currency,FY2024,text,"digital media revenue of $15.86 billion, net new digital media ARR of $2.00 billion",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,5370000000,currency,FY2024,text,digital experience revenue of $5.37 billion,HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,5610000000,currency,Q4 FY2024,text,"In Q4, we achieved revenue of $5.61 billion, representing 11% year-over-year growth",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,4150000000,currency,Q4 FY2024,text,"In Q4, we achieved net new digital media ARR of $578 million and revenue of $4.15 billion, which grew 12% year-over-year",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,843000000,currency,Q4 FY2024,text,"In Q4, we achieved document cloud revenue of $843 million, growing 17% year-over-year",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,3300000000,currency,Q4 FY2024,text,"In Q4, we achieved $3.3 billion revenue, which grew 11% year-over-year",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,1400000000,currency,Q4 FY2024,text,"The Experience Cloud business had a strong close to the year, achieving revenue of $1.4 billion for the quarter",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,1270000000,currency,Q4 FY2024,text,"Subscription revenue in the quarter was $1.27 billion, representing 12% year-over-year growth",HIGH,prepared_remarks,false
+Adobe,ADBE,2024-12-11,cm_arr,6000000000,currency,Q4 2024,text,Total revenue for the Q4 2024 was $3 billion,HIGH,prepared_remarks,true

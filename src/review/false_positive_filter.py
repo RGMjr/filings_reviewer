@@ -250,6 +250,14 @@ LABEL_EMBEDDED_VALUE_PATTERN: Pattern[str] = re.compile(
     re.IGNORECASE,
 )
 
+# Ambiguous magnitude suffix pattern
+# Detects "375 b", "610 b" etc. where a space precedes a single-letter suffix.
+# Real magnitude suffixes are typically attached ("375B", "$610M") or spelled out
+# ("375 billion"). A space + single letter usually means a column label or footnote.
+AMBIGUOUS_MAGNITUDE_SUFFIX: Pattern[str] = re.compile(
+    r"^\d[\d,]*\s+[bmkBMK]$"
+)
+
 # Year range - numbers in this range are likely years, not metrics
 # (imported from config.py for centralized configuration)
 YEAR_MIN = YEAR_MIN
@@ -430,16 +438,18 @@ def is_percentage_format(raw_text: str, unit: str) -> bool:
 
     # Decimal ratio format (common for retention rates like 1.25 = 125%)
     # Accept values in 0.5 to 2.5 range with decimal point
+    # BUT skip if raw_text contains a scale suffix (e.g. "1.4 million" is NOT a ratio)
     if '.' in raw_text and unit == 'count':
-        try:
-            # Remove any non-numeric chars except decimal point
-            cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
-            val = float(cleaned)
-            # Retention rates typically 0.5 (50%) to 2.0 (200%)
-            if 0.5 <= val <= 2.5:
-                return True
-        except (ValueError, TypeError):
-            pass
+        if not re.search(r'(?:million|billion|thousand|mn|bn)', raw_text, re.IGNORECASE):
+            try:
+                # Remove any non-numeric chars except decimal point
+                cleaned = ''.join(c for c in raw_text if c.isdigit() or c == '.')
+                val = float(cleaned)
+                # Retention rates typically 0.5 (50%) to 2.0 (200%)
+                if 0.5 <= val <= 2.5:
+                    return True
+            except (ValueError, TypeError):
+                pass
 
     return False
 
@@ -792,17 +802,10 @@ class FalsePositiveFilter:
         start = number.start
         end = number.end
 
-        # Check minimum value threshold (skip for percentages, currency, decimals, and spelled-out)
-        # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
-        # Spelled-out numbers like "six" are intentionally written - likely meaningful
-        if number.unit == "count" and value is not None:
-            is_decimal = "." in number.raw_text
-            if not is_decimal and not is_spelled_out_number(number.raw_text) and abs(float(value)) < self.min_value:
-                return True, "below_min_value"
-
         # Check if spelled-out single-digit number lacks a magnitude word.
         # Bare "three", "one", "four" (values 1-9) are ordinals/qualifiers in
         # SEC filings and should not be treated as metric counts.
+        # Must run BEFORE below_min_value so "six" is caught here, not there.
         # Scope: only single-digit word-numbers (value ≤ 9) to avoid blocking
         # legitimate small counts like "fourteen customers" or "forty-one enterprises".
         # Larger word-numbers with magnitude ("six million") are allowed by the
@@ -815,6 +818,18 @@ class FalsePositiveFilter:
             and float(value) <= 9
         ):
             return True, "spelled_out_no_magnitude"
+
+        # Check minimum value threshold (skip for percentages, currency, and decimals)
+        # Decimals like 1.25 could be ratios (e.g., NRR of 125%)
+        if number.unit == "count" and value is not None:
+            is_decimal = "." in number.raw_text
+            if not is_decimal and abs(float(value)) < self.min_value:
+                return True, "below_min_value"
+
+        # Check for ambiguous magnitude suffix (e.g., "375 b", "610 b")
+        # A space before a single-letter suffix usually means a column label, not "billion"
+        if AMBIGUOUS_MAGNITUDE_SUFFIX.match(number.raw_text.strip()):
+            return True, "ambiguous_magnitude_suffix"
 
         # Check if number looks like a year (only for plain integers)
         if self.filter_years and number.unit == "count":
@@ -831,7 +846,7 @@ class FalsePositiveFilter:
         is_integer_format = "." not in number.raw_text
         is_small_value = value is not None and abs(float(value)) < 1000
 
-        if is_plain_count and is_integer_format and is_small_value and not is_spelled_out_number(number.raw_text):
+        if is_plain_count and is_integer_format and is_small_value:
             if is_near_table_of_contents(text, start, self.toc_proximity_chars):
                 logger.debug(
                     f"TOC proximity filter: number={number.raw_text} "

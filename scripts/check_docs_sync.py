@@ -78,6 +78,9 @@ class DocsChecker:
             "psycopg_pool": "psycopg",  # psycopg[pool] extra
             "yaml": "pyyaml",
             "markupsafe": "flask",  # Flask transitive dependency
+            "fitz": "pymupdf",   # PyMuPDF package is imported as 'fitz'
+            "pdfium": "pypdfium2",  # pypdfium2 imported as pdfium
+            "sklearn": "scikit_learn",  # scikit-learn imported as sklearn
         }
 
         # Find all imports in src/
@@ -136,7 +139,7 @@ class DocsChecker:
             "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
             "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
             "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
-            "tempfile", "textwrap", "threading", "time", "traceback", "typing",
+            "calendar", "tempfile", "textwrap", "threading", "time", "traceback", "typing",
             "unittest", "urllib", "uuid", "warnings", "xml", "zipfile",
         }
 

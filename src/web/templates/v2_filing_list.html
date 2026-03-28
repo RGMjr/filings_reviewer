@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}V2 Filings - {{ super() }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+  <a class="nav-link" href="{{ url_for('review.filing_list') }}">V1 Filings</a>
+</li>
+<li class="nav-item">
+  <a class="nav-link active" href="{{ url_for('review_v2.filing_list') }}">V2 Filings</a>
+</li>
+<li class="nav-item">
+  <a class="nav-link" href="{{ url_for('review.stats') }}">Statistics</a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-12">
+    <h1>V2 Extraction Review</h1>
+    <p class="text-muted">Review metric facts extracted by the V2 pipeline</p>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="btn-group" role="group" aria-label="Document type filter">
+      <a href="{{ url_for('review_v2.filing_list') }}"
+         class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        All
+      </a>
+      <a href="{{ url_for('review_v2.filing_list', document_type='sec_filing') }}"
+         class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        SEC Filings
+      </a>
+      <a href="{{ url_for('review_v2.filing_list', document_type='earnings_call') }}"
+         class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        Earnings Calls
+      </a>
+    </div>
+  </div>
+</div>
+
+{% if filings %}
+<div class="row">
+  <div class="col-12">
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr>
+            <th>Company</th>
+            <th>Type</th>
+            <th>Form</th>
+            <th>Filing Date</th>
+            <th>Facts</th>
+            <th>Pending</th>
+            <th>Accepted</th>
+            <th>Rejected</th>
+            <th>Auto</th>
+            <th>Status</th>
+            <th>Extracted</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filings %}
+          <tr>
+            <td>
+              <strong>{{ f.company_name }}</strong>
+              <br><small class="text-muted">{{ f.accession_number }}</small>
+            </td>
+            <td>
+              {% if f.document_type == 'earnings_call' %}
+              <span class="badge bg-info text-dark">Earnings Call</span>
+              {% else %}
+              <span class="badge bg-light text-dark border">SEC</span>
+              {% endif %}
+            </td>
+            <td>{{ f.form_type or 'N/A' }}</td>
+            <td>{{ f.filing_date.strftime('%Y-%m-%d') if f.filing_date else 'N/A' }}</td>
+            <td><span class="badge bg-primary">{{ f.fact_count or 0 }}</span></td>
+            <td>
+              {% if f.pending_count > 0 %}
+              <span class="badge bg-warning text-dark">{{ f.pending_count }}</span>
+              {% else %}
+              <span class="text-muted">0</span>
+              {% endif %}
+            </td>
+            <td><span class="text-success">{{ f.accepted_count or 0 }}</span></td>
+            <td><span class="text-danger">{{ f.rejected_count or 0 }}</span></td>
+            <td><span class="text-secondary">{{ f.auto_accepted_count or 0 }}</span></td>
+            <td>
+              {% if f.extraction_status == 'complete' %}
+              <span class="badge bg-success">Complete</span>
+              {% elif f.extraction_status == 'failed' %}
+              <span class="badge bg-danger">Failed</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ f.extraction_status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if f.extract_completed_at %}
+              <small>{{ f.extract_completed_at.strftime('%Y-%m-%d %H:%M') }}</small>
+              {% else %}
+              <small class="text-muted">-</small>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('review_v2.review_filing', filing_id=f.filing_id) }}"
+                 class="btn btn-sm btn-outline-primary">
+                Review
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# Pagination Controls #}
+{% if total_pages > 1 %}
+<div class="row mt-4">
+  <div class="col-12">
+    <nav aria-label="Filings pagination">
+      <ul class="pagination justify-content-center">
+        {# Previous button #}
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          {% if page > 1 %}
+          <a class="page-link"
+             href="{{ url_for('review_v2.filing_list', page=page - 1, per_page=per_page) }}">
+            &laquo; Previous
+          </a>
+          {% else %}
+          <span class="page-link">&laquo; Previous</span>
+          {% endif %}
+        </li>
+
+        {# Page numbers (show current page +/- 2, always show first and last) #}
+        {% for page_num in range(1, total_pages + 1) %}
+          {% if page_num == 1 or page_num == total_pages or (page_num >= page - 2 and page_num <= page + 2) %}
+          <li class="page-item {% if page_num == page %}active{% endif %}">
+            <a class="page-link"
+               href="{{ url_for('review_v2.filing_list', page=page_num, per_page=per_page) }}">
+              {{ page_num }}
+            </a>
+          </li>
+          {% elif page_num == page - 3 or page_num == page + 3 %}
+          <li class="page-item disabled">
+            <span class="page-link">...</span>
+          </li>
+          {% endif %}
+        {% endfor %}
+
+        {# Next button #}
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          {% if page < total_pages %}
+          <a class="page-link"
+             href="{{ url_for('review_v2.filing_list', page=page + 1, per_page=per_page) }}">
+            Next &raquo;
+          </a>
+          {% else %}
+          <span class="page-link">Next &raquo;</span>
+          {% endif %}
+        </li>
+      </ul>
+
+      {# Page info text #}
+      <p class="text-center text-muted">
+        Page {{ page }} of {{ total_pages }}
+        &bull;
+        Showing {{ [(page - 1) * per_page + 1, total]|min }}&ndash;{{ [page * per_page, total]|min }}
+        of {{ total }} filings
+      </p>
+    </nav>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

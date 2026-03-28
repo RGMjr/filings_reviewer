@@ -71,6 +71,7 @@ class TestingConfig(Config):
     API_KEY = "test-api-key-for-testing-only"
     API_KEY_REQUIRED = False  # Tests handle auth explicitly when needed
     DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+    DB_POOL_ENABLED = False  # Disable pooling in tests to prevent connection exhaustion
 
 
 class ProductionConfig(Config):
@@ -102,8 +103,7 @@ def get_db() -> DatabaseAdapter:
         database_url = current_app.config.get("DATABASE_URL", "")
         if not database_url:
             raise RuntimeError(
-                "DATABASE_URL not configured. "
-                "Set DATABASE_URL in app config or environment."
+                "DATABASE_URL not configured. Set DATABASE_URL in app config or environment."
             )
         # Get pool from app config (may be None if pooling disabled)
         pool = current_app.config.get("_db_pool")
@@ -166,8 +166,7 @@ def init_pool(app: Flask) -> None:
         )
     except Exception as e:
         logger.error(
-            f"Failed to initialize connection pool: {e}. "
-            "Falling back to per-request connections."
+            f"Failed to initialize connection pool: {e}. Falling back to per-request connections."
         )
         app.config["_db_pool"] = None
 
@@ -193,7 +192,9 @@ def close_pool(app: Flask) -> None:
             app.config["_db_pool"] = None
 
 
-def create_app(config_name: str | None = None, config_override: dict[str, Any] | None = None) -> Flask:
+def create_app(
+    config_name: str | None = None, config_override: dict[str, Any] | None = None
+) -> Flask:
     """
     Create and configure the Flask application.
 
@@ -243,12 +244,10 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
         if not env_secret:
             raise ValueError(
                 "SECRET_KEY environment variable is required in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
             )
         if len(env_secret) < 32:
-            raise ValueError(
-                "SECRET_KEY should be at least 32 characters for production security."
-            )
+            raise ValueError("SECRET_KEY should be at least 32 characters for production security.")
         # Update config with the actual secret key from environment
         app.config["SECRET_KEY"] = env_secret
 
@@ -257,7 +256,7 @@ def create_app(config_name: str | None = None, config_override: dict[str, Any] |
         if not env_api_key:
             raise ValueError(
                 "FILINGS_API_KEY environment variable is required in production. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Generate one with: python3 -c "import secrets; print(secrets.token_hex(32))"'
             )
         app.config["API_KEY"] = env_api_key
     elif hasattr(config_class, "init_app"):
@@ -300,6 +299,7 @@ def _register_health_check(app: Flask) -> None:
     Returns 200 OK if app and database are healthy, 503 otherwise.
     Does not require authentication.
     """
+
     @app.route("/health")
     def health_check():
         """
@@ -318,41 +318,49 @@ def _register_health_check(app: Flask) -> None:
 
                 health = check_pool_health(pool)
                 if health.is_healthy:
-                    return jsonify({
-                        "status": "healthy",
-                        "database": "connected",
-                        "pool_stats": {
-                            "total_connections": health.total_connections,
-                            "idle_connections": health.idle_connections,
-                            "active_connections": health.active_connections,
-                            "test_query_elapsed": health.test_query_elapsed,
-                        },
-                    }), 200
+                    return jsonify(
+                        {
+                            "status": "healthy",
+                            "database": "connected",
+                            "pool_stats": {
+                                "total_connections": health.total_connections,
+                                "idle_connections": health.idle_connections,
+                                "active_connections": health.active_connections,
+                                "test_query_elapsed": health.test_query_elapsed,
+                            },
+                        }
+                    ), 200
                 else:
-                    return jsonify({
-                        "status": "unhealthy",
-                        "database": "error",
-                        "message": health.error,
-                    }), 503
+                    return jsonify(
+                        {
+                            "status": "unhealthy",
+                            "database": "error",
+                            "message": health.error,
+                        }
+                    ), 503
             else:
                 # No pool, try direct connection
                 db = DatabaseAdapter(current_app.config["DATABASE_URL"])
                 with db.get_connection() as conn:
                     conn.execute("SELECT 1")
 
-                return jsonify({
-                    "status": "healthy",
-                    "database": "connected",
-                    "pool_stats": None,
-                }), 200
+                return jsonify(
+                    {
+                        "status": "healthy",
+                        "database": "connected",
+                        "pool_stats": None,
+                    }
+                ), 200
 
         except Exception as e:
             logger.error(f"Health check failed: {e}")
-            return jsonify({
-                "status": "unhealthy",
-                "database": "error",
-                "message": str(e),
-            }), 503
+            return jsonify(
+                {
+                    "status": "unhealthy",
+                    "database": "error",
+                    "message": str(e),
+                }
+            ), 503
 
 
 def _register_blueprints(app: Flask) -> None:
@@ -380,6 +388,16 @@ def _register_blueprints(app: Flask) -> None:
     from src.web.routes.review_images import review_images_bp
 
     app.register_blueprint(review_images_bp)
+
+    # V2 review routes
+    from src.web.routes.review_v2 import review_v2_bp
+
+    app.register_blueprint(review_v2_bp)
+
+    # V2 API routes
+    from src.web.routes.api_v2 import api_v2_bp
+
+    app.register_blueprint(api_v2_bp)
 
 
 def _wants_json_response() -> bool:

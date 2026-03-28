@@ -1,0 +1,15 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+PayPal,PYPL,2025-02-04,cm_monthly_active_users,63000000,count,FY2024,text,Venmo is the #1 P2P platform in the U.S. We saw MAAs continue to grow to $63 million by the end of this year.,MEDIUM,q_and_a,false
+PayPal,PYPL,2025-02-04,cm_revenue_per_customer,,percent,FY2024,text,"On monetization, we increased the average revenue per active Venmo account in 2024, and we plan to build on that growth in 2025.",MEDIUM,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_repeat_purchase_rate,,percent,Q4 2024,text,"Power users, which are PayPal consumer accounts transacting more than 100 times per year, grew more than 9% year-over-year in the fourth quarter.",MEDIUM,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_expansion_revenue,3000000000,currency,FY2024,text,"Our merchant lending originations were $3 billion in '24, demonstrating our leadership and that there is plenty of room to grow to support our customers.",MEDIUM,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_customer_retention_rate,45,percent,Q4 2024,text,"So we are continuing to see customers choosing to, once they go into that guest checkout experience, actually opt into the Fastlane experience at 45% clip.",MEDIUM,q_and_a,false
+PayPal,PYPL,2025-02-04,cm_net_revenue_retention,0.92,percent,Q4 2024,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true
+PayPal,PYPL,2025-02-04,cm_active_customers_total,434000000,count,Q4 2024,text,Total active accounts increased by nearly $3 million from the third quarter and nearly $9 million from last year to $434 million.,HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_monthly_active_users,229000000,count,Q4 2024,text,"Monthly active accounts also continued to show steady progress, up 2% year-over-year to $229 million with contributions from PayPal consumer accounts and Venmo.",HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_purchase_transactions_overall,26000000000,count,FY2024,text,"At our scale, we saw 26 billion transactions on our platform last year.",HIGH,q_and_a,false
+PayPal,PYPL,2025-02-04,cm_monthly_active_users,64000000,count,Q4 2024,text,"Our engaged Venmo user base grew 4% in the quarter, reaching more than 64 million monthly active accounts.",HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_new_customers_acquired,1500000,count,Q4 2024,text,We added more than 1.5 million first-time PayPal debit card users in the fourth quarter.,HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_revenue_per_customer,,ratio,Q4 2024,text,The average debit card actives generate 5 times the transaction activity and 2 times the average revenue per account compared to users who only use Branded Checkout.,HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_monthly_active_users,2000,count,Q4 2024,text,"We now have nearly 2,000 merchants up and running with Fastlane.",HIGH,prepared_remarks,false
+PayPal,PYPL,2025-02-04,cm_arr,7000000000,currency,Q4 2024,text,Total revenue for the Q4 2024 was $3 billion,HIGH,prepared_remarks,true

@@ -27,8 +27,30 @@ env/
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/
 
+# HuggingFace transcript cache (downloaded on demand)
+data/transcripts/
+
+# Downloaded investor presentations (use scripts/ingest_presentations.py to fetch)
+data/presentations/
+
 # But keep fixture metadata
 !data/fixtures/*.json
+
+# Keep transcript gold standard annotations and split metadata
+!data/transcript_gold_standard/*.csv
+!data/transcript_gold_standard/split.json
+!data/transcript_gold_standard/transcript_gold_standard.csv
+
+# Keep gold standard annotations, baselines, and filing metadata
+!data/gold_standard/**/*.json
+!data/gold_standard/*.json
+!data/gold_standard/*.csv
+
+# Keep presentation gold standard annotations and baseline
+!data/presentation_gold_standard/*.csv
+!data/presentation_gold_standard/*.json
+!data/presentation_results/*.json
+!data/presentation_results/*.csv
 
 # Jupyter
 .ipynb_checkpoints/
@@ -54,6 +76,20 @@ htmlcov/
 
 # But keep project-specific Claude settings
 !.claude/settings.json
+
+# Python tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data
+data/llm_cache.db
+data/annotation_cache.db
+logs/*.jsonl
+
+# Generated analysis artifacts
+ops/review_artifacts/
+
 
 # Build artifacts
 *.egg-info/

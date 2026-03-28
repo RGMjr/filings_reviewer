@@ -1,0 +1,14 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason,split
+"Salesforce, Inc.",CRM,2025-12-03,cm_arr,$1.4 billion,currency,2025-07-31 to 2025-10-31,presentation,$1.4 billion,MEDIUM,cover,False,EDIT,period was incorrect,tuning
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$800 million,currency,other,presentation,$800 million,LOW,cover,False,ACCEPT,,tuning
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$2.9 billion,currency,other,presentation,$2.9 billion,LOW,cover,False,ACCEPT,,tuning
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$1.1 billion,currency,other,presentation,$1.1 billion,LOW,cover,False,ACCEPT,,tuning
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$6.6 billion,currency,other,presentation,$6.6 billion,LOW,cover,False,ACCEPT,,tuning
+Alphabet Inc.,GOOGL,2025-10-29,cm_monthly_active_users,650 million,count,other,presentation,650 million,LOW,cover,False,ACCEPT,,tuning
+Alphabet Inc.,GOOGL,2026-02-04,cm_monthly_active_users,750 million,count,other,presentation,750 million,LOW,cover,False,ACCEPT,,tuning
+INTUIT INC.,INTU,2025-11-20,cm_customers_period_end,100 million,count,other,presentation,100 million,LOW,cover,False,ACCEPT,,tuning
+"Meta Platforms, Inc.",META,2026-01-28,cm_daily_active_users,3.58 billion,count,other,presentation,3.58 billion,LOW,cover,False,ACCEPT,,tuning
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438 million,count,other,presentation,438 million,LOW,cover,False,ACCEPT,,tuning
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438,other,other,presentation,438,LOW,unknown,False,ACCEPT,,tuning
+"PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439 million,count,other,presentation,439 million,LOW,cover,False,ACCEPT,,tuning
+"PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439,other,other,presentation,439,LOW,unknown,False,ACCEPT,,tuning

@@ -1,0 +1,13 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+T-Mobile,TMUS,2025-04-24,cm_revenue_per_customer,276,currency,Q1 2025,text,Our stock has appreciated to approximately $276 per share,LOW,q_and_a,true
+T-Mobile,TMUS,2025-04-24,cm_customer_churn_rate,,percent,Q1 2025,text,our lowest 5G broadband churn ever,MEDIUM,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_active_customers_total,550000,count,Q1 2025,text,we continue to rapidly roll out our beta of T Satellite now with hundreds of thousands of active users,MEDIUM,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_new_customers_acquired,50000,count,Q1 2025,text,"This particular quarter that we just finished nearly 50,000",MEDIUM,q_and_a,false
+T-Mobile,TMUS,2025-04-24,cm_new_customers_acquired,350000,count,trailing_four_quarters,text,"When you look at the last four quarters, 350,000 post prepaid net adds over the last four quarters",MEDIUM,q_and_a,false
+T-Mobile,TMUS,2025-04-24,cm_net_revenue_retention,0.92,percent,Q1 2025,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true
+T-Mobile,TMUS,2025-04-24,cm_new_customers_acquired,1300000,count,Q1 2025,text,we set a new record with our best-ever Q1 for total postpaid net additions,HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_new_customers_acquired,495000,count,Q1 2025,text,"We also led the industry once again in postpaid phones, adding 495,000",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_revenue_per_customer,,percent,Q1 2025,text,"postpaid ARPA growth of nearly 4%, our highest Q1 in eight years",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_new_customers_acquired,424000,count,Q1 2025,text,"For the thirteenth quarter in a row, we led the entire broadband industry in customer growth with 424,000 net additions",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-04-24,cm_customers_period_end,25500000,count,Q1 2025,text,We're serving nearly 25.5 million prepaid customers,HIGH,q_and_a,false
+T-Mobile,TMUS,2025-04-24,cm_revenue_per_customer,,percent,FY2025,text,we now expect postpaid ARPA growth expectations to be at least 3.5% for the full year,HIGH,prepared_remarks,false

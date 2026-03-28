@@ -1608,6 +1608,18 @@ class TestMetricTypeValidation:
         assert is_percentage_format("10000", "count") is False
         assert is_percentage_format("5.5", "count") is False  # Outside 0.5-2.5 range
 
+    def test_is_percentage_format_not_scale_suffix(self):
+        """Values with scale suffixes (million, billion) should NOT be treated as percentages."""
+        from src.review.false_positive_filter import is_percentage_format
+
+        # "1.4 million" = 1,400,000 — NOT a decimal ratio
+        assert is_percentage_format("1.4 million", "count") is False
+        assert is_percentage_format("1.3 million", "count") is False
+        assert is_percentage_format("2.1 billion", "count") is False
+        assert is_percentage_format("1.5 thousand", "count") is False
+        assert is_percentage_format("0.8 bn", "count") is False
+        assert is_percentage_format("1.0 mn", "count") is False
+
     def test_is_dollar_format_with_dollar_sign(self):
         """Should detect dollar format from $ sign."""
         from src.review.false_positive_filter import is_dollar_format

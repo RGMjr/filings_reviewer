@@ -285,6 +285,7 @@ def create_decision():
                             "status": "error",
                             "message": "Candidate already has a decision",
                             "existing_decision_id": existing["decision_id"],
+                            "error_type": "duplicate_decision",
                         }
                     ),
                     409,

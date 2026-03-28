@@ -8,8 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.infra.db import DatabaseAdapter
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 from tests.integration.conftest import create_test_company_and_filing
 
 
@@ -19,7 +18,8 @@ def app(test_db_url):
     app = create_app("testing")
     app.config["DATABASE_URL"] = test_db_url
     app.config["TESTING"] = True
-    return app
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture
@@ -29,9 +29,9 @@ def client(app):
 
 
 @pytest.fixture
-def db(test_db_url):
-    """Create database adapter for test setup."""
-    return DatabaseAdapter(test_db_url)
+def db(clean_db):
+    """Create database adapter for test setup (clean state per test)."""
+    return clean_db
 
 
 @pytest.fixture
@@ -282,13 +282,13 @@ class TestBulkSafetyLimits:
         data = response.get_json()
         assert data["processed_count"] == 20
 
-    def test_21_candidates_returns_403(self, client, db):
-        """21 candidates should return 403."""
+    def test_51_candidates_returns_403(self, client, db):
+        """51 candidates should return 403 (API limit is 50)."""
         company_id, filing_id = create_test_company_and_filing(db)
 
-        # Create 21 candidates
+        # Create 51 candidates
         candidate_ids = []
-        for i in range(21):
+        for i in range(51):
             candidate_id = db.insert_review_candidate(
                 filing_id=filing_id,
                 company_id=company_id,
@@ -316,4 +316,4 @@ class TestBulkSafetyLimits:
 
         assert response.status_code == 403
         data = response.get_json()
-        assert "Maximum 20 candidates" in data["message"]
+        assert "Maximum 50 candidates" in data["message"]

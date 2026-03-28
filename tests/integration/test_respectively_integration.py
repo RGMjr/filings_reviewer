@@ -63,14 +63,14 @@ class TestRespectivelyEndToEnd:
             filing_date="2018-03-02",
         )
 
-        # Gross margin example (simplified for testing)
+        # Net revenue retention example (simplified for testing)
         segments = [
             {
                 "source_segment_id": None,  # No actual source segment in DB
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for the years ended "
+                    "Net revenue retention rate for the years ended "
                     "December 31, 2015, 2016 and 2017 was 33.0%, 35.0% and 43.0%, "
                     "respectively."
                 ),
@@ -224,7 +224,7 @@ class TestDatabasePersistence:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for 2015, 2016 and 2017 was "
+                    "Net revenue retention rate for 2015, 2016 and 2017 was "
                     "33%, 35% and 43%, respectively."
                 ),
                 "section_heading": "Test",
@@ -315,7 +315,7 @@ class TestDeduplicationStrategy:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for 2015, 2016 and 2017 was "
+                    "Net revenue retention rate for 2015, 2016 and 2017 was "
                     "35%, 40% and 45%, respectively."
                 ),
                 "section_heading": "Test",
@@ -361,8 +361,8 @@ class TestDeduplicationStrategy:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Revenue for 2015 and 2016 was $35M and $40M, respectively. "
-                    "Gross margin for 2015 and 2016 was 35% and 40%, respectively."
+                    "Net revenue retention for 2015 and 2016 was 110% and 115%, respectively. "
+                    "Net revenue retention rate for 2015 and 2016 was 35% and 40%, respectively."
                 ),
                 "section_heading": "Test",
                 "section_path": "/Test",
@@ -501,8 +501,8 @@ class TestEdgeCases:
             db=clean_db,
         )
 
-        # Should generate candidates normally
-        assert len(candidates) >= 2
+        # Should generate candidates normally (at least 1 for "active customers")
+        assert len(candidates) >= 1
 
         # No periods detected
         for candidate in candidates:
@@ -520,7 +520,7 @@ class TestEdgeCases:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Gross margin for 2015, 2016 and 2017 was 33%, 35% and 37%, respectively. "
+                    "Net revenue retention rate for 2015, 2016 and 2017 was 33%, 35% and 37%, respectively. "
                     "We serve over 500 enterprise customers."
                 ),
                 "section_heading": "Test",
@@ -561,8 +561,8 @@ class TestEdgeCases:
                 "filing_id": filing_id,
                 "segment_type": "paragraph",
                 "raw_text": (
-                    "Revenue for 2015 and 2016 was $1M and $2M, respectively. "
-                    "Gross margin for 2015 and 2016 was 30% and 35%, respectively."
+                    "Net revenue retention for 2015 and 2016 was 110% and 120%, respectively. "
+                    "Net revenue retention rate for 2015 and 2016 was 30% and 35%, respectively."
                 ),
                 "section_heading": "Test",
                 "section_path": "/Test",

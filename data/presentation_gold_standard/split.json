@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "description": "Company-level train/test split for presentation gold standard. Test companies are held out entirely \u2014 never used for tuning. Only tuning companies are used during pipeline development.",
+  "tuning_companies": [
+    "CRM",
+    "GOOGL",
+    "INTU",
+    "META",
+    "PYPL"
+  ],
+  "test_companies": [],
+  "companies": {
+    "CRM": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2025-12-03",
+        "2026-02-25"
+      ],
+      "annotation_count": 5
+    },
+    "GOOGL": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2025-10-29",
+        "2026-02-04"
+      ],
+      "annotation_count": 2
+    },
+    "INTU": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2025-11-20"
+      ],
+      "annotation_count": 1
+    },
+    "META": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2026-01-28"
+      ],
+      "annotation_count": 1
+    },
+    "PYPL": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2025-10-28",
+        "2026-02-03"
+      ],
+      "annotation_count": 4
+    }
+  },
+  "statistics": {
+    "total_annotations": 13,
+    "tuning_annotations": 13,
+    "test_annotations": 0,
+    "test_pct": 0.0
+  },
+  "source_files": [
+    "CRM_2025-12-03_reviewed.csv",
+    "CRM_2026-02-25_reviewed.csv",
+    "GOOGL_2025-10-29_reviewed.csv",
+    "GOOGL_2026-02-04_reviewed.csv",
+    "INTU_2025-11-20_reviewed.csv",
+    "META_2026-01-28_reviewed.csv",
+    "PYPL_2025-10-28_reviewed.csv",
+    "PYPL_2026-02-03_reviewed.csv"
+  ]
+}

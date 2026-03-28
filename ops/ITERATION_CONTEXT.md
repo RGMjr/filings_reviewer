@@ -6,50 +6,136 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
-*Updated automatically at iteration end*
+**Merge main into earnings-call-exploration (2026-03-18)**
+- Resolved 37 conflicting files across V2 pipeline revert on main vs full V2 + transcript/presentation support on branch
+- Root cause of gold standard false regression: main's validate_against_gold_standard.py removed exclusion of "not a customer metric" GS entries from FN count — restored exclusion
+- Other key fixes: restored metric_keywords.yaml, false_positive_filter.py, fresh_extractor.py from branch; added deprecation skip to src/extraction/keyword_config.py; fixed golden test skip decorators; updated docs allowlist in pre-commit guard
+- Gold standard result: P=88.9%, R=63.7%, F1=74.2% (matches baseline exactly, no regression)
+- All 5120 unit tests pass
 
-- V2-05 AC-9 & AC-10: Created comprehensive test suite (22 tests), achieved 85% coverage on ocr_extraction.py, all 196 V2 tests pass, mypy and ruff pass
+**FP Rule Precision via text positioning (earnings-call-exploration, 2026-03-12)**
+- Phase 0 diagnostic found: `value_pos` IS found via `find()` for all FPs (no cross-segment binding); root causes were (1) zero-width spaces (`\u200b`) breaking `_DELTA_BY_MORE_RE`'s `\s+` and (2) `_COST_STRUCTURE_REVENUE_RE.search()` returning first match (far from value) not nearest
+- Fixes: `_DELTA_BY_MORE_RE` now uses `.{0,40}` + `[\s\u200b]+` between verb and "by", pre-window widened 30→60 chars; added "guidance range" to `_COST_STRUCTURE_REVENUE_RE`; switched to `finditer()` to check all occurrences for nearest match
+- Presentation benchmark: **R=100.0%, P=77.8%, F1=87.5%** (+19.5pp precision from 58.3%); baseline saved (2026-03-12)
+- Remaining FPs: Camera Kit 68M (image OCR artifact) + DAU 943M (cross-metric issue) = 2 intentional FPs
+- Transcript: 72.5% (pre-existing regression; CSV already at 66/91 TPs before this session; `_DELTA_BY_MORE_RE` change confirmed safe for normal text)
+- SEC gold standard: 6/6 pass, no regression; 1365 unit tests pass
+
+**Presentation Precision Hardening (earnings-call-exploration, 2026-03-12)**
+- Added 3 FP rules to `false_positive_filter.py`: `_rule_delta_count_value` (delta count language), extended `_FORWARD_GUIDANCE_RE` (goal/aspiration/serving patterns), `_rule_revenue_concentration_context` (renamed + cost-structure + cross-segment suppression)
+- Presentation precision: **R=100.0%, P=58.3%, F1=73.7%** (+21.5pp precision from 36.8%); baseline saved
+- Reduced FPs from 12→5 on SNAP investor letter; remaining FPs are image-extraction artifacts
+- Transcript benchmark: R=73.6%, P=73.6%, F1=73.6% — 2pp gap from baseline is pre-existing dedup variability (confirmed: no new rule causes FNs); PYPL MAA→MAU misclassification is pre-existing
+- SEC gold standard unchanged; 190 unit tests pass (0 failures)
+
+**M5-5: Presentation Gold Standard Annotation Session (earnings-call-exploration, 2026-03-11)**
+- Discovered and fixed bug in `sec_presentation_source._get_8k_exhibits()`: exhibit type filter compared against icon type ("text.gif") instead of exhibit type — always returned 0 results. Also extended to accept `.htm` files alongside `.pdf`.
+- EDGAR discovery redesigned: large tech companies don't file PDF presentations as 8-K exhibits; instead use `*exhibit99[0-9]*` filename pattern to find HTML earnings releases.
+- Annotated 5 files: CRM (Q3+Q4 FY26), META (Q4 2025), SNAP (Q3+Q4 2025); 7 accepted annotations.
+- Initial benchmark: **R=100.0%, P=36.8%, F1=53.8%** (7 annotations; CRM 100/100/100, META 100/100/100, SNAP 100/29/45). High FP rate on SNAP due to image-based investor letter (all text from alt-text in image tags).
+- Baseline saved to `data/presentation_results/presentation_baseline.json`.
+- Tests: 3664 unit tests pass (0 failures, 8 skipped); coverage 78.75%
+
+**Phase D + M5 Tooling (earnings-call-exploration, 2026-03-03)**
+- M5 gold standard tooling: `review_presentation_annotations.py`, `merge_presentation_annotations.py`, `validate_presentation_extraction.py` — mirrors transcript pipeline; 41 unit tests
+- `preannotate_presentations.py` (M5-1) was already in place; completes the full preannotate→review→merge→validate cycle for presentations
+- Phase D: `check_new_documents.py` (source monitoring, --json), checkpointing + --resume + --max-failures + SIGINT in both ingest scripts, `ingest_all.py` unified wrapper; 23 unit tests
+- Docs: `docs/BATCH_INGESTION.md` (new), `docs/V2_MIGRATION_GUIDE.md` updated, CLAUDE.md updated
+- Tests: 3659 unit tests pass (0 failures, 8 skipped); gold standard 6/6 pass, no extraction regressions
+- M5-5 (sample annotation session on real PDFs) remains to be done interactively
+
+**Phase C: Presentation Support (earnings-call-exploration, 2026-03-02, 72cd1c6 + 5b3b247)**
+- `presentation_converter.py`: pdfplumber PDF→HTML (page→section, tables, images, title-slide detection)
+- `sec_presentation_source.py`: EDGAR 8-K exhibit downloader with idempotent cache
+- Section types: TITLE_SLIDE, KEY_METRICS, FINANCIAL_OVERVIEW, GUIDANCE, APPENDIX (migration 14)
+- FP filter: suppresses TITLE_SLIDE/APPENDIX facts and bare integers <1000
+- Period inference extended for slide title patterns ("Q4 FY2025 Results", "Full Year 2024")
+- Tests: 3595 passing (37 converter, 19 source, 19 e2e); SEC gold standard unchanged (P=88.9%, R=63.7%)
+- M5 (gold standard on real PDFs) deferred pending manual annotation
+
+**ADBE FP Cluster Fix (earnings-call-exploration, 2026-03-02)**
+- `_rule_revenue_as_arr` improved: compound "recurring revenue" escape + proximity tiebreaker for standalone "ARR". Handles "ARR of $578M and revenue of $4.15B" — "revenue" closer to $4.15B → correctly rejected.
+- `_rule_percent_on_count_metric` added: rejects PERCENT on count-only metrics (MAU/DAU/customers). MAU/DAU escape: year-over-year context → legitimate growth rate preserved.
+- ADBE FPs: 11 → 7 (4 fixed: 2 MAU adoption FPs + 2 revenue-as-ARR FPs). Remaining 7: revenue farther than 35 chars, bare decimal, "$2B" as Unit.COUNT (not CURRENCY).
+- Overall benchmark improvement: **R=75.8%, P=74.2%, F1=75.0%** (from R=74.7%, P=70.1%, F1=72.3%)
+
+**Phase A+ Cleanup: Scoring Bug Fix (earnings-call-exploration, 2026-03-02)**
+- Fixed date key mismatch bug in transcript validator: added `_normalize_date()` to handle `M/DD/YY` format and strip `_HH_MM_SS` time suffixes from HTML filenames
+- Normalized dates in ADSK_2025-02-27 and MSFT_2025-01-29 gold standard CSVs (was `2/27/25`, `1/29/25`)
+- Previously, 4 files were silently unmatched (MSFT_2025-01-29, ADSK_2025-02-27, CRM_2019-12-03, CRM_2020-02-25); now 20/22 files match annotations
+- Corrected benchmark (91 annotations, 20 files): **R=74.7%, P=70.1%, F1=72.3%** — all Phase A+ targets met (R≥65% ✓, P≥70% ✓, F1≥67% ✓)
+
+**Phase A+ Stragglers (earnings-call-exploration, 2026-03-02)**
+- Removed 3 phantom ADSK revenue_concentration annotations (text absent from HuggingFace transcript HTML)
+- Added `almost` to APPROX_PREFIXES in value_binding.py — recovers META "almost a billion" FN
+- Resolved 6 git merge conflicts across persistence.py, pipeline.py, value_binding.py, period_inference.py, false_positive_filter.py, db.py — all files parse cleanly
+
+**Batch Ingestion E2E Test (earnings-call-exploration, 2026-03-01)**
+- `scripts/ingest_transcripts.py` tested end-to-end with HuggingFace source
+- 3 bugs fixed during E2E: field mapping (`symbol` not `ticker`), company upsert (partial unique index), persistence (v2_documents.doc_id is UUID, not filing_id)
+- Added migration 13: expanded v2_segments section_type CHECK to include transcript types
+- 6 transcripts (CRM + MSFT) persisted to local DB, 11 unique facts extracted
+- FMP deferred; HuggingFace free source validated as working path
+
+**Phase B complete. All targets met: R=72.9%, P=71.3%, F1=72.1%**
+
+**V2 Production Promotion (2026-03-01)**:
+- Merged PR #27 (v2-rewrite → main) via merge commit `2dd707e` — 155 commits
+- Shared modules extracted: `src/shared/keyword_config.py`, `src/shared/models.py`
+- V1 retirement: 12 extraction modules deleted, 8 scripts deleted, 31 test files deleted
+
+**WP-15–22.5 (2026-02-28)**: FP rules, batch hardening, logging, UI parity, V1/V2 comparison script
+- SEC gold standard: **P=92.8%, R=77.6%, F1=84.5%**; Migration 12: drop V1 FK constraints
 
 ## Current Focus
 
-*Set by previous iteration or worker prompt*
-
-- Task V2-05 complete: All 10 acceptance criteria met
+- **Phase D-FMP: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
+- **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 
 ## Test Status
 
-- All 196 V2 tests passing (174 existing + 22 new OCR extraction tests)
-- V2-04 image_triage.py at 94% coverage
-- V2-05 ocr_extraction.py at 85% coverage
-- mypy passes (no errors in ocr_extraction.py)
-- ruff passes
+- Unit tests: 190 FP filter tests pass; full suite 3664+ pass (2026-03-12)
+- SEC gold standard: P=88.9%, R=63.7%, F1=74.2% (baseline 2026-02-28, unchanged)
+- Transcript benchmark: R=73.6%, P=73.6%, F1=73.6% (91 annotations, 20 files; 2026-03-12; -2pp from prior baseline due to dedup variability, not FP rule changes)
+- Presentation benchmark: R=100.0%, P=58.3%, F1=73.7% (7 annotations, 5 files; 2026-03-12; +21.5pp precision)
 
-## Key Learnings for Next Iteration
+## Key Learnings
 
-*Technical discoveries that affect subsequent work*
+**Presentation Precision Hardening:**
+- Cross-segment binding: when `value_pos = source_text.find(raw) < 0`, the value was bound from a proximity window crossing segment boundaries — the FP rule can't verify proximity. Generic suppression (`return "v2_cross_segment_revenue_concentration"`) is safe for `cm_revenue_concentration` when value_pos < 0.
+- `_DELTA_BY_MORE_RE` must require a directional verb directly before "by" to avoid matching passive constructions like "used by more than X billion". But "grown MAU by more than VALUE" has a noun intervening — cross-segment binding makes this unfixable at the FP filter level.
+- Transcript benchmark fluctuates ±2pp from dedup/ordering variability on META_2025-04-30; PYPL "monthly active accounts" → MAU misclassification is a metric keywords issue, not FP filter.
 
-- ImageAsset model already has `ocr_text`, `ocr_table`, `chart_data` fields ready
-- ChartData/ChartSeries/DataPoint models exist in models.py
-- TableReconstructor exists in table_reconstructor.py
-- VisionClient in src/llm/vision_client.py provides analyze_image() API
-- Chart extraction prompt must emphasize "labeled values only" to prevent interpolation
-- process() method already implemented in AC-2, conforming to pipeline stage interface
+**ADBE FP Fix:**
+- MAU growth rates ("growing 23% YoY") are ACCEPTED in gold standard — blanket percent-on-count rule needs YoY escape for MAU/DAU
+- "$2B" parsed as Unit.COUNT (value_raw="2B", not "$2B") — currency_on_count check misses it; would need Unit.COUNT suppression for large values
+- Revenue-as-ARR proximity tiebreaker: "recurring revenue" compound phrase MUST be detected before applying distance calc (word order: recurring < revenue < value)
 
-## Files Changed This Session
+**Phase B:**
+- OPERATOR section suppression cleanly eliminates boilerplate FPs without affecting transcript metrics
+- Gaming/fintech keywords skipped — no matching canonical metrics exist; adding keywords without metrics is a no-op
+- Baseline discrepancy: transcript_baseline.json showed P=62.9% vs CLAUDE.md's 70.1% — baseline.json was stale; re-anchor after each A+ session
 
-*For quick orientation on what was modified*
+**Transcript (from Phase A+):**
+- MSFT converter bug: speaker-pattern check must run BEFORE section detection
+- PYPL FP explosion (15 FPs, small bare numbers) — _BARE_SMALL_NUMBER_THRESHOLD raised to 400 for prepared_remarks
 
-- src/extraction_v2/stages/ocr_extraction.py (AC-9: removed incorrect isinstance() checks in process_table_image() and process_chart(), fixed to use self.vision_client directly, added Any type hint)
-- tests/unit/extraction_v2/test_ocr_extraction.py (AC-9 & AC-10: created 22 comprehensive tests covering all functionality, MockVisionClient for API mocking)
-- ops/DEVELOPMENT_PLAN.md (marked AC-4 through AC-10 complete)
-- ops/ITERATION_CONTEXT.md (updated progress)
+**V2 persistence (from WP-23):**
+- `Document.doc_id` must be UUID not `str(filing_id)`; `v2_metric_facts` ON CONFLICT had no unique index — use delete-then-insert; apply migration 11 before batch
+- `source_segments` has FK deps in migrations 07/08/09 — requires migration 12 before dropping
+
+## Next Work (Prioritized)
+
+1. **Presentation precision hardening (follow-up)** — 5 FPs remain on SNAP investor letter: 3× image-extracted revenue concentration (18/19/20%), 1× Camera Kit MAU (68M, intentional leave), 1× delta MAU (150M, cross-segment binding). Root cause is image-text PDF conversion producing spurious candidates. Consider suppressing extraction from image-only HTML segments.
+2. **Transcript baseline re-anchor** — PYPL MAA→MAU metric misclassification (-1 TP) and META_2025-04-30 dedup variability (-1 TP) are pre-existing; current stable R≈73-74%. Consider updating baseline.json.
+3. **Phase D-FMP: FMP API source** — `FMPTranscriptSource` for broader transcript corpus
+4. **SEC: AOV wrong_period** — Farfetch period mismatch; WP-08 scope
 
 ## Blockers or Warnings
 
-*Issues the next iteration should be aware of*
-
-- Need OPENAI_API_KEY in .env for vision API calls
-- Tests should mock vision API responses to avoid API costs
+- Farfetch chart FNs (8) require Vision API; not addressable in current test environment
+- Production DB migration: run on staging first, verify SEC data unaffected
+- Snowflake tables have many colspan/grid-gap warnings — extraction works but may have binding gaps; accepted for now
 
 ---
 

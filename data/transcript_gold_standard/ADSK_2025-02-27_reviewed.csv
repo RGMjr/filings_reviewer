@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Autodesk,ADSK,2025-02-27,cm_arr,,currency,Q4 FY2025,text,"RPO of $6.9 billion and current RPO of $4.5 billion grew 14% and 12%, respectively.",LOW,prepared_remarks,FALSE,REJECT,"RPO means ""remaining performance obligations"" not arr"
+Autodesk,ADSK,2025-02-27,cm_customer_retention_rate,,percent,Q4 FY2025,text,continuing strong renewal rates,LOW,prepared_remarks,FALSE,REJECT,no numberical value
+Autodesk,ADSK,2025-02-27,cm_expansion_revenue,500000000,currency,FY2024,text,"this partnership creates an unmatched value proposition for manufacturers in North America, resulting in approximately $500 million in savings for MSC's customers in fiscal year 2024",LOW,prepared_remarks,FALSE,REJECT,"value refers to ""savings"" not revenue"
+Autodesk,ADSK,2025-02-27,cm_net_revenue_retention,100,percent,FY2026,text,"in the modeling guidelines, we've provided a view on how we are thinking about fiscal '26, which is basically the same as it was in fiscal '25. It's a range of 100% to 110%.",MEDIUM,q_and_a,FALSE,ACCEPT,Lower bound of stated 100-110% range
+Autodesk,ADSK,2025-02-27,cm_customers_period_end,1605,count,Q4 2025,text,Our partner ecosystem now includes 1605 certified partners,MEDIUM,q_and_a,TRUE,REJECT,"pertners, not customers"
+Autodesk,ADSK,2025-02-27,cm_net_revenue_retention,0.92,percent,Q4 2025,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,TRUE,REJECT,"gross margin, not nrr"
+Autodesk,ADSK,2025-02-27,cm_new_customers_acquired,400,count,Q4 FY2025,text,we added almost 400 net new logos,HIGH,prepared_remarks,FALSE,ACCEPT,

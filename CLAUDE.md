@@ -159,3 +159,65 @@ Show the completed checklist and get user approval before proceeding with implem
 pytest -m gold_standard --gold-standard-mode=fresh -v
 ```
 See `.claude/rules/gold-standard.md` for full workflow (auto-loaded when relevant).
+
+## V2 Extraction Pipeline
+
+The V2 pipeline (`src/extraction_v2/`) is a ground-up redesign with key improvements:
+- **10x faster parsing** via lxml (vs BeautifulSoup)
+- **Stable XPath locators** for every source element
+- **Full table reconstruction** with header_path/stub_path binding
+- **Image/OCR integration** for chart extraction
+- **EvidencePack** with highlighted HTML and context
+
+**Usage:**
+```python
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
+
+config = PipelineConfig(
+    enable_image_extraction=True,
+    min_confidence_auto_accept=0.90,
+)
+pipeline = V2Pipeline(config=config)
+result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
+
+print(f"Extracted {result.fact_count} facts in {result.total_duration_ms}ms")
+for fact in result.facts:
+    print(f"  {fact.canonical_metric_id}: {fact.value} ({fact.confidence:.1%})")
+```
+
+See `docs/V2_MIGRATION_GUIDE.md` for full migration documentation and `docs/V2_IMPLEMENTATION_ROADMAP.md` for the complete implementation roadmap (all 13 phases complete).
+
+## Beyond SEC: Transcript & Presentation Support
+
+**Status:** Phase A complete (12/12 ACs), Phase A+ complete (all targets met), Phase B complete, Phase C complete (M1-M4, M6; M5 deferred), Phase D complete
+**Design doc:** `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
+
+The V2 pipeline has been extended to extract customer metrics from earnings call transcripts and investor presentations. Current transcript benchmark: R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files, 2026-03-02). The original spike baseline was 22.1% recall / 63.0% precision on 77 annotated metrics.
+
+**Document-type-aware config (implemented):**
+```python
+# Transcript processing — wider proximity, relaxed FP filter
+config = PipelineConfig.for_transcript()
+
+# Presentation processing — images enabled, relaxed FP filter, min_paragraph_chars=20
+config = PipelineConfig.for_presentation()
+
+# SEC filings — default behavior (unchanged)
+config = PipelineConfig()
+```
+
+**Phase A (complete):** Value binding tuning, FP filter relaxation, period inference patterns, transcript converter, HuggingFace source, schema migration — all 12 ACs met. Achieved R=65.9% (target: ≥50%) on consolidated gold standard. See `ops/DEVELOPMENT_PLAN.md` for full AC list.
+
+**Phase A+ (complete):** Precision hardening. Final scores (2026-03-02): R=75.8%, P=74.2%, F1=75.0% (91 annotations, 20 files). All targets met. Rules added: revenue_as_arr, forward_guidance, arpu_as_aov, percent_on_count_metric. ADBE FP cluster fixed (11→7 FPs).
+
+**Phase B (complete):** Batch ingestion, HuggingFace E2E tested, schema migration 13, company upsert fixes, Web UI document-type filter.
+
+**Phase C (complete, 72cd1c6 + 5b3b247):** Presentation support. New modules: `presentation_converter.py` (pdfplumber PDF→HTML), `sec_presentation_source.py` (EDGAR 8-K downloader), `scripts/ingest_presentations.py`. Section types TITLE_SLIDE/KEY_METRICS/FINANCIAL_OVERVIEW/GUIDANCE/APPENDIX added (migration 14). FP filter suppresses title/appendix slides and bare integers <1000. Period inference extended for slide title patterns. M5 (gold standard on real PDFs) deferred.
+
+**Phase D (complete, 2026-03-03):** Monitoring, batch improvements, ingest_all wrapper, and M5 gold standard tooling. New scripts: `check_new_documents.py` (monitors HuggingFace + EDGAR for unprocessed documents), `ingest_all.py` (unified wrapper for both sources), `review_presentation_annotations.py` (terminal review UI), `merge_presentation_annotations.py` (60/40 split), `validate_presentation_extraction.py` (R/P/F1 benchmark). Circuit breaker (`--max-failures`) and `--resume` checkpointing added to both ingest scripts. See `docs/operations/BATCH_INGESTION.md` for full usage.
+
+
+**Transcript gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 91 annotations, 20 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
+
+**Presentation gold standard:** `data/presentation_gold_standard/` (per-filing `*_reviewed.csv`). Workflow: `preannotate_presentations.py` → `review_presentation_annotations.py` → `merge_presentation_annotations.py` → `validate_presentation_extraction.py`. File index at `data/presentation_gold_standard/_file_index.json`. Initial benchmark (2026-03-11): R=100.0%, P=36.8%, F1=53.8% (7 annotations, 5 files: CRM Q3+Q4 FY26, META Q4 2025, SNAP Q3+Q4 2025). SNAP precision is poor (29%) due to image-based investor letter generating spurious text candidates.

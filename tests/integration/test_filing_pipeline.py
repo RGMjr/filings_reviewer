@@ -54,27 +54,23 @@ class TestRealWorldEdgeCases:
         )
 
         # Mock SEC client to resolve URL with unusual filename
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            # First call: get index.json
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        # _make_request is used by resolve_primary_document_url (not self.session)
+        with patch.object(
+            fetcher.sec_client,
+            "_make_request",
+            return_value={
                 "directory": {
                     "item": [
                         {"name": "mainbody.htm", "size": 500000},
                         {"name": "exhibit99_1.htm", "size": 100000},
                     ]
                 }
-            }
-            mock_index_response.raise_for_status = Mock()
-
-            # Second call: get mainbody.htm
+            },
+        ):
             mock_filing_response = Mock()
             mock_filing_response.text = valid_filing_html
             mock_filing_response.raise_for_status = Mock()
 
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
-
-            # Also patch fetcher's session for the actual filing download
             with patch.object(
                 fetcher.session, "get", return_value=mock_filing_response
             ):
@@ -94,23 +90,21 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        with patch.object(
+            fetcher.sec_client,
+            "_make_request",
+            return_value={
                 "directory": {
                     "item": [
                         {"name": "ff12014a1_biondvax.htm", "size": 500000},
                         {"name": "ex10_1.htm", "size": 100000},
                     ]
                 }
-            }
-            mock_index_response.raise_for_status = Mock()
-
+            },
+        ):
             mock_filing_response = Mock()
             mock_filing_response.text = valid_filing_html
             mock_filing_response.raise_for_status = Mock()
-
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
             with patch.object(
                 fetcher.session, "get", return_value=mock_filing_response
@@ -171,9 +165,10 @@ class TestRealWorldEdgeCases:
             primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/",
         )
 
-        with patch.object(fetcher.sec_client, "session") as mock_session:
-            mock_index_response = Mock()
-            mock_index_response.json.return_value = {
+        with patch.object(
+            fetcher.sec_client,
+            "_make_request",
+            return_value={
                 "directory": {
                     "item": [
                         {"name": "cover.htm", "size": 10000},
@@ -181,14 +176,11 @@ class TestRealWorldEdgeCases:
                         {"name": "signature.htm", "size": 5000},
                     ]
                 }
-            }
-            mock_index_response.raise_for_status = Mock()
-
+            },
+        ):
             mock_filing_response = Mock()
             mock_filing_response.text = valid_filing_html
             mock_filing_response.raise_for_status = Mock()
-
-            mock_session.get.side_effect = [mock_index_response, mock_filing_response]
 
             with patch.object(
                 fetcher.session, "get", return_value=mock_filing_response
