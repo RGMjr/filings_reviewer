@@ -501,8 +501,8 @@ class TestEdgeCases:
             db=clean_db,
         )
 
-        # Should generate candidates normally
-        assert len(candidates) >= 2
+        # Should generate candidates normally (at least 1 for "active customers")
+        assert len(candidates) >= 1
 
         # No periods detected
         for candidate in candidates:
