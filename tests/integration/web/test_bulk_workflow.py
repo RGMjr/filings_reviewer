@@ -281,13 +281,13 @@ class TestBulkSafetyLimits:
         data = response.get_json()
         assert data["processed_count"] == 20
 
-    def test_21_candidates_returns_403(self, client, db):
-        """21 candidates should return 403."""
+    def test_51_candidates_returns_403(self, client, db):
+        """51 candidates should return 403 (API limit is 50)."""
         company_id, filing_id = create_test_company_and_filing(db)
 
-        # Create 21 candidates
+        # Create 51 candidates
         candidate_ids = []
-        for i in range(21):
+        for i in range(51):
             candidate_id = db.insert_review_candidate(
                 filing_id=filing_id,
                 company_id=company_id,
@@ -315,4 +315,4 @@ class TestBulkSafetyLimits:
 
         assert response.status_code == 403
         data = response.get_json()
-        assert "Maximum 20 candidates" in data["message"]
+        assert "Maximum 50 candidates" in data["message"]
