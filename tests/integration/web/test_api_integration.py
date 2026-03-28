@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from src.infra.db import DatabaseAdapter
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +39,8 @@ def app(db_url):
             "DATABASE_URL": db_url,
         },
     )
-    return app
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture

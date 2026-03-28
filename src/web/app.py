@@ -71,6 +71,7 @@ class TestingConfig(Config):
     API_KEY = "test-api-key-for-testing-only"
     API_KEY_REQUIRED = False  # Tests handle auth explicitly when needed
     DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+    DB_POOL_ENABLED = False  # Disable pooling in tests to prevent connection exhaustion
 
 
 class ProductionConfig(Config):

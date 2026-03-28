@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 from tests.integration.conftest import create_test_company_and_filing
 
 
@@ -18,7 +18,8 @@ def app(test_db_url):
     app = create_app("testing")
     app.config["DATABASE_URL"] = test_db_url
     app.config["TESTING"] = True
-    return app
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture

@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 from src.review.models import CandidateFeatures
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 from tests.integration.conftest import create_test_company_and_filing
 
 
@@ -19,7 +19,8 @@ def app(test_db_url):
     app = create_app("testing")
     app.config["DATABASE_URL"] = test_db_url
     app.config["TESTING"] = True
-    return app
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture
@@ -447,5 +448,5 @@ def test_review_filing_empty_filter_results(client, db):
     response = client.get(f"/review/{filing_id}?metric=cm_nonexistent")
     assert response.status_code == 200
     html = response.data.decode("utf-8")
-    # Filter is recognized as active (badge shown in UI)
-    assert "filtered" in html
+    # Filter param is recognized — appears in the container's data attribute
+    assert 'data-filter-metric="cm_nonexistent"' in html
