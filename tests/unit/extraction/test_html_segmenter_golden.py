@@ -11,6 +11,7 @@ from src.extraction.html_segmenter import HTMLSegmenter
 from tests.unit.extraction.test_utils import assert_segments_match, load_golden_file
 
 
+@pytest.mark.skip(reason="Golden file not created yet - see tests/unit/extraction/golden/README.md")
 def test_small_filing_segmentation():
     """Test segmentation matches golden file for small synthetic filing."""
     # Load golden expectations

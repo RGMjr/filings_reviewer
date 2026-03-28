@@ -99,6 +99,10 @@ def _validate_config(config: dict[str, Any]) -> None:
                 f"Invalid config for {metric_id}: expected dict, got {type(metric_config)}"
             )
 
+        # Skip validation for deprecated metrics (patterns removed at trim time)
+        if metric_config.get("status") == "deprecated":
+            continue
+
         if "patterns" not in metric_config:
             raise KeywordConfigError(f"Missing 'patterns' for metric {metric_id}")
 
@@ -264,7 +268,7 @@ def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     return {
         metric_id: cast(list[str], metric_config["patterns"])
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id)
+        if _is_metric_key(metric_id) and metric_config.get("status") != "deprecated"
     }
 
 

@@ -35,6 +35,19 @@ PyYAML>=6.0
 # Required by extraction_v2/stages/ingestion.py for 10x faster parsing
 lxml>=4.9.0
 
+# PDF parsing - Used by presentation_converter.py for investor presentations
+pdfplumber>=0.10.0
+
+# PDF rendering fallbacks (optional, used by presentation_converter.py)
+pymupdf>=1.23.0
+pypdfium2>=4.0.0
+
+# HuggingFace dataset access (optional, used by huggingface_source.py)
+datasets>=2.0.0
+
+# Application monitoring (optional, used by extraction_v2/logging_config.py)
+sentry-sdk>=1.0.0
+
 # -----------------------------------------------------------------------------
 # Machine Learning Utilities
 # -----------------------------------------------------------------------------

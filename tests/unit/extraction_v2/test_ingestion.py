@@ -161,13 +161,17 @@ class TestIngestionStageProcess:
         assert result.success is True
         assert result.stage == PipelineStage.INGESTION
 
-        # Should create document
+        # Should create document (doc_id is a UUID, not the filing_id)
         assert context.document is not None
-        assert context.document.doc_id == "12345"
+        assert context.document.doc_id  # non-empty UUID string
         assert context.document.html_path == str(html_file)
 
     def test_process_handles_missing_file(self, tmp_path: Path) -> None:
-        """Test that process() handles missing HTML file gracefully."""
+        """Test that process() raises V2FatalError for missing HTML file."""
+        import pytest
+
+        from src.extraction_v2.exceptions import V2FatalError
+
         html_file = tmp_path / "missing.html"
 
         context = PipelineContext(
@@ -177,12 +181,11 @@ class TestIngestionStageProcess:
         )
 
         stage = IngestionStage()
-        result = stage.process(context)
+        with pytest.raises(V2FatalError) as exc_info:
+            stage.process(context)
 
-        # Should fail gracefully
-        assert result.success is False
-        assert len(result.errors) > 0
-        assert "not found" in result.errors[0].lower()
+        assert "not found" in str(exc_info.value).lower()
+        assert exc_info.value.stage_name == "ingestion"
 
     def test_process_reports_metrics(self, tmp_path: Path) -> None:
         """Test that process() reports correct metrics."""
@@ -917,7 +920,9 @@ class TestTableCellRowMarkers:
         result = stage._extract_table_text_with_markers(table)
 
         # Both header and data rows should have markers
-        assert "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == result
+        assert (
+            "Metric [CELL] 2023 [CELL] 2022 [ROW] Retention Rate [CELL] 171% [CELL] 152%" == result
+        )
 
     def test_empty_cells_are_skipped(self, tmp_path: Path) -> None:
         """Empty cells should not create empty markers."""
@@ -1299,7 +1304,9 @@ class TestDefinitionMethodologyDetection:
 
         # Count segment types
         definition_count = sum(1 for s in context.segments if s.segment_type.value == "definition")
-        methodology_count = sum(1 for s in context.segments if s.segment_type.value == "methodology")
+        methodology_count = sum(
+            1 for s in context.segments if s.segment_type.value == "methodology"
+        )
         paragraph_count = sum(1 for s in context.segments if s.segment_type.value == "paragraph")
 
         assert definition_count == 2  # "We define" and "refers to"
@@ -1626,3 +1633,82 @@ class TestImageAssetExtraction:
         assert context.images[0].filename == "cohort_chart.png"
         # Metadata should reflect image count
         assert result.metadata["image_count"] == 1
+
+
+class TestInvisibleAltTextSuppression:
+    """Test that invisible accessibility fallback text is suppressed (SNAP investor letters)."""
+
+    def test_is_invisible_alt_text_detects_1pt_white(self) -> None:
+        """Element with font-size:1pt;color:white is detected as invisible."""
+        from lxml import html as lhtml
+
+        stage = IngestionStage()
+        element = lhtml.fragment_fromstring(
+            '<p style="font-size:1pt;color:white">Hidden text</p>'
+        )
+        assert stage._is_invisible_alt_text(element) is True
+
+    def test_is_invisible_alt_text_detects_with_spaces(self) -> None:
+        """Style with spaces around colon is also detected."""
+        from lxml import html as lhtml
+
+        stage = IngestionStage()
+        element = lhtml.fragment_fromstring(
+            '<p style="font-size: 1pt; color: white">Hidden text</p>'
+        )
+        assert stage._is_invisible_alt_text(element) is True
+
+    def test_is_invisible_alt_text_font_child(self) -> None:
+        """Invisible style on a <font> descendant is also detected."""
+        from lxml import html as lhtml
+
+        stage = IngestionStage()
+        element = lhtml.fragment_fromstring(
+            '<p><font style="font-size:1pt;color:white">Hidden</font></p>'
+        )
+        assert stage._is_invisible_alt_text(element) is True
+
+    def test_is_invisible_alt_text_normal_paragraph(self) -> None:
+        """Normal paragraph is not flagged as invisible."""
+        from lxml import html as lhtml
+
+        stage = IngestionStage()
+        element = lhtml.fragment_fromstring('<p style="font-size:12pt">Visible text</p>')
+        assert stage._is_invisible_alt_text(element) is False
+
+    def test_is_invisible_alt_text_requires_both_conditions(self) -> None:
+        """Only font-size:1pt without color:white is not flagged."""
+        from lxml import html as lhtml
+
+        stage = IngestionStage()
+        element = lhtml.fragment_fromstring(
+            '<p style="font-size:1pt;color:black">Footnote text</p>'
+        )
+        assert stage._is_invisible_alt_text(element) is False
+
+    def test_invisible_segments_excluded_from_pipeline(self, tmp_path: Path) -> None:
+        """Invisible alt-text paragraphs are not added to context.segments."""
+        html_content = b"""
+        <html><body>
+            <p>We had 15.0 million daily active users in Q3 2025, up 10% year-over-year,
+            representing strong growth across all markets and geographies.</p>
+            <p style="font-size:1pt;color:white">This is hidden alt text behind a JPG image
+            and should never appear as an extracted segment in the pipeline output.</p>
+        </body></html>
+        """
+        html_file = tmp_path / "snap_letter.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        context = PipelineContext(
+            config=PipelineConfig(),
+            html_path=html_file,
+            filing_id=99999,
+        )
+        result = stage.process(context)
+
+        assert result.success
+        # Only the visible paragraph should be extracted
+        assert len(context.segments) == 1
+        assert "hidden alt text" not in context.segments[0].text.lower()
+        assert "daily active users" in context.segments[0].text.lower()

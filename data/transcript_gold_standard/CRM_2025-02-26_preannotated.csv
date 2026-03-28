@@ -1,0 +1,10 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+Salesforce,CRM,2025-02-26,cm_net_revenue_retention,,percent,Q4 FY2025,text,"We've had a really strong performance across all of our key metrics on revenue, on margin, EPS, cash flow, cRPO.",LOW,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_large_customers_period_end,7500,count,Q4 FY2025,text,We closed more than 400 deals over a million. All of our top 10 wins included Data and AI.,MEDIUM,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_net_revenue_retention,0.92,percent,Q4 2025,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true
+Salesforce,CRM,2025-02-26,cm_arr,900000000,currency,Q4 FY2025,text,"We ended this year with $900 million in Data Cloud and AI. ARR, it grew a 120% year-over-year.",HIGH,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_arr,5700000000,currency,Q4 FY2025,text,"Our industry business, along with public sector and .org finished the year at an incredible $5.7 billion in ARR, up 20% year-over-year.",HIGH,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_customer_churn_rate,8,percent,Q4 FY2025,text,"Q4 revenue attrition ended the quarter slightly above 8%, in line with recent quarters.",HIGH,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_new_customers_acquired,3000,count,Q4 FY2025,text,"just 90 days after it went live, we've already have 3,000 paying Agentforce customers who are experiencing unprecedented levels of productivity, efficiency and cost savings.",HIGH,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_purchase_transactions_overall,380000,count,Q4 FY2025,text,"Since launching on our Salesforce help portal in October, Agentforce has autonomously handled 380,000 service requests, achieving an incredible 84% resolution rate.",HIGH,prepared_remarks,false
+Salesforce,CRM,2025-02-26,cm_arr,9000000000,currency,Q4 2025,text,Total revenue for the Q4 2025 was $4 billion,HIGH,prepared_remarks,true

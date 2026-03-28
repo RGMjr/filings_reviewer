@@ -1,0 +1,9 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+Electronic Arts,EA,2025-02-04,cm_daily_active_users,320000000,count,Q3 FY2025,text,The expansion of our American football community has continued to see strength with weekly active users and total unique spenders up double-digit year-over-year in the quarter.,MEDIUM,prepared_remarks,false
+Electronic Arts,EA,2025-02-04,cm_customer_retention_rate,,percent,Q3 FY2025,text,Player retention rates surpassed our expectations and saw record title weekly active users over the events weekend.,MEDIUM,prepared_remarks,false
+Electronic Arts,EA,2025-02-04,cm_monthly_active_users,50000000,count,Q3 FY2025,text,"With MySim: Cozy Bundle, we saw over 50% of those who purchased the game were new to AI as we expanded our offerings on Switch platform.",MEDIUM,prepared_remarks,false
+Electronic Arts,EA,2025-02-04,cm_customers_period_end,4853,count,Q3 2025,text,Our partner ecosystem now includes 4853 certified partners,MEDIUM,q_and_a,true
+Electronic Arts,EA,2025-02-04,cm_active_customers_total,40000000,count,Q3 FY2025,text,"Despite having 40 million players across our catalog of HD titles, our December promotional events to drive conversion, fell short of expectations",HIGH,prepared_remarks,false
+Electronic Arts,EA,2025-02-04,cm_active_customers_total,200000000,count,Q3 FY2025,text,"We've had over 200 million people play the game. However, the trajectory of the business of that that franchise has not been headed in the direction we have wanted for some time.",HIGH,q_and_a,false
+Electronic Arts,EA,2025-02-04,cm_new_customers_acquired,2000000,count,Q3 FY2025,text,We reactivated over two million Ultimate Team players with all acquisition cohorts experiencing positive trends.,HIGH,prepared_remarks,false
+Electronic Arts,EA,2025-02-04,cm_arr,1000000000,currency,Q3 2025,text,Total revenue for the Q3 2025 was $1 billion,HIGH,prepared_remarks,true

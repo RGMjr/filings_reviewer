@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,57.6,count,other,presentation,57.6,LOW,cover,False,REJECT,"activity, not customers"
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438 million,count,other,presentation,438 million,LOW,cover,False,ACCEPT,
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,0.3 million,count,other,presentation,0.3 million,LOW,cover,False,REJECT,"increase, not total"
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438,other,other,presentation,438,LOW,unknown,False,ACCEPT,
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_expansion_revenue,57.6,count,other,presentation,57.6,LOW,unknown,False,REJECT,"activity, not revenue"
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_expansion_revenue,59.4,count,other,presentation,59.4,LOW,unknown,False,REJECT,"activity, not revenue"
+"PayPal Holdings, Inc.",PYPL,2025-10-28,cm_expansion_revenue,61.4,count,other,presentation,61.4,LOW,unknown,False,REJECT,"activity, not revenue"

@@ -1,0 +1,14 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+T-Mobile,TMUS,2025-01-29,cm_revenue_per_customer,,percent,Q4 2024,text,we grew our postpaid ARPA at the highest rate in over 7 years,MEDIUM,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_customer_churn_rate,,percent,FY2024,text,the company's lowest churn ever for a full year in 2024,MEDIUM,q_and_a,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,58682,count,Q4 2024,text,We ended Q4 2024 with 58682 employees globally,MEDIUM,prepared_remarks,true
+T-Mobile,TMUS,2025-01-29,cm_customers_period_end,1127,count,Q4 2024,text,Our partner ecosystem now includes 1127 certified partners,MEDIUM,q_and_a,true
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,3000000,count,FY2024,text,2024 marked our third straight year of more than 3 million postpaid phone net additions.,HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,903000,count,Q4 2024,text,"In Q4, we once again led the industry in postpaid phone net additions with 903,000",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_active_customers_total,50000000,count,FY2024,text,"We said we'd see 40 million downloads by the end of the year, but we saw more than 50 million",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,428000,count,Q4 2024,text,"in Q4, for the 12th quarter in a row, we led the industry in broadband growth with 428,000 net additions",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,5500000,count,FY2025,text,"We expect to deliver total postpaid customer net additions of between 5.5 million and 6 million, our highest ever beginning of the year guide.",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,2750000,count,FY2025,text,"We expect approximately half of that total to be postpaid phone net additions, also representing our highest-ever beginning of the year outlook.",HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_revenue_per_customer,,percent,FY2025,text,our expectation for postpaid ARPA growth of around 3% for the full year,HIGH,prepared_remarks,false
+T-Mobile,TMUS,2025-01-29,cm_revenue_per_customer,,percent,FY2024,text,We just delivered just over 3% ARPA growth in a very successful '24,HIGH,q_and_a,false
+T-Mobile,TMUS,2025-01-29,cm_new_customers_acquired,250000,count,FY2024,text,"over 250,000 prepaid net adds, the company's lowest churn ever for a full year in 2024",HIGH,q_and_a,false

@@ -1,0 +1,11 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+Intuit,INTU,2024-11-21,cm_customer_retention_rate,,percent,Q1 FY2025,text,"We saw good retention, low attrition after our price changes.",MEDIUM,q_and_a,false
+Intuit,INTU,2024-11-21,cm_revenue_per_customer,,percent,Q1 FY2025,text,"We are seeing good mix shift. I shared that the mid-market grew approximately 42%, and that is driving the improvements and should continue for the remainder of the year.",MEDIUM,q_and_a,false
+Intuit,INTU,2024-11-21,cm_customer_churn_rate,,percent,Q1 FY2025,text,We are seeing good progress serving mid-market customers in Mailchimp but are seeing higher churn from smaller customers.,MEDIUM,prepared_remarks,false
+Intuit,INTU,2024-11-21,cm_new_customers_acquired,200,count,Q1 FY2025,text,"We've also added over 200 account managers, business development folks that are very geared towards outside selling and that is contributing to where we are today.",MEDIUM,q_and_a,false
+Intuit,INTU,2024-11-21,cm_net_revenue_retention,0.92,percent,Q1 2025,text,Our gross margin improved to 92% this quarter,MEDIUM,prepared_remarks,true
+Intuit,INTU,2024-11-21,cm_customers_period_end,800000,count,Q1 FY2025,text,"We already have 800,000 mid-market customers in our franchise, who can grow into our QBO Advanced and Intuit Enterprise Suite offerings.",HIGH,prepared_remarks,false
+Intuit,INTU,2024-11-21,cm_revenue_per_customer,5,ratio,FY2024,text,"In fiscal year 2024, QBO Advanced customers moved 28% online ecosystem revenue grew 36%, and ecosystem ARPC was 5x that of the rest of the QBO base.",HIGH,prepared_remarks,false
+Intuit,INTU,2024-11-21,cm_purchase_transactions_overall,17,percent,Q1 FY2025,text,Total online payment volume growth in Q1 was 17%.,HIGH,prepared_remarks,false
+Intuit,INTU,2024-11-21,cm_active_customers_total,2000000,count,Q1 FY2025,text,"After successfully piloting Intuit Assist with over two million customers, it is now generally available to all US QuickBooks online customers.",HIGH,prepared_remarks,false
+Intuit,INTU,2024-11-21,cm_arr,4000000000,currency,Q1 2025,text,Total revenue for the Q1 2025 was $2 billion,HIGH,prepared_remarks,true

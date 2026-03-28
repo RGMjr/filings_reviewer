@@ -83,6 +83,23 @@ cm_new_customers_acquired:
     - '\bconsumer\s+acquisition[s]?\b'
     - '\bacquired\s+consumers?\b'
     - '\bconsumers?\s+added\b'
+    # Transcript vocabulary (telecom net adds, first-time users, new businesses)
+    - '\bnet\s+(?:additions?|adds?)\b'
+    - '\bnet\s+customer\s+additions?\b'
+    - '\bfirst[- ]time\b[^.;]{0,40}\b(?:customers?|users?)\b'
+    - '\bnew\s+(?:businesses|merchants)\b'
+    # Transcript: telecom-specific "postpaid phone net adds/adding", "broadband net additions"
+    - '\bpostpaid\s+(?:phones?\s+)?net\s+(?:customer\s+)?(?:additions?|adds?)\b'
+    - '\bpostpaid\s+phones?\s+adding\b'
+    - '\b(?:broadband|fiber|5g)\s+(?:net\s+)?(?:additions?|adds?)\b'
+    # Transcript: "prepaid net adds" (telecom)
+    - '\bprepaid\s+(?:net\s+)?(?:additions?|adds?)\b'
+    # Transcript: "4 million new debit card actives" (PYPL)
+    - '\bnew\b[^.;]{0,30}\bdebit\s+card\s+(?:actives?|users?)\b'
+    # Transcript: gaming/entertainment vocabulary (EA)
+    - '\bnew\s+fans?\b'
+    - '\badding\s+(?:new\s+)?fans?\b'
+    - '\bgrowing\s+(?:our\s+)?(?:audience|fan\s+base)\b'
   exclusions:
     - '\bacquisition\s+cost\b'
     - '\bcac\b'
@@ -101,7 +118,6 @@ cm_customers_period_end:
     - '\bcustomers?\s+\(?period\s*end\)?\b'
     - '\bend[- ]of[- ]period\s+customers?\b'
     - '\b(?:total\s+)?(?:paying|paid)\s+(?:organizations?|customers?)\b'
-    - '\bactive\s+consumers?\b'
     # Total customer count patterns (moved from cm_active_customers_total 2026-01-07)
     # "Total customers" represents a stock count, not engagement-based "active" customers
     - '\btotal\s+customers?\b'
@@ -110,6 +126,28 @@ cm_customers_period_end:
     - '\bconsumer\s+base\b'
     - '\btotal\s+accounts?\b'
     - '\btotal\s+clients?\b'
+    # Transcript vocabulary (telecom: subscriber counts — NOT net additions which are flow metrics)
+    # REMOVED: postpaid net additions pattern (moved to cm_new_customers_acquired — it's a flow metric)
+    - '\bsubscriber\s+(?:count|base)\b'
+    # Transcript: prepaid customers/subscribers, commercial seats, consumer subscriptions
+    - '\bprepaid\s+(?:customers?|subscribers?)\b'
+    - '\bcommercial\s+seats?\b'
+    - '\bconsumer\s+subscriptions?\b'
+    # Transcript: "1.4 million security customers" — bare "N [adj] customers" with magnitude
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,3}customers?\b'
+    # Transcript: "15 million GitHub Copilot users" — "N [adj] users" with magnitude (0-3 words)
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,3}users?\b'
+    # Transcript: "organizations have used/now use/have already used" (MSFT)
+    # Note: em dashes in text (e.g., "organizations – including X – have used") require
+    # a looser pattern that skips intervening content
+    - '\borganizations?\b[^.]{0,100}\b(?:used?|adopted)\b'
+    # Transcript: "70,000 enterprises" (MSFT Foundry)
+    - '\b\d[\d,.]*\s+(?:\w+\s+){0,2}enterprises?\b'
+    # Transcript: "paid subscriptions grew" (ADBE)
+    - '\bpaid\s+subscriptions?\b'
+    # Transcript: gaming vocabulary — "players have signed up" (EA Labs)
+    - '\bplayers?\s+(?:have\s+)?signed\s+up\b'
+    - '\bsigned\s+up\b[^.;]{0,30}\bplayers?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -122,6 +160,12 @@ cm_customers_period_end:
     - '\bavailable\s+in\s+\w+\s+(?:languages?|countries?)\b'
     # FIX-FP: Exclude numbers followed by time units (e.g., "50 million hours")
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?)\b'
+    # FIX-FP: monthly/daily active users/people belong to MAU/DAU metrics, not stock count
+    - '\b(?:monthly|daily)\s+active\s+(?:users?|people)\b'
+    # FIX-FP: Salesforce "trailblazers" are community members, not paying customers
+    - '\btrailblazers?\b'
+    # FIX-FP: Exclude supplier/geography counts (e.g., "190 countries", "980 sellers")
+    - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
     # FIX-B3: Exclude Fortune list references (e.g., "65 companies in the Fortune 100")
     - 'fortune\s+\d+'
   specific_patterns:
@@ -140,10 +184,15 @@ cm_large_customers_period_end:
     - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
+    # Transcript: "400 deals over $1 million" (CRM) — require $ sign to avoid extracting
+    # the deal count (400) or the non-dollar threshold ("deals over a million")
+    - '\bdeals?\s+over\s+\$'
     # Snowflake-style phrasing: "customers with trailing 12-month product revenue greater than $X"
     - '\bcustomers?\s+with\s+trailing\s+\d+[- ]month\s+(?:\w+\s+)*revenue\s+(?:greater\s+than|more\s+than|over|above|exceeding|>)\s*\$'
     # Snowflake narrative: "customers that contributed more than $X million in trailing..."
     - '\bcustomers?\s+(?:that\s+)?contributed\s+(?:more\s+than|over|above)\s+\$'
+    # Transcript: "900,000 have 4 or more workloads" (MSFT) — customers using multiple products
+    - '\bhave\s+\d+\s+or\s+more\s+workloads?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -170,6 +219,9 @@ cm_revenue_by_cohort:
     - '\bcohort\s+revenue\b'
     - '\brevenue[^.;]{0,100}\bcohort\b'
     - '\bcohort[^.;]{0,100}\brevenue\b'
+    - '\bgmv[^.;]{0,100}\bcohort\b'
+    - '\bcohort[^.;]{0,100}\bgmv\b'
+    - '\bgross\s+merchandise\s+(?:value|volume)[^.;]{0,100}\bcohort\b'
     # Existing/new customer revenue split (e.g., "94% of revenue derived from existing customers")
     - '\brevenue[^.;]{0,80}(?:from|derived\s+from)\s+(?:existing|new)\s+customers?\b'
     - '\b(?:existing|new)\s+customers?[^.;]{0,80}\brevenue\b'
@@ -213,9 +265,26 @@ cm_active_customers_total:
     - '\bactive\s+clients?\b'
     - '\bactive\s+users?\b'
     - '\bactive\s+subscribers?\b'
+    # Transcript vocabulary (telecom/gaming)
+    - '\bmonthly\s+active\s+unique\s+accounts?\b'
+    - '\blive\s+services?\s+players?\b'
+    - '\bpostpaid\b[^.;]{0,30}\bcustomers?\b(?!\s*(?:net|additions?|adds?))'
+    # Transcript: "One billion professionals use LinkedIn" (MSFT)
+    - '\bprofessionals?\s+use\b'
+    # Transcript: "100 million people use WhatsApp" (META)
+    - '\bpeople\s+use\b'
+    # Transcript: gaming vocabulary — magnitude-gated to reduce sports FP risk (EA)
+    - '\b(?:million|billion|thousand)\s+(?:\w+\s+){0,2}players?\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (hours, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:hours?|countries?|languages?)\b'
+    # FIX-FP: DAU/MAU context belongs to dedicated metrics, not generic "active"
+    - '\bdaily\s+active\b'
+    - '\bmonthly\s+active\b'
+    # FIX-FP: Postpaid net additions/adds belong to cm_customers_period_end
+    - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
+    # FIX-FP: Reactivated players are win-back metrics, not active customer counts (EA)
+    - '\breactivated\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -228,6 +297,15 @@ cm_revenue_per_customer:
     - '\brevenue\s+per\s+customer\b'
     - '\brevenue\s+per\s+user\b'
     - '\bper\s+customer\s+revenue\b'
+    # Transcript vocabulary (telecom)
+    - '\barpa\b'
+    - '\baverage\s+revenue\s+per\s+account\b'
+    # Telecom ARPU variants
+    - '\bpostpaid\s+arpu\b'
+    - '\bbroadband\s+arpu\b'
+    - '\bprepaid\s+arpu\b'
+    # Telecom: average margin per user (close substitute for ARPU in some carriers)
+    - '\bampu\b'
   exclusions:
     - '\bcost\s+per\s+customer\b'
     - '\bcost\s+per\s+user\b'
@@ -270,6 +348,10 @@ cm_customer_retention_rate:
     # Consumer synonyms (e-commerce terminology)
     - '\bconsumer\s+retention\b'
     - '\bretained\s+consumers?\b'
+    # Transcript: "retention above 85%" (GDDY)
+    - '\bretention\s+above\b'
+    # Transcript: "continuing strong renewal rates" (ADSK)
+    - '\brenewal\s+rates?\b'
   exclusions:
     - '\brevenue\s+retention\b'
     - '\bdollar\s+retention\b'
@@ -284,6 +366,10 @@ cm_customer_churn_rate:
     # Consumer synonyms (e-commerce terminology)
     - '\bconsumer\s+churn\b'
     - '\bconsumer\s+attrition\b'
+    # Transcript vocabulary (telecom)
+    - '\bpostpaid\b[^.;]{0,30}\bchurn\b'
+    # Transcript: "revenue attrition" (CRM)
+    - '\brevenue\s+attrition\b'
 
 cm_net_revenue_retention:
   patterns:
@@ -312,27 +398,54 @@ cm_monthly_active_users:
   patterns:
     - '\bmau\b'
     - '\bmonthly\s+active\s+users?\b'
+    # Transcript vocabulary (Meta/Facebook)
+    - '\bpeople\s+using\b[^.;]{0,30}\bmonthly\b'
+    - '\bmonthly\s+active\s+people\b'
+    - '\bmap\b(?=\s+(?:was|were|reached|grew|increased|declined|of|across))'
+    - '\bfamily\s+of\s+apps\b[^.;]{0,50}\bmonthly\b'
+    # Transcript: shorthand "monthly actives" (META), "monthly active accounts" (PYPL)
+    - '\bmonthly\s+actives?\b'
+    - '\bmonthly\s+active\s+accounts?\b'
+    # Transcript: "a billion people each month" (META)
+    - '\bpeople\b[^.;]{0,50}\beach\s+month\b'
+    # Transcript: "MAAs grew 30%" (PYPL monthly active accounts shorthand)
+    - '\bMAAs?\b'
+    # Transcript: "monthly active usage growing 23%" (ADBE)
+    - '\bmonthly\s+active\s+usage\b'
   specific_patterns:
     - 'monthly\s+active\s+users?'
+    - 'monthly\s+active\s+people'
 
 cm_daily_active_users:
   patterns:
     - '\bdau\b'
     - '\bdaily\s+active\s+users?\b'
+    # Transcript vocabulary (Meta/Facebook)
+    - '\bpeople\s+using\b[^.;]{0,30}\bdaily\b'
+    - '\bdaily\s+active\s+people\b'
+    - '\bdap\b'
+    # Transcript: "3.4 billion people...each day", "people used...daily basis"
+    - '\bpeople\b[^.;]{0,50}\beach\s+day\b'
+    - '\bpeople\s+used?\b[^.;]{0,50}\bdaily\s+basis\b'
   exclusions:
     # FIX-FP: Exclude numbers followed by non-metric units (applications, countries, languages)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|countries?|languages?|integrations?)\b'
   specific_patterns:
     - 'daily\s+active\s+users?'
+    - 'daily\s+active\s+people'
 
 cm_gross_margin_by_cohort:
   # Only patterns that explicitly require "cohort" or "vintage" context
   # REMOVED (2026-01-02): '\border\s+contribution\s+margin\b' and
   # '\bplatform\s+order\s+contribution(?:\s+margin)?\b' - not cohort-specific
+  # ADDED BACK (2026-02-09): Order Contribution Margin with cohort context qualifier
   patterns:
     - '\bgross\s+margin\s+by\s+cohort\b'
     - '\bcohort\s+(?:gross\s+)?margin\b'
     - '\bmargin\s+by\s+(?:acquisition\s+)?(?:vintage|cohort)\b'
+    # Order Contribution Margin only when cohort context (new/existing consumers) is nearby
+    - '\border\s+contribution\s+margin[^.;]{0,80}\b(?:new|existing|cohort|consumer|customer)\b'
+    - '\b(?:new|existing)\s+(?:consumer|customer)[^.;]{0,80}\border\s+contribution\s+margin\b'
 
 cm_arr:
   patterns:
@@ -358,6 +471,8 @@ cm_expansion_revenue:
     - '\bproducts?\s+per\s+customer\b'
     - '\baverage\s+products?\s+owned\b'
     - '\bexpand\b[^.;]{0,100}\brevenue\b'
+    # Transcript: "transactions per active account" (PYPL)
+    - '\btransactions?\s+per\s+(?:active\s+)?account\b'
     - '\badditional\s+products?\b'
     - '\bmulti[- ]product\b'
 
@@ -372,7 +487,19 @@ cm_revenue_concentration:
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
     - '\bcustomer\s+[A-D]\b'
+    # Snowflake-style: "contributed approximately X% of our revenue"
+    - '\bcontributed\s+(?:approximately\s+)?\d+%'
+    # Snowflake-style: "representing approximately X% of our [product] revenue"
+    - '\brepresenting\s+(?:approximately\s+)?\d+%[^.;]{0,30}\brevenue\b'
+    # Snowflake-style: "represented X% or more of revenue"
+    - '\brepresented\s+\d+%\s+or\s+more\s+of\s+revenue\b'
+    # Snowflake-style: "generated X% of our revenue"
+    - '\bgenerated\s+\d+%\s+of\s+(?:our\s+)?revenue\b'
   exclusions:
+    # FIX-FP: Exclude business segment revenue share (not customer concentration)
+    - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform)\s+revenue\b'
+    - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
+    - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
     - '\bno\s+(?:individual|single)\b'
     - '\bdid\s+not\s+(?:exceed|comprise)\b'
     - '\bin\s+excess\s+of\b'
@@ -385,51 +512,12 @@ cm_revenue_concentration:
 # in the database and excluded from UI dropdowns.
 
 cm_bookings:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbookings\b'
-    - '\btotal\s+bookings\b'
-    - '\bnew\s+bookings\b'
-    - '\bcontract\s+bookings\b'
-    - '\bnet\s+new\s+bookings\b'
-    - '\bquarterly\s+bookings\b'
-    - '\bannual\s+bookings\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_billings:
   status: deprecated
-  deprecation_reason: "GAAP financial metric, not customer-specific. Use ARR/MRR for recurring revenue metrics."
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bbillings\b'
-    - '\btotal\s+billings\b'
-    - '\bcalculated\s+billings\b'
-    - '\badjusted\s+billings\b'
-  exclusions:
-    # Cash flow metrics (from Slack table - these appear in same segment as "Calculated Billings")
-    - '\bfree\s+cash\s+flows?\b'
-    - '\badjusted\s+free\s+cash\s+flows?\b'
-    - '\bcash\s+flows?\b'
-    - '\boperating\s+(?:activities|cash|assets)\b'
-    - '\bnet\s+loss\b'
-    # Cash flow statement line items (common accounting terms)
-    - '\bnon[- ]cash\s+charges?\b'
-    - '\bdepreciation\s+and\s+amortization\b'
-    - '\bstock[- ]based\s+compensation\b'
-    - '\baccounts\s+(?:payable|receivable)\b'
-    - '\bprepaid\s+expenses?\b'
-    - '\baccrued\s+expenses?\b'
-    # Tender offer / compensation items
-    - '\btender\s+offer\b'
-    - '\brepurchases?\s+deemed\s+compensation\b'
-    # Revenue line items (general financial statements)
-    - '\brevenue\b'
-    - '\bdeferred\s+revenue\b'
-    - '\bcost\s+of\s+(?:revenue|sales)\b'
-    - '\bnet\s+revenue\b'
-    # Period markers (accounting context)
-    - '\b(?:beginning|end)\s+of\s+period\b'
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # E-Commerce / Consumer Metrics
@@ -489,24 +577,12 @@ cm_gmv:
 # Patterns retained for historical data interpretation but metrics are deprecated.
 
 cm_acv:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\bacv\b'
-    - '\bannual\s+contract\s+value\b'
-    - '\baverage\s+contract\s+value\b'
-    - '\bannualized\s+contract\s+value\b'
-    - '\baverage\s+annual\s+contract\b'
-    - '\bcontract\s+value\s+per\s+customer\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 cm_tcv:
-  # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
-  <<: *revenue_synonym_context
-  patterns:
-    - '\btcv\b'
-    - '\btotal\s+contract\s+value\b'
-    - '\blifetime\s+contract\s+value\b'
-    - '\bcontract\s+lifetime\s+value\b'
+  status: deprecated
+  # Deprecated — patterns removed; filtered at scan time by candidate_generation.py
 
 # =============================================================================
 # Customer Value Metrics
@@ -539,15 +615,22 @@ cm_ltv_to_cac_ratio:
 
 cm_ltv_to_cac_ratio_by_cohort:
   # LTV/CAC ratio analyzed by acquisition cohort (added 2026-01-07)
+  # Updated 2026-02-09: Added temporal cohort patterns and widened proximity window
   patterns:
     - '\bltv\s*[:/]\s*cac\s+by\s+cohort\b'
     - '\bltv\s+to\s+cac\s+(?:ratio\s+)?by\s+cohort\b'
     - '\bcohort\s+ltv\s*[:/]\s*cac\b'
-    - '\bltv[:/]cac[^.;]{0,50}\bcohort\b'
-    - '\bcohort[^.;]{0,50}\bltv[:/]cac\b'
+    # Widened from 50 to 80 chars to capture "LTV/CAC ratio for the years ended...cohorts"
+    - '\bltv[:/]cac[^.;]{0,80}\bcohort\b'
+    - '\bcohort[^.;]{0,80}\bltv[:/]cac\b'
+    # Temporal prefix: "Six month LTV/CAC ratio", "12 month LTV/CAC ratio"
+    - '\b(?:\d+|six|twelve|twenty[- ]?four)\s+months?\s+ltv\s*[:/]\s*cac\b'
+    # Temporal suffix: "LTV/CAC after 6 months"
+    - '\bltv\s*[:/]\s*cac\s+after\s+\d+\s+months?\b'
   specific_patterns:
     - 'ltv\s*[:/]\s*cac\s+by\s+cohort'
     - 'cohort\s+ltv\s*[:/]\s*cac'
+    - 'ltv\s*[:/]\s*cac\s+after\s+\d+\s+months?'
 
 # =============================================================================
 # Growth Metrics - INTENTIONALLY NOT DETECTED

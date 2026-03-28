@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+Meta Platforms,META,2025-01-29,cm_customers_period_end,2255,count,Q4 2024,text,Our partner ecosystem now includes 2255 certified partners,MEDIUM,q_and_a,true
+Meta Platforms,META,2025-01-29,cm_daily_active_users,3300000000,count,Q4 2024,text,We ended 2024 on a strong note with now more than 3.3 billion people using at least one of our apps each day.,HIGH,prepared_remarks,false
+Meta Platforms,META,2025-01-29,cm_monthly_active_users,320000000,count,Q4 2024,text,Threads now has more than 320 million monthly actives and has been adding more than 1 million sign-ups per day.,HIGH,prepared_remarks,false
+Meta Platforms,META,2025-01-29,cm_monthly_active_users,100000000,count,Q4 2024,text,WhatsApp now has more than 100 million monthly actives in the U.S.,HIGH,prepared_remarks,false
+Meta Platforms,META,2025-01-29,cm_monthly_active_users,3000000000,count,Q4 2024,text,Facebook is used by more than 3 billion monthly actives and we're focused on growing its cultural influence.,HIGH,prepared_remarks,false
+Meta Platforms,META,2025-01-29,cm_monthly_active_users,700000000,count,Q4 2024,text,"Meta AI usage continues to scale, with more than 700 million monthly actives.",HIGH,prepared_remarks,false
+Meta Platforms,META,2025-01-29,cm_arr,2000000000,currency,Q4 2024,text,Total revenue for the Q4 2024 was $8 billion,HIGH,prepared_remarks,true

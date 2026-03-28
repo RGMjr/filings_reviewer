@@ -1,0 +1,2 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+"Meta Platforms, Inc.",META,2026-01-28,cm_daily_active_users,3.58 billion,count,other,presentation,3.58 billion,LOW,cover,False,ACCEPT,

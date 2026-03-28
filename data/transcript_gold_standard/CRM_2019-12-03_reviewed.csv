@@ -1,0 +1,8 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+CRM,CRM,2019-12-03,cm_purchase_transactions_overall,614000000,count,Q3 FY2020,text,"It also powered more than 614 million retail site visits, up 17% year-over-year",MEDIUM,prepared_remarks,false,REJECT,"site visits, not purchase transactions"
+CRM,CRM,2019-12-03,cm_customer_churn_rate,10,percent,Q3 FY2020,text,"Lower attrition continue to support our growth in the third quarter with dollar attrition down modestly year-over-year, remaining below 10%",MEDIUM,prepared_remarks,false,ACCEPT,
+CRM,CRM,2019-12-03,cm_active_customers_total,1800000,count,Q3 FY2020,text,"We now have 1.8 million learners changing their careers and lives on Trailhead, and free online learning platform.",MEDIUM,prepared_remarks,false,REJECT,
+CRM,CRM,2019-12-03,cm_customers_period_end,2933,count,2019-12-03,text,Our partner ecosystem now includes 2933 certified partners,MEDIUM,q_and_a,true,REJECT,"pertners, not customers"
+CRM,CRM,2019-12-03,cm_arr,25900000000,currency,Q3 FY2020,text,We ended the quarter with more than $25.9 billion and total remaining performance obligation up 22% versus last year.,HIGH,prepared_remarks,false,REJECT,"remaining performance obligation, not revenue or ar"
+CRM,CRM,2019-12-03,cm_purchase_transactions_overall,30000000,count,Q3 FY2020,text,"Commerce Cloud processed more than 30 million orders, up 27% year-over-year",HIGH,prepared_remarks,false,REJECT,"orders processed by the software, not purchase transactions by the company's customers"
+CRM,CRM,2019-12-03,cm_arr,6000000000,currency,2019-12-03,text,Total revenue for the 2019-12-03 was $9 billion,HIGH,prepared_remarks,true,REJECT,"revenue, not arr"

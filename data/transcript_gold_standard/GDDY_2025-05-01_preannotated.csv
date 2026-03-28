@@ -1,0 +1,9 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap
+GoDaddy,GDDY,2025-05-01,cm_revenue_per_customer,146,currency,Q1 2025,text,Our stock has appreciated to approximately $146 per share,LOW,q_and_a,true
+GoDaddy,GDDY,2025-05-01,cm_customer_churn_rate,,percent,Q1 2025,text,"we have very specific data points within the company, right in terms of our customer churn rate, our average order size",MEDIUM,q_and_a,false
+GoDaddy,GDDY,2025-05-01,cm_customers_period_end,2779,count,Q1 2025,text,Our partner ecosystem now includes 2779 certified partners,MEDIUM,q_and_a,true
+GoDaddy,GDDY,2025-05-01,cm_arr,4100000000,currency,Q1 2025,text,Annual recurring revenue grew 7% to $4.1 billion.,HIGH,prepared_remarks,false
+GoDaddy,GDDY,2025-05-01,cm_customers_period_end,20500000,count,Q1 2025,text,"Since year end, our customer count has remained stable at 20.5 million as we lap the impact of the last divestiture.",HIGH,prepared_remarks,false
+GoDaddy,GDDY,2025-05-01,cm_revenue_per_customer,225,currency,Q1 2025,text,our ARPU grew 9% to $225 on a trailing 12-month basis,HIGH,prepared_remarks,false
+GoDaddy,GDDY,2025-05-01,cm_customer_retention_rate,85,percent,Q1 2025,text,retention above 85% for customers on our GoDaddy platform,HIGH,prepared_remarks,false
+GoDaddy,GDDY,2025-05-01,cm_revenue_per_customer,,percent,Q1 2025,text,our ARPU grew 9% to $225 on a trailing 12-month basis,HIGH,prepared_remarks,false

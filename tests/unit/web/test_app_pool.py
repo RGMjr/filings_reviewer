@@ -162,7 +162,7 @@ class TestCreateAppPoolIntegration:
             with patch(
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
-            ):
+            ), patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
                 from src.web.app import create_app
 
                 app = create_app("testing")
@@ -179,7 +179,7 @@ class TestCreateAppPoolIntegration:
                 with patch(
                     "src.web.app.TestingConfig.DATABASE_URL",
                     "postgresql://localhost/test",
-                ):
+                ), patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
                     from src.web.app import create_app
 
                     _app = create_app("testing")
@@ -207,7 +207,7 @@ class TestHealthEndpoint:
             with patch(
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
-            ):
+            ), patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
                 from src.web.app import create_app
 
                 app = create_app("testing")
@@ -246,7 +246,7 @@ class TestHealthEndpoint:
             with patch(
                 "src.web.app.TestingConfig.DATABASE_URL",
                 "postgresql://localhost/test",
-            ):
+            ), patch("src.web.app.TestingConfig.DB_POOL_ENABLED", True):
                 from src.web.app import create_app
 
                 app = create_app("testing")
