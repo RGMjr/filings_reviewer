@@ -537,17 +537,6 @@ class HTMLSegmenter:
             logger.debug(f"Encoding auto-detection failed for {path}: {e}")
             return None
 
-    def _read_html_file(self, html_path: str) -> str | None:
-        """DEPRECATED: Use _read_html_file_with_encoding() instead.
-
-        Kept for backward compatibility with external callers.
-        """
-        try:
-            content, _ = self._read_html_file_with_encoding(html_path)
-            return content
-        except EncodingError:
-            return None
-
     def _find_main_content(self, soup: BeautifulSoup) -> Tag | None:
         """
         Find the main content area of the filing.
