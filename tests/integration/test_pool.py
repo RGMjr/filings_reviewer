@@ -190,9 +190,9 @@ class TestPoolHealth:
         try:
             result = check_pool_health(pool)
 
-            assert result["healthy"] is True
-            assert result["message"] == "Pool is healthy"
-            assert result["stats"] is not None
+            assert result.is_healthy is True
+            assert result.error is None
+            assert result.total_connections is not None
         finally:
             pool.close()
 
