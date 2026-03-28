@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-03-22
+**Last Updated**: 2026-03-28
 
 ---
 
@@ -55,84 +55,38 @@ to prevent accidentally committing production database dumps.
 
 ---
 
-## 6. Gold Standard Coverage Tests Failing for Farfetch
+## 11. Gold Standard Coverage Tests — Partially Resolved
 
-**Status**: Open
-**Severity**: Medium
+**Status**: Partially resolved
+**Severity**: Low (1 test remaining)
 **Discovered**: 2026-03-19
+**Updated**: 2026-03-26
 
-### Problem
+### Original Problem
 
-Two tests in `tests/integration/test_gold_standard_coverage.py` were observed failing:
+Two tests in `tests/integration/test_gold_standard_coverage.py` were failing:
 - `test_candidate_generation_finds_active_consumers`
 - `test_candidate_generation_finds_number_of_orders`
 
-These failures were seen during a full suite run and appear unrelated to recent context-type tracking changes.
+### Resolution (2026-03-26)
 
-### Likely Cause
+Diagnosed and fixed. The failures had two root causes unrelated to the Farfetch re-fetch:
 
-Probably linked to the Farfetch document fetch issue (Issue #2 below) — if the HTML for the Farfetch filing isn't locally available, candidate generation finds nothing. May resolve once the 78 cloud-stored filings are re-fetched on Render.
+1. **Wrong metric ID** — Test expected `cm_transactions_by_cohort` for "Number of Orders", but extraction
+   maps this to `cm_purchase_transactions_overall`. Fixed in test assertions (lines 62, 67, 267).
 
-### Next Steps
+2. **Broken import in `TestKeywordPatterns`** — Tests accessed `MetricClassifier.METRIC_KEYWORDS` which
+   does not exist (only `GENERAL_METRIC_KEYWORDS` is on the class). Fixed to import
+   `METRIC_KEYWORDS` from `src.review.keyword_matching`.
 
-- Reproduce in isolation: `python3 -m pytest tests/integration/test_gold_standard_coverage.py -v`
-- Confirm whether failure is due to missing HTML file or a pattern regression
+After fix: 11/12 tests in `test_gold_standard_coverage.py` pass.
 
----
+### Remaining (Issue #10)
 
-## 7. Intermittent Deadlock in Extraction Pipeline Integration Test
-
-**Status**: Open
-**Severity**: Low (intermittent)
-**Discovered**: 2026-03-19
-
-### Problem
-
-`tests/integration/extraction/test_extraction_pipeline_integration.py::TestExtractionPipelineIntegration::test_process_filing_success` intermittently fails with a PostgreSQL deadlock during test setup:
-
-```
-psycopg.errors.deadlock_detected: deadlock detected
-DETAIL: Process A waits for AccessExclusiveLock on relation X; blocked by Process B.
-        Process B waits for AccessExclusiveLock on relation Y; blocked by Process A.
-```
-
-Reproduced twice in succession during the 2026-03-19 test session.
-
-### Likely Cause
-
-Two test processes (or test fixtures) are acquiring table-level locks in different orders during setup, creating a deadlock cycle. Possibly triggered by running many integration test sessions in quick succession without full connection teardown between runs.
-
-### Next Steps
-
-- Investigate whether the extraction pipeline test's setup fixture is acquiring locks that conflict with other concurrent fixtures
-- Check if adding retry logic on deadlock in the test setup would be sufficient
-
----
-
-## 8. Connection Pool Exhaustion During Repeated Test Runs
-
-**Status**: Open
-**Severity**: Low (operational)
-**Discovered**: 2026-03-19
-
-### Problem
-
-Running the integration test suite multiple times in quick succession causes PostgreSQL to hit its connection limit:
-
-```
-FATAL: sorry, too many clients already
-```
-
-This causes test setup failures (not code failures) and requires a `docker stop/start filings-postgres` to recover.
-
-### Likely Cause
-
-Connection pools from previous test sessions are not being fully closed before the next run starts. The `psycopg_pool` pool workers retry connections in background threads that outlive the pytest session.
-
-### Next Steps
-
-- Check if `DatabaseAdapter` needs an explicit `close()` call in integration test teardown
-- Consider increasing PostgreSQL's `max_connections` setting in the Docker compose config as a short-term workaround
+`test_candidate_generation_finds_active_consumers` still fails due to CMS-1 cross-metric suppression.
+The "Active Consumers" keyword matches both `cm_active_customers_total` and `cm_customers_period_end`;
+the CMS-1 tie-breaker assigns it to `cm_customers_period_end`. The gold standard expects
+`cm_active_customers_total`. Resolving this requires an extraction logic decision — see Issue #10 below.
 
 ---
 
@@ -164,27 +118,6 @@ The CAC payback period value "six" (months) was not being extracted:
 
 - Re-evaluate Farfetch recall after cloud re-fetch of 78 filings is complete
 - Review Active Consumers, Number of Orders, Take Rate patterns once document fetch is working
-
----
-
-## 3. Gold Standard Methodology Questions
-
-**Status**: Needs Discussion
-**Severity**: Low (process improvement)
-
-### Questions Raised
-
-1. **Metric taxonomy alignment**: Should gold standard use same IDs as extraction system?
-2. **Chart value handling**: Current approach marks chart values as "chart" - should they be in separate file?
-3. **Value normalization**: Gold uses various formats (800,500 vs 800500) - should normalize?
-4. **Metric scope**: What exactly counts as "Active Customers" vs "Paid Customers"?
-
-### Recommendation
-
-Create a gold standard specification document that defines:
-- Approved metric IDs (aligned with `config/metric_keywords.yaml`)
-- Value normalization rules
-- Chart vs text-extractable classification criteria
 
 ---
 
@@ -244,14 +177,39 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 | Issue | Status | Priority | Effort | Impact |
 |-------|--------|----------|--------|--------|
-| Low Farfetch Recall | Open | Medium | Medium | Blocked pending cloud re-fetch |
-| Gold Standard Methodology | Open | Low | Low | Process improvement |
+| Low Farfetch Recall | Partially diagnosed | Medium | Medium | extract_fresh_batch bug fixed; recall gap (50%) requires keyword work |
+| Gold Standard Methodology | Resolved | — | — | Spec doc created |
 | Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
-| Gold Standard Coverage Tests Failing | Open | Medium | Low | Investigate once Farfetch re-fetch complete |
-| Extraction Pipeline Deadlock | Open | Low | Low | Intermittent; investigate fixture lock ordering |
-| Connection Pool Exhaustion | Open | Low | Low | Recover with docker restart; check pool teardown |
+| Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (Issue #10) |
+| Extraction Pipeline Deadlock | Resolved | — | — | Pool + teardown fix eliminates root cause |
+| Connection Pool Exhaustion | Resolved | — | — | Pool + teardown fix + max_connections=200 |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
+| CMS-1 suppression: Active Consumers (Issue #10) | Open | Low | Low | cm_active_customers_total suppressed by cm_customers_period_end |
+
+---
+
+## 10. CMS-1 Suppression: Active Consumers Assigned to Wrong Metric
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-03-26
+
+### Problem
+
+`test_candidate_generation_finds_active_consumers` fails because value `1,118,047` ("Active Consumers") is assigned to `cm_customers_period_end` instead of `cm_active_customers_total`.
+
+### Root Cause
+
+Both metrics share the keyword "Active Consumers". CMS-1 cross-metric suppression (`keyword_matching.py:793`) fires when two keywords are equidistant from a number, and the longer pattern wins. `cm_customers_period_end`'s "Active Consumers" pattern wins the tie-breaker, suppressing `cm_active_customers_total`.
+
+This also contributes to Farfetch's low recall (Issue #2) — Active Consumer values in Farfetch are systematically misassigned to `cm_customers_period_end`.
+
+### Next Steps
+
+- Determine whether Farfetch "Active Consumers" should map to `cm_active_customers_total` or `cm_customers_period_end` (both are plausible: active consumers = customers at period end who were active)
+- If `cm_active_customers_total` is correct: adjust the CMS-1 priority so `cm_active_customers_total` wins for Farfetch's specific phrasing
+- If `cm_customers_period_end` is correct: update the gold standard CSV to use `cm_customers_period_end` for Farfetch Active Consumers
 
 ---
 
@@ -269,6 +227,23 @@ Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system
 
 `FilingFetcher` defaulted `sec_client` to `None` and guarded URL resolution behind `if self.sec_client:`, causing directory-index pages to be saved instead of actual filings. Fixed in `src/filing_fetcher/filing_fetcher.py` (lines 81, 295). 78 cloud-fetched filings need re-fetching on Render. See git log (2026-03-16) for full details.
 
+### Issues #7 and #8: Test Deadlock and Connection Pool Exhaustion
+
+**Status**: ✅ Resolved (2026-03-26)
+
+Root cause: `DatabaseAdapter` had no `close()` method; test fixtures were session-scoped with no teardown and no connection pool, so every `get_connection()` call created a new TCP connection.
+
+Fixes applied:
+- Added `DatabaseAdapter.close()` to `src/infra/db.py`
+- Converted `test_db_adapter` fixtures in `tests/integration/conftest.py` and `tests/integration/extraction/conftest.py` from `return` to `yield` with pool (`max_size=5`) and teardown
+- Added `command: ["postgres", "-c", "max_connections=200"]` to `docker-compose.yml`
+
+### Issue #3: Gold Standard Methodology Questions
+
+**Status**: ✅ Resolved (2026-03-26)
+
+Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, value normalization rules, chart vs text classification, period format, negative examples, and duplicate group handling.
+
 ---
 
 ## Change Log
@@ -281,3 +256,9 @@ Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system
 - **2026-03-17**: Archived resolved Issues #1 and #6; updated Farfetch contributing factors to reflect resolutions
 - **2026-03-19**: Added Issues #6–#8: Farfetch gold standard test failures, extraction pipeline deadlock, connection pool exhaustion
 - **2026-03-19**: Issue #9 partially resolved — fresh mode validation eliminates DB dependency; `*.dump` added to `.gitignore`
+- **2026-03-26**: Issues #7 and #8 resolved — DatabaseAdapter.close(), pool + yield teardown in test fixtures, max_connections=200
+- **2026-03-26**: Issue #3 resolved — created docs/GOLD_STANDARD_SPECIFICATION.md
+- **2026-03-26**: Issue #6 partially resolved — fixed wrong metric IDs and broken TestKeywordPatterns imports; 11/12 tests pass
+- **2026-03-26**: Issue #2 partially resolved — fixed extract_fresh_batch company_names bug; recall gap requires keyword work
+- **2026-03-26**: Added Issue #10 — CMS-1 suppression assigns Active Consumers to cm_customers_period_end instead of cm_active_customers_total
+- **2026-03-27**: Removed duplicate main-body sections for Issues #3, #7, #8 — already archived; stale "Open"/"Needs Discussion" statuses were conflicting with archive entries

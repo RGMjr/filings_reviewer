@@ -206,9 +206,9 @@ Output:
 **ID**: HRV-3
 **Name**: Review all Slack candidates against 41 known gold standard metrics
 **Workstream**: Validation
-**Status**: 🟡 IN PROGRESS (2025-12-26)
+**Status**: ✅ COMPLETE (2026-03-16)
 **Time Estimate**: 2-3 hours
-**Time Actual**: TBD (manual review in progress)
+**Time Actual**: Superseded by HRV-5 automated review; findings synthesized in HRV-6
 **Risk Level**: NONE
 **Parallel With**: HRV-4 (completely independent)
 **Prerequisites**: HRV-2 (need validation scripts) ✅ COMPLETE
@@ -268,7 +268,7 @@ Output:
 **ID**: HRV-4
 **Name**: Review all Farfetch candidates against 67 known gold standard metrics
 **Workstream**: Validation
-**Status**: 🟡 PENDING
+**Status**: ✅ COMPLETE (2026-03-16)
 **Time Estimate**: 3-4 hours
 **Risk Level**: NONE
 **Parallel With**: HRV-3 (completely independent)
