@@ -457,14 +457,15 @@ def test_db_adapter(test_db_url):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_migrations_to_test_db(test_db_url):
+def _apply_migrations_to_test_db():
     """Apply all migrations to test DB at session start (idempotent)."""
-    if not os.getenv("TEST_DATABASE_URL"):
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
         return  # Skip if no test DB configured
 
     from scripts.apply_migrations import MIGRATIONS, apply_migration, bootstrap_ledger
 
-    db = DatabaseAdapter(test_db_url)
+    db = DatabaseAdapter(url)
     sql_dir = Path(__file__).parent.parent.parent / "sql"
 
     bootstrap_ledger(db)
