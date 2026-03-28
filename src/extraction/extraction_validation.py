@@ -11,8 +11,11 @@ This module is designed to filter out false positives before storing extractions
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
+
+from src.extraction.keyword_config import get_metric_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -138,49 +141,9 @@ METRIC_RANGE_RULES: dict[str, tuple[float | None, float | None, float, float]] =
     "cm_revenue_concentration": (0, 100, 1, 50),
 }
 
-# Keywords that should appear in source for each metric
-METRIC_KEYWORDS: dict[str, list[str]] = {
-    "cm_customer_acquisition_cost": [
-        "acquisition cost", "cac", "cost to acquire", "customer acquisition",
-        "cost per customer", "cost per acquisition"
-    ],
-    "cm_net_revenue_retention": [
-        "net revenue retention", "nrr", "net dollar retention", "ndr",
-        "dollar-based net retention", "net retention"
-    ],
-    "cm_customer_retention_rate": [
-        "retention rate", "customer retention", "retention", "retain"
-    ],
-    "cm_churn_rate": [
-        "churn", "attrition", "cancellation rate", "customer loss"
-    ],
-    "cm_new_customers_acquired": [
-        "new customer", "customer acquired", "new user", "customer addition",
-        "net new", "acquired"
-    ],
-    "cm_active_customers_total": [
-        "active customer", "active user", "total customer", "customer count",
-        "paying customer", "subscriber", "core customer"
-    ],
-    "cm_expansion_revenue": [
-        "expansion", "upsell", "cross-sell", "upgrade", "expansion revenue"
-    ],
-    "cm_gross_margin_by_cohort": [
-        "gross margin", "margin", "cohort", "gross profit"
-    ],
-    "cm_revenue_by_cohort": [
-        "cohort", "revenue", "vintage", "acquisition year"
-    ],
-    "cm_revenue_concentration": [
-        "concentration", "top customer", "largest customer", "major customer"
-    ],
-    "cm_ltv": [
-        "lifetime value", "ltv", "clv", "customer lifetime"
-    ],
-    "cm_ltv_cac_ratio": [
-        "ltv", "cac", "ratio", "lifetime value"
-    ],
-}
+# Keywords that should appear in source for each metric.
+# Loaded from config/metric_keywords.yaml (authoritative source).
+METRIC_KEYWORDS: dict[str, list[str]] = get_metric_keywords()
 
 
 def normalize_unit(unit: str | None) -> str | None:
@@ -315,12 +278,11 @@ def validate_keyword_in_source(
     if metric_id not in METRIC_KEYWORDS:
         return ValidationResult.PASS  # No keywords defined
 
-    keywords = METRIC_KEYWORDS[metric_id]
-    source_lower = source_text.lower()
+    patterns = METRIC_KEYWORDS[metric_id]
 
-    # Check if any keyword appears
-    for keyword in keywords:
-        if keyword.lower() in source_lower:
+    # Check if any pattern matches (patterns are regexes from metric_keywords.yaml)
+    for pattern in patterns:
+        if re.search(pattern, source_text, re.IGNORECASE):
             return ValidationResult.PASS
 
     return ValidationResult.FAIL_KEYWORD
@@ -392,21 +354,20 @@ def validate_quote_contains_metric_keyword(
         # No keywords defined for this metric - skip validation
         return ValidationResult.PASS, "No keyword rules for metric"
 
-    keywords = METRIC_KEYWORDS[metric_id]
-    quote_lower = quote.lower()
+    patterns = METRIC_KEYWORDS[metric_id]
 
-    # Check if at least one keyword appears in the quote
-    found_keyword = None
-    for keyword in keywords:
-        if keyword.lower() in quote_lower:
-            found_keyword = keyword
+    # Check if at least one pattern matches (patterns are regexes from metric_keywords.yaml)
+    found_pattern = None
+    for pattern in patterns:
+        if re.search(pattern, quote, re.IGNORECASE):
+            found_pattern = pattern
             break
 
-    if not found_keyword:
+    if not found_pattern:
         return (
             ValidationResult.FAIL_KEYWORD,
             f"Quote missing metric keyword for {metric_id}. "
-            f"Expected one of: {keywords[:3]}..."
+            f"Expected one of: {patterns[:3]}..."
         )
 
     # Check if the numeric value appears in the quote
@@ -425,10 +386,10 @@ def validate_quote_contains_metric_keyword(
     if not found_value:
         return (
             ValidationResult.WARN,
-            f"Quote contains keyword '{found_keyword}' but value {value} not clearly present"
+            f"Quote contains keyword '{found_pattern}' but value {value} not clearly present"
         )
 
-    return ValidationResult.PASS, f"Quote validated: contains '{found_keyword}' and value"
+    return ValidationResult.PASS, f"Quote validated: contains '{found_pattern}' and value"
 
 
 def validate_extraction(
