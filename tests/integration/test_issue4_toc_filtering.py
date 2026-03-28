@@ -56,8 +56,8 @@ class TestIssue4StandaloneTOCFiltering:
 
     def test_toc_abbreviation_filtered(self) -> None:
         """Test that TOC abbreviation pattern is filtered."""
-        # Use recognized metric keyword "gross margin"
-        text = "Gross margin was 25% year-over-year.\n73 TOC\nCustomer Metrics"
+        # Use recognized metric keyword "net revenue retention rate"
+        text = "Net revenue retention rate was 125%.\n73 TOC\nCustomer Metrics"
         segment = self._make_segment(text)
 
         generator = CandidateGenerator()
@@ -74,8 +74,8 @@ class TestIssue4StandaloneTOCFiltering:
             f"Got candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
         )
 
-        # Should create candidate for "25%" (gross margin - valid metric)
-        assert Decimal("0.25") in values, (
+        # Should create candidate for "125%" (net revenue retention - valid customer metric)
+        assert Decimal("1.25") in values, (
             f"Valid metric should not be filtered. "
             f"Got candidates: {[(c.parsed_value, c.suggested_metric_id) for c in candidates]}"
         )
