@@ -1790,7 +1790,8 @@ def cluster_goldmine_segments(
         prev_idx = goldmines[i - 1].sequence_index
         curr_idx = goldmines[i].sequence_index
         # Type narrowing - we already filtered None values above
-        assert prev_idx is not None and curr_idx is not None
+        if prev_idx is None or curr_idx is None:
+            raise RuntimeError("sequence_index is None after filtering; this should never happen")
 
         gap = curr_idx - prev_idx
         if gap <= max_gap:

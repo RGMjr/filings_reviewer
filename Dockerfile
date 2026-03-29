@@ -37,11 +37,10 @@ RUN adduser \
 
 # Download dependencies as a separate step to take advantage of Docker's caching.
 # Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# into this layer.
+# Install from pinned lockfile for reproducible production builds.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=requirements.txt,target=requirements.txt \
-    python -m pip install -r requirements.txt
+    --mount=type=bind,source=requirements.lock,target=requirements.lock \
+    python -m pip install -r requirements.lock
 
 # Copy the source code into the container.
 COPY --chown=appuser:appuser . .

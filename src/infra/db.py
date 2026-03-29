@@ -105,6 +105,21 @@ class DatabaseAdapter:
             finally:
                 conn.close()
 
+    def close(self) -> None:
+        """Close the adapter's connection pool if one was provided.
+
+        Safe to call multiple times or when no pool exists.
+        After closing, the adapter should not be used for new operations.
+        """
+        if self._pool is not None:
+            try:
+                self._pool.close()
+                logger.info("DatabaseAdapter pool closed")
+            except Exception as e:
+                logger.error(f"Error closing pool: {e}")
+            finally:
+                self._pool = None
+
     @contextmanager
     def transaction(self):
         """
@@ -1065,6 +1080,11 @@ class DatabaseAdapter:
             sql += " LIMIT %(limit)s OFFSET %(offset)s"
             params["limit"] = limit
             params["offset"] = offset
+        else:
+            logger.warning(
+                "get_all_reviewed_candidates_with_decisions called without limit; "
+                "may return unbounded result set as dataset grows"
+            )
 
         return self.query(sql, params)
 
@@ -1882,9 +1902,8 @@ class DatabaseAdapter:
                 # 'lower_confidence' in that it has a DIFFERENT metric_id than the winner.
                 if log_suppressed:
                     # Sanity check: all candidates should have a final_id by now
-                    assert all(
-                        fid is not None for fid in final_ids
-                    ), "All final_ids must be set"
+                    if not all(fid is not None for fid in final_ids):
+                        raise RuntimeError("All final_ids must be set before runner-up detection")
 
                     runner_ups = self._identify_runner_ups(
                         candidates, final_ids, winner_metrics  # type: ignore
@@ -1902,9 +1921,10 @@ class DatabaseAdapter:
 
         # Build result
         result_ids: list[int] = [fid for fid in final_ids if fid is not None]
-        assert len(result_ids) == len(candidates), (
-            f"Result length {len(result_ids)} != input length {len(candidates)}"
-        )
+        if len(result_ids) != len(candidates):
+            raise RuntimeError(
+                f"Result length {len(result_ids)} != input length {len(candidates)}"
+            )
 
         logger.debug(
             f"Bulk processed {len(candidates)} review candidates: "

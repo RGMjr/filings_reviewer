@@ -15,7 +15,7 @@ src/
 ├── extraction_v2/  # Image/OCR pipeline (NOT in production — V2 was reverted; code present but inactive)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
-├── llm/            # OpenAI integration with SQLite-backed caching; includes vision_client.py and prompts.py
+├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
 └── gold_standard/  # Validation: baseline.py, fresh_extractor.py
 config/
 └── metric_keywords.yaml  # Metric keyword patterns (authoritative source)
@@ -83,7 +83,7 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 
 - `src/web/routes/review.py` / `api.py`: Text/metric review interface
 - `src/web/routes/review_images.py` / `api_images.py`: Image review interface
-- API auth: `@require_api_key` decorator, configure via `FILINGS_API_KEY` env var
+- API auth: `_check_api_key` before_request hook in each API blueprint, configure via `FILINGS_API_KEY` env var
 
 ## SEC EDGAR Integration
 

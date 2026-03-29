@@ -61,7 +61,8 @@ class TestAuditHookRegistration:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock()
 
-        with patch("src.web.routes.api.get_db") as mock_get_db:
+        with patch("src.web.routes.api.get_db") as mock_get_db, \
+             patch("src.web.app.get_db", return_value=mock_db):
             mock_get_db.return_value = mock_db
             mock_get_db.side_effect = lambda: (
                 capture_start_time() or mock_db
@@ -85,7 +86,8 @@ class TestAuditHookRegistration:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock()
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={"candidate_id": 999, "decision": "accept", "assigned_metric_id": "test"},
@@ -120,7 +122,8 @@ class TestAuditLogContent:
         mock_db.get_next_pending_candidate_id.return_value = None  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -150,7 +153,8 @@ class TestAuditLogContent:
         mock_db.get_next_pending_candidate_id.return_value = None  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -181,7 +185,8 @@ class TestAuditLogContent:
         mock_db.get_next_pending_candidate_id.return_value = None  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -212,7 +217,8 @@ class TestAuditLogContent:
         mock_db.get_next_pending_candidate_id.return_value = None  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -230,7 +236,8 @@ class TestAuditLogContent:
         """Response status 400 captured for validation errors."""
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -247,7 +254,8 @@ class TestAuditLogContent:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -274,7 +282,8 @@ class TestAuditLogContent:
         }
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -302,7 +311,8 @@ class TestAuditLogContent:
         mock_db.get_next_pending_candidate_id.return_value = None  # For next candidate navigation
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -326,7 +336,8 @@ class TestAuditLogContent:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             client.post(
                 "/api/decisions",
                 json={
@@ -355,7 +366,8 @@ class TestAuditEdgeCases:
         """Non-JSON request body handled gracefully (empty query_params)."""
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 data="not json",
@@ -385,7 +397,8 @@ class TestAuditEdgeCases:
         # Audit log fails
         mock_db.insert_audit_log.side_effect = Exception("Database connection lost")
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={
@@ -405,7 +418,8 @@ class TestAuditEdgeCases:
         """GET endpoints extract filing_id and candidate_id from URL params."""
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             # Call the GET candidate endpoint (501 Not Implemented)
             response = client.get("/api/candidates/456")
 
@@ -420,7 +434,8 @@ class TestAuditEdgeCases:
         """GET filing progress extracts filing_id from URL params."""
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.get("/api/filings/789/progress")
 
         assert response.status_code == 501
@@ -433,7 +448,8 @@ class TestAuditEdgeCases:
         """Empty JSON request body handled (no decision fields in query_params)."""
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             response = client.post(
                 "/api/decisions",
                 json={},
@@ -460,7 +476,8 @@ class TestAuditLogMetadata:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             client.post(
                 "/api/decisions",
                 json={"candidate_id": 123, "decision": "accept", "assigned_metric_id": "test"},
@@ -475,7 +492,8 @@ class TestAuditLogMetadata:
         mock_db.get_review_candidate.return_value = None
         mock_db.insert_audit_log = MagicMock(return_value=1)
 
-        with patch("src.web.routes.api.get_db", return_value=mock_db):
+        with patch("src.web.routes.api.get_db", return_value=mock_db), \
+             patch("src.web.app.get_db", return_value=mock_db):
             client.post(
                 "/api/decisions",
                 json={"candidate_id": 123, "decision": "accept", "assigned_metric_id": "test"},
