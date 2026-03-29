@@ -5,18 +5,20 @@ Handles AJAX requests for recording V2 review decisions (accept/reject/correct).
 Parallel to V1 api.py — queries V2 tables.
 """
 
-import hmac
 import logging
-import time
 from typing import Any
 
 import psycopg
-from flask import Blueprint, current_app, g, jsonify, request, session
+from flask import Blueprint, jsonify, request
 
 from src.web.app import get_db
+from src.web.middleware import insert_audit_log_entry, register_api_auth, register_timing
 
 api_v2_bp = Blueprint("api_v2", __name__, url_prefix="/api/v2")
 logger = logging.getLogger(__name__)
+
+register_api_auth(api_v2_bp)
+register_timing(api_v2_bp)
 
 # Valid V2 decisions
 V2_DECISION_TYPES = ("accept", "reject", "correct")
@@ -31,65 +33,23 @@ V2_REJECTION_CATEGORIES = (
 )
 
 
-# =============================================================================
-# Authentication
-# =============================================================================
-
-
-@api_v2_bp.before_request
-def _check_api_key():
-    """Verify API key (skipped in development mode)."""
-    if not current_app.config.get("API_KEY_REQUIRED", True):
-        return None
-
-    api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-    expected_key = current_app.config.get("API_KEY")
-
-    if not expected_key:
-        return jsonify({"status": "error", "message": "Server misconfigured"}), 500
-    if not api_key:
-        return jsonify({"status": "error", "message": "API key required"}), 401
-    if not hmac.compare_digest(api_key, expected_key):
-        return jsonify({"status": "error", "message": "Invalid API key"}), 401
-
-    return None
-
-
-# =============================================================================
-# Audit Logging
-# =============================================================================
-
-
-@api_v2_bp.before_request
-def _log_request_start():
-    g.request_start_time = time.time()
-
-
 @api_v2_bp.after_request
 def _log_request_complete(response):
-    try:
-        response_time_ms = None
-        if hasattr(g, "request_start_time"):
-            response_time_ms = int((time.time() - g.request_start_time) * 1000)
+    query_params = None
 
-        db = get_db()
-        db.insert_audit_log(
-            session_id=session.get("_id"),
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get("User-Agent"),
-            route_name=request.endpoint or "unknown",
-            http_method=request.method,
-            url_path=request.path,
-            filing_id=None,
-            candidate_id=None,
-            query_params=None,
-            response_status=response.status_code,
-            response_time_ms=response_time_ms,
-        )
-    except Exception as e:
-        logger.error(f"Failed to insert audit log: {e}")
+    if request.method == "POST" and request.is_json:
+        data = request.get_json(silent=True) or {}
+        query_params = {}
+        if "fact_id" in data:
+            query_params["fact_id"] = data["fact_id"]
+        if "decision" in data:
+            query_params["decision"] = data["decision"]
+        if "rejection_category" in data:
+            query_params["rejection_category"] = data["rejection_category"]
+        if not query_params:
+            query_params = None
 
-    return response
+    return insert_audit_log_entry(response, query_params=query_params)
 
 
 # =============================================================================
