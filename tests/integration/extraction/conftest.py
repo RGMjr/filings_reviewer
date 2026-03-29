@@ -25,8 +25,16 @@ def test_db_url():
 
 @pytest.fixture(scope="session")
 def test_db_adapter(test_db_url):
-    """Create a database adapter for the test database."""
-    return DatabaseAdapter(test_db_url)
+    """Create a database adapter for the test database.
+
+    Uses a connection pool to avoid creating new TCP connections per operation.
+    """
+    from src.infra.pool import create_pool
+
+    pool = create_pool(test_db_url, min_size=1, max_size=5)
+    adapter = DatabaseAdapter(test_db_url, pool=pool)
+    yield adapter
+    adapter.close()
 
 
 @pytest.fixture(scope="function")
