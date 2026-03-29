@@ -5,21 +5,26 @@ Apply all SQL migrations to a PostgreSQL database.
 Applies all sql/*.sql files in the canonical order defined below.
 Works against any PostgreSQL connection (local Docker, Neon, etc.).
 
+Migration tracking: a schema_migrations table records which migrations have
+been applied. Already-applied migrations are skipped, making re-runs safe.
+
 Usage:
-    # Apply to database from environment
+    # Apply new migrations (skips already-applied ones)
     python3 scripts/apply_all_migrations.py
 
     # Apply to a specific database URL
     DATABASE_URL="postgresql://..." python3 scripts/apply_all_migrations.py
 
-    # Dry run (show order without applying)
+    # Dry run (show which would be applied vs skipped without executing)
     python3 scripts/apply_all_migrations.py --dry-run
+
+    # Mark all migrations as applied WITHOUT running them.
+    # Use this ONCE on an existing database that was set up before tracking was added.
+    python3 scripts/apply_all_migrations.py --mark-all-applied
 
 Notes:
     - Several migration prefixes appear twice (04, 08, 09). The canonical order
       below was determined from file creation history and dependency analysis.
-    - Most migrations are idempotent (use CREATE TABLE IF NOT EXISTS, etc.),
-      so re-running is safe on an already-migrated database.
     - For Neon (cloud PostgreSQL), set DATABASE_URL with sslmode=require:
       postgresql://user:password@host.neon.tech/dbname?sslmode=require
 """
@@ -66,15 +71,51 @@ MIGRATION_ORDER = [
 ]
 
 
-def apply_migration(db: DatabaseAdapter, sql_file: Path, dry_run: bool = False) -> bool:
-    """Apply a single SQL migration file."""
+def bootstrap_tracking(db: DatabaseAdapter) -> None:
+    """Create schema_migrations table if it does not exist."""
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            migration_name TEXT PRIMARY KEY,
+            applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+
+
+def get_applied_migrations(db: DatabaseAdapter) -> set[str]:
+    """Return the set of migration filenames already recorded as applied."""
+    rows = db.query("SELECT migration_name FROM schema_migrations ORDER BY applied_at")
+    return {row["migration_name"] for row in rows}
+
+
+def record_migration(db: DatabaseAdapter, filename: str) -> None:
+    """Record a migration as applied (idempotent)."""
+    db.execute(
+        "INSERT INTO schema_migrations (migration_name) VALUES (%(name)s) "
+        "ON CONFLICT (migration_name) DO NOTHING",
+        {"name": filename},
+    )
+
+
+def apply_migration(
+    db: DatabaseAdapter,
+    sql_file: Path,
+    dry_run: bool = False,
+    mark_only: bool = False,
+) -> bool:
+    """Apply a single SQL migration file and record it in schema_migrations."""
     if dry_run:
         logger.info(f"  [dry-run] Would apply: {sql_file.name}")
+        return True
+
+    if mark_only:
+        record_migration(db, sql_file.name)
+        logger.info(f"  [marked] Recorded as applied (not executed): {sql_file.name}")
         return True
 
     logger.info(f"  Applying: {sql_file.name}")
     try:
         db.execute_script(str(sql_file))
+        record_migration(db, sql_file.name)
         logger.info(f"  OK: {sql_file.name}")
         return True
     except Exception as e:
@@ -82,7 +123,7 @@ def apply_migration(db: DatabaseAdapter, sql_file: Path, dry_run: bool = False) 
         return False
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Apply all SQL migrations in canonical order",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -91,7 +132,15 @@ def main():
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the migration order without executing anything",
+        help="Print which migrations would be applied vs skipped, without executing",
+    )
+    parser.add_argument(
+        "--mark-all-applied",
+        action="store_true",
+        help=(
+            "Record all migrations as applied WITHOUT running them. "
+            "Use once on an existing database set up before tracking was added."
+        ),
     )
     parser.add_argument(
         "--database-url",
@@ -111,17 +160,25 @@ def main():
     sql_dir = Path(__file__).parent.parent / "sql"
 
     logger.info("=" * 70)
-    logger.info("Applying all SQL migrations")
     if args.dry_run:
-        logger.info("(dry run — no changes will be made)")
+        logger.info("Migration dry run (no changes will be made)")
+    elif args.mark_all_applied:
+        logger.info("Marking all migrations as applied WITHOUT executing them")
     else:
-        logger.info(f"Target: {db_url}")
+        logger.info("Applying SQL migrations")
+    logger.info(f"Target: {db_url or '(dry-run)'}")
     logger.info("=" * 70)
     logger.info("")
 
     db = DatabaseAdapter(db_url or "postgresql://localhost/filings_analysis")
 
+    if not args.dry_run:
+        bootstrap_tracking(db)
+
+    applied = get_applied_migrations(db) if not args.dry_run else set()
+
     missing = []
+    skipped_count = 0
     success_count = 0
     fail_count = 0
 
@@ -132,7 +189,17 @@ def main():
             missing.append(filename)
             continue
 
-        ok = apply_migration(db, sql_file, dry_run=args.dry_run)
+        if filename in applied:
+            logger.info(f"  SKIP (already applied): {filename}")
+            skipped_count += 1
+            continue
+
+        ok = apply_migration(
+            db,
+            sql_file,
+            dry_run=args.dry_run,
+            mark_only=args.mark_all_applied,
+        )
         if ok:
             success_count += 1
         else:
@@ -143,10 +210,14 @@ def main():
     logger.info("")
     logger.info("=" * 70)
     if args.dry_run:
-        logger.info(f"Dry run complete: {success_count} migrations would be applied")
+        logger.info(
+            f"Dry run: {success_count} would be applied, {skipped_count} already applied"
+        )
+    elif args.mark_all_applied:
+        logger.info(f"Marked {success_count} migrations as applied")
     else:
         logger.info(
-            f"Migrations complete: {success_count} succeeded, {fail_count} failed"
+            f"Complete: {success_count} applied, {skipped_count} skipped, {fail_count} failed"
         )
     if missing:
         logger.warning(f"Missing files ({len(missing)}): {', '.join(missing)}")

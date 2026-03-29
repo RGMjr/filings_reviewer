@@ -15,6 +15,7 @@ import warnings
 from typing import Any
 
 from flask import Flask, current_app, g, jsonify, render_template, request
+from flask_talisman import Talisman
 
 from src.infra.db import DatabaseAdapter
 
@@ -263,6 +264,20 @@ def create_app(
         # Call init_app for configs that need runtime initialization (e.g., DevelopmentConfig)
         config_class.init_app(app)
 
+    # Apply security headers via Talisman.
+    # force_https=False: Render handles HTTPS at the proxy level.
+    # content_security_policy=False: templates use inline JS/CSS; configure CSP separately.
+    # HSTS is only set in production so local dev isn't affected.
+    is_production = config_name == "production"
+    Talisman(
+        app,
+        force_https=False,
+        strict_transport_security=is_production,
+        strict_transport_security_max_age=31536000,
+        content_security_policy=False,
+        frame_options="SAMEORIGIN",
+    )
+
     # Register database teardown handler
     app.teardown_appcontext(close_db)
 
@@ -358,7 +373,7 @@ def _register_health_check(app: Flask) -> None:
                 {
                     "status": "unhealthy",
                     "database": "error",
-                    "message": str(e),
+                    "message": "Database connection failed",
                 }
             ), 503
 

@@ -1,0 +1,30 @@
+# Development and test dependencies
+# Install with: pip install -r requirements-dev.txt
+# (in addition to requirements.txt or requirements.lock for production deps)
+
+# Test framework
+pytest>=7.4.0
+
+# Coverage reporting
+pytest-cov>=4.1.0
+
+# Performance benchmarking
+pytest-benchmark>=4.0.0
+
+# Memory profiling
+memory-profiler>=0.61.0
+
+# Code formatter
+black>=23.0.0
+
+# Linter
+ruff>=0.1.0
+
+# Type checker
+mypy>=1.0.0
+
+# psycopg type stubs (needed for mypy)
+types-psycopg2>=2.9.0
+
+# Dependency vulnerability scanning
+pip-audit>=2.7.0

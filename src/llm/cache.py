@@ -82,6 +82,17 @@ class LLMCache:
         except psycopg.Error:
             pass
 
+    def _try_reconnect(self) -> None:
+        """
+        Attempt to reconnect after a connection-level error.
+
+        Clears the broken connection and calls _init_db() to establish a new one.
+        The current operation returns None/False; subsequent calls use the fresh connection.
+        """
+        logger.warning("LLM cache connection lost; attempting reconnect")
+        self._conn = None
+        self._init_db()
+
     def _init_db(self) -> None:
         """Initialize the PostgreSQL connection and create schema if needed."""
         if not self.config.connection_string:
@@ -216,6 +227,10 @@ class LLMCache:
                 logger.debug(f"Cache MISS for key {cache_key[:8]}...")
                 return None
 
+            except psycopg.OperationalError as e:
+                logger.error(f"Cache get error (connection lost): {e}")
+                self._try_reconnect()
+                return None
             except psycopg.Error as e:
                 logger.error(f"Cache get error: {e}")
                 self._safe_rollback()
@@ -285,6 +300,10 @@ class LLMCache:
                 logger.debug(f"Cache SET for key {cache_key[:8]}...")
                 return True
 
+            except psycopg.OperationalError as e:
+                logger.error(f"Cache set error (connection lost): {e}")
+                self._try_reconnect()
+                return False
             except psycopg.Error as e:
                 logger.error(f"Cache set error: {e}")
                 self._safe_rollback()

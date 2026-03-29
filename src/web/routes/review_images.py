@@ -22,6 +22,7 @@ from src.review.models import (
     IMAGE_REVIEW_STATUSES,
 )
 from src.web.app import get_db
+from src.web.utils import _validate_positive_int  # noqa: F401 (re-exported for callers)
 
 review_images_bp = Blueprint("review_images", __name__, url_prefix="/review/images")
 logger = logging.getLogger(__name__)
@@ -295,49 +296,7 @@ def next_candidate(filing_id: int):
 # =============================================================================
 
 
-def _validate_positive_int(
-    param_name: str,
-    value: int | None,
-    default: int | None,
-    min_value: int = 1,
-    max_value: int | None = None,
-    flash_errors: bool = True,
-) -> int | None:
-    """
-    Validate and sanitize a positive integer query parameter.
-
-    Args:
-        param_name: Name of the parameter (for error messages)
-        value: The value to validate
-        default: Default value on validation failure
-        min_value: Minimum allowed value
-        max_value: Maximum allowed value
-        flash_errors: Whether to flash validation errors
-
-    Returns:
-        Validated integer or default
-    """
-    if value is None:
-        return default
-
-    if value < min_value:
-        if flash_errors:
-            flash(
-                f"Invalid {param_name}: must be at least {min_value}. Using default: {default}",
-                "warning",
-            )
-        return default
-
-    if max_value is not None and value > max_value:
-        if flash_errors:
-            flash(
-                f"Invalid {param_name}: must be at most {max_value}. Using {max_value}.",
-                "warning",
-            )
-        return max_value
-
-    return value
-
+# _validate_positive_int is imported from src.web.utils (re-exported at module top).
 
 def _paginate(
     page: int = 1, per_page: int = 50, total_count: int | None = None

@@ -6,14 +6,14 @@ API endpoints for AJAX decision submission are in api.py.
 """
 
 import logging
-import time
 from datetime import datetime
 from decimal import Decimal
 
 # Import needed for type annotations
 from typing import TypedDict
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
+import nh3
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from markupsafe import Markup, escape
 
 from src.review.models import (
@@ -22,91 +22,55 @@ from src.review.models import (
     REVIEW_STATUSES,
 )
 from src.web.app import get_db
+from src.web.middleware import insert_audit_log_entry, register_timing
+from src.web.utils import _validate_positive_int  # noqa: F401 (re-exported for callers)
+
+# Allowed HTML tags and attributes for sanitizing SEC filing HTML before rendering.
+# Preserves table structure and formatting while stripping scripts and event handlers.
+_SEC_HTML_ALLOWED_TAGS = frozenset({
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "col", "colgroup", "caption",
+    "div", "span", "p", "br", "b", "i", "em", "strong", "u", "sub", "sup", "font",
+    "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "a",
+})
+_SEC_HTML_ALLOWED_ATTRS: dict[str, set[str]] = {
+    "*": {"class", "style", "id", "colspan", "rowspan", "align", "valign", "width", "height"},
+    "a": {"href", "class", "style"},
+}
 
 review_bp = Blueprint("review", __name__)
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# Audit Logging Hooks
-# =============================================================================
-# These hooks automatically log all requests to review routes for audit trail
-# and analytics. Logs are stored in review_audit_log table.
-
-
-@review_bp.before_request
-def _log_request_start():
-    """
-    Hook that runs before each request to review routes.
-
-    Captures request start time for response time calculation.
-    Stored in Flask g object for access in after_request hook.
-    """
-    g.request_start_time = time.time()
+register_timing(review_bp)
 
 
 @review_bp.after_request
 def _log_request_complete(response):
     """
-    Hook that runs after each request to review routes.
+    Log request details to the audit log table after each review page request.
 
-    Logs request details to audit_log table including:
-    - Session ID, IP address, user agent
-    - Route name, HTTP method, URL path
-    - Filing/candidate IDs if present in URL or query params
-    - Response status and time
-
-    Args:
-        response: Flask response object
-
-    Returns:
-        Unmodified response object
+    Extracts filing_id and candidate_id from URL path parameters or query string.
     """
-    try:
-        # Calculate response time
-        response_time_ms = None
-        if hasattr(g, "request_start_time"):
-            response_time_ms = int((time.time() - g.request_start_time) * 1000)
+    filing_id = request.view_args.get("filing_id") if request.view_args else None
+    candidate_id = request.view_args.get("candidate_id") if request.view_args else None
 
-        # Extract filing_id and candidate_id from URL path or query params
-        filing_id = request.view_args.get("filing_id") if request.view_args else None
-        candidate_id = request.view_args.get("candidate_id") if request.view_args else None
+    if filing_id is None and "filing_id" in request.args:
+        try:
+            filing_id = int(request.args["filing_id"])
+        except (ValueError, TypeError):
+            pass
 
-        # If not in URL path, check query params
-        if filing_id is None and "filing_id" in request.args:
-            try:
-                filing_id = int(request.args["filing_id"])
-            except (ValueError, TypeError):
-                pass
+    if candidate_id is None and "candidate_id" in request.args:
+        try:
+            candidate_id = int(request.args["candidate_id"])
+        except (ValueError, TypeError):
+            pass
 
-        if candidate_id is None and "candidate_id" in request.args:
-            try:
-                candidate_id = int(request.args["candidate_id"])
-            except (ValueError, TypeError):
-                pass
-
-        # Get database connection
-        db = get_db()
-
-        # Insert audit log entry
-        db.insert_audit_log(
-            session_id=session.get("_id"),  # Flask session ID
-            ip_address=request.remote_addr,
-            user_agent=request.headers.get("User-Agent"),
-            route_name=request.endpoint or "unknown",
-            http_method=request.method,
-            url_path=request.path,
-            filing_id=filing_id,
-            candidate_id=candidate_id,
-            query_params=dict(request.args) if request.args else None,
-            response_status=response.status_code,
-            response_time_ms=response_time_ms,
-        )
-    except Exception as e:
-        # Log error but don't break the request
-        logger.error(f"Failed to insert audit log: {e}")
-
-    return response
+    return insert_audit_log_entry(
+        response,
+        filing_id=filing_id,
+        candidate_id=candidate_id,
+        query_params=dict(request.args) if request.args else None,
+    )
 
 
 # =============================================================================
@@ -617,62 +581,7 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 # Helper Functions
 # =============================================================================
 
-def _validate_positive_int(
-    param_name: str,
-    value: int | None,
-    default: int | None,
-    min_value: int = 1,
-    max_value: int | None = None,
-    flash_errors: bool = True,
-) -> int | None:
-    """
-    Validate and sanitize a positive integer query parameter.
-
-    Args:
-        param_name: Name of the parameter (for error messages)
-        value: The value to validate (from request.args.get)
-        default: Default value to return on validation failure (can be None)
-        min_value: Minimum allowed value (default: 1)
-        max_value: Maximum allowed value (default: None = no max)
-        flash_errors: Whether to flash validation errors (default: True)
-
-    Returns:
-        Validated integer value or default (which may be None)
-
-    Examples:
-        >>> _validate_positive_int("page", 5, 1)
-        5
-        >>> _validate_positive_int("page", -1, 1)  # Returns 1 (default), flashes error
-        1
-        >>> _validate_positive_int("per_page", 200, 50, max_value=100)  # Returns 100 (max), flashes error
-        100
-        >>> _validate_positive_int("candidate_id", None, None)  # Returns None
-        None
-    """
-    # Handle None (conversion failed or not provided)
-    if value is None:
-        return default
-
-    # Validate minimum
-    if value < min_value:
-        if flash_errors:
-            flash(
-                f"Invalid {param_name}: must be at least {min_value}. Using default: {default}",
-                "warning",
-            )
-        return default
-
-    # Validate maximum
-    if max_value is not None and value > max_value:
-        if flash_errors:
-            flash(
-                f"Invalid {param_name}: must be at most {max_value}. Using {max_value}.",
-                "warning",
-            )
-        return max_value
-
-    return value
-
+# _validate_positive_int is imported from src.web.utils (re-exported at module top).
 
 def _paginate(
     page: int = 1, per_page: int = 50, total_count: int | None = None
@@ -1164,6 +1073,15 @@ def _highlight_html(
     import re
 
     from bs4 import BeautifulSoup
+
+    # Sanitize SEC HTML to strip scripts and event handlers before rendering.
+    # Preserves table structure and text formatting used in SEC filings.
+    html_content = nh3.clean(
+        html_content,
+        tags=_SEC_HTML_ALLOWED_TAGS,
+        attributes=_SEC_HTML_ALLOWED_ATTRS,
+        strip_comments=True,
+    )
 
     # Parse HTML with BeautifulSoup to fix any truncated/unclosed tags
     # This is critical because segment_html may be cut off mid-tag
