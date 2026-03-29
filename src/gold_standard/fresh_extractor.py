@@ -457,6 +457,7 @@ def extract_fresh_batch(
     allow_sec_fetch: bool = True,
     config: CandidateGenerationConfig | None = None,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    company_names: dict[str, str] | None = None,
 ) -> list[ExtractionResult]:
     """
     Perform fresh extraction for multiple filings.
@@ -467,6 +468,9 @@ def extract_fresh_batch(
         allow_sec_fetch: Whether to fetch from SEC if not cached
         config: Optional candidate generation config
         progress_callback: Optional callback(current, total, url) for progress
+        company_names: Optional mapping of document URL to company name, used
+            for gold_standard path fallback when URL parsing fails (e.g.,
+            non-SEC URLs like edgar.secdatabase.com)
 
     Returns:
         List of ExtractionResults
@@ -486,6 +490,7 @@ def extract_fresh_batch(
             base_dir=base_dir,
             allow_sec_fetch=allow_sec_fetch,
             config=config,
+            company_name=company_names.get(url) if company_names else None,
         )
         results.append(result)
 

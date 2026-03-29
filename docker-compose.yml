@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:15
     container_name: filings-postgres
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_DB: filings_analysis          # main dev database
       POSTGRES_USER: dev

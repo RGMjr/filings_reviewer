@@ -452,8 +452,14 @@ def test_db_adapter(test_db_url):
     Create a database adapter for the test database.
 
     This is session-scoped, so one adapter is shared across all tests.
+    Uses a connection pool to avoid creating new TCP connections per operation.
     """
-    return DatabaseAdapter(test_db_url)
+    from src.infra.pool import create_pool
+
+    pool = create_pool(test_db_url, min_size=1, max_size=5)
+    adapter = DatabaseAdapter(test_db_url, pool=pool)
+    yield adapter
+    adapter.close()
 
 
 @pytest.fixture(scope="session", autouse=True)
