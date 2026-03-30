@@ -169,6 +169,8 @@ Templates and generators for structured task execution via Claude Code.
 | API Routes (D2) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Pattern Analyzer (E1) | ✅ Complete | 97% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Rule Applicator (E2) | ✅ Complete | 100% | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Image Review UI (IMG-1) | ✅ Complete | N/A | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
+| Image Stats Dashboard | ✅ Complete | N/A | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 3,150+ tests)
 
@@ -404,6 +406,7 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 - ✅ `SECPresentationSource`: `_cik_to_ticker_cache` moved to instance level; `SEC_USER_AGENT` env var used for default user-agent
 - ✅ `presentation_converter.py`: `fitz_doc` now closed in `try/finally` block (resource safety)
 - ✅ `ingest_transcripts.py` / `ingest_presentations.py`: pipeline now runs once with the real `filing_id` (previously ran twice)
+- ✅ Image review system complete: `/review/images/stats` dashboard, `scripts/export_image_decisions.py`, and 4 new DB stats methods
 
 ### Version 2.4 (2026-03-22)
 - ✅ Fresh mode validation: `test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh` (no DB required)

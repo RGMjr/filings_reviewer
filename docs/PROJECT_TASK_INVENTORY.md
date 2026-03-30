@@ -640,7 +640,7 @@ Phase 4 (Cleanup):
 
 **Goal**: Build human review UI for chart images to enable rapid classification and pattern learning
 **Plan Location**: `.claude/plans/gentle-prancing-yao.md`
-**Status**: 🟡 IN PROGRESS - Phase 1 Human Review UI
+**Status**: ✅ COMPLETE - Phase 1 Human Review UI complete; stats dashboard and export script added
 
 #### Phase 0: Discovery (SUPERSEDED)
 
@@ -798,10 +798,9 @@ IMG-1-3    IMG-1-4    IMG-1-5
 
 **VIS-2c Deferred** (2026-01-13): DEFERRED - Premature optimization:
 - No demonstrated batch processing bottleneck exists yet
-- Image review UI (IMG-1-*) not complete - no production usage data
 - Current volume is low (<100 images in inventory)
-- Revisit after IMG-1-8 complete and real usage patterns emerge
-- Decision: Optimize when actual performance data justifies the effort
+- Revisit when actual performance data justifies the effort
+- Decision: Optimize when real usage patterns emerge from production image review
 
 **Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
 
