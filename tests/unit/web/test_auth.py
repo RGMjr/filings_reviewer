@@ -5,6 +5,7 @@ Tests the API key authentication mechanism for /api/* routes.
 """
 
 import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,7 +20,6 @@ def app_with_auth():
         config_override={
             "API_KEY": "test-secret-key-12345",
             "API_KEY_REQUIRED": True,
-            "DATABASE_URL": "postgresql://test:test@localhost/test",
         },
     )
     return app
@@ -28,7 +28,8 @@ def app_with_auth():
 @pytest.fixture
 def client_with_auth(app_with_auth):
     """Test client for auth-enabled app."""
-    return app_with_auth.test_client()
+    with patch("src.web.routes.api.get_db", return_value=MagicMock()):
+        yield app_with_auth.test_client()
 
 
 class TestAPIAuthentication:
@@ -103,10 +104,6 @@ class TestAuthDisabled:
 @pytest.fixture
 def client():
     """Create test client with auth disabled (default testing config)."""
-    app = create_app(
-        config_name="testing",
-        config_override={
-            "DATABASE_URL": "postgresql://test:test@localhost/test",
-        },
-    )
-    return app.test_client()
+    app = create_app(config_name="testing")
+    with patch("src.web.routes.api.get_db", return_value=MagicMock()):
+        yield app.test_client()
