@@ -29,7 +29,7 @@ def register_api_auth(bp: Blueprint) -> None:
         if not current_app.config.get("API_KEY_REQUIRED", True):
             return None
 
-        api_key = request.headers.get("X-API-Key")
+        api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
         expected_key = current_app.config.get("API_KEY")
 
         if not expected_key:
