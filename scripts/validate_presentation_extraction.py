@@ -81,6 +81,29 @@ def _normalize_date(raw: str) -> str:
     return normalized
 
 
+def _parse_index_key(key: str) -> tuple[str, str, str]:
+    """Parse a file index key into (ticker, form_type, date_str).
+
+    Handles two formats:
+    - Legacy 8-K format: ``TICKER_DATE`` (e.g., ``CRM_2025-12-03``)
+    - New multi-type format: ``TICKER_FORM_DATE`` (e.g., ``DDOG_S-1_2019-09-19``)
+
+    Returns (ticker, form_type, date_str). form_type defaults to "8-K" for legacy keys.
+    """
+    parts = key.split("_", 2)
+    if len(parts) == 3:
+        # Could be TICKER_FORM_DATE (e.g., DDOG_S-1_2019-09-19)
+        # or TICKER_YYYY-MM-DD (legacy, date contains hyphens not underscores)
+        # Disambiguate: if parts[1] looks like a form type (no digits at start), it's new format
+        if parts[1] and not parts[1][0].isdigit():
+            return parts[0], parts[1], parts[2]
+    # Legacy: TICKER_DATE (split on first _ only)
+    legacy_parts = key.split("_", 1)
+    ticker = legacy_parts[0]
+    date_str = legacy_parts[1] if len(legacy_parts) > 1 else ""
+    return ticker, "8-K", date_str
+
+
 def load_file_index() -> dict[str, str]:
     """
     Load the _file_index.json mapping {TICKER}_{DATE} -> html_path.
@@ -229,8 +252,8 @@ def run_validation(
     verbose: bool = False,
 ) -> list[dict]:
     """Run pipeline on all indexed files and collect per-file results."""
-    config = PipelineConfig.for_presentation()
-    pipeline = V2Pipeline(config=config)
+    pipeline_8k = V2Pipeline(config=PipelineConfig.for_presentation())
+    pipeline_filing = V2Pipeline(config=PipelineConfig())
     results = []
 
     # Process only keys that have annotations (or all if no filter)
@@ -242,10 +265,9 @@ def run_validation(
         html_path_str = file_index[index_key]
         html_path = Path(html_path_str)
 
-        parts = index_key.split("_", 1)
-        ticker = parts[0]
-        date_str = parts[1] if len(parts) > 1 else ""
+        ticker, form_type, date_str = _parse_index_key(index_key)
         ann_key = f"{ticker}_{_normalize_date(date_str)}"
+        pipeline = pipeline_8k if form_type == "8-K" else pipeline_filing
 
         if not html_path.exists():
             logger.warning("HTML file not found for %s: %s — skipping", index_key, html_path)
@@ -261,10 +283,11 @@ def run_validation(
             continue
 
         try:
+            doc_type = "investor_presentation" if form_type == "8-K" else "sec_filing"
             result = pipeline.process(
                 html_path=html_path,
                 filing_id=-1,
-                document_type="investor_presentation",
+                document_type=doc_type,
             )
         except Exception as e:
             logger.error("Pipeline failed for %s: %s", index_key, e)
