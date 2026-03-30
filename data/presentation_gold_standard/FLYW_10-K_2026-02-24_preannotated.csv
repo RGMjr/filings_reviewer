@@ -1,0 +1,6 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Flywire Corp,FLYW,2026-02-24,cm_customer_retention_rate,110%,percent,other,filing,110%,LOW,mda,False,,
+Flywire Corp,FLYW,2026-02-24,cm_customer_retention_rate,116%,percent,other,filing,116%,LOW,cover,False,,
+Flywire Corp,FLYW,2026-02-24,cm_customer_retention_rate,125%,percent,other,filing,125%,LOW,mda,False,,
+Flywire Corp,FLYW,2026-02-24,cm_revenue_concentration,43%,percent,other,filing,43%,LOW,cover,False,,
+Flywire Corp,FLYW,2026-02-24,cm_revenue_concentration,76%,percent,other,filing,76%,LOW,cover,False,,
