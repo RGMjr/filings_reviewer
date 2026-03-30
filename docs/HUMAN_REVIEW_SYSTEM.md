@@ -197,14 +197,14 @@ config = get_high_recall_config()
 - Results stored in `extra_metadata["cohort_chart_candidates"]`
 - Enables human review of high-value visualizations (ARR by cohort, LTV/CAC, retention curves)
 
+### Image Review Stats Dashboard and Export (2026-03-30)
+- `/review/images/stats` route: overall decision statistics, daily counts, chart type distribution, rejection reason breakdown
+- `scripts/export_image_decisions.py`: exports reviewed decisions to CSV
+- New DB methods: `get_image_overall_decision_statistics`, `get_image_daily_decision_counts`, `get_image_chart_type_distribution`, `get_image_rejection_reason_stats`
+
 ---
 
 ## Remaining Work
-
-### HRI-11: Statistics Dashboard (Optional)
-- `/review/stats` route with review metrics
-- Decision counts, daily charts, metric breakdown
-- Blocked: Needs 30+ decisions for meaningful stats
 
 ### HRI-12: Inter-Rater Agreement (Future)
 - Multiple reviewers per candidate
