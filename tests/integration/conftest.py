@@ -447,12 +447,14 @@ def test_db_url():
 
 
 @pytest.fixture(scope="session")
-def test_db_adapter(test_db_url):
+def test_db_adapter(test_db_url, _terminate_stale_connections):
     """
     Create a database adapter for the test database.
 
     This is session-scoped, so one adapter is shared across all tests.
     Uses a connection pool to avoid creating new TCP connections per operation.
+    Depends on _terminate_stale_connections to ensure zombie connections are
+    cleared before the pool is created (prevents deadlocks from stale locks).
     """
     from src.infra.pool import create_pool
 
@@ -463,7 +465,29 @@ def test_db_adapter(test_db_url):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_migrations_to_test_db():
+def _terminate_stale_connections():
+    """Kill zombie connections from previous test runs to prevent deadlocks."""
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        return
+    import psycopg
+    try:
+        conn = psycopg.connect(url)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = current_database()
+                  AND pid != pg_backend_pid()
+            """)
+        conn.close()
+    except Exception:
+        pass  # Best-effort; DB-unreachable tests will skip downstream
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _apply_migrations_to_test_db(_terminate_stale_connections):
     """Apply all migrations to test DB at session start (idempotent)."""
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
