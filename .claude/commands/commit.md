@@ -8,33 +8,45 @@
 
 ## Steps
 
-1. **Stage files** — Determine what to commit using three-tier logic:
+1. **Doc update check** — Review what was changed this session and determine whether any documentation needs updating. Skip this step entirely if the session changes are narrow (e.g., a single-file fix, a test tweak, or a docs-only change with no structural impact). Otherwise, apply the targeted checks below based on what changed:
 
-   - **Session files exist:** Identify all files edited or created by Claude during this conversation (via Edit/Write tool calls). Cross-reference with `git status --porcelain` to confirm they have uncommitted changes. Auto-stage these with `git add <file1> <file2> ...` — no user confirmation needed. Do NOT auto-stage files with uncommitted changes that were not touched in this session.
+   | If the session touched... | Check and update... |
+   |---|---|
+   | New script or CLI command | `CLAUDE.md` commands section, `docs/README.md` |
+   | New or renamed `src/` module | Architecture docs (`docs/architecture/`) |
+   | New or changed API route | `docs/HUMAN_REVIEW_SYSTEM.md` or relevant route doc |
+   | New env var | `.env.template` reference in `CLAUDE.md` |
+   | New DB migration or schema change | `CLAUDE.md` database section, `docs/architecture/` |
+   | Changed workflow or pipeline stage | `CLAUDE.md` pipeline description, relevant `docs/` file |
+
+   For each implicated doc: read the relevant section, compare against the current code, and update only what is factually wrong or missing (e.g., a command that no longer exists, a module name that changed). Flag any update that requires editorial judgment — scope, framing, what to include — to the user rather than silently rewriting it.
+
+2. **Stage files** — Determine what to commit using three-tier logic:
+
+   - **Session files exist:** Identify all files edited or created by Claude during this conversation (via Edit/Write tool calls), including any doc files updated in step 1. Cross-reference with `git status --porcelain` to confirm they have uncommitted changes. Auto-stage these with `git add <file1> <file2> ...` — no user confirmation needed. Do NOT auto-stage files with uncommitted changes that were not touched in this session.
    - **No session files, but pre-existing changes exist:** Run `git status --short`, show the output to the user, ask which files to stage, and wait for explicit confirmation before proceeding.
    - **Nothing to commit:** Report "No changes to commit" and stop.
 
-2. **Lint check** — Check staged files (`git diff --cached --name-only`). If no code files are staged (i.e., no files under `src/`, `tests/`, `scripts/`, `config/`, `sql/`, and none of `pyproject.toml` or `requirements.txt`), skip lint with a note. Otherwise run `ruff check src/ tests/` and fix any errors before proceeding. Do NOT skip this if there are violations.
+3. **Lint check** — Check staged files (`git diff --cached --name-only`). If no code files are staged (i.e., no files under `src/`, `tests/`, `scripts/`, `config/`, `sql/`, and none of `pyproject.toml` or `requirements.txt`), skip lint with a note. Otherwise run `ruff check src/ tests/` and fix any errors before proceeding. Do NOT skip this if there are violations.
 
-3. **Full test suite** — If no code files are staged (same definition as step 2), skip tests with a note. Otherwise run `pytest -x -q`. All tests must pass. If any fail, diagnose the root cause, fix it, then re-run. Repeat until all pass in a single run.
+4. **Full test suite** — If no code files are staged (same definition as step 3), skip tests with a note. Otherwise run `pytest -x -q`. All tests must pass. If any fail, diagnose the root cause, fix it, then re-run. Repeat until all pass in a single run.
 
-4. **Doc freshness checks** — After pytest passes:
+5. **Doc freshness checks** — After pytest passes:
    - If pytest was run and its output shows a coverage percentage different from the one in `CLAUDE.md` (currently "87%"), update `CLAUDE.md` to match and stage the file.
    - If `docs/KNOWN_ISSUES.md` is staged, update its "Last Updated" date to today's date and re-stage it.
-   - Check whether the staged changes affect anything documented in `CLAUDE.md` or `docs/` (e.g., adding/removing a CLI command, renaming a `src/` module, changing a route). If so, flag the specific discrepancy to the user and ask whether to update docs before committing.
    - If `docs/PROJECT_TASK_INVENTORY.md` "Last Verified" date is >30 days old, warn the user and suggest running `/doc-audit`.
    - Stage any doc fixes made in this step.
 
-5. **Show staged diff** — Run `git diff --cached --stat` and show the user what will be committed.
+6. **Show staged diff** — Run `git diff --cached --stat` and show the user what will be committed.
 
-6. **Generate commit message and commit** — Analyze `git diff --cached` and the staged file list to generate a message:
+7. **Generate commit message and commit** — Analyze `git diff --cached` and the staged file list to generate a message:
    - Follow conventional commit format: `type: concise description` (subject line ≤72 chars)
    - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`
    - If a ticket/issue reference is apparent from the branch name or diff context, include it in parens, e.g. `feat: add X (GR-16)`
    - Add a body (blank line + detail) only when the diff spans multiple distinct concerns
    - Use the generated message directly — no confirmation step. Run `git commit` with the message using a heredoc for multi-line messages.
 
-7. **Push** — Run `git push`. If it fails, report the error and stop.
+8. **Push** — Run `git push`. If it fails, report the error and stop.
 
 ---
 
@@ -48,4 +60,4 @@
 - Auto-commit using the generated message — no confirmation step needed.
 - Always push after a successful commit. If the push fails, report the error and stop — do not retry silently.
 - If no session files exist, show pre-existing changes and ask the user which to stage before proceeding.
-- Doc auto-fixes are limited to deterministic values (coverage percentage, dates). Anything requiring judgment must be flagged to the user, not silently changed.
+- Doc auto-fixes are limited to deterministic values (coverage percentage, dates) and factual corrections (wrong command name, renamed module). Anything requiring editorial judgment — scope, framing, what to include — must be flagged to the user, not silently changed.
