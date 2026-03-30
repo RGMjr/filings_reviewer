@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -53,7 +54,7 @@ SOURCE_NAME = "sec_edgar_presentation"
 DEFAULT_CACHE_DIR = Path("data/presentations")
 
 # User-agent for direct requests (SEC requires contact info)
-_DEFAULT_USER_AGENT = "filings-reviewer info@example.com"
+_DEFAULT_USER_AGENT = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
 
 
 class SECPresentationSource:
@@ -110,6 +111,9 @@ class SECPresentationSource:
         # Session for direct EDGAR binary downloads (PDFs)
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": user_agent})
+
+        # Instance-level cache: CIK → ticker (avoids class-level data bleed)
+        self._cik_to_ticker_cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Public API (DocumentSource protocol)
@@ -247,9 +251,6 @@ class SECPresentationSource:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    # In-memory cache: CIK → ticker (populated during list_available)
-    _cik_to_ticker_cache: dict[str, str] = {}
-
     def _resolve_ticker(self, ticker: str) -> tuple[str | None, str | None]:
         """Resolve a ticker to (cik, company_name) using EDGAR submissions API.
 
@@ -269,7 +270,7 @@ class SECPresentationSource:
                     cik_raw = str(entry["cik_str"])
                     cik = cik_raw.zfill(10)
                     company = entry.get("title", "")
-                    SECPresentationSource._cik_to_ticker_cache[cik] = ticker_upper
+                    self._cik_to_ticker_cache[cik] = ticker_upper
                     return cik, company
 
             logger.warning("Ticker %s not found in EDGAR company_tickers.json", ticker)
@@ -293,7 +294,7 @@ class SECPresentationSource:
             return results
 
         company_name = data.get("name", "")
-        SECPresentationSource._cik_to_ticker_cache[cik] = ticker.upper()
+        self._cik_to_ticker_cache[cik] = ticker.upper()
 
         # Process recent + archived filing arrays
         filing_arrays: list[dict[str, Any]] = []

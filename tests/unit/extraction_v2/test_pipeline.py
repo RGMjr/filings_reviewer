@@ -522,9 +522,9 @@ class TestPipelineReturnsDedupFacts:
             unit=Unit.COUNT,
         )
         context.facts = [fact]
-        context.deduplicated_facts = []  # Empty = dedup didn't run
+        context.deduplicated_facts = None  # None = dedup didn't run
 
-        output_facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
+        output_facts = context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
         assert len(output_facts) == 1
         assert output_facts[0].fact_id == "raw-1"
 

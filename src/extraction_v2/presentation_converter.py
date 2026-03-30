@@ -79,8 +79,8 @@ def _is_title_slide(lines: list[str]) -> bool:
 
     Returns True if ANY of the following are met:
     - Fewer than 5 non-empty text lines (sparse = likely title page)
-    - First non-empty line is ALL CAPS (headline style)
-    - First non-empty line contains no digits (purely descriptive header)
+    - First non-empty line is ALL CAPS and contains at least one letter
+      (e.g. "COMPANY NAME" or "Q3 FY26" — common on cover slides)
 
     Args:
         lines: Non-empty text lines extracted from the first page.
@@ -99,16 +99,9 @@ def _is_title_slide(lines: list[str]) -> bool:
 
     first = non_empty[0]
 
-    # Heuristic 2: first line is ALL CAPS (common for company names on title slides)
-    if (
-        first == first.upper()
-        and first.isalpha()
-        or (first == first.upper() and any(c.isalpha() for c in first))
-    ):
-        return True
-
-    # Heuristic 3: first line has no numeric characters (purely textual header)
-    if not any(c.isdigit() for c in first):
+    # Heuristic 2: first line is ALL CAPS with at least one letter
+    # (covers "COMPANY NAME", "Q3 FY26 EARNINGS", etc.)
+    if first == first.upper() and any(c.isalpha() for c in first):
         return True
 
     return False
@@ -184,22 +177,24 @@ def _extract_page_images(page: object, page_num: int, output_dir: Path) -> list[
             return []
 
         fitz_doc = fitz.open(pdf_filename)
-        fitz_page = fitz_doc[page_num - 1]
+        try:
+            fitz_page = fitz_doc[page_num - 1]
 
-        images_dir.mkdir(parents=True, exist_ok=True)
-        for img_idx, img_info in enumerate(fitz_page.get_images(full=True), start=1):
-            xref = img_info[0]
-            base_image = fitz_doc.extract_image(xref)
-            img_bytes = base_image.get("image")
-            img_ext = base_image.get("ext", "png")
-            if not img_bytes:
-                continue
-            fname = f"page_{page_num}_img_{img_idx}.{img_ext}"
-            img_path = images_dir / fname
-            img_path.write_bytes(img_bytes)
-            image_refs.append(str(img_path))
+            images_dir.mkdir(parents=True, exist_ok=True)
+            for img_idx, img_info in enumerate(fitz_page.get_images(full=True), start=1):
+                xref = img_info[0]
+                base_image = fitz_doc.extract_image(xref)
+                img_bytes = base_image.get("image")
+                img_ext = base_image.get("ext", "png")
+                if not img_bytes:
+                    continue
+                fname = f"page_{page_num}_img_{img_idx}.{img_ext}"
+                img_path = images_dir / fname
+                img_path.write_bytes(img_bytes)
+                image_refs.append(str(img_path))
+        finally:
+            fitz_doc.close()
 
-        fitz_doc.close()
         return image_refs
 
     except ImportError:

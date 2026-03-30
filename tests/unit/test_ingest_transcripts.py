@@ -18,7 +18,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # The script adds project root to sys.path on import; mimic that here
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -29,6 +29,7 @@ from scripts.ingest_transcripts import (  # noqa: E402
     IngestSummary,
     _get_or_create_company,
     _is_already_ingested,
+    _process_one,
     _upsert_transcript_filing,
 )
 
@@ -266,3 +267,80 @@ class TestIsAlreadyIngested:
         params = cur.execute.call_args[0][1]
         assert params["ticker"] == "ADBE"
         assert params["document_date"] == date(2025, 1, 15)
+
+
+# ============================================================================
+# _process_one: pipeline call count tests
+# ============================================================================
+
+
+class TestProcessOnePipelineCallCount:
+    """Verify pipeline.process() is called exactly once per document."""
+
+    def _make_metadata(self) -> MagicMock:
+        meta = MagicMock()
+        meta.document_date = date(2025, 1, 1)
+        meta.fiscal_period = "Q4"
+        meta.company_name = "Salesforce"
+        meta.source = "fmp"
+        return meta
+
+    def _make_pipeline_result(self, fact_count: int = 3) -> MagicMock:
+        pr = MagicMock()
+        pr.fact_count = fact_count
+        return pr
+
+    def test_dry_run_calls_pipeline_once(self) -> None:
+        """Dry-run mode: pipeline.process() called exactly once."""
+        pipeline = MagicMock()
+        pipeline.process.return_value = self._make_pipeline_result()
+        metadata = self._make_metadata()
+
+        _process_one(
+            source_id="fmp:CRM_2025-01-01_Q4",
+            ticker="CRM",
+            metadata=metadata,
+            html_content="<html></html>",
+            pipeline=pipeline,
+            db_adapter=None,
+            dry_run=True,
+        )
+
+        assert pipeline.process.call_count == 1
+
+    def test_live_run_calls_pipeline_once(self) -> None:
+        """Live run (db_adapter present): pipeline.process() still called exactly once."""
+        pipeline = MagicMock()
+        pipe_result = self._make_pipeline_result()
+        pipeline.process.return_value = pipe_result
+        metadata = self._make_metadata()
+
+        persist_result = MagicMock()
+        persist_result.success = True
+        persist_result.facts_upserted = 3
+
+        db_adapter = MagicMock()
+
+        with patch("scripts.ingest_transcripts.get_company_info", return_value=None), patch(
+            "scripts.ingest_transcripts.V2PersistenceAdapter"
+        ) as mock_adapter_cls, patch(
+            "scripts.ingest_transcripts._get_or_create_company", return_value=1
+        ), patch(
+            "scripts.ingest_transcripts._upsert_transcript_filing", return_value=42
+        ):
+            mock_adapter_cls.return_value.persist_pipeline_result.return_value = persist_result
+
+            _process_one(
+                source_id="fmp:CRM_2025-01-01_Q4",
+                ticker="CRM",
+                metadata=metadata,
+                html_content="<html></html>",
+                pipeline=pipeline,
+                db_adapter=db_adapter,
+                dry_run=False,
+            )
+
+        assert pipeline.process.call_count == 1
+        # Verify the real filing_id (42) was used in the single call
+        call_kwargs = pipeline.process.call_args[1]
+        assert call_kwargs.get("filing_id") == 42

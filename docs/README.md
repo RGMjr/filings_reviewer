@@ -396,7 +396,16 @@ See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usag
 
 ## Version History
 
-### Version 2.4 (Current - 2026-03-22)
+### Version 2.5 (Current - 2026-03-30)
+- ✅ Migration 15 (`15_rename_cohort_heatmap_to_parfait.sql`): renames `cohort_heatmap` → `cohort_parfait` in `check_chart_type` constraint
+- ✅ Migration 16 (`16_add_8k_form_type.sql`): adds `'8-K'` to `check_form_type` constraint so presentation ingestion no longer fails
+- ✅ `_is_title_slide()` heuristics simplified — fewer false suppressions of content slides (e.g., "Revenue Discussion", "Customer Metrics")
+- ✅ `_DOLLAR_REJECT_METRICS` extended with 4 additional count-only metrics; `deduplicated_facts` changed to `list | None` (`None` = stage not yet run, `[]` = ran, found nothing)
+- ✅ `SECPresentationSource`: `_cik_to_ticker_cache` moved to instance level; `SEC_USER_AGENT` env var used for default user-agent
+- ✅ `presentation_converter.py`: `fitz_doc` now closed in `try/finally` block (resource safety)
+- ✅ `ingest_transcripts.py` / `ingest_presentations.py`: pipeline now runs once with the real `filing_id` (previously ran twice)
+
+### Version 2.4 (2026-03-22)
 - ✅ Fresh mode validation: `test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh` (no DB required)
 - ✅ `scripts/apply_all_migrations.py` added — applies all 14 SQL migrations in canonical order
 - ✅ Neon (cloud PostgreSQL) documented as production DB in CLAUDE.md and `.env.template`

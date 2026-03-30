@@ -81,7 +81,7 @@ def test_checksum_is_sha256():
 
 
 def test_first_run_applies_all(tmp_path):
-    """Fresh ledger: all 13 migrations should be applied."""
+    """Fresh ledger: all migrations should be applied."""
     sql_dir = write_sql_files(tmp_path, MIGRATIONS)
     db = make_db()  # empty ledger
 
@@ -161,5 +161,14 @@ def test_partial_ledger_resumes(tmp_path):
     for name in MIGRATIONS[6:]:
         assert results[name] == "applied", f"{name} should be applied"
 
-    # get_connection called only for the 7 newly applied migrations
+    # get_connection called only for newly applied migrations
     assert db.get_connection.call_count == len(MIGRATIONS) - 6
+
+
+def test_migration_16_registered():
+    """Migration 16 (8-K form_type fix) must be registered in MIGRATIONS."""
+    assert "16_add_8k_form_type.sql" in MIGRATIONS
+    # Must come after migration 15
+    idx_15 = MIGRATIONS.index("15_rename_cohort_heatmap_to_parfait.sql")
+    idx_16 = MIGRATIONS.index("16_add_8k_form_type.sql")
+    assert idx_16 > idx_15

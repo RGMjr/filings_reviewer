@@ -272,7 +272,7 @@ class PipelineContext:
     candidates: list[MetricCandidate] = field(default_factory=list)
     bound_values: list[BoundValue] = field(default_factory=list)
     facts: list[MetricFact] = field(default_factory=list)
-    deduplicated_facts: list[MetricFact] = field(default_factory=list)  # After dedup
+    deduplicated_facts: list[MetricFact] | None = None  # Populated by Stage 10; None = not yet run
     definitions: list[MetricDefinition] = field(default_factory=list)
 
     # Diagnostics (only populated when config.retain_context=True)
