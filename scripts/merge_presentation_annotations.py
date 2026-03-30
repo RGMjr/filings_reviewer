@@ -50,11 +50,28 @@ OUTPUT_CSV = GOLD_STANDARD_DIR / "presentation_gold_standard.csv"
 SPLIT_JSON = GOLD_STANDARD_DIR / "split.json"
 
 # Sector metadata — extend as more companies are added to the gold standard
-COMPANY_SECTORS: dict[str, str] = {}
+COMPANY_SECTORS: dict[str, str] = {
+    "CRM": "SaaS",
+    "GOOGL": "Consumer Tech",
+    "INTU": "SaaS",
+    "META": "Consumer Tech",
+    "PYPL": "Fintech",
+    "NOW": "SaaS",
+    "TRUP": "Insurance",
+    "SHOP": "E-commerce",
+    "FIGM": "SaaS",
+    "KLAR": "Fintech",
+    "CART": "Marketplace",
+    "FLYW": "Fintech",
+    "CHWY": "E-commerce",
+    "HOOD": "Fintech",
+    "DDOG": "SaaS",
+    "GTLB": "SaaS",
+}
 
 # Default test set: empty until there are enough companies to split.
 # Once ≥4 companies exist, set this to a diverse 40% subset.
-DEFAULT_TEST_COMPANIES: set[str] = set()
+DEFAULT_TEST_COMPANIES: set[str] = {"TRUP", "CART", "FLYW", "HOOD", "GTLB"}
 
 OUTPUT_FIELDNAMES = [
     "company",
