@@ -403,6 +403,7 @@ class V2GoldStandardValidator:
         Returns:
             ValidationResult with precision/recall metrics
         """
+        expected_entries = self._deduplicate_entries(expected_entries, company_name)
         result = ValidationResult(
             company_name=company_name,
             filing_path=str(filing_path),
@@ -475,6 +476,11 @@ class V2GoldStandardValidator:
                 result.total_expected -= 1
                 continue
 
+            # Skip entries with empty metric_id — malformed gold standard rows
+            if not normalize_metric_id(entry.metric_id):
+                result.total_expected -= 1
+                continue
+
             # Try to find a matching fact
             matched_fact = self._find_matching_fact(entry, v2_facts, matched_fact_ids)
 
@@ -533,10 +539,28 @@ class V2GoldStandardValidator:
             mid = normalize_metric_id(entry.metric_id)
             gold_entries_for_metric.setdefault(mid, []).append(entry)
 
+        # Track (metric_id, value) pairs already counted as true positives so that
+        # a second extraction of the same value from a different source (e.g., the
+        # same number appearing in both prose and a table with different periods)
+        # is not penalised as a false positive.
+        matched_metric_values: set[tuple[str, float | None]] = {
+            (
+                normalize_metric_id(mr.matched_fact.canonical_metric_id),
+                mr.matched_fact.value,
+            )
+            for mr in result.match_results
+            if mr.matched_fact is not None and mr.match_type == "true_positive"
+        }
+
         for fact in v2_facts:
             if fact.fact_id not in matched_fact_ids:
                 fact_metric = normalize_metric_id(fact.canonical_metric_id)
                 if fact_metric in gold_metric_ids:
+                    # Skip if this metric+value was already counted as TP —
+                    # same value extracted from a different source/period.
+                    if (fact_metric, fact.value) in matched_metric_values:
+                        continue
+
                     result.extra += 1
                     result.false_positives += 1
 

@@ -49,7 +49,9 @@ _CURRENCY_ONLY_METRICS: set[str] = {
     "cm_billings",
     "cm_bookings",
     "cm_gmv",
-    "cm_revenue_by_cohort",
+    # cm_revenue_by_cohort is intentionally unconstrained — some filings express
+    # cohort revenue in dollars (Farfetch GMV by cohort), others as percentages
+    # of total revenue (Snowflake: "94% of revenue from existing customers").
 }
 
 # Percent-only metrics: pure rates and margins (no bare-decimal ratio form)

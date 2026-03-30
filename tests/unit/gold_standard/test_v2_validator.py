@@ -1532,7 +1532,7 @@ class TestDuplicateEntrySkip:
             return v
 
     def test_duplicate_entries_skipped_not_fn(self, validator: V2GoldStandardValidator) -> None:
-        """3 identical entries, 1 fact → 1 TP, 2 skipped, 0 FN."""
+        """3 identical entries, 1 fact → dedup collapses to 1 entry → 1 TP, 0 FN."""
         entries = [
             make_entry(metric_id="cm_dau", raw_value="1000"),
             make_entry(metric_id="cm_dau", raw_value="1000"),
@@ -1547,10 +1547,11 @@ class TestDuplicateEntrySkip:
 
         assert result.true_positives == 1
         assert result.false_negatives == 0
-        assert result.total_expected == 1  # 3 - 2 skipped
+        assert result.total_expected == 1  # static dedup reduces 3 → 1
         assert result.recall == 1.0
+        # Static dedup removes duplicates before matching; no runtime skips needed
         skipped = [m for m in result.match_results if m.match_type == "skipped"]
-        assert len(skipped) == 2
+        assert len(skipped) == 0
 
     def test_different_values_not_skipped(self, validator: V2GoldStandardValidator) -> None:
         """Entries with different values are not treated as duplicates."""
@@ -1572,7 +1573,7 @@ class TestDuplicateEntrySkip:
     def test_entries_matching_different_facts_both_tp(
         self, validator: V2GoldStandardValidator
     ) -> None:
-        """2 identical entries, 2 identical facts → 2 TP, 0 skipped."""
+        """2 identical entries, 2 identical facts → dedup collapses entries to 1 → 1 TP, 0 FP (duplicate FP skip)."""
         entries = [
             make_entry(metric_id="cm_dau", raw_value="1000"),
             make_entry(metric_id="cm_dau", raw_value="1000"),
@@ -1585,9 +1586,13 @@ class TestDuplicateEntrySkip:
 
         result = validator.validate_filing("TestCo", Path("f.html"), entries)
 
-        assert result.true_positives == 2
+        # Static dedup reduces 2 identical entries to 1; only 1 TP possible.
+        # The second identical fact (same metric+value) is skipped in the FP
+        # loop because ("cm_dau", 1000.0) is already in matched_metric_values.
+        assert result.true_positives == 1
         assert result.false_negatives == 0
-        assert result.total_expected == 2
+        assert result.total_expected == 1
+        assert result.false_positives == 0
 
     def test_no_matching_fact_at_all_is_fn(self, validator: V2GoldStandardValidator) -> None:
         """Entry with no matching fact (even ignoring matched set) is FN."""
