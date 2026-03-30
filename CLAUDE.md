@@ -12,7 +12,7 @@ src/
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction/     # Metric extraction (V1 - production)
-├── extraction_v2/  # Image/OCR pipeline (NOT in production — V2 was reverted; code present but inactive)
+├── extraction_v2/  # V2 unified extraction pipeline (active — used for transcripts and presentations)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
@@ -58,7 +58,7 @@ docker compose down    # Stop
 
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-10).
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-16).
 
 **Production**: Neon (cloud PostgreSQL) — connection string format:
 `postgresql://user:password@host.neon.tech/dbname?sslmode=require`
@@ -67,7 +67,7 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 
 ## Testing Standards
 
-- **Coverage**: 75% minimum (enforced), currently 87%
+- **Coverage**: 75% minimum (enforced), currently 82%
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Structure**: `tests/unit/` (fast), `tests/integration/` (requires `TEST_DATABASE_URL`)
 - **Before committing**: Run the full test suite (`pytest -x -q`) when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.

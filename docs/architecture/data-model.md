@@ -676,7 +676,7 @@ When metric definition changes that affect comparability:
 
 ## Schema 09: Image Review and V2 Extraction Tables
 
-Two additional schema files extend the core data model. Both are applied but the V2 tables are inactive pending a full V2 pipeline deployment.
+Two additional schema files extend the core data model. Both are applied. The V2 tables are populated by the V2 pipeline, which is active for transcript and presentation ingestion.
 
 ### Image Review Tables (`sql/09_create_image_review_schema.sql`)
 
@@ -697,7 +697,7 @@ Supports human-in-the-loop classification of chart images found in filings.
 
 **Key fields on `image_review_decisions`:**
 - `decision` — `relevant` or `not_relevant`
-- `chart_type` — required when relevant: `cohort_table`, `cohort_heatmap`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`
+- `chart_type` — required when relevant: `cohort_table`, `cohort_parfait`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`
 - `rejection_reason` — required when not relevant: `decorative`, `not_a_chart`, `wrong_subject`, `duplicate`, `unreadable`, `other`
 
 **Analysis views included:**
@@ -710,7 +710,7 @@ Supports human-in-the-loop classification of chart images found in filings.
 
 ### V2 Extraction Tables (`sql/09_v2_schema.sql`)
 
-Schema for the V2 unified extraction pipeline (currently inactive — V2 pipeline was reverted). Tables are present in the database but unpopulated.
+Schema for the V2 unified extraction pipeline. Tables are populated by the V2 pipeline, which is active for transcript and presentation document types.
 
 | Table | Purpose |
 |-------|---------|
@@ -734,6 +734,18 @@ Schema for the V2 unified extraction pipeline (currently inactive — V2 pipelin
 
 ---
 
+## Schema 15 and 16: Constraint Updates
+
+### Migration 15 (`sql/15_rename_cohort_heatmap_to_parfait.sql`)
+
+Renames the `cohort_heatmap` chart type to `cohort_parfait` in the `check_chart_type` constraint on `image_review_decisions`. The old name `cohort_heatmap` is no longer valid. The full allowed set is now: `cohort_table`, `cohort_parfait`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`.
+
+### Migration 16 (`sql/16_add_8k_form_type.sql`)
+
+Adds `'8-K'` to the `check_form_type` constraint on the `filings` table. Investor presentations are filed as SEC 8-K exhibits, so `ingest_presentations.py` inserts rows with `form_type = '8-K'`. Without this migration, every presentation ingestion fails with a CHECK constraint violation. The full allowed set is now: `S-1`, `S-1/A`, `F-1`, `F-1/A`, `10-K`, `10-K/A`, `8-K`, `earnings_call`, `investor_presentation`.
+
+---
+
 ## Related Documentation
 
 - **System Architecture:** `docs/architecture/system-overview.md` - High-level design
@@ -743,6 +755,6 @@ Schema for the V2 unified extraction pipeline (currently inactive — V2 pipelin
 
 ---
 
-**Last Updated:** 2025-12-09
-**Version:** 2.0
+**Last Updated:** 2026-03-30
+**Version:** 2.1
 **Status:** Production Schema

@@ -371,7 +371,7 @@ def test_fetch_cache_hit_returns_cached_html(source: SECPresentationSource, tmp_
 
     # Pre-populate cache
     ticker = "CRM"
-    SECPresentationSource._cik_to_ticker_cache[cik] = ticker
+    source._cik_to_ticker_cache[cik] = ticker
     html_path, meta_path = source._cache_paths(ticker, accession, filename)
     html_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -422,7 +422,7 @@ def test_fetch_cache_miss_downloads_converts_and_caches(
     filename = "slides.pdf"
     source_id = f"{cik}/{accession}/{filename}"
 
-    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+    source._cik_to_ticker_cache[cik] = "CRM"
 
     converted_html = "<html><body>Converted slides</body></html>"
     pdf_bytes = b"%PDF-1.4 fake content"
@@ -470,7 +470,7 @@ def test_fetch_pdf_download_failure_raises_file_not_found(
     filename = "investor_presentation.pdf"
     source_id = f"{cik}/{accession}/{filename}"
 
-    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+    source._cik_to_ticker_cache[cik] = "CRM"
 
     # Simulate download failure
     import requests as req_lib
@@ -490,7 +490,7 @@ def test_fetch_conversion_failure_propagates(
     filename = "presentation.pdf"
     source_id = f"{cik}/{accession}/{filename}"
 
-    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+    source._cik_to_ticker_cache[cik] = "CRM"
 
     mock_resp = MagicMock()
     mock_resp.content = b"%PDF-1.4 content"
@@ -519,7 +519,7 @@ def test_fetch_htm_downloads_directly_without_conversion(
     filename = "crm-q4fy26xexhibit991.htm"
     source_id = f"{cik}/{accession}/{filename}"
 
-    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+    source._cik_to_ticker_cache[cik] = "CRM"
 
     htm_content = "<html><body><h1>Q4 FY2026 Earnings</h1></body></html>"
 
@@ -561,7 +561,7 @@ def test_fetch_htm_download_failure_raises_file_not_found(
     filename = "exhibit991.htm"
     source_id = f"{cik}/{accession}/{filename}"
 
-    SECPresentationSource._cik_to_ticker_cache[cik] = "CRM"
+    source._cik_to_ticker_cache[cik] = "CRM"
 
     import requests as req_lib
 
@@ -581,7 +581,7 @@ def test_fetch_htm_cache_hit_returns_cached_html(
     source_id = f"{cik}/{accession}/{filename}"
 
     ticker = "CRM"
-    SECPresentationSource._cik_to_ticker_cache[cik] = ticker
+    source._cik_to_ticker_cache[cik] = ticker
     html_path, meta_path = source._cache_paths(ticker, accession, filename)
     html_path.parent.mkdir(parents=True, exist_ok=True)
 

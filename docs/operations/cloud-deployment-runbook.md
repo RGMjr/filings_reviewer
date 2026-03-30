@@ -83,20 +83,15 @@ Always use the **direct** endpoint for migrations:
 export NEON_DIRECT_URL="postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require"
 
 # Apply a single migration
-psql "$NEON_DIRECT_URL" -f sql/07_create_review_schema.sql
+psql "$NEON_DIRECT_URL" -f sql/16_add_8k_form_type.sql
 
-# Apply all migrations in order (first-time setup only)
-for f in sql/0{0..9}*.sql; do
-  echo "Applying $f..."
-  psql "$NEON_DIRECT_URL" -f "$f"
-done
+# Apply all migrations in canonical order (recommended — skips already-applied ones)
+DATABASE_URL="$NEON_DIRECT_URL" python3 scripts/apply_all_migrations.py
 ```
 
-> **Migration ordering note:** Files `04`, `08`, and `09` each have two variants.
-> Apply them in this order: `04_add_post_combination.sql` before `04_seed_metrics_taxonomy.sql`,
-> `08_add_richness_metadata.sql` before `08_add_suppressed_candidates.sql`,
-> `09_create_image_review_schema.sql` before `09_v2_schema.sql`.
-> The v2 schema (`09_v2_schema.sql`) is for the inactive V2 pipeline — skip if not needed.
+> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 16 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
+>
+> If you need to apply a single migration manually, use `psql "$NEON_DIRECT_URL" -f sql/<filename>.sql`.
 
 ### Restoring from a dump file
 

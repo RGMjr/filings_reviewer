@@ -272,14 +272,14 @@ def _process_one(
         tmp_path = Path(tmp.name)
 
     try:
-        pipe_result = pipeline.process(
-            html_path=tmp_path,
-            filing_id=-1,  # placeholder — replaced on persist
-            document_date=metadata.document_date,
-        )
-        result.fact_count = pipe_result.fact_count
-
         if dry_run or db_adapter is None:
+            # Dry run: single pipeline run with placeholder filing_id
+            pipe_result = pipeline.process(
+                html_path=tmp_path,
+                filing_id=0,
+                document_date=metadata.document_date,
+            )
+            result.fact_count = pipe_result.fact_count
             result.status = "ingested"
             logger.info(
                 "[DRY-RUN] %s %s → %d facts",
@@ -289,7 +289,7 @@ def _process_one(
             )
             return result
 
-        # Persist to database
+        # Persist to database: create filing record first, then run pipeline once
         company_info = get_company_info(ticker)
         company_name = (
             company_info.company_name if company_info else (metadata.company_name or ticker)
@@ -308,15 +308,14 @@ def _process_one(
             )
             result.filing_id = filing_id
 
-        # Now persist facts with the real filing_id
-        # Re-run pipeline with the actual filing_id so provenance is correct
-        pipe_result2 = pipeline.process(
+        # Single pipeline run with the real filing_id for correct provenance
+        pipe_result = pipeline.process(
             html_path=tmp_path,
             filing_id=filing_id,
             document_date=metadata.document_date,
         )
         persist_result = V2PersistenceAdapter(db_adapter).persist_pipeline_result(
-            pipe_result2,
+            pipe_result,
             filing_id,
             document_type="earnings_call",
             ticker=ticker,

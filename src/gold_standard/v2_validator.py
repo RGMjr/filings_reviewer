@@ -850,7 +850,7 @@ class V2GoldStandardValidator:
         closest_conf = closest_fact.confidence if closest_fact else None
 
         # Step 5: Check if fact exists in context.facts but not deduplicated_facts
-        dedup_fact_ids = {f.fact_id for f in context.deduplicated_facts}
+        dedup_fact_ids = {f.fact_id for f in (context.deduplicated_facts or [])}
         context_fact_ids = {f.fact_id for f in context_facts}
         dedup_removed = bool(context_fact_ids and not context_fact_ids.intersection(dedup_fact_ids))
 

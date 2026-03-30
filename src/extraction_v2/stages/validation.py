@@ -71,7 +71,7 @@ class ValidationStage:
             start_time = datetime.now(UTC)
 
             # Use deduplicated facts if available, otherwise facts
-            facts = context.deduplicated_facts if context.deduplicated_facts else context.facts
+            facts = context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
 
             # Get thresholds from config if available
             auto_accept = getattr(

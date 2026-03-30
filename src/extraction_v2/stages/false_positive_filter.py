@@ -87,6 +87,8 @@ _BARE_SMALL_NUMBER_THRESHOLD_QA = 500
 # Metrics that are inherently user/activity counts — never currency.
 # A dollar value bound to these metrics is always a false positive
 # (e.g., "$224 million" extracted as cm_monthly_active_users).
+# Used for percent-rejection in _rule_percent_on_count_metric (MAU/DAU have
+# a special YoY escape hatch, so other count metrics are listed separately).
 _COUNT_ONLY_METRICS = frozenset({
     "cm_monthly_active_users",
     "cm_daily_active_users",
@@ -94,6 +96,16 @@ _COUNT_ONLY_METRICS = frozenset({
     "cm_customers_period_end",
     "cm_new_customers_acquired",
     "cm_large_customers_period_end",
+})
+
+# Extended set for currency-unit rejection: adds metrics where dollar values
+# are always FPs but percent growth rates may appear in transcripts (so they
+# are not gated by _COUNT_ONLY_METRICS percent check above).
+_DOLLAR_REJECT_METRICS = _COUNT_ONLY_METRICS | frozenset({
+    "cm_customers_period_end_by_tenure",
+    "cm_purchase_transactions_overall",
+    "cm_transactions_by_cohort",
+    "cm_cac_payback_period",
 })
 
 # Metrics where percent values need conjunction-clause gating (relaxed mode).
@@ -1049,7 +1061,7 @@ def _is_v2_false_positive(
         # Note: a broader version of this check also runs in process() for
         # all sections; this check ensures it fires inside _is_v2_false_positive
         # so the reason tag reflects the Q&A context.
-        if bv.unit == Unit.CURRENCY and metric_id in _COUNT_ONLY_METRICS:
+        if bv.unit == Unit.CURRENCY and metric_id in _DOLLAR_REJECT_METRICS:
             return True, "v2_qa_currency_on_count"
 
     # Relaxed mode: forward guidance detection (all sections).
@@ -1356,7 +1368,7 @@ class FalsePositiveFilterStage:
                     # Runs after V1 to let label-embedded filters (">$100,000")
                     # remove true FPs first.
                     if bv.unit == Unit.CURRENCY:
-                        if candidate and candidate.metric_id in _COUNT_ONLY_METRICS:
+                        if candidate and candidate.metric_id in _DOLLAR_REJECT_METRICS:
                             reason_str = "v2_currency_on_count_metric"
                             filter_reasons[reason_str] = (
                                 filter_reasons.get(reason_str, 0) + 1

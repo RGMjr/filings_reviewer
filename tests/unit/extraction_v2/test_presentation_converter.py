@@ -143,10 +143,24 @@ class TestIsTitleSlide:
         ]
         assert _is_title_slide(lines) is True
 
-    def test_first_line_no_numbers_is_title(self) -> None:
-        # First line with no digits triggers title heuristic
+    def test_first_line_no_numbers_not_title(self) -> None:
+        # Mixed-case content header with no digits: NOT a title slide.
+        # Previously heuristic 3 fired here, but it caused false suppression
+        # of legitimate content slides (e.g. "Revenue Discussion", "Customer Metrics").
         lines = [
             "Investor Day Presentation",
+            "Revenue grew 25% in Q3",
+            "Customers exceeded 1000",
+            "ARR at $500M milestone",
+            "NRR stable at 120%",
+            "Outlook positive for FY2026",
+        ]
+        assert _is_title_slide(lines) is False
+
+    def test_all_caps_no_numbers_first_line_is_title(self) -> None:
+        # ALL CAPS first line (no digits) with 5+ lines: heuristic 2 fires.
+        lines = [
+            "INVESTOR DAY PRESENTATION",
             "Revenue grew 25% in Q3",
             "Customers exceeded 1000",
             "ARR at $500M milestone",

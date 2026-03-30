@@ -47,7 +47,7 @@ class MockPipelineContext:
     filing_id: int = 1
     config: Any = field(default_factory=MockPipelineConfig)
     facts: list[MetricFact] = field(default_factory=list)
-    deduplicated_facts: list[MetricFact] = field(default_factory=list)
+    deduplicated_facts: list[MetricFact] | None = field(default_factory=list)
     stage_results: list[Any] = field(default_factory=list)
 
 
@@ -425,13 +425,13 @@ class TestEdgeCases:
         assert fact.requires_review is False
         assert fact.review_status == ReviewStatus.AUTO_ACCEPTED
 
-    def test_uses_facts_if_deduplicated_facts_empty(self) -> None:
-        """Uses context.facts if deduplicated_facts is empty."""
+    def test_uses_facts_if_deduplicated_facts_not_run(self) -> None:
+        """Uses context.facts if deduplicated_facts is None (dedup stage didn't run)."""
         stage = ValidationStage()
         fact = create_valid_fact(confidence=0.95)
         context = MockPipelineContext(
             facts=[fact],
-            deduplicated_facts=[],
+            deduplicated_facts=None,
         )
 
         result = stage.process(context)
