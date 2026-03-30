@@ -256,8 +256,8 @@ class TestSECPresentationSourceToPipeline:
         # cache_dir/{ticker}/{accession}/{filename}.html
         cik, accession, filename = "0000123456", "0000123456-25-000001", "presentation.pdf"
 
-        # Inject cik → ticker mapping BEFORE creating the source so _cache_paths resolves
-        SECPresentationSource._cik_to_ticker_cache[cik] = ticker
+        # Inject cik → ticker mapping into the instance cache so _cache_paths resolves
+        source._cik_to_ticker_cache[cik] = ticker
 
         cache_dir = tmp_path / "cache" / ticker / accession
         cache_dir.mkdir(parents=True)
@@ -305,8 +305,8 @@ class TestSECPresentationSourceToPipeline:
             "investor_slides.pdf",
         )
 
-        # Inject cik → ticker mapping before creating cache paths
-        SECPresentationSource._cik_to_ticker_cache[cik] = ticker
+        # Inject cik → ticker mapping into the instance cache before fetching
+        source._cik_to_ticker_cache[cik] = ticker
 
         # Pre-populate cache under ticker-based path
         cache_dir = tmp_path / "cache" / ticker / accession

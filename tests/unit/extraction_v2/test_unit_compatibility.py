@@ -172,12 +172,15 @@ class TestNewConstraints:
         assert is_unit_compatible("cm_cac_payback_period", Unit.PERCENT) is False
         assert is_unit_compatible("cm_cac_payback_period", Unit.RATIO) is False
 
-    def test_revenue_by_cohort_constrained_to_currency(self) -> None:
+    def test_revenue_by_cohort_unconstrained(self) -> None:
+        # cm_revenue_by_cohort is intentionally unconstrained — some filings
+        # express cohort revenue in dollars (Farfetch), others as percentages
+        # (Snowflake: "94% of revenue from existing customers").
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.CURRENCY) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is True
         assert is_unit_compatible("cm_revenue_by_cohort", Unit.OTHER) is True
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.COUNT) is False
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.PERCENT) is False
-        assert is_unit_compatible("cm_revenue_by_cohort", Unit.RATIO) is False
+        assert get_allowed_units("cm_revenue_by_cohort") is None
 
 
 class TestUnconstrainedMetrics:
@@ -258,5 +261,6 @@ class TestGetAllowedUnits:
 
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
-        # count(8) + currency(12) + percent(7) + ratio(3)
-        assert len(METRIC_ALLOWED_UNITS) == 8 + 12 + 7 + 3  # 30 total
+        # count(8) + currency(11) + percent(7) + ratio(3)
+        # cm_revenue_by_cohort removed from currency-only — now unconstrained
+        assert len(METRIC_ALLOWED_UNITS) == 8 + 11 + 7 + 3  # 29 total

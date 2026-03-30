@@ -1468,7 +1468,20 @@ class FalsePositiveFilterStage:
                 result.extend(group)
                 continue
 
-            # Multiple metrics for same value+segment: keep the best
+            # Don't dedup between a metric and its "_by_cohort" sibling —
+            # they represent distinct real-world measurements (overall vs
+            # per-cohort) and can legitimately co-occur in the same segment.
+            # E.g., "LTV:CAC ratio of 1.42x (2013 cohort)" can match both
+            # cm_ltv_to_cac_ratio and cm_ltv_to_cac_ratio_by_cohort.
+            if any(
+                m1 + "_by_cohort" in metric_ids
+                for m1 in metric_ids
+                if not m1.endswith("_by_cohort")
+            ):
+                result.extend(group)
+                continue
+
+            # Multiple unrelated metrics for same value+segment: keep the best
             best = max(
                 group,
                 key=lambda bv: (bv.binding_confidence, bv.candidate_id),
