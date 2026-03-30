@@ -637,7 +637,7 @@ def test_validate_positive_int_below_min():
     """Test validation returns default for value below minimum."""
     from src.web.routes.review_images import _validate_positive_int
 
-    with patch("src.web.routes.review_images.flash"):
+    with patch("src.web.utils.flash"):
         result = _validate_positive_int("test", -5, default=1, min_value=1)
 
     assert result == 1
@@ -647,7 +647,7 @@ def test_validate_positive_int_above_max():
     """Test validation caps value at maximum."""
     from src.web.routes.review_images import _validate_positive_int
 
-    with patch("src.web.routes.review_images.flash"):
+    with patch("src.web.utils.flash"):
         result = _validate_positive_int("test", 200, default=50, min_value=1, max_value=100)
 
     assert result == 100

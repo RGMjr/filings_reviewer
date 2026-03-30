@@ -24,10 +24,12 @@ def test_db_url():
 
 
 @pytest.fixture(scope="session")
-def test_db_adapter(test_db_url):
+def test_db_adapter(test_db_url, _terminate_stale_connections):
     """Create a database adapter for the test database.
 
     Uses a connection pool to avoid creating new TCP connections per operation.
+    Depends on _terminate_stale_connections so the pool is created only after
+    zombie connections from prior sessions are cleared.
     """
     from src.infra.pool import create_pool
 
@@ -44,34 +46,23 @@ def clean_extraction_db(test_db_adapter):
 
     Truncates extraction-related tables and provides a company/filing for testing.
     """
-    # Setup: truncate extraction tables
+    # Setup: truncate extraction tables atomically (single statement acquires all locks at once)
     with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SET CONSTRAINTS ALL DEFERRED")
-
-            # Truncate extraction tables (in FK order)
-            cur.execute("TRUNCATE TABLE filing_metric_incidence CASCADE")
-            cur.execute("TRUNCATE TABLE metric_definitions CASCADE")
-            cur.execute("TRUNCATE TABLE metric_values CASCADE")
-            cur.execute("TRUNCATE TABLE source_segments CASCADE")
-            cur.execute("TRUNCATE TABLE filings CASCADE")
-            cur.execute("TRUNCATE TABLE companies CASCADE")
-
-            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            cur.execute(
+                "TRUNCATE TABLE filing_metric_incidence, metric_definitions, "
+                "metric_values, source_segments, filings, companies CASCADE"
+            )
 
     yield test_db_adapter
 
     # Teardown
     with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SET CONSTRAINTS ALL DEFERRED")
-            cur.execute("TRUNCATE TABLE filing_metric_incidence CASCADE")
-            cur.execute("TRUNCATE TABLE metric_definitions CASCADE")
-            cur.execute("TRUNCATE TABLE metric_values CASCADE")
-            cur.execute("TRUNCATE TABLE source_segments CASCADE")
-            cur.execute("TRUNCATE TABLE filings CASCADE")
-            cur.execute("TRUNCATE TABLE companies CASCADE")
-            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            cur.execute(
+                "TRUNCATE TABLE filing_metric_incidence, metric_definitions, "
+                "metric_values, source_segments, filings, companies CASCADE"
+            )
 
 
 @pytest.fixture
