@@ -299,7 +299,11 @@ def skip_image_candidate(image_candidate_id: int):
         filing_id = candidate["filing_id"]
         next_cand = _get_next_image_candidate_info(db, filing_id, image_candidate_id)
 
-        return jsonify({"status": "success", "next_candidate": next_cand}), 200
+        return jsonify({
+            "status": "success",
+            "skipped_candidate_id": image_candidate_id,
+            "next_candidate": next_cand,
+        }), 200
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error skipping image candidate: {e}", exc_info=True)
@@ -310,6 +314,61 @@ def skip_image_candidate(image_candidate_id: int):
 
     except Exception as e:
         logger.error(f"Unexpected error skipping image candidate: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
+# =============================================================================
+# Unskip Candidate
+# =============================================================================
+
+
+@api_images_bp.route(
+    "/image-candidates/<int:image_candidate_id>/unskip", methods=["POST"]
+)
+def unskip_image_candidate(image_candidate_id: int):
+    """
+    Undo a skip — reset a skipped candidate's status back to 'pending'.
+
+    Returns:
+        200: Candidate reset to pending
+        {
+            "status": "success",
+            "candidate_id": int,
+            "url": str
+        }
+
+        404: Candidate not found or not skipped
+        500: Internal server error
+    """
+    db = get_db()
+
+    try:
+        candidate = db.get_image_review_candidate(image_candidate_id)
+        if not candidate:
+            return jsonify({"status": "error", "message": "Image candidate not found"}), 404
+
+        if candidate.get("review_status") != "skipped":
+            return jsonify({"status": "error", "message": "Candidate is not skipped"}), 400
+
+        success = db.update_image_candidate_status(image_candidate_id, "pending")
+        if not success:
+            return jsonify({"status": "error", "message": "Failed to unskip candidate"}), 500
+
+        filing_id = candidate["filing_id"]
+        logger.info(f"Unskipped image candidate {image_candidate_id}")
+
+        return jsonify({
+            "status": "success",
+            "candidate_id": image_candidate_id,
+            "url": f"/review/images/{filing_id}?image_candidate_id={image_candidate_id}",
+        }), 200
+
+    except psycopg.DatabaseError as e:
+        logger.error(f"Database error unskipping candidate: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Database error occurred"}), 500
+
+    except Exception as e:
+        logger.error(f"Unexpected error unskipping candidate: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
@@ -467,6 +526,14 @@ def _get_next_image_candidate_info(
         filing_id=filing_id,
         current_candidate_id=current_candidate_id,
     )
+
+    # No more pending candidates — fall back to first skipped (wrap around)
+    if not next_candidate:
+        next_candidate = db.get_next_pending_image_candidate(
+            filing_id=filing_id,
+            current_candidate_id=None,
+            include_skipped=True,
+        )
 
     if not next_candidate:
         return None

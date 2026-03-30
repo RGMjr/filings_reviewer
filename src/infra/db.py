@@ -3601,6 +3601,7 @@ class DatabaseAdapter:
         self,
         filing_id: int,
         current_candidate_id: int | None = None,
+        include_skipped: bool = False,
     ) -> dict | None:
         """
         Get the next pending image candidate for review navigation.
@@ -3613,11 +3614,18 @@ class DatabaseAdapter:
             filing_id: Filing to search within
             current_candidate_id: Current candidate (to find next after this),
                                  or None to get first pending
+            include_skipped: If True, also match skipped candidates
 
         Returns:
-            Next pending candidate or None if all reviewed
+            Next pending (or skipped) candidate or None if all reviewed
         """
         params: dict[str, Any] = {"filing_id": filing_id}
+
+        status_condition = (
+            "AND irc.review_status IN ('pending', 'skipped')"
+            if include_skipped
+            else "AND irc.review_status = 'pending'"
+        )
 
         # Simple "after current" filter using ID ordering
         after_condition = ""
@@ -3635,7 +3643,7 @@ class DatabaseAdapter:
                 irc.image_index
             FROM image_review_candidates irc
             WHERE irc.filing_id = %(filing_id)s
-              AND irc.review_status = 'pending'
+              {status_condition}
               {after_condition}
             ORDER BY irc.image_candidate_id ASC
             LIMIT 1
@@ -3751,6 +3759,129 @@ class DatabaseAdapter:
         """
 
         return self.query(sql)
+
+    def get_image_overall_decision_statistics(self) -> dict[str, Any]:
+        """
+        Get overall image decision statistics (aggregate counts).
+
+        Returns:
+            Dict with total_decisions, relevant_count, not_relevant_count,
+            relevant_pct, not_relevant_pct, avg_review_time_seconds
+        """
+        sql = """
+            SELECT
+                COUNT(*) as total_decisions,
+                COUNT(*) FILTER (WHERE decision = 'relevant') as relevant_count,
+                COUNT(*) FILTER (WHERE decision = 'not_relevant') as not_relevant_count,
+                AVG(review_time_seconds) as avg_review_time_seconds
+            FROM image_review_decisions
+        """
+        results = self.query(sql)
+        if not results or results[0]["total_decisions"] == 0:
+            return {
+                "total_decisions": 0,
+                "relevant_count": 0,
+                "not_relevant_count": 0,
+                "relevant_pct": 0.0,
+                "not_relevant_pct": 0.0,
+                "avg_review_time_seconds": None,
+            }
+
+        row = results[0]
+        total = row["total_decisions"] or 0
+        relevant = row["relevant_count"] or 0
+        not_relevant = row["not_relevant_count"] or 0
+
+        return {
+            "total_decisions": total,
+            "relevant_count": relevant,
+            "not_relevant_count": not_relevant,
+            "relevant_pct": round(relevant / total * 100, 1) if total > 0 else 0.0,
+            "not_relevant_pct": round(not_relevant / total * 100, 1) if total > 0 else 0.0,
+            "avg_review_time_seconds": row["avg_review_time_seconds"],
+        }
+
+    def get_image_daily_decision_counts(self, days: int = 7) -> list[dict]:
+        """
+        Get image decision counts by day for the last N days.
+
+        Returns a time series of decision counts suitable for chart visualization.
+        Includes days with zero decisions to ensure continuous timeline.
+
+        Args:
+            days: Number of days to include (default: 7)
+
+        Returns:
+            List of dicts with:
+            - date: Date (datetime.date object)
+            - count: Number of decisions made on that date
+
+            Results are ordered by date ascending (oldest first).
+
+        Example:
+            >>> db.get_image_daily_decision_counts(days=7)
+            [
+                {"date": date(2025, 12, 10), "count": 5},
+                {"date": date(2025, 12, 11), "count": 0},
+                {"date": date(2025, 12, 12), "count": 12},
+                ...
+            ]
+        """
+        sql = """
+            WITH date_series AS (
+                -- Generate series of dates for last N days
+                SELECT generate_series(
+                    CURRENT_DATE - %(days)s + 1,
+                    CURRENT_DATE,
+                    '1 day'::interval
+                )::date AS date
+            ),
+            daily_counts AS (
+                -- Count decisions per day
+                -- Use DATE() to convert timestamps to dates for grouping
+                SELECT
+                    DATE(created_at) AS date,
+                    COUNT(*) AS count
+                FROM image_review_decisions
+                WHERE DATE(created_at) >= CURRENT_DATE - %(days)s + 1
+                GROUP BY DATE(created_at)
+            )
+            -- Left join to include days with zero decisions
+            SELECT
+                ds.date,
+                COALESCE(dc.count, 0) AS count
+            FROM date_series ds
+            LEFT JOIN daily_counts dc ON ds.date = dc.date
+            ORDER BY ds.date ASC
+        """
+
+        return self.query(sql, {"days": days})
+
+    def get_image_chart_type_distribution(self) -> list[dict]:
+        """
+        Get chart type distribution for relevant image decisions.
+
+        Returns:
+            List of dicts with chart_type, chart_count, pct_of_relevant
+        """
+        return self.query(
+            "SELECT chart_type, chart_count, pct_of_relevant "
+            "FROM v_image_chart_type_distribution "
+            "ORDER BY chart_count DESC"
+        )
+
+    def get_image_rejection_reason_stats(self) -> list[dict]:
+        """
+        Get rejection reason breakdown by detection tier.
+
+        Returns:
+            List of dicts with detection_tier, rejection_reason, rejection_count, pct_of_tier_rejections
+        """
+        return self.query(
+            "SELECT detection_tier, rejection_reason, rejection_count, pct_of_tier_rejections "
+            "FROM v_image_rejection_reasons "
+            "ORDER BY detection_tier, rejection_count DESC"
+        )
 
     def insert_image_review_candidate(
         self,

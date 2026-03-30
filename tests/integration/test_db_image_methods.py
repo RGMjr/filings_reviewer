@@ -201,7 +201,7 @@ class TestGetImageReviewCandidatesForFiling:
         clean_db.insert_image_review_decision(
             image_candidate_id=candidate_id,
             decision="relevant",
-            chart_type="cohort_heatmap",
+            chart_type="cohort_parfait",
             reviewer_notes="Good chart",
         )
 
@@ -210,7 +210,7 @@ class TestGetImageReviewCandidatesForFiling:
         assert len(candidates) == 1
         c = candidates[0]
         assert c["decision"] == "relevant"
-        assert c["chart_type"] == "cohort_heatmap"
+        assert c["chart_type"] == "cohort_parfait"
         assert c["decision_notes"] == "Good chart"
 
     def test_invalid_sort_by_raises_error(self, clean_db):

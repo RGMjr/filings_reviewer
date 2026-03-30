@@ -42,6 +42,8 @@ import csv
 import logging
 import os
 import sys
+import time
+import urllib.request
 from collections import Counter
 from pathlib import Path
 
@@ -105,6 +107,22 @@ def parse_keywords(value: str) -> list[str]:
     if not value or value.strip() == "":
         return []
     return [k.strip() for k in value.split(";") if k.strip()]
+
+
+def validate_image_url(url: str, user_agent: str) -> bool:
+    """
+    Send a HEAD request to verify the image URL exists on SEC EDGAR.
+
+    Returns True if the URL returns HTTP 200, False otherwise.
+    Respects SEC rate limiting (100ms delay applied by caller).
+    """
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        req.add_header("User-Agent", user_agent)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
 
 
 def classify_tier(row: dict) -> str | None:
@@ -184,6 +202,8 @@ def process_csv(
     dry_run: bool = False,
     limit: int | None = None,
     filing_id_filter: int | None = None,
+    validate_urls: bool = False,
+    sec_user_agent: str = "filings-reviewer info@example.com",
 ) -> dict:
     """
     Process the image inventory CSV and insert candidates.
@@ -296,6 +316,15 @@ def process_csv(
             company_id_cache["_seen_keys"] = set()
         company_id_cache["_seen_keys"].add(key)
 
+        # Validate URL before inserting (optional, respects SEC 100ms rate limit)
+        image_url_value = row.get("image_url", "")
+        if validate_urls and image_url_value:
+            time.sleep(0.1)
+            if not validate_image_url(image_url_value, sec_user_agent):
+                stats["skipped_url_invalid"] += 1
+                logger.warning(f"Skipping invalid URL: {image_url_value}")
+                continue
+
         try:
             db.insert_image_review_candidate(
                 filing_id=filing_id,
@@ -346,6 +375,8 @@ def print_summary(stats: dict, dry_run: bool = False) -> None:
     print(f"    - tier_3_all: {stats.get('tier_tier_3_all', 0)}")
 
     print(f"Skipped (decorative): {stats.get('skipped_decorative', 0)}")
+    if stats.get("skipped_url_invalid", 0) > 0:
+        print(f"Skipped (URL 404): {stats.get('skipped_url_invalid', 0)}")
     if stats.get("skipped_csv_duplicate", 0) > 0:
         print(f"Skipped (CSV duplicates): {stats.get('skipped_csv_duplicate', 0)}")
     print(f"Errors: {stats.get('errors', 0)}")
@@ -403,6 +434,11 @@ def main() -> int:
         help="Clear existing candidates before inserting",
     )
     parser.add_argument(
+        "--skip-url-validation",
+        action="store_true",
+        help="Skip HEAD-checking image URLs against SEC EDGAR (faster but may insert broken URLs)",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -453,12 +489,15 @@ def main() -> int:
 
     # Process CSV
     logger.info(f"Processing CSV: {csv_path}")
+    sec_user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
     stats = process_csv(
         csv_path=str(csv_path),
         db=db,
         dry_run=args.dry_run,
         limit=args.limit,
         filing_id_filter=args.filing_id,
+        validate_urls=not args.skip_url_validation,
+        sec_user_agent=sec_user_agent,
     )
 
     # Print summary

@@ -291,6 +291,37 @@ def next_candidate(filing_id: int):
         return redirect(url_for("review_images.filing_list"))
 
 
+@review_images_bp.route("/stats")
+def image_stats():
+    """Display statistics dashboard for image review progress."""
+    db = get_db()
+
+    try:
+        overall_stats = db.get_image_overall_decision_statistics()
+        tier_stats = db.get_image_decision_statistics()
+        daily_counts = db.get_image_daily_decision_counts(days=7)
+        progress = db.get_image_review_progress()
+        chart_type_stats = db.get_image_chart_type_distribution()
+        rejection_stats = db.get_image_rejection_reason_stats()
+
+        return render_template(
+            "image_stats.html",
+            overall_stats=overall_stats,
+            tier_stats=tier_stats,
+            daily_counts=daily_counts,
+            progress=progress,
+            chart_type_stats=chart_type_stats,
+            rejection_stats=rejection_stats,
+            chart_type_labels=IMAGE_CHART_TYPE_LABELS,
+            rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
+        )
+
+    except Exception as e:
+        logger.error(f"Error loading image statistics dashboard: {e}")
+        flash("Error loading statistics. Please try again.", "danger")
+        return redirect(url_for("review_images.filing_list"))
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
