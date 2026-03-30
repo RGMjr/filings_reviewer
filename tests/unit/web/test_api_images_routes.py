@@ -479,6 +479,77 @@ class TestSkipImageCandidate:
 
 
 # =============================================================================
+# TestUnskipImageCandidate - POST /api/image-candidates/<id>/unskip
+# =============================================================================
+
+
+class TestUnskipImageCandidate:
+    """Test POST /api/image-candidates/<id>/unskip endpoint."""
+
+    def test_unskip_success(self, client, mock_db):
+        """Test successful unskip resets status to pending and returns URL."""
+        mock_db.get_image_review_candidate.return_value = {
+            "image_candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "skipped",
+        }
+        mock_db.update_image_candidate_status.return_value = True
+
+        with patch("src.web.routes.api_images.get_db", return_value=mock_db):
+            response = client.post("/api/image-candidates/123/unskip")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["status"] == "success"
+        assert data["candidate_id"] == 123
+        assert "/review/images/5" in data["url"]
+        mock_db.update_image_candidate_status.assert_called_once_with(123, "pending")
+
+    def test_unskip_candidate_not_found(self, client, mock_db):
+        """Test 404 when candidate doesn't exist."""
+        mock_db.get_image_review_candidate.return_value = None
+
+        with patch("src.web.routes.api_images.get_db", return_value=mock_db):
+            response = client.post("/api/image-candidates/999/unskip")
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+
+    def test_unskip_candidate_not_skipped(self, client, mock_db):
+        """Test 400 when candidate is not in skipped state."""
+        mock_db.get_image_review_candidate.return_value = {
+            "image_candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "pending",
+        }
+
+        with patch("src.web.routes.api_images.get_db", return_value=mock_db):
+            response = client.post("/api/image-candidates/123/unskip")
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+        assert "not skipped" in data["message"]
+
+    def test_unskip_update_fails(self, client, mock_db):
+        """Test 500 when status update fails."""
+        mock_db.get_image_review_candidate.return_value = {
+            "image_candidate_id": 123,
+            "filing_id": 5,
+            "review_status": "skipped",
+        }
+        mock_db.update_image_candidate_status.return_value = False
+
+        with patch("src.web.routes.api_images.get_db", return_value=mock_db):
+            response = client.post("/api/image-candidates/123/unskip")
+
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data["status"] == "error"
+
+
+# =============================================================================
 # TestDeleteImageDecision - DELETE /api/image-decisions/<id>
 # =============================================================================
 
@@ -562,7 +633,7 @@ class TestValidChartTypes:
         "chart_type",
         [
             "cohort_table",
-            "cohort_heatmap",
+            "cohort_parfait",
             "line_chart",
             "bar_chart",
             "stacked_bar",

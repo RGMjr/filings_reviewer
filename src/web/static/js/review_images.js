@@ -342,6 +342,7 @@
 
             if (data.status === 'success') {
                 showToast('Skipped', 'info');
+                sessionStorage.setItem('lastSkippedCandidateId', data.skipped_candidate_id);
 
                 if (data.next_candidate) {
                     window.location.href = data.next_candidate.url;
@@ -372,31 +373,49 @@
         const decisionId = state.lastDecisionId ||
             (container && container.dataset.decisionId ? parseInt(container.dataset.decisionId, 10) : null);
 
-        if (!decisionId) {
+        if (decisionId) {
+            // Undo a relevant/not_relevant decision
+            console.log('Undoing decision:', decisionId);
+            try {
+                const response = await fetch(`/api/image-decisions/${decisionId}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showToast('Decision undone', 'success');
+                    state.lastDecisionId = null;
+                    window.location.reload();
+                } else {
+                    showToast(data.message || 'Error undoing decision', 'danger');
+                }
+            } catch (err) {
+                showToast('Network error', 'danger');
+                console.error('Undo error:', err);
+            }
+            return;
+        }
+
+        // No decision record — try to undo a skip.
+        // Use sessionStorage (just-skipped flow) or fall back to the current
+        // candidate (user navigated directly to a skipped candidate in the sidebar).
+        const candidateId = sessionStorage.getItem('lastSkippedCandidateId') || state.currentCandidateId;
+        if (!candidateId) {
             showToast('No decision to undo', 'warning');
             return;
         }
 
-        console.log('Undoing decision:', decisionId);
-
+        console.log('Unskipping candidate:', candidateId);
         try {
-            const response = await fetch(`/api/image-decisions/${decisionId}`, {
-                method: 'DELETE',
-            });
-
+            const response = await fetch(`/api/image-candidates/${candidateId}/unskip`, { method: 'POST' });
             const data = await response.json();
-
             if (data.status === 'success') {
-                showToast('Decision undone', 'success');
-                state.lastDecisionId = null;
-                // Reload to show candidate as pending again
-                window.location.reload();
+                showToast('Skip undone', 'success');
+                sessionStorage.removeItem('lastSkippedCandidateId');
+                window.location.href = data.url;
             } else {
-                showToast(data.message || 'Error undoing decision', 'danger');
+                showToast(data.message || 'No decision to undo', 'warning');
             }
         } catch (err) {
             showToast('Network error', 'danger');
-            console.error('Undo error:', err);
+            console.error('Undo skip error:', err);
         }
     }
 

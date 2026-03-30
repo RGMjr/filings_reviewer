@@ -157,7 +157,7 @@ IMAGE_DECISIONS = ("relevant", "not_relevant")
 # ImageReviewDecision.chart_type
 IMAGE_CHART_TYPES = (
     "cohort_table",
-    "cohort_heatmap",
+    "cohort_parfait",
     "line_chart",
     "bar_chart",
     "stacked_bar",
@@ -168,7 +168,7 @@ IMAGE_CHART_TYPES = (
 # Display labels for chart types (for dropdowns)
 IMAGE_CHART_TYPE_LABELS: dict[str, str] = {
     "cohort_table": "Cohort Table",
-    "cohort_heatmap": "Cohort Heatmap",
+    "cohort_parfait": "Cohort Parfait",
     "line_chart": "Line Chart",
     "bar_chart": "Bar Chart",
     "stacked_bar": "Stacked Bar",

@@ -707,7 +707,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 **Phase 1 Deliverables**:
 - Database tables: `image_review_candidates`, `image_review_decisions`
 - Flask routes: `/review/images/filings`, `/review/images/<filing_id>`, `/review/images/<filing_id>/next`
-- API endpoints: `POST /api/image-decisions`, `POST /api/image-candidates/<id>/skip`, `DELETE /api/image-decisions/<id>`
+- API endpoints: `POST /api/image-decisions`, `POST /api/image-candidates/<id>/skip`, `POST /api/image-candidates/<id>/unskip`, `DELETE /api/image-decisions/<id>`
 - 3-column UI: thumbnail sidebar, main image display, context panel
 - Keyboard shortcuts: Y (relevant), N (not relevant), S (skip), U (undo), ←→ (nav), 1-7 (dropdown)
 - Pattern learning: `detection_tier` field tracks how images were included for analysis

@@ -242,9 +242,7 @@ def test_filing_list_status_filter_works(client, mock_db):
 
     client.get("/review/images/filings?status=pending")
 
-    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(
-        status="pending"
-    )
+    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(status="pending")
     mock_db.get_filings_with_image_candidates.assert_called_once_with(
         status="pending", limit=50, offset=0
     )
@@ -377,9 +375,7 @@ def test_review_filing_404_for_invalid_filing(client, mock_db):
     assert response.status_code == 404
 
 
-def test_review_filing_redirects_when_no_candidates(
-    client, mock_db, sample_filing
-):
+def test_review_filing_redirects_when_no_candidates(client, mock_db, sample_filing):
     """Test redirect to filing list when filing has no candidates."""
     mock_db.query.return_value = [sample_filing]
     mock_db.get_image_review_candidates_for_filing.return_value = []
@@ -652,8 +648,114 @@ def test_validate_positive_int_above_max():
     from src.web.routes.review_images import _validate_positive_int
 
     with patch("src.web.routes.review_images.flash"):
-        result = _validate_positive_int(
-            "test", 200, default=50, min_value=1, max_value=100
-        )
+        result = _validate_positive_int("test", 200, default=50, min_value=1, max_value=100)
 
     assert result == 100
+
+
+# =============================================================================
+# Sample data constants for TestImageStats
+# =============================================================================
+
+_SAMPLE_OVERALL_STATS = {
+    "total_decisions": 25,
+    "relevant_count": 18,
+    "not_relevant_count": 7,
+    "relevant_pct": 72.0,
+    "not_relevant_pct": 28.0,
+    "avg_review_time_seconds": 12.5,
+}
+
+_SAMPLE_TIER_STATS = [
+    {
+        "detection_tier": "tier_1_cohort",
+        "relevant_count": 15,
+        "not_relevant_count": 3,
+        "total_decisions": 18,
+        "precision_pct": 83.3,
+    }
+]
+
+_SAMPLE_DAILY_COUNTS = [
+    {"date": "2026-03-24", "count": 3},
+    {"date": "2026-03-25", "count": 5},
+]
+
+_SAMPLE_PROGRESS = {
+    "total_candidates": 50,
+    "pending_count": 25,
+    "reviewed_count": 20,
+    "skipped_count": 5,
+    "review_pct": 40.0,
+    "total_filings": 10,
+    "filings_with_pending": 7,
+    "by_tier": {"tier_1_cohort": {"total": 20, "pending": 10, "reviewed": 10}},
+}
+
+_SAMPLE_CHART_TYPE_STATS = [
+    {"chart_type": "cohort_parfait", "chart_count": 10, "pct_of_relevant": 55.6}
+]
+
+_SAMPLE_REJECTION_STATS = [
+    {
+        "detection_tier": "tier_2_large",
+        "rejection_reason": "not_a_chart",
+        "rejection_count": 4,
+        "pct_of_tier_rejections": 57.1,
+    }
+]
+
+
+# =============================================================================
+# Test image_stats() route - Stats Dashboard Tests
+# =============================================================================
+
+
+class TestImageStats:
+    """Tests for the /review/images/stats route."""
+
+    def test_image_stats_returns_200(self, client, mock_db, mock_render_template):
+        """Stats page returns 200 when all DB methods succeed."""
+        mock_db.get_image_overall_decision_statistics.return_value = _SAMPLE_OVERALL_STATS
+        mock_db.get_image_decision_statistics.return_value = _SAMPLE_TIER_STATS
+        mock_db.get_image_daily_decision_counts.return_value = _SAMPLE_DAILY_COUNTS
+        mock_db.get_image_review_progress.return_value = _SAMPLE_PROGRESS
+        mock_db.get_image_chart_type_distribution.return_value = _SAMPLE_CHART_TYPE_STATS
+        mock_db.get_image_rejection_reason_stats.return_value = _SAMPLE_REJECTION_STATS
+
+        response = client.get("/review/images/stats")
+        assert response.status_code == 200
+
+    def test_image_stats_passes_correct_context(self, client, mock_db, mock_render_template):
+        """Stats route passes all 8 expected template variables."""
+        mock_db.get_image_overall_decision_statistics.return_value = _SAMPLE_OVERALL_STATS
+        mock_db.get_image_decision_statistics.return_value = _SAMPLE_TIER_STATS
+        mock_db.get_image_daily_decision_counts.return_value = _SAMPLE_DAILY_COUNTS
+        mock_db.get_image_review_progress.return_value = _SAMPLE_PROGRESS
+        mock_db.get_image_chart_type_distribution.return_value = _SAMPLE_CHART_TYPE_STATS
+        mock_db.get_image_rejection_reason_stats.return_value = _SAMPLE_REJECTION_STATS
+
+        client.get("/review/images/stats")
+
+        mock_render_template.assert_called_once()
+        call_args = mock_render_template.call_args
+        assert call_args.args[0] == "image_stats.html"
+        kwargs = call_args.kwargs
+        assert kwargs["overall_stats"] == _SAMPLE_OVERALL_STATS
+        assert kwargs["tier_stats"] == _SAMPLE_TIER_STATS
+        assert kwargs["daily_counts"] == _SAMPLE_DAILY_COUNTS
+        assert kwargs["progress"] == _SAMPLE_PROGRESS
+        assert kwargs["chart_type_stats"] == _SAMPLE_CHART_TYPE_STATS
+        assert kwargs["rejection_stats"] == _SAMPLE_REJECTION_STATS
+        assert "chart_type_labels" in kwargs
+        assert "rejection_reason_labels" in kwargs
+
+    def test_image_stats_redirects_on_db_error(self, client, mock_db, mock_render_template):
+        """Stats route redirects to filing list when DB raises an exception."""
+        mock_db.get_image_overall_decision_statistics.side_effect = Exception(
+            "DB connection failed"
+        )
+
+        response = client.get("/review/images/stats")
+        assert response.status_code == 302
+        assert "/review/images" in response.headers["Location"]
