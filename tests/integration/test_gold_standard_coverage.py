@@ -59,12 +59,12 @@ FARFETCH_EXPECTED_VALUES = {
     # Number of Orders values
     "1305297": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_transactions_by_cohort",
+        "expected_metric": "cm_purchase_transactions_overall",
         "description": "Number of Orders (Dec 31, 2017)",
     },
     "853195": {
         "expected_keyword_pattern": r"number\s+of\s+order",
-        "expected_metric": "cm_transactions_by_cohort",
+        "expected_metric": "cm_purchase_transactions_overall",
         "description": "Number of Orders (June 30, 2017)",
     },
 }
@@ -264,8 +264,8 @@ class TestFarfetchGoldStandard:
         )
 
         # Verify it's matched to transaction metric
-        assert candidate.suggested_metric_id == "cm_transactions_by_cohort", (
-            f"Expected cm_transactions_by_cohort but got {candidate.suggested_metric_id}. "
+        assert candidate.suggested_metric_id == "cm_purchase_transactions_overall", (
+            f"Expected cm_purchase_transactions_overall but got {candidate.suggested_metric_id}. "
             "Check keyword patterns."
         )
 
