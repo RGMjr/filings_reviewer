@@ -46,6 +46,7 @@ class ImageTriageStage:
     # Thresholds
     MIN_RELEVANCE_FOR_PROCESSING: float = 0.3  # Queue for OCR/Vision
     AMBIGUOUS_RELEVANCE_THRESHOLD: float = 0.5  # Mark for manual capture if below
+    REPEATED_FILENAME_THRESHOLD: int = 5  # Filenames appearing more than this are decorative
 
     # Dimension thresholds for classification
     LOGO_MAX_WIDTH: int = 300
@@ -456,7 +457,24 @@ class ImageTriageStage:
         """
         images_for_processing: list[ImageAsset] = []
 
+        # Pre-count filename occurrences: filenames repeated more than threshold
+        # times are decorative repeating elements (headers, footers, watermarks).
+        from collections import Counter
+
+        filename_counts = Counter(a.filename for a in images if a.filename)
+        repeated_filenames = {
+            fn
+            for fn, count in filename_counts.items()
+            if count > self.REPEATED_FILENAME_THRESHOLD
+        }
+
         for asset in images:
+            # Override classification for repeated decorative filenames
+            if asset.filename in repeated_filenames:
+                asset.classification = ImageClassification.DECORATIVE
+                asset.relevance_score = 0.0
+                continue
+
             # Classify
             asset.classification = self.classify_image(asset)
 

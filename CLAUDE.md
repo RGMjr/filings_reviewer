@@ -82,7 +82,8 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 ## Web Routes
 
 - `src/web/routes/review.py` / `api.py`: Text/metric review interface
-- `src/web/routes/review_images.py` / `api_images.py`: Image review interface
+- `src/web/routes/review_images.py` / `api_images.py`: Image review interface (DB-backed, SEC filings)
+- `src/web/routes/review_pres_images.py`: Presentation image review interface (file-based, `/review/pres-images/`)
 - API auth: `_check_api_key` before_request hook in each API blueprint, configure via `FILINGS_API_KEY` env var
 
 ## SEC EDGAR Integration
@@ -222,3 +223,5 @@ config = PipelineConfig()
 **Transcript gold standard:** `data/transcript_gold_standard/` (per-filing `*_reviewed.csv`, 91 annotations, 20 files). Run `scripts/merge_transcript_annotations.py` to consolidate before benchmarking. Benchmark script: `scripts/validate_transcript_extraction.py`.
 
 **Presentation gold standard:** `data/presentation_gold_standard/` (per-filing `*_reviewed.csv`). Workflow: `preannotate_presentations.py` → `review_presentation_annotations.py` → `merge_presentation_annotations.py` → `validate_presentation_extraction.py`. File index at `data/presentation_gold_standard/_file_index.json`. Initial benchmark (2026-03-11): R=100.0%, P=36.8%, F1=53.8% (7 annotations, 5 files: CRM Q3+Q4 FY26, META Q4 2025, SNAP Q3+Q4 2025). SNAP precision is poor (29%) due to image-based investor letter generating spurious text candidates.
+
+**Presentation image gold standard:** `preannotate_presentations.py` also writes `{key}_image_candidates.json` alongside each CSV. Image-level annotations (relevant/not_relevant/skip) are stored in `_image_decisions.json` (single consolidated file). Web review UI at `/review/pres-images/` (`src/web/routes/review_pres_images.py`, store: `src/web/pres_image_store.py`). Images with `relevance_score=0` (decorative, logos, repeated filenames) are excluded from the candidates JSON. `source_type` in preannotated CSVs reflects actual extraction source (text/html_table/chart/ocr_table).

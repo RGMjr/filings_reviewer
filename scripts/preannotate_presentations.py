@@ -181,7 +181,7 @@ def _fact_to_row(
         "value": value,
         "unit": unit,
         "period": period,
-        "source_type": source_type,
+        "source_type": fact.source_type.value if fact.source_type else source_type,
         "raw_text": raw_text,
         "confidence": confidence,
         "section": section,
@@ -189,6 +189,45 @@ def _fact_to_row(
         "disposition": "",
         "disposition_reason": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Image candidate serialization
+# ---------------------------------------------------------------------------
+
+
+def _serialize_images(
+    images: list,  # list[ImageAsset]
+    cik: str,
+    accession_number: str,
+) -> list[dict]:
+    """Serialize ImageAsset list to JSON-serializable dicts with EDGAR image URLs."""
+    cik_stripped = cik.lstrip("0") or "0"
+    accession_clean = accession_number.replace("-", "")
+    base_url = (
+        f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_clean}/"
+        if cik and accession_number
+        else ""
+    )
+
+    result = []
+    for img in images:
+        if img.relevance_score <= 0.0:
+            continue
+        result.append({
+            "img_id": img.img_id,
+            "filename": img.filename,
+            "image_url": base_url + img.filename if base_url and img.filename else "",
+            "classification": img.classification.value if img.classification else "unknown",
+            "relevance_score": img.relevance_score,
+            "nearby_text": img.nearby_text or "",
+            "section_type": img.section_type.value if img.section_type else "unknown",
+            "ocr_text": img.ocr_text or "",
+            "dom_locator": img.dom_locator or "",
+            "width": img.width,
+            "height": img.height,
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +245,9 @@ def _process_presentation(
     html_cache_path: Path | None,
     document_type: str = "investor_presentation",
     source_type: str = "presentation",
-) -> tuple[list[dict[str, str]], Path | None]:
+    cik: str = "",
+    accession_number: str = "",
+) -> tuple[list[dict[str, str]], Path | None, list[dict]]:
     """
     Run V2 pipeline on HTML content and return (rows, html_path).
 
@@ -233,6 +274,8 @@ def _process_presentation(
         result = pipeline.process(
             html_path=tmp_path,
             filing_id=-1,
+            cik=cik,
+            accession_number=accession_number,
             document_type=document_type,
             document_date=doc_date,
         )
@@ -246,7 +289,9 @@ def _process_presentation(
         row = _fact_to_row(fact, company, ticker, date_str, segment_map, source_type=source_type)
         rows.append(row)
 
-    return rows, html_cache_path
+    image_candidates = _serialize_images(result.images, cik, accession_number)
+
+    return rows, html_cache_path, image_candidates
 
 
 # ---------------------------------------------------------------------------
@@ -258,12 +303,12 @@ def _fetch_sec_filing_html(
     source: SECPresentationSource,
     ticker: str,
     filing_type: str,
-) -> tuple[str, str, str, str] | None:
+) -> tuple[str, str, str, str, str, str] | None:
     """
     Fetch HTML for a non-8-K SEC filing (S-1, F-1, 10-K, 10-Q).
 
-    Returns (html_content, company_name, date_str, html_cache_path_str) or None on failure.
-    The HTML is cached at source.cache_dir / ticker / accession / filename.
+    Returns (html_content, company_name, date_str, html_cache_path_str, cik, accession_number)
+    or None on failure. The HTML is cached at source.cache_dir / ticker / accession / filename.
     """
     cik, company_name = source._resolve_ticker(ticker)
     if cik is None:
@@ -289,7 +334,7 @@ def _fetch_sec_filing_html(
     if html_cache_path.exists():
         logger.debug("Cache hit for %s/%s/%s", ticker, meta.accession_number, filename)
         html_content = html_cache_path.read_text(encoding="utf-8")
-        return html_content, company, date_str, str(html_cache_path)
+        return html_content, company, date_str, str(html_cache_path), cik, meta.accession_number
 
     # Download from EDGAR
     print(
@@ -306,13 +351,7 @@ def _fetch_sec_filing_html(
     html_cache_path.write_text(html_content, encoding="utf-8")
     logger.debug("Cached filing HTML to %s", html_cache_path)
 
-    accession_clean = meta.accession_number.replace("-", "")
-    cik_stripped = (meta.cik or "").lstrip("0") or "0"
-    edgar_url = (
-        f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_clean}/{filename}"
-    )
-
-    return html_content, company, date_str, str(html_cache_path), edgar_url
+    return html_content, company, date_str, str(html_cache_path), cik, meta.accession_number
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +456,7 @@ def run_preannotation(
             last_cache_path = str(local_cache_path)
 
             try:
-                rows, _ = _process_presentation(
+                rows, _, _images = _process_presentation(
                     source_id=str(file_path),
                     ticker=ticker,
                     company=ticker,
@@ -465,8 +504,15 @@ def run_preannotation(
             if result is None:
                 continue
 
-            html_content, company, date_str, html_cache_path_str, edgar_url = result
+            html_content, company, date_str, html_cache_path_str, cik, accession = result
             index_key = f"{ticker_upper}_{filing_type}_{date_str}"
+            filing_filename = Path(html_cache_path_str).name.replace(".html", "")
+            cik_stripped = cik.lstrip("0") or "0"
+            accession_clean = accession.replace("-", "")
+            edgar_url = (
+                f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}"
+                f"/{accession_clean}/{filing_filename}"
+            )
 
             # Idempotency check
             csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
@@ -482,7 +528,7 @@ def run_preannotation(
             )
 
             try:
-                rows, _ = _process_presentation(
+                rows, _, image_candidates = _process_presentation(
                     source_id=index_key,
                     ticker=ticker_upper,
                     company=company,
@@ -492,6 +538,8 @@ def run_preannotation(
                     html_cache_path=Path(html_cache_path_str),
                     document_type=document_type,
                     source_type=csv_source_type,
+                    cik=cik,
+                    accession_number=accession,
                 )
             except Exception as exc:
                 print(
@@ -517,6 +565,12 @@ def run_preannotation(
             url_index_path.write_text(
                 json.dumps(url_index, indent=2, sort_keys=True), encoding="utf-8"
             )
+
+            if image_candidates:
+                img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+                img_json_path.write_text(
+                    json.dumps(image_candidates, indent=2), encoding="utf-8"
+                )
 
         return file_index
 
@@ -569,7 +623,7 @@ def run_preannotation(
             print(f"[{ticker}] Running V2 pipeline on {index_key}...", file=sys.stderr)
 
             try:
-                rows, _ = _process_presentation(
+                rows, _, image_candidates = _process_presentation(
                     source_id=source_id,
                     ticker=ticker,
                     company=company,
@@ -579,6 +633,8 @@ def run_preannotation(
                     html_cache_path=html_cache_path if html_cache_path.exists() else None,
                     document_type=document_type,
                     source_type=csv_source_type,
+                    cik=cik,
+                    accession_number=accession,
                 )
             except Exception as exc:
                 print(f"[{ticker}] ERROR running pipeline on {source_id}: {exc}", file=sys.stderr)
@@ -610,6 +666,12 @@ def run_preannotation(
             url_index_path.write_text(
                 json.dumps(url_index, indent=2, sort_keys=True), encoding="utf-8"
             )
+
+            if image_candidates:
+                img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+                img_json_path.write_text(
+                    json.dumps(image_candidates, indent=2), encoding="utf-8"
+                )
 
     return file_index
 

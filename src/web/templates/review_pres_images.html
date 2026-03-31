@@ -1,0 +1,458 @@
+{% extends "base.html" %}
+
+{% block title %}Image Review — {{ ticker }} — {{ key }}{% endblock %}
+
+{% block nav_items %}
+{{ super() }}
+<li class="nav-item">
+    <a class="nav-link" href="{{ url_for('review_pres_images.index') }}">Pres Image Review</a>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid image-review-container"
+     id="pres-review-container"
+     data-key="{{ key }}"
+     data-img-id="{{ current.img_id if current else '' }}"
+     data-candidates='{{ candidates | tojson }}'>
+
+    {% if not candidates %}
+    <div class="alert alert-info">
+        No image candidates for this filing.
+        <a href="{{ url_for('review_pres_images.index') }}" class="btn btn-primary btn-sm ms-2">Back</a>
+    </div>
+    {% else %}
+
+    {# Filing Header #}
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item">
+                        <a href="{{ url_for('review_pres_images.index') }}">Pres Image Review</a>
+                    </li>
+                    <li class="breadcrumb-item active">{{ key }}</li>
+                </ol>
+            </nav>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h4 class="mb-0">{{ ticker }}</h4>
+                    <small class="text-muted">{{ key }}</small>
+                </div>
+                <div>
+                    {% if edgar_url %}
+                    <a href="{{ edgar_url }}" target="_blank" rel="noopener noreferrer"
+                       class="btn btn-outline-primary btn-sm">View on EDGAR &nearr;</a>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <div class="fw-semibold">{{ progress.reviewed }} of {{ progress.total }} reviewed</div>
+                    <small class="text-warning">{{ progress.pending }} pending</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Main 3-column layout #}
+    <div class="row image-review-layout">
+
+        {# Left: Thumbnail sidebar #}
+        <div class="col-auto image-thumbnail-sidebar">
+            <div class="card">
+                <div class="card-header py-2">
+                    <h6 class="mb-0">Images ({{ candidates|length }})</h6>
+                </div>
+                <div class="card-body p-0 thumbnail-list-container">
+                    <div class="list-group list-group-flush">
+                        {% for c in candidates %}
+                        {% set is_current = current and c.img_id == current.img_id %}
+                        <a href="{{ url_for('review_pres_images.review_filing', key=key, img_id=c.img_id) }}"
+                           class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if c.status != 'pending' else '' }}"
+                           data-img-id="{{ c.img_id }}">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="thumbnail-preview">
+                                    <img src="{{ c.image_url }}"
+                                         alt="{{ c.filename }}"
+                                         loading="lazy"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                    <div class="thumbnail-placeholder" style="display: none;"><span>?</span></div>
+                                </div>
+                                <div class="thumbnail-info flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="thumbnail-index">#{{ loop.index }}</span>
+                                        {% if c.status == 'relevant' %}
+                                        <span class="status-indicator relevant" title="Relevant">&#10003;</span>
+                                        {% elif c.status == 'not_relevant' %}
+                                        <span class="status-indicator not-relevant" title="Not Relevant">&#10007;</span>
+                                        {% elif c.status == 'skip' %}
+                                        <span class="status-indicator skipped" title="Skipped">&#8634;</span>
+                                        {% endif %}
+                                    </div>
+                                    <span class="badge bg-secondary" style="font-size: 0.65rem;">
+                                        {{ c.classification[:5] if c.classification else '?' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Center: Main image #}
+        <div class="col image-main-display">
+            {% if current %}
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="mb-1">
+                                Image #{% for c in candidates %}{% if c.img_id == current.img_id %}{{ loop.index }}{% endif %}{% endfor %}
+                            </h5>
+                            <small class="text-muted">{{ current.filename }}</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <span class="badge bg-secondary">{{ current.classification or 'unknown' }}</span>
+                            {% if current.status == 'pending' %}
+                            <span class="badge bg-warning text-dark">Pending</span>
+                            {% elif current.status == 'relevant' %}
+                            <span class="badge bg-success">Relevant</span>
+                            {% elif current.status == 'not_relevant' %}
+                            <span class="badge bg-secondary">Not Relevant</span>
+                            {% elif current.status == 'skip' %}
+                            <span class="badge bg-light text-dark">Skipped</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# Main image #}
+                    <div class="main-image-container text-center mb-3">
+                        {% if current.image_url %}
+                        <a href="{{ current.image_url }}" target="_blank" rel="noopener noreferrer">
+                            <img src="{{ current.image_url }}"
+                                 alt="{{ current.filename }}"
+                                 class="main-image"
+                                 onerror="this.style.display='none'; document.getElementById('img-error').style.display='block';">
+                        </a>
+                        <div id="img-error" class="alert alert-warning" style="display: none;">
+                            <p class="mb-1">Unable to load image</p>
+                            <a href="{{ current.image_url }}" target="_blank" class="btn btn-sm btn-outline-primary">Open in SEC EDGAR</a>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">No image URL available (local file?)</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="image-metadata text-muted small mb-3">
+                        {% if current.width and current.height %}
+                        <span>{{ current.width }} x {{ current.height }} px</span>
+                        <span class="mx-2">&bull;</span>
+                        {% endif %}
+                        <span>Score: {{ "%.2f"|format(current.relevance_score) }}</span>
+                        <span class="mx-2">&bull;</span>
+                        <span>{{ current.section_type or 'unknown' }}</span>
+                    </div>
+
+                    {# Decision buttons #}
+                    {% if current.status == 'pending' %}
+                    <div class="decision-buttons mb-3">
+                        <button type="button" id="btn-relevant" class="btn btn-success btn-lg">
+                            <span class="badge bg-light text-dark me-1">Y</span> Relevant
+                        </button>
+                        <button type="button" id="btn-not-relevant" class="btn btn-danger btn-lg">
+                            <span class="badge bg-light text-dark me-1">N</span> Not Relevant
+                        </button>
+                        <button type="button" id="btn-skip" class="btn btn-secondary btn-lg">
+                            <span class="badge bg-light text-dark me-1">S</span> Skip
+                        </button>
+                    </div>
+
+                    <div id="chart-type-panel" class="dropdown-panel" style="display: none;">
+                        <h6>Select Chart Type:</h6>
+                        <div class="dropdown-options">
+                            {% for value, label in chart_types %}
+                            <button type="button" class="btn btn-outline-primary chart-type-option" data-value="{{ value }}">
+                                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div id="rejection-panel" class="dropdown-panel" style="display: none;">
+                        <h6>Select Rejection Reason:</h6>
+                        <div class="dropdown-options">
+                            {% for value, label in rejection_reasons %}
+                            <button type="button" class="btn btn-outline-danger rejection-reason-option" data-value="{{ value }}">
+                                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% else %}
+                    <div class="alert {{ 'alert-success' if current.status == 'relevant' else 'alert-secondary' }} mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Decision:</strong>
+                                {% if current.status == 'relevant' %}
+                                Relevant{% if current.chart_type %} — {{ current.chart_type|replace('_', ' ')|title }}{% endif %}
+                                {% elif current.status == 'not_relevant' %}
+                                Not Relevant{% if current.rejection_reason %} — {{ current.rejection_reason|replace('_', ' ')|title }}{% endif %}
+                                {% else %}
+                                Skipped
+                                {% endif %}
+                            </div>
+                            <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
+                                <span class="badge bg-secondary me-1">U</span> Undo
+                            </button>
+                        </div>
+                        {% if current.notes %}
+                        <div class="mt-2 small"><strong>Notes:</strong> {{ current.notes }}</div>
+                        {% endif %}
+                    </div>
+                    {# Navigation to next pending #}
+                    <div class="d-flex justify-content-end">
+                        <button type="button" id="btn-next-pending" class="btn btn-primary">
+                            Next Pending &rarr;
+                        </button>
+                    </div>
+                    {% endif %}
+
+                    <form id="decision-form" style="display: none;"
+                          data-key="{{ key }}"
+                          data-img-id="{{ current.img_id }}">
+                        <input type="hidden" name="decision" id="decision-input">
+                        <input type="hidden" name="chart_type" id="chart-type-input">
+                        <input type="hidden" name="rejection_reason" id="rejection-reason-input">
+                        <input type="hidden" name="reviewer_notes" id="reviewer-notes-input">
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {# Right: Context panel #}
+        <div class="col-auto image-context-panel">
+            {% if current %}
+            <div class="card">
+                <div class="card-header py-2">
+                    <h6 class="mb-0">Context</h6>
+                </div>
+                <div class="card-body">
+                    <div class="context-section mb-3">
+                        <label class="form-label fw-semibold small">Nearby Text</label>
+                        <div class="preceding-text-box">
+                            {{ current.nearby_text or 'None' }}
+                        </div>
+                    </div>
+
+                    {% if current.ocr_text %}
+                    <div class="context-section mb-3">
+                        <label class="form-label fw-semibold small">OCR Text</label>
+                        <div class="preceding-text-box">{{ current.ocr_text }}</div>
+                    </div>
+                    {% endif %}
+
+                    <div class="context-section mb-3">
+                        <label class="form-label fw-semibold small">Relevance Score</label>
+                        {% set score_pct = (current.relevance_score * 100)|round(0)|int %}
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="progress flex-grow-1" style="height: 10px;">
+                                <div class="progress-bar {{ 'bg-success' if score_pct >= 70 else ('bg-warning' if score_pct >= 40 else 'bg-danger') }}"
+                                     role="progressbar" style="width: {{ score_pct }}%">
+                                </div>
+                            </div>
+                            <span class="fw-semibold">{{ score_pct }}%</span>
+                        </div>
+                    </div>
+
+                    <div class="context-section mb-3">
+                        <label class="form-label fw-semibold small">Classification</label>
+                        <div><span class="badge bg-secondary">{{ current.classification or 'unknown' }}</span></div>
+                    </div>
+
+                    <div class="context-section mb-3">
+                        <label class="form-label fw-semibold small">Section</label>
+                        <div class="small">{{ current.section_type or 'unknown' }}</div>
+                    </div>
+
+                    <div class="context-section">
+                        <label for="reviewer-notes" class="form-label fw-semibold small">Notes (optional)</label>
+                        <textarea id="reviewer-notes" class="form-control form-control-sm" rows="2" maxlength="500"
+                                  placeholder="Any observations...">{{ current.notes or '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Keyboard hints bar #}
+    <div id="keyboard-hints" class="keyboard-hints-bar d-none">
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="hints-content">
+                    <kbd>Y</kbd> Relevant
+                    <span class="mx-1">|</span>
+                    <kbd>N</kbd> Not Relevant
+                    <span class="mx-1">|</span>
+                    <kbd>S</kbd> Skip
+                    <span class="mx-1">|</span>
+                    <kbd>U</kbd> Undo
+                    <span class="mx-1">|</span>
+                    <kbd>&larr;&rarr;</kbd> Navigate
+                    <span class="mx-1">|</span>
+                    <kbd>1-6</kbd> Quick Select
+                    <span class="mx-1">|</span>
+                    <kbd>?</kbd> Help
+                </div>
+                <button type="button" class="btn-close btn-close-white btn-sm" id="close-hints"></button>
+            </div>
+        </div>
+    </div>
+
+    <button type="button"
+            class="btn btn-outline-secondary btn-sm position-fixed keyboard-toggle-btn"
+            id="toggle-hints" title="Toggle keyboard shortcuts (?)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M14 5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h12zM2 4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H2z"/>
+            <path d="M13 10.25a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm0-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5 0A.25.25 0 0 1 8.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 8 8.75v-.5zm2 0a.25.25 0 0 1 .25-.25h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5a.25.25 0 0 1-.25-.25v-.5zm1 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5-2A.25.25 0 0 1 6.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 6 8.75v-.5zm-2 0A.25.25 0 0 1 4.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 4 8.75v-.5zm-2 0A.25.25 0 0 1 2.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm11-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0A.25.25 0 0 1 9.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 9 6.75v-.5zm-2 0A.25.25 0 0 1 7.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 7 6.75v-.5zm-2 0A.25.25 0 0 1 5.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 5 6.75v-.5zm-3 0A.25.25 0 0 1 2.25 6h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5A.25.25 0 0 1 2 6.75v-.5zm0 4a.25.25 0 0 1 .25-.25h5.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-5.5a.25.25 0 0 1-.25-.25v-.5z"/>
+        </svg>
+    </button>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const container = document.getElementById('pres-review-container');
+    const key = container ? container.dataset.key : '';
+    const imgId = container ? container.dataset.imgId : '';
+    const candidates = container ? JSON.parse(container.dataset.candidates || '[]') : [];
+
+    let pendingDecision = null;
+
+    function getDecideUrl(id) {
+        return `/review/pres-images/${key}/${id}/decide`;
+    }
+
+    function submitDecision(decision, chartType, rejectionReason) {
+        const notes = document.getElementById('reviewer-notes')?.value || '';
+        fetch(getDecideUrl(imgId), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({decision, chart_type: chartType, rejection_reason: rejectionReason, notes})
+        }).then(r => r.json()).then(() => {
+            navigateToNext();
+        });
+    }
+
+    function navigateToNext() {
+        const currentIdx = candidates.findIndex(c => c.img_id === imgId);
+        // Mark current as decided so it's excluded from pending search
+        if (candidates[currentIdx]) candidates[currentIdx].status = 'decided';
+        const next = candidates.slice(currentIdx + 1).find(c => c.status === 'pending')
+                  || candidates.slice(0, currentIdx).find(c => c.status === 'pending');
+        if (next) {
+            window.location.href = `/review/pres-images/${key}?img_id=${next.img_id}`;
+        } else {
+            window.location.href = `/review/pres-images/`;
+        }
+    }
+
+    function showPanel(panelId) {
+        document.querySelectorAll('.dropdown-panel').forEach(p => p.style.display = 'none');
+        const panel = document.getElementById(panelId);
+        if (panel) panel.style.display = 'block';
+    }
+
+    function hideAllPanels() {
+        document.querySelectorAll('.dropdown-panel').forEach(p => p.style.display = 'none');
+        pendingDecision = null;
+    }
+
+    // Button handlers
+    document.getElementById('btn-relevant')?.addEventListener('click', () => {
+        pendingDecision = 'relevant';
+        showPanel('chart-type-panel');
+    });
+    document.getElementById('btn-not-relevant')?.addEventListener('click', () => {
+        pendingDecision = 'not_relevant';
+        showPanel('rejection-panel');
+    });
+    document.getElementById('btn-skip')?.addEventListener('click', () => {
+        submitDecision('skip', '', '');
+    });
+    document.getElementById('btn-undo')?.addEventListener('click', () => {
+        fetch(getDecideUrl(imgId), {method: 'DELETE'})
+            .then(() => window.location.reload());
+    });
+    document.getElementById('btn-next-pending')?.addEventListener('click', navigateToNext);
+
+    // Chart type options
+    document.querySelectorAll('.chart-type-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            submitDecision('relevant', btn.dataset.value, '');
+            hideAllPanels();
+        });
+    });
+
+    // Rejection reason options
+    document.querySelectorAll('.rejection-reason-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            submitDecision('not_relevant', '', btn.dataset.value);
+            hideAllPanels();
+        });
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+        const key_pressed = e.key.toLowerCase();
+
+        // Quick-select from chart-type or rejection panels
+        if (pendingDecision) {
+            const num = parseInt(e.key);
+            if (num >= 1 && num <= 9) {
+                const panel = document.getElementById(
+                    pendingDecision === 'relevant' ? 'chart-type-panel' : 'rejection-panel'
+                );
+                if (panel) {
+                    const opts = panel.querySelectorAll('button');
+                    if (opts[num - 1]) opts[num - 1].click();
+                }
+                return;
+            }
+            if (e.key === 'Escape') { hideAllPanels(); return; }
+        }
+
+        if (key_pressed === 'y') document.getElementById('btn-relevant')?.click();
+        else if (key_pressed === 'n') document.getElementById('btn-not-relevant')?.click();
+        else if (key_pressed === 's') document.getElementById('btn-skip')?.click();
+        else if (key_pressed === 'u') document.getElementById('btn-undo')?.click();
+        else if (key_pressed === '?' || key_pressed === '/') {
+            const hints = document.getElementById('keyboard-hints');
+            if (hints) hints.classList.toggle('d-none');
+        } else if (e.key === 'ArrowRight') {
+            const currentIdx = candidates.findIndex(c => c.img_id === imgId);
+            const next = candidates[(currentIdx + 1) % candidates.length];
+            if (next) window.location.href = `/review/pres-images/${key}?img_id=${next.img_id}`;
+        } else if (e.key === 'ArrowLeft') {
+            const currentIdx = candidates.findIndex(c => c.img_id === imgId);
+            const prev = candidates[(currentIdx - 1 + candidates.length) % candidates.length];
+            if (prev) window.location.href = `/review/pres-images/${key}?img_id=${prev.img_id}`;
+        }
+    });
+
+    // Keyboard hints toggle
+    document.getElementById('toggle-hints')?.addEventListener('click', () => {
+        document.getElementById('keyboard-hints')?.classList.toggle('d-none');
+    });
+    document.getElementById('close-hints')?.addEventListener('click', () => {
+        document.getElementById('keyboard-hints')?.classList.add('d-none');
+    });
+})();
+</script>
+{% endblock %}

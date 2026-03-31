@@ -414,6 +414,11 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(api_v2_bp)
 
+    # Presentation image review (file-based, no DB required)
+    from src.web.routes.review_pres_images import review_pres_images_bp
+
+    app.register_blueprint(review_pres_images_bp)
+
 
 def _wants_json_response() -> bool:
     """Check if the client prefers JSON over HTML."""
