@@ -18,8 +18,8 @@
       "Bash(mypy*)",
       "Bash(black*)",
       "Bash(ruff*)",
-      "Bash(python scripts/validate_against_gold_standard.py*)",
-      "Bash(python scripts/sync_github_issues.py*)"
+      "Bash(python3 scripts/validate_against_gold_standard.py*)",
+      "Bash(python3 scripts/sync_github_issues.py*)"
     ],
     "deny": [
       "Bash(rm -rf /)*",
@@ -47,6 +47,24 @@
           {
             "type": "command",
             "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
+          }
+        ]
+      },
+      {
+        "matcher": "(Edit|Write).*src/extraction",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\\n⚠️  REMINDER: extraction code changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
+          }
+        ]
+      },
+      {
+        "matcher": "(Edit|Write).*sql/",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '\\n⚠️  REMINDER: sql/ changed.\\n   Verify: sequential numbering (no gaps/duplicates), FK refs only to earlier migrations, file registered in correct order.\\n'"
           }
         ]
       },
