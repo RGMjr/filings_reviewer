@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -459,8 +460,6 @@ class ImageTriageStage:
 
         # Pre-count filename occurrences: filenames repeated more than threshold
         # times are decorative repeating elements (headers, footers, watermarks).
-        from collections import Counter
-
         filename_counts = Counter(a.filename for a in images if a.filename)
         repeated_filenames = {
             fn
@@ -477,12 +476,6 @@ class ImageTriageStage:
 
             # Classify
             asset.classification = self.classify_image(asset)
-
-            # Detect chart type if applicable
-            if asset.classification == ImageClassification.CHART:
-                # Store chart type in a way that's accessible
-                # (ChartData will be populated in Stage 5)
-                pass  # Chart type detection happens when scoring
 
             # Score relevance
             asset.relevance_score = self.score_relevance(asset)

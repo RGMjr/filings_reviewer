@@ -37,6 +37,7 @@ Usage:
 
 import argparse
 import csv
+import json
 import sys
 import textwrap
 from copy import deepcopy
@@ -52,14 +53,10 @@ _URL_INDEX_PATH = OUTPUT_DIR / "_url_index.json"
 
 
 def _load_url_index() -> dict[str, str]:
-    import json
-
-    if _URL_INDEX_PATH.exists():
-        try:
-            return json.loads(_URL_INDEX_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+    try:
+        return json.loads(_URL_INDEX_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 OUTPUT_FIELDNAMES = [

@@ -34,6 +34,7 @@ import argparse
 import csv
 import json
 import logging
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -155,9 +156,6 @@ def _fact_to_row(
     # Raw text from evidence pack snippet (strip HTML tags roughly)
     raw_text = ""
     if fact.evidence_pack and fact.evidence_pack.snippet_html:
-        # Strip basic HTML tags for readability
-        import re
-
         raw_text = re.sub(r"<[^>]+>", "", fact.evidence_pack.snippet_html).strip()
         raw_text = raw_text[:300]  # cap length
 
