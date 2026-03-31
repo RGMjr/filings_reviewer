@@ -30,9 +30,11 @@ def client(app):
 @pytest.fixture
 def mock_db():
     """Create mock database adapter."""
-    with patch("src.web.routes.review.get_db") as mock_get_db:
+    with patch("src.web.routes.review.get_db") as mock_get_db, \
+         patch("src.web.app.get_db") as mock_app_get_db:
         mock = MagicMock()
         mock_get_db.return_value = mock
+        mock_app_get_db.return_value = mock
         yield mock
 
 
