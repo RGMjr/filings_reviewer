@@ -60,7 +60,7 @@ to prevent accidentally committing production database dumps.
 **Status**: Partially resolved
 **Severity**: Low (1 test remaining)
 **Discovered**: 2026-03-19
-**Updated**: 2026-03-26
+**Updated**: 2026-03-31
 
 ### Original Problem
 
@@ -68,7 +68,7 @@ Two tests in `tests/integration/test_gold_standard_coverage.py` were failing:
 - `test_candidate_generation_finds_active_consumers`
 - `test_candidate_generation_finds_number_of_orders`
 
-### Resolution (2026-03-26)
+### Resolution (2026-03-31)
 
 Diagnosed and fixed. The failures had two root causes unrelated to the Farfetch re-fetch:
 
