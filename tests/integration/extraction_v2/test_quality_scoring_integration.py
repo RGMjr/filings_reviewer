@@ -58,7 +58,7 @@ def persistence_adapter(db_adapter: DatabaseAdapter) -> V2PersistenceAdapter:
     return V2PersistenceAdapter(db_adapter)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_ids(db_adapter: DatabaseAdapter) -> dict[str, int]:
     """Create test company and filing, return dict with company_id and filing_id."""
     with db_adapter.get_connection() as conn:

@@ -49,7 +49,7 @@ def persistence_adapter(db_adapter: DatabaseAdapter) -> V2PersistenceAdapter:
     return V2PersistenceAdapter(db_adapter)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_filing_id(db_adapter: DatabaseAdapter) -> int:
     """Create or get a test filing for foreign key references."""
     with db_adapter.get_connection() as conn:
