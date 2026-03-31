@@ -48,6 +48,19 @@ sys.path.insert(0, str(ROOT))
 from src.gold_standard.transcript_metrics import ACTIVE_METRICS  # noqa: E402
 
 OUTPUT_DIR = ROOT / "data" / "presentation_gold_standard"
+_URL_INDEX_PATH = OUTPUT_DIR / "_url_index.json"
+
+
+def _load_url_index() -> dict[str, str]:
+    import json
+
+    if _URL_INDEX_PATH.exists():
+        try:
+            return json.loads(_URL_INDEX_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
 
 OUTPUT_FIELDNAMES = [
     "company",
@@ -505,8 +518,15 @@ def review_file(input_path: Path, resume: bool) -> None:
         print(f"Output: {out_path}")
         return
 
+    url_index = _load_url_index()
+    index_key = input_path.stem.replace("_preannotated", "")
+    doc_url = url_index.get(index_key)
+
     print(f"\nStarting review: {total} pending candidates for {company} ({ticker}) {date}")
-    print(f"Output: {out_path}\n")
+    print(f"Output: {out_path}")
+    if doc_url:
+        print(f"Document: {doc_url}")
+    print()
     prompt("Press Enter to begin...", None)
 
     reviewed_this_session: list[dict] = []

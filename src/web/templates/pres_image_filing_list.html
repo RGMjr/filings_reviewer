@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Presentation Image Review{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Presentation Image Review</h2>
+    <p class="text-muted">Review images extracted from investor presentations to build a gold standard.</p>
+
+    {% if not filings %}
+    <div class="alert alert-info">
+        No image candidate files found. Run <code>preannotate_presentations.py</code> to generate them.
+    </div>
+    {% else %}
+
+    {% set pending_filings = filings | selectattr('pending', 'gt', 0) | list %}
+    {% set completed_filings = filings | rejectattr('pending', 'gt', 0) | list %}
+
+    {% macro filing_table(rows, btn_class, btn_label) %}
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Filing</th>
+                <th>Ticker</th>
+                <th>Total</th>
+                <th>Relevant</th>
+                <th>Pending</th>
+                <th>Progress</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in rows %}
+            <tr>
+                <td>{{ f.key }}</td>
+                <td><strong>{{ f.ticker }}</strong></td>
+                <td>{{ f.total }}</td>
+                <td>{{ f.reviewed - f.skipped }}</td>
+                <td>
+                    {% if f.pending > 0 %}
+                    <span class="badge bg-warning text-dark">{{ f.pending }}</span>
+                    {% else %}
+                    <span class="badge bg-success">Done</span>
+                    {% endif %}
+                </td>
+                <td style="min-width: 120px;">
+                    {% if f.total > 0 %}
+                    {% set pct = ((f.reviewed / f.total) * 100)|round(0)|int %}
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-success" style="width: {{ pct }}%"></div>
+                    </div>
+                    <small class="text-muted">{{ pct }}%</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('review_pres_images.review_filing', key=f.key) }}"
+                       class="btn {{ btn_class }} btn-sm">{{ btn_label }}</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endmacro %}
+
+    {% if pending_filings %}
+    <h5 class="mt-3">Needs Review <span class="badge bg-warning text-dark">{{ pending_filings | length }}</span></h5>
+    {{ filing_table(pending_filings, 'btn-primary', 'Review') }}
+    {% endif %}
+
+    {% if completed_filings %}
+    <h5 class="mt-4">Completed <span class="badge bg-success">{{ completed_filings | length }}</span></h5>
+    {{ filing_table(completed_filings, 'btn-outline-secondary', 'View') }}
+    {% endif %}
+
+    {% endif %}
+</div>
+{% endblock %}

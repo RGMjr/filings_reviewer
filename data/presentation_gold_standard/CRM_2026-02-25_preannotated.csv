@@ -1,5 +1,5 @@
 company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$800 million,currency,other,presentation,$800 million,LOW,cover,False,,
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$2.9 billion,currency,other,presentation,$2.9 billion,LOW,cover,False,,
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$1.1 billion,currency,other,presentation,$1.1 billion,LOW,cover,False,,
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$6.6 billion,currency,other,presentation,$6.6 billion,LOW,cover,False,,
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$800 million,currency,other,text,$800 million,LOW,cover,False,,
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$2.9 billion,currency,other,text,$2.9 billion,LOW,cover,False,,
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$1.1 billion,currency,other,text,$1.1 billion,LOW,cover,False,,
+"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$6.6 billion,currency,other,text,$6.6 billion,LOW,cover,False,,
