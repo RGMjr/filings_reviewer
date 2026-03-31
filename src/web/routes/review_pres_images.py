@@ -12,7 +12,6 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from src.web.pres_image_store import (
     get_edgar_url,
     get_filing_keys,
-    get_progress,
     load_candidates,
     load_decisions,
     save_decision,
@@ -41,16 +40,30 @@ REJECTION_REASONS = [
 ]
 
 
+def _ticker_from_key(key: str) -> str:
+    return key.split("_")[0]
+
+
+def _progress_from_candidates(key: str, candidates: list[dict], decisions: dict) -> dict:
+    total = len(candidates)
+    reviewed = sum(1 for c in candidates if f"{key}:{c['img_id']}" in decisions)
+    skipped = sum(
+        1 for c in candidates
+        if decisions.get(f"{key}:{c['img_id']}", {}).get("decision") == "skip"
+    )
+    return {"total": total, "reviewed": reviewed, "skipped": skipped, "pending": total - reviewed}
+
+
 @review_pres_images_bp.route("/")
 def index():
     """List all filings with image candidates."""
     keys = get_filing_keys()
+    decisions = load_decisions()
     filings = []
     for key in keys:
-        progress = get_progress(key)
-        parts = key.split("_")
-        ticker = parts[0] if parts else key
-        filings.append({"key": key, "ticker": ticker, **progress})
+        candidates = load_candidates(key)
+        progress = _progress_from_candidates(key, candidates, decisions)
+        filings.append({"key": key, "ticker": _ticker_from_key(key), **progress})
     return render_template("pres_image_filing_list.html", filings=filings)
 
 
@@ -69,7 +82,7 @@ def review_filing(key: str):
         c["chart_type"] = d.get("chart_type", "") if d else ""
         c["rejection_reason"] = d.get("rejection_reason", "") if d else ""
         c["notes"] = d.get("notes", "") if d else ""
-        c["status"] = d["decision"] if d else "pending"
+        c["status"] = c["decision"] if c["decision"] is not None else "pending"
 
     # Select current candidate
     img_id_param = request.args.get("img_id")
@@ -80,20 +93,18 @@ def review_filing(key: str):
         # First pending
         current = next(
             (c for c in candidates if c["status"] == "pending"),
-            candidates[0] if candidates else None,
+            candidates[0],
         )
 
     if not current:
         abort(404)
 
-    progress = get_progress(key)
-    parts = key.split("_")
-    ticker = parts[0] if parts else key
+    progress = _progress_from_candidates(key, candidates, decisions)
 
     return render_template(
         "review_pres_images.html",
         key=key,
-        ticker=ticker,
+        ticker=_ticker_from_key(key),
         edgar_url=get_edgar_url(key),
         candidates=candidates,
         current=current,
