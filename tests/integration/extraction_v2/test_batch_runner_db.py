@@ -67,7 +67,7 @@ def db_adapter() -> DatabaseAdapter:
     return DatabaseAdapter(url)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_company_id(db_adapter: DatabaseAdapter) -> int:
     """Insert test company and return company_id."""
     with db_adapter.get_connection() as conn:
