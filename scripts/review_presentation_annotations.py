@@ -181,7 +181,7 @@ def review_candidate(
 ) -> dict:
     """
     Present a single candidate to the reviewer and collect their disposition.
-    Returns the candidate with disposition fields added.
+    Returns the candidate with disposition fields added, or None if undo was requested.
     """
     is_trap = candidate.get("is_trap", "false").lower() == "true"
     confidence = candidate.get("confidence", "MEDIUM")
@@ -223,7 +223,9 @@ def review_candidate(
     print(f"  Dispositions: {green('ACCEPT')}  {yellow('EDIT')}  {red('REJECT')}  SKIP")
     print()
 
-    disposition = prompt("  Your decision [A/E/R/S]: ", ["A", "E", "R", "S"])
+    disposition = prompt("  Your decision [A/E/R/S/U=undo prior]: ", ["A", "E", "R", "S", "U"])
+    if disposition == "U":
+        return None  # sentinel: caller will step back
     disposition_map = {"A": "ACCEPT", "E": "EDIT", "R": "REJECT", "S": "SKIP"}
     disposition_full = disposition_map[disposition]
 
@@ -490,8 +492,11 @@ def review_file(input_path: Path, resume: bool) -> None:
 
     if resume and out_path.exists():
         already_reviewed = load_reviewed(out_path)
+        # Key on raw_text (never modified by edits) so resume works correctly
+        # even after EDIT dispositions that change metric_id, value, or period.
+        # SKIP rows are excluded so they get re-presented on resume.
         reviewed_keys = {
-            (r.get("metric_id", ""), r.get("value", ""), r.get("period", ""), r.get("is_trap", ""))
+            (r.get("raw_text", ""), r.get("is_trap", ""))
             for r in already_reviewed
             if r.get("disposition") not in ("SKIP", None, "")
         }
@@ -500,12 +505,7 @@ def review_file(input_path: Path, resume: bool) -> None:
     # Filter to pending candidates
     pending = []
     for c in candidates:
-        key = (
-            c.get("metric_id", ""),
-            c.get("value", ""),
-            c.get("period", ""),
-            c.get("is_trap", ""),
-        )
+        key = (c.get("raw_text", ""), c.get("is_trap", ""))
         if key not in reviewed_keys:
             pending.append(c)
 
@@ -528,9 +528,24 @@ def review_file(input_path: Path, resume: bool) -> None:
 
     reviewed_this_session: list[dict] = []
 
-    for idx, candidate in enumerate(pending, start=1):
-        result = review_candidate(candidate, idx, total)
+    idx = 0
+    while idx < total:
+        candidate = pending[idx]
+        result = review_candidate(candidate, idx + 1, total)
+
+        if result is None:  # undo requested
+            if reviewed_this_session:
+                reviewed_this_session.pop()
+                idx -= 1
+                print(yellow("\n  Undone — re-reviewing previous candidate."))
+                prompt("  Press Enter to continue...", None)
+            else:
+                print(yellow("\n  Nothing to undo."))
+                prompt("  Press Enter to continue...", None)
+            continue
+
         reviewed_this_session.append(result)
+        idx += 1
 
         # Save after each annotation (so progress is not lost on interruption)
         all_reviewed = already_reviewed + reviewed_this_session

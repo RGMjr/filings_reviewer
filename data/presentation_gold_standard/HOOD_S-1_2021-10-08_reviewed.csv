@@ -1,0 +1,61 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,5.1,count,12/31/19,text,5.1,LOW,cover,FALSE,EDIT,"""Net Cumulative Funded Accounts"" is a proxy for number of customers, not revenue"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,12.5,count,12/31/20,text,12.5,LOW,cover,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,9.8,count,6/30/20,text,9.8,LOW,cover,FALSE,EDIT,"Net Cumulative Funded Accounts is a proxy for number of customers, not revenue"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,22.5 M,count,6/30/21,text,22.5 M,LOW,cover,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,4.3,count,12/31/19,text,4.3,LOW,cover,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"5,389.40",count,2026-01-01 to 2026-03-31,text,"5,389.40",LOW,cover,FALSE,REJECT,"""Net market gains"" is not the same as revenue"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"11,150.70",count,2026-01-01 to 2026-03-31,text,"11,150.70",LOW,cover,FALSE,REJECT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,389.4,count,2026-01-01 to 2026-03-31,text,389.4,LOW,cover,FALSE,REJECT,partial number
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,65.7,count,2019-01-01 to 2019-12-31,html_table,65.7,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,108.9,count,2020-01-01 to 2020-12-31,html_table,108.9,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,115.2,count,6/30/20,html_table,115.2,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,111.7,count,6/30/21,html_table,111.7,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"$14,135.60 ",currency,other,text,"$14,135.60 ",LOW,cover,FALSE,REJECT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"$62,978.50 ",currency,other,text,"$62,978.50 ",LOW,cover,FALSE,REJECT,"""Assets Under Custody"" is not a revenue metric"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"$33,421.50 ",currency,2026-01-01 to 2026-03-31,text,"$33,421.50 ",MEDIUM,cover,FALSE,REJECT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,"$102,034.80 ",currency,2026-01-01 to 2026-03-31,text,"$102,034.80 ",MEDIUM,cover,FALSE,REJECT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$65.70 ,currency,12/31/19,text,$65.70 ,LOW,cover,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$108.90 ,currency,12/31/20,text,$108.90 ,LOW,cover,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$115.20 ,currency,6/30/20,text,$115.20 ,LOW,mda,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$111.70 ,currency,6/30/20,text,$111.70 ,LOW,mda,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,11.7,count,2020-01-01 to 2020-12-31,html_table,11.7,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,10.2,count,6/30/20,html_table,10.2,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,21.3,count,6/30/21,html_table,21.3,MEDIUM,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,11.7 million,count,other,text,11.7 million,LOW,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,4.3 million,count,other,text,4.3 million,LOW,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,21.3 million,count,other,text,21.3 million,LOW,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,10.2 million,count,other,text,10.2 million,LOW,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,-19,other,other,text,-19,LOW,mda,FALSE,REJECT,"part of the term ""COVID-19"" which is a name, not a metric"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,30,other,6/30/21,text,30,LOW,cover,FALSE,REJECT,part of a date
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,109%,percent,other,text,109%,LOW,mda,FALSE,REJECT,"growth in percent, not a count"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customer_acquisition_cost,$53 ,currency,2019-01-01 to 2019-12-31,text,$53 ,MEDIUM,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customer_acquisition_cost,$20 ,currency,2019-01-01 to 2019-12-31,text,$20 ,MEDIUM,mda,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,0.4 million,count,other,text,0.4 million,LOW,mda,FALSE,REJECT,this pertains to a portion of users who owe money
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,0.7 million,count,other,text,0.7 million,LOW,mda,FALSE,REJECT,pertains to portion of users who owe the company money
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,0.1 million,count,other,text,0.1 million,LOW,mda,FALSE,REJECT,not a customer count
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,0.3 million,count,other,text,0.3 million,LOW,mda,FALSE,REJECT,relates to a portion of users who owe the company money
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,3.4 million,count,other,text,3.4 million,LOW,mda,FALSE,REJECT,"number of customers who own a particular product, not total customers"
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,11 million,count,3/31/21,text,11 million,MEDIUM,mda,FALSE,REJECT,portion of customers who have placed a fractional trade
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,9.5 million,count,other,text,9.5 million,LOW,mda,FALSE,REJECT,number of customers who own a particular product
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,16.4 million,count,6/30/21,text,16.4 million,MEDIUM,mda,FALSE,REJECT,portion of customers who made a trade
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_new_customers_acquired,-19,other,other,text,-19,LOW,notes,FALSE,REJECT,"part of ""COVID-19"""
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$1,731 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$1,731",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,112 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,112",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,496 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,496",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,239 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,239",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$4,411 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$4,411",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$2,466 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$2,466",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$8,487 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$8,487",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$6,703 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$6,703",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$18,019 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$18,019",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$17 ,currency,2017-01-01 to 2017-12-31,chart,Annual Revenue by Annual Cohort ($mm)$17,LOW,unknown,FALSE,EDIT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$62 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$62,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$44 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$44,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$56 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$56,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$87 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$87,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$45 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$45,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$130 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$130,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$186 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$186,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$175 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$175,LOW,unknown,FALSE,ACCEPT,
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$326 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$326,LOW,unknown,FALSE,ACCEPT,

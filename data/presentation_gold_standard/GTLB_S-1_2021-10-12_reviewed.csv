@@ -1,0 +1,49 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,"$5,000",currency,2020-01-31,text,"$5,000",MEDIUM,mda,False,REJECT,"this is the definition of large customers (""Our cohort of customers generating $5,000 or more in annual recurring revenue..."")"
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$100K,currency,2020-01-31,html_table,$100K,LOW,unknown,False,REJECT,"this is the definition of large customers (""We believe that our ability to increase the number of $100,000 ARR customers is an indicator of our market penetration and strategic demand..."")"
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$1.0 million,currency,2020-01-31,text,$1.0 million,MEDIUM,mda,False,REJECT,"definition of large customers (""First $1.0 million ARR customer"")"
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,"$100,000",currency,2020-07-31,text,"$100,000",MEDIUM,mda,False,REJECT,
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$1.0 million,currency,2020-07-31,text,$1.0 million,MEDIUM,mda,False,REJECT,
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$0 per user per month,currency,other,chart,$0 per user per month,LOW,unknown,False,REJECT,pricing
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$19 per user per month,currency,other,chart,$19 per user per month,LOW,unknown,False,REJECT,pricing
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,$99 per user per month,currency,other,chart,$99 per user per month,LOW,unknown,False,REJECT,pricing
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,"$5,000",currency,2021-01-01 to 2021-12-31,text,"$5,000",MEDIUM,mda,False,REJECT,definition of large customers
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,"$100,000",currency,2021-07-31,text,"$100,000",MEDIUM,mda,False,REJECT,definition of large customers
+Gitlab Inc.,GTLB,2021-10-12,cm_arr,"$100,000",currency,2021-01-31,text,"$100,000",MEDIUM,mda,False,REJECT,definition of large customers
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,"1,662",count,2020-01-31,text,"1,662",LOW,cover,False,EDIT,"this is a count, not revenue (which would generally be currency)"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,"2,745",count,2020-01-31,text,"2,745",LOW,cover,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148,percent,2021-01-31,html_table,148,LOW,unknown,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,152,percent,2021-01-31,html_table,152,LOW,unknown,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,179,percent,2020-07-31,html_table,179,LOW,unknown,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148%,percent,2020-01-01 to 2020-12-31,text,148%,MEDIUM,mda,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,153%,percent,2020-07-31,text,153%,MEDIUM,mda,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,173,percent,2020-07-31,text,173,MEDIUM,cover,False,EDIT,"this is not a percent, it's a count. there is no indication of it being a percent"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,283,percent,2020-07-31,text,283,MEDIUM,cover,False,EDIT,"this is a count, not a percent"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,383,count,2020-07-31,text,383,MEDIUM,cover,False,EDIT,this is a count not a percent
+Gitlab Inc.,GTLB,2021-10-12,cm_revenue_by_cohort,25%,percent,2021-01-31,text,25%,MEDIUM,cover,False,REJECT,"this is the definition of how they calculate something (""from the top 25% of customers in each of these categories"")"
+Gitlab Inc.,GTLB,2021-10-12,cm_customers_period_end,"1,662",count,2020-01-31,text,"1,662",LOW,mda,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,173,count,2020-01-31,text,173,MEDIUM,mda,False,EDIT,"customers over $100,000 ARR - large customers"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,283,count,2020-01-31,text,283,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,11,count,2020-01-31,text,11,MEDIUM,mda,False,EDIT,"large customers (""our $1.0 million ARR customers increased from 11 as of January 31, 2020..."")"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,20,count,2020-01-31,text,20,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,27,count,2020-01-31,text,27,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,219,count,2020-07-31,text,219,MEDIUM,mda,False,EDIT,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,383,other,2020-07-31,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")",383,MEDIUM,mda,False,EDIT,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")"
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,15,count,2020-07-31,text,15,MEDIUM,mda,False,EDIT,"""our $1.0 million ARR customers increased from 15 as of July 31, 2020 to 27 as of July 31, 2021, ..."""
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,27,count,2020-07-31,text,27,MEDIUM,mda,False,EDIT,"""...our $1.0 million ARR customers increased from 15 as of July 31, 2020 to 27 as of July 31, 2021, ..."""
+Gitlab Inc.,GTLB,2021-10-12,cm_customers_period_end,30,other,other,text,30,LOW,mda,False,REJECT,"""...is 30 days..."""
+Gitlab Inc.,GTLB,2021-10-12,cm_customer_retention_rate,80%,percent,2020-07-31,text,80%,MEDIUM,mda,False,REJECT,"""...an increase of 80%..."""
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,153%,percent,2020-07-31,text,153%,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,179%,percent,2020-01-01 to 2020-12-31,text,179%,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148%,percent,2020-01-01 to 2020-12-31,text,148%,MEDIUM,mda,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_gross_revenue_retention,97%,percent,2020-01-31,text,97%,LOW,mda,False,EDIT,"""our Dollar-Based Gross Retention Rate was 97% as of each of January 31, 2020, January 31, 2021, and July 31, 2021."""
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,152%,percent,2021-07-31,text,152%,MEDIUM,mda,False,EDIT,"""As of July 31, 2020 and 2021, our Dollar-Based Net Retention Rate was 153% and 152%, respectively. """
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148%,percent,2021-01-31,text,148%,MEDIUM,mda,False,EDIT,"""...our Dollar-Based Net Retention Rate of 148% as of January 31, 2021"""
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,31,other,2020-02-01 to 2021-01-31,text,31,MEDIUM,mda,False,REJECT,date
+Gitlab Inc.,GTLB,2021-10-12,cm_active_customers_total,"54,000",count,other,text,"54,000",LOW,mda,False,REJECT,"number of ""repositories"" not customers"
+Gitlab Inc.,GTLB,2021-10-12,cm_active_customers_total,"11,000",count,other,text,"11,000",LOW,mda,False,ACCEPT,
+Gitlab Inc.,GTLB,2021-10-12,cm_revenue_concentration,10%,percent,other,text,10%,LOW,mda,False,REJECT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,173,count,other,text,173,LOW,unknown,False,EDIT,"""...growth in our $100,000 ARR customers from 173 as of January 31, 2020..."""
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,283,count,other,text,283,LOW,unknown,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,383,count,other,text,383,LOW,unknown,False,EDIT,
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,219,count,other,text,219,LOW,unknown,False,EDIT,

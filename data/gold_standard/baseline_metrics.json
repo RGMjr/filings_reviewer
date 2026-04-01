@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-03-31T21:20:11.227142+00:00",
-  "description": "Validation run with 5 filings",
+  "baseline_date": "2026-04-01T20:51:57.451845+00:00",
+  "description": "Validation run with 10 filings",
   "overall": {
-    "precision": 0.7064676616915423,
-    "recall": 0.9044585987261147,
-    "f1": 0.7932960893854749
+    "precision": 0.5631578947368421,
+    "recall": 0.8262548262548263,
+    "f1": 0.6697965571205008
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -12,10 +12,35 @@
       "recall": 1.0,
       "f1": 0.4324324324324324
     },
+    "Datadog, Inc.": {
+      "precision": 0.46153846153846156,
+      "recall": 1.0,
+      "f1": 0.631578947368421
+    },
     "Farfetch Limited": {
       "precision": 0.8461538461538461,
       "recall": 0.717391304347826,
       "f1": 0.776470588235294
+    },
+    "Flywire Corp": {
+      "precision": 0.3333333333333333,
+      "recall": 1.0,
+      "f1": 0.5
+    },
+    "Gitlab Inc.": {
+      "precision": 0.5526315789473685,
+      "recall": 0.9545454545454546,
+      "f1": 0.7000000000000001
+    },
+    "Maplebear Inc.": {
+      "precision": 0.2112676056338028,
+      "recall": 0.6,
+      "f1": 0.3125
+    },
+    "Robinhood Markets, Inc.": {
+      "precision": 0.6,
+      "recall": 0.525,
+      "f1": 0.56
     },
     "SAMSARA VISION INC.": {
       "precision": 0.5,
@@ -33,5 +58,5 @@
       "f1": 0.9375000000000001
     }
   },
-  "unique_recall": 0.9044585987261147
+  "unique_recall": 0.8262548262548263
 }
