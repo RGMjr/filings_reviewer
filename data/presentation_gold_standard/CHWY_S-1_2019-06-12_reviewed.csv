@@ -1,0 +1,39 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+"Chewy, Inc.",CHWY,2019-06-12,cm_customer_retention_rate,66%,percent,2018-01-01 to 2018-12-31,text,66%,MEDIUM,cover,False,REJECT,"this is ""autoship"" revenue as a percent of total"
+"Chewy, Inc.",CHWY,2019-06-12,cm_customer_retention_rate,1.5,percent,2018-01-01 to 2018-12-31,html_table,1.5,HIGH,unknown,False,REJECT,not related to retention
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,18,other,2018-01-01 to 2018-12-31,text,18,MEDIUM,mda,False,REJECT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,53,other,2018-01-01 to 2018-12-31,text,53,MEDIUM,mda,False,REJECT,"weeks in the fiscal year, not customer metric"
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,29,other,other,text,29,LOW,cover,False,REJECT,"definitely not customer count, probably date"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"51,141",count,other,text,"51,141",LOW,cover,False,REJECT,"net cash, not active customers"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"45,273",count,other,text,"45,273",LOW,cover,False,REJECT,net cash
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"63,363",count,other,text,"63,363",LOW,cover,False,REJECT,"free cash flow. this is a table read problem, most likely"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"58,734",count,other,text,"58,734",LOW,cover,False,REJECT,free cash
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"11,321",count,2019-05-05,html_table,"11,321",MEDIUM,unknown,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"7,830",count,2018-04-29,html_table,"7,830",MEDIUM,unknown,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,8.3,count,other,text,8.3,LOW,mda,False,REJECT,appears to be ratio of mature customer spend to new customer spend
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,123.8,count,other,html_table,123.8,MEDIUM,unknown,False,REJECT,"this is a percent and represents the growth in active customers, not a count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,55.9,count,other,html_table,55.9,MEDIUM,unknown,False,REJECT,"growth rate in percent, not a count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,4.4,count,other,html_table,4.4,LOW,unknown,False,REJECT,"growth in net sales per active customer, not a count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"13,415",count,2019-02-03,text,"13,415",LOW,cover,False,REJECT,net cash
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"15,020",count,2019-02-03,text,"15,020",LOW,cover,False,REJECT,free cash flow
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"120,029",count,2019-02-03,text,"120,029",LOW,cover,False,REJECT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"57,575",count,2019-02-03,text,"57,575",LOW,cover,False,REJECT,free cash
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"3,034",count,2019-02-03,text,"3,034",LOW,cover,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"6,789",count,2019-02-03,text,"6,789",LOW,cover,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"10,585",count,2019-02-03,text,"10,585",LOW,cover,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,3.8 million,count,2018-01-01 to 2018-12-31,text,3.8 million,MEDIUM,mda,False,REJECT,"number of active customers INCREASED by, not total"
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"10,585",count,2018-01-01 to 2018-12-31,html_table,"10,585",HIGH,unknown,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,3.8 million,count,2017-01-01 to 2017-12-31,text,3.8 million,MEDIUM,mda,False,REJECT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"6,789",count,2017-01-01 to 2017-12-31,html_table,"6,789",HIGH,unknown,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,3.8 million,count,2016-01-01 to 2016-12-31,text,3.8 million,MEDIUM,mda,False,REJECT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"3,034",count,2016-01-01 to 2016-12-31,html_table,"3,034",HIGH,unknown,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,10.6 million,count,2019-02-03,text,10.6 million,MEDIUM,mda,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,3 million,count,2019-02-03,text,3 million,MEDIUM,mda,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,3.8 million,count,2018-01-01 to 2018-12-31,text,3.8 million,MEDIUM,mda,False,REJECT,"increase, not total"
+"Chewy, Inc.",CHWY,2019-06-12,cm_ltv_to_cac_ratio,2.4,percent,other,text,2.4,LOW,mda,False,ACCEPT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_ltv_to_cac_ratio,-2017,other,other,text,-2017,LOW,mda,False,REJECT,year
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,343,other,2019-05-05,html_table,343,MEDIUM,unknown,False,EDIT,"this is revenue per active customer, not total active customers. it is currency, not a count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,314,currency,2018-04-29,html_table,314,MEDIUM,unknown,False,EDIT,"this is revenue per active customer, not active customer count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,297,currency,2016-01-01 to 2016-12-31,html_table,297,MEDIUM,unknown,False,EDIT,"revenue per active customer, not active customer count"
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,310,currency,2017-01-01 to 2017-12-31,html_table,310,MEDIUM,unknown,False,EDIT,
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,334,currency,2018-01-01 to 2018-12-31,html_table,334,MEDIUM,unknown,False,EDIT,"revenue per active customer, not customer count"

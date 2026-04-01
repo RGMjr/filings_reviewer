@@ -1,0 +1,6 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,110%,percent,other,text,110%,LOW,mda,False,EDIT,"""annual net dollar-based retention rate was approximately 110%,..."""
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,116%,percent,other,text,116%,LOW,cover,False,EDIT,"""...our three-year average annual net dollar-based retention rate, which averaged approximately 116%..."""
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,125%,percent,other,text,125%,LOW,mda,False,EDIT,"""...annual net dollar-based retention rate..."""
+Flywire Corp,FLYW,2026-02-24,cm_revenue_concentration,43%,percent,other,text,43%,LOW,cover,False,REJECT,refers to a research study
+Flywire Corp,FLYW,2026-02-24,cm_revenue_concentration,76%,percent,other,text,76%,LOW,cover,False,REJECT,refers to research study
