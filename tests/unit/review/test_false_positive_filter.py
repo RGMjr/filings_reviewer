@@ -2271,3 +2271,119 @@ class TestNegativeAssertionFilter:
         )
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is False
+
+    def test_superscript_footnote_suppressed_after_word(self, filter):
+        """Number immediately following a word character is a flattened <sup> footnote ref."""
+        # Simulates "7.7 million monthly active orderers26" where 26 was a <sup> tag
+        text = "7.7 million monthly active orderers26 shop at their favorite retailers"
+        number = NumberMatch(
+            start=35, end=37, raw_text="26", value=Decimal("26"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "superscript_footnote"
+
+    def test_superscript_footnote_suppressed_after_period(self, filter):
+        """Number following sentence-ending punctuation (no space) is a footnote ref."""
+        # Simulates "Instacart.13 Retailers" where 13 was a <sup> tag after a sentence
+        text = "We have orderers on Instacart.13 Retailers reach customers"
+        number = NumberMatch(
+            start=30, end=32, raw_text="13", value=Decimal("13"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "superscript_footnote"
+
+    def test_superscript_large_value_not_suppressed(self, filter):
+        """Numbers > 500 following a word are not treated as footnote refs (could be legitimate)."""
+        text = "customers501 is not a footnote pattern"
+        number = NumberMatch(
+            start=9, end=12, raw_text="501", value=Decimal("501"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_superscript_after_space_not_suppressed(self, filter):
+        """Number preceded by whitespace is NOT a superscript footnote ref."""
+        text = "We had 26 million active orderers"
+        number = NumberMatch(
+            start=7, end=9, raw_text="26", value=Decimal("26"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_superscript_after_dollar_sign_not_suppressed(self, filter):
+        """Number preceded by '$' is a currency value, NOT a superscript footnote ref."""
+        text = "Customer revenue per user was $125 for the period."
+        idx = text.find("125")
+        number = NumberMatch(
+            start=idx, end=idx + 3, raw_text="125", value=Decimal("125"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_financial_table_row_suppressed(self, filter):
+        """Number in a [ROW] with financial line item label should be suppressed."""
+        text = (
+            "We had 10 million active customers in 2018. "
+            "[ROW] Selling, general and administrative [CELL] 149,581 [CELL] 451,673 "
+            "[ROW] Advertising and marketing [CELL] 107,677"
+        )
+        # Position of 149,581 in the text
+        idx = text.find("149,581")
+        number = NumberMatch(
+            start=idx, end=idx + 7, raw_text="149,581", value=Decimal("149581"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "financial_table_row"
+
+    def test_financial_table_row_non_financial_not_suppressed(self, filter):
+        """Number in a [ROW] with non-financial label should NOT be suppressed."""
+        text = (
+            "[ROW] Active customers [CELL] 11,321 [CELL] 7,830 [CELL] 3,034"
+        )
+        idx = text.find("11,321")
+        number = NumberMatch(
+            start=idx, end=idx + 6, raw_text="11,321", value=Decimal("11321"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_financial_table_row_nrr_not_suppressed(self, filter):
+        """Net revenue retention rate contains 'net revenue' but is a customer metric row."""
+        text = (
+            "We report net revenue retention rate annually. "
+            "[ROW] Net revenue retention rate(1) [CELL] 180 [CELL] 169"
+        )
+        idx = text.find("180")
+        number = NumberMatch(
+            start=idx, end=idx + 3, raw_text="180", value=Decimal("180"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_financial_table_row_arpu_not_suppressed(self, filter):
+        """ARPU row contains 'revenues' but is a customer metric row."""
+        text = (
+            "[ROW] Average Revenues Per User (ARPU)(4) [CELL] 65.7 [CELL] 108.9"
+        )
+        idx = text.find("65.7")
+        number = NumberMatch(
+            start=idx, end=idx + 4, raw_text="65.7", value=Decimal("65.7"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_financial_table_row_large_customers_not_suppressed(self, filter):
+        """Customer row with 'product revenue' in label is a customer metric row."""
+        text = (
+            "[ROW] Customers with trailing 12-month product revenue greater than $1 million "
+            "[CELL] 14 [CELL] 41"
+        )
+        idx = text.find("14 [CELL]")
+        number = NumberMatch(
+            start=idx, end=idx + 2, raw_text="14", value=Decimal("14"), unit="count"
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False

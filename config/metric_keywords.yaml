@@ -382,6 +382,8 @@ cm_net_revenue_retention:
   exclusions:
     - 'we\s+(?:calculate|define|compute|measure)\b'
     - 'calculated\s+(?:as|by)\b'
+    # FIX-FP: Suppress geographic scope counts (countries, currencies, languages)
+    - '\b(?:countr(?:y|ies)|currenc(?:y|ies)|languages?)\b'
   specific_patterns:
     - 'net\s+revenue\s+retention'
     - 'net\s+dollar\s+retention'
@@ -482,7 +484,8 @@ cm_revenue_concentration:
     - '\bcustomer\s+concentration\b'
     - '\btop\s+\d+\s+customers?\b'
     - '\blargest\s+customers?\b'
-    - '\b\d+%\s+of\s+revenue\b'
+    # REMOVED (2026-04-02): '\b\d+%\s+of\s+revenue\b' — too broad; matched financial
+    # margin/EBITDA percentages (e.g. "74% of revenue" = gross margin, not concentration)
     - '\bconcentration\s+risk\b'
     - '\bconcentration\s+of\s+revenue\b'
     - '\bmajor\s+customers?\b'
