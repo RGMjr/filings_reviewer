@@ -77,13 +77,11 @@ Human-in-the-loop system for validating and improving extraction quality.
 
 ### Reference Plans
 
-Completed and in-progress improvement plans for reference.
+Active and historical plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[GOLDMINE_REMEDIATION_PLAN.md](GOLDMINE_REMEDIATION_PLAN.md)** | ✅ CLOSED — All 18 tasks complete (80% recall, 95% precision) | Developers |
-| **[HUMAN_REVIEW_VALIDATION_PLAN.md](HUMAN_REVIEW_VALIDATION_PLAN.md)** | ✅ CLOSED — All 6 HRV tasks complete | Developers |
-| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | Active task inventory across all workstreams | Developers |
+| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | Task inventory across all workstreams | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
 | **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 | **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations | Developers |
@@ -98,27 +96,9 @@ Historical documents for reference only. Not part of current operations.
 | **[archive/historical/](archive/historical/)** | Historical process documentation and task inventory |
 | **[archive/workstreams/](archive/workstreams/)** | Legacy workstream documentation |
 
-### Additional Documentation Directories
+### Operational Templates
 
-Task output and reference documents organized by type.
-
-| Directory | Description |
-|-----------|-------------|
-| **[completion/](completion/)** | Task completion summary reports (DUP-2, HRV-16, IMG-1-1, IMG-1-2, etc.) |
-| **[investigation/](investigation/)** | Deep-dive investigation reports on extraction failures and edge cases |
-| **[reports/](reports/)** | Metric consistency audits, chart extraction results, and validation reports |
-| **[research/](research/)** | Chart extraction research and GPT-4o vision validation results |
-
-### Operational Templates (Worker Prompts)
-
-Templates and generators for structured task execution via Claude Code.
-
-| File | Description |
-|------|-------------|
-| **[WORKER_PROMPT_GENERATOR.md](WORKER_PROMPT_GENERATOR.md)** | Meta-prompt for generating new worker prompts using Claude Code headless mode |
-| **[WORKER_PROMPT_RALPH.md](WORKER_PROMPT_RALPH.md)** | Streamlined template for autonomous Ralph Loop task execution |
-| **[WORKER_PROMPT_TEMPLATE.md](WORKER_PROMPT_TEMPLATE.md)** | Full worker prompt template (v2.6) for M/L/XL tasks (15 min – 5 hours) |
-| **[WORKER_PROMPT_TEMPLATE_LITE.md](WORKER_PROMPT_TEMPLATE_LITE.md)** | Lightweight template for XS/S tasks under 2 hours (bug fixes, minor changes) |
+Use `/task-create` and `/task-run` slash commands for structured task execution. Worker prompt templates are archived at `archive/historical/process/`.
 
 ---
 
@@ -385,14 +365,9 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 |-------|---------|
 | `implementation-planner.md` | Generate structured plans with A/B/C streams |
 | `flask-api-builder.md` | Generate Flask routes, validation, tests |
-| `code-module-grader.md` | Evaluate modules A+ to F with improvements |
 | `test-coverage-analyzer.md` | Find gaps, generate tests |
 | `database-migration-helper.md` | Generate SQL migrations + db.py methods |
-| `refactor-evaluator.md` | Evaluate refactoring safety and impact |
-| `completion-report-generator.md` | Generate task completion reports |
 | `documentation-sync-validator.md` | Check documentation accuracy |
-
-See [CLAUDE_SKILLS_QUICKSTART.md](CLAUDE_SKILLS_QUICKSTART.md) for detailed usage.
 
 ---
 

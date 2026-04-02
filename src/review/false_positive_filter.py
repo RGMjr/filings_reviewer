@@ -897,6 +897,60 @@ class FalsePositiveFilter:
             )
             return True, "label_embedded_value"
 
+        # FIX-FP-SUP: Suppress superscript footnote reference numbers.
+        # HTML <sup> tags are flattened by the segmenter, producing bare integers
+        # immediately adjacent to the preceding word or sentence-ending punctuation
+        # (e.g., "orderers26" or "Instacart.13 Retailers").
+        # If no whitespace precedes the number and the value is a small plain integer
+        # (<= 500), it is almost certainly a footnote reference, not a metric value.
+        # Superscript footnote numbers appear directly after a letter or period
+        # (e.g., "orderers26" or "Instacart.13"), NOT after "$", "(", or spaces.
+        if (
+            number.unit == "count"
+            and "." not in number.raw_text
+            and "$" not in number.raw_text
+            and "%" not in number.raw_text
+            and value is not None
+            and float(value) <= 500
+            and start > 0
+            and (text[start - 1].isalpha() or text[start - 1] == ".")
+        ):
+            return True, "superscript_footnote"
+
+        # FIX-FP-FINTABLE: Suppress numbers from financial statement table rows.
+        # Linearized tables use [ROW]...[CELL] markup. If the nearest [ROW] label
+        # before this number contains financial line item keywords (e.g., "Selling,
+        # general and administrative"), the value is an accounting figure, not a
+        # customer metric — even when a customer metric keyword appears elsewhere
+        # in the same segment.
+        #
+        # NOTE: Guard against over-filtering customer metric rows (e.g., "Net revenue
+        # retention rate", "Customers with trailing 12-month product revenue >$1M").
+        # These contain financial keywords ("revenue") but are customer metric rows.
+        # If the row label contains customer metric signals, skip this filter.
+        _CUSTOMER_ROW_SIGNALS = frozenset([
+            'customer', 'retention rate', 'cohort', 'expansion', 'churn',
+            'nrr', 'ndr', 'arr customers', 'active customers',
+            'arpu', 'arpau', 'per user', 'per active user', 'per customer',
+            'average revenue per', 'average order', 'order value',
+        ])
+        if "[ROW]" in text and "[CELL]" in text:
+            row_start = text.rfind("[ROW]", 0, start)
+            if row_start >= 0:
+                cell_start = text.find("[CELL]", row_start)
+                if 0 <= cell_start < start:
+                    row_label = text[row_start + len("[ROW]"):cell_start].strip()
+                    row_label_lower = row_label.lower()
+                    is_customer_row = any(
+                        sig in row_label_lower for sig in _CUSTOMER_ROW_SIGNALS
+                    )
+                    if not is_customer_row and contains_financial_line_item_keyword(row_label):
+                        logger.debug(
+                            f"Financial table row filter: number={number.raw_text} "
+                            f"row_label={row_label!r}"
+                        )
+                        return True, "financial_table_row"
+
         # HRV-11: Check if number appears in financial statement context
         if self.filter_financial_statements:
             # First check: Is this within a financial statement section?

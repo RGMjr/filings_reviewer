@@ -110,3 +110,4 @@ debug_*.py
 
 # Corrupted SQL temp files
 sql/.!*
+ops/logs/
