@@ -2502,13 +2502,29 @@ class TestV2DollarThresholdCustomer:
         assert is_fp is True
         assert reason == "v2_dollar_threshold_customer"
 
-    def test_threshold_suppresses_nrr_too(self):
-        """Dollar threshold context also suppresses cm_net_revenue_retention FPs."""
+    def test_threshold_suppresses_nrr_count_value(self):
+        """Count value near dollar threshold context suppresses cm_net_revenue_retention FP.
+
+        In Slack's key metrics table, customer COUNT rows (e.g. '298 customers >$100K ARR')
+        are adjacent to NRR rows. A COUNT value like 298 bound to NRR is a FP and should
+        be suppressed. The rule targets COUNT values, not percent NRR values.
+        """
         source = "Paid Customers >$100,000 135 298 575 Net Dollar Retention Rate 171% 152% 143%"
-        bv = _make_bound_value("c1", 298.0, "298", Unit.PERCENT, "seg-1")
+        bv = _make_bound_value("c1", 298.0, "298", Unit.COUNT, "seg-1")
         is_fp, reason = _is_v2_false_positive(bv, source, "cm_net_revenue_retention")
         assert is_fp is True
         assert reason == "v2_dollar_threshold_customer"
+
+    def test_threshold_does_not_suppress_nrr_percent_value(self):
+        """Percent NRR values near dollar threshold are NOT suppressed.
+
+        Flywire discloses NRR (110-125%) in a section that also mentions
+        customer thresholds. The real NRR percent values should not be filtered.
+        """
+        source = "Our net revenue retention was 110% for fiscal 2020. We serve customers with ARR >$50,000."
+        bv = _make_bound_value("c1", 110.0, "110%", Unit.PERCENT, "seg-1")
+        is_fp, _ = _is_v2_false_positive(bv, source, "cm_net_revenue_retention")
+        assert is_fp is False
 
     def test_large_customer_metric_not_suppressed(self):
         """cm_large_customers_period_end is NOT suppressed by dollar threshold rule."""

@@ -51,6 +51,7 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 - **Coverage**: 75% minimum (enforced), currently 82%
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Before committing**: Run `pytest -x -q` when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
+- **Pre-existing failures**: When a test fails during implementation, check whether it was already failing before your changes (`git stash && pytest <failing_test> -x -q && git stash pop`). Do not spend time debugging failures that predate the current work — note them and move on.
 
 ## Core Design Principles
 
@@ -81,11 +82,16 @@ For any change touching 3+ files or involving extraction/config/migration change
 
 Show the completed checklist and get user approval before proceeding with implementation.
 
+## Planning Discipline
+
+- When self-correcting a plan, limit to 2 revision cycles. If still uncertain after 2 revisions, present the remaining options to the user rather than continuing to iterate.
+
 ## Git Operations
 
 - Before any force-push, force-merge, rebase, or reset --hard: show the exact command, show current branch/HEAD state, and wait for explicit user confirmation ("yes" — not a number, not ambiguous input).
 - Never interpret ambiguous input as approval for destructive git operations.
 - Never use `git add -A` or `git add .` without explicit user instruction. Stage specific files by name.
+- When asked to commit (any phrasing: "commit", "commit this", "commit and push", etc.), execute the `/commit` skill directly. Do not enter plan mode or ask clarifying questions — the skill handles all validation steps.
 
 ## Code Review / Audits
 

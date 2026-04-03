@@ -472,8 +472,14 @@ def _rule_dollar_threshold_customer(
 
     Does NOT fire for cm_large_customers_period_end — threshold-qualified
     customer counts are the correct values for that metric.
+
+    Does NOT fire when the bound value is a PERCENT — a percent value near a
+    dollar threshold is a legitimate NRR/GRR disclosure, not a count FP.
+    (Flywire NRR 110-125% was incorrectly filtered by this rule.)
     """
     if not source_text or metric_id == "cm_large_customers_period_end":
+        return None
+    if bv.unit == Unit.PERCENT:
         return None
     raw = (bv.value_raw or "").strip()
     if not raw:

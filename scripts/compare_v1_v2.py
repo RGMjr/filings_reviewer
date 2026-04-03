@@ -40,6 +40,7 @@ from src.extraction_v2.comparison import (  # noqa: E402
     build_aggregate,
     find_filings_with_candidates,
     load_v1_candidates,
+    load_v2_facts,
 )
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
@@ -122,7 +123,14 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--filing-id", type=int, help="Single filing ID")
     group.add_argument("--filing-ids", type=str, help="Comma-separated filing IDs")
     group.add_argument("--all", action="store_true", help="All filings with V1 candidates")
-    parser.add_argument("--limit", type=int, default=None, help="Max filings to process (with --all)")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Max filings to process (with --all)"
+    )
+    parser.add_argument(
+        "--from-db",
+        action="store_true",
+        help="Read persisted V2 facts from the database instead of re-running the V2 pipeline",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-filing detail")
     return parser.parse_args()
 
@@ -136,7 +144,7 @@ def main() -> int:
         return 1
 
     db = DatabaseAdapter(db_url)
-    pipeline = V2Pipeline(config=PipelineConfig())
+    pipeline = V2Pipeline(config=PipelineConfig()) if not args.from_db else None
 
     # Resolve filing list
     filings: list[dict] = []
@@ -167,60 +175,91 @@ def main() -> int:
             logger.warning("No V1 candidates for filing %d, skipping", filing_id)
             continue
 
-        # Resolve HTML
-        try:
-            html_path = resolve_html_path(filing)
-        except FileNotFoundError as e:
-            logger.warning("Skipping filing %d: %s", filing_id, e)
-            comparisons.append(FilingComparison(
+        if args.from_db:
+            # Load persisted V2 facts from the database
+            v2_facts = load_v2_facts(db, filing_id)
+            if not v2_facts:
+                logger.warning(
+                    "No persisted V2 results for filing %d (%s), skipping",
+                    filing_id,
+                    company,
+                )
+                continue
+
+            matches, v1_only, v2_only = align(v1_candidates, v2_facts)
+            comparison = FilingComparison(
                 filing_id=filing_id,
                 company_name=company,
                 accession_number=filing.get("accession_number", ""),
                 v1_candidates=v1_candidates,
-                v2_facts=[],
-                matches=[],
-                v1_only=v1_candidates,
-                v2_only=[],
+                v2_facts=v2_facts,
+                matches=matches,
+                v1_only=v1_only,
+                v2_only=v2_only,
                 v2_pipeline_ms=0,
-                v2_pipeline_success=False,
-            ))
-            continue
+                v2_pipeline_success=True,
+            )
+            comparisons.append(comparison)
+        else:
+            # Resolve HTML
+            try:
+                html_path = resolve_html_path(filing)
+            except FileNotFoundError as e:
+                logger.warning("Skipping filing %d: %s", filing_id, e)
+                comparisons.append(
+                    FilingComparison(
+                        filing_id=filing_id,
+                        company_name=company,
+                        accession_number=filing.get("accession_number", ""),
+                        v1_candidates=v1_candidates,
+                        v2_facts=[],
+                        matches=[],
+                        v1_only=v1_candidates,
+                        v2_only=[],
+                        v2_pipeline_ms=0,
+                        v2_pipeline_success=False,
+                    )
+                )
+                continue
 
-        # Run V2
-        result = pipeline.process(
-            html_path=html_path,
-            filing_id=filing_id,
-            cik=str(filing.get("cik", "")),
-            accession_number=filing.get("accession_number", ""),
-        )
+            # Run V2
+            assert pipeline is not None
+            result = pipeline.process(
+                html_path=html_path,
+                filing_id=filing_id,
+                cik=str(filing.get("cik", "")),
+                accession_number=filing.get("accession_number", ""),
+            )
 
-        if not result.success:
-            logger.warning("V2 pipeline failed for filing %d: %s", filing_id, result.error_message)
+            if not result.success:
+                logger.warning(
+                    "V2 pipeline failed for filing %d: %s", filing_id, result.error_message
+                )
 
-        # Align
-        matches, v1_only, v2_only = align(v1_candidates, result.facts)
+            # Align
+            matches, v1_only, v2_only = align(v1_candidates, result.facts)
 
-        comparison = FilingComparison(
-            filing_id=filing_id,
-            company_name=company,
-            accession_number=filing.get("accession_number", ""),
-            v1_candidates=v1_candidates,
-            v2_facts=result.facts,
-            matches=matches,
-            v1_only=v1_only,
-            v2_only=v2_only,
-            v2_pipeline_ms=result.total_duration_ms,
-            v2_pipeline_success=result.success,
-        )
-        comparisons.append(comparison)
+            comparison = FilingComparison(
+                filing_id=filing_id,
+                company_name=company,
+                accession_number=filing.get("accession_number", ""),
+                v1_candidates=v1_candidates,
+                v2_facts=result.facts,
+                matches=matches,
+                v1_only=v1_only,
+                v2_only=v2_only,
+                v2_pipeline_ms=result.total_duration_ms,
+                v2_pipeline_success=result.success,
+            )
+            comparisons.append(comparison)
 
         if args.verbose:
             print(f"\n--- {company} (filing {filing_id}) ---")
             print(f"  V1 candidates: {len(v1_candidates)}")
-            print(f"  V2 facts:      {len(result.facts)}")
-            print(f"  Matched:       {len(matches)}")
-            print(f"  V1-only:       {len(v1_only)} (regressions)")
-            print(f"  V2-only:       {len(v2_only)} (gains)")
+            print(f"  V2 facts:      {len(comparison.v2_facts)}")
+            print(f"  Matched:       {len(comparison.matches)}")
+            print(f"  V1-only:       {len(comparison.v1_only)} (regressions)")
+            print(f"  V2-only:       {len(comparison.v2_only)} (gains)")
             print(f"  Agreement:     {comparison.agreement_rate():.1%}")
 
     if not comparisons:

@@ -389,3 +389,117 @@ def align(
 def build_aggregate(comparisons: list[FilingComparison]) -> AggregateReport:
     """Aggregate a list of per-filing comparisons into a report."""
     return AggregateReport(filings=comparisons)
+
+
+def load_v2_facts(db: DatabaseAdapter, filing_id: int) -> list[MetricFact]:
+    """Load persisted V2 MetricFact objects for a filing from the database.
+
+    Used to compare against V1 candidates without re-running the V2 pipeline
+    (e.g., after dual-write has already persisted results).
+    """
+    import json as _json
+
+    from src.extraction_v2.models import (
+        BoundingBox,
+        EvidencePack,
+        ExtractionMethod,
+        MetricFact,
+        PeriodType,
+        ReviewStatus,
+        Scope,
+        SourceLocator,
+        SourceType,
+        Unit,
+    )
+
+    rows = db.query(
+        """
+        SELECT
+            fact_id, doc_id, canonical_metric_id,
+            value, value_raw, unit, currency,
+            period_type, period_start, period_end,
+            scope, scope_detail, cohort_def, cohort_type, customer_type,
+            source_type, source_locator, evidence_pack,
+            confidence, extraction_method, requires_review, review_reason, review_status,
+            alternate_evidence, pipeline_version, created_at
+        FROM v2_metric_facts
+        WHERE doc_id = %(filing_id)s
+        ORDER BY created_at
+        """,
+        {"filing_id": filing_id},
+    )
+
+    def _locator_from_dict(d: dict) -> SourceLocator:
+        text_span_raw = d.get("text_span")
+        bbox_raw = d.get("bbox")
+        return SourceLocator(
+            segment_id=d.get("segment_id"),
+            table_id=d.get("table_id"),
+            cell_row=d.get("cell_row"),
+            cell_col=d.get("cell_col"),
+            text_span=tuple(text_span_raw) if text_span_raw else None,
+            img_id=d.get("img_id"),
+            bbox=BoundingBox.from_dict(bbox_raw) if bbox_raw else None,
+            dom_locator=d.get("dom_locator"),
+        )
+
+    facts = []
+    for row in rows:
+        locator_raw = row["source_locator"]
+        if isinstance(locator_raw, str):
+            locator_raw = _json.loads(locator_raw)
+
+        evidence_raw = row["evidence_pack"]
+        if isinstance(evidence_raw, str):
+            evidence_raw = _json.loads(evidence_raw)
+
+        raw_value = row["value"]
+        facts.append(
+            MetricFact(
+                fact_id=str(row["fact_id"]),
+                doc_id=str(row["doc_id"]),
+                canonical_metric_id=row["canonical_metric_id"],
+                value=float(raw_value) if raw_value is not None else None,
+                value_raw=row["value_raw"] or "",
+                unit=Unit(row["unit"]),
+                currency=row.get("currency"),
+                period_type=(
+                    PeriodType(row["period_type"])
+                    if row["period_type"]
+                    else PeriodType.OTHER
+                ),
+                period_start=row.get("period_start"),
+                period_end=row.get("period_end"),
+                scope=Scope(row["scope"]),
+                scope_detail=row.get("scope_detail"),
+                cohort_def=row.get("cohort_def"),
+                cohort_type=row.get("cohort_type"),
+                customer_type=row.get("customer_type"),
+                source_type=SourceType(row["source_type"]),
+                source_locator=_locator_from_dict(locator_raw),
+                evidence_pack=EvidencePack.from_dict(evidence_raw),
+                confidence=float(row["confidence"]),
+                extraction_method=ExtractionMethod(row["extraction_method"]),
+                requires_review=bool(row["requires_review"]),
+                review_reason=row.get("review_reason"),
+                review_status=ReviewStatus(row["review_status"]),
+                alternate_evidence=[
+                    str(uid) for uid in (row.get("alternate_evidence") or [])
+                ],
+                pipeline_version=row.get("pipeline_version", "2.0.0"),
+                created_at=row["created_at"],
+            )
+        )
+    return facts
+
+
+def has_v2_results(db: DatabaseAdapter, filing_id: int) -> bool:
+    """Return True if the filing has completed V2 extraction in the database."""
+    rows = db.query(
+        """
+        SELECT 1 FROM v2_documents
+        WHERE filing_id = %(filing_id)s AND status = 'complete'
+        """,
+        {"filing_id": filing_id},
+    )
+    return len(rows) > 0

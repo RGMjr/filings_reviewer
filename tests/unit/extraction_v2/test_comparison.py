@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
+
 import pytest
 
 from src.extraction_v2.comparison import (
@@ -10,6 +14,8 @@ from src.extraction_v2.comparison import (
     V1Candidate,
     align,
     build_aggregate,
+    has_v2_results,
+    load_v2_facts,
 )
 from src.extraction_v2.models import MetricFact
 
@@ -526,3 +532,135 @@ class TestAggregateHumanReviewedSubset:
         assert subset["v2_disagrees_accept"] == 0
         assert subset["v2_disagrees_reject"] == 0
         assert d["summary"]["filings_processed"] == 2
+
+
+# ============================================================================
+# load_v2_facts() / has_v2_results()
+# ============================================================================
+
+
+def _make_fact_row(
+    fact_id: str = "aaaaaaaa-0000-0000-0000-000000000001",
+    doc_id: int = 42,
+    canonical_metric_id: str = "cm_net_revenue_retention",
+    value: float | None = 112.0,
+    unit: str = "percent",
+    scope: str = "company",
+    source_type: str = "text",
+    extraction_method: str = "exact_match",
+    review_status: str = "pending_review",
+) -> dict:
+    """Return a minimal DB row dict matching v2_metric_facts columns."""
+    return {
+        "fact_id": fact_id,
+        "doc_id": doc_id,
+        "canonical_metric_id": canonical_metric_id,
+        "value": value,
+        "value_raw": str(value) if value is not None else "",
+        "unit": unit,
+        "currency": None,
+        "period_type": None,
+        "period_start": None,
+        "period_end": None,
+        "scope": scope,
+        "scope_detail": None,
+        "cohort_def": None,
+        "cohort_type": None,
+        "customer_type": None,
+        "source_type": source_type,
+        "source_locator": {"segment_id": "seg-1", "dom_locator": "//p[1]"},
+        "evidence_pack": {"snippet_html": "<b>112%</b>"},
+        "confidence": 0.95,
+        "extraction_method": extraction_method,
+        "requires_review": True,
+        "review_reason": None,
+        "review_status": review_status,
+        "alternate_evidence": None,
+        "pipeline_version": "2.0.0",
+        "created_at": datetime(2024, 1, 1, tzinfo=UTC),
+    }
+
+
+class TestLoadV2Facts:
+    def test_returns_metric_fact_objects(self) -> None:
+        db = MagicMock()
+        db.query.return_value = [_make_fact_row()]
+        facts = load_v2_facts(db, 42)
+        assert len(facts) == 1
+        assert isinstance(facts[0], MetricFact)
+
+    def test_empty_result_returns_empty_list(self) -> None:
+        db = MagicMock()
+        db.query.return_value = []
+        facts = load_v2_facts(db, 42)
+        assert facts == []
+
+    def test_field_values_deserialized_correctly(self) -> None:
+        db = MagicMock()
+        db.query.return_value = [_make_fact_row(value=112.0, canonical_metric_id="cm_ndr")]
+        facts = load_v2_facts(db, 42)
+        f = facts[0]
+        assert f.value == pytest.approx(112.0)
+        assert f.canonical_metric_id == "cm_ndr"
+        assert f.confidence == pytest.approx(0.95)
+        assert f.requires_review is True
+
+    def test_none_value_preserved(self) -> None:
+        db = MagicMock()
+        db.query.return_value = [_make_fact_row(value=None)]
+        facts = load_v2_facts(db, 42)
+        assert facts[0].value is None
+
+    def test_source_locator_as_json_string(self) -> None:
+        """source_locator returned as JSON string (not dict) is handled."""
+        db = MagicMock()
+        row = _make_fact_row()
+        row["source_locator"] = json.dumps(row["source_locator"])
+        db.query.return_value = [row]
+        facts = load_v2_facts(db, 42)
+        assert facts[0].source_locator.segment_id == "seg-1"
+
+    def test_evidence_pack_as_json_string(self) -> None:
+        """evidence_pack returned as JSON string (not dict) is handled."""
+        db = MagicMock()
+        row = _make_fact_row()
+        row["evidence_pack"] = json.dumps(row["evidence_pack"])
+        db.query.return_value = [row]
+        facts = load_v2_facts(db, 42)
+        assert facts[0].evidence_pack.snippet_html == "<b>112%</b>"
+
+    def test_multiple_rows_all_returned(self) -> None:
+        db = MagicMock()
+        db.query.return_value = [
+            _make_fact_row(fact_id="aaaa-0001", canonical_metric_id="cm_ndr"),
+            _make_fact_row(fact_id="aaaa-0002", canonical_metric_id="cm_arr"),
+        ]
+        facts = load_v2_facts(db, 42)
+        assert len(facts) == 2
+        assert {f.canonical_metric_id for f in facts} == {"cm_ndr", "cm_arr"}
+
+    def test_queries_correct_filing_id(self) -> None:
+        db = MagicMock()
+        db.query.return_value = []
+        load_v2_facts(db, 99)
+        call_params = db.query.call_args[0][1]
+        assert call_params["filing_id"] == 99
+
+
+class TestHasV2Results:
+    def test_returns_true_when_complete_row_exists(self) -> None:
+        db = MagicMock()
+        db.query.return_value = [{"1": 1}]
+        assert has_v2_results(db, 42) is True
+
+    def test_returns_false_when_no_rows(self) -> None:
+        db = MagicMock()
+        db.query.return_value = []
+        assert has_v2_results(db, 42) is False
+
+    def test_queries_correct_filing_id(self) -> None:
+        db = MagicMock()
+        db.query.return_value = []
+        has_v2_results(db, 77)
+        call_params = db.query.call_args[0][1]
+        assert call_params["filing_id"] == 77
