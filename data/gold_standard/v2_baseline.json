@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-03T13:23:49.888784+00:00",
-  "description": "V2 SEC baseline: 10 companies, wave 2 fixes (A+B, E narrowed)",
+  "baseline_date": "2026-04-03T19:39:28.213447+00:00",
+  "description": "Wave 2: FP filter improvements, keyword exclusions, cohort type classification",
   "overall": {
-    "precision": 0.73224043715847,
-    "recall": 0.6261682242990654,
-    "f1": 0.6750629722921915
+    "precision": 0.7348066298342542,
+    "recall": 0.6214953271028038,
+    "f1": 0.6734177215189874
   },
   "by_company": {
     "Slack Technologies": {
@@ -23,9 +23,9 @@
       "f1": 0.7936507936507936
     },
     "Snowflake Inc": {
-      "precision": 0.8421052631578947,
-      "recall": 0.8421052631578947,
-      "f1": 0.8421052631578947
+      "precision": 0.8611111111111112,
+      "recall": 0.8157894736842105,
+      "f1": 0.8378378378378377
     },
     "Chewy, Inc.": {
       "precision": 0.5,

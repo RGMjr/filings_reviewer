@@ -888,6 +888,8 @@ class CandidateGenerator:
             (?:
                 \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:or\s+more\s+)?(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$5K or more in ARR"
                 |
+                (?:ARR|arr)\s+of\s+\$                                                     # "ARR of $100,000"
+                |
                 (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$                # "over $X"
                 |
                 (?:at\s+least|minimum)\s+\$                                               # "at least $X"
@@ -928,6 +930,21 @@ class CandidateGenerator:
         )
         if metric_id == "cm_arr" and _TAM_RE.search(context_text):
             return "arr_tam_context"
+
+        # --- ARR: average ARR per customer is not total company ARR ---
+        # "average ARR of our enterprise customers" (Datadog $140K) describes a per-customer
+        # average, not the company's total ARR.
+        if metric_id == "cm_arr" and _re.search(
+            r"\baverage\s+(?:ARR|annual\s+recurring\b)", context_text, _re.IGNORECASE
+        ):
+            return "arr_average_not_total"
+
+        # --- ARR: capital raised is not ARR ---
+        # "we have raised $92.0 million of capital, net of share repurchases" (Datadog).
+        if metric_id == "cm_arr" and _re.search(
+            r"\bnet\s+of\s+share\s+repurchases?\b", context_text, _re.IGNORECASE
+        ):
+            return "arr_capital_not_arr"
 
         # --- Financial statement values on count-only customer metrics ---
         # Income-statement values (operating expenses, interest income, net loss)
@@ -986,11 +1003,100 @@ class CandidateGenerator:
         # window (±100 chars) to capture cases where the qualifier is farther away.
         _FEATURE_SUBSET_RE = _re.compile(
             r"\b(?:gold|premium|crypto)\s+(?:customers?|users?|subscribers?)\b"
-            r"|\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b",
+            r"|\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b"
+            r"|\bdebit\s+card\s+holders?\b"           # Cash Management debit card holders
+            r"|\bfractional\s+(?:shares?|trades?)\b"  # Fractional share traders
+            r"|\brobinhood\s+gold\b"                  # Robinhood Gold subscription service
+            r"|\bnewsfeed\b",                         # Newsfeeds feature users
             _re.IGNORECASE,
         )
         if metric_id in _COUNT_CUSTOMER_METRICS and _FEATURE_SUBSET_RE.search(context_text):
             return "feature_subset_user_count"
+
+        # --- Crypto trading customers are a product subset, not total customers ---
+        # "over 16.4 million customers trade ... of cryptocurrency on our platform" (Robinhood)
+        # is crypto feature users, not total customer count.
+        if (
+            metric_id in _COUNT_CUSTOMER_METRICS
+            and _re.search(r"\bcryptocurrenc", context_text, _re.IGNORECASE)
+            and _re.search(r"\btrad(?:e[sd]?|ing)\b", context_text, _re.IGNORECASE)
+        ):
+            return "feature_subset_user_count"
+
+        # --- Margin product users are not total customer counts ---
+        # "0.1 million users" / "0.3 million users" in margin receivables context (Robinhood)
+        # describes margin borrowers, not total customers.
+        if metric_id in _COUNT_CUSTOMER_METRICS and _re.search(
+            r"\bmargin\s+(?:borrowers?|receivables?)\b", context_text, _re.IGNORECASE
+        ):
+            return "margin_product_not_total_customers"
+
+        # --- Demographic age range / survey data at very large keyword distance ---
+        # "young adults aged 18 to 29" in a Pew Research survey (Robinhood) are ages,
+        # not customer counts; suppress when keyword is extremely distant.
+        if (
+            metric_id in _COUNT_CUSTOMER_METRICS
+            and candidate.keyword_distance is not None
+            and candidate.keyword_distance >= 400
+            and _re.search(
+                r"\b(?:pew\s+research|gallup\s+poll|survey)\b|\baged?\s+\d+\b",
+                context_text,
+                _re.IGNORECASE,
+            )
+        ):
+            return "demographic_survey_not_customer_count"
+
+        # --- Third-party case study customer counts ---
+        # Vendor case studies (e.g. Datadog's Coinbase/Zendesk case studies) describe
+        # customer companies' own metrics. "Customer Since: YYYY" is a case study header.
+        if metric_id in _COUNT_CUSTOMER_METRICS and _re.search(
+            r"\bCustomer\s+Since:\s*\d{4}\b", context_text, _re.IGNORECASE
+        ):
+            return "third_party_case_study"
+
+        # --- Large customer count: employee headcount threshold is not a count ---
+        # "enterprise customers, defined as having 5,000 or more employees" (Datadog)
+        # is an employee count definition of the tier, not a count of large customers.
+        if metric_id == "cm_large_customers_period_end" and _re.search(
+            r"\b\d[\d,]*\s+or\s+more\s+employees?\b", context_text, _re.IGNORECASE
+        ):
+            return "employee_threshold_not_customer_count"
+
+        # --- Revenue concentration: growth multiples are not concentration percentages ---
+        # "a multiple of 4.0x" / "median multiple of 33.9x" (Datadog) are expansion
+        # multiples, not revenue concentration ratios.
+        if metric_id == "cm_revenue_concentration":
+            # "a multiple of 4.0x" / "median multiple of 33.9x" are expansion multiples.
+            # Require both "multiple" word and "Nx" notation to avoid over-firing on contexts
+            # that happen to contain "x" (e.g. "10x surge in traffic").
+            if (
+                _re.search(r"\bmultiple\b", context_text, _re.IGNORECASE)
+                and _re.search(r"\b\d+\.?\d*x\b", context_text, _re.IGNORECASE)
+            ):
+                return "revenue_concentration_growth_multiple"
+            # "ARR from our top 25 customers" — the N in "top N customers" is a tier count,
+            # not a percentage of revenue concentrated in those customers.
+            # Only suppress when the extracted raw value IS the N (e.g. "25" in "top 25"),
+            # not when the context merely mentions "top N" near a different value (e.g. "14%").
+            raw_stripped = raw_text.strip().rstrip("%").rstrip("x").strip()
+            if raw_stripped and _re.search(
+                rf"\btop\s+{_re.escape(raw_stripped)}\s+customers?\b",
+                context_text,
+                _re.IGNORECASE,
+            ):
+                return "revenue_concentration_tier_count"
+
+        # --- Net revenue retention: HTML style attribute values ---
+        # HTML remnants like <p style="margin-top:12pt"> can appear in context_text.
+        # Real NRR values always include "%" in their raw text (e.g. "146%").
+        # A bare integer with no % sign in an NRR slot whose context has HTML style
+        # attributes is an HTML parsing artifact (e.g. "12" from margin-top:12pt).
+        if (
+            metric_id == "cm_net_revenue_retention"
+            and "%" not in raw_text
+            and _re.search(r"style\s*=|margin-top:|margin-bottom:", context_text, _re.IGNORECASE)
+        ):
+            return "net_revenue_retention_html_artifact"
 
         # --- Volunteer/nonprofit context for customer-value metrics ---
         # Volunteer counts (e.g. "2,300 team members volunteer") near LTV/repeat-purchase
