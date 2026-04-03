@@ -108,6 +108,15 @@ _DOLLAR_REJECT_METRICS = _COUNT_ONLY_METRICS | frozenset({
     "cm_cac_payback_period",
 })
 
+# Retention metrics that can legitimately co-occur in the same filing segment.
+# GRR, NRR, and customer retention rate measure different retention concepts
+# and should not be cross-metric-deduped against each other.
+_RETENTION_FAMILY = frozenset({
+    "cm_gross_revenue_retention",
+    "cm_net_revenue_retention",
+    "cm_customer_retention_rate",
+})
+
 # Metrics where percent values need conjunction-clause gating (relaxed mode).
 # In transcript text like "TPV grew 50% and MAAs grew 30%", both values
 # fall in the 400-char proximity window, but only "30%" belongs to MAU.
@@ -927,6 +936,198 @@ def _qa_hedging_percent_near_value(source_text: str, value_raw: str) -> bool:
 
 
 
+# NRR context keywords — net revenue retention / net dollar retention.
+# Used to suppress cm_customer_retention_rate FPs where the source text
+# describes NRR/NDR (which can exceed 100%) rather than customer retention.
+_NRR_CONTEXT_RE = re.compile(
+    r"\b(?:net\s+(?:revenue|dollar)\s+retention|nrr|ndr|"
+    r"dollar[- ]based\s+(?:net\s+)?retention|"
+    r"revenue[- ]based\s+retention)\b",
+    re.IGNORECASE,
+)
+
+
+def _rule_retention_rate_over_100(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block cm_customer_retention_rate for values >100 or in NRR context.
+
+    Customer retention rate is 0-100%. Values above 100 are NRR, not
+    retention rate. Also blocks when source text contains NRR keywords.
+    """
+    if metric_id != "cm_customer_retention_rate":
+        return None
+    if bv.value is not None and bv.value >= 120:
+        return "v2_retention_rate_over_100"
+    if source_text and _NRR_CONTEXT_RE.search(source_text):
+        return "v2_retention_rate_nrr_context"
+    return None
+
+
+# ARR tier threshold patterns — "$5K ARR", "over $100K", "at least $X".
+# Used to suppress cm_arr FPs from customer-tier descriptions.
+_ARR_TIER_SOURCE_RE = re.compile(
+    r"""
+    (?:
+        \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$100K in ARR"
+        |
+        (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$  # "over $X"
+        |
+        (?:at\s+least|minimum)\s+\$                                  # "at least $X"
+        |
+        annualized\s+(?:recurring\s+)?revenue\s+(?:of\s+)?\$         # "annualized revenue of $X"
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Common ARR tier boundary values used in customer-tier descriptions.
+_ARR_TIER_VALUES = frozenset({
+    5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
+})
+
+
+def _rule_arr_tier_threshold(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block cm_arr when value looks like a tier threshold, not an actual ARR amount.
+
+    Customer tier descriptions like 'customers with >$100K ARR' generate
+    ARR candidates with the threshold value rather than the company's ARR.
+    """
+    if metric_id != "cm_arr":
+        return None
+    if bv.value is None:
+        return None
+    # Block if value is a common tier boundary AND source text has tier language
+    if bv.value in _ARR_TIER_VALUES and source_text and _ARR_TIER_SOURCE_RE.search(source_text):
+        return "v2_arr_tier_threshold"
+    return None
+
+
+# Maximum plausible values per metric (to catch magnitude errors from cross-metric mis-binding).
+_METRIC_MAX_VALUE: dict[str, float] = {
+    "cm_lifetime_value_per_customer": 10_000_000,   # $10M max LTV
+    "cm_ltv_to_cac_ratio": 100,                      # 100x max LTV/CAC
+    "cm_revenue_per_customer": 100_000,              # $100K max ARPU
+}
+
+
+def _rule_magnitude_sanity(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block values that exceed plausible maximums for a metric.
+
+    Catches cross-metric mis-binding where financial figures (revenue,
+    market size) are assigned to per-customer or ratio metrics.
+    """
+    max_val = _METRIC_MAX_VALUE.get(metric_id)
+    if max_val is None:
+        return None
+    if bv.value is not None and bv.value > max_val:
+        return "v2_magnitude_sanity"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Wave 4: Cross-metric row disambiguation
+# ---------------------------------------------------------------------------
+
+_ARPU_CONTEXT_RE = re.compile(
+    r"""
+    \b(?:
+        net\s+sales\s+per\s+(?:active\s+)?customer
+        | revenue\s+per\s+(?:active\s+)?customer
+        | sales\s+per\s+(?:active\s+)?customer
+        | spend\s+per\s+(?:active\s+)?customer
+        | average\s+(?:net\s+)?(?:revenue|sales|spend)\s+per\s+(?:active\s+)?customer
+        | avg\s+(?:revenue|spend)\s+per
+        | average\s+order\s+value
+        | arpu
+        | arpd
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_LTV_CONTEXT_RE = re.compile(
+    r"\b(?:lifetime\s+value|ltv\b|lTV\b)",
+    re.IGNORECASE,
+)
+
+_CUSTOMER_COUNT_METRICS = frozenset({
+    "cm_active_customers_total",
+    "cm_customers_period_end",
+})
+
+
+_TABLE_BINDING_TYPES = frozenset({"table_header", "table_stub"})
+
+
+def _rule_arpu_context_on_customer_count(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block customer-count metrics when source text contains ARPU context.
+
+    Revenue-per-customer values (ARPU, ARPC, net sales per active customer) in
+    tables are frequently misbound to cm_active_customers_total or
+    cm_customers_period_end because their numeric magnitude overlaps with small
+    customer counts.
+
+    The rule is restricted to table bindings (table_header / table_stub) because
+    the source_text for table values is composed from the header_path + stub_path,
+    which directly label the row.  For text_proximity bindings the source_text is
+    an entire paragraph that may mention ARPU incidentally while the bound value
+    is a legitimate customer count — firing the rule there causes many false
+    removals in dense SEC filing prose.
+    """
+    if metric_id not in _CUSTOMER_COUNT_METRICS:
+        return None
+    if not source_text:
+        return None
+    if bv.binding_type not in _TABLE_BINDING_TYPES:
+        return None
+    if _ARPU_CONTEXT_RE.search(source_text):
+        return "v2_arpu_context_on_customer_count"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Wave 5: Revenue concentration keyword check
+# ---------------------------------------------------------------------------
+
+_REVENUE_CONCENTRATION_KEYWORD_RE = re.compile(
+    r"""
+    \b(?:
+        concentrat(?:ion|ed)
+        | top\s+\d+\s+customer
+        | top\s+(?:five|ten|twenty|twenty-five|fifty|hundred)\s+customer
+        | largest\s+customer
+        | accounted\s+for
+        | contribut(?:ed|es?)\s+(?:\w+\s+){0,4}(?:revenue|sales)
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _rule_revenue_concentration_keyword(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block cm_revenue_concentration when source text lacks concentration keywords.
+
+    Revenue concentration metrics must be accompanied by language that
+    explicitly describes customer-level revenue concentration (e.g., 'top N
+    customers', 'largest customers', 'accounted for X%').  Small integers
+    extracted from tables without this language are false positives.
+    """
+    if metric_id != "cm_revenue_concentration":
+        return None
+    if not source_text or not _REVENUE_CONCENTRATION_KEYWORD_RE.search(source_text):
+        return "v2_revenue_concentration_no_keyword"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -955,12 +1156,22 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("arpu_as_aov", _rule_arpu_as_aov),
     ("percent_on_count", _rule_percent_on_count_metric),
     ("revenue_as_arr", _rule_revenue_as_arr),
+    ("retention_rate_over_100", _rule_retention_rate_over_100),
+    ("arr_tier_threshold", _rule_arr_tier_threshold),
+    ("magnitude_sanity", _rule_magnitude_sanity),
+    ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count),
 ]
 
 # Rules skipped in relaxed mode (transcripts/presentations).
 # These patterns are common in earnings call language and cause excessive
 # false negatives when applied to spoken content.
 _RELAXED_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation", "financial_sbc"})
+
+# Rules skipped in strict mode (SEC filings).
+# Currently empty: the arpu_context_on_customer_count rule was previously
+# strict-only but was made safe for all modes by adding a binding_type guard
+# (only fires for table_header / table_stub bindings, not text_proximity).
+_STRICT_SKIP_TAGS: frozenset[str] = frozenset()
 
 
 def _is_v2_false_positive(
@@ -979,6 +1190,10 @@ def _is_v2_false_positive(
     "linearized_table", "financial_annotation", or "financial_sbc" are skipped
     because these patterns are common in earnings call language and cause
     excessive false negatives on spoken content.
+
+    When relaxed=False (for SEC filings), rules tagged in _STRICT_SKIP_TAGS
+    are skipped.  _STRICT_SKIP_TAGS is currently empty; the arpu rule that
+    formerly required this was made mode-agnostic via a binding_type guard.
 
     After the registry loop, additional transcript-specific checks are applied
     when relaxed=True:
@@ -1014,6 +1229,8 @@ def _is_v2_false_positive(
 
     for tag, rule_fn in _FP_RULES:
         if relaxed and tag in _RELAXED_SKIP_TAGS:
+            continue
+        if not relaxed and tag in _STRICT_SKIP_TAGS:
             continue
         reason = rule_fn(bv, source_text, metric_id)
         if reason is not None:
@@ -1478,6 +1695,14 @@ class FalsePositiveFilterStage:
                 for m1 in metric_ids
                 if not m1.endswith("_by_cohort")
             ):
+                result.extend(group)
+                continue
+
+            # Don't dedup across retention family members (GRR, NRR, CRR).
+            # These measure distinct retention concepts and can co-occur in the
+            # same section (e.g., a filing may report both gross and net retention
+            # in the same paragraph).
+            if len(metric_ids & _RETENTION_FAMILY) >= 2:
                 result.extend(group)
                 continue
 
