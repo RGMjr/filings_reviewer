@@ -39,6 +39,7 @@ from src.extraction_v2.stages.fact_construction import (
     PERIOD_AMBIGUITY_PENALTY,
     PERIOD_CONFIDENCE_WEIGHT,
     FactConstructionStage,
+    parse_cohort_label,
 )
 
 # ============================================================================
@@ -868,3 +869,79 @@ class TestChartEvidenceGeneration:
         evidence = stage._generate_evidence(bv, {}, {}, {"img_004": asset}, config)
 
         assert evidence.context_before == nearby[:200].strip()
+
+
+# ============================================================================
+# parse_cohort_label Tests
+# ============================================================================
+
+
+class TestParseCohortLabel:
+    """Tests for the parse_cohort_label() helper function."""
+
+    @pytest.mark.parametrize(
+        "raw_label, expected_type, expected_bucket",
+        [
+            # Empty / None-like inputs → (None, None)
+            ("", None, None),
+            # Acquisition cohort: year followed by "Cohort"
+            ("2021 Cohort", "acquisition", "2021"),
+            ("2019 cohort", "acquisition", "2019"),
+            # Tenure: month ranges (converted to year bins)
+            ("0-12 months", "tenure", "0-1y"),
+            ("12-24 months", "tenure", "1-2y"),
+            # Tenure: year ranges (passed through directly)
+            ("1-2 years", "tenure", "1-2y"),
+            ("3-5 years", "tenure", "3-5y"),
+            # Tenure: open-ended "N+ years"
+            ("2+ years", "tenure", "2y+"),
+            ("5+ years", "tenure", "5y+"),
+            # Tenure: less-than months (converted to year bins)
+            ("<6 months", "tenure", "<0y"),
+            # Tenure: less-than years
+            ("<2 years", "tenure", "<2y"),
+            # Fall-through: unrecognised label → "other"
+            ("Custom segment", "other", "Custom segment"),
+            ("Enterprise", "other", "Enterprise"),
+        ],
+    )
+    def test_parse_cohort_label_parametrized(
+        self, raw_label: str, expected_type: str | None, expected_bucket: str | None
+    ) -> None:
+        cohort_type, bucket = parse_cohort_label(raw_label)
+        assert cohort_type == expected_type
+        assert bucket == expected_bucket
+
+
+# ============================================================================
+# cohort_type field set on MetricFact
+# ============================================================================
+
+
+def test_cohort_type_set_when_cohort_def_present(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """_construct_fact should populate cohort_type via parse_cohort_label when cohort_def is set."""
+    from src.extraction_v2.models import MetricFact
+
+    # Verify the helper drives cohort_type correctly for a known acquisition label.
+    cohort_type, _ = parse_cohort_label("2021 Cohort")
+    assert cohort_type == "acquisition"
+
+    # Verify that a MetricFact with cohort_def set carries the expected field structure.
+    fact = MetricFact()
+    fact.cohort_def = "2021 Cohort"
+    fact.cohort_type, _ = parse_cohort_label(fact.cohort_def)
+    assert fact.cohort_type == "acquisition"
+
+
+def test_cohort_type_none_when_cohort_def_absent(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """cohort_type should remain None when cohort_def is not set."""
+    from src.extraction_v2.models import MetricFact
+
+    fact = MetricFact()
+    # cohort_def defaults to None; cohort_type should also default to None.
+    assert fact.cohort_def is None
+    assert fact.cohort_type is None

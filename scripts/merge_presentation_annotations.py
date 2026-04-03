@@ -412,16 +412,15 @@ def main():
     all_rows = load_reviewed_files(input_files)
 
     # Filter to presentation source_type only (in case CSVs mix document types)
-    presentation_rows = [r for r in all_rows if r.get("source_type", "").lower() == "presentation"]
-    if len(presentation_rows) < len(all_rows):
-        skipped = len(all_rows) - len(presentation_rows)
-        print(f"  Skipped {skipped} non-presentation rows (source_type != 'presentation')")
+    # All rows from the presentation gold standard directory are valid regardless
+    # of source_type — S-1/F-1 filings produce "text"/"html_table"/"chart" types
+    # rather than the generic "presentation" type used by 8-K press releases.
+    presentation_rows = all_rows
 
     valid_rows = filter_valid_annotations(presentation_rows)
     deduped_rows = dedup_annotations(valid_rows)
 
     print(f"  Total rows loaded: {len(all_rows)}")
-    print(f"  Presentation rows: {len(presentation_rows)}")
     print(f"  Valid (ACCEPT/EDIT, non-trap): {len(valid_rows)}")
     print(f"  After dedup: {len(deduped_rows)}")
     if len(valid_rows) > len(deduped_rows):

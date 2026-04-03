@@ -2387,3 +2387,68 @@ class TestNegativeAssertionFilter:
         )
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is False
+
+
+class TestTableCellFootnoteFilter:
+    """Tests for FIX-FP-CELLFOOT: bare footnote numbers before [CELL] markers."""
+
+    @pytest.fixture
+    def filter(self) -> FalsePositiveFilter:
+        return FalsePositiveFilter()
+
+    def test_footnote_before_cell_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Small integer immediately followed by [CELL] is a footnote reference."""
+        text = "26 [CELL] For the month ended June 30, 2023. The number of monthly active orderers."
+        number = NumberMatch(start=0, end=2, raw_text="26", value=Decimal("26"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "table_cell_footnote"
+
+    def test_footnote_mid_text_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Footnote number in the middle of larger text is suppressed."""
+        text = "Some text here. 52 [CELL] Instacart estimate based on monthly active orderers."
+        idx = text.find("52")
+        number = NumberMatch(start=idx, end=idx + 2, raw_text="52", value=Decimal("52"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "table_cell_footnote"
+
+    def test_data_value_between_cells_not_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Value between [CELL] markers is a real data value, not a footnote."""
+        text = "[ROW] Net revenue retention rate(1) [CELL] 180 [CELL] 169"
+        idx = text.find("180")
+        number = NumberMatch(start=idx, end=idx + 3, raw_text="180", value=Decimal("180"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_large_value_not_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Values above 500 are not suppressed even when followed by [CELL]."""
+        text = "Total active customers: 6,152 [CELL] more detail here"
+        idx = text.find("6,152")
+        number = NumberMatch(start=idx, end=idx + 5, raw_text="6,152", value=Decimal("6152"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_percentage_value_not_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Percentage values are not suppressed by footnote rule."""
+        text = "26% [CELL] retention rate data"
+        number = NumberMatch(start=0, end=3, raw_text="26%", value=Decimal("26"), unit="percentage")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False
+
+    def test_no_cell_marker_not_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Small integer not followed by [CELL] is not affected by footnote rule."""
+        text = "We had 26 active customers in Q1."
+        idx = text.find("26")
+        number = NumberMatch(start=idx, end=idx + 2, raw_text="26", value=Decimal("26"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        # 26 >= min_value=10, so not suppressed by this rule
+        assert reason != "table_cell_footnote"
+
+    def test_row_first_value_not_suppressed(self, filter: FalsePositiveFilter) -> None:
+        """Value at start of [ROW] is a data value, not a footnote, even if small."""
+        text = "[ROW] 173 [CELL] 219 [CELL] 383"
+        idx = text.find("173")
+        number = NumberMatch(start=idx, end=idx + 3, raw_text="173", value=Decimal("173"), unit="count")
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is False

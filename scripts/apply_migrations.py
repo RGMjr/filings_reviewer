@@ -51,6 +51,7 @@ MIGRATIONS = [
     "14_presentation_section_types.sql",
     "15_rename_cohort_heatmap_to_parfait.sql",
     "16_add_8k_form_type.sql",
+    "17_add_cohort_type_to_v2.sql",
 ]
 
 BOOTSTRAP_DDL = """

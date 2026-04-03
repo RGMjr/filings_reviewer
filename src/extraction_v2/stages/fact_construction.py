@@ -16,6 +16,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Cohort classification patterns (ported from V1 value_extractor.py)
+_ACQUISITION_COHORT_PATTERN = r"(\d{4})\s+[Cc]ohort"
+_TENURE_COHORT_PATTERNS = [
+    (r"(\d+)\s*-\s*(\d+)\s+(?:months?|mos?)", "months"),
+    (r"(\d+)\s*-\s*(\d+)\s+years?", "years"),
+    (r"(\d+)\+\s+years?", "years_plus"),
+    (r"<\s*(\d+)\s+(?:months?|years?)", "less_than"),
+]
+_ACQUISITION_COHORT_RE = re.compile(_ACQUISITION_COHORT_PATTERN)
+
+
 # Confidence adjustment constants
 MDA_SECTION_BONUS: float = 0.10
 BUSINESS_SECTION_BONUS: float = 0.05
@@ -48,6 +60,51 @@ CHART_PENALTY: float = 0.05
 PERIOD_AMBIGUITY_PENALTY: float = 0.15
 PERIOD_CONFIDENCE_WEIGHT: float = 0.2
 BINDING_CONFIDENCE_WEIGHT: float = 0.8
+
+
+def parse_cohort_label(raw_label: str) -> tuple[str | None, str | None]:
+    """Parse cohort label into (cohort_type, cohort_bucket_normalized).
+
+    Returns:
+        (cohort_type, cohort_bucket_normalized) where cohort_type is
+        'acquisition', 'tenure', 'other', or None.
+
+    Examples:
+        "2021 Cohort" -> ("acquisition", "2021")
+        "0-12 months" -> ("tenure", "0-1y")
+        "2+ years"    -> ("tenure", "2y+")
+    """
+    if not raw_label:
+        return None, None
+
+    match = _ACQUISITION_COHORT_RE.search(raw_label)
+    if match:
+        year = match.group(1)
+        return "acquisition", year
+
+    for pattern, cohort_subtype in _TENURE_COHORT_PATTERNS:
+        match = re.search(pattern, raw_label, re.IGNORECASE)
+        if match:
+            if cohort_subtype == "months":
+                start, end = match.groups()
+                start_years = int(start) // 12
+                end_years = int(end) // 12
+                return "tenure", f"{start_years}-{end_years}y"
+            elif cohort_subtype == "years":
+                start, end = match.groups()
+                return "tenure", f"{start}-{end}y"
+            elif cohort_subtype == "years_plus":
+                years = match.group(1)
+                return "tenure", f"{years}y+"
+            elif cohort_subtype == "less_than":
+                value = match.group(1)
+                if "month" in raw_label.lower():
+                    years = int(value) // 12
+                    return "tenure", f"<{years}y"
+                else:
+                    return "tenure", f"<{value}y"
+
+    return "other", raw_label
 
 
 class FactConstructionStage:
@@ -163,7 +220,7 @@ class FactConstructionStage:
         )
 
         # Build the fact
-        return MetricFact(
+        fact = MetricFact(
             doc_id=context.document.doc_id if context.document else "",
             canonical_metric_id=metric_id,
             value=bv.value,
@@ -180,6 +237,9 @@ class FactConstructionStage:
             requires_review=True,
             review_status=ReviewStatus.PENDING_REVIEW,
         )
+        if fact.cohort_def is not None:
+            fact.cohort_type, _ = parse_cohort_label(fact.cohort_def)
+        return fact
 
     def _determine_source_type(self, bv: BoundValue) -> SourceType:
         """

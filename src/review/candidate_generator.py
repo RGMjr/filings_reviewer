@@ -863,6 +863,105 @@ class CandidateGenerator:
             features=features,
         )
 
+    def _check_metric_specific_fp(self, candidate: ReviewCandidate) -> str | None:
+        """Check metric-specific false positive rules.
+
+        Runs after type validation in _post_process_candidates. Returns a reason
+        string if the candidate should be filtered, None to keep it.
+        """
+        import re as _re
+
+        metric_id = candidate.suggested_metric_id
+        context_text = candidate.context_text or ""
+        raw_text = candidate.raw_number_text or ""
+        value = candidate.parsed_value
+
+        # --- ARR tier threshold ---
+        # Block cm_arr when the value is a common tier boundary (e.g. $5K, $100K, $1M)
+        # AND the context contains tier/threshold language.
+        # Ported from V2 _rule_arr_tier_threshold.
+        _ARR_TIER_VALUES = frozenset({
+            5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
+        })
+        _ARR_TIER_SOURCE_RE = _re.compile(
+            r"""
+            (?:
+                \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:or\s+more\s+)?(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$5K or more in ARR"
+                |
+                (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$                # "over $X"
+                |
+                (?:at\s+least|minimum)\s+\$                                               # "at least $X"
+                |
+                annualized\s+(?:recurring\s+)?revenue\s+(?:of\s+)?\$                     # "annualized revenue of $X"
+            )
+            """,
+            _re.IGNORECASE | _re.VERBOSE,
+        )
+        if metric_id == "cm_arr" and value is not None:
+            try:
+                float_val = float(value)
+            except (TypeError, ValueError):
+                float_val = None
+            if float_val is not None and float_val in _ARR_TIER_VALUES:
+                if _ARR_TIER_SOURCE_RE.search(context_text):
+                    return "arr_tier_threshold"
+
+        # --- ARR magnitude cap ---
+        # No real company has >$100B ARR; large values are TAM or financial figures.
+        _ARR_MAX = 100_000_000_000  # $100B
+        if metric_id == "cm_arr" and value is not None:
+            try:
+                float_val = float(value)
+            except (TypeError, ValueError):
+                float_val = None
+            if float_val is not None and float_val > _ARR_MAX:
+                return "arr_magnitude_cap"
+
+        # --- TAM / market-size context ---
+        # Block cm_arr when context discusses total addressable market or market size,
+        # not actual company ARR.
+        _TAM_RE = _re.compile(
+            r"\b(?:total\s+addressable\s+market|TAM|market\s+(?:size|opportunity)|"
+            r"addressable\s+(?:market|opportunity)|serviceable\s+(?:addressable|"
+            r"obtainable|available))\b",
+            _re.IGNORECASE,
+        )
+        if metric_id == "cm_arr" and _TAM_RE.search(context_text):
+            return "arr_tam_context"
+
+        # --- Financial statement values on count-only customer metrics ---
+        # Income-statement values (operating expenses, interest income, net loss)
+        # occasionally land near a "customer" keyword in a distant section heading.
+        # Guard: only suppress when the keyword is far (distance > 50 chars), to
+        # avoid filtering legitimate customer metrics that appear near financial text.
+        #
+        # Uses a strict keyword set that excludes bare "revenue"/"revenues" to
+        # avoid false matches on ARR discussions ("annual recurring revenue").
+        _COUNT_CUSTOMER_METRICS = frozenset({
+            "cm_active_customers_total",
+            "cm_customers_period_end",
+        })
+        _STRICT_FIN_KEYWORDS = (
+            "operating expenses", "operating income", "operating loss",
+            "loss from operations", "income from operations",
+            "interest income", "interest expense", "interest income (expense)",
+            "net loss", "net income", "net earnings",
+            "cost of revenue", "cost of sales", "cost of goods sold",
+            "total revenue", "gross profit", "earnings per share",
+            "sales and marketing", "general and administrative",
+            "research and development",
+        )
+        if (
+            metric_id in _COUNT_CUSTOMER_METRICS
+            and candidate.keyword_distance is not None
+            and candidate.keyword_distance > 50
+        ):
+            context_lower = context_text.lower()
+            if any(kw in context_lower for kw in _STRICT_FIN_KEYWORDS):
+                return "financial_context_on_customer_count"
+
+        return None
+
     def _post_process_candidates(
         self,
         candidates: list[ReviewCandidate],
@@ -944,6 +1043,21 @@ class CandidateGenerator:
                 else:
                     filtered_candidates.append(candidate)
 
+            candidates = filtered_candidates
+
+        # MFP: Metric-specific FP rules (post type validation)
+        if self.config.filter_false_positives:
+            filtered_candidates = []
+            for candidate in candidates:
+                fp_reason = self._check_metric_specific_fp(candidate)
+                if fp_reason:
+                    stats.inc("filtered_by_metric_fp_rule")
+                    logger.debug(
+                        f"Filtered by metric FP rule: {fp_reason} "
+                        f"(value={candidate.parsed_value}, metric={candidate.suggested_metric_id})"
+                    )
+                else:
+                    filtered_candidates.append(candidate)
             candidates = filtered_candidates
 
         return candidates

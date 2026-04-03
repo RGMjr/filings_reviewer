@@ -640,6 +640,7 @@ class V2PersistenceAdapter:
             "scope": fact.scope.value,
             "scope_detail": fact.scope_detail,
             "cohort_def": fact.cohort_def,
+            "cohort_type": fact.cohort_type,
             "customer_type": fact.customer_type,
             "source_type": fact.source_type.value,
             "source_locator": json.dumps(fact.source_locator.to_dict()),
@@ -676,7 +677,7 @@ class V2PersistenceAdapter:
                 fact_id, doc_id, canonical_metric_id,
                 value, value_raw, unit, currency,
                 period_type, period_start, period_end,
-                scope, scope_detail, cohort_def, customer_type,
+                scope, scope_detail, cohort_def, cohort_type, customer_type,
                 source_type, source_locator, evidence_pack,
                 confidence, extraction_method, requires_review, review_reason, review_status,
                 alternate_evidence, primary_fact_id, pipeline_version, created_at
@@ -685,7 +686,7 @@ class V2PersistenceAdapter:
                 %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
                 %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
                 %(period_type)s, %(period_start)s, %(period_end)s,
-                %(scope)s, %(scope_detail)s, %(cohort_def)s, %(customer_type)s,
+                %(scope)s, %(scope_detail)s, %(cohort_def)s, %(cohort_type)s, %(customer_type)s,
                 %(source_type)s, %(source_locator)s, %(evidence_pack)s,
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
                 %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()

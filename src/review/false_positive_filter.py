@@ -917,6 +917,35 @@ class FalsePositiveFilter:
         ):
             return True, "superscript_footnote"
 
+        # FIX-FP-CELLFOOT: Suppress bare footnote numbers at the start of table cells.
+        # Linearized tables produce patterns like "26 [CELL] For the month ended..."
+        # where a small integer is a footnote reference number, not a metric value.
+        # The footnote's own text contains metric keywords, causing spurious matches.
+        #
+        # Detection: number is followed by "[CELL]" within ~15 chars AND is NOT
+        # itself a cell data value (i.e., NOT preceded by "[CELL]" within ~10 chars).
+        # The guard prevents suppressing data values between cells: "[CELL] 180 [CELL]".
+        if (
+            number.unit == "count"
+            and "." not in number.raw_text
+            and "$" not in number.raw_text
+            and "%" not in number.raw_text
+            and value is not None
+            and float(value) <= 500
+        ):
+            after_num = text[end:min(len(text), end + 15)]
+            before_num = text[max(0, start - 10):start]
+            # Fire only when:
+            #   - followed by [CELL] (footnote's explanatory text comes after)
+            #   - NOT preceded by [CELL] (would indicate a data cell value)
+            #   - NOT preceded by [ROW] (would indicate first value in a data row)
+            if (
+                "[CELL]" in after_num
+                and "[CELL]" not in before_num
+                and "[ROW]" not in before_num
+            ):
+                return True, "table_cell_footnote"
+
         # FIX-FP-FINTABLE: Suppress numbers from financial statement table rows.
         # Linearized tables use [ROW]...[CELL] markup. If the nearest [ROW] label
         # before this number contains financial line item keywords (e.g., "Selling,
