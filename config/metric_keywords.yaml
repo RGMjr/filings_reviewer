@@ -170,6 +170,15 @@ cm_customers_period_end:
     - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand|luxury|leading|different))?\s+(?:countries|sellers|retailers|brands|boutiques|suppliers|merchants|partners|stores|locations)\b'
     # FIX-B3: Exclude Fortune list references (e.g., "65 companies in the Fortune 100")
     - 'fortune\s+\d+'
+    # FIX-FP-FEATURESUBSET: Product/feature-qualified subset counts are not total customer counts
+    # e.g. "1.6M Gold customers", "16.4M crypto customers" (Robinhood)
+    - '\b(?:gold|premium|crypto)\s+(?:customers?|users?|subscribers?)\b'
+    - '\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b'
+    # FIX-FP-NPS: Net Promoter Score values are satisfaction scores, not customer counts
+    - '\bnet\s+promoter\s+score\b'
+    - '\bnps\b'
+    # FIX-FP-EMPLOYEE: Employee counts near customer keywords are not customer counts
+    - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand))?\s+employees?\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
@@ -287,6 +296,9 @@ cm_active_customers_total:
     - '\bpostpaid\b[^.;]{0,30}\bnet\s+(?:additions?|adds?)\b'
     # FIX-FP: Reactivated players are win-back metrics, not active customer counts (EA)
     - '\breactivated\b'
+    # FIX-FP-FEATURESUBSET: Product/feature-qualified subset counts are not total active customer counts
+    - '\b(?:gold|premium|crypto)\s+(?:customers?|users?|subscribers?)\b'
+    - '\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b'
   specific_patterns:
     - 'active\s+customers?'
     - 'active\s+consumers?'
@@ -551,6 +563,9 @@ cm_repeat_purchase_rate:
     - '\brepeat\s+order\s+rate\b'
     - '\breorder\s+rate\b'
     - '\brepurchase\s+rate\b'
+  exclusions:
+    # FIX-FP-VOLUNTEER: Nonprofit/volunteer counts are not purchase frequency metrics (Chewy)
+    - '\bvolunteer\b'
 
 # =============================================================================
 # Marketplace / Platform Metrics (DEPRECATED 2026-01-07)
@@ -609,6 +624,8 @@ cm_lifetime_value_per_customer:
     - '\bltv\s*/\s*cac\b'
     - '\bltv\s+to\s+cac\b'
     - '\blifetime\s+value\s+to\s+(?:customer\s+)?acquisition\s+cost\b'
+    # FIX-FP-VOLUNTEER: Nonprofit/volunteer counts are not LTV values (Chewy)
+    - '\bvolunteer\b'
   specific_patterns:
     - 'lifetime\s+value'
     - 'customer\s+lifetime\s+value'

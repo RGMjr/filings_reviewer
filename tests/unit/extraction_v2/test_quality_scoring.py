@@ -228,3 +228,47 @@ class TestScoreFiling:
         result = scorer.score_filing(1, 1, [fact], [defn], [])
         assert result[0].primary_definition_segment_id is None
         assert result[0].primary_methodology_segment_id is None
+
+
+class TestCohortTypeFlags:
+    """Tests for has_tenure_breakdown_flag and has_acquisition_cohort_flag."""
+
+    def test_tenure_breakdown_flag_true_when_cohort_type_tenure(self, scorer):
+        """has_tenure_breakdown_flag should be True when any fact has cohort_type='tenure'."""
+        fact = make_fact("cm_arr")
+        fact.cohort_type = "tenure"
+        result = scorer.score_filing(1, 1, [fact], [], [])
+        assert result[0].has_tenure_breakdown_flag is True
+
+    def test_acquisition_cohort_flag_true_when_cohort_type_acquisition(self, scorer):
+        """has_acquisition_cohort_flag should be True when any fact has cohort_type='acquisition'."""
+        fact = make_fact("cm_arr")
+        fact.cohort_type = "acquisition"
+        result = scorer.score_filing(1, 1, [fact], [], [])
+        assert result[0].has_acquisition_cohort_flag is True
+
+    def test_cohort_flags_false_when_cohort_type_none(self, scorer):
+        """Both cohort flags should be False when cohort_type is None."""
+        fact = make_fact("cm_arr")
+        # cohort_type defaults to None — do not set it
+        result = scorer.score_filing(1, 1, [fact], [], [])
+        assert result[0].has_tenure_breakdown_flag is False
+        assert result[0].has_acquisition_cohort_flag is False
+
+    def test_cohort_flags_false_when_cohort_type_other(self, scorer):
+        """Neither specific flag should fire when cohort_type='other'."""
+        fact = make_fact("cm_arr")
+        fact.cohort_type = "other"
+        result = scorer.score_filing(1, 1, [fact], [], [])
+        assert result[0].has_tenure_breakdown_flag is False
+        assert result[0].has_acquisition_cohort_flag is False
+
+    def test_tenure_and_acquisition_flags_independent(self, scorer):
+        """Tenure and acquisition flags come from separate facts for the same metric."""
+        fact_tenure = make_fact("cm_arr")
+        fact_tenure.cohort_type = "tenure"
+        fact_acquisition = make_fact("cm_arr")
+        fact_acquisition.cohort_type = "acquisition"
+        result = scorer.score_filing(1, 1, [fact_tenure, fact_acquisition], [], [])
+        assert result[0].has_tenure_breakdown_flag is True
+        assert result[0].has_acquisition_cohort_flag is True

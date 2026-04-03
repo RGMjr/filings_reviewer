@@ -2881,3 +2881,350 @@ class TestDeltaCountOrBy:
             bv, source, metric_id="cm_active_customers_total"
         )
         assert reason != "v2_delta_count_value"
+
+
+# ============================================================================
+# Test: _rule_retention_rate_over_100
+# ============================================================================
+
+
+class TestRetentionRateOver100:
+    """Tests for _rule_retention_rate_over_100 — blocks NRR values on retention metric."""
+
+    def test_value_over_120_rejected(self):
+        """Retention rate of 125% → rejected (clearly NRR, not retention)."""
+        bv = _make_bound_value("c1", 125.0, "125%", Unit.PERCENT)
+        source = "Our net revenue retention was 125% for the quarter."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is True
+        assert reason == "v2_retention_rate_over_100"
+
+    def test_value_115_kept(self):
+        """Retention rate of 115% → kept (plausible high-retention rate below 120 threshold)."""
+        bv = _make_bound_value("c1", 115.0, "115%", Unit.PERCENT)
+        source = "Customer retention rate was 115% this quarter."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is False
+
+    def test_value_exactly_100_kept(self):
+        """Retention rate of exactly 100% → kept (boundary case)."""
+        bv = _make_bound_value("c1", 100.0, "100%", Unit.PERCENT)
+        source = "We maintained a 100% customer retention rate."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is False
+
+    def test_value_below_100_kept(self):
+        """Retention rate of 92% → kept."""
+        bv = _make_bound_value("c1", 92.0, "92%", Unit.PERCENT)
+        source = "Customer retention rate was 92% in fiscal year 2024."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is False
+
+    def test_nrr_context_rejects_value_under_100(self):
+        """Value of 98% but source has NRR keyword → rejected."""
+        bv = _make_bound_value("c1", 98.0, "98%", Unit.PERCENT)
+        source = "Net revenue retention (NRR) was 98%, reflecting some churn."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is True
+        assert reason == "v2_retention_rate_nrr_context"
+
+    def test_ndr_context_rejects_value(self):
+        """NDR keyword in source → rejected as NRR context."""
+        bv = _make_bound_value("c1", 105.0, "105%", Unit.PERCENT)
+        source = "NDR was 105%, above our target."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is True
+
+    def test_rule_not_fired_for_other_metric(self):
+        """Value of 120% for cm_gross_retention_rate → not fired by this rule."""
+        bv = _make_bound_value("c1", 120.0, "120%", Unit.PERCENT)
+        source = "Gross retention was 120%."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_gross_retention_rate"
+        )
+        # Rule should not fire for non-cm_customer_retention_rate metrics
+        assert reason != "v2_retention_rate_over_100"
+        assert reason != "v2_retention_rate_nrr_context"
+
+
+# ============================================================================
+# Test: _rule_arr_tier_threshold
+# ============================================================================
+
+
+class TestArrTierThreshold:
+    """Tests for _rule_arr_tier_threshold — blocks tier threshold values for ARR metric."""
+
+    def test_common_tier_value_with_arr_context_rejected(self):
+        """'$100K ARR' tier boundary in customer-tier description → rejected."""
+        bv = _make_bound_value("c1", 100_000.0, "$100K", Unit.CURRENCY)
+        source = "Customers with greater than $100K ARR are served by our enterprise team."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert is_fp is True
+        assert reason == "v2_arr_tier_threshold"
+
+    def test_over_dollar_tier_context_rejected(self):
+        """'over $250,000' threshold language → rejected."""
+        bv = _make_bound_value("c1", 250_000.0, "250,000", Unit.CURRENCY)
+        source = "Enterprise customers spending over $250,000 annually receive dedicated support."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert is_fp is True
+        assert reason == "v2_arr_tier_threshold"
+
+    def test_non_tier_value_with_arr_context_kept(self):
+        """Non-boundary value with ARR language → kept (not a tier threshold)."""
+        bv = _make_bound_value("c1", 123_456.0, "123,456", Unit.CURRENCY)
+        source = "Customers with greater than $123,456 ARR receive enterprise support."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert is_fp is False
+
+    def test_tier_value_without_tier_language_kept(self):
+        """Common tier boundary value but no tier language → kept."""
+        bv = _make_bound_value("c1", 1_000_000.0, "1 million", Unit.CURRENCY)
+        source = "Annual recurring revenue reached $1 million for the first time."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert is_fp is False
+
+    def test_rule_not_fired_for_unrelated_metric(self):
+        """Tier threshold language but wrong metric → not rejected by this rule."""
+        bv = _make_bound_value("c1", 100_000.0, "$100K", Unit.CURRENCY)
+        source = "Customers with greater than $100K ARR qualify for enterprise."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_per_customer"
+        )
+        assert reason != "v2_arr_tier_threshold"
+
+    def test_at_least_dollar_pattern_rejected(self):
+        """'at least $X' pattern triggers tier threshold rule."""
+        bv = _make_bound_value("c1", 10_000.0, "10,000", Unit.CURRENCY)
+        source = "SMB accounts spending at least $10,000 per year get priority onboarding."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert is_fp is True
+        assert reason == "v2_arr_tier_threshold"
+
+
+# ============================================================================
+# Test: _rule_magnitude_sanity
+# ============================================================================
+
+
+class TestMagnitudeSanity:
+    """Tests for _rule_magnitude_sanity — blocks implausibly large per-metric values."""
+
+    def test_ltv_cac_over_100x_rejected(self):
+        """LTV:CAC ratio of 500x → rejected as implausibly large."""
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        source = "Our LTV to CAC ratio is 500x, reflecting strong unit economics."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_ltv_to_cac_ratio"
+        )
+        assert is_fp is True
+        assert reason == "v2_magnitude_sanity"
+
+    def test_ltv_cac_plausible_value_kept(self):
+        """LTV:CAC ratio of 4.5x → kept (plausible)."""
+        bv = _make_bound_value("c1", 4.5, "4.5", Unit.COUNT)
+        source = "Our LTV to CAC ratio is 4.5x."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_ltv_to_cac_ratio"
+        )
+        assert is_fp is False
+
+    def test_revenue_per_customer_over_max_rejected(self):
+        """ARPU of $500M → rejected (financial figure mis-bound to ARPU metric)."""
+        bv = _make_bound_value("c1", 500_000_000.0, "500 million", Unit.CURRENCY)
+        source = "Revenue per customer reached $500 million."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_per_customer"
+        )
+        assert is_fp is True
+        assert reason == "v2_magnitude_sanity"
+
+    def test_revenue_per_customer_plausible_kept(self):
+        """ARPU of $50,000 → kept (within max)."""
+        bv = _make_bound_value("c1", 50_000.0, "50,000", Unit.CURRENCY)
+        source = "Average revenue per customer was $50,000."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_per_customer"
+        )
+        assert is_fp is False
+
+    def test_rule_not_fired_for_unconstrained_metric(self):
+        """Large value for cm_arr → not rejected by magnitude rule (no max defined)."""
+        bv = _make_bound_value("c1", 999_000_000.0, "999 million", Unit.CURRENCY)
+        source = "ARR reached $999 million."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_arr"
+        )
+        assert reason != "v2_magnitude_sanity"
+
+    def test_ltv_at_max_boundary_kept(self):
+        """LTV:CAC exactly at 100x boundary → kept (not strictly greater than)."""
+        bv = _make_bound_value("c1", 100.0, "100", Unit.COUNT)
+        source = "LTV to CAC ratio is 100x."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_ltv_to_cac_ratio"
+        )
+        assert is_fp is False
+
+
+# ============================================================================
+# Test: _rule_arpu_context_on_customer_count
+# ============================================================================
+
+
+class TestArpuContextOnCustomerCount:
+    """Tests for _rule_arpu_context_on_customer_count.
+
+    The rule fires when:
+      - metric_id is cm_active_customers_total or cm_customers_period_end
+      - binding_type is table_header or table_stub (NOT text_proximity)
+      - source text contains an ARPU/revenue-per-customer keyword
+
+    It applies in both strict (SEC filing) and relaxed (presentation) modes
+    because the binding_type guard prevents false removals in paragraph prose.
+    """
+
+    def test_net_sales_per_active_customer_blocks_table_stub(self):
+        """Table-stub 'Net sales per active customer' → cm_active_customers_total blocked."""
+        bv = BoundValue(
+            candidate_id="c1", value=343.0, value_raw="343", unit=Unit.CURRENCY,
+            binding_type="table_stub", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "Net Sales per Active Customer $ 343"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_context_on_customer_count"
+
+    def test_table_stub_fires_in_strict_mode(self):
+        """Rule fires in strict mode (SEC filings) for table bindings."""
+        bv = BoundValue(
+            candidate_id="c1", value=343.0, value_raw="343", unit=Unit.CURRENCY,
+            binding_type="table_stub", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "Net sales per active customer $ 343"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total", relaxed=False
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_context_on_customer_count"
+
+    def test_text_proximity_not_blocked_even_with_arpu_keyword(self):
+        """text_proximity binding with ARPU keyword → not blocked (paragraph prose guard)."""
+        bv = _make_bound_value("c1", 343.0, "343", Unit.CURRENCY)  # binding_type=text_proximity
+        source = "Net sales per active customer was $343 and we had 10.6M active customers."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total", relaxed=True
+        )
+        assert reason != "v2_arpu_context_on_customer_count"
+
+    def test_arpu_keyword_blocks_table_stub(self):
+        """'ARPU' keyword in table_stub source → cm_active_customers_total blocked."""
+        bv = BoundValue(
+            candidate_id="c1", value=108.9, value_raw="108.9", unit=Unit.CURRENCY,
+            binding_type="table_stub", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "ARPU 108.9"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_context_on_customer_count"
+
+    def test_table_header_binding_also_fires(self):
+        """table_header binding type also triggers the rule."""
+        bv = BoundValue(
+            candidate_id="c1", value=297.0, value_raw="297", unit=Unit.CURRENCY,
+            binding_type="table_header", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "Revenue per customer $ 297"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end", relaxed=True
+        )
+        assert is_fp is True
+        assert reason == "v2_arpu_context_on_customer_count"
+
+    def test_plain_customer_count_not_blocked(self):
+        """Generic customer count source → not blocked regardless of binding type."""
+        bv = BoundValue(
+            candidate_id="c1", value=10_600_000.0, value_raw="10.6 million", unit=Unit.COUNT,
+            binding_type="table_stub", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "Active Customers 10600000"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total", relaxed=True
+        )
+        assert reason != "v2_arpu_context_on_customer_count"
+
+    def test_rule_not_fired_for_arpu_metric(self):
+        """ARPU context on the ARPU metric itself → rule does not fire."""
+        bv = BoundValue(
+            candidate_id="c1", value=343.0, value_raw="343", unit=Unit.CURRENCY,
+            binding_type="table_stub", binding_confidence=0.7,
+            source_locator=SourceLocator(segment_id="seg-1"),
+        )
+        source = "Net sales per active customer $ 343"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_per_customer", relaxed=True
+        )
+        assert reason != "v2_arpu_context_on_customer_count"
+
+
+# ============================================================================
+# Test: revenue concentration rules (existing v2_geographic_revenue etc.)
+# ============================================================================
+
+
+class TestRevenueConcentrationContext:
+    """Smoke tests: _rule_revenue_concentration_context still fires correctly."""
+
+    def test_geographic_revenue_blocks_concentration(self):
+        """'International revenue' context → cm_revenue_concentration blocked."""
+        bv = _make_bound_value("c1", 44.0, "44%", Unit.PERCENT)
+        source = "44% of our revenue was international in the quarter."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert is_fp is True
+
+    def test_partner_concentration_not_blocked(self):
+        """Legitimate partner concentration without geographic context → not blocked."""
+        bv = _make_bound_value("c1", 23.0, "23%", Unit.PERCENT)
+        source = "Our top 10 retail partners accounted for 23% of total revenue."
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_revenue_concentration"
+        )
+        assert reason not in (
+            "v2_revenue_concentration_no_keyword",
+            "v2_geographic_revenue",
+            "v2_cost_structure_revenue",
+        )

@@ -84,8 +84,8 @@ class V2QualityScorer:
 
             # Cohort breakdown: any fact has non-null cohort_def
             has_cohort_breakdown = any(f.cohort_def is not None for f in metric_facts)
-            has_tenure_breakdown = False  # V2 doesn't distinguish cohort subtypes yet
-            has_acquisition_cohort = False
+            has_tenure_breakdown = any(f.cohort_type == "tenure" for f in metric_facts)
+            has_acquisition_cohort = any(f.cohort_type == "acquisition" for f in metric_facts)
 
             # Period set for completeness scoring
             periods: set[date | None] = {f.period_end for f in metric_facts}

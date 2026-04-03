@@ -322,6 +322,7 @@ class MetricFact:
     scope: Scope = Scope.COMPANY
     scope_detail: str | None = None  # Segment name if scope=SEGMENT
     cohort_def: str | None = None  # "Customers acquired in 2022"
+    cohort_type: str | None = None  # acquisition/tenure/other
     customer_type: str | None = None  # "Enterprise", "SMB"
 
     # Provenance (non-negotiable)

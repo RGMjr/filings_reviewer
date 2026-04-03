@@ -69,6 +69,10 @@ OUTPUT_FIELDNAMES = [
     "period",
     "source_type",
     "raw_text",
+    "context_before",
+    "context_after",
+    "header_path",
+    "stub_path",
     "confidence",
     "section",
     "is_trap",
@@ -206,18 +210,42 @@ def review_candidate(
         print(red("  *** POTENTIAL TRAP — review carefully ***"))
         print()
 
+    source_type = candidate.get("source_type", "")
+    context_before = candidate.get("context_before", "") or ""
+    context_after = candidate.get("context_after", "") or ""
+    header_path = candidate.get("header_path", "") or ""
+    stub_path = candidate.get("stub_path", "") or ""
+
     conf_color = {"HIGH": green, "MEDIUM": yellow, "LOW": red}.get(confidence, str)
     print(f"  Metric:     {bold(metric_id)}")
     print(f"  Value:      {value or '(none)'}")
     print(f"  Unit:       {unit}")
     print(f"  Period:     {period}")
-    print(f"  Slide section: {section}")
+    print(f"  Section:    {section}")
+    print(f"  Source:     {source_type}")
     print(f"  Confidence: {conf_color(confidence)}")
     print()
     print(cyan("  Raw text from slide:"))
     wrapped = textwrap.fill(raw_text, width=62, initial_indent="    ", subsequent_indent="    ")
     print(wrapped)
     print()
+
+    if context_before or context_after:
+        print(cyan("  Context:"))
+        context_snippet = f"{context_before} [{value}] {context_after}".strip()
+        wrapped_ctx = textwrap.fill(
+            context_snippet, width=62, initial_indent="    ", subsequent_indent="    "
+        )
+        print(wrapped_ctx)
+        print()
+    if header_path:
+        print(cyan("  Table column:"))
+        print(f"    {header_path}")
+        print()
+    if stub_path:
+        print(cyan("  Table row:"))
+        print(f"    {stub_path}")
+        print()
 
     print(f"  {'─'*55}")
     print(f"  Dispositions: {green('ACCEPT')}  {yellow('EDIT')}  {red('REJECT')}  SKIP")

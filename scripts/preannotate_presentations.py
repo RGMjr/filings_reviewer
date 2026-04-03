@@ -73,6 +73,10 @@ CSV_FIELDNAMES = [
     "period",
     "source_type",
     "raw_text",
+    "context_before",
+    "context_after",
+    "header_path",
+    "stub_path",
     "confidence",
     "section",
     "is_trap",
@@ -171,6 +175,17 @@ def _fact_to_row(
     # Section from segment lookup
     section = _get_section_for_fact(fact, segment_map)
 
+    # Context from evidence pack
+    context_before = ""
+    context_after = ""
+    header_path = ""
+    stub_path = ""
+    if fact.evidence_pack:
+        context_before = fact.evidence_pack.context_before or ""
+        context_after = fact.evidence_pack.context_after or ""
+        header_path = " > ".join(fact.evidence_pack.header_path) if fact.evidence_pack.header_path else ""
+        stub_path = " > ".join(fact.evidence_pack.stub_path) if fact.evidence_pack.stub_path else ""
+
     return {
         "company": company,
         "ticker": ticker,
@@ -181,6 +196,10 @@ def _fact_to_row(
         "period": period,
         "source_type": fact.source_type.value if fact.source_type else source_type,
         "raw_text": raw_text,
+        "context_before": context_before,
+        "context_after": context_after,
+        "header_path": header_path,
+        "stub_path": stub_path,
         "confidence": confidence,
         "section": section,
         "is_trap": "False",
@@ -363,6 +382,8 @@ def run_preannotation(
     filing_type: str = "8-K",
     files: list[str] | None = None,
     date: str | None = None,
+    cik: str = "",
+    accession_number: str = "",
 ) -> dict[str, str]:
     """
     Fetch and pre-annotate presentations or filings for the given tickers.
@@ -421,6 +442,7 @@ def run_preannotation(
             return file_index
 
         all_rows: list[dict[str, str]] = []
+        all_images: list[dict] = []
         last_cache_path: str | None = None
 
         for file_path_str in files:
@@ -454,7 +476,7 @@ def run_preannotation(
             last_cache_path = str(local_cache_path)
 
             try:
-                rows, _, _images = _process_presentation(
+                rows, _, images = _process_presentation(
                     source_id=str(file_path),
                     ticker=ticker,
                     company=ticker,
@@ -464,8 +486,11 @@ def run_preannotation(
                     html_cache_path=local_cache_path,
                     document_type=document_type,
                     source_type=csv_source_type,
+                    cik=cik,
+                    accession_number=accession_number,
                 )
                 all_rows.extend(rows)
+                all_images.extend(images)
             except Exception as exc:
                 print(
                     f"[{ticker}] ERROR running pipeline on {file_path}: {exc}", file=sys.stderr
@@ -485,6 +510,10 @@ def run_preannotation(
             index_path.write_text(
                 json.dumps(file_index, indent=2, sort_keys=True), encoding="utf-8"
             )
+
+        if all_images:
+            img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+            img_json_path.write_text(json.dumps(all_images, indent=2), encoding="utf-8")
 
         return file_index
 
@@ -721,6 +750,18 @@ def main() -> int:
         help="Filing date (YYYY-MM-DD). Required when --files is used.",
     )
     parser.add_argument(
+        "--cik",
+        metavar="CIK",
+        default="",
+        help="SEC CIK for image URL construction (optional, used with --files).",
+    )
+    parser.add_argument(
+        "--accession",
+        metavar="ACCESSION",
+        default="",
+        help="SEC accession number for image URL construction (optional, used with --files).",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -761,6 +802,8 @@ def main() -> int:
         filing_type=args.filing_type,
         files=args.files,
         date=args.date,
+        cik=args.cik,
+        accession_number=args.accession,
     )
 
     print(
