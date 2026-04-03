@@ -960,6 +960,48 @@ class CandidateGenerator:
             if any(kw in context_lower for kw in _STRICT_FIN_KEYWORDS):
                 return "financial_context_on_customer_count"
 
+        # --- CAC: percentage values are not dollar costs ---
+        # Customer acquisition cost is a dollar amount, never a percentage.
+        # Suppress % candidates that land near "cost to acquire" language (Robinhood "60%").
+        if metric_id == "cm_customer_acquisition_cost" and "%" in raw_text:
+            return "cac_percentage_not_cost"
+
+        # --- New customer acquisition: stock inventory context ---
+        # Stock reward programs hold a share inventory; the position size (e.g. 5,000)
+        # is a stock holding count, not a new-customer acquisition count (Robinhood).
+        if metric_id == "cm_new_customers_acquired":
+            _STOCK_INVENTORY_RE = _re.compile(
+                r"\b(?:settled\s+)?shares?\s+(?:held|of\s+stock|inventory)\b"
+                r"|\bstock\s+of\s+issuers?\b"
+                r"|\binventory\s+of\s+(?:settled\s+)?shares?\b",
+                _re.IGNORECASE,
+            )
+            if _STOCK_INVENTORY_RE.search(context_text):
+                return "stock_inventory_not_new_customers"
+
+        # --- Feature-subset user/customer counts ---
+        # Product/feature-qualified subsets (e.g. "Gold customers", "crypto users",
+        # "Newsfeed users", "Watchlist users") are not total customer counts.
+        # Uses context_text (40-word window) rather than the narrower YAML exclusion
+        # window (±100 chars) to capture cases where the qualifier is farther away.
+        _FEATURE_SUBSET_RE = _re.compile(
+            r"\b(?:gold|premium|crypto)\s+(?:customers?|users?|subscribers?)\b"
+            r"|\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b",
+            _re.IGNORECASE,
+        )
+        if metric_id in _COUNT_CUSTOMER_METRICS and _FEATURE_SUBSET_RE.search(context_text):
+            return "feature_subset_user_count"
+
+        # --- Volunteer/nonprofit context for customer-value metrics ---
+        # Volunteer counts (e.g. "2,300 team members volunteer") near LTV/repeat-purchase
+        # keywords are employee engagement stats, not customer-value metrics (Chewy).
+        _VOLUNTEER_METRICS = frozenset({
+            "cm_lifetime_value_per_customer",
+            "cm_repeat_purchase_rate",
+        })
+        if metric_id in _VOLUNTEER_METRICS and "volunteer" in context_text.lower():
+            return "volunteer_nonprofit_context"
+
         return None
 
     def _post_process_candidates(
