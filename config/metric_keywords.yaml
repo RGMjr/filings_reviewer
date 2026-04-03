@@ -108,6 +108,9 @@ cm_new_customers_acquired:
     - '\bcost\s+to\s+acquire\b'
     # FIX-FP: Exclude numbers followed by non-metric units (applications, integrations)
     - '\b\d[\d,]*(?:\s+[\w-]+){0,2}\s+(?:applications?|integrations?)\b'
+    # FIX-FP-STOCK: Stock inventory ("settled shares held exclusively for this program") is not
+    # a new-customer acquisition count (Robinhood stock reward program)
+    - '\b(?:settled\s+)?shares?\s+(?:held|of\s+stock|inventory)\b'
 
 cm_customers_period_end:
   # Period-end customer count (stock count at end of period)
@@ -179,6 +182,11 @@ cm_customers_period_end:
     - '\bnps\b'
     # FIX-FP-EMPLOYEE: Employee counts near customer keywords are not customer counts
     - '\b\d[\d,.]*(?:\s+(?:million|billion|thousand))?\s+employees?\b'
+    # FIX-FP-MARGIN: Margin borrowers/receivables are financial balances, not customer counts (Robinhood)
+    - '\bmargin\s+(?:borrowers?|receivables?|balance)\b'
+    # FIX-FP-FEATURESUBSET2: Feature user counts by name (Robinhood newsfeeds, watchlists)
+    - '\bnewsfeed\b'
+    - '\bwatchlists?\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
