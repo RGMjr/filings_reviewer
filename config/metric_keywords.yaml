@@ -71,6 +71,8 @@ cm_new_customers_acquired:
     - '\bnew\s+customer\s+additions?\b'
     - '\bnet\s+new\s+customers?\b'
     - '\bcustomers?\s+added\b'
+    # Reversed-order phrasing: "we added approximately 1,400 customers"
+    - '\badded\s+(?:approximately|roughly|about|nearly|over|more\s+than)\s+[\d,]+\s+(?:new\s+)?(?:customers?|users?|accounts?|subscribers?)\b'
     - '\bacquisition\s+of\s+customers?\b'
     - '\bnew\s+users?\s+acquired\b'
     - '\bacquired\s+users?\b'
@@ -297,6 +299,9 @@ cm_revenue_per_customer:
     - '\brevenue\s+per\s+customer\b'
     - '\brevenue\s+per\s+user\b'
     - '\bper\s+customer\s+revenue\b'
+    # Chewy-style: "net sales per active customer"
+    - '\bnet\s+sales\s+per\s+(?:active\s+)?customer\b'
+    - '\bsales\s+per\s+(?:active\s+)?customer\b'
     # Transcript vocabulary (telecom)
     - '\barpa\b'
     - '\baverage\s+revenue\s+per\s+account\b'
