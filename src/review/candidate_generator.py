@@ -1236,6 +1236,105 @@ class CandidateGenerator:
             except (TypeError, ValueError):
                 pass
 
+        # --- Negative year fragment is not a metric value ---
+        # "-2019" from "2015-2019 customer cohorts" is a hyphenated year range parsed
+        # as a negative number. No legitimate metric value falls in -2100 to -1900.
+        if value is not None:
+            try:
+                float_val = float(value)
+                if -2100 < float_val < -1900:
+                    return "year_fragment_negative"
+            except (TypeError, ValueError):
+                pass
+
+        # --- Linearized table: cross-metric row mis-tag ---
+        # When tables are linearized with [CELL]/[ROW] markers, values from a "new customers"
+        # row can be tagged as cm_customers_period_end because a nearby keyword matches
+        # "customers". If a [ROW] marker is followed within 40 chars by "new ... customers"
+        # (meaning the ROW LABEL itself describes new customers), suppress cm_customers_period_end.
+        # Guard: require "new" to appear within 40 chars of a [ROW] marker, not just anywhere
+        # in the context, to avoid suppressing period-end counts from tables that merely
+        # mention "new customers" in passing (e.g. "8,800 customers, increasing from 7,700").
+        _LINEARIZED_MARKERS_RE = _re.compile(r"\[CELL\]|\[ROW\]")
+        if (
+            metric_id == "cm_customers_period_end"
+            and _re.search(
+                r"\[ROW\][^\[]{0,40}\bnew\b[^\[]{0,40}\bcustomers?\b",
+                context_text, _re.IGNORECASE,
+            )
+        ):
+            return "linearized_table_new_customers_as_period_end"
+
+        # --- Product/clothing sizes are not customer counts ---
+        # "women of all sizes from 10 to 30" — the numbers are clothing sizes, not counts.
+        if metric_id in _COUNT_CUSTOMER_METRICS and _re.search(
+            r"\bsizes?\s+(?:from|ranging|range)\b", context_text, _re.IGNORECASE
+        ):
+            return "product_size_not_customer_count"
+
+        # --- 401(k) / retirement plan contribution rates are not revenue concentration ---
+        # "contributed 50% of the first 4% of participants' eligible contributions into
+        # their 401(k) Plan" — these are employee benefit matching rates, not customer
+        # revenue concentration. Extends existing revenue_concentration_comp_plan_not_revenue.
+        if metric_id == "cm_revenue_concentration" and _re.search(
+            r"\b401\s*\(?k\)?|\bretirement\s+plan\b|\beligible\s+(?:employees?\s+)?contributions?\b",
+            context_text, _re.IGNORECASE,
+        ):
+            return "retirement_plan_not_revenue_concentration"
+
+        # --- Store count near "new customers" keyword is not new customers acquired ---
+        # "leverage our store footprint of 608 stores" appears near "acquire new customers"
+        # language. The count of stores is not a new-customer acquisition count.
+        if metric_id == "cm_new_customers_acquired" and _re.search(
+            r"\bstore\s+(?:footprint|count|locations?|base)\s+of\b"
+            r"|\b\d[\d,]*\s+(?:retail\s+)?stores?\b",
+            context_text, _re.IGNORECASE,
+        ):
+            return "store_count_not_new_customers"
+
+        # --- Accounting standard reference numbers are not customer counts ---
+        # "the ASC 606 adoption" — "606" is an accounting standard number, not customers.
+        # Only applies to cm_customers_period_end (period-end stock count), where small
+        # integers from standard references are most likely to be mis-tagged.
+        if metric_id == "cm_customers_period_end" and value is not None:
+            try:
+                float_val = float(value)
+                if float_val < 1000 and _re.search(
+                    r"\bASC\s+\d{3}\b|\bIFRS\s+\d+\b|\bFASB\b", context_text, _re.IGNORECASE
+                ):
+                    return "accounting_standard_not_customer_count"
+            except (TypeError, ValueError):
+                pass
+
+        # --- LTV magnitude sanity: values outside the plausible consumer LTV range ---
+        # Real LTV-per-customer values are dollar amounts in the $5–$2,000 range.
+        # Values at max keyword distance (dist=500) with values like 55, 30, 446, 608
+        # are unrelated numbers pulled in by distant "LTV" keyword mentions.
+        # Also catches 7.4 (a LTV/CAC ratio expressed as "7.4 times") mis-tagged as LTV.
+        if metric_id == "cm_lifetime_value_per_customer" and value is not None:
+            try:
+                float_val = float(value)
+                if float_val < 5 or float_val > 2000:
+                    return "ltv_magnitude_out_of_range"
+                # Values under $20 without a "$" sign are likely ratios/multipliers,
+                # not dollar LTV amounts.
+                if float_val < 20 and "$" not in raw_text:
+                    return "ltv_magnitude_out_of_range"
+            except (TypeError, ValueError):
+                pass
+
+        # --- Revenue per customer: multiplier values are not dollar amounts ---
+        # "1.3 times the spending in their first year" — the "1.3" is a spending multiple,
+        # not a per-customer revenue dollar amount. Revenue per customer is always a dollar
+        # value (e.g. $299, $331). Suppress small non-dollar values.
+        if metric_id == "cm_revenue_per_customer" and value is not None:
+            try:
+                float_val = float(value)
+                if float_val < 10 and "$" not in raw_text:
+                    return "revenue_per_customer_multiplier_not_dollar"
+            except (TypeError, ValueError):
+                pass
+
         return None
 
     def _post_process_candidates(
