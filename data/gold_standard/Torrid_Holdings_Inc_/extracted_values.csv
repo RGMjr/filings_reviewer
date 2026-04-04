@@ -1,0 +1,41 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_active_customers_total,cm_active_customers_total,3200000,3.2 million,count,,2021-05-01,,text,manual,mda,3.2 million
+accepted,,20001,cm_active_customers_total,cm_active_customers_total,3000000,3.0 million,count,,2020-05-02,,table,manual,unknown,3.0 million
+accepted,,20002,cm_active_customers_total,cm_active_customers_total,3400000,3.4 million,count,,2020-05-02,,table,manual,unknown,3.4 million
+accepted,,20003,cm_active_customers_total,cm_active_customers_total,2900000,2.9 million,count,,,,text,manual,mda,2.9 million
+accepted,,20004,cm_active_customers_total,cm_active_customers_total,3.4,3.4,count,2019-03-01,2020-02-01,,table,manual,unknown,3.4
+accepted,,20005,cm_active_customers_total,cm_active_customers_total,3.2,3.2,count,2020-02-01,2021-01-30,,table,manual,unknown,3.2
+accepted,,20006,cm_active_customers_total,cm_active_customers_total,3.0,3.0,count,2018-03-01,2019-02-02,,table,manual,unknown,3.0
+accepted,,20007,cm_active_customers_total,cm_active_customers_total,3038.0,"3,038",count,,2019-02-02,,table,manual,unknown,"3,038"
+accepted,,20008,cm_active_customers_total,cm_active_customers_total,3364.0,"3,364",count,,2020-02-01,,table,manual,unknown,"3,364"
+accepted,,20009,cm_active_customers_total,cm_active_customers_total,3182.0,"3,182",count,,2021-01-30,,table,manual,unknown,"3,182"
+accepted,,20010,cm_active_customers_total,cm_active_customers_total,3238.0,"3,238",count,2020-01-01,2020-03-31,,table,manual,unknown,"3,238"
+accepted,,20011,cm_active_customers_total,cm_active_customers_total,3448.0,"3,448",count,2021-01-01,2021-03-31,,table,manual,unknown,"3,448"
+accepted,,20012,cm_customers_period_end,cm_customers_period_end,3200000,3.2 million,count,,,,text,manual,mda,3.2 million
+accepted,,20013,cm_customers_period_end,cm_customers_period_end,2900000,2.9 million,count,,,,text,manual,mda,2.9 million
+accepted,,20014,cm_active_customers_total,cm_active_customers_total,3400000,3.4 million,count,,2021-05-01,,text,manual,cover,3.4 million
+accepted,wrong metric,20015,cm_customer_acquisition_cost,cm_customer_acquisition_cost,,($32),$,,,,chart,manual,unknown,($32)
+accepted,this chart shows LTV of customers at each year of tenure,20016,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,82.0,$82,$,,,,chart,manual,unknown,$82
+accepted,lifetime value chart,20017,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,124.0,$124,$,,,,chart,manual,unknown,$124
+accepted,lifetime value chart,20018,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,163.0,$163,$,,,,chart,manual,unknown,$163
+accepted,lifetime value chart,20019,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,203.0,$203,$,,,,chart,manual,unknown,$203
+accepted,lifetime value chart,20020,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,239.0,$239,$,,,,chart,manual,unknown,$239
+accepted,"""7.4x LTV/CAC Over 5 Years""",20021,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,7.4x,ratio,,,,chart,manual,unknown,7.4x LTV/CAC Over 5 Years
+accepted,wrong metric,20022,cm_revenue_per_customer,cm_revenue_per_customer,299.0,299,$,,2019-02-02,,table,manual,unknown,299
+accepted,"metric didn't relate to the row name, which is a proxy for revenue per customer",20023,cm_revenue_per_customer,cm_revenue_per_customer,306.0,306,$,,2021-01-30,,table,manual,unknown,306
+accepted,row name is sales per customer,20024,cm_revenue_per_customer,cm_revenue_per_customer,308.0,308,$,,2020-02-01,,table,manual,unknown,308
+accepted,row name is sales per customer,20025,cm_revenue_per_customer,cm_revenue_per_customer,291.0,291,$,2020-01-01,2020-03-31,,table,manual,unknown,291
+accepted,,20026,cm_revenue_per_customer,cm_revenue_per_customer,331.0,331,$,2021-01-01,2021-03-31,,table,manual,unknown,331
+accepted,,20027,cm_lifetime_value_per_customer,cm_lifetime_value_per_customer,239.0,$239,$,,,,text,manual,mda,$239
+accepted,"""...the $32 cost of acquiring those customers...""",20028,cm_customer_acquisition_cost,cm_customer_acquisition_cost,32.0,$32,$,,,,text,manual,mda,$32
+accepted,,20029,cm_customer_acquisition_cost,cm_customer_acquisition_cost,32.0,$32,$,,,,text,manual,mda,$32
+accepted,,20030,cm_customer_acquisition_cost,cm_customer_acquisition_cost,49.0,$49,$,,,,text,manual,mda,$49
+accepted,,20031,cm_customer_acquisition_cost,cm_customer_acquisition_cost,46.0,$46,$,,,,text,manual,mda,$46
+accepted,,20032,cm_repeat_purchase_rate,cm_repeat_purchase_rate,72.0,72%,%,,,,text,manual,mda,72%
+accepted,,20033,cm_repeat_purchase_rate,cm_repeat_purchase_rate,78.0,78%,%,,,,text,manual,mda,78%
+accepted,,20034,cm_repeat_purchase_rate,cm_repeat_purchase_rate,83.0,83%,%,,,,text,manual,mda,83%
+accepted,,20035,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,1.8x,other,,,,chart,manual,unknown,1.8x
+accepted,,20036,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,3.0x,other,,,,chart,manual,unknown,3.0x
+accepted,,20037,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,4.3x,other,,,,chart,manual,unknown,4.3x
+accepted,,20038,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,6.0x,other,,,,chart,manual,unknown,6.0x
+accepted,,20039,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,,7.4x,other,,,,chart,manual,unknown,7.4x

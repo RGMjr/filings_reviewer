@@ -43,6 +43,7 @@ data/presentations/
 
 # Keep gold standard annotations, baselines, and filing metadata
 !data/gold_standard/**/*.json
+!data/gold_standard/**/*.csv
 !data/gold_standard/*.json
 !data/gold_standard/*.csv
 

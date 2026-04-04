@@ -881,7 +881,7 @@ class CandidateGenerator:
         # AND the context contains tier/threshold language.
         # Ported from V2 _rule_arr_tier_threshold.
         _ARR_TIER_VALUES = frozenset({
-            5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
+            1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
         })
         _ARR_TIER_SOURCE_RE = _re.compile(
             r"""
@@ -1107,6 +1107,134 @@ class CandidateGenerator:
         })
         if metric_id in _VOLUNTEER_METRICS and "volunteer" in context_text.lower():
             return "volunteer_nonprofit_context"
+
+        # --- LTV per customer: percentages are never lifetime value amounts ---
+        # Valid LTV values are dollar amounts ($82, $124...). Any percentage candidate
+        # matched to cm_lifetime_value_per_customer is a misfire (e.g. e-commerce %, retention %).
+        if metric_id == "cm_lifetime_value_per_customer" and "%" in raw_text:
+            return "ltv_percentage_not_dollar"
+
+        # --- Revenue per customer: percentages are not dollar-per-customer values ---
+        # Net sales per active customer is always a dollar amount. A "%" value matched
+        # to cm_revenue_per_customer is a growth-rate or change percentage, not revenue.
+        if metric_id == "cm_revenue_per_customer" and "%" in raw_text:
+            return "revenue_per_customer_percentage_not_dollar"
+
+        # --- LTV/CAC ratio: dollar amounts and percentages are not a ratio ---
+        # Valid LTV/CAC values are multiples (e.g. "7.4x", "8x+"). Dollar amounts
+        # ($493M, $55B) and percentages (72%, 83%) appear on the same highlights page
+        # and are mis-matched from proximity, not actual ratio values.
+        # Also suppress large plain integers (e.g. 700 customers, 13,000 customers)
+        # that cannot be a ratio, and definition sentences like "we calculate our CAC".
+        if metric_id == "cm_ltv_to_cac_ratio":
+            if "$" in raw_text:
+                return "ltv_cac_dollar_not_ratio"
+            if "%" in raw_text:
+                return "ltv_cac_percentage_not_ratio"
+            if value is not None:
+                try:
+                    float_val = float(value)
+                    # LTV/CAC ratios are typically 1x–30x; very large values are customer
+                    # counts or other metrics from the same company highlights page.
+                    # Guard: only suppress when context does NOT describe the value as a
+                    # customer count (to avoid removing cross-metric witnesses of those counts).
+                    if (
+                        float_val > 50
+                        and "x" not in raw_text.lower()
+                        and not _re.search(
+                            r"\b(?:customers?|users?)\b", context_text, _re.IGNORECASE
+                        )
+                    ):
+                        return "ltv_cac_too_large_to_be_ratio"
+                except (TypeError, ValueError):
+                    pass
+
+        # --- Average order value: total revenue figures are not average order value ---
+        # "Net sales decreased $63.5 million to $973.5 million" — the $973.5M is total
+        # net sales, not an order-level average. Suppress AOV when the context contains
+        # "net sales" as a period total and the candidate value is > $100M.
+        if metric_id == "cm_average_order_value":
+            if value is not None:
+                try:
+                    float_val = float(value)
+                    if float_val > 100_000_000 and _re.search(
+                        r"\bnet\s+sales\b", context_text, _re.IGNORECASE
+                    ):
+                        return "aov_total_revenue_not_order_average"
+                except (TypeError, ValueError):
+                    pass
+
+        # --- Net revenue retention: application adoption rates are not NRR ---
+        # "45% use 3 or more Applications" is feature adoption, not net revenue retention.
+        if (
+            metric_id == "cm_net_revenue_retention"
+            and "%" in raw_text
+            and _re.search(r"\buse\b.*\bapplication", context_text, _re.IGNORECASE)
+        ):
+            return "nrr_application_adoption_not_retention"
+
+        # --- Revenue by cohort: revenue-component breakdowns are not cohort data ---
+        # "The increase in revenue was comprised of subscription revenue of $X" describes
+        # revenue mix, not a cohort metric. Only apply to dollar-amount candidates since
+        # cohort metrics are expressed as percentages/multiples (e.g. 68%, 3.0x), while
+        # the revenue components being mis-matched are always dollar amounts ($1.5M, $10M).
+        if (
+            metric_id == "cm_revenue_by_cohort"
+            and "$" in raw_text
+            and _re.search(r"\bcomprised\s+of\b", context_text, _re.IGNORECASE)
+            and _re.search(r"\bsubscription\s+revenue\b", context_text, _re.IGNORECASE)
+        ):
+            return "revenue_by_cohort_component_not_cohort"
+
+        # --- Revenue concentration: deferred compensation statistics are not revenue concentration ---
+        # "eligible to participate in our non-qualified deferred compensation plan" near
+        # "50%" or "401" describes exec comp deferrals, not customer revenue concentration.
+        if metric_id == "cm_revenue_concentration" and _re.search(
+            r"\bdeferred\s+compensation\b", context_text, _re.IGNORECASE
+        ):
+            return "revenue_concentration_comp_plan_not_revenue"
+
+        # --- New customers acquired: large-customer threshold definitions are not new customers ---
+        # "Number of customers with $100,000 ACV" (Tenable) is a large-customer count,
+        # not a count of newly acquired customers.
+        if metric_id == "cm_new_customers_acquired" and _re.search(
+            r"\bcustomers?\s+with\s+\$\d", context_text, _re.IGNORECASE
+        ):
+            return "new_customers_large_customer_threshold"
+
+        # --- Customers period end: age demographics are not customer counts ---
+        # "women between the ages of 25 and 40" describes the demographic profile,
+        # not a count of customers.
+        if metric_id in _COUNT_CUSTOMER_METRICS and _re.search(
+            r"\bbetween\s+the\s+ages?\s+of\b", context_text, _re.IGNORECASE
+        ):
+            return "customers_age_demographic_not_count"
+
+        # --- Active customers total: change amounts are not period-end totals ---
+        # "Active customers increased 0.4 million, or 11%, to 3.4 million" — the "0.4 million"
+        # is the change, not the total. Only suppress small values to avoid catching
+        # genuine small-customer-count companies.
+        if metric_id == "cm_active_customers_total" and value is not None:
+            try:
+                float_val = float(value)
+                if float_val < 2_000_000 and _re.search(
+                    r"\bactive\s+customers?\s+(?:increased|decreased|grew|declined|dropped|fell)",
+                    context_text, _re.IGNORECASE,
+                ):
+                    return "active_customers_delta_not_total"
+            except (TypeError, ValueError):
+                pass
+
+        # --- ARR: zero is not a valid ARR value ---
+        # "$0" in net retention rate calculation context is a placeholder/formula value,
+        # not actual company ARR.
+        if metric_id == "cm_arr" and value is not None:
+            try:
+                float_val = float(value)
+                if float_val == 0.0:
+                    return "arr_zero_not_valid"
+            except (TypeError, ValueError):
+                pass
 
         return None
 

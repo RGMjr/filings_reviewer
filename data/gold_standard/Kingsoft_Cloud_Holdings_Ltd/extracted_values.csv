@@ -1,0 +1,22 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_net_revenue_retention,cm_net_revenue_retention,161.0,161,%,2020-01-01,2020-06-30,,table,manual,unknown,161
+accepted,,20001,cm_net_revenue_retention,cm_net_revenue_retention,155.0,155,%,2020-01-01,2020-06-30,,table,manual,unknown,155
+accepted,"comes from row ""Number of Public Could Service Premium Customers"" in table",20002,cm_customers_period_end,cm_customers_period_end,112.0,112,count,,2017-12-31,,table,manual,cover,112
+accepted,,20003,cm_customers_period_end,cm_customers_period_end,139.0,139,count,,2018-12-31,,table,manual,cover,139
+accepted,"wrong row of table - this is number of customers, not NRR",20004,cm_customers_period_end,cm_customers_period_end,175.0,175,count,,2019-12-31,,table,manual,cover,175
+accepted,,20005,cm_net_revenue_retention,cm_net_revenue_retention,182.0,182,%,,,,table,manual,unknown,182
+accepted,read only part of the number. failed to identify as part of table. associated with wrong metric because metric name is on the row in which this value appears,20006,cm_customers_period_end,cm_customers_period_end,243.0,243,count,,2019-12-31,,table,manual,cover,43
+accepted,failed to identify as part of table. read metric name from wrong row,20007,cm_customers_period_end,cm_customers_period_end,251.0,251,count,,2020-06-30,,table,manual,cover,251
+accepted,failed to identify as part of table. associated with wrong metric. failed to find period (column of the table),20008,cm_revenue_per_customer,cm_revenue_per_customer,10.3,10.3,$,,2017-12-31,,table,manual,cover,10.3
+accepted,"failed to identify as part of table. wrong metric. currency, not percent.",20009,cm_revenue_per_customer,cm_revenue_per_customer,13.7,13.7,$,,2019-12-31,,table,manual,cover,13.7
+accepted,failed to identify table. wrong metric. failed to identify period (column),20010,cm_revenue_per_customer,cm_revenue_per_customer,15.9,15.9,$,,2019-12-31,,table,manual,cover,15.9
+accepted,,20011,cm_revenue_per_customer,cm_revenue_per_customer,9.3,9.3,$,,2019-06-30,,table,manual,cover,9.3
+accepted,,20012,cm_revenue_per_customer,cm_revenue_per_customer,11.5,11.5,$,,2020-06-30,,table,manual,cover,11.5
+accepted,,20013,cm_revenue_concentration,cm_revenue_concentration,27.0,27%,%,2020-01-01,2020-06-30,,text,manual,cover,27%
+accepted,,20014,cm_revenue_concentration,cm_revenue_concentration,19.0,19%,%,2020-01-01,2020-06-30,,text,manual,cover,19%
+accepted,,20015,cm_revenue_concentration,cm_revenue_concentration,10.0,10%,%,2020-01-01,2020-06-30,,text,manual,cover,10%
+accepted,,20016,cm_revenue_concentration,cm_revenue_concentration,25.0,25%,%,2020-01-01,2020-06-30,,text,manual,cover,25%
+accepted,,20017,cm_revenue_concentration,cm_revenue_concentration,27.0,27%,%,2017-01-01,2017-12-31,,text,manual,mda,27%
+accepted,,20018,cm_revenue_concentration,cm_revenue_concentration,19.0,19%,%,2017-01-01,2017-12-31,,text,manual,mda,19%
+accepted,,20019,cm_revenue_concentration,cm_revenue_concentration,10.0,10%,%,2017-01-01,2017-12-31,,text,manual,mda,10%
+accepted,captured only part of the number. got the unit wrong. wrong metric.,20020,cm_revenue_concentration,cm_revenue_concentration,98.3,98.3%,%,2019-01-01,2019-06-30,,text,manual,mda,98

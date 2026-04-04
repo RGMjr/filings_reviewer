@@ -1,0 +1,11 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,"""enterprise platform customers...for an annual amount of $5,000 or greater""",20000,cm_large_customers_period_end,cm_large_customers_period_end,3100.0,"3,100",count,,2016-12-31,,text,manual,cover,"3,100"
+accepted,,20001,cm_large_customers_period_end,cm_large_customers_period_end,4400.0,"4,400",count,,2016-12-31,,text,manual,cover,"4,400"
+accepted,,20002,cm_new_customers_acquired,cm_new_customers_acquired,217.0,217,other,2017-04-01,2017-06-30,,text,manual,cover,217
+accepted,,20003,cm_new_customers_acquired,cm_new_customers_acquired,282.0,282,other,2017-04-01,2017-06-30,,text,manual,cover,282
+accepted,,20004,cm_revenue_concentration,cm_revenue_concentration,42.0,42%,%,2017-01-01,2017-03-31,,text,manual,financials,42%
+accepted,,20005,cm_revenue_concentration,cm_revenue_concentration,45.0,45%,%,2017-01-01,2017-03-31,,text,manual,financials,45%
+accepted,,20006,cm_revenue_concentration,cm_revenue_concentration,41.0,41%,%,2017-01-01,2017-03-31,,text,manual,financials,41%
+accepted,,20007,cm_revenue_concentration,cm_revenue_concentration,2.0,2%,%,2017-01-01,2017-03-31,,text,manual,mda,2%
+accepted,,20008,cm_revenue_by_cohort,cm_revenue_by_cohort,45.0,45%,%,,,,text,manual,mda,45%
+accepted,,20009,cm_revenue_by_cohort,cm_revenue_by_cohort,68.0,68%,%,,,,text,manual,mda,68%

@@ -1,0 +1,47 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_arr,cm_arr,500.0,$500,$,,,,chart,manual,unknown,Samsara Timeline$500
+accepted,"wrong metric captured. ""Core Customers"" is the label on this value",20001,cm_customers_period_end,cm_customers_period_end,13000.0,"13,000",count,,2021-10-30,,text,manual,cover,"13,000"
+accepted,"this is labeled ""customers with ARR > $100K"", indicating that it's a count of large customers",20002,cm_large_customers_period_end,cm_large_customers_period_end,700.0,700,other,,2021-10-30,,text,manual,cover,700
+accepted,,20003,cm_large_customers_period_end,cm_large_customers_period_end,255.0,255,other,2019-03-01,2020-02-01,,text,manual,cover,255
+accepted,,20004,cm_large_customers_period_end,cm_large_customers_period_end,452.0,452,other,2019-03-01,2020-02-01,,text,manual,cover,452
+accepted,,20005,cm_large_customers_period_end,cm_large_customers_period_end,390.0,390,other,2019-03-01,2020-02-01,,text,manual,cover,390
+accepted,,20006,cm_large_customers_period_end,cm_large_customers_period_end,715.0,715,other,2019-03-01,2020-02-01,,text,manual,cover,715
+accepted,,20007,cm_large_customers_period_end,cm_large_customers_period_end,715.0,715,other,,2021-10-30,,text,manual,cover,715
+accepted,wrong metric,20008,cm_arr,cm_arr,92.0,$92,other,,,,chart,manual,unknown,ARR (in millions)$92
+accepted,,20009,cm_arr,cm_arr,122.0,$122,other,,,,chart,manual,unknown,ARR (in millions)$122
+accepted,,20010,cm_arr,cm_arr,153.0,$153,other,,,,chart,manual,unknown,ARR (in millions)$153
+accepted,,20011,cm_arr,cm_arr,194.0,$194,other,,,,chart,manual,unknown,ARR (in millions)$194
+accepted,,20012,cm_arr,cm_arr,222.0,$222,other,,,,chart,manual,unknown,ARR (in millions)$222
+accepted,,20013,cm_arr,cm_arr,293.0,$293,other,,,,chart,manual,unknown,ARR (in millions)$293
+accepted,,20014,cm_arr,cm_arr,341.0,$341,other,,,,chart,manual,unknown,ARR (in millions)$341
+accepted,,20015,cm_arr,cm_arr,382.0,$382,other,,,,chart,manual,unknown,ARR (in millions)$382
+accepted,,20016,cm_arr,cm_arr,437.0,$437,other,,,,chart,manual,unknown,ARR (in millions)$437
+accepted,,20017,cm_arr,cm_arr,493.0,$493,other,,,,chart,manual,unknown,ARR (in millions)$493
+accepted,,20018,cm_customers_period_end,cm_customers_period_end,10000.0,"10,000",count,,2020-02-01,,text,manual,mda,"10,000"
+accepted,,20019,cm_customers_period_end,cm_customers_period_end,25000.0,"25,000",count,,2020-02-01,,text,manual,mda,"25,000"
+accepted,,20020,cm_customers_period_end,cm_customers_period_end,25000.0,"25,000",count,,2021-10-30,,table,manual,unknown,"25,000"
+accepted,,20021,cm_customer_retention_rate,cm_customer_retention_rate,115.0,115%,%,,2021-10-30,,text,manual,mda,115%
+accepted,,20022,cm_net_revenue_retention,cm_net_revenue_retention,125.0,125%,%,,2021-10-30,,text,manual,mda,125%
+accepted,"""approximately 44% of our ARR came from customers representing over $100,000 in ARR"", indicating this is revenue concentration",20023,cm_revenue_concentration,cm_revenue_concentration,44.0,44%,%,,2021-10-30,,text,manual,mda,44%
+accepted,,20024,cm_arr,cm_arr,194366.0,"194,366",other,2019-03-01,2020-02-01,,table,manual,unknown,"194,366"
+accepted,,20025,cm_arr,cm_arr,341198.0,"341,198",other,2020-02-01,2021-01-30,,table,manual,unknown,"341,198"
+accepted,,20026,cm_arr,cm_arr,293052.0,"293,052",other,2020-02-01,2020-10-31,,table,manual,unknown,"293,052"
+accepted,,20027,cm_arr,cm_arr,492838.0,"492,838",other,2021-02-01,2021-10-30,,table,manual,unknown,"492,838"
+accepted,,20028,cm_revenue_concentration,cm_revenue_concentration,255.0,255,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR255"
+accepted,,20029,cm_revenue_concentration,cm_revenue_concentration,452.0,452,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR452"
+accepted,,20030,cm_revenue_concentration,cm_revenue_concentration,390.0,390,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR390"
+accepted,,20031,cm_revenue_concentration,cm_revenue_concentration,715.0,715,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR715"
+accepted,,20032,cm_large_customers_period_end,cm_large_customers_period_end,92.0,92,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR92"
+accepted,,20033,cm_large_customers_period_end,cm_large_customers_period_end,128.0,128,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR128"
+accepted,,20034,cm_large_customers_period_end,cm_large_customers_period_end,190.0,190,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR190"
+accepted,,20035,cm_large_customers_period_end,cm_large_customers_period_end,285.0,285,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR285"
+accepted,,20036,cm_large_customers_period_end,cm_large_customers_period_end,326.0,326,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR326"
+accepted,,20037,cm_large_customers_period_end,cm_large_customers_period_end,518.0,518,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR518"
+accepted,,20038,cm_large_customers_period_end,cm_large_customers_period_end,615.0,615,other,,,,chart,manual,unknown,"Number of Customers Over $100,000 in ARR615"
+accepted,,20039,cm_arr,cm_arr,92036.0,"92,036",other,2019-03-01,2019-05-04,,table,manual,unknown,"92,036"
+accepted,,20040,cm_arr,cm_arr,122010.0,"122,010",other,2019-06-01,2019-08-03,,table,manual,unknown,"122,010"
+accepted,,20041,cm_arr,cm_arr,153418.0,"153,418",other,2019-09-01,2019-11-02,,table,manual,unknown,"153,418"
+accepted,,20042,cm_arr,cm_arr,221705.0,"221,705",other,2020-03-01,2020-05-02,,table,manual,unknown,"221,705"
+accepted,,20043,cm_arr,cm_arr,252826.0,"252,826",other,2020-06-01,2020-08-01,,table,manual,unknown,"252,826"
+accepted,,20044,cm_arr,cm_arr,382102.0,"382,102",other,2021-03-01,2021-05-01,,table,manual,unknown,"382,102"
+accepted,,20045,cm_arr,cm_arr,436889.0,"436,889",other,2021-05-01,2021-07-31,,table,manual,unknown,"436,889"
