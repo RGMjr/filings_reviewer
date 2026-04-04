@@ -1,0 +1,15 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,section_heading
+incorrect,This is ARR growth rate not CAC,5536,cm_customer_acquisition_cost,Customer Acquisition Cost,83,83,percent,Index to Financial Statements
+incorrect,This is Core Customer count not CAC,5541,cm_customer_acquisition_cost,Customer Acquisition Cost,13000,13000,count,Index to Financial Statements
+incorrect,This is ARR growth rate not CAC,5539,cm_customer_acquisition_cost,Customer Acquisition Cost,83,83,percent,Index to Financial Statements
+incorrect,This is high-ARR customer count not CAC,5542,cm_customer_acquisition_cost,Customer Acquisition Cost,700,700,count,Index to Financial Statements
+incorrect,This is ARR growth rate not CAC,5543,cm_customer_acquisition_cost,Customer Acquisition Cost,83,83,percent,Index to Financial Statements
+incorrect,This is Core Customer count not CAC,5531,cm_customer_acquisition_cost,Customer Acquisition Cost,13000,13000,count,Index to Financial Statements
+incorrect,This is ARR growth rate not CAC,5532,cm_customer_acquisition_cost,Customer Acquisition Cost,83,83,percent,Index to Financial Statements
+incorrect,This is high-ARR customer count not CAC,5533,cm_customer_acquisition_cost,Customer Acquisition Cost,700,700,count,Index to Financial Statements
+incorrect,This is Q3 ARR not CAC,5534,cm_customer_acquisition_cost,Customer Acquisition Cost,493,493,millions,Index to Financial Statements
+incorrect,This is ARR growth % not CAC,5535,cm_customer_acquisition_cost,Customer Acquisition Cost,68,68,percent,Index to Financial Statements
+incorrect,This is gross margin not CAC,5540,cm_customer_acquisition_cost,Customer Acquisition Cost,72,72,percent,Index to Financial Statements
+incorrect,This is gross margin not CAC,5544,cm_customer_acquisition_cost,Customer Acquisition Cost,72,72,percent,Index to Financial Statements
+incorrect,This is gross margin not CAC,5538,cm_customer_acquisition_cost,Customer Acquisition Cost,72,72,percent,Index to Financial Statements
+incorrect,This is Q3 ARR not CAC,5537,cm_customer_acquisition_cost,Customer Acquisition Cost,493,493,millions,Index to Financial Statements
