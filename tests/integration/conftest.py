@@ -847,3 +847,17 @@ def transcript_baseline(transcript_baseline_path):
     except (json.JSONDecodeError, OSError):
         return None
 
+
+# =============================================================================
+# V2 Parity Test Fixtures
+# =============================================================================
+
+
+@pytest.fixture(scope="module")
+def unified_report():
+    """Run unified comparison across all gold standard companies."""
+    from src.gold_standard.unified_comparison import UnifiedComparisonRunner
+
+    runner = UnifiedComparisonRunner(skip_image_comparison=True)
+    return runner.run()
+

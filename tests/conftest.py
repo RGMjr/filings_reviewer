@@ -5,6 +5,14 @@ Provides CLI options and fixtures available to all test directories.
 """
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "v2_parity: V2 vs V1 parity tests — runs full extraction on all gold standard companies. "
+        "Only run with: pytest -m v2_parity",
+    )
+
+
 def pytest_addoption(parser):
     """Add global CLI options for tests."""
     # Gold standard regression testing options

@@ -16,7 +16,7 @@ src/
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
-└── gold_standard/  # Validation: baseline.py, fresh_extractor.py
+└── gold_standard/  # Validation: baseline.py, fresh_extractor.py, v2_validator.py, unified_comparison.py
 config/
 └── metric_keywords.yaml  # Metric keyword patterns (authoritative source)
 ```
@@ -48,7 +48,7 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 
 ## Testing Standards
 
-- **Coverage**: 75% minimum (enforced), currently 82%
+- **Coverage**: 75% minimum (enforced), currently 81%
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Before committing**: Run `pytest -x -q` when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 - **Pre-existing failures**: When a test fails during implementation, check whether it was already failing before your changes (`git stash && pytest <failing_test> -x -q && git stash pop`). Do not spend time debugging failures that predate the current work — note them and move on.
