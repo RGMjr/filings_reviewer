@@ -2,43 +2,126 @@
   "version": "1.0",
   "description": "Company-level train/test split for presentation gold standard. Test companies are held out entirely \u2014 never used for tuning. Only tuning companies are used during pipeline development.",
   "tuning_companies": [
+    "CHWY",
     "CRM",
+    "CURV",
+    "DDOG",
     "GOOGL",
     "INTU",
+    "IOT",
+    "KC",
     "META",
-    "PYPL"
+    "PYPL",
+    "TENB"
   ],
-  "test_companies": [],
+  "test_companies": [
+    "CART",
+    "FLYW",
+    "GTLB",
+    "HOOD"
+  ],
   "companies": {
+    "CART": {
+      "split": "test",
+      "sector": "Marketplace",
+      "presentations": [
+        "2023-09-15"
+      ],
+      "annotation_count": 21
+    },
+    "CHWY": {
+      "split": "tuning",
+      "sector": "E-commerce",
+      "presentations": [
+        "2019-06-12"
+      ],
+      "annotation_count": 13
+    },
     "CRM": {
       "split": "tuning",
-      "sector": "Unknown",
+      "sector": "SaaS",
       "presentations": [
         "2025-12-03",
         "2026-02-25"
       ],
       "annotation_count": 5
     },
-    "GOOGL": {
+    "CURV": {
       "split": "tuning",
       "sector": "Unknown",
+      "presentations": [
+        "2021-06-30"
+      ],
+      "annotation_count": 36
+    },
+    "DDOG": {
+      "split": "tuning",
+      "sector": "SaaS",
+      "presentations": [
+        "2019-09-17"
+      ],
+      "annotation_count": 11
+    },
+    "FLYW": {
+      "split": "test",
+      "sector": "Fintech",
+      "presentations": [
+        "2026-02-24"
+      ],
+      "annotation_count": 3
+    },
+    "GOOGL": {
+      "split": "tuning",
+      "sector": "Consumer Tech",
       "presentations": [
         "2025-10-29",
         "2026-02-04"
       ],
       "annotation_count": 2
     },
+    "GTLB": {
+      "split": "test",
+      "sector": "SaaS",
+      "presentations": [
+        "2021-10-12"
+      ],
+      "annotation_count": 20
+    },
+    "HOOD": {
+      "split": "test",
+      "sector": "Fintech",
+      "presentations": [
+        "10/8/21"
+      ],
+      "annotation_count": 41
+    },
     "INTU": {
       "split": "tuning",
-      "sector": "Unknown",
+      "sector": "SaaS",
       "presentations": [
         "2025-11-20"
       ],
       "annotation_count": 1
     },
-    "META": {
+    "IOT": {
       "split": "tuning",
       "sector": "Unknown",
+      "presentations": [
+        "2021-12-06"
+      ],
+      "annotation_count": 44
+    },
+    "KC": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2020-09-23"
+      ],
+      "annotation_count": 18
+    },
+    "META": {
+      "split": "tuning",
+      "sector": "Consumer Tech",
       "presentations": [
         "2026-01-28"
       ],
@@ -46,28 +129,46 @@
     },
     "PYPL": {
       "split": "tuning",
-      "sector": "Unknown",
+      "sector": "Fintech",
       "presentations": [
         "2025-10-28",
         "2026-02-03"
       ],
       "annotation_count": 4
+    },
+    "TENB": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2018-07-24"
+      ],
+      "annotation_count": 10
     }
   },
   "statistics": {
-    "total_annotations": 13,
-    "tuning_annotations": 13,
-    "test_annotations": 0,
-    "test_pct": 0.0
+    "total_annotations": 230,
+    "tuning_annotations": 145,
+    "test_annotations": 85,
+    "test_pct": 0.37
   },
   "source_files": [
+    "CART_S-1_2023-09-15_reviewed.csv",
+    "CHWY_S-1_2019-06-12_reviewed.csv",
     "CRM_2025-12-03_reviewed.csv",
     "CRM_2026-02-25_reviewed.csv",
+    "CURV_S-1_2021-06-30_reviewed.csv",
+    "DDOG_S-1_2019-09-17_reviewed.csv",
+    "FLYW_10-K_2026-02-24_reviewed.csv",
     "GOOGL_2025-10-29_reviewed.csv",
     "GOOGL_2026-02-04_reviewed.csv",
+    "GTLB_S-1_2021-10-12_reviewed.csv",
+    "HOOD_S-1_2021-10-08_reviewed.csv",
     "INTU_2025-11-20_reviewed.csv",
+    "IOT_S-1_2021-12-06_reviewed.csv",
+    "KC_F-1_2020-09-23_reviewed.csv",
     "META_2026-01-28_reviewed.csv",
     "PYPL_2025-10-28_reviewed.csv",
-    "PYPL_2026-02-03_reviewed.csv"
+    "PYPL_2026-02-03_reviewed.csv",
+    "TENB_S-1_2018-07-24_reviewed.csv"
   ]
 }
