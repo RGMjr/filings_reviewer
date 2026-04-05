@@ -1,14 +1,231 @@
 company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason,split
+Maplebear Inc.,CART,2023-09-15,cm_monthly_active_users,7.7 million,count,2022-01-01 to 2022-12-31,filing,7.7 million,MEDIUM,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_purchase_transactions_overall,262.6 million,count,2022-01-01 to 2022-12-31,filing,262.6 million,MEDIUM,unknown,False,EDIT,wrong metric,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,13%,percent,2020-01-01 to 2020-12-31,filing,13%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,34%,percent,2020-01-01 to 2020-12-31,filing,34%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,18%,percent,2022-01-01 to 2022-06-30,filing,18%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,14%,percent,2022-01-01 to 2022-06-30,filing,14%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,11%,percent,2023-01-01 to 2023-06-30,filing,11%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,12%,percent,2022-01-01 to 2022-12-31,filing,12%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,16%,percent,2022-01-01 to 2022-12-31,filing,16%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,23%,percent,2021-01-01 to 2021-12-31,filing,23%,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_average_order_value,$110,currency,2022-01-01 to 2022-12-31,filing,$110,HIGH,unknown,False,ACCEPT,,test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,1,ratio,Q1 FY2022,image,1.00x,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,0.98,ratio,Q1 2023,image,0.98x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,1.73,ratio,year 2,image,1.73x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,1.74,ratio,year 3,image,1.74x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,3.00,ratio,year 4,image,3.00x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,3.26,ratio,year 5,image,3.26x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,3.52,ratio,year 6,image,3.52x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,1.00,ratio,year 1,image,1.00x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,1.49,ratio,Year 2,image,1.49x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,2.42,ratio,Year 3,image,2.42x,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),test
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"11,321",count,2019-05-05,html_table,"11,321",MEDIUM,unknown,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"7,830",count,2018-04-29,html_table,"7,830",MEDIUM,unknown,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"3,034",count,2019-02-03,text,"3,034",LOW,cover,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"6,789",count,2019-02-03,text,"6,789",LOW,cover,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_active_customers_total,"10,585",count,2019-02-03,text,"10,585",LOW,cover,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,10.6 million,count,2019-02-03,text,10.6 million,MEDIUM,mda,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_customers_period_end,3 million,count,2019-02-03,text,3 million,MEDIUM,mda,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_ltv_to_cac_ratio,2.4,percent,other,text,2.4,LOW,mda,False,ACCEPT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,343,other,2019-05-05,html_table,343,MEDIUM,unknown,False,EDIT,"this is revenue per active customer, not total active customers. it is currency, not a count",tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,314,currency,2018-04-29,html_table,314,MEDIUM,unknown,False,EDIT,"this is revenue per active customer, not active customer count",tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,297,currency,2016-01-01 to 2016-12-31,html_table,297,MEDIUM,unknown,False,EDIT,"revenue per active customer, not active customer count",tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,310,currency,2017-01-01 to 2017-12-31,html_table,310,MEDIUM,unknown,False,EDIT,,tuning
+"Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,334,currency,2018-01-01 to 2018-12-31,html_table,334,MEDIUM,unknown,False,EDIT,"revenue per active customer, not customer count",tuning
 "Salesforce, Inc.",CRM,2025-12-03,cm_arr,$1.4 billion,currency,2025-07-31 to 2025-10-31,presentation,$1.4 billion,MEDIUM,cover,False,EDIT,period was incorrect,tuning
 "Salesforce, Inc.",CRM,2026-02-25,cm_arr,$800 million,currency,other,presentation,$800 million,LOW,cover,False,ACCEPT,,tuning
 "Salesforce, Inc.",CRM,2026-02-25,cm_arr,$2.9 billion,currency,other,presentation,$2.9 billion,LOW,cover,False,ACCEPT,,tuning
 "Salesforce, Inc.",CRM,2026-02-25,cm_arr,$1.1 billion,currency,other,presentation,$1.1 billion,LOW,cover,False,ACCEPT,,tuning
 "Salesforce, Inc.",CRM,2026-02-25,cm_arr,$6.6 billion,currency,other,presentation,$6.6 billion,LOW,cover,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.2 million,count,2021-05-01,text,3.2 million,MEDIUM,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.0 million,count,2020-05-02,html_table,3.0 million,MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.4 million,count,2020-05-02,html_table,3.4 million,MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,2.9 million,count,other,text,2.9 million,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.4,count,2019-03-01 to 2020-02-01,html_table,3.4,MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.2,count,2020-02-01 to 2021-01-30,html_table,3.2,MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.0,count,2018-03-01 to 2019-02-02,html_table,3.0,MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,"3,038",count,2019-02-02,html_table,"3,038",MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,"3,364",count,2020-02-01,html_table,"3,364",MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,"3,182",count,2021-01-30,html_table,"3,182",MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,"3,238",count,2020-01-01 to 2020-03-31,html_table,"3,238",MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,"3,448",count,2021-01-01 to 2021-03-31,html_table,"3,448",MEDIUM,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customers_period_end,3.2 million,count,other,text,3.2 million,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customers_period_end,2.9 million,count,other,text,2.9 million,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customer_acquisition_cost,($32),currency,other,chart,($32),LOW,unknown,False,EDIT,wrong metric,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_lifetime_value_per_customer,$82,currency,other,chart,$82,LOW,unknown,False,EDIT,this chart shows LTV of customers at each year of tenure,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_lifetime_value_per_customer,$124,currency,other,chart,$124,LOW,unknown,False,EDIT,lifetime value chart,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_lifetime_value_per_customer,$163,currency,other,chart,$163,LOW,unknown,False,EDIT,lifetime value chart,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_lifetime_value_per_customer,$203,currency,other,chart,$203,LOW,unknown,False,EDIT,lifetime value chart,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_lifetime_value_per_customer,$239,currency,other,chart,$239,LOW,unknown,False,EDIT,lifetime value chart,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,7.4x,ratio,5 years,chart,7.4x LTV/CAC Over 5 Years,LOW,unknown,False,EDIT,"""7.4x LTV/CAC Over 5 Years""",tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_revenue_per_customer,299,currency,2019-02-02,html_table,299,MEDIUM,unknown,False,EDIT,wrong metric,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_revenue_per_customer,306,currency,2021-01-30,html_table,306,MEDIUM,unknown,False,EDIT,"metric didn't relate to the row name, which is a proxy for revenue per customer",tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_revenue_per_customer,308,currency,2020-02-01,html_table,308,MEDIUM,unknown,False,EDIT,row name is sales per customer,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_revenue_per_customer,291,currency,2020-01-01 to 2020-03-31,html_table,291,MEDIUM,unknown,False,EDIT,row name is sales per customer,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_revenue_per_customer,331,currency,2021-01-01 to 2021-03-31,html_table,331,MEDIUM,unknown,False,EDIT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customer_acquisition_cost,$32,currency,other,text,$32,LOW,mda,False,EDIT,"""...the $32 cost of acquiring those customers...""",tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customer_acquisition_cost,$49,currency,other,text,$49,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_customer_acquisition_cost,$46,currency,other,text,$46,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_repeat_purchase_rate,72%,percent,other,text,72%,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_repeat_purchase_rate,78%,percent,other,text,78%,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_repeat_purchase_rate,83%,percent,other,text,83%,LOW,mda,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,1.8x,other,other,chart,1.8x,LOW,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,3.0x,other,other,chart,3.0x,LOW,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,4.3x,other,other,chart,4.3x,LOW,unknown,False,ACCEPT,,tuning
+Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,6.0x,other,other,chart,6.0x,LOW,unknown,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,146%,percent,2018-06-30,text,146%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,141%,percent,2018-06-30,text,141%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,151%,percent,2018-06-30,text,151%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_gross_revenue_retention,90%,percent,other,text,90%,LOW,cover,False,EDIT,"""dollar-based gross retention rate"" not customer retention",tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_arr,"$200,000",currency,2019-06-30,text,"$200,000",MEDIUM,cover,False,EDIT,"This is the average ARR for one type of ""large customer"" (""defined as having 5,000 or more employees"")",tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$4.8 million,currency,2014-12-31,text,$4.8 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to ..."")",tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$19.2 million,currency,2014-12-31,text,$19.2 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to $19.2 million..."")",tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_revenue_concentration,14%,percent,2019-06-30,text,14%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_revenue_concentration,5%,percent,2019-06-30,text,5%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,60%,percent,2019-01-01 to 2019-06-30,text,60%,MEDIUM,cover,False,ACCEPT,,tuning
+"Datadog, Inc.",DDOG,2019-09-17,cm_customers_period_end,"8,800",count,2019-06-30,text,"8,800",MEDIUM,unknown,False,EDIT,wrong metric,tuning
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,110%,percent,other,text,110%,LOW,mda,False,EDIT,"""annual net dollar-based retention rate was approximately 110%,...""",test
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,116%,percent,other,text,116%,LOW,cover,False,EDIT,"""...our three-year average annual net dollar-based retention rate, which averaged approximately 116%...""",test
+Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,125%,percent,other,text,125%,LOW,mda,False,EDIT,"""...annual net dollar-based retention rate...""",test
 Alphabet Inc.,GOOGL,2025-10-29,cm_monthly_active_users,650 million,count,other,presentation,650 million,LOW,cover,False,ACCEPT,,tuning
 Alphabet Inc.,GOOGL,2026-02-04,cm_monthly_active_users,750 million,count,other,presentation,750 million,LOW,cover,False,ACCEPT,,tuning
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,"1,662",count,2020-01-31,text,"1,662",LOW,cover,False,EDIT,"this is a count, not revenue (which would generally be currency)",test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,"2,745",count,2020-01-31,text,"2,745",LOW,cover,False,EDIT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148,percent,2021-01-31,html_table,148,LOW,unknown,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,152,percent,2021-01-31,html_table,152,LOW,unknown,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,179,percent,2020-07-31,html_table,179,LOW,unknown,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,148%,percent,2020-01-01 to 2020-12-31,text,148%,MEDIUM,mda,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,153%,percent,2020-07-31,text,153%,MEDIUM,mda,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,173,percent,2020-07-31,text,173,MEDIUM,cover,False,EDIT,"this is not a percent, it's a count. there is no indication of it being a percent",test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,283,percent,2020-07-31,text,283,MEDIUM,cover,False,EDIT,"this is a count, not a percent",test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,383,count,2020-07-31,text,383,MEDIUM,cover,False,EDIT,this is a count not a percent,test
+Gitlab Inc.,GTLB,2021-10-12,cm_customers_period_end,"1,662",count,2020-01-31,text,"1,662",LOW,mda,False,ACCEPT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,11,count,2020-01-31,text,11,MEDIUM,mda,False,EDIT,"large customers (""our $1.0 million ARR customers increased from 11 as of January 31, 2020..."")",test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,20,count,2020-01-31,text,20,MEDIUM,mda,False,EDIT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,27,count,2020-01-31,text,27,MEDIUM,mda,False,EDIT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,219,count,2020-07-31,text,219,MEDIUM,mda,False,EDIT,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")",test
+Gitlab Inc.,GTLB,2021-10-12,cm_large_customers_period_end,15,count,2020-07-31,text,15,MEDIUM,mda,False,EDIT,"""our $1.0 million ARR customers increased from 15 as of July 31, 2020 to 27 as of July 31, 2021, ...""",test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,179%,percent,2020-01-01 to 2020-12-31,text,179%,MEDIUM,mda,False,EDIT,,test
+Gitlab Inc.,GTLB,2021-10-12,cm_gross_revenue_retention,97%,percent,2020-01-31,text,97%,LOW,mda,False,EDIT,"""our Dollar-Based Gross Retention Rate was 97% as of each of January 31, 2020, January 31, 2021, and July 31, 2021.""",test
+Gitlab Inc.,GTLB,2021-10-12,cm_net_revenue_retention,152%,percent,2021-07-31,text,152%,MEDIUM,mda,False,EDIT,"""As of July 31, 2020 and 2021, our Dollar-Based Net Retention Rate was 153% and 152%, respectively. """,test
+Gitlab Inc.,GTLB,2021-10-12,cm_active_customers_total,"11,000",count,other,text,"11,000",LOW,mda,False,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,5.1,count,12/31/19,text,5.1,LOW,cover,FALSE,EDIT,"""Net Cumulative Funded Accounts"" is a proxy for number of customers, not revenue",test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,12.5,count,12/31/20,text,12.5,LOW,cover,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,9.8,count,6/30/20,text,9.8,LOW,cover,FALSE,EDIT,"Net Cumulative Funded Accounts is a proxy for number of customers, not revenue",test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customers_period_end,22.5 M,count,6/30/21,text,22.5 M,LOW,cover,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,4.3,count,12/31/19,text,4.3,LOW,cover,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,65.7,count,2019-01-01 to 2019-12-31,html_table,65.7,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,108.9,count,2020-01-01 to 2020-12-31,html_table,108.9,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,115.2,count,6/30/20,html_table,115.2,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,111.7,count,6/30/21,html_table,111.7,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$65.70 ,currency,12/31/19,text,$65.70 ,LOW,cover,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$108.90 ,currency,12/31/20,text,$108.90 ,LOW,cover,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$115.20 ,currency,6/30/20,text,$115.20 ,LOW,mda,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_per_customer,$111.70 ,currency,6/30/20,text,$111.70 ,LOW,mda,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,11.7,count,2020-01-01 to 2020-12-31,html_table,11.7,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,10.2,count,6/30/20,html_table,10.2,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,21.3,count,6/30/21,html_table,21.3,MEDIUM,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,11.7 million,count,other,text,11.7 million,LOW,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,4.3 million,count,other,text,4.3 million,LOW,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,21.3 million,count,other,text,21.3 million,LOW,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_monthly_active_users,10.2 million,count,other,text,10.2 million,LOW,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customer_acquisition_cost,$53 ,currency,2019-01-01 to 2019-12-31,text,$53 ,MEDIUM,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_customer_acquisition_cost,$20 ,currency,2019-01-01 to 2019-12-31,text,$20 ,MEDIUM,mda,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$1,731 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$1,731",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,112 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,112",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,496 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,496",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$3,239 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$3,239",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$4,411 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$4,411",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$2,466 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$2,466",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$8,487 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$8,487",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$6,703 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$6,703",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_balance_by_cohort,"$18,019 ",currency,other,chart,"Cumulative Net Deposits by Annual Cohort ($mm)$18,019",LOW,unknown,FALSE,EDIT,Need new metric: cm_balance_by_cohort,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$17 ,currency,2017-01-01 to 2017-12-31,chart,Annual Revenue by Annual Cohort ($mm)$17,LOW,unknown,FALSE,EDIT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$62 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$62,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$44 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$44,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$56 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$56,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$87 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$87,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$45 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$45,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$130 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$130,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$186 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$186,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$175 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$175,LOW,unknown,FALSE,ACCEPT,,test
+"Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$326 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$326,LOW,unknown,FALSE,ACCEPT,,test
 INTUIT INC.,INTU,2025-11-20,cm_customers_period_end,100 million,count,other,presentation,100 million,LOW,cover,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$500,currency,other,chart,Samsara Timeline$500,LOW,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"13,000",count,2021-10-30,text,"13,000",LOW,cover,False,EDIT,"wrong metric captured. ""Core Customers"" is the label on this value",tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,700,other,2021-10-30,text,700,LOW,cover,False,EDIT,"this is labeled ""customers with ARR > $100K"", indicating that it's a count of large customers",tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,255,other,2019-03-01 to 2020-02-01,text,255,LOW,cover,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,452,other,2019-03-01 to 2020-02-01,text,452,LOW,cover,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,390,other,2019-03-01 to 2020-02-01,text,390,LOW,cover,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,715,other,2019-03-01 to 2020-02-01,text,715,LOW,cover,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$92,other,other,chart,ARR (in millions)$92,LOW,unknown,False,EDIT,wrong metric,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$122,other,other,chart,ARR (in millions)$122,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$153,other,other,chart,ARR (in millions)$153,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$194,other,other,chart,ARR (in millions)$194,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$222,other,other,chart,ARR (in millions)$222,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$293,other,other,chart,ARR (in millions)$293,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$341,other,other,chart,ARR (in millions)$341,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$382,other,other,chart,ARR (in millions)$382,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$437,other,other,chart,ARR (in millions)$437,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,$493,other,other,chart,ARR (in millions)$493,LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"10,000",count,2020-02-01,text,"10,000",MEDIUM,mda,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"25,000",count,2020-02-01,text,"25,000",MEDIUM,mda,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_customer_retention_rate,115%,percent,2021-10-30,text,115%,MEDIUM,mda,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_net_revenue_retention,125%,percent,2021-10-30,text,125%,MEDIUM,mda,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,44%,percent,2021-10-30,text,44%,MEDIUM,mda,False,EDIT,"""approximately 44% of our ARR came from customers representing over $100,000 in ARR"", indicating this is revenue concentration",tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"194,366",other,2019-03-01 to 2020-02-01,html_table,"194,366",HIGH,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"341,198",other,2020-02-01 to 2021-01-30,html_table,"341,198",HIGH,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"293,052",other,2020-02-01 to 2020-10-31,html_table,"293,052",HIGH,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"492,838",other,2021-02-01 to 2021-10-30,html_table,"492,838",HIGH,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,255,other,other,chart,"Number of Customers Over $100,000 in ARR255",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,452,other,other,chart,"Number of Customers Over $100,000 in ARR452",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,390,other,other,chart,"Number of Customers Over $100,000 in ARR390",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,715,other,other,chart,"Number of Customers Over $100,000 in ARR715",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,92,other,other,chart,"Number of Customers Over $100,000 in ARR92",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,128,other,other,chart,"Number of Customers Over $100,000 in ARR128",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,190,other,other,chart,"Number of Customers Over $100,000 in ARR190",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,285,other,other,chart,"Number of Customers Over $100,000 in ARR285",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,326,other,other,chart,"Number of Customers Over $100,000 in ARR326",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,518,other,other,chart,"Number of Customers Over $100,000 in ARR518",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,615,other,other,chart,"Number of Customers Over $100,000 in ARR615",LOW,unknown,False,EDIT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"92,036",other,2019-03-01 to 2019-05-04,html_table,"92,036",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"122,010",other,2019-06-01 to 2019-08-03,html_table,"122,010",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"153,418",other,2019-09-01 to 2019-11-02,html_table,"153,418",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"221,705",other,2020-03-01 to 2020-05-02,html_table,"221,705",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"252,826",other,2020-06-01 to 2020-08-01,html_table,"252,826",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"382,102",other,2021-03-01 to 2021-05-01,html_table,"382,102",MEDIUM,unknown,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_arr,"436,889",other,2021-05-01 to 2021-07-31,html_table,"436,889",MEDIUM,unknown,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_net_revenue_retention,161,percent,2020-01-01 to 2020-06-30,html_table,161,LOW,unknown,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_net_revenue_retention,155,percent,2020-01-01 to 2020-06-30,html_table,155,LOW,unknown,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,112,count,2017-12-31,html_table,112,LOW,cover,False,EDIT,"comes from row ""Number of Public Could Service Premium Customers"" in table",tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,139,count,2018-12-31,html_table,139,LOW,cover,False,EDIT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,175,count,2019-12-31,html_table,175,LOW,cover,False,EDIT,"wrong row of table - this is number of customers, not NRR",tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_net_revenue_retention,182,percent,other,html_table,182,LOW,unknown,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,243,count,2019-12-31,html_table,43,LOW,cover,False,EDIT,read only part of the number. failed to identify as part of table. associated with wrong metric because metric name is on the row in which this value appears,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,251,count,2020-06-30,html_table,251,LOW,cover,False,EDIT,failed to identify as part of table. read metric name from wrong row,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_per_customer,10.3,currency,2017-12-31,html_table,10.3,LOW,cover,False,EDIT,failed to identify as part of table. associated with wrong metric. failed to find period (column of the table),tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_per_customer,13.7,currency,2019-12-31,html_table,13.7,LOW,cover,False,EDIT,"failed to identify as part of table. wrong metric. currency, not percent.",tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_per_customer,15.9,currency,2019-12-31,html_table,15.9,LOW,cover,False,EDIT,failed to identify table. wrong metric. failed to identify period (column),tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_per_customer,9.3,currency,2019-06-30,html_table,9.3,LOW,cover,False,EDIT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_per_customer,11.5,currency,2020-06-30,html_table,11.5,LOW,cover,False,EDIT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,27%,percent,2020-01-01 to 2020-06-30,text,27%,MEDIUM,cover,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,19%,percent,2020-01-01 to 2020-06-30,text,19%,MEDIUM,cover,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,10%,percent,2020-01-01 to 2020-06-30,text,10%,MEDIUM,cover,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,25%,percent,2020-01-01 to 2020-06-30,text,25%,MEDIUM,cover,False,ACCEPT,,tuning
+Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,98.3%,percent,2019-01-01 to 2019-06-30,text,98,LOW,mda,False,EDIT,captured only part of the number. got the unit wrong. wrong metric.,tuning
 "Meta Platforms, Inc.",META,2026-01-28,cm_daily_active_users,3.58 billion,count,other,presentation,3.58 billion,LOW,cover,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438 million,count,other,presentation,438 million,LOW,cover,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438,other,other,presentation,438,LOW,unknown,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439 million,count,other,presentation,439 million,LOW,cover,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439,other,other,presentation,439,LOW,unknown,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"3,100",count,2016-12-31,text,"3,100",LOW,cover,False,EDIT,"""enterprise platform customers...for an annual amount of $5,000 or greater""",tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"4,400",count,2016-12-31,text,"4,400",LOW,cover,False,EDIT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_new_customers_acquired,217,other,2017-04-01 to 2017-06-30,text,217,LOW,cover,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_new_customers_acquired,282,other,2017-04-01 to 2017-06-30,text,282,LOW,cover,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_concentration,42%,percent,2017-01-01 to 2017-03-31,text,42%,MEDIUM,financials,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_concentration,45%,percent,2017-01-01 to 2017-03-31,text,45%,MEDIUM,financials,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_concentration,41%,percent,2017-01-01 to 2017-03-31,text,41%,MEDIUM,financials,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_concentration,2%,percent,2017-01-01 to 2017-03-31,text,2%,MEDIUM,mda,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_by_cohort,45%,percent,other,text,45%,LOW,mda,False,ACCEPT,,tuning
+"Tenable Holdings, Inc.",TENB,2018-07-24,cm_revenue_by_cohort,68%,percent,other,text,68%,LOW,mda,False,ACCEPT,,tuning

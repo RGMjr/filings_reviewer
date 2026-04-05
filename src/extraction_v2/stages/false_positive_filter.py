@@ -1134,6 +1134,169 @@ def _rule_revenue_concentration_keyword(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Wave 6: Financial context on customer metrics
+# ---------------------------------------------------------------------------
+
+_FINANCIAL_CONTEXT_KEYWORD_RE = re.compile(
+    r"""
+    \b(?:
+        ebitda
+        | (?:adjusted\s+)?ebitda
+        | free\s+cash\s+flow
+        | (?:net\s+)?cash\s+(?:and\s+cash\s+equivalents?|position|balance|flow)
+        | net\s+(?:loss|income|sales)
+        | net\s+revenue(?!\s+retention)  # "net revenue" but NOT "net revenue retention"
+        | operating\s+(?:income|loss|expense|margin|cash)
+        | gross\s+(?:profit|margin|loss)
+        | total\s+(?:revenue|sales|assets|liabilities|debt)
+        | capital\s+expenditures?
+        | (?:cost|costs)\s+of\s+(?:goods\s+sold|revenue|sales)
+        | working\s+capital
+        | interest\s+expense
+        | depreciation\s+(?:and\s+amortization)?
+        | amortization
+        | loss\s+from\s+operations
+        | comparable\s+(?:store\s+)?sales
+        | number\s+of\s+stores?
+        | (?:store|location|outlet|restaurant|branch)\s+count
+    )\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Customer count metrics that should not appear in financial statement context.
+# Restricted to pure count/customer metrics. Financial-adjacent metrics like
+# cm_lifetime_value_per_customer and cm_customer_retention_rate are excluded
+# because financial context (gross margin, cost of revenue) legitimately
+# appears in their disclosures. Table bindings use the rule broadly; text
+# bindings require proximity since financial keywords may appear in the same
+# section without directly labeling the value.
+_FINANCIAL_CONTEXT_BLOCKED_METRICS = _COUNT_ONLY_METRICS | frozenset({
+    "cm_large_customers_period_end",
+})
+
+
+def _rule_financial_context_on_customer_metric(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block customer metrics when source context is dominated by financial statement language.
+
+    Financial figures (EBITDA, cash flow, net loss, gross profit, store counts)
+    frequently appear near customer metric keywords in SEC filings and S-1/F-1
+    prospectuses, causing spurious bindings. This rule suppresses such extractions
+    for metrics that cannot take financial-statement values.
+
+    Table bindings: always fire when a financial keyword appears in the
+    header/stub path (which directly labels the row/column).
+    Text bindings: fire only when the keyword is within 100 chars of the value.
+    """
+    if metric_id not in _FINANCIAL_CONTEXT_BLOCKED_METRICS:
+        return None
+    if not source_text:
+        return None
+    match = _FINANCIAL_CONTEXT_KEYWORD_RE.search(source_text)
+    if not match:
+        return None
+    # Table-sourced: header/stub path directly labels the cell — always fire.
+    if bv.source_locator.table_id is not None:
+        return "v2_financial_context_customer_metric"
+    # Text-sourced: require proximity to the value.
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos >= 0 and abs(match.start() - value_pos) <= 100:
+        return "v2_financial_context_customer_metric"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Wave 6: Metric definition / threshold value
+# ---------------------------------------------------------------------------
+
+_METRIC_DEFINITION_THRESHOLD_RE = re.compile(
+    r"""
+    (?:
+        # Explicit definition language
+        \bdefin(?:ed?\s+(?:as|of)|ition\s+of)\b
+        # Customer-qualified threshold language (requires "customer" prefix)
+        | \bcustomer[s]?\s+(?:with|spending|generating|having|represent(?:ing)?)\s+
+          (?:over|more\s+than|at\s+least|greater\s+than|>\s*\$|>=\s*\$)
+        # Pure threshold marker (must appear immediately before a dollar sign or number)
+        | \bthreshold\b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _rule_metric_definition_value(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block currency values that represent metric definition thresholds, not reported values.
+
+    Customer tier descriptions like 'customers with >$100K ARR' or 'defined as
+    spending at least $5,000' produce currency candidates for the threshold amount
+    rather than the company's actual metric value. This rule suppresses such
+    extractions by detecting definition/threshold language in the 80-char window
+    before the value.
+    """
+    if bv.unit != Unit.CURRENCY:
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    pre_start = max(0, value_pos - 80)
+    pre_window = source_text[pre_start:value_pos]
+    if _METRIC_DEFINITION_THRESHOLD_RE.search(pre_window):
+        return "v2_metric_definition_value"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Wave 6: Chart pricing and CAGR labels
+# ---------------------------------------------------------------------------
+
+_CHART_PRICING_RE = re.compile(
+    r"\bper\s+(?:user|seat|month|year|license|account)\b",
+    re.IGNORECASE,
+)
+
+_CHART_CAGR_RE = re.compile(
+    r"\bCAGR\b|\bcompound\s+annual\s+growth\b",
+    re.IGNORECASE,
+)
+
+_CHART_BINDING_TYPES = frozenset({"chart_label", "chart_annotation"})
+
+
+def _rule_chart_pricing_label(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block chart-sourced values with pricing or CAGR labels.
+
+    Chart extractions that carry pricing language ("per user per month", "per seat")
+    or compound-growth labels (CAGR) are almost never customer metric disclosures —
+    they are pricing tier labels or market-size projections. This rule fires only
+    for chart_label and chart_annotation binding types.
+    """
+    if bv.binding_type not in _CHART_BINDING_TYPES:
+        return None
+    if not source_text:
+        return None
+    if _CHART_PRICING_RE.search(source_text):
+        return "v2_chart_pricing_label"
+    if _CHART_CAGR_RE.search(source_text):
+        return "v2_chart_cagr_label"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -1166,12 +1329,31 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("arr_tier_threshold", _rule_arr_tier_threshold),
     ("magnitude_sanity", _rule_magnitude_sanity),
     ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count),
+    ("financial_context_customer_metric", _rule_financial_context_on_customer_metric),
+    ("metric_definition_value", _rule_metric_definition_value),
+    ("chart_pricing_label", _rule_chart_pricing_label),
 ]
 
-# Rules skipped in relaxed mode (transcripts/presentations).
-# These patterns are common in earnings call language and cause excessive
-# false negatives when applied to spoken content.
-_RELAXED_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation", "financial_sbc"})
+# Rules skipped in relaxed mode per document type.
+#
+# Transcripts: skip linearized_table (HTML markers absent in spoken text),
+# financial_annotation ("In thousands" etc.), and financial_sbc
+# ("stock-based compensation") — these patterns appear in written filings but
+# not in earnings call spoken content, causing false negatives on transcripts.
+#
+# Presentations: skip the same set as transcripts. Although presentations are
+# HTML documents, SEC EDGAR earnings press releases often contain "(in thousands)"
+# financial table footnotes in the same document as customer metric disclosures.
+# Enabling financial_annotation for presentations causes false negatives where
+# legitimate customer metric values near financial tables get incorrectly filtered.
+# The _rule_financial_context_on_customer_metric rule handles financial context
+# filtering for presentations more precisely.
+_TRANSCRIPT_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation", "financial_sbc"})
+_PRESENTATION_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation", "financial_sbc"})
+
+# Retained for backward compatibility: callers that pass relaxed=True without
+# a document_type (e.g., unit tests) get transcript-level skipping.
+_RELAXED_SKIP_TAGS = _TRANSCRIPT_SKIP_TAGS
 
 # Rules skipped in strict mode (SEC filings).
 # Currently empty: the arpu_context_on_customer_count rule was previously
@@ -1186,16 +1368,21 @@ def _is_v2_false_positive(
     metric_id: str = "",
     relaxed: bool = False,
     section_type: SectionType = SectionType.UNKNOWN,
+    document_type: str = "",
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
 
     Iterates over registered FP rules and returns the first match.
 
-    When relaxed=True (for transcripts/presentations), rules tagged as
-    "linearized_table", "financial_annotation", or "financial_sbc" are skipped
-    because these patterns are common in earnings call language and cause
-    excessive false negatives on spoken content.
+    When relaxed=True (for transcripts/presentations), the same rules are skipped
+    for both document types: "linearized_table", "financial_annotation", and
+    "financial_sbc". Although the document_type parameter is available for future
+    differentiation, empirical testing showed that re-enabling financial_annotation
+    for presentations caused false negatives (SEC EDGAR press releases contain
+    "(in thousands)" footnotes near legitimate customer metric values). Financial
+    context filtering for presentations is instead handled by the more precise
+    _rule_financial_context_on_customer_metric rule.
 
     When relaxed=False (for SEC filings), rules tagged in _STRICT_SKIP_TAGS
     are skipped.  _STRICT_SKIP_TAGS is currently empty; the arpu rule that
@@ -1233,10 +1420,17 @@ def _is_v2_false_positive(
     ):
         return True, "v2_presentation_page_number"
 
+    if relaxed:
+        skip_tags = (
+            _PRESENTATION_SKIP_TAGS
+            if document_type == "presentation"
+            else _TRANSCRIPT_SKIP_TAGS
+        )
+    else:
+        skip_tags = _STRICT_SKIP_TAGS
+
     for tag, rule_fn in _FP_RULES:
-        if relaxed and tag in _RELAXED_SKIP_TAGS:
-            continue
-        if not relaxed and tag in _STRICT_SKIP_TAGS:
+        if tag in skip_tags:
             continue
         reason = rule_fn(bv, source_text, metric_id)
         if reason is not None:
@@ -1508,6 +1702,7 @@ class FalsePositiveFilterStage:
                         metric_id=metric_id,
                         relaxed=relaxed,
                         section_type=candidate.section_type if candidate else SectionType.UNKNOWN,
+                        document_type=context.document_type,
                     )
                     if v2_fp:
                         filter_reasons[v2_reason or "v2_unknown"] = (
