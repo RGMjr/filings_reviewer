@@ -219,6 +219,9 @@ class FactConstructionStage:
             bv, segment_lookup, table_lookup, image_lookup, context.config
         )
 
+        # Extract cohort definition from table stub/header paths
+        cohort_def = self._extract_cohort_def(evidence)
+
         # Build the fact
         fact = MetricFact(
             doc_id=context.document.doc_id if context.document else "",
@@ -236,6 +239,7 @@ class FactConstructionStage:
             extraction_method=ExtractionMethod.EXACT_MATCH,
             requires_review=True,
             review_status=ReviewStatus.PENDING_REVIEW,
+            cohort_def=cohort_def,
         )
         if fact.cohort_def is not None:
             fact.cohort_type, _ = parse_cohort_label(fact.cohort_def)
@@ -431,6 +435,25 @@ class FactConstructionStage:
             raw_value_text=bv.value_raw,
             screenshot_path=screenshot_path,
         )
+
+    def _extract_cohort_def(self, evidence: EvidencePack) -> str | None:
+        """Extract cohort definition from table stub/header paths.
+
+        Scans stub_path (row labels) first, then header_path (column headers),
+        returning the first label that parses as an acquisition or tenure cohort.
+        Returns None for text/chart sources (stub_path/header_path are empty).
+        """
+        for label in reversed(evidence.stub_path):
+            cohort_type, _ = parse_cohort_label(label)
+            if cohort_type in ("acquisition", "tenure"):
+                return label
+
+        for label in reversed(evidence.header_path):
+            cohort_type, _ = parse_cohort_label(label)
+            if cohort_type in ("acquisition", "tenure"):
+                return label
+
+        return None
 
     def _compute_avg_confidence(self, facts: list[MetricFact]) -> float:
         """Compute average confidence across all facts."""

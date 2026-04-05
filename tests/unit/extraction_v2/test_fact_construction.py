@@ -945,3 +945,165 @@ def test_cohort_type_none_when_cohort_def_absent(
     # cohort_def defaults to None; cohort_type should also default to None.
     assert fact.cohort_def is None
     assert fact.cohort_type is None
+
+
+# ============================================================================
+# _extract_cohort_def and end-to-end cohort population via _construct_fact
+# ============================================================================
+
+
+def _make_context_with_table(
+    stage: FactConstructionStage,
+    mock_context: PipelineContext,
+    header_texts: list[str],
+    stub_texts: list[str],
+) -> tuple[object, object]:
+    """Helper: set up context with a table and a BoundValue pointing at row 1, col 1."""
+    table = make_table("tbl_1", header_texts=header_texts, stub_texts=stub_texts)
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        table_id="tbl_1",
+        cell_row=1,
+        cell_col=1,
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.tables = [table]
+    return stage, mock_context
+
+
+def test_cohort_def_from_stub_path(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Acquisition cohort in stub_path populates cohort_def and cohort_type."""
+    stage, ctx = _make_context_with_table(
+        stage, mock_context,
+        header_texts=["Q1 2024", "Q2 2024"],
+        stub_texts=["2021 Cohort", "2022 Cohort"],
+    )
+    stage.process(ctx)
+    fact = ctx.facts[0]
+    assert fact.cohort_def == "2021 Cohort"
+    assert fact.cohort_type == "acquisition"
+
+
+def test_cohort_def_from_header_path(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Tenure cohort in header_path is used when stub has no cohort pattern."""
+    stage, ctx = _make_context_with_table(
+        stage, mock_context,
+        header_texts=["0-12 months", "12-24 months"],
+        stub_texts=["Revenue"],
+    )
+    stage.process(ctx)
+    fact = ctx.facts[0]
+    assert fact.cohort_def == "0-12 months"
+    assert fact.cohort_type == "tenure"
+
+
+def test_stub_priority_over_header(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """stub_path label wins over header_path label when both contain cohort patterns."""
+    stage, ctx = _make_context_with_table(
+        stage, mock_context,
+        header_texts=["0-12 months"],
+        stub_texts=["2021 Cohort"],
+    )
+    stage.process(ctx)
+    fact = ctx.facts[0]
+    assert fact.cohort_def == "2021 Cohort"
+    assert fact.cohort_type == "acquisition"
+
+
+def test_no_cohort_for_generic_stubs(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Generic stub labels like Revenue/COGS leave cohort_def as None."""
+    stage, ctx = _make_context_with_table(
+        stage, mock_context,
+        header_texts=["Q1 2024"],
+        stub_texts=["Revenue", "COGS"],
+    )
+    stage.process(ctx)
+    fact = ctx.facts[0]
+    assert fact.cohort_def is None
+    assert fact.cohort_type is None
+
+
+def test_no_cohort_for_text_source(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Text-sourced BoundValues (no table) leave cohort_def as None."""
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        segment_id="seg_1",
+        text_span=(10, 15),
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.segments = [make_segment("seg_1")]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    assert fact.cohort_def is None
+    assert fact.cohort_type is None
+
+
+def test_other_type_filtered_out(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Labels that parse as 'other' cohort type are excluded from cohort_def."""
+    stage, ctx = _make_context_with_table(
+        stage, mock_context,
+        header_texts=["Q1 2024"],
+        stub_texts=["Enterprise"],
+    )
+    stage.process(ctx)
+    fact = ctx.facts[0]
+    assert fact.cohort_def is None
+
+
+def test_most_specific_stub_wins(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """When stub_path has multiple entries, the last matching one (most specific) is used.
+
+    get_stub_path returns all stub column texts for the row. For a table with 2 stub cols,
+    stub_path = [outer_stub_text, inner_stub_text]. We reverse-iterate, so inner wins.
+    """
+    from src.extraction_v2.models import Cell
+
+    # Build a table with 2 stub columns: col 0 = outer, col 1 = inner
+    table = Table(
+        table_id="tbl_multi",
+        row_count=2,
+        col_count=3,
+        header_rows=1,
+        stub_cols=2,
+    )
+    cells = [
+        Cell(row=0, col=2, text="Q1 2024", is_header=True),
+        Cell(row=1, col=0, text="Customer Metrics", is_stub=True),  # outer stub
+        Cell(row=1, col=1, text="2022 Cohort", is_stub=True),       # inner stub
+        Cell(row=1, col=2, text="500"),
+    ]
+    table.cells = cells
+
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        table_id="tbl_multi",
+        cell_row=1,
+        cell_col=2,
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.tables = [table]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    # "Customer Metrics" is "other" → skipped; "2022 Cohort" matches acquisition
+    assert fact.cohort_def == "2022 Cohort"
+    assert fact.cohort_type == "acquisition"
