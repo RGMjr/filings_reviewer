@@ -6,6 +6,11 @@ This file provides context continuity between Ralph Loop iterations. Read first,
 
 ## Last Completed
 
+**Baseline refresh: V1 + V2 gold standard (2026-04-05)**
+- V1: P=76.7%, R=81.5%, F1=79.0% (unchanged from prev: P=76.7%, R=81.5%, F1=79.0%)
+- V2: P=73.0%, R=60.7%, F1=66.3% (prev: P=73.5%, R=62.1%, F1=67.3%; minor -1pp F1, expected drift)
+- Reason: baseline refresh to capture current extraction state on branch claude/refine-local-plan-YfCwo
+
 **Merge main into earnings-call-exploration (2026-03-18)**
 - Resolved 37 conflicting files across V2 pipeline revert on main vs full V2 + transcript/presentation support on branch
 - Root cause of gold standard false regression: main's validate_against_gold_standard.py removed exclusion of "not a customer metric" GS entries from FN count — restored exclusion
