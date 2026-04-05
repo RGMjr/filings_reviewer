@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-03T19:39:28.213447+00:00",
-  "description": "Wave 2: FP filter improvements, keyword exclusions, cohort type classification",
+  "baseline_date": "2026-04-05T02:49:07.132769+00:00",
+  "description": "Baseline update: current V2 state 2026-04-05",
   "overall": {
-    "precision": 0.7348066298342542,
-    "recall": 0.6214953271028038,
-    "f1": 0.6734177215189874
+    "precision": 0.7303370786516854,
+    "recall": 0.6074766355140186,
+    "f1": 0.663265306122449
   },
   "by_company": {
     "Slack Technologies": {
@@ -23,14 +23,14 @@
       "f1": 0.7936507936507936
     },
     "Snowflake Inc": {
-      "precision": 0.8611111111111112,
-      "recall": 0.8157894736842105,
-      "f1": 0.8378378378378377
+      "precision": 0.8285714285714286,
+      "recall": 0.7631578947368421,
+      "f1": 0.7945205479452055
     },
     "Chewy, Inc.": {
-      "precision": 0.5,
+      "precision": 0.52,
       "recall": 0.9285714285714286,
-      "f1": 0.65
+      "f1": 0.6666666666666666
     },
     "Maplebear Inc.": {
       "precision": 0.6666666666666666,
@@ -38,9 +38,9 @@
       "f1": 0.5714285714285715
     },
     "Datadog, Inc.": {
-      "precision": 0.6153846153846154,
-      "recall": 0.5714285714285714,
-      "f1": 0.5925925925925927
+      "precision": 0.5833333333333334,
+      "recall": 0.5,
+      "f1": 0.5384615384615384
     },
     "Gitlab Inc.": {
       "precision": 0.1875,
