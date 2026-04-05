@@ -130,7 +130,7 @@ Modern 13-stage pipeline with table reconstruction, image/OCR support, and struc
 │         ↓                                                                   │
 │  ┌──────────────────────────────────────────────────────────────┐          │
 │  │ OCRExtractionStage → Extract labeled values from images      │          │
-│  │ (vision_client.py: Claude 3.5 Sonnet for charts/tables)      │          │
+│  │ (vision_client.py: OpenAI GPT-4o for charts/tables)          │          │
 │  └──────────────────────────────────────────────────────────────┘          │
 │         ↓                                                                   │
 │  ┌──────────────────────────────────────────────────────────────┐          │
@@ -236,15 +236,15 @@ PostgreSQL stores all extracted metrics, segments, and review decisions with ful
 │  └──────────────────────┘                                               │
 │         ↓                                                                │
 │  ┌──────────────────────┐                                               │
-│  │ v2_facts             │ V2 final metrics                              │
+│  │ v2_metric_facts      │ V2 final metrics                              │
 │  │ - fact_id            │                                               │
-│  │ - filing_id (FK)     │                                               │
-│  │ - metric_id (FK)     │                                               │
+│  │ - doc_id (FK)        │                                               │
+│  │ - canonical_metric_id│                                               │
 │  │ - value              │                                               │
-│  │ - period_end         │                                               │
+│  │ - period_start/end   │                                               │
 │  │ - confidence         │                                               │
-│  │ - evidence_json      │ (EvidencePack)                               │
-│  │ - binding_json       │ (xpath/cell coordinates)                      │
+│  │ - evidence_pack      │ (EvidencePack JSON)                           │
+│  │ - source_locator     │ (xpath/cell coordinates)                      │
 │  └──────────────────────┘                                               │
 │         ↓                                                                │
 │  ┌──────────────────────┐   ┌───────────────────────┐                   │
@@ -278,13 +278,11 @@ PostgreSQL stores all extracted metrics, segments, and review decisions with ful
 │         ↓                                                                │
 │  Gold Standard / Validation                                             │
 │  ┌──────────────────────┐                                               │
-│  │ gold_standard_facts  │ Ground truth for testing                      │
-│  │ - fact_id            │                                               │
-│  │ - filing_id (FK)     │                                               │
-│  │ - metric_id (FK)     │                                               │
-│  │ - value              │                                               │
-│  │ - period_end         │                                               │
-│  │ - source             │ (manual entry)                                │
+│  │ gold_standard/       │ Ground truth (CSV-based)                      │
+│  │ golden_set_*.csv     │ - filing_id, metric_id                        │
+│  │                      │ - value, period_end                           │
+│  │ (data/gold_standard) │ - manually annotated truth set                │
+│  │                      │ - loaded by V2Validator                       │
 │  └──────────────────────┘                                               │
 │         ↓                                                                │
 │  ┌──────────────────────┐                                               │
@@ -293,7 +291,7 @@ PostgreSQL stores all extracted metrics, segments, and review decisions with ful
 │  │ - document_id (FK)   │                                               │
 │  │ - image_type         │ (chart|table|decorative)                      │
 │  │ - file_path          │                                               │
-│  │ - ocr_json           │ (Claude 3.5 vision result)                    │
+│  │ - ocr_json           │ (OpenAI GPT-4o vision result)                 │
 │  │ - extracted_values   │                                               │
 │  └──────────────────────┘                                               │
 │                                                                            │
@@ -328,7 +326,7 @@ PostgreSQL stores all extracted metrics, segments, and review decisions with ful
 │  OpenAI API (llm/openai_client.py, llm/vision_client.py)              │
 │  ┌──────────────────────────────────────────┐                          │
 │  │ • LLM text extraction (GPT-4)            │                          │
-│  │ • Vision/OCR (Claude 3.5 Sonnet)        │                          │
+│  │ • Vision/OCR (GPT-4o - gpt-4o model)    │                          │
 │  │ • Cache layer: PostgreSQL table          │                          │
 │  │ • Usage: FallBack to keyword matching    │                          │
 │  │         Definition extraction            │                          │
@@ -387,8 +385,8 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 │  │    POST /api/images/decision     │                                   │
 │  │                                  │                                   │
 │  │ 3) review_v2.py / api_v2.py      │ V2 fact review (new pipeline)     │
-│  │    GET /review/v2/filing/{id}    │ structured facts + evidence       │
-│  │    POST /api/v2/review/decision  │                                   │
+│  │    GET /v2/review/<filing_id>    │ structured facts + evidence       │
+│  │    POST /api/v2/decisions        │                                   │
 │  │                                  │                                   │
 │  │ 4) review_pres_images.py         │ Presentation image review         │
 │  │    GET /review/pres-images       │ (file-based decisions.json)       │
@@ -406,7 +404,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 │  ┌──────────────────────────────────┐                                   │
 │  │ PostgreSQL                       │                                   │
 │  │ - review_candidates/decisions    │                                   │
-│  │ - v2_facts, v2_review_candidates │                                   │
+│  │ - v2_metric_facts, v2_review_cands │                                   │
 │  │ - image decisions                │                                   │
 │  └──────────────────────────────────┘                                   │
 │           ↓                                                              │
@@ -516,7 +514,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 
 9. DATABASE STORAGE
    ┌─────────────────────────────────────────────────┐
-   │ INSERT INTO metric_values / v2_facts             │
+   │ INSERT INTO metric_values / v2_metric_facts      │
    │ INSERT INTO review_candidates / v2_review_cands │
    │ → Status: PENDING_REVIEW (confidence < 0.90)    │
    │ → Or: AUTO_ACCEPTED (confidence >= 0.90)        │
@@ -536,7 +534,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 11. VALIDATION AGAINST GOLD STANDARD
     ┌─────────────────────────────────────────────────┐
     │ V2Validator / UnifiedComparison                 │
-    │ → Compare extracted vs. gold_standard_facts     │
+    │ → Compare extracted vs. gold standard CSV       │
     │ → Calculate: precision, recall, F1-score        │
     │ → Flag regressions if < 95% match on known set  │
     │ → Report: false positives, false negatives      │
@@ -649,7 +647,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 │           ↓                                                              │
 │  LLM Vision-Based Chart OCR                                             │
 │  ┌──────────────────────────────────────────┐                           │
-│  │ llm/vision_client.py (Claude 3.5 Sonnet) │                           │
+│  │ llm/vision_client.py (OpenAI GPT-4o)     │                           │
 │  │ • Extract labeled values from charts      │                           │
 │  │ • Parse table cells with visual context   │                           │
 │  │ • Cached results in llm_cache table       │                           │
@@ -686,7 +684,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 │  Gold Standard Validation (pytest -m gold_standard)                    │
 │  ┌──────────────────────────────────────────┐                           │
 │  │ gold_standard/v2_validator.py             │                           │
-│  │ • Load gold_standard_facts (ground truth) │                           │
+│  │ • Load CSV golden standard (ground truth) │                           │
 │  │ • Extract metrics using current pipeline  │                           │
 │  │ • Compare: extracted vs. truth            │                           │
 │  │ • Metrics:                                │                           │
@@ -740,7 +738,7 @@ Flask-based review interface with separate APIs for V1/V2 extraction results.
 │  │ Tables: No reconstruction needed         │                           │
 │  │ Images: None                             │                           │
 │  │ Storage: v2_documents (doc_type=trans)   │                           │
-│  │ Review: Web UI (/review/v2/filing/{id})  │                           │
+│  │ Review: Web UI (/v2/review/<filing_id>)  │                           │
 │  │ Config: PipelineConfig.for_transcript()  │                           │
 │  │         - Wider proximity windows        │                           │
 │  │         - Relaxed FP filtering           │                           │
