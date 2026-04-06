@@ -2,10 +2,10 @@
 Minimal Flask server for Playwright UI tests.
 Renders review.html with mock data, stubbing out custom filters and url_for.
 """
-import sys
 import os
 from datetime import datetime
-from flask import Flask, Blueprint, render_template, jsonify, send_from_directory
+
+from flask import Blueprint, Flask, jsonify, render_template, send_from_directory
 
 # Add project root to path so templates resolve
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
