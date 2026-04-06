@@ -23,7 +23,7 @@ docker compose down    # Stop
 
 Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmode=require`
 
-`render.yaml` defines: `filings-reviewer` web service + `filings-extraction` cron (daily 6am UTC, `BATCH_LIMIT=50`).
+`render.yaml` defines: `filings-reviewer` web service + `filings-extraction` cron (daily 6am UTC, runs `batch_v2_extraction.py --status fetched --workers 2 --limit 50`).
 
 ## Environment Variables
 
