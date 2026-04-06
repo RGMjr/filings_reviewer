@@ -17,10 +17,8 @@ services:
     name: filings-extraction
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: python3 scripts/run_batch_pipeline.py
+    dockerCommand: python3 scripts/batch_v2_extraction.py --status fetched --workers 2 --limit 50
     schedule: "0 6 * * *"  # Daily at 6am UTC
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: BATCH_LIMIT
-        value: "50"
