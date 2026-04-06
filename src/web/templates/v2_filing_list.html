@@ -37,6 +37,10 @@
          class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         Earnings Calls
       </a>
+      <a href="{{ url_for('review_v2.filing_list', document_type='investor_presentation') }}"
+         class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        Presentations
+      </a>
     </div>
   </div>
 </div>
