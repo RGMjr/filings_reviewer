@@ -1,16 +1,16 @@
 {
-  "baseline_date": "2026-04-05T02:49:07.132769+00:00",
-  "description": "Baseline update: current V2 state 2026-04-05",
+  "baseline_date": "2026-04-06T00:30:13.125207+00:00",
+  "description": "V2 pipeline validation",
   "overall": {
-    "precision": 0.7303370786516854,
-    "recall": 0.6074766355140186,
-    "f1": 0.663265306122449
+    "precision": 0.6626984126984127,
+    "recall": 0.5186335403726708,
+    "f1": 0.5818815331010453
   },
   "by_company": {
     "Slack Technologies": {
-      "precision": 0.96875,
+      "precision": 0.9117647058823529,
       "recall": 0.96875,
-      "f1": 0.96875
+      "f1": 0.9393939393939394
     },
     "SAMSARA VISION INC.": {
       "precision": 1.0,
@@ -33,19 +33,19 @@
       "f1": 0.6666666666666666
     },
     "Maplebear Inc.": {
-      "precision": 0.6666666666666666,
+      "precision": 0.625,
       "recall": 0.5,
-      "f1": 0.5714285714285715
+      "f1": 0.5555555555555556
     },
     "Datadog, Inc.": {
-      "precision": 0.5833333333333334,
-      "recall": 0.5,
-      "f1": 0.5384615384615384
+      "precision": 0.46153846153846156,
+      "recall": 0.42857142857142855,
+      "f1": 0.4444444444444445
     },
     "Gitlab Inc.": {
-      "precision": 0.1875,
-      "recall": 0.17647058823529413,
-      "f1": 0.1818181818181818
+      "precision": 0.23529411764705882,
+      "recall": 0.23529411764705882,
+      "f1": 0.23529411764705882
     },
     "Robinhood Markets, Inc.": {
       "precision": 0.7142857142857143,
@@ -56,6 +56,26 @@
       "precision": 0.0,
       "recall": 0.0,
       "f1": 0.0
+    },
+    "Torrid Holdings Inc.": {
+      "precision": 0.3225806451612903,
+      "recall": 0.2777777777777778,
+      "f1": 0.29850746268656714
+    },
+    "Samsara Inc.": {
+      "precision": 0.7083333333333334,
+      "recall": 0.38636363636363635,
+      "f1": 0.5
+    },
+    "Kingsoft Cloud Holdings Ltd": {
+      "precision": 0.7,
+      "recall": 0.3888888888888889,
+      "f1": 0.5
+    },
+    "Tenable Holdings, Inc.": {
+      "precision": 0.75,
+      "recall": 0.3,
+      "f1": 0.4285714285714285
     }
   }
 }
