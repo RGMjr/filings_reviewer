@@ -11,8 +11,8 @@ src/
 ├── infra/          # db.py, sec_client.py, http_client.py, logging_config.py, pool.py, validation.py, exceptions.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction (V1 - production)
-├── extraction_v2/  # V2 unified extraction pipeline (active — used for transcripts and presentations)
+├── extraction/     # Metric extraction (V1 - retired; code kept for historical reference)
+├── extraction_v2/  # V2 unified extraction pipeline (active — SEC filings, transcripts, presentations)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
@@ -21,7 +21,7 @@ config/
 └── metric_keywords.yaml  # Metric keyword patterns (authoritative source)
 ```
 
-**Pipeline (V1):** UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → SegmentEnricher → ValueExtractor → QualityScorer → Database
+**Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database
 
 ## Key Commands
 
