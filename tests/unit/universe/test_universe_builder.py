@@ -140,6 +140,88 @@ class TestUniverseBuilderClassification:
         assert filing_args["is_spac"] is True
         assert filing_args["is_in_scope_phase1"] is False
 
+    def test_spac_excluded_via_filing_text(self, mock_db):
+        """SPAC excluded via SGML header SIC pattern when name and current EDGAR SIC are inconclusive."""
+        diamond_peak_txt_url = "https://www.sec.gov/Archives/edgar/data/1759546/000121390019000906/0001213900-19-000906.txt"
+        diamond_peak = FilingMetadata(
+            cik="0001759546",
+            company_name="DiamondPeak Holdings Corp.",
+            form_type="S-1",
+            filing_date="2019-01-18",
+            accession_number="0001213900-19-000906",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1759546/000121390019000906/f1.htm",
+            txt_url=diamond_peak_txt_url,
+            ticker=None,
+        )
+        # No SPAC name pattern; EDGAR now shows SIC 3711 (post-merger).
+        # Only the SGML header in the .txt file preserves the original SIC 6770.
+        sgml_header = (
+            "DiamondPeak Holdings Corp.\n"
+            "\tSTANDARD INDUSTRIAL CLASSIFICATION:\tBLANK CHECKS [6770]\n"
+        )
+        sec_client = MockSECClient(
+            mock_filings=[diamond_peak],
+            mock_filing_texts={diamond_peak_txt_url: sgml_header},
+        )
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2019-01-01", "2019-12-31")
+
+        assert count == 0
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args["is_spac"] is True
+        assert filing_args["is_in_scope_phase1"] is False
+
+    def test_text_fetch_skipped_when_already_spac_by_name(self, mock_db, sample_filings):
+        """Filing text is not fetched when the SPAC is already identified by name."""
+        spac_filing = [f for f in sample_filings if "Acquisition" in f.company_name]
+        sec_client = MockSECClient(mock_filings=spac_filing)
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        builder.build_universe("2020-01-01", "2020-12-31")
+
+        # Should be excluded without needing a text fetch
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args["is_spac"] is True
+        assert filing_args["is_in_scope_phase1"] is False
+
+    def test_spac_excluded_via_sic_6770(self, mock_db):
+        """SPAC with ambiguous name but SIC 6770 is excluded via EDGAR lookup."""
+        # DiamondPeak-style: name doesn't match SPAC patterns, but EDGAR reports SIC 6770
+        diamond_peak = FilingMetadata(
+            cik="0001759546",
+            company_name="DiamondPeak Holdings Corp.",
+            form_type="S-1",
+            filing_date="2019-01-18",
+            accession_number="0001213900-19-000906",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1759546/000121390019000906/f1.htm",
+            ticker=None,
+        )
+        sec_client = MockSECClient(
+            mock_filings=[diamond_peak],
+            mock_company_info={"0001759546": {"sic": "6770", "name": "DiamondPeak Holdings Corp."}},
+        )
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe("2019-01-01", "2019-12-31")
+
+        assert count == 0
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args["is_spac"] is True
+        assert filing_args["is_in_scope_phase1"] is False
+
+    def test_sic_passed_to_upsert_company(self, mock_db, sample_filings):
+        """SIC code from EDGAR is stored on the company record."""
+        sec_client = MockSECClient(
+            mock_filings=sample_filings[:1],
+            mock_company_info={"0001234567": {"sic": "7372", "name": "Shopify Inc."}},
+        )
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        builder.build_universe("2015-01-01", "2015-12-31")
+
+        company_args = mock_db.upsert_company.call_args[1]
+        assert company_args["industry_code"] == "7372"
+        assert company_args["industry_classification_source"] == "edgar_submissions"
+
     def test_first_time_issuer_detection(self, mock_db, sample_filings):
         """First-time issuer is correctly detected."""
         sec_client = MockSECClient(mock_filings=sample_filings[:1])

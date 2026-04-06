@@ -5,6 +5,7 @@ Provides a simple abstraction over the SEC EDGAR API for discovering and fetchin
 """
 
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -554,12 +555,15 @@ class SECClient:
 
             # IMPORTANT: Filter out exhibit files FIRST before pattern matching
             # Exhibit files often contain form patterns (e.g., "exhibit103s-1.htm")
-            # which would incorrectly match before the actual S-1 document
+            # which would incorrectly match before the actual S-1 document.
+            # Match "ex" followed by a digit anywhere in the name to catch patterns
+            # like "fs12019a1ex1-1_hennessy.htm" where "ex" is not at the start.
+            _exhibit_re = re.compile(r'ex\d', re.IGNORECASE)
             non_exhibit_files = [
                 item
                 for item in htm_files
                 if "exhibit" not in item["name"].lower()
-                and not item["name"].lower().startswith("ex")
+                and not _exhibit_re.search(item["name"])
             ]
 
             # Use non-exhibit files for pattern matching if available
@@ -679,6 +683,31 @@ class SECClient:
             return None
         except Exception as e:
             logger.error(f"Error fetching company info for CIK {cik}: {e}")
+            return None
+
+    def fetch_filing_text_sample(
+        self, url: str, max_chars: int = 10000
+    ) -> str | None:
+        """
+        Fetch the first max_chars characters of a filing document for classification.
+
+        Used to detect SPAC language ("blank check company", etc.) in the filing text
+        when name and SIC checks are inconclusive.
+
+        Args:
+            url: URL to the filing document (primary_doc_url or txt_url)
+            max_chars: Maximum characters to return (default 10000)
+
+        Returns:
+            First max_chars characters of the document text, or None on error.
+        """
+        try:
+            self._rate_limit()
+            http_response = self._http_client.get(url, timeout=15.0)
+            text = http_response.content.decode("utf-8", errors="replace")
+            return text[:max_chars]
+        except Exception as e:
+            logger.warning(f"Failed to fetch filing text sample from {url}: {e}")
             return None
 
     def get_filing_by_accession(
@@ -1050,15 +1079,24 @@ class MockSECClient(SECClient):
     Returns predefined filing data instead of making real API calls.
     """
 
-    def __init__(self, mock_filings: list[FilingMetadata] | None = None):
+    def __init__(
+        self,
+        mock_filings: list[FilingMetadata] | None = None,
+        mock_company_info: dict[str, dict] | None = None,
+        mock_filing_texts: dict[str, str] | None = None,
+    ):
         """
         Initialize mock client.
 
         Args:
             mock_filings: List of FilingMetadata to return from searches
+            mock_company_info: Dict mapping CIK -> company info dict (including 'sic')
+            mock_filing_texts: Dict mapping URL -> text content for fetch_filing_text_sample
         """
         super().__init__(user_agent="mock-client")
         self.mock_filings = mock_filings or []
+        self.mock_company_info = mock_company_info or {}
+        self.mock_filing_texts = mock_filing_texts or {}
 
     def search_filings(
         self,
@@ -1082,6 +1120,15 @@ class MockSECClient(SECClient):
 
         logger.info(f"Mock search returned {len(filtered)} filings")
         return filtered
+
+    def get_company_info(self, cik: str) -> dict | None:
+        """Return mock company info for the given CIK, or None if not configured."""
+        return self.mock_company_info.get(cik)
+
+    def fetch_filing_text_sample(self, url: str, max_chars: int = 10000) -> str | None:
+        """Return mock filing text for the given URL, or None if not configured."""
+        text = self.mock_filing_texts.get(url)
+        return text[:max_chars] if text else None
 
     def get_filing_by_accession(
         self, cik: str, accession_number: str
