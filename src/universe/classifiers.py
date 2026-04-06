@@ -25,7 +25,7 @@ SPAC_REGEXES = [re.compile(pattern, re.IGNORECASE) for pattern in SPAC_NAME_PATT
 
 
 def classify_spac(
-    company_name: str, filing_text: str | None = None
+    company_name: str, filing_text: str | None = None, sic_code: str | None = None
 ) -> tuple[bool, str]:
     """
     Classify whether a company is a SPAC based on name and filing content.
@@ -44,6 +44,11 @@ def classify_spac(
         >>> classify_spac("Shopify Inc.")
         (False, 'heuristic')
     """
+    # SIC 6770 = Blank Checks (SEC's standard SPAC classification)
+    if sic_code == "6770":
+        logger.debug(f"SPAC detected via SIC 6770: {company_name}")
+        return True, "heuristic"
+
     # Check company name
     for pattern in SPAC_REGEXES:
         if pattern.search(company_name):
