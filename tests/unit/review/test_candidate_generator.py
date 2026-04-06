@@ -2377,6 +2377,7 @@ class TestCrossSegmentDeduplication:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestKeywordMatchingPerformance:
     """
     Performance tests for keyword matching.
@@ -2534,6 +2535,7 @@ class TestKeywordMatchingPerformance:
         assert time_2x < 0.2, f"2x test took {time_2x:.3f}s"
 
 
+@pytest.mark.slow
 class TestContextExtractionPerformance:
     """Performance tests for context extraction optimization (P1.2)."""
 

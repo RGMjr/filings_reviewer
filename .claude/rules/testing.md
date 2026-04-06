@@ -7,7 +7,7 @@ paths:
 
 ## Standards
 
-- **Coverage**: 75% minimum (enforced), currently 87%
+- **Coverage**: 75% minimum (enforced), currently 81%
 - **Type safety**: `src/review/` and `src/extraction/segment_enricher.py` pass `mypy --strict`
 
 ## Structure

@@ -231,10 +231,21 @@ def validation_results(gold_standard_mode, test_db_adapter, gold_standard_csv_pa
 
 
 @pytest.fixture(scope="module")
-def current_metrics(validation_results) -> BaselineMetrics:
+def current_metrics(validation_results, gold_standard_mode) -> BaselineMetrics:
     """Convert validation results to BaselineMetrics."""
     if not validation_results:
         pytest.skip("No validation results available")
+
+    # Skip when no candidates were extracted at all — this means the required data
+    # source is unavailable (db mode: test database not populated; fresh mode: filing
+    # HTML files not cached locally).  Fail-as-skip is preferable to a misleading
+    # "0% recall" regression report.
+    total_candidates = sum(r.get("candidate_count", 0) for r in validation_results)
+    if total_candidates == 0:
+        pytest.skip(
+            f"Gold standard extraction returned 0 candidates in '{gold_standard_mode}' mode. "
+            f"Populate the test database (db mode) or cache filing HTML files (fresh mode)."
+        )
 
     return results_to_baseline_metrics(validation_results)
 

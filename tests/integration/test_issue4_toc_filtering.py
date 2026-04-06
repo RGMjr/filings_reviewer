@@ -28,8 +28,10 @@ class TestIssue4StandaloneTOCFiltering:
 
     def test_issue4_standalone_toc_numbers_filtered(self) -> None:
         """Test that standalone TOC page numbers don't create candidates."""
-        # Realistic context from filing with TOC pattern
-        text = "was 43.0%, respectively.\n73 Table of Contents\nLifetime Value"
+        # Realistic context from filing with TOC pattern.
+        # Uses "customer retention rate" (a percentage metric) rather than
+        # "Lifetime Value" which blocks percentages via the ltv_percentage_not_dollar FP rule.
+        text = "customer retention rate was 43.0%.\n73 Table of Contents\nNext Section"
         segment = self._make_segment(text)
 
         # Generate candidates
