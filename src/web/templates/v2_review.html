@@ -55,7 +55,7 @@
     <div class="d-flex justify-content-between align-items-center">
       <div>
         <h4 class="mb-0">{{ filing.company_name }}</h4>
-        <small class="text-muted">{{ filing.accession_number }} &middot; {{ filing.form_type or '' }}</small>
+        <small class="text-muted">{{ filing.accession_number }} &middot; {{ filing.form_type or '' }}{% if sec_filing_url %} &middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">View source filing</a>{% endif %}</small>
       </div>
       <div class="text-end">
         <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
@@ -411,6 +411,7 @@ function submitDecision(decision) {
     decision: decision,
     review_time_seconds: reviewTime,
     reviewer_notes: document.getElementById('reviewer-notes')?.value || null,
+    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
   };
 
   if (decision === 'reject') {

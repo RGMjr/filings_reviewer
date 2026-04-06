@@ -207,6 +207,7 @@ def create_decision():
             assigned_metric_id=assigned_metric_id,
             rejection_category=rejection_category,
             rejection_reason=rejection_reason,
+            reviewer_id=data.get("reviewer_id"),
             reviewer_notes=reviewer_notes,
             review_time_seconds=review_time_seconds,
         )

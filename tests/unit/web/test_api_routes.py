@@ -94,6 +94,7 @@ class TestCreateDecision:
             assigned_metric_id="active_customers",
             rejection_category=None,
             rejection_reason=None,
+            reviewer_id=None,
             reviewer_notes=None,
             review_time_seconds=45,
         )
@@ -139,6 +140,7 @@ class TestCreateDecision:
             assigned_metric_id=None,
             rejection_category="wrong_metric",
             rejection_reason="This is ARR, not CAC",
+            reviewer_id=None,
             reviewer_notes="Checked definition",
             review_time_seconds=None,
         )
@@ -182,6 +184,7 @@ class TestCreateDecision:
             assigned_metric_id="arr",
             rejection_category=None,
             rejection_reason=None,
+            reviewer_id=None,
             reviewer_notes=None,
             review_time_seconds=None,
         )
@@ -857,6 +860,7 @@ class TestValidationHelpers:
             assigned_metric_id="active_customers",
             rejection_category=None,
             rejection_reason=None,
+            reviewer_id=None,
             reviewer_notes="Looks good",
             review_time_seconds=45,
         )

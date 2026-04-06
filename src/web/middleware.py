@@ -29,6 +29,12 @@ def register_api_auth(bp: Blueprint) -> None:
         if not current_app.config.get("API_KEY_REQUIRED", True):
             return None
 
+        # Allow browser fetch calls from the same server (same-origin AJAX)
+        # Browsers always send Referer for same-origin fetch() calls
+        referer = request.headers.get("Referer", "")
+        if referer and referer.startswith(request.host_url):
+            return None
+
         api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
         expected_key = current_app.config.get("API_KEY")
 
