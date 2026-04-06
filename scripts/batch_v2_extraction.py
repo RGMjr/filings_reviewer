@@ -85,6 +85,7 @@ class BatchConfig:
     no_images: bool = False
     min_confidence: float = 0.90
     worker_timeout: int = 300  # Seconds before killing a hung worker
+    status: str | None = None  # Filter filings by processing_status (e.g. 'fetched')
 
 
 @dataclass
@@ -220,6 +221,14 @@ def _process_filing_worker(
         persist_result = adapter.persist_pipeline_result(result, filing_id)
 
         if not persist_result.success:
+            try:
+                db.execute(
+                    "UPDATE filings SET processing_status = 'extraction_failed', updated_at = now()"
+                    " WHERE filing_id = %(filing_id)s",
+                    {"filing_id": filing_id},
+                )
+            except Exception:
+                pass  # Best-effort; filing will retry on next cron run
             return {
                 "filing_id": filing_id,
                 "success": False,
@@ -229,6 +238,13 @@ def _process_filing_worker(
                 "duration_ms": duration_ms,
                 "retried": False,
             }
+
+        # Mark filing as extracted so cron skips it on subsequent runs
+        db.execute(
+            "UPDATE filings SET processing_status = 'extracted', updated_at = now()"
+            " WHERE filing_id = %(filing_id)s",
+            {"filing_id": filing_id},
+        )
 
         # Quality scoring
         if not config_dict.get("skip_quality_scoring"):
@@ -257,6 +273,16 @@ def _process_filing_worker(
 
     except Exception as e:
         duration_ms = int(time.time() * 1000) - start_ms
+        # Best-effort: mark as failed so cron can retry or skip
+        try:
+            _db = DatabaseAdapter(db_url)
+            _db.execute(
+                "UPDATE filings SET processing_status = 'extraction_failed', updated_at = now()"
+                " WHERE filing_id = %(filing_id)s",
+                {"filing_id": filing_id},
+            )
+        except Exception:
+            pass
         return {
             "filing_id": filing_id,
             "success": False,
@@ -287,14 +313,21 @@ class BatchV2Runner:
 
         db = DatabaseAdapter(self.db_url)
 
-        sql = """
+        params: dict = {}
+        where_clause = ""
+        if self.config.status:
+            where_clause = "WHERE f.processing_status = %(status)s"
+            params["status"] = self.config.status
+
+        sql = f"""
             SELECT f.filing_id, f.accession_number, f.html_storage_path,
                    c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
+            {where_clause}
             ORDER BY f.filing_id
         """
-        filings = db.query(sql)
+        filings = db.query(sql, params)
 
         # Apply resume filter
         if self.config.resume_from is not None:
@@ -547,6 +580,11 @@ def main() -> None:
     parser.add_argument(
         "--min-confidence", type=float, default=0.90, help="Min confidence for auto-accept"
     )
+    parser.add_argument(
+        "--status",
+        type=str,
+        help="Filter filings by processing_status (e.g. 'fetched')",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     parser.add_argument(
         "--max-consecutive-failures",
@@ -583,6 +621,7 @@ def main() -> None:
         no_images=args.no_images,
         min_confidence=args.min_confidence,
         worker_timeout=args.worker_timeout,
+        status=args.status,
     )
 
     runner = BatchV2Runner(config=config, db_url=db_url)

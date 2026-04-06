@@ -31,13 +31,15 @@ class TestBatchConfig:
         assert config.skip_quality_scoring is False
         assert config.no_images is False
         assert config.min_confidence == 0.90
+        assert config.status is None
 
     def test_custom_values(self):
-        config = BatchConfig(workers=8, batch_size=20, dry_run=True, limit=100)
+        config = BatchConfig(workers=8, batch_size=20, dry_run=True, limit=100, status="fetched")
         assert config.workers == 8
         assert config.batch_size == 20
         assert config.dry_run is True
         assert config.limit == 100
+        assert config.status == "fetched"
 
 
 class TestBatchStats:
