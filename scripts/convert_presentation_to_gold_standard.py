@@ -388,7 +388,7 @@ def convert_reviewed_file(
         "fiscal_year_end_day": fy_day,
     }
     (company_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
-    logger.info(f"  Wrote metadata.json")
+    logger.info("  Wrote metadata.json")
 
     # Write extracted_values.csv
     extracted_csv_path = company_dir / "extracted_values.csv"
