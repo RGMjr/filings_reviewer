@@ -23,54 +23,63 @@
         {# =================================================================
            Section 1: Filing Header
            ================================================================= #}
-        <div class="card mb-4">
+        <div class="card mb-4" id="filing-header-card">
             <div class="card-body">
-                {# Breadcrumb navigation #}
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb mb-2">
-                        <li class="breadcrumb-item">
-                            <a href="{{ url_for('review.filing_list') }}">Filings</a>
-                        </li>
-                        <li class="breadcrumb-item active" aria-current="page">
-                            {{ filing.company_name }}
-                        </li>
-                    </ol>
-                </nav>
-
-                {# Company name heading with SEC link #}
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h2 class="mb-0">{{ filing.company_name }}</h2>
-                    {% set sec_url = filing.sec_html_url if filing.sec_html_url else 'https://www.sec.gov/Archives/edgar/data/' ~ filing.cik ~ '/' ~ filing.accession_number|replace('-', '') ~ '/' %}
-                    <a href="{{ sec_url }}"
-                       target="_blank"
-                       rel="noopener noreferrer"
-                       class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-box-arrow-up-right me-1"></i>View SEC Filing
-                    </a>
+                {# Compact header row: breadcrumb + form type + collapse toggle #}
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <nav aria-label="breadcrumb" class="mb-0">
+                            <ol class="breadcrumb mb-0">
+                                <li class="breadcrumb-item">
+                                    <a href="{{ url_for('review.filing_list') }}">Filings</a>
+                                </li>
+                                <li class="breadcrumb-item active" aria-current="page">
+                                    {{ filing.company_name }}
+                                </li>
+                            </ol>
+                        </nav>
+                        <span class="badge bg-secondary">{{ filing.form_type }}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        {% set sec_url = filing.sec_html_url if filing.sec_html_url else 'https://www.sec.gov/Archives/edgar/data/' ~ filing.cik ~ '/' ~ filing.accession_number|replace('-', '') ~ '/' %}
+                        <a href="{{ sec_url }}"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-box-arrow-up-right me-1"></i>SEC
+                        </a>
+                        <button class="btn btn-sm btn-outline-secondary filing-header-toggle"
+                                type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#filing-header-details"
+                                aria-expanded="true"
+                                aria-controls="filing-header-details"
+                                title="Toggle filing details">
+                            <i class="bi bi-chevron-up"></i>
+                        </button>
+                    </div>
                 </div>
 
-                {# Filing metadata grid #}
-                <div class="row text-muted small">
-                    <div class="col-md-2">
-                        <div class="d-block text-uppercase fw-bold mb-1">Form Type</div>
-                        <div>{{ filing.form_type }}</div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="d-block text-uppercase fw-bold mb-1">Filing Date</div>
-                        <div>{{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="d-block text-uppercase fw-bold mb-1">Extracted</div>
-                        <div>{{ extraction_date.strftime('%Y-%m-%d') if extraction_date else 'N/A' }}</div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="d-block text-uppercase fw-bold mb-1">CIK</div>
-                        <div>{{ filing.cik }}</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="d-block text-uppercase fw-bold mb-1">Accession</div>
-                        <div class="font-monospace" style="font-size: 0.75rem;">
-                            {{ filing.accession_number }}
+                {# Collapsible metadata section #}
+                <div class="collapse show" id="filing-header-details">
+                    <div class="row text-muted small mt-3">
+                        <div class="col-md-3">
+                            <div class="d-block text-uppercase fw-bold mb-1">Filing Date</div>
+                            <div>{{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="d-block text-uppercase fw-bold mb-1">Extracted</div>
+                            <div>{{ extraction_date.strftime('%Y-%m-%d') if extraction_date else 'N/A' }}</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="d-block text-uppercase fw-bold mb-1">CIK</div>
+                            <div>{{ filing.cik }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-block text-uppercase fw-bold mb-1">Accession</div>
+                            <div class="font-monospace" style="font-size: 0.75rem;">
+                                {{ filing.accession_number }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -360,132 +369,96 @@
                                 </div>
                             {% endif %}
 
-                            {# 3b. Extracted Value Display #}
-                            <div class="card mb-3">
-                                <div class="card-body">
-                                    <h6 class="text-muted mb-2">Extracted Value</h6>
-                                    <div class="extracted-value-display">
+                            {# 3b+3c. Compact Value & Metric Bar #}
+                            {% if current_candidate.suggestion_confidence is not none %}
+                                {% set conf = current_candidate.suggestion_confidence %}
+                                {% if conf >= 0.7 %}
+                                    {% set conf_color = 'success' %}
+                                    {% set conf_label = 'High' %}
+                                {% elif conf >= 0.4 %}
+                                    {% set conf_color = 'warning' %}
+                                    {% set conf_label = 'Medium' %}
+                                {% else %}
+                                    {% set conf_color = 'danger' %}
+                                    {% set conf_label = 'Low' %}
+                                {% endif %}
+                            {% endif %}
+                            <div class="compact-value-metric-bar mb-3">
+                                {# Row 1: Value + Metric + Confidence #}
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    <span class="compact-bar-label">Value:</span>
+                                    <span class="compact-bar-value">
                                         {% if current_candidate.parsed_value is not none %}
-                                            <span class="value h4">
-                                                {% if current_candidate.parsed_unit == 'usd' %}
-                                                    ${{ "{:,.2f}".format(current_candidate.parsed_value|float) }}
-                                                {% elif current_candidate.parsed_unit == '%' %}
-                                                    {{ "{:.1f}".format((current_candidate.parsed_value|float) * 100) }}%
-                                                {% else %}
-                                                    {{ "{:,.0f}".format(current_candidate.parsed_value|float) }}
+                                            {% if current_candidate.parsed_unit == 'usd' %}
+                                                ${{ "{:,.2f}".format(current_candidate.parsed_value|float) }}
+                                            {% elif current_candidate.parsed_unit == '%' %}
+                                                {{ "{:.1f}".format((current_candidate.parsed_value|float) * 100) }}%
+                                            {% else %}
+                                                {{ "{:,.0f}".format(current_candidate.parsed_value|float) }}
+                                                {% if current_candidate.parsed_unit and current_candidate.parsed_unit not in ['usd', '%'] %}
+                                                    <span class="compact-bar-unit">{{ current_candidate.parsed_unit }}</span>
                                                 {% endif %}
-                                            </span>
-
-                                            {% if current_candidate.parsed_unit and current_candidate.parsed_unit not in ['usd', '%'] %}
-                                                <span class="unit text-muted ms-2">{{ current_candidate.parsed_unit }}</span>
                                             {% endif %}
                                         {% else %}
-                                            <span class="value text-muted">Unable to parse</span>
+                                            <span class="text-muted">N/A</span>
                                         {% endif %}
-
-                                        <div class="raw-text small text-muted mt-2">
-                                            Raw: "{{ current_candidate.raw_number_text }}"
-                                        </div>
-                                    </div>
+                                    </span>
+                                    <span class="compact-bar-sep">·</span>
+                                    <span class="compact-bar-label">Metric:</span>
+                                    <strong class="candidate-metric compact-bar-metric">
+                                        {{ current_candidate.suggested_metric_id|replace('_', ' ')|title if current_candidate.suggested_metric_id else 'Unknown' }}
+                                    </strong>
+                                    {% if current_candidate.suggestion_confidence is not none %}
+                                        {% if conf_label == 'High' %}
+                                            {% set conf_tooltip = 'Strong keyword match with nearby value. High likelihood of correct metric.' %}
+                                        {% elif conf_label == 'Medium' %}
+                                            {% set conf_tooltip = 'Moderate match or distant keyword. Review context carefully.' %}
+                                        {% else %}
+                                            {% set conf_tooltip = 'Weak signals or conflicting features. May be false positive.' %}
+                                        {% endif %}
+                                        <span class="badge bg-{{ conf_color }} compact-bar-confidence"
+                                              title="{{ conf_tooltip }}">
+                                            {{ conf_label }} ({{ "{:.0f}".format(conf * 100) }}%)
+                                        </span>
+                                    {% endif %}
                                 </div>
-                            </div>
-
-                            {# 3c. Suggested Metric Display #}
-                            <div class="card mb-3">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <h6 class="text-muted mb-1">Suggested Metric</h6>
-                                            <strong class="candidate-metric">
-                                                {{ current_candidate.suggested_metric_id|replace('_', ' ')|title if current_candidate.suggested_metric_id else 'Unknown Metric' }}
-                                            </strong>
-                                        </div>
-
-                                        {# Confidence badge #}
-                                        {% if current_candidate.suggestion_confidence is not none %}
-                                            {% set conf = current_candidate.suggestion_confidence %}
-                                            {% if conf >= 0.7 %}
-                                                {% set conf_class = 'high' %}
-                                                {% set conf_label = 'High' %}
-                                                {% set conf_color = 'success' %}
-                                            {% elif conf >= 0.4 %}
-                                                {% set conf_class = 'medium' %}
-                                                {% set conf_label = 'Medium' %}
-                                                {% set conf_color = 'warning' %}
-                                            {% else %}
-                                                {% set conf_class = 'low' %}
-                                                {% set conf_label = 'Low' %}
-                                                {% set conf_color = 'danger' %}
-                                            {% endif %}
-
-                                            <div>
-                                                {% if conf_label == 'High' %}
-                                                    {% set conf_tooltip = 'Strong keyword match with nearby value. High likelihood of correct metric.' %}
-                                                {% elif conf_label == 'Medium' %}
-                                                    {% set conf_tooltip = 'Moderate match or distant keyword. Review context carefully.' %}
-                                                {% else %}
-                                                    {% set conf_tooltip = 'Weak signals or conflicting features. May be false positive.' %}
-                                                {% endif %}
-                                                <span class="badge bg-{{ conf_color }}"
-                                                      title="{{ conf_tooltip }}">
-                                                    {{ conf_label }} Confidence ({{ "{:.0f}".format(conf * 100) }}%)
-                                                </span>
-                                            </div>
-                                        {% endif %}
-                                    </div>
-
-                                    {# Metadata: Keyword, Distance, Position #}
-                                    <div class="mt-3 small text-muted">
-                                        <span>Keyword: <em>{{ current_candidate.triggering_keyword }}</em></span>
-                                        <span class="mx-2">•</span>
-                                        <span>Distance: {{ current_candidate.keyword_distance }} chars</span>
-                                        <span class="mx-2">•</span>
-                                        <span>Position: {{ current_candidate.keyword_position }}</span>
-                                    </div>
-
-                                    {# 3d. Feature Preview (key features inline) #}
+                                {# Row 2: Raw text + keyword metadata + feature badges #}
+                                <div class="compact-bar-details">
+                                    <span>Raw: "{{ current_candidate.raw_number_text }}"</span>
+                                    <span class="compact-bar-sep">·</span>
+                                    <span>Keyword: <em>{{ current_candidate.triggering_keyword }}</em></span>
+                                    <span class="compact-bar-sep">·</span>
+                                    <span>{{ current_candidate.keyword_distance }} chars</span>
                                     {% if current_candidate.features %}
                                         {% set f = current_candidate.features %}
-                                        <div class="mt-3 pt-3 border-top">
-                                            <h6 class="text-muted small mb-2">Key Features</h6>
-                                            <div class="d-flex flex-wrap gap-2 small">
-                                                <span class="badge bg-secondary">
-                                                    {{ f.get('number_format', 'unknown')|title }}
-                                                </span>
-                                                {% if f.get('is_in_table') %}
-                                                    <span class="badge bg-info">In Table</span>
-                                                {% endif %}
-                                                {% if f.get('contains_definition_language') %}
-                                                    <span class="badge bg-info">Has Definition</span>
-                                                {% endif %}
-                                                {% if f.get('is_in_risk_factors') %}
-                                                    <span class="badge bg-warning text-dark">In Risk Factors</span>
-                                                {% endif %}
-                                            </div>
-                                        </div>
+                                        {% if f.get('is_in_table') %}
+                                            <span class="badge bg-info compact-bar-badge">Table</span>
+                                        {% endif %}
+                                        {% if f.get('contains_definition_language') %}
+                                            <span class="badge bg-info compact-bar-badge">Definition</span>
+                                        {% endif %}
+                                        {% if f.get('is_in_risk_factors') %}
+                                            <span class="badge bg-warning text-dark compact-bar-badge">Risk Factors</span>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {# =============================================================
-                       Section 4: Decision Form
-                       ============================================================= #}
-                    {# Display mapping for rejection categories (internal key -> user-friendly label) #}
-                    {# NOTE: This must be defined before the conditional blocks as it's used in both branches #}
-                    {% set rejection_category_display = {
-                        'wrong_metric': 'Wrong Metric Type',
-                        'not_a_metric': 'Not a Customer Metric',
-                        'wrong_value': 'Wrong Value Extracted',
-                        'wrong_period': 'Wrong Time Period',
-                        'duplicate': 'Duplicate',
-                        'other': 'Other'
-                    } %}
-                    {% if existing_decision and not existing_decision.is_automated %}
-                        {# 4a. Read-Only Mode: Already Reviewed by Human #}
-                        <div class="card">
-                            <div class="card-body">
+                            {# =============================================================
+                               Section 4: Decision Form (merged into candidate card)
+                               ============================================================= #}
+                            {# Display mapping for rejection categories #}
+                            {% set rejection_category_display = {
+                                'wrong_metric': 'Wrong Metric Type',
+                                'not_a_metric': 'Not a Customer Metric',
+                                'wrong_value': 'Wrong Value Extracted',
+                                'wrong_period': 'Wrong Time Period',
+                                'duplicate': 'Duplicate',
+                                'other': 'Other'
+                            } %}
+                            {% if existing_decision and not existing_decision.is_automated %}
+                                {# 4a. Read-Only Mode: Already Reviewed by Human #}
+                                <hr class="my-3">
                                 <div class="alert alert-info mb-3">
                                     <strong>Already Reviewed:</strong>
                                     {{ existing_decision.decision|title }}
@@ -527,13 +500,9 @@
                                         Next Candidate <span class="ms-2">→</span>
                                     </a>
                                 </div>
-                            </div>
-                        </div>
 
-                    {% else %}
-                        {# 4b. Edit Mode: Pending Review or Automated Decision Override #}
-                        <div class="card">
-                            <div class="card-body">
+                            {% else %}
+                                <hr class="my-3">
                                 {# Show automated decision info if present #}
                                 {% if existing_decision and existing_decision.is_automated %}
                                     <div class="alert alert-warning mb-3"
@@ -718,9 +687,9 @@
                                         <strong>Error:</strong> <span id="error-detail-text"></span>
                                     </div>
                                 </form>
-                            </div>
+                            {% endif %}
                         </div>
-                    {% endif %}
+                    </div>
 
                 {% else %}
                     {# No current candidate selected #}

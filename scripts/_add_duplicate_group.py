@@ -3,7 +3,6 @@
 
 import csv
 import re
-import sys
 from pathlib import Path
 
 CSV_PATH = Path(__file__).parent.parent / "data" / "gold_standard" / "golden_set_251218.csv"
@@ -55,7 +54,7 @@ def normalize_value(raw: str) -> float | None:
 
 
 def main() -> None:
-    with open(CSV_PATH, 'r', encoding='utf-8-sig', newline='') as f:
+    with open(CSV_PATH, encoding='utf-8-sig', newline='') as f:
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or [])
         rows = list(reader)

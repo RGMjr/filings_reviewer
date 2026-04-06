@@ -95,6 +95,7 @@ ops/review_artifacts/
 # Build artifacts
 *.egg-info/
 .playwright-mcp/
+node_modules/
 
 # Runtime data and caches
 logs/
