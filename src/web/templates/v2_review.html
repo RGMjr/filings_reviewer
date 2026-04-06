@@ -235,6 +235,56 @@
           {% if evidence.context_after %}
           <div class="context-text mt-1">{{ evidence.context_after | default('') }}...</div>
           {% endif %}
+
+          {# Live fallback: full table when no surrounding text is stored #}
+          {% if current_fact._table_context and current_fact._table_context.raw_html %}
+          <div class="mt-2">
+            <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">
+              Full Table <span class="badge bg-secondary" style="font-size: 0.7rem;">source</span>
+            </label>
+            {% if current_fact._table_context.section_path %}
+            <div class="mb-1">
+              {% for p in current_fact._table_context.section_path %}
+              <span class="badge bg-light text-dark border">{{ p }}</span>
+              {% if not loop.last %}&rsaquo;{% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div style="max-height: 350px; overflow-y: auto; font-size: 0.82rem;">
+              {{ current_fact._table_context.raw_html | safe }}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% elif current_fact._segment_context or current_fact._table_context %}
+        {# Fallback: no evidence_pack fields at all — show live segment/table context #}
+        <div class="mb-3">
+          <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">
+            Source Context <span class="badge bg-secondary" style="font-size: 0.7rem;">live lookup</span>
+          </label>
+          {% if current_fact._segment_context %}
+          <div style="font-size: 0.85rem; border-left: 3px solid #dee2e6; padding-left: 0.75rem;">
+            {% for seg in current_fact._segment_context %}
+            {% if seg.segment_id == current_fact.source_locator.segment_id|string %}
+            <div class="mb-2 p-1 rounded" style="background: #fff9c4;">{{ seg.segment_text }}</div>
+            {% else %}
+            <div class="mb-2 text-muted" style="font-size: 0.82rem;">{{ seg.segment_text }}</div>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% elif current_fact._table_context and current_fact._table_context.raw_html %}
+          {% if current_fact._table_context.section_path %}
+          <div class="mb-1">
+            {% for p in current_fact._table_context.section_path %}
+            <span class="badge bg-light text-dark border">{{ p }}</span>
+            {% if not loop.last %}&rsaquo;{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div style="max-height: 350px; overflow-y: auto; font-size: 0.82rem;">
+            {{ current_fact._table_context.raw_html | safe }}
+          </div>
+          {% endif %}
         </div>
         {% endif %}
 

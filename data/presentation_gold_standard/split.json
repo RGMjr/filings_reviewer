@@ -11,7 +11,9 @@
     "IOT",
     "KC",
     "META",
+    "NETS",
     "PYPL",
+    "SI",
     "TENB"
   ],
   "test_companies": [
@@ -127,6 +129,14 @@
       ],
       "annotation_count": 1
     },
+    "NETS": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2017-03-21"
+      ],
+      "annotation_count": 37
+    },
     "PYPL": {
       "split": "tuning",
       "sector": "Fintech",
@@ -135,6 +145,14 @@
         "2026-02-03"
       ],
       "annotation_count": 4
+    },
+    "SI": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2018-11-07"
+      ],
+      "annotation_count": 9
     },
     "TENB": {
       "split": "tuning",
@@ -146,10 +164,10 @@
     }
   },
   "statistics": {
-    "total_annotations": 230,
-    "tuning_annotations": 145,
+    "total_annotations": 276,
+    "tuning_annotations": 191,
     "test_annotations": 85,
-    "test_pct": 0.37
+    "test_pct": 0.308
   },
   "source_files": [
     "CART_S-1_2023-09-15_reviewed.csv",
@@ -167,8 +185,10 @@
     "IOT_S-1_2021-12-06_reviewed.csv",
     "KC_F-1_2020-09-23_reviewed.csv",
     "META_2026-01-28_reviewed.csv",
+    "NETS_F-1_2017-03-21_reviewed.csv",
     "PYPL_2025-10-28_reviewed.csv",
     "PYPL_2026-02-03_reviewed.csv",
+    "SI_S-1_2018-11-07_reviewed.csv",
     "TENB_S-1_2018-07-24_reviewed.csv"
   ]
 }

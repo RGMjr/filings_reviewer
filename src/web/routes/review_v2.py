@@ -8,6 +8,7 @@ V1 review is untouched.
 import logging
 import threading
 import time
+from typing import Any
 
 from flask import (
     Blueprint,
@@ -23,6 +24,7 @@ from flask import (
 )
 
 from src.infra.db import DatabaseAdapter
+from src.infra.sec_client import SECClient
 from src.web.app import get_db
 
 review_v2_bp = Blueprint("review_v2", __name__, url_prefix="/v2/review")
@@ -94,7 +96,13 @@ def _log_request_complete(response):
 # =============================================================================
 
 
-VALID_DOCUMENT_TYPES = ("sec_filing", "earnings_call")
+VALID_DOCUMENT_TYPES = ("sec_filing", "earnings_call", "investor_presentation")
+
+
+@review_v2_bp.route("/")
+def index():
+    """Redirect /v2/review/ to filing list."""
+    return redirect(url_for("review_v2.filing_list"))
 
 
 @review_v2_bp.route("/filings")
@@ -217,6 +225,10 @@ def review_filing(filing_id: int):
         fact_id_param = request.args.get("fact_id")
         current_fact = _select_current_fact(facts, fact_id_param)
 
+        # Enrich sparse evidence with live segment/table context
+        if current_fact:
+            current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
+
         # Calculate progress
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
         accepted_count = sum(
@@ -240,6 +252,17 @@ def review_filing(filing_id: int):
                 "reviewer_id": current_fact.get("reviewer_id"),
             }
 
+        # Resolve primary document URL for source filing link
+        sec_filing_url = None
+        if document_type == "sec_filing" and filing.get("cik") and filing.get("accession_number"):
+            try:
+                sec_client = SECClient()
+                sec_filing_url = sec_client.resolve_primary_document_url(
+                    filing["cik"], filing["accession_number"]
+                )
+            except Exception:
+                pass  # Non-fatal — link just won't appear
+
         # Current filter state
         current_filters = {
             "status": filter_status,
@@ -251,9 +274,7 @@ def review_filing(filing_id: int):
         }
 
         template = (
-            "v2_review_transcript.html"
-            if document_type == "earnings_call"
-            else "v2_review.html"
+            "v2_review_transcript.html" if document_type == "earnings_call" else "v2_review.html"
         )
         return render_template(
             template,
@@ -274,6 +295,7 @@ def review_filing(filing_id: int):
             page=page,
             per_page=per_page,
             total_pages=total_pages,
+            sec_filing_url=sec_filing_url,
         )
 
     except Exception as e:
@@ -285,6 +307,45 @@ def review_filing(filing_id: int):
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _enrich_sparse_evidence(db: Any, filing_id: int, fact: dict) -> dict:
+    """
+    When evidence_pack lacks context (table facts, or text facts with failed
+    span detection), fetch the full segment or table from the DB and attach
+    it to the fact dict for the template to render.
+    """
+    ep = fact.get("evidence_pack") or {}
+    if not isinstance(ep, dict):
+        ep = {}
+
+    # Sparse = no surrounding text context stored
+    is_sparse = not ep.get("context_before") and not ep.get("context_after")
+    if not is_sparse:
+        return fact
+
+    loc = fact.get("source_locator") or {}
+    if not isinstance(loc, dict):
+        return fact
+
+    # Make fact a mutable copy so we don't mutate shared list entries
+    fact = dict(fact)
+
+    table_id = loc.get("table_id")
+    segment_id = loc.get("segment_id")
+
+    if table_id:
+        try:
+            fact["_table_context"] = db.get_table_context(filing_id, str(table_id))
+        except Exception:
+            pass
+    elif segment_id:
+        try:
+            fact["_segment_context"] = db.get_segment_context(filing_id, str(segment_id))
+        except Exception:
+            pass
+
+    return fact
 
 
 def _select_current_fact(facts: list[dict], requested_id: str | None) -> dict | None:

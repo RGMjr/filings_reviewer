@@ -2279,9 +2279,9 @@ class DatabaseAdapter:
                 cur.execute(fetch_sql, {"candidate_ids": candidate_ids})
                 candidates_data = {row["candidate_id"]: row for row in cur.fetchall()}
 
-                # Check each candidate
+                # Filter candidates: collect valid IDs and failures
+                valid_ids = []
                 for candidate_id in candidate_ids:
-                    # Skip if candidate doesn't exist
                     if candidate_id not in candidates_data:
                         failed_candidates.append(
                             {
@@ -2289,67 +2289,60 @@ class DatabaseAdapter:
                                 "error": "Candidate not found",
                             }
                         )
-                        continue
-
-                    # Skip if already reviewed
-                    if candidates_data[candidate_id]["review_status"] != "pending":
+                    elif candidates_data[candidate_id]["review_status"] != "pending":
                         failed_candidates.append(
                             {
                                 "candidate_id": candidate_id,
                                 "error": f"Already reviewed (status: {candidates_data[candidate_id]['review_status']})",
                             }
                         )
-                        continue
+                    else:
+                        valid_ids.append(candidate_id)
 
-                    # Insert decision for this candidate
-                    try:
-                        insert_sql = """
-                            INSERT INTO review_decisions (
-                                candidate_id, decision, assigned_metric_id,
-                                rejection_reason, rejection_category,
-                                reviewer_id, reviewer_notes
-                            )
-                            VALUES (
-                                %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
-                                %(rejection_reason)s, %(rejection_category)s,
-                                %(reviewer_id)s, %(reviewer_notes)s
-                            )
-                            RETURNING decision_id
-                        """
-
-                        update_status_sql = """
-                            UPDATE review_candidates
-                            SET review_status = 'reviewed', updated_at = now()
-                            WHERE candidate_id = %(candidate_id)s
-                        """
-
-                        # Insert decision
-                        cur.execute(
-                            insert_sql,
-                            {
-                                "candidate_id": candidate_id,
-                                "decision": decision,
-                                "assigned_metric_id": assigned_metric_id,
-                                "rejection_reason": rejection_reason,
-                                "rejection_category": rejection_category,
-                                "reviewer_id": reviewer_id,
-                                "reviewer_notes": reviewer_notes,
-                            },
+                if valid_ids:
+                    # Batch insert all decisions (executemany pipelines internally)
+                    insert_sql = """
+                        INSERT INTO review_decisions (
+                            candidate_id, decision, assigned_metric_id,
+                            rejection_reason, rejection_category,
+                            reviewer_id, reviewer_notes
                         )
-                        result = cur.fetchone()
-                        decision_id = result["decision_id"]
-
-                        # Update candidate status - SAME TRANSACTION
-                        cur.execute(update_status_sql, {"candidate_id": candidate_id})
-
-                        decision_ids.append(decision_id)
-
-                    except Exception as e:
-                        # If any unexpected error, let it bubble up to rollback entire transaction
-                        logger.error(
-                            f"Error inserting decision for candidate {candidate_id}: {e}"
+                        VALUES (
+                            %(candidate_id)s, %(decision)s, %(assigned_metric_id)s,
+                            %(rejection_reason)s, %(rejection_category)s,
+                            %(reviewer_id)s, %(reviewer_notes)s
                         )
-                        raise
+                    """
+                    insert_params = [
+                        {
+                            "candidate_id": cid,
+                            "decision": decision,
+                            "assigned_metric_id": assigned_metric_id,
+                            "rejection_reason": rejection_reason,
+                            "rejection_category": rejection_category,
+                            "reviewer_id": reviewer_id,
+                            "reviewer_notes": reviewer_notes,
+                        }
+                        for cid in valid_ids
+                    ]
+                    cur.executemany(insert_sql, insert_params)
+
+                    # Fetch generated decision_ids
+                    cur.execute(
+                        """SELECT decision_id FROM review_decisions
+                           WHERE candidate_id = ANY(%(ids)s)
+                           ORDER BY candidate_id""",
+                        {"ids": valid_ids},
+                    )
+                    decision_ids = [row["decision_id"] for row in cur.fetchall()]
+
+                    # Bulk update candidate statuses
+                    cur.execute(
+                        """UPDATE review_candidates
+                           SET review_status = 'reviewed', updated_at = now()
+                           WHERE candidate_id = ANY(%(ids)s)""",
+                        {"ids": valid_ids},
+                    )
 
         logger.info(
             f"Bulk {decision}: processed {len(decision_ids)} of {len(candidate_ids)} candidates, "
@@ -4243,11 +4236,12 @@ class DatabaseAdapter:
         Returns:
             List of dicts with filing metadata and V2 extraction stats.
         """
-        where_clause = ""
+        conditions: list[str] = ["(f.is_spac IS NOT TRUE)"]
         params: dict[str, Any] = {}
         if document_type is not None:
-            where_clause = "WHERE d.document_type = %(document_type)s"
+            conditions.append("d.document_type = %(document_type)s")
             params["document_type"] = document_type
+        where_clause = "WHERE " + " AND ".join(conditions)
 
         sql = f"""
             SELECT
@@ -4409,6 +4403,85 @@ class DatabaseAdapter:
         sql = f"SELECT COUNT(*) AS cnt FROM v2_metric_facts mf WHERE {where_clause}"
         result = self.query(sql, params)
         return result[0]["cnt"] if result else 0
+
+    def get_segment_context(self, doc_id: int, segment_id: str, window: int = 2) -> list[dict]:
+        """
+        Return the target segment plus up to `window` neighbors on each side,
+        ordered by sequence_idx. Used to show surrounding paragraph context
+        in the V2 review UI when evidence_pack lacks context_before/after.
+        """
+        return self.query(
+            """
+            WITH target AS (
+                SELECT sequence_idx
+                FROM v2_segments
+                WHERE segment_id = %(segment_id)s AND doc_id = %(doc_id)s
+            )
+            SELECT s.segment_id::text, s.segment_type, s.segment_text,
+                   s.section_path, s.section_type, s.sequence_idx
+            FROM v2_segments s, target t
+            WHERE s.doc_id = %(doc_id)s
+              AND s.sequence_idx BETWEEN t.sequence_idx - %(window)s
+                                     AND t.sequence_idx + %(window)s
+            ORDER BY s.sequence_idx
+            """,
+            {"doc_id": doc_id, "segment_id": segment_id, "window": window},
+        )
+
+    def get_table_context(self, doc_id: int, table_id: str) -> dict | None:
+        """
+        Return table metadata and a reconstructed HTML table for a V2 table fact.
+        Used to show the full table in the review UI when evidence_pack
+        only has header_path/stub_path with no surrounding text.
+
+        raw_html is not stored in the DB (persistence.py drops it), so the
+        HTML is reconstructed from v2_table_cells.
+        """
+        meta_rows = self.query(
+            """
+            SELECT table_id::text, section_path, section_type, row_count, col_count
+            FROM v2_tables
+            WHERE table_id = %(table_id)s AND doc_id = %(doc_id)s
+            LIMIT 1
+            """,
+            {"doc_id": doc_id, "table_id": table_id},
+        )
+        if not meta_rows:
+            return None
+        meta = dict(meta_rows[0])
+
+        cell_rows = self.query(
+            """
+            SELECT row_idx, col_idx, cell_text, is_header, is_stub
+            FROM v2_table_cells
+            WHERE table_id = %(table_id)s
+            ORDER BY row_idx, col_idx
+            """,
+            {"table_id": table_id},
+        )
+
+        # Reconstruct HTML table from cells
+        if cell_rows:
+            grid: dict[tuple[int, int], dict] = {
+                (r["row_idx"], r["col_idx"]): r for r in cell_rows
+            }
+            max_row = max(r["row_idx"] for r in cell_rows)
+            max_col = max(r["col_idx"] for r in cell_rows)
+            html_parts = ['<table class="table table-sm table-bordered" style="font-size:0.82rem;">']
+            for row in range(max_row + 1):
+                html_parts.append("<tr>")
+                for col in range(max_col + 1):
+                    cell = grid.get((row, col))
+                    text = cell["cell_text"] if cell else ""
+                    tag = "th" if (cell and (cell["is_header"] or cell["is_stub"])) else "td"
+                    html_parts.append(f"<{tag}>{text}</{tag}>")
+                html_parts.append("</tr>")
+            html_parts.append("</table>")
+            meta["raw_html"] = "".join(html_parts)
+        else:
+            meta["raw_html"] = None
+
+        return meta
 
     def get_v2_fact_by_id(self, fact_id: str) -> dict | None:
         """Get a single V2 fact by its UUID."""

@@ -215,10 +215,56 @@ Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,10%,percent,2
 Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,25%,percent,2020-01-01 to 2020-06-30,text,25%,MEDIUM,cover,False,ACCEPT,,tuning
 Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_revenue_concentration,98.3%,percent,2019-01-01 to 2019-06-30,text,98,LOW,mda,False,EDIT,captured only part of the number. got the unit wrong. wrong metric.,tuning
 "Meta Platforms, Inc.",META,2026-01-28,cm_daily_active_users,3.58 billion,count,other,presentation,3.58 billion,LOW,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_customers_period_end,5.6 million,count,2016-12-31,text,5.6 million,MEDIUM,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_customers_period_end,4.7 million,count,2016-01-01 to 2016-12-31,text,4.7 million,LOW,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,10.3,count,2016-01-01 to 2016-12-31,text,10.3,LOW,cover,False,EDIT,"""10.3 million orders"" means transactions",tuning
+NETS,NETS,2017-03-21,cm_customers_period_end,18.3 million,count,2016-12-31,text,18.3 million,MEDIUM,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,5.6 million,count,2015-12-31,html_table,5.6 million,MEDIUM,unknown,False,EDIT,"Clearly says ""active customers"" not total customers",tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,4.7 million,count,2015-12-31,html_table,4.7 million,MEDIUM,unknown,False,EDIT,active customers,tuning
+NETS,NETS,2017-03-21,cm_repeat_purchase_rate,74.5%,percent,2016-01-01 to 2016-12-31,text,74.5%,MEDIUM,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_repeat_purchase_rate,72.9%,percent,2016-01-01 to 2016-12-31,text,72.9%,MEDIUM,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,10.3 million,count,2016-01-01 to 2016-12-31,text,10.3 million,LOW,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,8.5 million,count,2016-01-01 to 2016-12-31,text,8.5 million,LOW,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,0.8 million,count,other,text,0.8 million,LOW,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,0.9 million,count,other,text,0.9 million,LOW,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,10.3 million,count,2015-01-01 to 2015-12-31,html_table,10.3 million,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,8.5 million,count,2015-01-01 to 2015-12-31,html_table,8.5 million,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,"6,846",count,2014-12-31,html_table,"6,846",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,"8,497",count,2015-12-31,html_table,"8,497",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,"10,268",count,2016-12-31,html_table,"10,268",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,9.4 million,count,2016-12-31,html_table,9.4 million,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,18.3 million,count,2016-12-31,text,18.3 million,LOW,cover,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,5.6 million,count,2016-12-31,text,5.6 million,LOW,cover,False,EDIT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,"5,562",count,2016-12-31,html_table,"5,562",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,5.1 million,count,2016-12-31,html_table,5.1 million,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,"3,753",count,2014-12-31,html_table,"3,753",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,"4,676",count,2015-12-31,html_table,"4,676",MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,453 thousand,count,other,text,453 thousand,LOW,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,7.7 million,count,2015-12-31,text,7.7 million,MEDIUM,unknown,False,EDIT,"This text block (not HTML table) reference is to ""total orders placed by our customers in Brazil""",tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,4.3 million,count,2015-12-31,html_table,4.3 million,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_purchase_transactions_overall,0.8 million,count,2015-12-31,text,0.8 million,MEDIUM,unknown,False,EDIT,"this text block value refers to ""total orders placed by our customers""",tuning
+NETS,NETS,2017-03-21,cm_active_customers_total,413 thousand,count,2015-12-31,html_table,413 thousand,MEDIUM,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$212.0,currency,2014-01-01 to 2014-12-31,html_table,$212.0,HIGH,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$219.1,currency,other,html_table,$219.1,LOW,cover,False,EDIT,this is a table,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$206.6,currency,other,html_table,$206.6,LOW,cover,False,EDIT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$331.2,currency,2014-01-01 to 2014-12-31,html_table,$331.2,HIGH,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$281.8,currency,other,text,$281.8,LOW,mda,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$210.8,currency,2014-12-31,html_table,$210.8,HIGH,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$63.4,currency,2016-12-31,html_table,$63.4,HIGH,unknown,False,ACCEPT,,tuning
+NETS,NETS,2017-03-21,cm_average_order_value,$200.3,currency,2014-01-01 to 2014-12-31,html_table,$200.3,HIGH,unknown,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438 million,count,other,presentation,438 million,LOW,cover,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2025-10-28,cm_active_customers_total,438,other,other,presentation,438,LOW,unknown,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439 million,count,other,presentation,439 million,LOW,cover,False,ACCEPT,,tuning
 "PayPal Holdings, Inc.",PYPL,2026-02-03,cm_active_customers_total,439,other,other,presentation,439,LOW,unknown,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,21,other,2018-07-01 to 2018-09-30,text,21,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,58,other,2018-07-01 to 2018-09-30,text,58,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,244,other,2018-07-01 to 2018-09-30,text,244,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,483,other,2018-07-01 to 2018-09-30,text,483,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,35,other,2018-09-30,text,35,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,339,other,2018-09-30,text,339,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,109,other,2018-09-30,text,109,LOW,cover,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,483 Digital Currency Customers,count,other,chart,483 Digital Currency Customers,LOW,unknown,False,ACCEPT,,tuning
+SI,SI,2018-11-07,cm_customers_period_end,21 customers $29 million in deposits,count,other,chart,21 customers $29 million in deposits,LOW,unknown,False,ACCEPT,,tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"3,100",count,2016-12-31,text,"3,100",LOW,cover,False,EDIT,"""enterprise platform customers...for an annual amount of $5,000 or greater""",tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"4,400",count,2016-12-31,text,"4,400",LOW,cover,False,EDIT,,tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_new_customers_acquired,217,other,2017-04-01 to 2017-06-30,text,217,LOW,cover,False,ACCEPT,,tuning
