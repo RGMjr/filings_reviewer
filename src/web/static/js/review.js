@@ -924,7 +924,8 @@
                 filter_status: state.filters.status,
                 filter_metric: state.filters.metric,
                 filter_confidence: state.filters.confidence,
-                filter_sort: state.filters.sort
+                filter_sort: state.filters.sort,
+                reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous'
             };
 
             // Add decision-specific fields

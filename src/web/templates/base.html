@@ -44,6 +44,9 @@
                 </ul>
                 <span class="navbar-text text-light">
                     v{{ app_version }}
+                    &nbsp;|&nbsp;
+                    <span id="reviewer-display" class="text-warning"></span>
+                    <a href="#" class="text-light small" id="reviewer-change-link" style="display:none;" onclick="showReviewerModal(); return false;">change</a>
                 </span>
             </div>
         </div>
@@ -83,5 +86,72 @@
             crossorigin="anonymous"></script>
 
     {% block scripts %}{% endblock %}
+
+    <!-- Reviewer Name Modal -->
+    <div class="modal fade" id="reviewerModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Who are you?</h5>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Enter your name so your review decisions are tagged correctly.</p>
+                    <input type="text" class="form-control" id="reviewer-name-input" placeholder="e.g. Ryan" maxlength="50">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="reviewer-save-btn" onclick="saveReviewerName()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        function showReviewerModal() {
+            var modal = new bootstrap.Modal(document.getElementById('reviewerModal'));
+            modal.show();
+            setTimeout(function() {
+                document.getElementById('reviewer-name-input').focus();
+            }, 300);
+        }
+        window.showReviewerModal = showReviewerModal;
+
+        function saveReviewerName() {
+            var input = document.getElementById('reviewer-name-input');
+            var name = input.value.trim();
+            if (!name) { input.focus(); return; }
+            localStorage.setItem('reviewer_name', name);
+            updateNavDisplay(name);
+            var modalEl = document.getElementById('reviewerModal');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+        }
+        window.saveReviewerName = saveReviewerName;
+
+        function updateNavDisplay(name) {
+            var display = document.getElementById('reviewer-display');
+            var changeLink = document.getElementById('reviewer-change-link');
+            if (display) display.textContent = name;
+            if (changeLink) changeLink.style.display = '';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var name = localStorage.getItem('reviewer_name');
+            if (name) {
+                updateNavDisplay(name);
+            } else {
+                showReviewerModal();
+            }
+            // Allow submitting with Enter key in the modal
+            var input = document.getElementById('reviewer-name-input');
+            if (input) {
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') saveReviewerName();
+                });
+                input.value = name || '';
+            }
+        });
+    })();
+    </script>
 </body>
 </html>

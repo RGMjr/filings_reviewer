@@ -115,6 +115,7 @@ def create_decision():
         decision_id = db.insert_v2_review_decision(
             fact_id=fact_id,
             decision=decision,
+            reviewer_id=data.get("reviewer_id", "web_reviewer"),
             assigned_metric_id=data.get("assigned_metric_id"),
             corrected_value=data.get("corrected_value"),
             rejection_reason=data.get("rejection_reason"),

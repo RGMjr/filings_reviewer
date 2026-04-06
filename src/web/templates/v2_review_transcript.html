@@ -406,6 +406,7 @@ function submitDecision(decision) {
     decision: decision,
     review_time_seconds: reviewTime,
     reviewer_notes: document.getElementById('reviewer-notes')?.value || null,
+    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
   };
 
   if (decision === 'reject') {
