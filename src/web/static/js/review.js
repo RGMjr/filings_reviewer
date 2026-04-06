@@ -82,9 +82,10 @@
 
         // Early return if no decision form present (e.g., already reviewed)
         if (!document.getElementById('decision-form')) {
-            // Still initialize history even if no decision form
+            // Still initialize history and header collapse even if no decision form
             initializeHistoryPanel();
             initializeContextExpansion();
+            initializeAutoCollapseHeader();
             return;
         }
 
@@ -97,6 +98,9 @@
         initializeHistoryPanel();
         initializeContextExpansion();
         initializeMetricSearch(); // UXI-2: Metric search in reclassify dropdown
+        initializeAutoCollapseHeader();
+        initializeRecentMetrics();
+        highlightSuggestedMetric();
 
         // Save current position to localStorage
         saveReviewProgress();
@@ -886,6 +890,9 @@
             return;
         }
 
+        // Save to recent metrics for dropdown quick-access
+        saveRecentMetric(metricId);
+
         submitDecision({
             decision: 'reclassify',
             assigned_metric_id: metricId
@@ -966,6 +973,9 @@
 
         // Add to decision history before redirecting
         addToHistory(data, decisionData);
+
+        // Auto-collapse filing header after first decision
+        collapseFilingHeader();
 
         showSuccessFlash(data.decision_id);
 
@@ -1178,6 +1188,150 @@
             elements.reviewerNotesCount.classList.add('text-warning');
         } else {
             elements.reviewerNotesCount.classList.remove('text-warning');
+        }
+    }
+
+    // =========================================================================
+    // Auto-Collapse Filing Header
+    // =========================================================================
+
+    function initializeAutoCollapseHeader() {
+        const headerDetails = document.getElementById('filing-header-details');
+        if (!headerDetails) return;
+
+        // Auto-collapse if there's already decision history for this filing
+        const storageKey = `decisionHistory_${state.filingId}`;
+        const existing = sessionStorage.getItem(storageKey);
+        if (existing) {
+            try {
+                const history = JSON.parse(existing);
+                if (history.length > 0) {
+                    collapseFilingHeader();
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        }
+    }
+
+    function collapseFilingHeader() {
+        const headerDetails = document.getElementById('filing-header-details');
+        const toggleBtn = document.querySelector('.filing-header-toggle');
+        if (!headerDetails || !toggleBtn) return;
+
+        // Use Bootstrap collapse API
+        const bsCollapse = bootstrap.Collapse.getOrCreateInstance(headerDetails, { toggle: false });
+        bsCollapse.hide();
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    // =========================================================================
+    // Recent Metrics in Reclassify Dropdown
+    // =========================================================================
+
+    function initializeRecentMetrics() {
+        // Render recent metrics section in the reclassify dropdown on open
+        const reclassifyButton = document.querySelector('.btn-warning.dropdown-toggle');
+        if (!reclassifyButton) return;
+
+        reclassifyButton.addEventListener('shown.bs.dropdown', renderRecentMetrics);
+    }
+
+    function getRecentMetrics() {
+        try {
+            const stored = localStorage.getItem('recentMetrics');
+            return stored ? JSON.parse(stored) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function saveRecentMetric(metricId) {
+        const recent = getRecentMetrics().filter(id => id !== metricId);
+        recent.unshift(metricId);
+        // Keep only last 5
+        localStorage.setItem('recentMetrics', JSON.stringify(recent.slice(0, 5)));
+    }
+
+    function renderRecentMetrics() {
+        const dropdown = document.querySelector('.metric-selector');
+        if (!dropdown) return;
+
+        // Remove any existing recent section
+        const existing = dropdown.querySelector('.recent-metrics-section');
+        if (existing) existing.remove();
+
+        const recentIds = getRecentMetrics();
+        if (recentIds.length === 0) return;
+
+        // Find matching metric options to get display names
+        const allOptions = dropdown.querySelectorAll('.metric-option');
+        const metricsMap = {};
+        allOptions.forEach(opt => {
+            metricsMap[opt.dataset.metricId] = {
+                id: opt.dataset.metricId,
+                displayName: opt.querySelector('div:last-child')?.textContent?.trim() || opt.dataset.metricId
+            };
+        });
+
+        const validRecent = recentIds.filter(id => metricsMap[id]);
+        if (validRecent.length === 0) return;
+
+        // Build recent section
+        const section = document.createElement('li');
+        section.className = 'recent-metrics-section';
+        section.innerHTML = `
+            <h6 class="dropdown-header">Recent</h6>
+            ${validRecent.map(id => `
+                <a class="dropdown-item metric-option" href="#"
+                   data-metric-id="${metricsMap[id].id}" role="option">
+                    <div class="small text-primary">${metricsMap[id].id}</div>
+                    <div>${metricsMap[id].displayName}</div>
+                </a>
+            `).join('')}
+        `;
+
+        // Insert after search container
+        const searchContainer = dropdown.querySelector('.metric-search-container');
+        if (searchContainer) {
+            searchContainer.after(section);
+        }
+
+        // Bind click handlers on recent items
+        section.querySelectorAll('.metric-option').forEach(opt => {
+            opt.addEventListener('click', handleReclassify);
+        });
+    }
+
+    // =========================================================================
+    // Pre-Highlight Suggested Metric
+    // =========================================================================
+
+    function highlightSuggestedMetric() {
+        // Find the suggested metric ID from the accept button's data attribute
+        const acceptBtn = document.querySelector('[data-decision="accept"]');
+        if (!acceptBtn) return;
+
+        const suggestedId = acceptBtn.dataset.metricId;
+        if (!suggestedId) return;
+
+        // Find and mark the matching option in the reclassify dropdown
+        const options = document.querySelectorAll('.metric-selector .metric-option');
+        options.forEach(opt => {
+            if (opt.dataset.metricId === suggestedId) {
+                opt.classList.add('suggested-metric');
+            }
+        });
+
+        // Scroll to suggested metric when dropdown opens
+        const reclassifyButton = document.querySelector('.btn-warning.dropdown-toggle');
+        if (reclassifyButton) {
+            reclassifyButton.addEventListener('shown.bs.dropdown', () => {
+                const suggested = document.querySelector('.metric-option.suggested-metric');
+                if (suggested) {
+                    suggested.scrollIntoView({ block: 'center', behavior: 'instant' });
+                }
+            });
         }
     }
 
