@@ -85,6 +85,8 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=75",
+    "-m",
+    "not slow and not v2_parity and not gold_standard and not transcript_gold_standard",
 ]
 
 # Test markers

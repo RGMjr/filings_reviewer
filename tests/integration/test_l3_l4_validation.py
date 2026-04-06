@@ -318,8 +318,10 @@ class TestL4ContextDependentMultipliers:
 
     def test_preposition_prefers_post_value(self, db, generator):
         """Prepositional phrases (of/for/in) prefer post-value keywords."""
-        # Arrange: "33% of revenue" - preposition after value
-        text = "We achieved 33% of revenue growth in Q1."
+        # Arrange: "33% of customer retention" - preposition after value, keyword after preposition.
+        # Uses "customer retention" which is a recognised keyword for cm_customer_retention_rate.
+        # ("revenue" alone does not match any customer-metric keyword pattern.)
+        text = "We achieved a 33% rate of customer retention in Q1."
         segment: SegmentDict = {
             "segment_id": 1,
             "section_name": "Results",
@@ -338,9 +340,7 @@ class TestL4ContextDependentMultipliers:
             db=db,
         )
 
-        # Assert: Should find "revenue" (post-value, after preposition)
-        # Note: revenue might not match if not in metric keywords
-        # This test verifies the multiplier is applied, not specific keyword selection
+        # Assert: Should find "customer retention" (post-value, after preposition)
         assert len(candidates) > 0
 
     def test_multiplier_disabled_uses_distance_only(self, db, generator_no_multipliers):
@@ -382,9 +382,11 @@ class TestL3L4Combined:
 
     def test_direction_recorded_with_multiplier_applied(self, db, generator):
         """Direction is recorded correctly even when multiplier influences selection."""
-        # Arrange: Pre-value keyword far away, post-value keyword close
-        # Multiplier should make post-value win, and direction should be 'after'
-        text = "active customers increased significantly here and 100 churn rate"
+        # Arrange: Pre-value keyword far away, post-value keyword close.
+        # Multiplier should make post-value win, and direction should be 'after'.
+        # Uses "10%" (a percentage) because cm_customer_churn_rate is PERCENTAGE_ONLY —
+        # a plain integer like "100" is filtered by type validation.
+        text = "active customers increased significantly here and 10% churn rate"
         #       ^pre-value (far)                                   ^num ^post-value (close)
         segment: SegmentDict = {
             "segment_id": 1,
@@ -410,7 +412,7 @@ class TestL3L4Combined:
         # Churn rate is much closer than active customers, should win
         churn_candidates = [
             c for c in candidates
-            if c.parsed_value == Decimal("100") and c.suggested_metric_id == "cm_customer_churn_rate"
+            if c.parsed_value == Decimal("0.1") and c.suggested_metric_id == "cm_customer_churn_rate"
         ]
         if len(churn_candidates) > 0:
             # Should be 'after' (post-value) and should be the selected keyword

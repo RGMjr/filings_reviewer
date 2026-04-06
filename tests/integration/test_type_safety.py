@@ -82,10 +82,10 @@ def test_mypy_config_exists():
 
 @pytest.mark.integration
 def test_mypy_in_requirements():
-    """Verify mypy is listed in requirements.txt."""
-    req_path = Path(__file__).parent.parent.parent / "requirements.txt"
+    """Verify mypy is listed in requirements-dev.txt."""
+    req_path = Path(__file__).parent.parent.parent / "requirements-dev.txt"
     requirements = req_path.read_text()
 
     assert "mypy" in requirements.lower(), (
-        "mypy not found in requirements.txt\n" "Add: mypy>=1.0.0"
+        "mypy not found in requirements-dev.txt\n" "Add: mypy>=1.0.0"
     )

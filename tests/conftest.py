@@ -19,9 +19,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--gold-standard-mode",
         action="store",
-        default="db",
+        default="fresh",
         choices=["db", "fresh"],
-        help="Extraction mode: 'db' uses existing database, 'fresh' re-extracts (default: db)",
+        help="Extraction mode: 'fresh' re-extracts from local HTML (default), 'db' uses existing database",
     )
     parser.addoption(
         "--gold-standard-tolerance",
