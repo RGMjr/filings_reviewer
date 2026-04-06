@@ -60,8 +60,14 @@ def classify_spac(
         # Look for SPAC-related language in first 10000 chars
         sample = filing_text[:10000].lower()
 
-        # Strong indicators
-        if "blank check company" in sample or "special purpose acquisition" in sample:
+        # Strong indicators — includes SGML header pattern "BLANK CHECKS [6770]"
+        # present in .txt submissions, which preserves the SIC at time of filing
+        # even after a SPAC merges and EDGAR updates the company's current SIC.
+        if (
+            "blank check company" in sample
+            or "special purpose acquisition" in sample
+            or "blank checks [6770]" in sample
+        ):
             logger.debug(f"SPAC detected in filing text for: {company_name}")
             return True, "heuristic"
 

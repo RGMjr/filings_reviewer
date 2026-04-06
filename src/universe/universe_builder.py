@@ -110,22 +110,39 @@ class UniverseBuilder:
         Returns:
             True if filing is in-scope for Phase 1, False otherwise
         """
-        # 1. Upsert company
+        # 1. Fetch SIC from EDGAR submissions API
+        company_info = self.sec_client.get_company_info(filing.cik)
+        sic_code = (company_info.get("sic") or None) if company_info else None
+
+        # 2. Upsert company (with SIC from EDGAR)
         company_id = self.db.upsert_company(
             cik=filing.cik,
             company_name=filing.company_name,
             ticker=filing.ticker,
+            industry_code=sic_code,
+            industry_classification_source="edgar_submissions" if sic_code else None,
         )
 
-        # Get company info including SIC code
-        company = self.db.get_company_by_cik(filing.cik)
-        sic_code = company.get("industry_code") if company else None
-
-        # 2. Classify SPAC
-        # For v0.1, we use company name only (no filing text yet)
+        # 3. Classify SPAC (name patterns + SIC 6770)
         is_spac, spac_method = classify_spac(filing.company_name, sic_code=sic_code)
 
-        # 3. Classify first-time issuer
+        # 3a. If not yet flagged, fetch a text sample and recheck.
+        # Necessary for SPACs whose EDGAR record has been updated post-merger
+        # (SIC no longer 6770) and whose name doesn't match heuristic patterns.
+        if not is_spac:
+            # Prefer txt_url: its SGML header contains the historic SIC at time of
+            # filing ("BLANK CHECKS [6770]"), preserved even after post-merger updates.
+            doc_url = filing.txt_url or filing.primary_doc_url
+            if doc_url:
+                filing_text_sample = self.sec_client.fetch_filing_text_sample(doc_url)
+                if filing_text_sample:
+                    is_spac, spac_method = classify_spac(
+                        filing.company_name,
+                        filing_text=filing_text_sample,
+                        sic_code=sic_code,
+                    )
+
+        # 4. Classify first-time issuer
         previous_ipo_date = self.db.get_first_ipo_filing_date(filing.cik)
         is_first_time, fti_method = classify_first_time_issuer(
             cik=filing.cik,
@@ -133,11 +150,11 @@ class UniverseBuilder:
             previous_ipo_date=previous_ipo_date,
         )
 
-        # 4. Classify offering type
+        # 5. Classify offering type
         # For v0.1, we don't have filing text yet, so this will be uncertain
         offering_type, offering_method = classify_offering_type(filing_text=None)
 
-        # 5. Detect post-combination SPAC (de-SPAC)
+        # 6. Detect post-combination SPAC (de-SPAC)
         has_prior_spac = self.db.has_prior_spac_filing(filing.cik, filing.filing_date)
         is_post_combination, post_comb_method = detect_post_combination(
             company_name=filing.company_name,
@@ -146,19 +163,19 @@ class UniverseBuilder:
             has_prior_spac_filing=has_prior_spac,
         )
 
-        # 6. Classify investment vehicle
+        # 7. Classify investment vehicle
         is_investment_vehicle, investment_method = classify_investment_vehicle(
             company_name=filing.company_name,
             sic_code=sic_code,
         )
 
-        # 7. Classify resource extraction
+        # 8. Classify resource extraction
         is_resource_extraction, resource_method = classify_resource_extraction(
             company_name=filing.company_name,
             sic_code=sic_code,
         )
 
-        # 8. Determine if in scope
+        # 9. Determine if in scope
         in_scope = is_in_scope_phase1(
             is_spac=is_spac,
             is_first_time_issuer=is_first_time,
@@ -169,12 +186,12 @@ class UniverseBuilder:
             is_resource_extraction=is_resource_extraction,
         )
 
-        # 6. Determine overall classification method
+        # 10. Determine overall classification method
         classification_method = self._determine_classification_method(
             spac_method, fti_method, offering_method
         )
 
-        # 9. Upsert filing
+        # 11. Upsert filing
         self.db.upsert_filing(
             company_id=company_id,
             cik=filing.cik,

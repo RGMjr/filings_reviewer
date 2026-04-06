@@ -72,6 +72,39 @@ class TestClassifySPAC:
         assert is_spac is True
         assert method == "heuristic"
 
+    def test_spac_by_sgml_header_sic_6770(self):
+        """SPAC detected via 'BLANK CHECKS [6770]' in SGML submission header."""
+        # The .txt submission file always starts with an SGML header that records
+        # the SIC at time of filing — reliable even after post-merger EDGAR updates.
+        sgml_header = (
+            "DiamondPeak Holdings Corp.\n"
+            "\tCENTRAL INDEX KEY:\t\t0001759546\n"
+            "\tSTANDARD INDUSTRIAL CLASSIFICATION:\tBLANK CHECKS [6770]\n"
+            "\tSTATE OF INCORPORATION:\t\tDE\n"
+        )
+        is_spac, method = classify_spac("DiamondPeak Holdings Corp.", filing_text=sgml_header)
+        assert is_spac is True
+        assert method == "heuristic"
+
+    def test_spac_by_sic_6770(self):
+        """SPAC detected by SIC code 6770 even without SPAC name patterns."""
+        # DiamondPeak-style: 'Holdings Corp' doesn't match name heuristics
+        is_spac, method = classify_spac("DiamondPeak Holdings Corp.", sic_code="6770")
+        assert is_spac is True
+        assert method == "heuristic"
+
+    def test_sic_6770_takes_priority_over_name(self):
+        """SIC 6770 is checked before name patterns."""
+        is_spac, method = classify_spac("Generic Holdings Corp.", sic_code="6770")
+        assert is_spac is True
+        assert method == "heuristic"
+
+    def test_non_spac_unrelated_sic(self):
+        """Non-SPAC SIC does not trigger SPAC classification."""
+        is_spac, method = classify_spac("DiamondPeak Holdings Corp.", sic_code="7372")
+        assert is_spac is False
+        assert method == "heuristic"
+
     def test_probable_spac_by_filing_indicators(self):
         """Probable SPAC detected by multiple weak indicators."""
         filing_text = """
