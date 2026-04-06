@@ -409,8 +409,15 @@
                                         {{ current_candidate.suggested_metric_id|replace('_', ' ')|title if current_candidate.suggested_metric_id else 'Unknown' }}
                                     </strong>
                                     {% if current_candidate.suggestion_confidence is not none %}
+                                        {% if conf_label == 'High' %}
+                                            {% set conf_tooltip = 'Strong keyword match with nearby value. High likelihood of correct metric.' %}
+                                        {% elif conf_label == 'Medium' %}
+                                            {% set conf_tooltip = 'Moderate match or distant keyword. Review context carefully.' %}
+                                        {% else %}
+                                            {% set conf_tooltip = 'Weak signals or conflicting features. May be false positive.' %}
+                                        {% endif %}
                                         <span class="badge bg-{{ conf_color }} compact-bar-confidence"
-                                              title="{{ conf_label }} confidence">
+                                              title="{{ conf_tooltip }}">
                                             {{ conf_label }} ({{ "{:.0f}".format(conf * 100) }}%)
                                         </span>
                                     {% endif %}

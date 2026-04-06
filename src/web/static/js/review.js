@@ -974,9 +974,6 @@
         // Add to decision history before redirecting
         addToHistory(data, decisionData);
 
-        // Auto-collapse filing header after first decision
-        collapseFilingHeader();
-
         showSuccessFlash(data.decision_id);
 
         // Redirect to next candidate or filing list
@@ -1247,25 +1244,39 @@
     }
 
     function saveRecentMetric(metricId) {
-        const recent = getRecentMetrics().filter(id => id !== metricId);
-        recent.unshift(metricId);
-        // Keep only last 5
-        localStorage.setItem('recentMetrics', JSON.stringify(recent.slice(0, 5)));
+        try {
+            const recent = getRecentMetrics().filter(id => id !== metricId);
+            recent.unshift(metricId);
+            // Keep only last 5
+            localStorage.setItem('recentMetrics', JSON.stringify(recent.slice(0, 5)));
+        } catch (e) {
+            // Best-effort persistence — don't block the reclassify decision
+            console.warn('Failed to save recent metric:', e);
+        }
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     function renderRecentMetrics() {
         const dropdown = document.querySelector('.metric-selector');
         if (!dropdown) return;
 
+        const metricList = dropdown.querySelector('.metric-list');
+        if (!metricList) return;
+
         // Remove any existing recent section
-        const existing = dropdown.querySelector('.recent-metrics-section');
+        const existing = metricList.querySelector('.recent-metrics-section');
         if (existing) existing.remove();
 
         const recentIds = getRecentMetrics();
         if (recentIds.length === 0) return;
 
         // Find matching metric options to get display names
-        const allOptions = dropdown.querySelectorAll('.metric-option');
+        const allOptions = metricList.querySelectorAll('.metric-option');
         const metricsMap = {};
         allOptions.forEach(opt => {
             metricsMap[opt.dataset.metricId] = {
@@ -1277,25 +1288,38 @@
         const validRecent = recentIds.filter(id => metricsMap[id]);
         if (validRecent.length === 0) return;
 
-        // Build recent section
-        const section = document.createElement('li');
-        section.className = 'recent-metrics-section';
-        section.innerHTML = `
-            <h6 class="dropdown-header">Recent</h6>
-            ${validRecent.map(id => `
-                <a class="dropdown-item metric-option" href="#"
-                   data-metric-id="${metricsMap[id].id}" role="option">
-                    <div class="small text-primary">${metricsMap[id].id}</div>
-                    <div>${metricsMap[id].displayName}</div>
-                </a>
-            `).join('')}
-        `;
+        // Build recent items as <li> elements inside .metric-list
+        // so keyboard nav (getActiveDropdownItems) finds them
+        const fragment = document.createDocumentFragment();
 
-        // Insert after search container
-        const searchContainer = dropdown.querySelector('.metric-search-container');
-        if (searchContainer) {
-            searchContainer.after(section);
-        }
+        const headerLi = document.createElement('li');
+        headerLi.className = 'recent-metrics-section';
+        headerLi.innerHTML = '<h6 class="dropdown-header">Recent</h6>';
+        fragment.appendChild(headerLi);
+
+        validRecent.forEach(id => {
+            const li = document.createElement('li');
+            li.className = 'recent-metrics-section';
+            const a = document.createElement('a');
+            a.className = 'dropdown-item metric-option';
+            a.href = '#';
+            a.dataset.metricId = metricsMap[id].id;
+            a.setAttribute('role', 'option');
+            a.innerHTML = `<div class="small text-primary">${escapeHtml(metricsMap[id].id)}</div>` +
+                           `<div>${escapeHtml(metricsMap[id].displayName)}</div>`;
+            a.addEventListener('click', handleReclassify);
+            li.appendChild(a);
+            fragment.appendChild(li);
+        });
+
+        // Separator after recent items
+        const sepLi = document.createElement('li');
+        sepLi.className = 'recent-metrics-section';
+        sepLi.innerHTML = '<hr class="dropdown-divider">';
+        fragment.appendChild(sepLi);
+
+        // Insert at the top of .metric-list
+        metricList.prepend(fragment);
 
         // Bind click handlers on recent items
         section.querySelectorAll('.metric-option').forEach(opt => {

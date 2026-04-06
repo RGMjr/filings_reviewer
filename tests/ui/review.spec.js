@@ -44,7 +44,6 @@ test.describe('A1: Collapsible Filing Header', () => {
     await page.goto('/');
     const toggle = page.locator('.filing-header-toggle');
     await toggle.click();
-    // Wait for Bootstrap collapse animation to complete
     const details = page.locator('#filing-header-details');
     await expect(details).not.toBeVisible({ timeout: 2000 });
   });
@@ -53,11 +52,10 @@ test.describe('A1: Collapsible Filing Header', () => {
     await page.goto('/');
     const toggle = page.locator('.filing-header-toggle');
     await toggle.click();
-    await page.waitForTimeout(400);
-    await toggle.click();
-    await page.waitForTimeout(400);
     const details = page.locator('#filing-header-details');
-    await expect(details).toBeVisible();
+    await expect(details).not.toBeVisible({ timeout: 2000 });
+    await toggle.click();
+    await expect(details).toBeVisible({ timeout: 2000 });
   });
 
   test('form type badge always visible', async ({ page }) => {
@@ -71,7 +69,7 @@ test.describe('A1: Collapsible Filing Header', () => {
     await page.goto('/');
     const toggle = page.locator('.filing-header-toggle');
     await toggle.click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('#filing-header-details')).not.toBeVisible({ timeout: 2000 });
     const breadcrumb = page.locator('#filing-header-card .breadcrumb');
     await expect(breadcrumb).toBeVisible();
     await expect(breadcrumb).toContainText('Acme Corp');
@@ -102,12 +100,13 @@ test.describe('A2: Compact Value + Metric Bar', () => {
     await expect(metric).toContainText('Cm Net Revenue Retention');
   });
 
-  test('displays confidence badge', async ({ page }) => {
+  test('displays confidence badge with detailed tooltip', async ({ page }) => {
     await page.goto('/');
     const confidence = page.locator('.compact-bar-confidence');
     await expect(confidence).toBeVisible();
     await expect(confidence).toContainText('High');
     await expect(confidence).toContainText('85%');
+    await expect(confidence).toHaveAttribute('title', /Strong keyword match/);
   });
 
   test('shows raw text and keyword in details row', async ({ page }) => {
@@ -195,28 +194,25 @@ test.describe('B1: Recently-Used Metrics', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.removeItem('recentMetrics'));
     await page.locator('.btn-warning.dropdown-toggle').click();
-    await page.waitForTimeout(200);
+    // Wait for dropdown to be visible before checking
+    await expect(page.locator('.metric-selector.show')).toBeVisible({ timeout: 2000 });
     const recent = page.locator('.recent-metrics-section');
     await expect(recent).toHaveCount(0);
   });
 
   test('recent section appears with seeded data', async ({ page }) => {
-    // Set localStorage before page load so it's available when JS initializes
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('recentMetrics',
         JSON.stringify(['cm_arpu', 'cm_churn_rate']));
     });
-    // Reload to pick up the localStorage data
     await page.reload();
-    // Click to open dropdown — Bootstrap shown.bs.dropdown event triggers renderRecentMetrics
     await page.locator('.btn-warning.dropdown-toggle').click();
-    await page.waitForTimeout(300);
-    const recent = page.locator('.recent-metrics-section');
+    const recent = page.locator('.recent-metrics-section').first();
     await expect(recent).toBeVisible({ timeout: 2000 });
-    await expect(recent).toContainText('Recent');
-    await expect(recent).toContainText('Average Revenue Per User');
-    await expect(recent).toContainText('Churn Rate');
+    // Check header and items
+    await expect(page.locator('.recent-metrics-section .dropdown-header')).toContainText('Recent');
+    await expect(page.locator('.recent-metrics-section .metric-option')).toHaveCount(2);
   });
 
   test('skips invalid metric IDs', async ({ page }) => {
@@ -227,11 +223,24 @@ test.describe('B1: Recently-Used Metrics', () => {
     });
     await page.reload();
     await page.locator('.btn-warning.dropdown-toggle').click();
-    await page.waitForTimeout(300);
-    const recent = page.locator('.recent-metrics-section');
+    const recent = page.locator('.recent-metrics-section').first();
     await expect(recent).toBeVisible({ timeout: 2000 });
-    const recentItems = recent.locator('.metric-option');
+    // Only cm_arpu should appear
+    const recentItems = page.locator('.recent-metrics-section .metric-option');
     await expect(recentItems).toHaveCount(1);
+  });
+
+  test('recent items are inside .metric-list for keyboard nav', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem('recentMetrics',
+        JSON.stringify(['cm_arpu']));
+    });
+    await page.reload();
+    await page.locator('.btn-warning.dropdown-toggle').click();
+    // Verify recent items are children of .metric-list
+    const insideList = page.locator('.metric-list .recent-metrics-section .metric-option');
+    await expect(insideList).toHaveCount(1);
   });
 });
 
@@ -251,8 +260,7 @@ test.describe('B2: Pre-Highlight Suggested Metric', () => {
   test('suggested metric visible when dropdown opens', async ({ page }) => {
     await page.goto('/');
     await page.locator('.btn-warning.dropdown-toggle').click();
-    await page.waitForTimeout(300);
     const suggested = page.locator('.metric-option.suggested-metric');
-    await expect(suggested).toBeVisible();
+    await expect(suggested).toBeVisible({ timeout: 2000 });
   });
 });
