@@ -123,7 +123,7 @@ class UniverseBuilder:
 
         # 2. Classify SPAC
         # For v0.1, we use company name only (no filing text yet)
-        is_spac, spac_method = classify_spac(filing.company_name)
+        is_spac, spac_method = classify_spac(filing.company_name, sic_code=sic_code)
 
         # 3. Classify first-time issuer
         previous_ipo_date = self.db.get_first_ipo_filing_date(filing.cik)
