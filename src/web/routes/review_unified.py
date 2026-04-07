@@ -34,6 +34,7 @@ from src.review.models import (
     IMAGE_REVIEW_STATUSES,
 )
 from src.web.app import get_db
+from src.web.routes._metrics import get_active_metrics
 
 review_unified_bp = Blueprint("review_unified", __name__, url_prefix="/v2/review")
 logger = logging.getLogger(__name__)
@@ -245,10 +246,13 @@ def review_filing(filing_id: int):
         )
         total_pages = max(1, -(-total_filtered // per_page))  # ceiling division
 
-        # Get unique metrics for filter dropdown
+        # Get unique metrics for filter dropdown (filing-scoped)
         available_metrics = sorted(
             set(f["canonical_metric_id"] for f in all_facts if f.get("canonical_metric_id"))
         )
+
+        # Get all active metrics for correction/missed-metric dropdowns
+        all_metrics = get_active_metrics()
 
         # Select current fact
         fact_id_param = request.args.get("fact_id")
@@ -281,14 +285,17 @@ def review_filing(filing_id: int):
                 "reviewer_id": current_fact.get("reviewer_id"),
             }
 
-        # Resolve primary document URL for source filing link
+        # Resolve primary document URL for source filing link.
+        # Use the latest S-1/S-1/A for the company (not necessarily the specific
+        # filing being reviewed) so the link always points to the most current
+        # version of the registration statement.
         sec_filing_url = None
-        if document_type == "sec_filing" and filing.get("cik") and filing.get("accession_number"):
+        if document_type == "sec_filing" and filing.get("cik"):
             try:
                 sec_client = SECClient()
-                sec_filing_url = sec_client.resolve_primary_document_url(
-                    filing["cik"], filing["accession_number"]
-                )
+                latest = sec_client.get_latest_registration_filing(filing["cik"])
+                if latest:
+                    sec_filing_url = latest.primary_doc_url
             except Exception:
                 pass  # Non-fatal — link just won't appear
 
@@ -349,6 +356,7 @@ def review_filing(filing_id: int):
             current_fact=current_fact,
             existing_decision=existing_decision,
             available_metrics=available_metrics,
+            all_metrics=all_metrics,
             current_filters=current_filters,
             total_facts=total_filtered,
             total_facts_unfiltered=total_facts_unfiltered,
