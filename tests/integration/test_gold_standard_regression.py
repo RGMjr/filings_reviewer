@@ -456,7 +456,7 @@ class TestGoldStandardRegression:
 
 
 @pytest.fixture(scope="module")
-def v2_validation_results():
+def v2_validation_results(request):
     """
     Run V2 pipeline validation and cache results for the module.
 
@@ -469,8 +469,9 @@ def v2_validation_results():
     if not csv_path.exists():
         pytest.skip(f"Gold standard CSV not found: {csv_path}")
 
+    max_workers = request.config.getoption("--gold-standard-workers", default=4)
     validator = V2GoldStandardValidator(gold_standard_path=csv_path)
-    return validator.validate_all()
+    return validator.validate_all(max_workers=max_workers)
 
 
 @pytest.fixture(scope="module")

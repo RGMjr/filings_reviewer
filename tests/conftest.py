@@ -36,6 +36,13 @@ def pytest_addoption(parser):
         default=False,
         help="Update baseline instead of comparing against it",
     )
+    parser.addoption(
+        "--gold-standard-workers",
+        action="store",
+        type=int,
+        default=4,
+        help="Number of parallel workers for V2 gold standard validation (default: 4)",
+    )
     # Transcript gold standard options
     parser.addoption(
         "--transcript-split",
