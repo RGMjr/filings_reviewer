@@ -404,7 +404,7 @@ class TestExecuteBatch:
 
         def slow_task(index):
             started.append(index)
-            time.sleep(1.0)  # Longer sleep to ensure tasks are still running
+            time.sleep(0.2)  # Short sleep to ensure tasks are still running when cancelled
             executed.append(index)
             return f"result{index}"
 
@@ -436,7 +436,7 @@ class TestExecuteBatch:
         from src.infra.pool import execute_batch
 
         def slow_task():
-            time.sleep(2.0)
+            time.sleep(0.8)  # Must exceed the 0.5s timeout
             return "result"
 
         with pytest.raises(PoolTimeoutError) as exc_info:
@@ -458,7 +458,7 @@ class TestExecuteBatch:
 
         def task(index):
             started.append(index)
-            time.sleep(0.3)
+            time.sleep(0.1)
             completed.append(index)
             return f"result{index}"
 
