@@ -368,7 +368,6 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 | `test-coverage-analyzer.md` | Find gaps, generate tests |
 | `database-migration-helper.md` | Generate SQL migrations + db.py methods |
 | `documentation-sync-validator.md` | Check documentation accuracy |
-| `ralph/SKILL.md` | Autonomous execution loop for multi-step development tasks |
 
 ---
 
