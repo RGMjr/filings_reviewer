@@ -1,0 +1,1 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,context_before,context_after,header_path,stub_path,confidence,section,is_trap,disposition,disposition_reason

@@ -1,0 +1,1095 @@
+{% extends "base.html" %}
+
+{% block title %}Review: {{ filing.company_name }} - {{ super() }}{% endblock %}
+
+{% block head %}
+<style>
+  .fact-card { border-left: 4px solid #6c757d; }
+  .fact-card.pending { border-left-color: #ffc107; }
+  .fact-card.accepted, .fact-card.auto_accepted { border-left-color: #198754; }
+  .fact-card.rejected { border-left-color: #dc3545; }
+  .fact-card.corrected { border-left-color: #0d6efd; }
+
+  .confidence-badge { font-size: 0.85rem; }
+  .confidence-high { background-color: #198754; }
+  .confidence-medium { background-color: #ffc107; color: #000; }
+  .confidence-low { background-color: #dc3545; }
+
+  .evidence-snippet { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 12px; max-height: 400px; overflow-y: auto; }
+  .evidence-snippet mark { background: #fff3cd; padding: 1px 3px; }
+
+  .breadcrumb-path { font-size: 0.85rem; }
+  .breadcrumb-path .badge { font-weight: normal; }
+
+  .fact-nav-item { cursor: pointer; padding: 6px 10px; border-radius: 4px; font-size: 0.85rem; border-left: 3px solid transparent; }
+  .fact-nav-item:hover { background: #f0f0f0; }
+  .fact-nav-item.active { background: #e8f0fe; border-left-color: #0d6efd; }
+  .fact-nav-item .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .status-dot.pending_review { background: #ffc107; }
+  .status-dot.accepted, .status-dot.auto_accepted { background: #198754; }
+  .status-dot.rejected { background: #dc3545; }
+  .status-dot.corrected { background: #0d6efd; }
+
+  .kbd { display: inline-block; padding: 2px 6px; font-size: 0.75rem; background: #f1f1f1; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; }
+
+  .context-text { color: #666; font-size: 0.9rem; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# Filing Header #}
+<div class="row mb-3">
+  <div class="col-12">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1">
+        <li class="breadcrumb-item"><a href="{{ url_for('review_unified.filing_list') }}">Review Filings</a></li>
+        <li class="breadcrumb-item active">{{ filing.company_name }}</li>
+      </ol>
+    </nav>
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h4 class="mb-0">{{ filing.company_name }}</h4>
+        <small class="text-muted">
+          {{ filing.accession_number }}
+          {% if filing.form_type %}&middot; {{ filing.form_type }}{% endif %}
+          {% if sec_filing_url %}&middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">View source filing</a>{% endif %}
+        </small>
+      </div>
+      <div class="text-end">
+        <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
+        <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
+        <span class="badge bg-success">{{ accepted_count }} accepted</span>
+        <span class="badge bg-danger">{{ rejected_count }} rejected</span>
+        {% if image_pending is defined %}
+        <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
+        <span class="badge bg-secondary">{{ image_reviewed }} img reviewed</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Tab Bar #}
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link {% if active_tab == 'text' %}active{% endif %}"
+       href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text">
+      Text ({{ pending_count }} pending)
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if active_tab == 'images' %}active{% endif %}"
+       href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=images">
+      Images ({{ image_pending if image_pending is defined else 0 }} pending)
+    </a>
+  </li>
+</ul>
+
+{# =========================================================================
+   TEXT TAB
+   ========================================================================= #}
+{% if active_tab == 'text' %}
+
+{# Filters #}
+<div class="row mb-3">
+  <div class="col-12">
+    <form method="get" class="d-flex gap-2 align-items-center flex-wrap">
+      <input type="hidden" name="tab" value="text">
+      <select name="status" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        <option value="all" {% if current_filters.status == 'all' %}selected{% endif %}>All statuses</option>
+        {% for s in review_statuses %}
+        <option value="{{ s }}" {% if current_filters.status == s %}selected{% endif %}>{{ s.replace('_', ' ').title() }}</option>
+        {% endfor %}
+      </select>
+      <select name="metric" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        <option value="all" {% if current_filters.metric == 'all' %}selected{% endif %}>All metrics</option>
+        {% for m in available_metrics %}
+        <option value="{{ m }}" {% if current_filters.metric == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      <select name="sort" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        <option value="confidence_desc" {% if current_filters.sort == 'confidence_desc' %}selected{% endif %}>Confidence (high first)</option>
+        <option value="confidence_asc" {% if current_filters.sort == 'confidence_asc' %}selected{% endif %}>Confidence (low first)</option>
+        <option value="metric" {% if current_filters.sort == 'metric' %}selected{% endif %}>By Metric</option>
+        <option value="period" {% if current_filters.sort == 'period' %}selected{% endif %}>By Period</option>
+      </select>
+      {% if current_filters.has_active_filters %}
+      <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text" class="btn btn-sm btn-outline-secondary">Clear</a>
+      {% endif %}
+      <span class="text-muted ms-2" style="font-size: 0.85rem;">
+        Showing {{ total_facts }} of {{ total_facts_unfiltered }} facts
+      </span>
+    </form>
+  </div>
+</div>
+
+<div class="row">
+  {# Left: Fact Navigation Panel #}
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-header py-2">
+        <strong style="font-size: 0.9rem;">Facts</strong>
+      </div>
+      <div class="card-body p-0" style="max-height: 70vh; overflow-y: auto;">
+        {% for fact in facts %}
+        <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, fact_id=fact.fact_id, status=current_filters.status, metric=current_filters.metric, sort=current_filters.sort) }}&tab=text"
+           class="d-block text-decoration-none text-dark fact-nav-item {% if current_fact and fact.fact_id == current_fact.fact_id %}active{% endif %}"
+           style="border-bottom: 1px solid #eee;">
+          <span class="status-dot {{ fact.review_status }}"></span>
+          <strong>{{ fact.canonical_metric_id }}</strong>
+          <br>
+          <small class="text-muted ms-3">
+            {{ fact.value_raw }}
+            &middot; {{ (fact.confidence * 100)|round(0)|int }}%
+          </small>
+        </a>
+        {% endfor %}
+        {% if not facts %}
+        <div class="p-3 text-muted text-center">No facts match filters</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Right: Fact Detail + Evidence + Decision #}
+  <div class="col-md-9">
+    {% if current_fact %}
+    <div class="card fact-card {{ current_fact.review_status }}" id="fact-detail">
+      <div class="card-body">
+        {# Fact Header #}
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h5 class="mb-1">{{ current_fact.canonical_metric_id }}</h5>
+            <small class="text-muted">
+              {{ current_fact.source_type }} &middot; {{ current_fact.extraction_method }}
+              &middot; {{ current_fact.review_status.replace('_', ' ').title() }}
+            </small>
+          </div>
+          <div>
+            {% set conf = current_fact.confidence %}
+            {% if conf >= 0.85 %}
+            <span class="badge confidence-badge confidence-high">{{ (conf * 100)|round(0)|int }}%</span>
+            {% elif conf >= 0.50 %}
+            <span class="badge confidence-badge confidence-medium">{{ (conf * 100)|round(0)|int }}%</span>
+            {% else %}
+            <span class="badge confidence-badge confidence-low">{{ (conf * 100)|round(0)|int }}%</span>
+            {% endif %}
+          </div>
+        </div>
+
+        {# Value Display #}
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Value</label>
+            <div class="fs-4 fw-bold">{{ current_fact.value_raw }}</div>
+            {% if current_fact.value is not none %}
+            <small class="text-muted">Parsed: {{ current_fact.value }} {{ current_fact.unit }}</small>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Period</label>
+            <div>
+              {% if current_fact.period_start and current_fact.period_end %}
+              {{ current_fact.period_start }} &mdash; {{ current_fact.period_end }}
+              {% elif current_fact.period_end %}
+              As of {{ current_fact.period_end }}
+              {% else %}
+              <span class="text-muted">Not determined</span>
+              {% endif %}
+            </div>
+            {% if current_fact.period_type %}
+            <small class="text-muted">{{ current_fact.period_type }}</small>
+            {% endif %}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Scope</label>
+            <div>{{ current_fact.scope or 'company' }}</div>
+            {% if current_fact.scope_detail %}
+            <small class="text-muted">{{ current_fact.scope_detail }}</small>
+            {% endif %}
+            {% if current_fact.customer_type %}
+            <small class="text-muted d-block">Customer type: {{ current_fact.customer_type }}</small>
+            {% endif %}
+          </div>
+        </div>
+
+        {# Evidence Pack #}
+        {% set evidence = current_fact.evidence_pack if current_fact.evidence_pack is mapping else {} %}
+        {% if evidence and (evidence.snippet_html or evidence.header_path or evidence.stub_path or evidence.context_before or evidence.context_after or evidence.highlighted_html) %}
+        <div class="mb-3">
+          <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">Evidence</label>
+
+          {% if evidence.header_path %}
+          <div class="breadcrumb-path mb-1">
+            <span class="text-muted">Headers:</span>
+            {% for h in evidence.header_path %}
+            <span class="badge bg-light text-dark border">{{ h | default('') }}</span>
+            {% if not loop.last %}&rsaquo;{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% if evidence.stub_path %}
+          <div class="breadcrumb-path mb-2">
+            <span class="text-muted">Row:</span>
+            {% for s in evidence.stub_path %}
+            <span class="badge bg-light text-dark border">{{ s | default('') }}</span>
+            {% if not loop.last %}&rsaquo;{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if evidence.context_before %}
+          <div class="context-text mb-1">...{{ evidence.context_before | default('') }}</div>
+          {% endif %}
+
+          {% if evidence.highlighted_html %}
+          <div class="evidence-snippet">
+            {{ evidence.highlighted_html | safe }}
+          </div>
+          {% elif evidence.snippet_html %}
+          <div class="evidence-snippet">
+            {{ evidence.snippet_html | safe }}
+          </div>
+          {% endif %}
+
+          {% if evidence.context_after %}
+          <div class="context-text mt-1">{{ evidence.context_after | default('') }}...</div>
+          {% endif %}
+
+          {% if current_fact._table_context and current_fact._table_context.raw_html %}
+          <div class="mt-2">
+            <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">
+              Full Table <span class="badge bg-secondary" style="font-size: 0.7rem;">source</span>
+            </label>
+            {% if current_fact._table_context.section_path %}
+            <div class="mb-1">
+              {% for p in current_fact._table_context.section_path %}
+              <span class="badge bg-light text-dark border">{{ p }}</span>
+              {% if not loop.last %}&rsaquo;{% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div style="max-height: 350px; overflow-y: auto; font-size: 0.82rem;">
+              {{ current_fact._table_context.raw_html | safe }}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% elif current_fact._segment_context or current_fact._table_context %}
+        <div class="mb-3">
+          <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">
+            Source Context <span class="badge bg-secondary" style="font-size: 0.7rem;">live lookup</span>
+          </label>
+          {% if current_fact._segment_context %}
+          <div style="font-size: 0.85rem; border-left: 3px solid #dee2e6; padding-left: 0.75rem;">
+            {% for seg in current_fact._segment_context %}
+            {% if seg.segment_id == current_fact.source_locator.segment_id|string %}
+            <div class="mb-2 p-1 rounded" style="background: #fff9c4;">{{ seg.segment_text }}</div>
+            {% else %}
+            <div class="mb-2 text-muted" style="font-size: 0.82rem;">{{ seg.segment_text }}</div>
+            {% endif %}
+            {% endfor %}
+          </div>
+          {% elif current_fact._table_context and current_fact._table_context.raw_html %}
+          {% if current_fact._table_context.section_path %}
+          <div class="mb-1">
+            {% for p in current_fact._table_context.section_path %}
+            <span class="badge bg-light text-dark border">{{ p }}</span>
+            {% if not loop.last %}&rsaquo;{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div style="max-height: 350px; overflow-y: auto; font-size: 0.82rem;">
+            {{ current_fact._table_context.raw_html | safe }}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {# Review Reason #}
+        {% if current_fact.review_reason %}
+        <div class="alert alert-info py-2 mb-3" style="font-size: 0.85rem;">
+          <strong>Review reason:</strong> {{ current_fact.review_reason }}
+        </div>
+        {% endif %}
+
+        <hr>
+
+        {# Decision Controls #}
+        <div id="decision-controls">
+          {% if existing_decision %}
+          <div class="alert alert-secondary py-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <strong>Decision:</strong> {{ existing_decision.decision|upper }}
+                {% if existing_decision.reviewer_id %}
+                <small class="text-muted">by {{ existing_decision.reviewer_id }}</small>
+                {% endif %}
+                {% if existing_decision.rejection_reason %}
+                <br><small class="text-muted">Reason: {{ existing_decision.rejection_reason }}</small>
+                {% endif %}
+              </div>
+              <button class="btn btn-sm btn-outline-warning" onclick="undoDecision('{{ existing_decision.decision_id }}')">
+                Undo
+              </button>
+            </div>
+          </div>
+          {% else %}
+          <div class="d-flex gap-2 align-items-center mb-2">
+            <button class="btn btn-success" onclick="submitDecision('accept')" id="btn-accept">
+              Accept <span class="kbd ms-1">A</span>
+            </button>
+            <button class="btn btn-danger" onclick="showRejectForm()" id="btn-reject">
+              Reject <span class="kbd ms-1">R</span>
+            </button>
+            <button class="btn btn-primary" onclick="showCorrectForm()" id="btn-correct">
+              Correct <span class="kbd ms-1">C</span>
+            </button>
+          </div>
+
+          {# Reject form (hidden by default) #}
+          <div id="reject-form" style="display: none;" class="border rounded p-3 mb-2">
+            <div class="mb-2">
+              <label class="form-label mb-1">Category</label>
+              <select id="rejection-category" class="form-select form-select-sm">
+                <option value="">Select...</option>
+                <option value="wrong_metric">Wrong metric</option>
+                <option value="not_a_metric">Not a metric</option>
+                <option value="wrong_value">Wrong value</option>
+                <option value="wrong_period">Wrong period</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1">Reason (optional)</label>
+              <input type="text" id="rejection-reason" class="form-control form-control-sm" maxlength="500">
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="submitDecision('reject')">Confirm Reject</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="hideRejectForm()">Cancel</button>
+          </div>
+
+          {# Correct form (hidden by default) #}
+          <div id="correct-form" style="display: none;" class="border rounded p-3 mb-2">
+            <div class="mb-2">
+              <label class="form-label mb-1">Corrected Metric ID (optional)</label>
+              <select id="correct-metric" class="form-select form-select-sm">
+                <option value="">Keep current: {{ current_fact.canonical_metric_id }}</option>
+                {% for m in available_metrics %}
+                {% if m != current_fact.canonical_metric_id %}
+                <option value="{{ m }}">{{ m }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1">Corrected Value (optional)</label>
+              <input type="number" id="correct-value" class="form-control form-control-sm" step="any" placeholder="{{ current_fact.value }}">
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1">Notes</label>
+              <input type="text" id="correct-notes" class="form-control form-control-sm" maxlength="1000">
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="submitDecision('correct')">Confirm Correct</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="hideCorrectForm()">Cancel</button>
+          </div>
+
+          {# Reviewer notes (always visible) #}
+          <div class="mt-2">
+            <input type="text" id="reviewer-notes" class="form-control form-control-sm" placeholder="Reviewer notes (optional)" maxlength="1000">
+          </div>
+
+          {# Add Missed Metric button #}
+          <div class="mt-3">
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addMissedMetricModal">
+              + Add Missed Metric
+            </button>
+          </div>
+          {% endif %}
+        </div>
+
+        {# Navigation #}
+        <div class="d-flex justify-content-between mt-3">
+          <button class="btn btn-sm btn-outline-secondary" onclick="navigateFact('prev')" id="btn-prev">
+            &larr; Prev <span class="kbd ms-1">P</span>
+          </button>
+          <span class="text-muted align-self-center" style="font-size: 0.85rem;">
+            {% for f in facts %}
+            {% if f.fact_id == current_fact.fact_id %}
+            {{ loop.index }} of {{ facts|length }}
+            {% endif %}
+            {% endfor %}
+          </span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="navigateFact('next')" id="btn-next">
+            Next &rarr; <span class="kbd ms-1">N</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body text-center text-muted py-5">
+        <h5>No facts to review</h5>
+        <p>All facts matching your filters have been reviewed, or no facts were extracted.</p>
+        <div class="mt-3">
+          <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addMissedMetricModal">
+            + Add Missed Metric
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# Add Missed Metric Modal #}
+<div class="modal fade" id="addMissedMetricModal" tabindex="-1" aria-labelledby="addMissedMetricModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addMissedMetricModalLabel">Add Missed Metric</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="missed-metric-id" class="form-label">Metric <span class="text-danger">*</span></label>
+          <select id="missed-metric-id" class="form-select">
+            <option value="">Select metric...</option>
+            {% for m in available_metrics %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="missed-value-raw" class="form-label">Value (raw text) <span class="text-danger">*</span></label>
+          <input type="text" id="missed-value-raw" class="form-control" placeholder="e.g. 1.5 million" required>
+        </div>
+        <div class="mb-3">
+          <label for="missed-value" class="form-label">Value (numeric, optional)</label>
+          <input type="number" id="missed-value" class="form-control" step="any" placeholder="e.g. 1500000">
+        </div>
+        <div class="mb-3">
+          <label for="missed-unit" class="form-label">Unit <span class="text-danger">*</span></label>
+          <select id="missed-unit" class="form-select">
+            <option value="">Select unit...</option>
+            <option value="percent">Percent</option>
+            <option value="currency">Currency</option>
+            <option value="count">Count</option>
+            <option value="ratio">Ratio</option>
+            <option value="basis_points">Basis Points</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="missed-period-type" class="form-label">Period Type (optional)</label>
+          <select id="missed-period-type" class="form-select">
+            <option value="">Unknown / not specified</option>
+            <option value="annual">Annual</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="trailing">Trailing</option>
+            <option value="ytd">Year-to-date</option>
+            <option value="point_in_time">Point in time</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="missed-period-end" class="form-label">Period End Date (optional)</label>
+          <input type="date" id="missed-period-end" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="missed-scope" class="form-label">Scope</label>
+          <select id="missed-scope" class="form-select">
+            <option value="company">Company</option>
+            <option value="segment">Segment</option>
+            <option value="geography">Geography</option>
+            <option value="product">Product</option>
+            <option value="customer_type">Customer Type</option>
+            <option value="cohort">Cohort</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="missed-notes" class="form-label">Notes (optional)</label>
+          <textarea id="missed-notes" class="form-control" rows="2" maxlength="1000" placeholder="Why was this missed?"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="addMissedMetric()">Add Metric</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endif %} {# end text tab #}
+
+{# =========================================================================
+   IMAGES TAB
+   ========================================================================= #}
+{% if active_tab == 'images' %}
+
+<div class="container-fluid image-review-container"
+     id="review-container"
+     data-filing-id="{{ filing.filing_id }}"
+     data-candidate-id="{{ current_image.image_candidate_id if current_image else '' }}"
+     data-candidates='{{ all_image_candidates | tojson }}'
+     data-decision-id="{{ current_image.image_decision_id if current_image and current_image.image_decision_id else '' }}">
+
+  {% if not image_candidates or image_candidates|length == 0 %}
+  <div class="alert alert-info">
+    <h5>No Image Candidates</h5>
+    <p>No image candidates have been generated for this filing yet.</p>
+    <a href="{{ url_for('review_unified.filing_list') }}" class="btn btn-primary">
+      Back to Filing List
+    </a>
+  </div>
+  {% else %}
+
+  {# Filter and Sort Controls #}
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form method="GET" class="row g-2 align-items-center">
+        <input type="hidden" name="tab" value="images">
+        <div class="col-auto">
+          <label class="visually-hidden" for="imgStatusFilter">Status</label>
+          <select name="image_status" id="imgStatusFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="all" {% if image_filters.status == 'all' %}selected{% endif %}>All Status</option>
+            {% for status in review_statuses_images %}
+            <option value="{{ status }}" {% if image_filters.status == status %}selected{% endif %}>
+              {{ status|capitalize }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# Main 3-Column Layout #}
+  <div class="row image-review-layout">
+    {# Left Column: Thumbnail Sidebar #}
+    <div class="col-auto image-thumbnail-sidebar">
+      <div class="card">
+        <div class="card-header py-2">
+          <h6 class="mb-0">Images ({{ image_candidates|length }})</h6>
+        </div>
+        <div class="card-body p-0 thumbnail-list-container">
+          <div class="list-group list-group-flush">
+            {% for candidate in image_candidates %}
+            {% set is_current = current_image and candidate.image_candidate_id == current_image.image_candidate_id %}
+            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, image_candidate_id=candidate.image_candidate_id, image_status=image_filters.status) }}?tab=images"
+               class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.review_status == 'reviewed' else '' }}"
+               data-candidate-id="{{ candidate.image_candidate_id }}">
+              <div class="d-flex align-items-center gap-2">
+                <div class="thumbnail-preview">
+                  <img src="{{ candidate.image_url }}"
+                       alt="{{ candidate.image_alt or 'Image ' ~ loop.index }}"
+                       loading="lazy"
+                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                  <div class="thumbnail-placeholder" style="display: none;">
+                    <span>?</span>
+                  </div>
+                </div>
+                <div class="thumbnail-info flex-grow-1">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <span class="thumbnail-index">#{{ loop.index }}</span>
+                    {% if candidate.review_status == 'reviewed' %}
+                      {% if candidate.decision == 'relevant' %}
+                      <span class="status-indicator relevant" title="Relevant">&#10003;</span>
+                      {% else %}
+                      <span class="status-indicator not-relevant" title="Not Relevant">&#10007;</span>
+                      {% endif %}
+                    {% elif candidate.review_status == 'skipped' %}
+                      <span class="status-indicator skipped" title="Skipped">&#8634;</span>
+                    {% endif %}
+                  </div>
+                  <span class="tier-badge tier-{{ candidate.detection_tier or 'unknown' }}">
+                    {% if candidate.detection_tier == 'tier_1_cohort' %}T1
+                    {% elif candidate.detection_tier == 'tier_2_large' %}T2
+                    {% elif candidate.detection_tier == 'tier_3_all' %}T3
+                    {% elif candidate.detection_tier == 'seed_list' %}S
+                    {% else %}?{% endif %}
+                  </span>
+                </div>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Center Column: Main Image Display #}
+    <div class="col image-main-display">
+      {% if current_image %}
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+              <h5 class="mb-1">
+                Image #{% for c in image_candidates %}{% if c.image_candidate_id == current_image.image_candidate_id %}{{ loop.index }}{% endif %}{% endfor %}
+              </h5>
+              <small class="text-muted">{{ current_image.image_src }}</small>
+            </div>
+            <div class="d-flex gap-2">
+              <span class="badge image-tier-badge tier-{{ current_image.detection_tier or 'unknown' }}"
+                    title="Detection tier: {{ current_image.detection_tier or 'Unknown' }}">
+                {% if current_image.detection_tier == 'tier_1_cohort' %}Tier 1: Cohort
+                {% elif current_image.detection_tier == 'tier_2_large' %}Tier 2: Large
+                {% elif current_image.detection_tier == 'tier_3_all' %}Tier 3: All
+                {% elif current_image.detection_tier == 'seed_list' %}Seed List
+                {% else %}Unknown{% endif %}
+              </span>
+              {% if current_image.review_status == 'reviewed' %}
+              <span class="badge bg-success">Reviewed</span>
+              {% elif current_image.review_status == 'skipped' %}
+              <span class="badge bg-secondary">Skipped</span>
+              {% else %}
+              <span class="badge bg-warning text-dark">Pending</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="main-image-container text-center mb-3">
+            <a href="{{ current_image.image_url }}" target="_blank" rel="noopener noreferrer">
+              <img src="{{ current_image.image_url }}"
+                   alt="{{ current_image.image_alt or 'Image candidate' }}"
+                   class="main-image"
+                   onerror="this.style.display='none'; document.getElementById('image-error').style.display='block';">
+            </a>
+            <div id="image-error" class="alert alert-warning" style="display: none;">
+              <p class="mb-1">Unable to load image</p>
+              <a href="{{ current_image.image_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                Open in SEC EDGAR
+              </a>
+            </div>
+          </div>
+
+          <div class="image-metadata text-muted small mb-3">
+            {% if current_image.image_width and current_image.image_height %}
+            <span>{{ current_image.image_width }} x {{ current_image.image_height }} px</span>
+            <span class="mx-2">&bull;</span>
+            {% endif %}
+            <span>{{ current_image.image_src }}</span>
+            {% if current_image.image_alt %}
+            <span class="mx-2">&bull;</span>
+            <span title="Alt text">{{ current_image.image_alt|truncate(50) }}</span>
+            {% endif %}
+          </div>
+
+          {% if current_image.review_status == 'pending' %}
+          <div class="decision-buttons mb-3">
+            <button type="button" id="btn-relevant" class="btn btn-success btn-lg">
+              <span class="badge bg-light text-dark me-1">Y</span> Relevant
+            </button>
+            <button type="button" id="btn-not-relevant" class="btn btn-danger btn-lg">
+              <span class="badge bg-light text-dark me-1">N</span> Not Relevant
+            </button>
+            <button type="button" id="btn-skip" class="btn btn-secondary btn-lg">
+              <span class="badge bg-light text-dark me-1">S</span> Skip
+            </button>
+          </div>
+
+          <div id="chart-type-panel" class="dropdown-panel" style="display: none;">
+            <h6>Select Chart Type:</h6>
+            <div class="dropdown-options">
+              {% for value, label in chart_types %}
+              <button type="button" class="btn btn-outline-primary chart-type-option" data-value="{{ value }}">
+                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div id="rejection-panel" class="dropdown-panel" style="display: none;">
+            <h6>Select Rejection Reason:</h6>
+            <div class="dropdown-options">
+              {% for value, label in rejection_reasons %}
+              <button type="button" class="btn btn-outline-danger rejection-reason-option" data-value="{{ value }}">
+                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+
+          {% else %}
+          {% if current_image.review_status == 'skipped' %}
+          <div class="alert alert-secondary mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div><strong>Status:</strong> Skipped</div>
+              <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
+                <span class="badge bg-secondary me-1">U</span> Undo
+              </button>
+            </div>
+          </div>
+          {% else %}
+          <div class="alert {{ 'alert-success' if current_image.decision == 'relevant' else 'alert-secondary' }} mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <strong>Decision:</strong>
+                {% if current_image.decision == 'relevant' %}
+                Relevant
+                {% if current_image.chart_type %}
+                - {{ current_image.chart_type|replace('_', ' ')|title }}
+                {% endif %}
+                {% else %}
+                Not Relevant
+                {% if current_image.rejection_reason %}
+                - {{ current_image.rejection_reason|replace('_', ' ')|title }}
+                {% endif %}
+                {% endif %}
+              </div>
+              <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
+                <span class="badge bg-secondary me-1">U</span> Undo
+              </button>
+            </div>
+            {% if current_image.decision_notes %}
+            <div class="mt-2 small">
+              <strong>Notes:</strong> {{ current_image.decision_notes }}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <div class="d-flex justify-content-end">
+            <a href="{{ url_for('review_images.next_candidate', filing_id=filing.filing_id, current=current_image.image_candidate_id) }}"
+               class="btn btn-primary">
+              Next Pending &rarr;
+            </a>
+          </div>
+          {% endif %}
+
+          <form id="decision-form" style="display: none;"
+                data-candidate-id="{{ current_image.image_candidate_id }}"
+                data-filing-id="{{ filing.filing_id }}">
+            <input type="hidden" name="image_candidate_id" value="{{ current_image.image_candidate_id }}">
+            <input type="hidden" name="decision" id="decision-input">
+            <input type="hidden" name="chart_type" id="chart-type-input">
+            <input type="hidden" name="rejection_reason" id="rejection-reason-input">
+            <input type="hidden" name="reviewer_notes" id="reviewer-notes-input">
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <div class="alert alert-info">
+        No candidate selected. Select an image from the sidebar to begin review.
+      </div>
+      {% endif %}
+    </div>
+
+    {# Right Column: Context Panel #}
+    <div class="col-auto image-context-panel">
+      {% if current_image %}
+      <div class="card">
+        <div class="card-header py-2">
+          <h6 class="mb-0">Context</h6>
+        </div>
+        <div class="card-body">
+          <div class="context-section mb-3">
+            <label class="form-label fw-semibold small">Preceding Text</label>
+            <div class="preceding-text-box">
+              {{ current_image.preceding_text or 'No preceding text captured' }}
+            </div>
+          </div>
+
+          <div class="context-section mb-3">
+            <label class="form-label fw-semibold small">Detected Keywords</label>
+            <div class="keyword-badges">
+              {% if current_image.detected_keywords %}
+                {% for keyword in current_image.detected_keywords %}
+                <span class="badge bg-info keyword-badge">{{ keyword }}</span>
+                {% endfor %}
+              {% else %}
+              <span class="text-muted small">None detected</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="context-section mb-3">
+            <label class="form-label fw-semibold small">Confidence Score</label>
+            {% if current_image.cohort_confidence is not none %}
+            {% set conf_pct = (current_image.cohort_confidence * 100)|round(0)|int %}
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress flex-grow-1" style="height: 10px;">
+                <div class="progress-bar {{ 'bg-success' if conf_pct >= 70 else ('bg-warning' if conf_pct >= 40 else 'bg-danger') }}"
+                     role="progressbar"
+                     style="width: {{ conf_pct }}%"
+                     aria-valuenow="{{ conf_pct }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                </div>
+              </div>
+              <span class="fw-semibold">{{ conf_pct }}%</span>
+            </div>
+            {% else %}
+            <span class="text-muted small">Not calculated</span>
+            {% endif %}
+          </div>
+
+          <div class="context-section mb-3">
+            <label class="form-label fw-semibold small">Detection Tier</label>
+            <div class="tier-explanation">
+              {% if current_image.detection_tier == 'tier_1_cohort' %}
+              <span class="badge bg-primary">Tier 1: Cohort</span>
+              <small class="d-block text-muted mt-1">High confidence - "cohort" keyword detected nearby</small>
+              {% elif current_image.detection_tier == 'tier_2_large' %}
+              <span class="badge bg-info">Tier 2: Large</span>
+              <small class="d-block text-muted mt-1">Large image (likely chart based on size)</small>
+              {% elif current_image.detection_tier == 'tier_3_all' %}
+              <span class="badge bg-secondary">Tier 3: All</span>
+              <small class="d-block text-muted mt-1">All images (lowest priority)</small>
+              {% elif current_image.detection_tier == 'seed_list' %}
+              <span class="badge bg-dark">Seed List</span>
+              <small class="d-block text-muted mt-1">Manually added for training</small>
+              {% else %}
+              <span class="badge bg-light text-dark">Unknown</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="context-section mb-3">
+            <label class="form-label fw-semibold small">Image Position</label>
+            <div>
+              Image {{ current_image.image_index or '?' }} of {{ all_image_candidates|length }} in filing
+            </div>
+          </div>
+
+          {% if current_image.is_decorative %}
+          <div class="alert alert-warning py-2">
+            <small><strong>Note:</strong> Flagged as potentially decorative (logo, icon, or bullet)</small>
+          </div>
+          {% endif %}
+
+          <div class="context-section">
+            <label for="reviewer-notes" class="form-label fw-semibold small">Notes (optional)</label>
+            <textarea id="reviewer-notes"
+                      class="form-control form-control-sm"
+                      rows="2"
+                      maxlength="500"
+                      placeholder="Any observations..."></textarea>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Keyboard Hints Bar #}
+  <div id="keyboard-hints" class="keyboard-hints-bar d-none">
+    <div class="container-fluid">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="hints-content">
+          <kbd>Y</kbd> Relevant
+          <span class="mx-1">|</span>
+          <kbd>N</kbd> Not Relevant
+          <span class="mx-1">|</span>
+          <kbd>S</kbd> Skip
+          <span class="mx-1">|</span>
+          <kbd>U</kbd> Undo
+          <span class="mx-1">|</span>
+          <kbd>&larr;&rarr;</kbd> Navigate
+          <span class="mx-1">|</span>
+          <kbd>1-7</kbd> Quick Select
+          <span class="mx-1">|</span>
+          <kbd>?</kbd> Help
+        </div>
+        <button type="button" class="btn-close btn-close-white btn-sm" id="close-hints" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button"
+          class="btn btn-outline-secondary btn-sm position-fixed keyboard-toggle-btn"
+          id="toggle-hints"
+          title="Toggle keyboard shortcuts (?)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+      <path d="M14 5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h12zM2 4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H2z"/>
+      <path d="M13 10.25a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm0-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5 0A.25.25 0 0 1 8.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 8 8.75v-.5zm2 0a.25.25 0 0 1 .25-.25h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5a.25.25 0 0 1-.25-.25v-.5zm1 2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-5-2A.25.25 0 0 1 6.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 6 8.75v-.5zm-2 0A.25.25 0 0 1 4.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 4 8.75v-.5zm-2 0A.25.25 0 0 1 2.25 8h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 2 8.75v-.5zm11-2a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0a.25.25 0 0 1 .25-.25h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5a.25.25 0 0 1-.25-.25v-.5zm-2 0A.25.25 0 0 1 9.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 9 6.75v-.5zm-2 0A.25.25 0 0 1 7.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 7 6.75v-.5zm-2 0A.25.25 0 0 1 5.25 6h.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-.5A.25.25 0 0 1 5 6.75v-.5zm-3 0A.25.25 0 0 1 2.25 6h1.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-1.5A.25.25 0 0 1 2 6.75v-.5zm0 4a.25.25 0 0 1 .25-.25h5.5a.25.25 0 0 1 .25.25v.5a.25.25 0 0 1-.25.25h-5.5a.25.25 0 0 1-.25-.25v-.5z"/>
+    </svg>
+  </button>
+
+  {% endif %} {# end image_candidates check #}
+</div>
+
+{% endif %} {# end images tab #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const FILING_ID = {{ filing.filing_id }};
+const FACTS = [
+  {% for f in facts %}
+  { id: "{{ f.fact_id }}", status: "{{ f.review_status }}" }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+const CURRENT_FACT_ID = {% if current_fact %}"{{ current_fact.fact_id }}"{% else %}null{% endif %};
+let reviewStartTime = Date.now();
+
+function filterParams() {
+  const params = new URLSearchParams();
+  const status = "{{ current_filters.status }}";
+  const metric = "{{ current_filters.metric }}";
+  const sort = "{{ current_filters.sort }}";
+  if (status !== "all") params.set("status", status);
+  if (metric !== "all") params.set("metric", metric);
+  if (sort !== "confidence_desc") params.set("sort", sort);
+  params.set("tab", "text");
+  return params;
+}
+
+function navigateFact(direction) {
+  if (!CURRENT_FACT_ID || FACTS.length === 0) return;
+
+  const idx = FACTS.findIndex(f => f.id === CURRENT_FACT_ID);
+  let nextIdx;
+  if (direction === 'next') {
+    nextIdx = (idx + 1) % FACTS.length;
+  } else {
+    nextIdx = (idx - 1 + FACTS.length) % FACTS.length;
+  }
+
+  const params = filterParams();
+  params.set("fact_id", FACTS[nextIdx].id);
+  window.location.href = `/v2/review/${FILING_ID}?${params.toString()}`;
+}
+
+function submitDecision(decision) {
+  const reviewTime = Math.round((Date.now() - reviewStartTime) / 1000);
+  const body = {
+    fact_id: CURRENT_FACT_ID,
+    decision: decision,
+    review_time_seconds: reviewTime,
+    reviewer_notes: document.getElementById('reviewer-notes')?.value || null,
+    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+  };
+
+  if (decision === 'reject') {
+    const cat = document.getElementById('rejection-category')?.value;
+    if (cat) body.rejection_category = cat;
+    body.rejection_reason = document.getElementById('rejection-reason')?.value || null;
+  }
+
+  if (decision === 'correct') {
+    const metricId = document.getElementById('correct-metric')?.value;
+    if (metricId) body.assigned_metric_id = metricId;
+    const val = document.getElementById('correct-value')?.value;
+    if (val) body.corrected_value = parseFloat(val);
+    body.reviewer_notes = document.getElementById('correct-notes')?.value || body.reviewer_notes;
+  }
+
+  fetch('/api/v2/decisions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success' && data.next_fact) {
+      window.location.href = data.next_fact.url;
+    } else if (data.status === 'success') {
+      window.location.href = `/v2/review/${FILING_ID}?fact_id=${CURRENT_FACT_ID}&tab=text`;
+    } else {
+      alert('Error: ' + (data.message || JSON.stringify(data.errors)));
+    }
+  })
+  .catch(err => alert('Network error: ' + err));
+}
+
+function undoDecision(decisionId) {
+  fetch(`/api/v2/decisions/${decisionId}`, { method: 'DELETE' })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      window.location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(err => alert('Network error: ' + err));
+}
+
+function showRejectForm() {
+  document.getElementById('reject-form').style.display = 'block';
+  document.getElementById('correct-form').style.display = 'none';
+}
+function hideRejectForm() {
+  document.getElementById('reject-form').style.display = 'none';
+}
+function showCorrectForm() {
+  document.getElementById('correct-form').style.display = 'block';
+  document.getElementById('reject-form').style.display = 'none';
+}
+function hideCorrectForm() {
+  document.getElementById('correct-form').style.display = 'none';
+}
+
+function addMissedMetric() {
+  const body = {
+    filing_id: FILING_ID,
+    canonical_metric_id: document.getElementById('missed-metric-id').value,
+    value_raw: document.getElementById('missed-value-raw').value,
+    value: parseFloat(document.getElementById('missed-value').value) || null,
+    unit: document.getElementById('missed-unit').value,
+    period_type: document.getElementById('missed-period-type').value || null,
+    period_end: document.getElementById('missed-period-end').value || null,
+    scope: document.getElementById('missed-scope').value || 'company',
+    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+    reviewer_notes: document.getElementById('missed-notes').value || null,
+  };
+  if (!body.canonical_metric_id || !body.value_raw || !body.unit) {
+    alert('Please fill in required fields (metric, value, unit)');
+    return;
+  }
+  fetch('/api/v2/missed-metric', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      window.location.reload();
+    } else {
+      alert('Error: ' + (data.message || JSON.stringify(data)));
+    }
+  })
+  .catch(err => alert('Network error: ' + err));
+}
+
+// Keyboard shortcuts (text tab only — safe on images tab since elements won't exist)
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+  // Only activate text shortcuts when on text tab
+  {% if active_tab == 'text' %}
+  switch(e.key.toLowerCase()) {
+    case 'a':
+      e.preventDefault();
+      submitDecision('accept');
+      break;
+    case 'r':
+      e.preventDefault();
+      showRejectForm();
+      break;
+    case 'c':
+      e.preventDefault();
+      showCorrectForm();
+      break;
+    case 'n':
+    case 'arrowright':
+      e.preventDefault();
+      navigateFact('next');
+      break;
+    case 'p':
+    case 'arrowleft':
+      e.preventDefault();
+      navigateFact('prev');
+      break;
+  }
+  {% endif %}
+});
+</script>
+<script src="{{ url_for('static', filename='js/review_images.js') }}"></script>
+{% endblock %}

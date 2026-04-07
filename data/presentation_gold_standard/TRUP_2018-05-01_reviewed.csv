@@ -1,0 +1,3 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,context_before,context_after,header_path,stub_path,confidence,section,is_trap,disposition,disposition_reason
+TRUP,TRUP,2018-05-01,cm_customers_period_end,"446,533",count,2018-03-31,presentation,"Total enrolled pets (including pets from our other business segment) was 446,533 at March 31, 2018",,,,,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed)
+TRUP,TRUP,2018-05-01,cm_revenue_by_cohort,$69.8,currency,Q1 2018,presentation,Quarterly Revenue by New vs Existing Pets,,,,,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed)
