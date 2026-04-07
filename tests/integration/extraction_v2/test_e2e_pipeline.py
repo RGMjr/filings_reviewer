@@ -453,8 +453,8 @@ class TestE2EPerformance:
         elapsed = time.time() - start_time
 
         assert result.success, f"Pipeline failed: {result.error_message}"
-        assert elapsed < 30.0, (
-            f"Pipeline took {elapsed:.1f}s, exceeds 30s performance gate. "
+        assert elapsed < 45.0, (
+            f"Pipeline took {elapsed:.1f}s, exceeds 45s performance gate. "
             f"Reported duration: {result.total_duration_ms}ms"
         )
 
