@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Default paths
 GOLD_STANDARD_DIR = Path(__file__).parent.parent.parent / "data" / "gold_standard"
-GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_251218.csv"
+GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_260407.csv"
 V2_BASELINE_PATH = GOLD_STANDARD_DIR / "v2_baseline.json"
 
 

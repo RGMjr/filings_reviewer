@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # Paths
 # =============================================================================
 
-GOLD_STANDARD_CSV_PATH = Path("data/gold_standard/golden_set_251218.csv")
+GOLD_STANDARD_CSV_PATH = Path("data/gold_standard/golden_set_260407.csv")
 BASELINE_PATH = Path("data/gold_standard/baseline.json")
 
 
