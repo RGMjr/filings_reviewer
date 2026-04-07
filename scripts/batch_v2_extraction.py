@@ -51,6 +51,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv  # noqa: E402
 
 from src.extraction_v2.logging_config import configure_logging  # noqa: E402
+from src.infra.db import DatabaseAdapter  # noqa: E402
 
 load_dotenv()
 
@@ -302,16 +303,15 @@ class BatchV2Runner:
     using ProcessPoolExecutor.
     """
 
-    def __init__(self, config: BatchConfig, db_url: str) -> None:
+    def __init__(self, config: BatchConfig, db_url: str, db_adapter: DatabaseAdapter | None = None) -> None:
         self.config = config
         self.db_url = db_url
+        self._db_adapter = db_adapter
         self._stats = BatchStats()
 
     def query_filings(self) -> list[dict]:
         """Query filings from database."""
-        from src.infra.db import DatabaseAdapter
-
-        db = DatabaseAdapter(self.db_url)
+        db = self._db_adapter if self._db_adapter is not None else DatabaseAdapter(self.db_url)
 
         params: dict = {}
         where_clause = ""
