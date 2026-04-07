@@ -1,7 +1,8 @@
 """
 Integration tests for Flask image review routes (IMG-1-8).
 
-Tests the complete image review workflow from database to API to UI rendering.
+Tests the image review API and navigation. Page-rendering tests for routes that
+now 301-redirect to the V2 unified interface (/v2/review/) were removed.
 """
 
 import pytest
@@ -91,76 +92,6 @@ def sample_image_candidates(db, sample_filing):
         candidate_ids.append(cid)
 
     return candidate_ids
-
-
-# =============================================================================
-# Filing List Page Tests (3 tests)
-# =============================================================================
-
-
-def test_filing_list_renders(client, sample_filing, sample_image_candidates):
-    """Filing list page renders with image candidate counts."""
-    response = client.get("/review/images/filings")
-    assert response.status_code == 200
-    # Company name should appear in HTML
-    assert b"Test Corp" in response.data
-
-
-def test_filing_list_shows_counts(client, sample_filing, sample_image_candidates):
-    """Filing list shows correct pending/reviewed counts."""
-    response = client.get("/review/images/filings")
-    assert response.status_code == 200
-    html = response.data.decode("utf-8")
-    # Should show 6 total candidates (1 + 2 + 3 from fixture)
-    assert "6" in html
-
-
-def test_filing_list_pagination(client, sample_filing, sample_image_candidates):
-    """Filing list pagination works."""
-    response = client.get("/review/images/filings?page=1&per_page=5")
-    assert response.status_code == 200
-
-
-# =============================================================================
-# Review Interface Tests (4 tests)
-# =============================================================================
-
-
-def test_review_page_renders(client, sample_filing, sample_image_candidates):
-    """Review page renders with candidate data."""
-    filing_id = sample_filing["filing_id"]
-    response = client.get(f"/review/images/{filing_id}")
-    assert response.status_code == 200
-    # Should contain image URL or SEC reference
-    html = response.data.decode("utf-8")
-    assert "sec.gov" in html or "image" in html.lower()
-
-
-def test_review_page_shows_specific_candidate(
-    client, sample_filing, sample_image_candidates
-):
-    """Review page shows specific candidate when requested."""
-    filing_id = sample_filing["filing_id"]
-    candidate_id = sample_image_candidates[0]
-    response = client.get(
-        f"/review/images/{filing_id}?image_candidate_id={candidate_id}"
-    )
-    assert response.status_code == 200
-
-
-def test_review_page_invalid_filing_returns_404(client):
-    """Review page returns 404 for invalid filing."""
-    response = client.get("/review/images/99999")
-    assert response.status_code == 404
-
-
-def test_review_page_shows_tier_info(client, sample_filing, sample_image_candidates):
-    """Review page displays detection tier information."""
-    filing_id = sample_filing["filing_id"]
-    response = client.get(f"/review/images/{filing_id}")
-    assert response.status_code == 200
-    html = response.data.decode("utf-8").lower()
-    assert "tier" in html
 
 
 # =============================================================================
@@ -299,47 +230,6 @@ def test_undo_invalid_decision_returns_404(client):
     """API returns 404 for invalid decision ID."""
     response = client.delete("/api/image-decisions/99999")
     assert response.status_code == 404
-
-
-# =============================================================================
-# End-to-End Workflow Test (1 test)
-# =============================================================================
-
-
-def test_full_review_workflow(client, db, sample_filing, sample_image_candidates):
-    """Complete workflow: list → review → decide → navigate."""
-    filing_id = sample_filing["filing_id"]
-
-    # 1. View filing list
-    list_response = client.get("/review/images/filings")
-    assert list_response.status_code == 200
-
-    # 2. Enter review for filing
-    review_response = client.get(f"/review/images/{filing_id}")
-    assert review_response.status_code == 200
-
-    # 3. Make decision on first candidate
-    decision_response = client.post(
-        "/api/image-decisions",
-        json={
-            "image_candidate_id": sample_image_candidates[0],
-            "decision": "relevant",
-            "chart_type": "stacked_bar",
-        },
-        content_type="application/json",
-    )
-    assert decision_response.status_code == 201
-    data = decision_response.get_json()
-    assert data["next_candidate"] is not None  # More candidates remain
-    next_url = data["next_candidate"]["url"]
-
-    # 4. Follow to next candidate
-    next_response = client.get(next_url)
-    assert next_response.status_code == 200
-
-    # 5. Verify database state - candidate should be reviewed
-    candidate = db.get_image_review_candidate(sample_image_candidates[0])
-    assert candidate["review_status"] == "reviewed"
 
 
 # =============================================================================
