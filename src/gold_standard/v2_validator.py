@@ -1074,14 +1074,22 @@ class V2GoldStandardValidator:
             print(f"  {cat}: {len(diags)}")
         print(f"{'=' * 70}")
 
-    def validate_all(self) -> list[ValidationResult]:
+    def validate_all(self, max_workers: int = 1) -> list[ValidationResult]:
         """
         Validate all filings in gold standard dataset.
+
+        Args:
+            max_workers: Number of parallel workers. Default 1 runs sequentially.
+                         Each worker creates its own V2Pipeline instance.
 
         Returns:
             List of ValidationResult for each filing
         """
         entries_by_company = self.load_gold_standard()
+
+        if max_workers > 1:
+            return self._validate_all_parallel(entries_by_company, max_workers)
+
         results: list[ValidationResult] = []
 
         for company_name, entries in entries_by_company.items():
@@ -1118,6 +1126,62 @@ class V2GoldStandardValidator:
             )
 
         return results
+
+    def _validate_all_parallel(
+        self,
+        entries_by_company: dict[str, list[GoldStandardEntry]],
+        max_workers: int,
+    ) -> list[ValidationResult]:
+        """Run validate_filing() for each company concurrently."""
+        from src.infra.pool import execute_batch
+
+        company_items = list(entries_by_company.items())
+
+        def make_task(
+            company_name: str, entries: list[GoldStandardEntry]
+        ):
+            def task() -> ValidationResult | None:
+                filing_path = self._find_filing_path(company_name)
+                if filing_path is None:
+                    logger.warning(
+                        f"No filing found for {company_name}, skipping validation"
+                    )
+                    return None
+                metadata = self._load_filing_metadata(company_name)
+                fy_end_month = metadata.get("fiscal_year_end_month")
+                fy_end_day = metadata.get("fiscal_year_end_day")
+                if fy_end_month is not None and (
+                    fy_end_month != self.v2_config.fiscal_year_end_month
+                    or fy_end_day != self.v2_config.fiscal_year_end_day
+                ):
+                    filing_config = dc_replace(
+                        self.v2_config,
+                        fiscal_year_end_month=fy_end_month,
+                        fiscal_year_end_day=fy_end_day,
+                    )
+                else:
+                    filing_config = self.v2_config
+                # Always create a fresh pipeline per worker to avoid shared stage state
+                pipeline = V2Pipeline(config=filing_config)
+                return self.validate_filing(
+                    company_name, filing_path, entries, pipeline_override=pipeline
+                )
+
+            return task
+
+        tasks = [make_task(name, entries) for name, entries in company_items]
+        descriptions = [f"Validate {name}" for name, _ in company_items]
+
+        raw_results: list[ValidationResult | None] = execute_batch(
+            tasks,
+            max_workers=max_workers,
+            task_descriptions=descriptions,
+            fail_fast=False,
+        )
+        return sorted(
+            (r for r in raw_results if r is not None),
+            key=lambda r: r.company_name,
+        )
 
     def _load_filing_metadata(self, company_name: str) -> dict[str, Any]:
         """
