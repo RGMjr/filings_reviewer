@@ -450,6 +450,142 @@ class TestGoldStandardRegression:
         )
 
 
+# =============================================================================
+# V2 Gold Standard Regression Tests
+# =============================================================================
+
+
+@pytest.fixture(scope="module")
+def v2_validation_results():
+    """
+    Run V2 pipeline validation and cache results for the module.
+
+    Uses V2GoldStandardValidator which re-extracts from local HTML files
+    via the V2 pipeline. Skips if gold standard CSV or HTML files are missing.
+    """
+    from src.gold_standard.v2_validator import V2GoldStandardValidator
+
+    csv_path = GOLD_STANDARD_CSV_PATH
+    if not csv_path.exists():
+        pytest.skip(f"Gold standard CSV not found: {csv_path}")
+
+    validator = V2GoldStandardValidator(gold_standard_path=csv_path)
+    return validator.validate_all()
+
+
+@pytest.fixture(scope="module")
+def v2_current_metrics(v2_validation_results):
+    """Convert V2 validation results to BaselineMetrics."""
+    from src.gold_standard.v2_validator import V2GoldStandardValidator
+
+    if not v2_validation_results:
+        pytest.skip("No V2 validation results available")
+
+    total_candidates = sum(
+        r.true_positives + r.false_positives for r in v2_validation_results
+    )
+    if total_candidates == 0:
+        pytest.skip(
+            "V2 extraction returned 0 candidates — ensure filing HTML files are cached "
+            "under data/gold_standard/{Company_Name}/filing.html"
+        )
+
+    validator = V2GoldStandardValidator()
+    agg = validator.compute_metrics(v2_validation_results)
+    return agg.to_baseline_metrics()
+
+
+@pytest.fixture(scope="module")
+def v2_comparison_result(v2_current_metrics, v2_baseline_metrics, gold_standard_tolerance):
+    """Compare V2 current metrics to V2 baseline."""
+    from src.gold_standard.baseline import compare_to_baseline
+
+    if v2_baseline_metrics is None:
+        return None
+
+    return compare_to_baseline(
+        current=v2_current_metrics,
+        baseline=v2_baseline_metrics,
+        tolerance=gold_standard_tolerance,
+    )
+
+
+@pytest.mark.gold_standard
+class TestV2GoldStandardRegression:
+    """
+    Regression tests for V2 pipeline metrics against the V2 baseline.
+
+    Tests fail if per-company recall or aggregate metrics drop below the
+    v2_baseline.json thresholds (with configurable tolerance).
+    """
+
+    def test_no_company_recall_regressions(
+        self,
+        v2_current_metrics,
+        v2_baseline_metrics,
+        gold_standard_tolerance,
+        v2_baseline_path,
+    ):
+        """Fail if any company's V2 recall dropped significantly vs v2_baseline.json."""
+        if v2_baseline_metrics is None:
+            pytest.skip(
+                f"V2 baseline file not found: {v2_baseline_path}. "
+                f"Create with: python scripts/register_gold_standard_for_v2.py --update-baseline"
+            )
+
+        regressed_companies = []
+
+        for company, baseline_scores in v2_baseline_metrics.by_company.items():
+            if company not in v2_current_metrics.by_company:
+                logger.warning(f"Company '{company}' in V2 baseline but not in current run")
+                continue
+
+            current_scores = v2_current_metrics.by_company[company]
+            recall_delta = current_scores.recall - baseline_scores.recall
+
+            if recall_delta < -gold_standard_tolerance:
+                regressed_companies.append({
+                    'company': company,
+                    'current': current_scores.recall,
+                    'baseline': baseline_scores.recall,
+                    'delta': recall_delta,
+                })
+
+        if regressed_companies:
+            details = "\n".join(
+                f"  - {r['company']}: {r['current']:.1%} "
+                f"(was {r['baseline']:.1%}, delta: {r['delta']:+.1%})"
+                for r in regressed_companies
+            )
+            pytest.fail(
+                f"V2 RECALL REGRESSIONS in {len(regressed_companies)} companies:\n{details}"
+            )
+
+    def test_aggregate_company_metrics(
+        self,
+        v2_current_metrics,
+        v2_baseline_metrics,
+        v2_comparison_result,
+        v2_baseline_path,
+    ):
+        """Verify V2 aggregate comparison result reports no regressions."""
+        if v2_baseline_metrics is None:
+            pytest.skip(
+                f"V2 baseline file not found: {v2_baseline_path}. "
+                f"Create with: python scripts/register_gold_standard_for_v2.py --update-baseline"
+            )
+
+        if v2_comparison_result is None:
+            pytest.skip("No V2 comparison result available")
+
+        assert not v2_comparison_result.has_regression, (
+            f"V2 REGRESSION DETECTED:\n"
+            f"  {v2_comparison_result.summary()}\n"
+            f"  Regressed metrics: {v2_comparison_result.regressed_metrics}\n"
+            f"  Regressed companies: {v2_comparison_result.regressed_companies}"
+        )
+
+
 @pytest.mark.gold_standard
 class TestGoldStandardEdgeCases:
     """Edge case tests for gold standard validation."""
