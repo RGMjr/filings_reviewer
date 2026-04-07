@@ -29,8 +29,14 @@ def register_api_auth(bp: Blueprint) -> None:
         if not current_app.config.get("API_KEY_REQUIRED", True):
             return None
 
-        # Allow browser fetch calls from the same server (same-origin AJAX)
-        # Browsers always send Referer for same-origin fetch() calls
+        # Allow browser fetch calls from the same server (same-origin AJAX).
+        # Check Origin first (reliable for POST fetch() calls; scheme-independent comparison
+        # handles HTTPS-terminating proxies where Flask sees http:// but browser sends https://).
+        origin = request.headers.get("Origin", "")
+        if origin and origin.split("://", 1)[-1] == request.host:
+            return None
+
+        # Fallback: Referer header (sent for GET and same-origin navigations)
         referer = request.headers.get("Referer", "")
         if referer and referer.startswith(request.host_url):
             return None
