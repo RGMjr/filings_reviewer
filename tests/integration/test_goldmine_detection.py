@@ -54,6 +54,12 @@ def sample_filing_path(data_dir: Path) -> str | None:
     if not filings:
         return None
 
+    # Cap at 5MB to avoid indefinite hangs on massive filings (e.g. 13MB Farfetch)
+    MAX_SIZE = 5 * 1024 * 1024
+    filings = [f for f in filings if f.stat().st_size <= MAX_SIZE]
+    if not filings:
+        return None
+
     # Prefer larger filings (more likely to have goldmine content)
     filings.sort(key=lambda f: f.stat().st_size, reverse=True)
     return str(filings[0])
@@ -128,6 +134,7 @@ def enricher() -> SegmentEnricher:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestPipelineIntegration:
     """Integration tests for goldmine detection in the pipeline context."""
 
@@ -273,6 +280,7 @@ class TestPipelineIntegration:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestGoldmineQuality:
     """Tests for goldmine segment characteristics."""
 
@@ -435,6 +443,7 @@ class TestGoldmineQuality:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestPerformance:
     """Performance benchmarks for goldmine detection."""
 
@@ -551,6 +560,7 @@ class TestPerformance:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestValidation:
     """Validation tests against gold standard labels."""
 

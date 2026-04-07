@@ -217,7 +217,7 @@ def is_metric_deprecated(metric_id: str, config_path: str | None = None) -> bool
     metric_config = config.get(metric_id)
     if not metric_config:
         return False
-    return metric_config.get("status") == "deprecated"
+    return bool(metric_config.get("status") == "deprecated")
 
 
 def get_active_metrics(config_path: str | None = None) -> list[str]:

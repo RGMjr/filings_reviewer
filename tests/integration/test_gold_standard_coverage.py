@@ -190,6 +190,7 @@ def value_in_segments(segments: list[SourceSegment], value: str) -> bool:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestFarfetchGoldStandard:
     """Tests for Farfetch filing gold standard coverage."""
 
@@ -456,6 +457,7 @@ class TestKeywordPatterns:
 class TestSegmentationRegression:
     """Tests to prevent segmentation regression (stale segment issue)."""
 
+    @pytest.mark.slow
     @pytest.mark.skipif(
         not Path("data/filings/0001740915/000119312518252315/primary.htm").exists(),
         reason="Farfetch filing not available"

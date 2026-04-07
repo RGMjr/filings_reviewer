@@ -81,7 +81,7 @@ See Also:
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional
 
 from src.review.number_parsing import NumberMatch
 
@@ -119,7 +119,7 @@ def _load_metric_keywords() -> dict[str, list[str]]:
         f"({len(all_keywords) - len(active_keywords)} deprecated, skipped)"
     )
 
-    return cast(dict[str, list[str]], active_keywords)
+    return active_keywords
 
 
 def _load_exclusion_patterns() -> dict[str, list[str]]:
@@ -139,7 +139,7 @@ def _load_exclusion_patterns() -> dict[str, list[str]]:
         if not is_metric_deprecated(metric_id)
     }
 
-    return cast(dict[str, list[str]], active_exclusions)
+    return active_exclusions
 
 
 def _load_specific_patterns() -> list[str]:
@@ -149,7 +149,7 @@ def _load_specific_patterns() -> list[str]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.shared.keyword_config import get_specific_patterns
-    return cast(list[str], get_specific_patterns())
+    return get_specific_patterns()
 
 
 def _load_required_context() -> dict[str, dict[str, Any]]:
@@ -173,7 +173,7 @@ def _load_required_context() -> dict[str, dict[str, Any]]:
         if not is_metric_deprecated(metric_id)
     }
 
-    return cast(dict[str, dict[str, Any]], active_context)
+    return active_context
 
 
 # =============================================================================
