@@ -14,6 +14,7 @@ src/
 ├── extraction/     # Metric extraction (V1 - retired; code kept for historical reference)
 ├── extraction_v2/  # V2 unified extraction pipeline (active — SEC filings, transcripts, presentations)
 ├── review/         # Human review: candidate_generator, pattern_analyzer
+├── shared/         # Shared models and keyword config loader (models.py, keyword_config.py)
 ├── web/            # Flask app: routes/, templates/, static/
 ├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
 └── gold_standard/  # Validation: baseline.py, fresh_extractor.py, v2_validator.py, unified_comparison.py
