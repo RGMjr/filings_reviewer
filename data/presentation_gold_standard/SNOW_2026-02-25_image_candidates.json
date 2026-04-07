@@ -1,0 +1,15 @@
+[
+  {
+    "img_id": "45becf42-b32a-4adb-b9f8-da6081931525",
+    "filename": "imagea.jpg",
+    "image_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828026011631/imagea.jpg",
+    "classification": "chart",
+    "relevance_score": 0.66,
+    "nearby_text": "Snowflake Reports Financial Results for the Fourth Quarter and Full-Year of Fiscal 2026 Revenue of $1.28 billion in the fourth quarter, representing 30% year-over-year growth",
+    "section_type": "unknown",
+    "ocr_text": "",
+    "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/div[3]/img[1]",
+    "width": 0,
+    "height": 0
+  }
+]

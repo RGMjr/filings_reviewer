@@ -466,7 +466,12 @@ def test_db_adapter(test_db_url, _terminate_stale_connections):
 
 @pytest.fixture(scope="session", autouse=True)
 def _terminate_stale_connections():
-    """Kill zombie connections from previous test runs to prevent deadlocks."""
+    """Kill zombie connections from previous test runs to prevent deadlocks.
+
+    Only terminates connections that have been idle for >5 seconds — avoids
+    killing connections from a concurrent pytest session that is actively
+    using them (which would cause AdminShutdown errors in that session).
+    """
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         return
@@ -480,6 +485,8 @@ def _terminate_stale_connections():
                 FROM pg_stat_activity
                 WHERE datname = current_database()
                   AND pid != pg_backend_pid()
+                  AND state = 'idle'
+                  AND state_change < now() - interval '5 seconds'
             """)
         conn.close()
     except Exception:

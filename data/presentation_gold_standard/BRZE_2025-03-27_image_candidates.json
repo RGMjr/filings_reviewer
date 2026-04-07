@@ -1,0 +1,15 @@
+[
+  {
+    "img_id": "9e839bbc-8eb4-49b7-91ce-5fe21a333713",
+    "filename": "image_0.jpg",
+    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000167623825000051/image_0.jpg",
+    "classification": "unknown",
+    "relevance_score": 0.28,
+    "nearby_text": "Braze Announces Agreement to Acquire OfferFit Braze furthers agentic AI innovation with acquisition of a leading AI decisioning company NEW YORK, March 27, 2025 \u2013 Braze (Nasdaq: BRZE), the leading customer engagement platform that empowers brands to Be Absolutely Engaging\u2122, today announced that it has entered into a definitive agreement to acquire OfferFit, an AI decisioning company, for $325 million, subject to customary closing adjustments. AI decisioning agents can autonomously experiment, learn, and deliver highly relevant, personalized experiences. In September 2024, Braze shared its vision for agentic AI in customer engagement, building on its existing artificial intelligence research with the planned development of Project Catalyst. This native AI agent is designed to help brands personalize and optimize experiences with highly relevant Journeys, Content, and Incentives.",
+    "section_type": "unknown",
+    "ocr_text": "",
+    "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/div[8]/img[1]",
+    "width": 0,
+    "height": 0
+  }
+]

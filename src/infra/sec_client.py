@@ -563,6 +563,7 @@ class SECClient:
                 item
                 for item in htm_files
                 if "exhibit" not in item["name"].lower()
+                and "filingfee" not in item["name"].lower()
                 and not _exhibit_re.search(item["name"])
             ]
 
@@ -586,21 +587,23 @@ class SECClient:
                 "ff1",  # Compact patterns (no separator)
                 "s1a",
                 "f1a",  # Amendment patterns
-                "filing",  # Generic filing
                 "mainbody",  # Common main document naming
                 "prospectus",  # Prospectus filings
                 "registration",  # Registration statements
             ]
 
-            for item in files_for_pattern_match:
-                name = item["name"].lower()
-                if any(pattern in name for pattern in form_patterns):
-                    primary_doc = item["name"]
-                    logger.debug(f"Found primary doc by pattern: {primary_doc}")
-                    return (
-                        f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-                        f"{accession_no_dashes}/{primary_doc}"
-                    )
+            # Iterate patterns first (highest priority wins), then files.
+            # This ensures "s-1" always beats "prospectus" regardless of
+            # alphabetical file ordering in the SEC index.
+            for pattern in form_patterns:
+                for item in files_for_pattern_match:
+                    if pattern in item["name"].lower():
+                        primary_doc = item["name"]
+                        logger.debug(f"Found primary doc by pattern '{pattern}': {primary_doc}")
+                        return (
+                            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+                            f"{accession_no_dashes}/{primary_doc}"
+                        )
 
             # Strategy 2: Use largest non-exhibit HTML file (likely the main document)
             files_to_consider = non_exhibit_files if non_exhibit_files else htm_files

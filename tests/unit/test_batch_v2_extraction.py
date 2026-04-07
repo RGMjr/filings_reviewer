@@ -17,7 +17,64 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.batch_v2_extraction import BatchConfig, BatchStats, BatchV2Runner  # noqa: E402
+from scripts.batch_v2_extraction import (  # noqa: E402
+    BatchConfig,
+    BatchStats,
+    BatchV2Runner,
+    _process_filing_worker,
+)
+
+
+class TestSubmitFilingAccessionNumber:
+    """Verify accession_number is forwarded through the submission chain."""
+
+    def test_accession_number_passed_to_worker(self):
+        """_submit_filing includes accession_number as a positional arg to the worker."""
+        config = BatchConfig(workers=1)
+        runner = BatchV2Runner(config=config, db_url="postgresql://test/db")
+
+        filing = {
+            "filing_id": 42,
+            "accession_number": "0001234567-24-000001",
+            "html_storage_path": None,
+            "company_name": "TestCo",
+            "company_id": 10,
+            "cik": "0001234567",
+        }
+
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = MagicMock()
+
+        runner._submit_filing(mock_executor, filing, {})
+
+        call_args = mock_executor.submit.call_args.args
+        # Expected order: (fn, filing_id, html_path, company_name, company_id, cik, accession_number, db_url, config_dict)
+        assert call_args[0] is _process_filing_worker
+        assert call_args[6] == "0001234567-24-000001", (
+            "accession_number must be the 7th positional arg so _process_filing_worker "
+            "can pass it to pipeline.process() for image downloads"
+        )
+
+    def test_missing_accession_number_defaults_to_empty_string(self):
+        """Filing dict without accession_number key doesn't crash _submit_filing."""
+        config = BatchConfig(workers=1)
+        runner = BatchV2Runner(config=config, db_url="postgresql://test/db")
+
+        filing = {
+            "filing_id": 1,
+            "html_storage_path": None,
+            "company_name": "Co",
+            "company_id": 1,
+            "cik": "001",
+            # no accession_number key
+        }
+
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = MagicMock()
+        runner._submit_filing(mock_executor, filing, {})
+
+        call_args = mock_executor.submit.call_args.args
+        assert call_args[6] == ""  # str(filing.get("accession_number", ""))
 
 
 class TestBatchConfig:

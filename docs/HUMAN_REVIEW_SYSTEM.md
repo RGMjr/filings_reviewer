@@ -1,8 +1,8 @@
 # Human-in-the-Loop Metric Extraction Review System
 
-**Status:** Production Ready (2025-12-17)
+**Status:** Production Ready (2026-03-30)
 **Core System:** Complete (Streams A-E)
-**Interface Improvements:** 11/12 Complete
+**Interface Improvements:** 12/12 Complete
 
 ---
 
@@ -44,27 +44,54 @@ review_audit_log      -- Audit trail for compliance
 
 ```
 src/review/
-├── models.py              # ReviewCandidate, ReviewDecision, CandidateFeatures
-├── candidate_generator.py # High-recall candidate detection
-├── number_parsing.py      # Number extraction and normalization
-├── keyword_matching.py    # Metric keyword matching with exclusions
+├── models.py                # ReviewCandidate, ReviewDecision, CandidateFeatures
+├── candidate_generator.py   # High-recall candidate detection
+├── number_parsing.py        # Number extraction and normalization
+├── keyword_matching.py      # Metric keyword matching with exclusions
 ├── false_positive_filter.py # Date/year filtering
-├── context_extraction.py  # Context window extraction
-├── boundary_detection.py  # Paragraph/section boundary detection
-├── table_structure.py     # Table row parsing and filtering
-├── pattern_analyzer.py    # Analyze decisions for patterns (E1)
-├── rule_applicator.py     # Apply learned patterns (E2)
-└── config.py              # CandidateGenerationConfig
+├── context_extraction.py    # Context window extraction
+├── boundary_detection.py    # Paragraph/section boundary detection
+├── table_structure.py       # Table row parsing and filtering
+├── marker_row_parser.py     # Marker/heading row detection in tables
+├── respectively_parser.py   # "X, Y and Z, respectively" value extraction
+├── feature_extractor.py     # Feature extraction for pattern learning (B2)
+├── confidence_scoring.py    # Candidate confidence score calculation
+├── deduplicator.py          # Cross-candidate deduplication
+├── pattern_analyzer.py      # Analyze decisions for patterns (E1)
+├── rule_applicator.py       # Apply learned patterns (E2)
+├── statistical_tests.py     # Chi-squared, t-test helpers for pattern discovery
+├── helpers.py               # Shared utilities
+├── exceptions.py            # Review-specific exception types
+└── config.py                # CandidateGenerationConfig
 
 src/web/
 ├── app.py                 # Flask factory with health check
+├── pres_image_store.py    # File-based presentation image state
 ├── routes/
-│   ├── review.py          # Review interface routes
-│   └── api.py             # REST API endpoints
+│   ├── review.py          # Text candidate review (filing list + review UI)
+│   ├── api.py             # REST API for text review decisions
+│   ├── review_images.py   # DB-backed image review (SEC filing images)
+│   ├── api_images.py      # REST API for image review decisions
+│   ├── review_unified.py  # Unified V2 extraction review interface
+│   ├── api_unified.py     # REST API for unified V2 review
+│   └── review_pres_images.py # Presentation image review (file-based)
 ├── templates/
-│   ├── base.html          # Bootstrap base
-│   ├── filing_list.html   # Filing selection
-│   └── review.html        # Main review interface
+│   ├── base.html                  # Bootstrap base
+│   ├── filing_list.html           # Filing selection (text review)
+│   ├── review.html                # Text candidate review interface
+│   ├── image_filing_list.html     # Filing selection (image review)
+│   ├── review_images.html         # Image review interface
+│   ├── image_stats.html           # Image review statistics dashboard
+│   ├── pres_image_filing_list.html # Filing selection (presentation images)
+│   ├── review_pres_images.html    # Presentation image review interface
+│   ├── unified_filing_list.html   # Filing selection (unified V2)
+│   ├── unified_review.html        # Unified V2 review interface
+│   ├── unified_stats.html         # Unified V2 statistics dashboard
+│   ├── v2_filing_list.html        # Filing selection (V2 legacy)
+│   ├── v2_review.html             # V2 review interface
+│   ├── v2_review_transcript.html  # V2 transcript review interface
+│   ├── v2_stats.html              # V2 statistics dashboard
+│   └── stats.html                 # General stats
 └── static/
     ├── css/review.css
     └── js/review.js       # Keyboard shortcuts, AJAX
@@ -99,11 +126,12 @@ After 5-10 filings reviewed:
 
 ```bash
 python scripts/analyze_review_patterns.py \
-    --min-precision 0.80 \
-    --cross-validate \
-    --include-two-feature \
-    --use-db-evaluation
+    --min-precision 0.75 \
+    --save-patterns \
+    --verbose
 ```
+
+Options: `--filing-id`, `--metric-id`, `--pattern-type`, `--min-precision` (default: 0.75), `--min-support` (default: 5), `--auto-approve`, `--save-patterns`, `--verbose`
 
 ### 4. Approve Patterns
 
@@ -122,8 +150,16 @@ WHERE pattern_id = 123;
 
 ### 5. Evaluate Improvement (E2)
 
+Run gold standard validation to measure extraction improvement after rules are applied:
+
 ```bash
-python scripts/evaluate_extraction_improvement.py --min-decisions 5 --detailed
+pytest -m gold_standard --gold-standard-mode=fresh -v
+```
+
+To export review decisions for offline analysis:
+
+```bash
+python scripts/export_review_decisions.py
 ```
 
 ---
@@ -138,7 +174,7 @@ python scripts/evaluate_extraction_improvement.py --min-decisions 5 --detailed
 - Same-sentence deduplication preference
 
 ### Review Interface
-- Keyboard shortcuts: A=Accept, R=Reject, C=Reclassify, N=Next, P=Previous
+- Keyboard shortcuts: A=Accept, F=Confirm automated suggestion, R=Reject, C=Reclassify, N=Next, P=Previous, S=Skip, Enter=Confirm rejection, Esc=Cancel, ?/H=Toggle hints
 - Confidence score badges (color-coded)
 - Filtering by status, metric type, confidence level
 - Sorting by document order, confidence, value
@@ -196,6 +232,14 @@ config = get_high_recall_config()
 - Filing-level detection via `cohort_chart_detector.py`
 - Results stored in `extra_metadata["cohort_chart_candidates"]`
 - Enables human review of high-value visualizations (ARR by cohort, LTV/CAC, retention curves)
+
+### Presentation Image Review (file-based)
+
+A separate review workflow for presentation images (e.g., investor day slides) under `/review/pres-images/`. Unlike the SEC filing image review (which is DB-backed), this workflow is file-based:
+
+- State is persisted to `data/presentation_gold_standard/_image_decisions.json` via `src/web/pres_image_store.py`
+- Route: `src/web/routes/review_pres_images.py`
+- Filing selection: `pres_image_filing_list.html`; review UI: `review_pres_images.html`
 
 ### Image Review Stats Dashboard and Export (2026-03-30)
 - `/review/images/stats` route: overall decision statistics, daily counts, chart type distribution, rejection reason breakdown

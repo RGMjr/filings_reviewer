@@ -1,0 +1,4 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,context_before,context_after,header_path,stub_path,confidence,section,is_trap,disposition,disposition_reason
+Snowflake Inc.,SNOW,2026-02-25,cm_net_revenue_retention,125%,percent,other,text,125%,•Net revenue retention rate of,,,,LOW,cover,False,,
+Snowflake Inc.,SNOW,2026-02-25,cm_large_customers_period_end,733,other,other,text,733,•,"customers with trailing 12-month product revenue greater than $1 million, representing 27% year-over-year growth",,,LOW,cover,False,,
+Snowflake Inc.,SNOW,2026-02-25,cm_new_customers_acquired,740,other,2026-01-31,text,740,"•Customer Growth and Expansion: Strongest ever quarter for net new customer acquisition, with","net new customers this quarter, and a record number of customers surpassing $10 million in trailing 12-month spend. As of January 31, 2026, Snowflake served 790 of the Forbes Global 2000 customers, re",,,LOW,cover,False,,

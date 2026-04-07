@@ -27,6 +27,7 @@ def mock_db():
     # Mock queries
     db.get_first_ipo_filing_date = Mock(return_value=None)
     db.get_in_scope_filing_count = Mock(return_value=0)
+    db.mark_superseded_filings = Mock(return_value=0)
     db.query = Mock(return_value=[])
 
     return db

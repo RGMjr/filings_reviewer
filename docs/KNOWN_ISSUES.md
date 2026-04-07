@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-03-28
+**Last Updated**: 2026-04-07
 
 ---
 
@@ -116,8 +116,9 @@ The CAC payback period value "six" (months) was not being extracted:
 
 ### Remaining Gaps
 
-- Re-evaluate Farfetch recall after cloud re-fetch of 78 filings is complete
+- Re-evaluate Farfetch recall after cloud re-fetch of 78 filings is complete (Issue #6 fix applied; re-fetch pending on Render)
 - Review Active Consumers, Number of Orders, Take Rate patterns once document fetch is working
+- Active Consumers misassignment is also tracked under Issue #10 (CMS-1 suppression)
 
 ---
 
@@ -182,8 +183,6 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (Issue #10) |
-| Extraction Pipeline Deadlock | Resolved | — | — | Pool + teardown fix eliminates root cause |
-| Connection Pool Exhaustion | Resolved | — | — | Pool + teardown fix + max_connections=200 |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | CMS-1 suppression: Active Consumers (Issue #10) | Open | Low | Low | cm_active_customers_total suppressed by cm_customers_period_end |
 
@@ -262,3 +261,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-03-26**: Issue #2 partially resolved — fixed extract_fresh_batch company_names bug; recall gap requires keyword work
 - **2026-03-26**: Added Issue #10 — CMS-1 suppression assigns Active Consumers to cm_customers_period_end instead of cm_active_customers_total
 - **2026-03-27**: Removed duplicate main-body sections for Issues #3, #7, #8 — already archived; stale "Open"/"Needs Discussion" statuses were conflicting with archive entries
+- **2026-04-07**: Removed orphaned summary table rows for Issues #7 and #8 (already in archive, no main body section); added Issue #10 cross-reference to Issue #2 remaining gaps

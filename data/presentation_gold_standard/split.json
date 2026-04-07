@@ -20,7 +20,8 @@
     "CART",
     "FLYW",
     "GTLB",
-    "HOOD"
+    "HOOD",
+    "TRUP"
   ],
   "companies": {
     "CART": {
@@ -161,15 +162,26 @@
         "2018-07-24"
       ],
       "annotation_count": 10
+    },
+    "TRUP": {
+      "split": "test",
+      "sector": "Insurance",
+      "presentations": [
+        "2018-02-13",
+        "2018-05-01",
+        "2018-08-02"
+      ],
+      "annotation_count": 6
     }
   },
   "statistics": {
-    "total_annotations": 276,
+    "total_annotations": 282,
     "tuning_annotations": 191,
-    "test_annotations": 85,
-    "test_pct": 0.308
+    "test_annotations": 91,
+    "test_pct": 0.323
   },
   "source_files": [
+    "ADBE_2019-01-24_reviewed.csv",
     "CART_S-1_2023-09-15_reviewed.csv",
     "CHWY_S-1_2019-06-12_reviewed.csv",
     "CRM_2025-12-03_reviewed.csv",
@@ -182,13 +194,19 @@
     "GTLB_S-1_2021-10-12_reviewed.csv",
     "HOOD_S-1_2021-10-08_reviewed.csv",
     "INTU_2025-11-20_reviewed.csv",
+    "INTU_2026-02-26_reviewed.csv",
     "IOT_S-1_2021-12-06_reviewed.csv",
     "KC_F-1_2020-09-23_reviewed.csv",
+    "META_2025-12-12_reviewed.csv",
     "META_2026-01-28_reviewed.csv",
     "NETS_F-1_2017-03-21_reviewed.csv",
+    "NOW_2013-07-31_reviewed.csv",
     "PYPL_2025-10-28_reviewed.csv",
     "PYPL_2026-02-03_reviewed.csv",
     "SI_S-1_2018-11-07_reviewed.csv",
-    "TENB_S-1_2018-07-24_reviewed.csv"
+    "TENB_S-1_2018-07-24_reviewed.csv",
+    "TRUP_2018-02-13_reviewed.csv",
+    "TRUP_2018-05-01_reviewed.csv",
+    "TRUP_2018-08-02_reviewed.csv"
   ]
 }

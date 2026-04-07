@@ -605,13 +605,12 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | N
     """
     Resolve the correct SEC filing URL for the primary document.
 
-    The stored sec_html_url in the database sometimes uses a hardcoded filename
-    like 'primary.htm' which may not exist. This function resolves the actual
-    primary document URL by querying the SEC EDGAR index.
+    Uses the latest S-1/S-1/A/F-1/F-1/A for the company so the link always
+    points to the most current version of the registration statement.
 
     Args:
         cik: Company CIK (can be any format, will be normalized)
-        accession_number: SEC accession number (with dashes)
+        accession_number: SEC accession number (with dashes, used for fallback)
         stored_url: Optional stored URL from database (used as fallback)
 
     Returns:
@@ -622,22 +621,16 @@ def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | N
     from src.infra.sec_client import SECClient
 
     try:
-        # Create SEC client with user agent from env
         user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
         client = SECClient(user_agent=user_agent)
 
-        # Normalize CIK (remove leading zeros for API call, but keep for URL)
-        cik_normalized = cik.lstrip("0") or "0"
-
-        # Resolve the actual primary document URL
-        resolved_url = client.resolve_primary_document_url(cik_normalized, accession_number)
-
-        if resolved_url:
-            logger.debug(f"Resolved SEC URL: {resolved_url}")
-            return resolved_url
+        latest = client.get_latest_registration_filing(cik)
+        if latest and latest.primary_doc_url:
+            logger.debug(f"Resolved latest SEC filing URL: {latest.primary_doc_url}")
+            return latest.primary_doc_url
 
     except Exception as e:
-        logger.warning(f"Failed to resolve SEC URL for {cik}/{accession_number}: {e}")
+        logger.warning(f"Failed to resolve latest SEC filing URL for CIK {cik}: {e}")
 
     # Fallback: if stored URL exists and doesn't look like hardcoded primary.htm, use it
     if stored_url and "primary.htm" not in stored_url.lower():

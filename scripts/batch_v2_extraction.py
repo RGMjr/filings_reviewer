@@ -129,6 +129,7 @@ def _process_filing_worker(
     company_name: str,
     company_id: int,
     cik: str,
+    accession_number: str,
     db_url: str,
     config_dict: dict,
 ) -> dict:
@@ -201,6 +202,7 @@ def _process_filing_worker(
             html_path=resolved_path,
             filing_id=filing_id,
             cik=cik,
+            accession_number=accession_number,
         )
 
         duration_ms = int(time.time() * 1000) - start_ms
@@ -261,6 +263,21 @@ def _process_filing_worker(
                 adapter.persist_quality_scores(scores, filing_id)
             except Exception as e:
                 _logger.warning(f"Quality scoring failed for filing {filing_id}: {e}")
+
+        # Bridge v2_image_assets → image_review_candidates so new filings
+        # automatically appear in the Images tab of the review UI.
+        if accession_number:
+            try:
+                bridged = db.bridge_v2_images_to_review_candidates(
+                    filing_id=filing_id,
+                    company_id=company_id,
+                    cik=cik,
+                    accession_number=accession_number,
+                )
+                if bridged:
+                    _logger.info(f"Bridged {bridged} image candidates for filing {filing_id}")
+            except Exception as e:
+                _logger.warning(f"Image candidate bridge failed for filing {filing_id}: {e}")
 
         return {
             "filing_id": filing_id,
@@ -382,6 +399,7 @@ class BatchV2Runner:
             filing["company_name"],
             filing["company_id"],
             str(filing.get("cik", "")),
+            str(filing.get("accession_number", "")),
             self.db_url,
             config_dict,
         )
