@@ -22,7 +22,13 @@ import pytest
 from src.infra.db import DatabaseAdapter
 
 # Skip all tests if no database connection
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not os.environ.get("TEST_DATABASE_URL"),
+        reason="TEST_DATABASE_URL not set",
+    ),
+]
 
 # ---------------------------------------------------------------------------
 # Load batch_v2_extraction script via importlib (it lives in scripts/, not a package)
@@ -54,23 +60,10 @@ _TEST_TICKER = "BATC"
 # ---------------------------------------------------------------------------
 
 
-def _get_test_db_url() -> str | None:
-    return os.environ.get("TEST_DATABASE_URL")
-
-
-@pytest.fixture(scope="module")
-def db_adapter() -> DatabaseAdapter:
-    """Create database adapter for tests."""
-    url = _get_test_db_url()
-    if not url:
-        pytest.skip("TEST_DATABASE_URL not set")
-    return DatabaseAdapter(url)
-
-
 @pytest.fixture
-def test_company_id(db_adapter: DatabaseAdapter) -> int:
+def test_company_id(test_db_adapter: DatabaseAdapter) -> int:
     """Insert test company and return company_id."""
-    with db_adapter.get_connection() as conn:
+    with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -86,14 +79,11 @@ def test_company_id(db_adapter: DatabaseAdapter) -> int:
     return row["company_id"]  # type: ignore[index]
 
 
-@pytest.fixture(scope="module")
-def runner(db_adapter: DatabaseAdapter) -> Any:
+@pytest.fixture(scope="session")
+def runner(test_db_adapter: DatabaseAdapter, test_db_url: str) -> Any:
     """Create BatchV2Runner instance using module-default BatchConfig."""
-    url = _get_test_db_url()
-    if not url:
-        pytest.skip("TEST_DATABASE_URL not set")
     config = BatchConfig()
-    return BatchV2Runner(config=config, db_url=url)
+    return BatchV2Runner(config=config, db_url=test_db_url, db_adapter=test_db_adapter)
 
 
 # ---------------------------------------------------------------------------
@@ -102,11 +92,11 @@ def runner(db_adapter: DatabaseAdapter) -> Any:
 
 
 @pytest.fixture(autouse=True)
-def cleanup_test_filings(db_adapter: DatabaseAdapter, test_company_id: int) -> Any:
+def cleanup_test_filings(test_db_adapter: DatabaseAdapter, test_company_id: int) -> Any:
     """Delete all filings for the test company before and after each test."""
 
     def _delete() -> None:
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM filings WHERE company_id = %(cid)s",
@@ -173,13 +163,13 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_returns_expected_columns(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_company_id: int,
         runner: Any,
     ) -> None:
         """query_filings() rows contain the six expected columns."""
         _insert_filing(
-            db_adapter,
+            test_db_adapter,
             test_company_id,
             "8888888883-24-000001",
             html_storage_path="/data/filings/batch_test/filing.html",
@@ -204,14 +194,14 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_column_values(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_company_id: int,
         runner: Any,
     ) -> None:
         """query_filings() rows contain correct values for inserted filing."""
         html_path = "/data/filings/batch_test/filing_values.html"
         filing_id = _insert_filing(
-            db_adapter,
+            test_db_adapter,
             test_company_id,
             "8888888883-24-000002",
             html_storage_path=html_path,
@@ -231,7 +221,7 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_empty_result(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_company_id: int,
         runner: Any,
     ) -> None:
@@ -243,7 +233,7 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_null_html_path_still_returned(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_company_id: int,
         runner: Any,
     ) -> None:
@@ -253,7 +243,7 @@ class TestBatchRunnerQueryFilings:
         html_storage_path=NULL rows are included.
         """
         filing_id = _insert_filing(
-            db_adapter,
+            test_db_adapter,
             test_company_id,
             "8888888883-24-000003",
             html_storage_path=None,
@@ -268,7 +258,8 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_limit(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
+        test_db_url: str,
         test_company_id: int,
     ) -> None:
         """query_filings() with limit=2 returns at most 2 filings globally.
@@ -278,39 +269,34 @@ class TestBatchRunnerQueryFilings:
         test company and then verify the limited runner never returns more than
         2 rows in total.
         """
-        url = _get_test_db_url()
-        if not url:
-            pytest.skip("TEST_DATABASE_URL not set")
-
         for i in range(1, 6):
             _insert_filing(
-                db_adapter,
+                test_db_adapter,
                 test_company_id,
                 f"8888888883-24-00010{i}",
                 html_storage_path=f"/data/filings/batch_test/filing_{i}.html",
             )
 
         config = BatchConfig(limit=2)
-        limited_runner = BatchV2Runner(config=config, db_url=url)
+        limited_runner = BatchV2Runner(
+            config=config, db_url=test_db_url, db_adapter=test_db_adapter
+        )
         results = limited_runner.query_filings()
 
         assert len(results) <= 2, f"Expected at most 2 results with limit=2, got {len(results)}"
 
     def test_query_filings_resume_from(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
+        test_db_url: str,
         test_company_id: int,
     ) -> None:
         """query_filings() with resume_from skips filings below the threshold."""
-        url = _get_test_db_url()
-        if not url:
-            pytest.skip("TEST_DATABASE_URL not set")
-
         # Insert 3 filings and capture their filing_ids in insertion order
         filing_ids: list[int] = []
         for i in range(1, 4):
             fid = _insert_filing(
-                db_adapter,
+                test_db_adapter,
                 test_company_id,
                 f"8888888883-24-00020{i}",
                 html_storage_path=f"/data/filings/batch_test/resume_{i}.html",
@@ -322,7 +308,7 @@ class TestBatchRunnerQueryFilings:
         middle_id = filing_ids_sorted[1]
 
         config = BatchConfig(resume_from=middle_id)
-        resume_runner = BatchV2Runner(config=config, db_url=url)
+        resume_runner = BatchV2Runner(config=config, db_url=test_db_url, db_adapter=test_db_adapter)
 
         all_filings = resume_runner.query_filings()
         test_results = _filter_to_test_company(all_filings, test_company_id)
@@ -342,14 +328,14 @@ class TestBatchRunnerQueryFilings:
 
     def test_query_filings_ordered_by_filing_id(
         self,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_company_id: int,
         runner: Any,
     ) -> None:
         """query_filings() returns results ordered by filing_id ascending."""
         for i in range(1, 4):
             _insert_filing(
-                db_adapter,
+                test_db_adapter,
                 test_company_id,
                 f"8888888883-24-00030{i}",
                 html_storage_path=f"/data/filings/batch_test/order_{i}.html",

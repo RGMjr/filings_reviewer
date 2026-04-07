@@ -25,34 +25,25 @@ from src.extraction_v2.pipeline import PipelineResult
 from src.infra.db import DatabaseAdapter
 
 # Skip all tests if no database connection
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not os.environ.get("TEST_DATABASE_URL"),
+        reason="TEST_DATABASE_URL not set",
+    ),
+]
 
 
-def get_test_db_url() -> str | None:
-    """Get test database URL from environment."""
-    return os.environ.get("TEST_DATABASE_URL")
-
-
-@pytest.fixture(scope="module")
-def db_adapter() -> DatabaseAdapter | None:
-    """Create database adapter for tests."""
-    url = get_test_db_url()
-    if not url:
-        pytest.skip("TEST_DATABASE_URL not set")
-        return None
-    return DatabaseAdapter(url)
-
-
-@pytest.fixture(scope="module")
-def persistence_adapter(db_adapter: DatabaseAdapter) -> V2PersistenceAdapter:
+@pytest.fixture(scope="session")
+def persistence_adapter(test_db_adapter: DatabaseAdapter) -> V2PersistenceAdapter:
     """Create persistence adapter for tests."""
-    return V2PersistenceAdapter(db_adapter)
+    return V2PersistenceAdapter(test_db_adapter)
 
 
 @pytest.fixture
-def test_filing_id(db_adapter: DatabaseAdapter) -> int:
+def test_filing_id(test_db_adapter: DatabaseAdapter) -> int:
     """Create or get a test filing for foreign key references."""
-    with db_adapter.get_connection() as conn:
+    with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             # First, ensure we have a test company
             cur.execute("""
@@ -85,11 +76,11 @@ def test_filing_id(db_adapter: DatabaseAdapter) -> int:
 
 
 @pytest.fixture(autouse=True)
-def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
+def cleanup_v2_tables(test_db_adapter: DatabaseAdapter, test_filing_id: int):
     """Clean up V2 tables before and after each test."""
 
     def _cleanup():
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
                 cur.execute(
@@ -113,7 +104,7 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
 
     _cleanup()
     # Create v2_documents row required by FK on v2_metric_definitions.doc_id
-    with db_adapter.get_connection() as conn:
+    with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -151,7 +142,7 @@ class TestDefinitionPersistence:
     def test_persist_single_definition(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test inserting a single metric definition."""
@@ -161,7 +152,7 @@ class TestDefinitionPersistence:
 
         assert count == 1
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT * FROM v2_metric_definitions WHERE doc_id = %s",
@@ -179,7 +170,7 @@ class TestDefinitionPersistence:
     def test_persist_multiple_definitions(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test inserting multiple metric definitions at once."""
@@ -191,7 +182,7 @@ class TestDefinitionPersistence:
 
         assert count == 3
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
@@ -203,7 +194,7 @@ class TestDefinitionPersistence:
     def test_persist_empty_definitions(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test persisting empty list returns 0 and stores nothing."""
@@ -211,7 +202,7 @@ class TestDefinitionPersistence:
 
         assert count == 0
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
@@ -223,7 +214,7 @@ class TestDefinitionPersistence:
     def test_persist_definition_idempotent(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test that re-persisting the same metric_id upserts (not duplicates)."""
@@ -233,7 +224,7 @@ class TestDefinitionPersistence:
         )
         persistence_adapter.persist_definitions([defn_original], test_filing_id)
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
@@ -249,7 +240,7 @@ class TestDefinitionPersistence:
 
         assert count == 1
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt, MAX(definition_text_normalized) AS norm_text "
@@ -263,7 +254,7 @@ class TestDefinitionPersistence:
     def test_persist_alignment_flags(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test each alignment flag value round-trips correctly."""
@@ -280,7 +271,7 @@ class TestDefinitionPersistence:
         count = persistence_adapter.persist_definitions(definitions, test_filing_id)
         assert count == 4
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT canonical_metric_id, alignment_flag "
@@ -333,7 +324,7 @@ class TestDefinitionPipelineResultIntegration:
     def test_pipeline_result_definitions_idempotent(
         self,
         persistence_adapter: V2PersistenceAdapter,
-        db_adapter: DatabaseAdapter,
+        test_db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ) -> None:
         """Test that persisting the same pipeline result twice does not duplicate definitions."""
@@ -360,7 +351,7 @@ class TestDefinitionPipelineResultIntegration:
         persistence_adapter.persist_pipeline_result(result, test_filing_id)
         persistence_adapter.persist_pipeline_result(result, test_filing_id)
 
-        with db_adapter.get_connection() as conn:
+        with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
